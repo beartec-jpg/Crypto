@@ -7,7 +7,7 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": false,
+    "noEmit": true,
     "composite": true,
     "strict": true,
     "noUnusedLocals": true,
@@ -15,5 +15,5 @@
     "noFallthroughCasesInSwitch": true,
     "jsx": "react-jsx"
   },
-  "include": ["client/src", "server"]
+  "include": ["client/src"]
 }
