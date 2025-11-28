@@ -1,6 +1,11 @@
 import React from 'react'
 import { Router } from 'wouter'
 import { useLocation } from 'wouter'
+import Home from "@/pages/home";
+import Landing from "@/pages/Landing";
+import CryptoLanding from "@/pages/CryptoLanding";
+import CryptoElliottWave from "@/pages/CryptoElliottWave";
+// Add other page imports as needed
 
 function App() {
   const [location] = useLocation()
@@ -27,8 +32,10 @@ function App() {
             </button>
           </div>
         </div>
+      ) : location === '/dashboard' ? (
+        <CryptoElliottWave /> // Your Elliott Wave page
       ) : (
-        <div style={{ padding: '20px' }}>Dashboard (Add Elliott Wave content here)</div>
+        <CryptoLanding /> // Your existing landing
       )}
     </Router>
   )
