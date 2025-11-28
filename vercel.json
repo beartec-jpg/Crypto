@@ -1,34 +1,53 @@
 {
   "version": 2,
+<<<<<<< HEAD
   "buildCommand": "npm run build",
   "outputDirectory": "dist/public",
   "installCommand": "npm install",
   "framework": "vite",
+=======
+>>>>>>> b767a17050e2197a47bb52f347c00ed4387eed4b
   "builds": [
     {
       "src": "package.json",
       "use": "@vercel/static-build",
+<<<<<<< HEAD
       "config": {
         "distDir": "dist/public"
       }
     },
     {
       "src": "api/index.ts",
+=======
+      "config": { "distDir": "dist" }
+    },
+    {
+      "src": "server/index.ts",
+>>>>>>> b767a17050e2197a47bb52f347c00ed4387eed4b
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
+<<<<<<< HEAD
       "dest": "/api/index.ts"
     },
     {
       "src": "/(.*)",
       "dest": "/dist/public/$1"
+=======
+      "dest": "/server/index.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/index.html"
+>>>>>>> b767a17050e2197a47bb52f347c00ed4387eed4b
     }
   ],
   "env": {
     "NODE_ENV": "production"
+<<<<<<< HEAD
   },
   "headers": [
     {
@@ -40,4 +59,7 @@
       ]
     }
   ]
+=======
+  }
+>>>>>>> b767a17050e2197a47bb52f347c00ed4387eed4b
 }
