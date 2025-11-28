@@ -1,0 +1,33 @@
+import plotly.graph_objects as go
+import pandas as pd
+import requests
+import time
+
+def coinglass_style_heatmap():
+    url = "https://api.coinank.com/api/v1/liquidation/heatmap?symbol=BTC&interval=4h"
+    data = requests.get(url).json()['data']
+    
+    prices = data['priceList'][::-1]
+    matrix = data['liquidationData'][::-1]
+    
+    fig = go.Figure(data=go.Heatmap(
+        z=matrix,
+        y=prices,
+        colorscale=[[0, '#00ffff'], [0.2, '#00ffff'], [0.5, '#ffff00'], [0.8, '#ff6600'], [1, '#ff0000']],
+        zmid=5e8,
+        colorbar=dict(title="Liq $M", tickformat=".0f")
+    ))
+    
+    fig.update_layout(
+        title="BTC Liquidation Heatmap (Coinglass Style)",
+        yaxis=dict(title="Price", autorange="reversed", side="right"),
+        xaxis=dict(showticklabels=False),
+        plot_bgcolor='black',
+        paper_bgcolor='black',
+        font=dict(color="white"),
+        height=800
+    )
+    
+    fig.show()
+
+coinglass_style_heatmap()

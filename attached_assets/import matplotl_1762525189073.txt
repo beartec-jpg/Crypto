@@ -1,0 +1,29 @@
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+# Assume df is your Binance data DataFrame with columns: time, open, high, low, close, volume
+# Example dummy data
+data = {
+    'time': pd.date_range(start='2023-01-01', periods=100, freq='D'),
+    'open': np.random.rand(100) * 100,
+    'high': np.random.rand(100) * 100 + 100,
+    'low': np.random.rand(100) * 100,
+    'close': np.random.rand(100) * 100 + 50,
+    'volume': np.random.randint(1000, 10000, 100)
+}
+df = pd.DataFrame(data)
+
+# Calculate VWAP example
+df['typical_price'] = (df['high'] + df['low'] + df['close']) / 3
+df['pv'] = df['typical_price'] * df['volume']
+df['cum_pv'] = df['pv'].cumsum()
+df['cum_vol'] = df['volume'].cumsum()
+df['vwap'] = df['cum_pv'] / df['cum_vol']
+
+# Plot candlestick and VWAP
+fig, ax = plt.subplots()
+ax.plot(df['time'], df['close'], label='Close')
+ax.plot(df['time'], df['vwap'], label='VWAP', color='red')
+plt.legend()
+plt.show()

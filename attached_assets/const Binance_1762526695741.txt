@@ -1,0 +1,256 @@
+const Binance = require('binance-api-node').default;
+const TA = require('technicalindicators');
+
+class TradingBot {
+  constructor(apiKey, apiSecret, symbol = 'BTCUSDT') {
+    this.client = Binance({ apiKey, apiSecret });
+    this.symbol = symbol;
+    this.htfTimeframe = '1d';
+    this.ltfTimeframe = '15m';
+    this.pdas = [];
+    this.bias = null;
+    this.position = null;
+    this.accountBalance = 0; // USDT balance
+    this.riskPerTrade = 0.01; // 1%
+    this.htfCandles = []; // For backtest
+    this.fvgs = [];
+    this.bos = [];
+    this.minBosMove = 0.01;
+    this.fvgAtrFilter = true;
+  }
+
+  async init() {
+    this.htfCandles = await this.client.candles({ symbol: this.symbol, interval: this.htfTimeframe, limit: 100 });
+    this.identifyPDAs(this.htfCandles);
+    this.calculateFVGs(this.htfCandles);
+    this.calculateBOS(this.htfCandles);
+    this.determineBias();
+    this.accountBalance = (await this.client.accountInfo()).balances.find(b => b.asset === 'USDT').free;
+
+    this.client.ws.candles(this.symbol, this.ltfTimeframe, candle => this.processCandle(candle));
+    this.client.ws.trades(this.symbol, trade => this.processTrade(trade));
+    this.currentDelta = 0;
+    this.cumDelta = 0;
+  }
+
+  identifyPDAs(candles) {
+    this.pdas = [];
+    for (let i = 1; i < candles.length - 1; i++) {
+      const prev = candles[i-1], curr = candles[i], next = candles[i+1];
+      if (curr.low > prev.high) this.pdas.push({ type: 'fvg_bull', low: prev.high, high: curr.low });
+      if (curr.high < prev.low) this.pdas.push({ type: 'fvg_bear', low: curr.high, high: prev.low });
+      if (curr.high > prev.high && curr.high > next.high) this.pdas.push({ type: 'liq_high', level: curr.high });
+      if (curr.low < prev.low && curr.low < next.low) this.pdas.push({ type: 'liq_low', level: curr.low });
+    }
+  }
+
+  calculateFVGs(data, useAtrFilter = this.fvgAtrFilter, atrFactor = 1) {
+    const atr = this.calculateATR(data);
+    this.fvgs = [];
+    for (let i = 2; i < data.length; i++) {
+      let minGap = 0;
+      if (useAtrFilter) minGap = atr[i - 2] * atrFactor;
+      if (data[i].low > data[i - 2].high) {
+        const lower = data[i - 2].high;
+        const upper = data[i].low;
+        if (upper - lower >= minGap) {
+          this.fvgs.push({ time: data[i].closeTime, lower, upper, type: 'bullish' });
+        }
+      } else if (data[i].high < data[i - 2].low) {
+        const lower = data[i].high;
+        const upper = data[i - 2].low;
+        if (upper - lower >= minGap) {
+          this.fvgs.push({ time: data[i].closeTime, lower, upper, type: 'bearish' });
+        }
+      }
+    }
+  }
+
+  calculateBOS(data, minMovePct = this.minBosMove, swingLength = 5) {
+    const swings = [];
+    for (let i = swingLength; i < data.length - swingLength; i++) {
+      const leftHighs = data.slice(i - swingLength, i).map(b => parseFloat(b.high));
+      const rightHighs = data.slice(i + 1, i + swingLength + 1).map(b => parseFloat(b.high));
+      if (parseFloat(data[i].high) >= Math.max(...leftHighs) && parseFloat(data[i].high) >= Math.max(...rightHighs)) {
+        swings.push({ time: data[i].closeTime, value: parseFloat(data[i].high), type: 'high' });
+      }
+      const leftLows = data.slice(i - swingLength, i).map(b => parseFloat(b.low));
+      const rightLows = data.slice(i + 1, i + swingLength + 1).map(b => parseFloat(b.low));
+      if (parseFloat(data[i].low) <= Math.min(...leftLows) && parseFloat(data[i].low) <= Math.min(...rightLows)) {
+        swings.push({ time: data[i].closeTime, value: parseFloat(data[i].low), type: 'low' });
+      }
+    }
+    this.bos = [];
+    let lastHigh = null;
+    let lastLow = null;
+    for (let i = 0; i < data.length; i++) {
+      if (lastHigh && parseFloat(data[i].close) > lastHigh.value && (parseFloat(data[i].close) - lastHigh.value) / lastHigh.value > minMovePct) {
+        this.bos.push({ time: data[i].closeTime, type: 'bullish' });
+        lastHigh = { time: data[i].closeTime, value: parseFloat(data[i].high) };
+      }
+      if (lastLow && parseFloat(data[i].close) < lastLow.value && (lastLow.value - parseFloat(data[i].close)) / lastLow.value > minMovePct) {
+        this.bos.push({ time: data[i].closeTime, type: 'bearish' });
+        lastLow = { time: data[i].closeTime, value: parseFloat(data[i].low) };
+      }
+      const swing = swings.find(s => s.time === data[i].closeTime);
+      if (swing) {
+        if (swing.type === 'high') lastHigh = swing;
+        if (swing.type === 'low') lastLow = swing;
+      }
+    }
+  }
+
+  calculateATR(data, period = 14) {
+    const tr = [];
+    for (let i = 1; i < data.length; i++) {
+      const highLow = parseFloat(data[i].high) - parseFloat(data[i].low);
+      const highClose = Math.abs(parseFloat(data[i].high) - parseFloat(data[i - 1].close));
+      const lowClose = Math.abs(parseFloat(data[i].low) - parseFloat(data[i - 1].close));
+      tr.push(Math.max(highLow, highClose, lowClose));
+    }
+    const atr = [];
+    let sum = tr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    atr.push(sum);
+    for (let i = period; i < tr.length; i++) {
+      sum = (atr[atr.length - 1] * (period - 1) + tr[i]) / period;
+      atr.push(sum);
+    }
+    return atr;
+  }
+
+  determineBias() {
+    const closes = this.htfCandles.map(c => parseFloat(c.close));
+    const ema20 = TA.EMA.calculate({ period: 20, values: closes });
+    const ema50 = TA.EMA.calculate({ period: 50, values: closes });
+    this.bias = ema20[ema20.length-1] > ema50[ema50.length-1] ? 'bullish' : 'bearish';
+  }
+
+  processCandle(candle) {
+    if (this.isInducement(candle)) return;
+    if (this.isSMR(candle) && this.isOrderFlowConfirmation()) {
+      this.alertEntry(candle);
+    }
+    if (this.position && this.isSMC(candle)) {
+      // Continuation alert if needed
+    }
+    if (this.isPDAReached(candle)) {
+      this.alertExit();
+    }
+  }
+
+  processTrade(trade) {
+    const qty = parseFloat(trade.quantity);
+    const isBuy = !trade.isMaker;
+    this.currentDelta += isBuy ? qty : -qty;
+    this.cumDelta += isBuy ? qty : -qty;
+  }
+
+  isOrderFlowConfirmation() {
+    return (this.bias === 'bullish' && this.cumDelta > 0) || (this.bias === 'bearish' && this.cumDelta < 0);
+  }
+
+  isInducement(candle) {
+    const lastPDA = this.pdas[this.pdas.length-1];
+    if (this.bias === 'bullish' && parseFloat(candle.low) < lastPDA.level && parseFloat(candle.close) < lastPDA.level) return true;
+    if (this.bias === 'bearish' && parseFloat(candle.high) > lastPDA.level && parseFloat(candle.close) > lastPDA.level) return true;
+    return false;
+  }
+
+  isSMR(candle) {
+    const lastPDA = this.pdas[this.pdas.length-1];
+    if (this.bias === 'bullish' && parseFloat(candle.low) < lastPDA.level && parseFloat(candle.close) > lastPDA.level) return true;
+    if (this.bias === 'bearish' && parseFloat(candle.high) > lastPDA.level && parseFloat(candle.close) < lastPDA.level) return true;
+    return false;
+  }
+
+  isSMC(candle) {
+    const recentBOS = this.bos[this.bos.length - 1];
+    if (recentBOS && ((this.bias === 'bullish' && recentBOS.type === 'bullish') || (this.bias === 'bearish' && recentBOS.type === 'bearish'))) return true;
+    return false;
+  }
+
+  isPDAReached(candle) {
+    const targetFVG = this.fvgs.find(f => f.type !== this.bias + 'ish'); // Opposite
+    if (targetFVG && ((this.bias === 'bullish' && parseFloat(candle.high) >= targetFVG.lower) || (this.bias === 'bearish' && parseFloat(candle.low) <= targetFVG.upper))) return true;
+    return false;
+  }
+
+  calculatePositionSize(entryPrice, stopLoss) {
+    const riskAmount = this.accountBalance * this.riskPerTrade;
+    const riskPerUnit = Math.abs(entryPrice - stopLoss);
+    return riskAmount / riskPerUnit;
+  }
+
+  getStopLoss(candle) {
+    const lastPDA = this.pdas[this.pdas.length-1];
+    return this.bias === 'bullish' ? lastPDA.level * 0.99 : lastPDA.level * 1.01;
+  }
+
+  alertEntry(candle) {
+    const entryPrice = parseFloat(candle.close);
+    const sl = this.getStopLoss(candle);
+    const qty = this.calculatePositionSize(entryPrice, sl);
+    const type = this.bias === 'bullish' ? 'BUY' : 'SELL';
+    console.log(`${type} ALERT at ${entryPrice}, SL: ${sl}, Qty: ${qty}`);
+    this.position = { type: this.bias === 'bullish' ? 'long' : 'short', entry: entryPrice, sl };
+  }
+
+  alertExit() {
+    const type = this.position.type === 'long' ? 'SELL' : 'BUY';
+    console.log(`${type} ALERT to exit position`);
+    this.position = null;
+  }
+
+  async getFootprint() {
+    const trades = await this.client.futuresRecentTrades({ symbol: this.symbol });
+    let cvd = 0;
+    trades.forEach(t => cvd += t.isBuyerMaker ? -parseFloat(t.qty) : parseFloat(t.qty));
+    return cvd;
+  }
+
+  // Backtesting
+  async backtest(startTime, endTime) {
+    const candles = await this.client.candles({ symbol: this.symbol, interval: this.ltfTimeframe, startTime, endTime });
+    let equity = 10000;
+    let trades = [];
+    this.htfCandles = await this.client.candles({ symbol: this.symbol, interval: this.htfTimeframe, startTime, endTime, limit: 100 });
+    this.identifyPDAs(this.htfCandles);
+    this.calculateFVGs(this.htfCandles);
+    this.calculateBOS(this.htfCandles);
+    this.determineBias();
+    candles.forEach(candle => {
+      if (this.isInducement(candle)) return;
+      if (this.isSMR(candle) && !this.position) {
+        const entry = parseFloat(candle.close);
+        const sl = this.getStopLoss(candle);
+        const qty = this.calculatePositionSize(entry, sl);
+        const posType = this.bias === 'bullish' ? 'long' : 'short';
+        console.log(`${posType.toUpperCase()} ALERT at ${entry} (backtest)`);
+        this.position = { type: posType, entry, sl };
+        trades.push({ entryTime: candle.closeTime, type: posType, entry });
+      }
+      if (this.position) {
+        if ((this.position.type === 'long' && parseFloat(candle.low) <= this.position.sl) ||
+            (this.position.type === 'short' && parseFloat(candle.high) >= this.position.sl)) {
+          const exit = this.position.sl;
+          const pnl = this.position.type === 'long' ? (exit - this.position.entry) : (this.position.entry - exit);
+          equity += pnl * qty; // Simulate
+          console.log(`EXIT ALERT at ${exit} (SL hit, backtest), PnL: ${pnl}`);
+          trades[trades.length-1].exit = exit;
+          trades[trades.length-1].pnl = pnl;
+          this.position = null;
+        }
+        if (this.isPDAReached(candle)) {
+          const exit = parseFloat(candle.close);
+          const pnl = this.position.type === 'long' ? (exit - this.position.entry) : (this.position.entry - exit);
+          equity += pnl * qty;
+          console.log(`EXIT ALERT at ${exit} (target, backtest), PnL: ${pnl}`);
+          trades[trades.length-1].exit = exit;
+          trades[trades.length-1].pnl = pnl;
+          this.position = null;
+        }
+      }
+    });
+    return { finalEquity: equity, trades };
+  }
+}

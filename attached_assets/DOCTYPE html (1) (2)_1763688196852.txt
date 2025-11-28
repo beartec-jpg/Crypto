@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html><head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix"></script>
+<script src="https://cdn.jsdelivr.net/npm/luxon"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon"></script>
+</head><body style="background:#000;margin:0;">
+<canvas id="heatmap" width="1200" height="800"></canvas>
+<div id="alerts" style="color:#f00;font-size:24px;position:absolute;top:10px;left:10px;"></div>
+
+<script>
+// Register matrix plugin
+Chart.register(ChartMatrix);
+
+// Coinglass-style heatmap in pure JS
+async function loadHeatmap() {
+  const resp = await fetch('https://api.coinank.com/api/v1/liquidation/heatmap?symbol=BTC&interval=4h');
+  const {data} = await resp.json();
+
+  const prices = data.priceList.slice().reverse();           // y-axis bottom→top
+  const matrix = data.liquidationData.slice().reverse();     // match prices
+
+  const flatData = [];
+  matrix.forEach((row, i) => {
+    row.forEach((val, j) => {
+      if (val > 0) flatData.push({x: j, y: prices[i], v: val});
+    });
+  });
+
+  const chart = new Chart(document.getElementById('heatmap'), {
+    type: 'matrix',
+    data: {datasets: [{
+      label: 'Liquidation',
+      data: flatData,
+      backgroundColor(c) {
+        const v = c.raw.v / 1e8;
+        if (v > 10) return '#ff0000';
+        if (v > 5)  return '#ff6600';
+        if (v > 2)  return '#ffff00';
+        return '#00ffff';
+      },
+      borderWidth: 0,
+      width: ({chart}) => (chart.chartArea || chart).width / matrix[0].length * 0.95,
+      height: ({chart}) => (chart.chartArea || chart).height / prices.length * 0.95
+    }]},
+    options: {
+      animation: false,
+      scales: {
+        x: {display: false},
+        y: {
+          type: 'linear',
+          position: 'right',
+          reverse: false,
+          ticks: {color: '#fff', callback: v => v.toFixed(0)},
+          grid: {color: '#333'}
+        }
+      },
+      plugins: {
+        legend: {display: false},
+        tooltip: {callbacks: {label: ctx => `\[ { (ctx.raw.v/1e6).toFixed(1) }M`}}
+      }
+    }
+  });
+
+  // Live alerts
+  setInterval(async () => {
+    const live = await fetch('https://api.coinalyze.net/v1/liquidations?symbols=BTC&exchange=aggregated&interval=1m&limit=100').then(r=>r.json());
+    const volLastMin = live.data.reduce((a,e)=>a + e.amount_usd,0);
+    if (volLastMin > 50e6) {
+      document.getElementById('alerts').textContent = `SPIKE: \]{(volLastMin/1e6).toFixed(0)}M liquidated!`;
+    }
+  }, 60000);
+}
+
+loadHeatmap();
+</script>
+</body></html>

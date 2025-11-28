@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html><head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix"></script>
+</head><body>
+<canvas id="heatmap"></canvas>
+<div id="alerts" style="color:red;font-size:20px;"></div>
+
+<script>
+async function renderCoinglassStyle() {
+  const resp = await fetch('https://api.coinank.com/api/v1/liquidation/heatmap?symbol=BTC&interval=4h');
+  const json = await resp.json();
+  const data = json.data;
+
+  const prices = data.priceList.reverse();                    // y-axis (bottom to top)
+  const matrix = data.liquidationData.reverse();              // 2D [price][time]
+
+  const dataset = [{
+    label: 'Liquidation Heatmap',
+    data: [],
+    backgroundColor(c) {
+      const v = c.dataset.data[c.dataIndex].v / 1e8;
+      if (v > 10) return 'rgba(255,0,0,0.9)';
+      if (v > 5)  return 'rgba(255,100,0,0.8)';
+      if (v > 2)  return 'rgba(255,255,0,0.7)';
+      return 'rgba(0,255,255,0.4)';
+    },
+    width: 1,
+    height: ({chart}) => (chart.chartArea.height / prices.length) * 0.95
+  }];
+
+  for (let i = 0; i < prices.length; i++) {
+    for (let j = 0; j < matrix[i].length; j++) {
+      dataset[0].data.push({ x: j, y: prices[i], v: matrix[i][j] });
+    }
+  }
+
+  new Chart(document.getElementById('heatmap'), {
+    type: 'matrix',
+    data: { datasets: dataset },
+    options: {
+      scales: {
+        x: { display: false },
+        y: { position: 'right', ticks: { callback: v => '$' + v } }
+      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `Liq: $${(ctx.raw.v/1e6).toFixed(1)}M` } } }
+    }
+  });
+
+  setInterval(() => checkSpikes(matrix, prices), 60000);
+}
+
+async function checkSpikes(matrix, prices) {
+  const real = await fetch('https://api.coinalyze.net/v1/liquidations?symbols=BTC&exchange=aggregated&interval=1m&limit=200').then(r=>r.json());
+  const recent = real.data.reduce((a,e)=>{ a[Math.round(e.price/100)*100] = (a[Math.round(e.price/100)*100]||0) + e.amount_usd; return a; },{});
+  const alerts = Object.keys(recent).filter(p => recent[p] > 10e6);
+  if (alerts.length) document.getElementById('alerts').innerHTML = 'ALERT: Spike at ' + alerts.join(', ');
+}
+
+renderCoinglassStyle();
+</script>
+</body></html>

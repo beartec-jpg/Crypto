@@ -1,0 +1,79 @@
+import yfinance as yf
+import pandas as pd
+import json
+import sys
+
+def calculate_best_ema(symbol='XRP-USD', period='1mo', interval='15m', ema_range=(5, 20), min_touches=1):
+    try:
+        # Fetch data
+        data = yf.download(symbol, period=period, interval=interval)
+        
+        # Define EMA reactivity function
+        def get_ema_reactivity(length):
+            data[f'EMA_{length}'] = data['Close'].ewm(span=length, adjust=False).mean()
+            total_bull_touches = 0
+            reacted_bull = 0
+            total_bear_touches = 0
+            reacted_bear = 0
+            
+            for i in range(1, len(data) - 1):
+                # Bullish touch: previous close > EMA, low <= EMA, current close > EMA
+                if (data['Close'].iloc[i + 1] > data[f'EMA_{length}'].iloc[i + 1] and
+                    data['Low'].iloc[i] <= data[f'EMA_{length}'].iloc[i] and
+                    data['Close'].iloc[i] > data[f'EMA_{length}'].iloc[i]):
+                    total_bull_touches += 1
+                    if data['Close'].iloc[i - 1] > data[f'EMA_{length}'].iloc[i - 1]:
+                        reacted_bull += 1
+                
+                # Bearish touch: previous close < EMA, high >= EMA, current close < EMA
+                if (data['Close'].iloc[i + 1] < data[f'EMA_{length}'].iloc[i + 1] and
+                    data['High'].iloc[i] >= data[f'EMA_{length}'].iloc[i] and
+                    data['Close'].iloc[i] < data[f'EMA_{length}'].iloc[i]):
+                    total_bear_touches += 1
+                    if data['Close'].iloc[i - 1] < data[f'EMA_{length}'].iloc[i - 1]:
+                        reacted_bear += 1
+            
+            bull_p = (reacted_bull / total_bull_touches * 100) if total_bull_touches >= min_touches else -1.0
+            bear_p = (reacted_bear / total_bear_touches * 100) if total_bear_touches >= min_touches else -1.0
+            return bull_p if bull_p > -1.0 else bear_p if bear_p > -1.0 else -1.0, total_bull_touches, total_bear_touches
+
+        # Find best EMA
+        best_length = ema_range[0]
+        best_score = -1.0
+        best_bull_touches = 0
+        best_bear_touches = 0
+        
+        for length in range(ema_range[0], ema_range[1] + 1):
+            score, bull_touches, bear_touches = get_ema_reactivity(length)
+            if score > best_score:
+                best_score = score
+                best_length = length
+                best_bull_touches = bull_touches
+                best_bear_touches = bear_touches
+        
+        # Calculate EMA data for the best length
+        data['EMA'] = data['Close'].ewm(span=best_length, adjust=False).mean()
+        ema_data = [
+            {'time': int(t.timestamp() * 1000), 'value': float(v)}
+            for t, v in zip(data.index, data['EMA'])
+        ]
+        
+        # Prepare JSON response
+        return json.dumps({
+            'candles': [
+                {'time': int(t.timestamp() * 1000), 'open': o, 'high': h, 'low': l, 'close': c}
+                for t, o, h, l, c in zip(data.index, data['Open'], data['High'], data['Low'], data['Close'])
+            ],
+            'ema': ema_data,
+            'best_ema_length': best_length,
+            'best_score': best_score,
+            'bull_touches': best_bull_touches,
+            'bear_touches': best_bear_touches
+        })
+    except Exception as e:
+        return json.dumps({'error': str(e)})
+
+if __name__ == "__main__":
+    period = sys.argv[1] if len(sys.argv) > 1 else '1mo'
+    interval = sys.argv[2] if len(sys.argv) > 2 else '15m'
+    print(calculate_best_ema(period=period, interval=interval))

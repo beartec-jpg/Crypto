@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html><head><script src="https://cdn.jsdelivr.net/npm/chart.js"></script></head><body>
+<canvas id="liqChart" width="800" height="600"></canvas>
+<div id="alerts"></div>
+
+<script>
+const PRICE_STEP = 500; // aggregate bins
+
+async function fetchAllFree() {
+  const sources = [
+    fetch('https://api.coinank.com/api/v1/liquidation/heatmap?symbol=BTC&interval=4h').then(r=>r.json()),
+    fetch('https://api.hyblockcapital.com/public/liquidation/heatmap?symbol=BTC').then(r=>r.ok?r.json():null), // free tier endpoint
+    fetch('https://open-api.coinglass.com/public/v2/liquidation_heatmap?symbol=BTC').then(r=>r.ok?r.json():null)
+  ];
+  
+  const historical = fetch('https://api.coinalyze.net/v1/liquidations?symbols=BTC&exchange=aggregated&interval=1h&from=' + Math.floor(Date.now()/1000 - 30*86400)).then(r=>r.ok?r.json():null);
+  
+  const [heatmap1, heatmap2, heatmap3, hist] = await Promise.all(sources.concat(historical));
+  
+  const predicted = {};
+  const mitigated = {};
+
+  // Aggregate predicted liquidity
+  [heatmap1, heatmap2, heatmap3].forEach(src => {
+    if (!src?.data) return;
+    const prices = src.data.priceList || src.data.y_axis || [];
+    const matrix = src.data.liquidationData || src.data.liquidation_leverage_data || [];
+    prices.forEach((p, i) => {
+      const bin = Math.round(p / PRICE_STEP) * PRICE_STEP;
+      const vol = matrix[i]?.reduce((a,b)=>a+b,0) || 0;
+      predicted[bin] = (predicted[bin]||0) + vol;
+    });
+  });
+
+  // Mark mitigated (historical liquidations)
+  hist?.data?.forEach(event => {
+    const bin = Math.round(event.price / PRICE_STEP) * PRICE_STEP;
+    mitigated[bin] = (mitigated[bin]||0) + event.amount_usd;
+  });
+
+  renderChart(predicted, mitigated);
+  setInterval(() => checkRealTimeSpikes(predicted), 60000);
+}
+
+function renderChart(pred, mit) {
+  const prices = Object.keys({...pred, ...mit}).map(Number).sort((a,b)=>a-b);
+  const predVol = prices.map(p => (pred[p]||0)/1e6);
+  const mitVol = prices.map(p => (mit[p]||0)/1e6);
+
+  new Chart(document.getElementById('liqChart'), {
+    type: 'bar',
+    data: {
+      labels: prices,
+      datasets: [
+        { label: 'Predicted Liquidity (M$)', data: predVol, backgroundColor: 'rgba(255,99,132,0.6)' },
+        { label: 'Mitigated (past liq)', data: mitVol, backgroundColor: 'rgba(100,100,100,0.4)' }
+      ]
+    },
+    options: { indexAxis: 'y', scales: { x: { stacked: true }, y: { stacked: true } } }
+  });
+}
+
+async function checkRealTimeSpikes(predicted) {
+  const real = await fetch('https://api.coinalyze.net/v1/liquidations?symbols=BTC&exchange=aggregated&interval=1m&limit=100').then(r=>r.json());
+  const recentVol = {};
+  real.data.slice(0,50).forEach(ev => {
+    const bin = Math.round(ev.price / PRICE_STEP) * PRICE_STEP;
+    recentVol[bin] = (recentVol[bin]||0) + ev.amount_usd;
+  });
+
+  const alerts = Object.keys(recentVol).filter(bin => 
+    recentVol[bin] > 5e6 && predicted[bin] > 5e7 // spike + predicted zone
+  );
+
+  if (alerts.length) {
+    document.getElementById('alerts').innerHTML += `<p>ALERT: Spike at ${alerts.join(', ')}!</p>`;
+    new Notification('Liq Spike', { body: 'Real liquidations spiking in predicted zone' });
+  }
+}
+
+fetchAllFree();
+</script>
+</body></html>

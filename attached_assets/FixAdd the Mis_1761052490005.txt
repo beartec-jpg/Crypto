@@ -1,0 +1,7 @@
+Fix
+Add the Missing Route in server/index.js:
+app.get('/api/crypto/custom-indicator', (req, res) => {
+  res.json({ data: [] }); // Placeholder; return empty or mock data
+});
+Reload Replit: Save, stop, and restart the server (flask run or npm start).
+Test: The chart should load without the fetch error. If it persists, check the browser console (F12) for more details and share the full error stack.

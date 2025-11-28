@@ -1,0 +1,31 @@
+call 1
+You are a swing pivot detector. From these 15-min candles return ONLY the 12–18 most significant swing highs and lows (ZigZag style, min 1.5% move, no noise).
+
+Data: [{"i":0,"t":"...","o":0,"h":0,"l":0,"c":0},...]
+
+Return ONLY this JSON:
+{
+  "pivots": [
+    {"i":int,"price":float,"type":"low|high","strength":0.0-1.0}
+  ],
+  "totalCandles":int
+}
+
+Data: [PASTE FULL JSON]
+
+call 2
+You are Grok-4 Elliott Wave master. Use ONLY these major pivots (already filtered) to find the single best-fitting pattern from ALL types: impulse, leading/ending diagonal, zigzag, regular/expanded/running flat, all triangles, combinations, incomplete.
+
+Strict rules + all pattern definitions from my previous prompt apply.
+
+Input pivots (chronological order):
+[
+  {"i":45,"price":79750.00,"type":"low"},
+  {"i":120,"price":86500.00,"type":"high"},
+  ...
+]
+
+Return exact same rich JSON as before (pattern, points with labels, fibs, targets, invalidation, etc.)
+
+Pivots:
+[PASTE RESULT FROM CALL 1]

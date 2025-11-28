@@ -1,0 +1,123 @@
+// client/src/components/LiquidationHeatmapChart.tsx
+import { useEffect, useRef, useState } from 'react';
+import Chart from 'chart.js/auto';
+import 'chartjs-chart-matrix';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
+
+interface HeatmapData {
+  prices: number[];
+  matrix: number[][];
+  historical?: number[][];
+  orderbook?: { price: number; amount: number }[];
+}
+
+export default function LiquidationHeatmapChart() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartRef = useRef<Chart | null>(null);
+  const [showHistorical, setShowHistorical] = useState(true);
+  const [showOrderbook, setShowOrderbook] = useState(true);
+
+  const { data } = useQuery({
+    queryKey: ['liquidation-heatmap'],
+    queryFn: async (): Promise<HeatmapData> => {
+      const res = await axios.get('/api/futures/liquidation/heatmap');
+      return res.data;
+    },
+    refetchInterval: 60000,
+  });
+
+  useEffect(() => {
+    if (!data || !canvasRef.current) return;
+
+    const ctx = canvasRef.current.getContext('2d')!;
+    if (chartRef.current) chartRef.current.destroy();
+
+    const prices = data.prices.slice().reverse();
+    const baseMatrix = data.matrix.slice().reverse();
+
+    const flat: any[] = [];
+    baseMatrix.forEach((row, i) => {
+      row.forEach((val, j) => {
+        if (val > 0) {
+          const intensity = Math.min(val / 2e9, 1);
+          flat.push({
+            x: j,
+            y: prices[i],
+            v: val,
+            historical: data.historical?.[i]?.[j] || 0,
+          });
+        }
+      });
+    });
+
+    chartRef.current = new Chart(ctx, {
+      type: 'matrix',
+      data: {
+        datasets: [
+          {
+            label: 'Predicted + Historical',
+            data: flat,
+            backgroundColor(c: any) {
+              const base = c.raw.v / 2e9;
+              const hist = c.raw.historical / 1e9;
+              const total = base + hist;
+              if (total > 1.5) return '#ff0000';
+              if (total > 0.8) return '#ff6600';
+              if (total > 0.3) return '#ffff00';
+              return '#00ffff';
+            },
+            width: ({ chart }) => (chart.chartArea?.width || 800) / baseMatrix[0].length * 0.95,
+            height: ({ chart }) => (chart.chartArea?.height || 600) / prices.length * 0.95,
+          },
+          ...(showOrderbook && data.orderbook
+            ? data.orderbook.map(wall => ({
+                type: 'line' as const,
+                label: 'Order Wall',
+                data: [{ x: 0, y: wall.price }, { x: baseMatrix[0].length, y: wall.price }],
+                borderColor: wall.amount > 5e8 ? '#ff00ff' : '#00ff00',
+                borderWidth: 2,
+                pointRadius: 0,
+              }))
+            : []),
+        ],
+      },
+      options: {
+        animation: false,
+        scales: {
+          x: { display: false },
+          y: { position: 'right', reverse: false, ticks: { color: '#fff' }, grid: { color: '#333' } },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx: any) => `\[ { (ctx.raw.v / 1e6).toFixed(1) }M predicted`,
+            },
+          },
+        },
+      },
+    });
+  }, [data, showHistorical, showOrderbook]);
+
+  // Real-time liquidations via WebSocket
+  useEffect(() => {
+    const ws = new WebSocket('wss://your-domain.com/ws/liquidations');
+    ws.onmessage = (e) => {
+      const liq = JSON.parse(e.data);
+      document.getElementById('alert')!.innerText = `LIVE: ${liq.side} \]{(liq.amount / 1e6).toFixed(0)}M @ $${liq.price}`;
+    };
+    return () => ws.close();
+  }, []);
+
+  return (
+    <div style={{ background: '#000', padding: 20 }}>
+      <div style={{ color: '#0f0', fontSize: 24, marginBottom: 10 }} id="alert"></div>
+      <div style={{ marginBottom: 10 }}>
+        <label><input type="checkbox" checked={showHistorical} onChange={e => setShowHistorical(e.target.checked)} /> Historical</label>
+        <label style={{ marginLeft: 20 }}><input type="checkbox" checked={showOrderbook} onChange={e => setShowOrderbook(e.target.checked)} /> Order Walls</label>
+      </div>
+      <canvas ref={canvasRef} width={1200} height={800} />
+    </div>
+  );
+}

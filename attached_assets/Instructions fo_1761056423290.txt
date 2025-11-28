@@ -1,0 +1,28 @@
+Instructions for Replit
+Copy and Paste:
+Create or edit server/python/auto_ema.py in Replit and paste the Python script.
+Update server/index.js with the Express route.
+Replace client/src/pages/CryptoChart.tsx with the updated React component.
+Install Dependencies:
+Frontend: npm install axios lightweight-charts
+Backend: npm install express cors
+Python: pip install yfinance pandas
+Save and Run:
+Save all files.
+Click "Run" in Replit to build and test locally at http://beartec.uk/crypto (not live yet).
+Check Console:
+Monitor the Replit console for Python execution errors (e.g., yfinance issues) or frontend errors.
+How It Works
+Python Script (auto_ema.py):
+Fetches XRP/USDT data for the given period and interval.
+Calculates EMAs from 5 to 20, evaluating reactivity based on bullish and bearish touches (strict rules: previous close direction, next close reaction).
+Selects the EMA with the highest reaction percentage (bullish in bull mode, bearish in bear mode).
+Returns candles, the best EMA data, length, score, and touch counts as JSON.
+React Frontend (CryptoChart.tsx):
+Fetches data from /api/crypto/xrp-usdt.
+Plots candles and the auto-adjusted EMA with Lightweight Charts.
+Displays the best EMA length, score, and touch counts below the chart.
+Expected Output
+Chart: Displays XRP/USDT candles with a single EMA line (optimal length from 5-20).
+Table: Shows the best EMA length (e.g., 15), score (e.g., 82%), and touch counts (e.g., Bull: 66, Bear: 50) in blue text.
+Behavior: Updates with new period and interval via the form.

@@ -1,0 +1,91 @@
+import React, { useEffect, useState } from 'react';
+import { createChart } from 'lightweight-charts';
+import axios from 'axios';
+
+const CryptoChart: React.FC = () => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState('1mo');
+  const [interval, setInterval] = useState('15m');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    axios.get(`/api/crypto/xrp-usdt?period=${period}&interval=${interval}`)
+      .then(response => {
+        setData(response.data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Error fetching data:', err);
+        setError('Failed to load chart data');
+        setLoading(false);
+      });
+  }, [period, interval]);
+
+  useEffect(() => {
+    if (data && !loading && !error) {
+      const chart = createChart(document.getElementById('chart')!, { width: window.innerWidth - 240, height: 600 });
+      const candleSeries = chart.addCandlestickSeries();
+      const emaSeries = chart.addLineSeries({ color: '#1E3A8A', lineWidth: 2 });
+
+      candleSeries.setData(data.candles);
+      emaSeries.setData(data.ema);
+
+      return () => {
+        chart.remove();
+      };
+    }
+  }, [data, loading, error]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+  };
+
+  return (
+    <div className="crypto-chart-container" style={{ padding: '20px', backgroundColor: '#F3F4F6', minHeight: '100vh' }}>
+      <h1 className="text-2xl font-bold mb-4" style={{ color: '#1E3A8A' }}>
+        XRP/USDT Crypto Chart with Auto-Adjusted EMA
+      </h1>
+      <form onSubmit={handleSubmit} style={{ marginBottom: '20px' }}>
+        <label style={{ color: '#1E3A8A', marginRight: '10px' }}>Period: </label>
+        <select value={period} onChange={(e) => setPeriod(e.target.value)} style={{ marginRight: '10px' }}>
+          <option value="1d">1 Day</option>
+          <option value="7d">7 Days</option>
+          <option value="1mo">1 Month</option>
+          <option value="3mo">3 Months</option>
+          <option value="1y">1 Year</option>
+          <option value="max">Max</option>
+        </select>
+        <label style={{ color: '#1E3A8A', marginRight: '10px' }}>Interval: </label>
+        <select value={interval} onChange={(e) => setInterval(e.target.value)} style={{ marginRight: '10px' }}>
+          <option value="1m">1 Minute</option>
+          <option value="5m">5 Minutes</option>
+          <option value="15m">15 Minutes</option>
+          <option value="1h">1 Hour</option>
+          <option value="1d">1 Day</option>
+        </select>
+        <button type="submit" style={{ backgroundColor: '#1E3A8A', color: '#FFFFFF', padding: '5px 10px', border: 'none', borderRadius: '4px' }}>Update Chart</button>
+      </form>
+      {loading ? (
+        <div>Loading chart...</div>
+      ) : error ? (
+        <div style={{ color: 'red' }}>{error}</div>
+      ) : (
+        <div>
+          <div id="chart" style={{ border: '1px solid #1E3A8A', borderRadius: '8px' }} />
+          {!loading && !error && (
+            <div style={{ color: '#1E3A8A', marginTop: '10px' }}>
+              Best EMA Length: {data?.best_ema_length}, Score: {data?.best_score}%, 
+              Bull Touches: {data?.bull_touches}, Bear Touches: {data?.bear_touches}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default CryptoChart;

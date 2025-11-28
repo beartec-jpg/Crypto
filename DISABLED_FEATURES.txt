@@ -1,0 +1,139 @@
+================================================================================
+                    DISABLED FEATURES - API CONFIGURATION REQUIRED
+================================================================================
+
+This document lists all features that are currently disabled pending API key 
+configuration. Each feature requires specific API keys to be enabled.
+
+--------------------------------------------------------------------------------
+1. COINALYZE API FEATURES (requires COINALYZE_API_KEY)
+--------------------------------------------------------------------------------
+
+   a) Liquidation History
+      - Endpoint: /api/crypto/liquidations/coinalyze
+      - Description: Historical liquidation data for crypto perpetual futures
+      - Returns: Long/short liquidation volumes over time
+      
+   b) Open Interest Data
+      - Endpoint: /api/crypto/orderflow/open-interest
+      - Description: Real-time and historical open interest data
+      - Returns: OI values with delta changes over 7 days
+      
+   c) Funding Rate Data
+      - Endpoint: /api/crypto/orderflow/funding-rate
+      - Description: Historical funding rate data for perpetual contracts
+      - Returns: Funding rate history with trends
+      
+   d) Long/Short Ratio
+      - Endpoint: /api/crypto/orderflow/long-short-ratio
+      - Description: Trader positioning data (long vs short ratio)
+      - Returns: Ratio history with percentage breakdowns
+
+   e) Liquidation Grid Data
+      - Endpoint: /api/crypto/liquidations/grid
+      - Description: 30x30 heatmap grid for liquidation visualization
+      - Partially affected: Grid uses Coinalyze data when available
+
+--------------------------------------------------------------------------------
+2. COINGLASS API FEATURES (requires COINGLASS_API_KEY)
+--------------------------------------------------------------------------------
+
+   a) Liquidation History
+      - Endpoint: /api/crypto/liquidations/coinglass-history
+      - Description: Detailed liquidation history from CoinGlass
+      - Returns: Exchange-specific liquidation data with intervals
+      
+   b) Aggregated Orderbook
+      - Endpoint: /api/crypto/orderbook/coinglass
+      - Description: Aggregated bid/ask data from major exchanges
+      - Returns: Order depth analysis and imbalance detection
+      
+   c) Liquidation Map
+      - Endpoint: /api/crypto/liquidation-map
+      - Description: Liquidation level predictions by price
+      - Returns: Price levels with concentrated liquidation zones
+
+   d) Orderbook Column in Grid
+      - Used in: /api/crypto/liquidations/grid (32nd column)
+      - Description: Real orderbook data for heatmap visualization
+      - Affected: Grid shows simulated data instead of live orderbook
+
+--------------------------------------------------------------------------------
+3. XAI/GROK AI FEATURES (requires XAI_API_KEY)
+--------------------------------------------------------------------------------
+
+   a) AI Market Analysis
+      - Endpoint: Various /api/crypto/analyze endpoints
+      - Description: AI-powered market analysis using Grok-4 model
+      - Returns: Trading insights and market commentary
+      
+   b) Elliott Wave AI Analysis
+      - Endpoint: /api/crypto/elliott-wave/ai-analyze
+      - Description: Automatic Elliott Wave pattern detection
+      - Returns: Pattern type, confidence, suggested wave labels
+      
+   c) Wave Continuation Suggestions
+      - Function: suggestWaveContinuation
+      - Description: AI predictions for next wave targets
+      - Returns: Price targets, stop levels, reasoning
+
+--------------------------------------------------------------------------------
+4. PUSH NOTIFICATION FEATURES (requires PUBLIC_VAPID_KEY & PRIVATE_VAPID_KEY)
+--------------------------------------------------------------------------------
+
+   a) Trade Alert Notifications
+      - Description: Entry/SL/TP alerts for tracked trades
+      - Affected: Users won't receive browser push notifications
+      
+   b) CCI Indicator Alerts
+      - Description: Overbought/oversold CCI cross alerts
+      - Affected: No push notifications for CCI signals
+      
+   c) ADX Indicator Alerts
+      - Description: Trend strength and directional cross alerts
+      - Affected: No push notifications for ADX signals
+      
+   d) General Push Notifications
+      - Function: sendPushNotification
+      - Description: All push notification delivery
+      - Affected: All browser push notifications disabled
+
+--------------------------------------------------------------------------------
+5. PREVIOUSLY REMOVED FEATURES (Stripe Integration)
+--------------------------------------------------------------------------------
+
+   - Stripe Checkout Sessions - Removed (all features now free)
+   - Stripe Webhooks - Removed (payment processing disabled)
+   - Subscription Management - Removed (open access model)
+   - Tier-based access control - Bypassed (elite tier for all)
+
+--------------------------------------------------------------------------------
+FEATURES STILL WORKING (Public APIs)
+--------------------------------------------------------------------------------
+
+   - Binance real-time price data (WebSocket streams)
+   - Binance historical candlestick data (REST API)
+   - Binance liquidation stream (WebSocket - live events)
+   - Bybit liquidation stream (WebSocket - live events)
+   - Chart visualization and technical indicators
+   - Elliott Wave manual labeling tools
+   - Local indicator calculations (VWAP, SMA, etc.)
+
+--------------------------------------------------------------------------------
+TO ENABLE FEATURES
+--------------------------------------------------------------------------------
+
+Add the following environment variables as secrets:
+
+1. COINALYZE_API_KEY    - Get from https://coinalyze.net/
+2. COINGLASS_API_KEY    - Get from https://coinglass.com/
+3. XAI_API_KEY          - Get from https://x.ai/
+4. PUBLIC_VAPID_KEY     - Generate using web-push library
+5. PRIVATE_VAPID_KEY    - Generate using web-push library
+
+After adding keys, uncomment the relevant code sections marked with:
+   "// process.env.XXXX_API_KEY"
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================

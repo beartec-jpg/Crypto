@@ -1,0 +1,85 @@
+# Python (Pine Script v5 for TradingView) - SMC BOS & CHOCH Detector with Colored Lines
+
+//@version=5
+indicator("SMC BOS & CHOCH Detector", overlay=true)
+
+// Swing Highs/Lows (length=5)
+len = 5
+swingHigh = ta.pivothigh(high, len, len)
+swingLow = ta.pivotlow(low, len, len)
+
+// Arrays to store swing points
+var float[] highs = array.new_float()
+var float[] lows = array.new_float()
+var int[] high_idx = array.new_int()
+var int[] low_idx = array.new_int()
+
+// Store new swings
+if not na(swingHigh)
+    array.push(highs, swingHigh)
+    array.push(high_idx, bar_index - len)
+if not na(swingLow)
+    array.push(lows, swingLow)
+    array.push(low_idx, bar_index - len)
+
+// Size check
+hh_size = array.size(highs)
+ll_size = array.size(lows)
+
+// Bullish BOS: price breaks previous LL upward
+bull_bos = false
+bull_bos_idx = na
+if ll_size >= 2 and hh_size >= 1
+    prev_ll = array.get(lows, ll_size - 2)
+    if high > prev_ll
+        bull_bos := true
+        bull_bos_idx := bar_index
+
+// Bearish BOS: price breaks previous HH downward
+bear_bos = false
+bear_bos_idx = na
+if hh_size >= 2 and ll_size >= 1
+    prev_hh = array.get(highs, hh_size - 2)
+    if low < prev_hh
+        bear_bos := true
+        bear_bos_idx := bar_index
+
+// Bullish CHOCH: fails to make LL, breaks last HH
+bull_choch = false
+bull_choch_idx = na
+if hh_size >= 3 and ll_size >= 2
+    last_hh = array.get(highs, hh_size - 1)
+    prev_ll = array.get(lows, ll_size - 2)
+    if low > prev_ll and high > last_hh
+        bull_choch := true
+        bull_choch_idx := bar_index
+
+// Bearish CHOCH: fails to make HH, breaks last LL
+bear_choch = false
+bear_choch_idx = na
+if ll_size >= 3 and hh_size >= 2
+    last_ll = array.get(lows, ll_size - 1)
+    prev_hh = array.get(highs, hh_size - 2)
+    if high < prev_hh and low < last_ll
+        bear_choch := true
+        bear_choch_idx := bar_index
+
+// Draw lines
+if bull_bos
+    line.new(array.get(low_idx, ll_size-2), array.get(lows, ll_size-2), bull_bos_idx, array.get(lows, ll_size-2), color=color.green, width=2)
+if bear_bos
+    line.new(array.get(high_idx, hh_size-2), array.get(highs, hh_size-2), bear_bos_idx, array.get(highs, hh_size-2), color=color.red, width=2)
+if bull_choch
+    line.new(array.get(high_idx, hh_size-1), array.get(highs, hh_size-1), bull_choch_idx, array.get(highs, hh_size-1), color=color.lime, width=3, style=line.style_dashed)
+if bear_choch
+    line.new(array.get(low_idx, ll_size-1), array.get(lows, ll_size-1), bear_choch_idx, array.get(lows, ll_size-1), color=color.maroon, width=3, style=line.style_dashed)
+
+// Labels
+if bull_bos
+    label.new(bull_bos_idx, high, "BOS↑", color=color.green, style=label.style_label_up, textcolor=color.white)
+if bear_bos
+    label.new(bear_bos_idx, low, "BOS↓", color=color.red, style=label.style_label_down, textcolor=color.white)
+if bull_choch
+    label.new(bull_choch_idx, high, "CHOCH↑", color=color.lime, style=label.style_label_up, textcolor=color.black)
+if bear_choch
+    label.new(bear_choch_idx, low, "CHOCH↓", color=color.maroon, style=label.style_label_down, textcolor=color.white)

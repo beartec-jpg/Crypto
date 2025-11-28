@@ -1,0 +1,93 @@
+// Add these refs + state
+const rsiRef = useRef<HTMLDivElement>(null);
+const macdRef = useRef<HTMLDivElement>(null);
+const obvRef = useRef<HTMLDivElement>(null);
+const [rsiVisible, setRsiVisible] = useState(true);
+const [macdVisible, setMacdVisible] = useState(true);
+const [obvVisible, setObvVisible] = useState(true);
+
+const toggle = (ind: string) => {
+  if (ind === 'rsi') setRsiVisible(v => !v);
+  if (ind === 'macd') setMacdVisible(v => !v);
+  if (ind === 'obv') setObvVisible(v => !v);
+};
+
+// === Indicator Calculations ===
+const calculateRSI = (bars: Bar[], period = 14) => {
+  let gains = 0, losses = 0;
+  return bars.map((bar, i) => {
+    if (i === 0) return { time: bar.time, value: 50 };
+    const diff = bar.close - bars[i-1].close;
+    if (diff > 0) { gains = (gains * (period-1) + diff) / period; losses = (losses * (period-1)) / period; }
+    else { losses = (losses * (period-1) - diff) / period; gains = (gains * (period-1)) / period; }
+    const rs = losses === 0 ? 100 : gains / losses;
+    return { time: bar.time, value: 100 - 100 / (1 + rs) };
+  });
+};
+
+const calculateMACD = (bars: Bar[]) => {
+  const ema = (data: number[], p: number) => data.reduce((acc, val, i) => 
+    i === 0 ? [val] : [...acc, val * (2/(p+1)) + acc[i-1] * (1 - 2/(p+1))], [] as number[]);
+  const close = bars.map(b => b.close);
+  const ema12 = ema(close, 12);
+  const ema26 = ema(close, 26);
+  const macdLine = close.map((_, i) => ema12[i] - ema26[i]);
+  const signal = ema(macdLine, 9);
+  const histogram = macdLine.map((v, i) => v - signal[i]);
+  return { macd: macdLine.map((v, i) => ({ time: bars[i].time, value: v })),
+           signal: signal.map((v, i) => ({ time: bars[i].time, value: v })),
+           hist: histogram.map((v, i) => ({ time: bars[i].time, value: v })) };
+};
+
+const calculateOBV = (bars: Bar[]) => {
+  let obv = 0;
+  return bars.map((bar, i) => {
+    if (i === 0) return { time: bar.time, value: 0 };
+    if (bar.close > bars[i-1].close) obv += bar.volume;
+    else if (bar.close < bars[i-1].close) obv -= bar.volume;
+    return { time: bar.time, value: obv };
+  });
+};
+
+// === Create separate charts on mount/toggle ===
+useEffect(() => {
+  if (!rsiVisible || !rsiRef.current) return;
+  const chart = createChart(rsiRef.current, { width: rsiRef.current.clientWidth, height: 200, layout: { background: { color: '#1e222d' } } });
+  const line = chart.addLineSeries({ color: '#ffa726' });
+  line.setData(calculateRSI(data));
+  chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
+  chart.addLineSeries({ color: '#666', lineStyle: 1 }).setData(data.map(d => ({ time: d.time, value: 70 })));
+  chart.addLineSeries({ color: '#666', lineStyle: 1 }).setData(data.map(d => ({ time: d.time, value: 30 })));
+  return () => chart.remove();
+}, [rsiVisible, data]);
+
+useEffect(() => {
+  if (!macdVisible || !macdRef.current) return;
+  const chart = createChart(macdRef.current, { width: macdRef.current.clientWidth, height: 200, layout: { background: { color: '#1e222d' } } });
+  const { macd, signal, hist } = calculateMACD(data);
+  chart.addLineSeries({ color: '#26a69a' }).setData(macd);
+  chart.addLineSeries({ color: '#ef5350' }).setData(signal);
+  chart.addHistogramSeries({ color: '#26a69a' }).setData(hist.map(h => ({ ...h, color: h.value > 0 ? '#00ff9d' : '#ff3b69' })));
+  return () => chart.remove();
+}, [macdVisible, data]);
+
+useEffect(() => {
+  if (!obvVisible || !obvRef.current) return;
+  const chart = createChart(obvRef.current, { width: obvRef.current.clientWidth, height: 200, layout: { background: { color: '#1e222d' } } });
+  chart.addLineSeries({ color: '#9580ff' }).setData(calculateOBV(data));
+  return () => chart.remove();
+}, [obvVisible, data]);
+
+// Buttons
+<div className="controls mb-4">
+  <button onClick={() => toggle('rsi')} className="mr-2">RSI {rsiVisible ? 'ON' : 'OFF'}</button>
+  <button onClick={() => toggle('macd')} className="mr-2">MACD {macdVisible ? 'ON' : 'OFF'}</button>
+  <button onClick={() => toggle('obv')}>OBV {obvVisible ? 'ON' : 'OFF'}</button>
+</div>
+
+// Panels below main chart
+<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+  {rsiVisible && <div className="bg-[#1e222d] rounded-lg overflow-hidden"><div ref={rsiRef} /></div>}
+  {macdVisible && <div className="bg-[#1e222d] rounded-lg overflow-hidden"><div ref={macdRef} /></div>}
+  {obvVisible && <div className="bg-[#1e222d] rounded-lg overflow-hidden"><div ref={obvRef} /></div>}
+</div>

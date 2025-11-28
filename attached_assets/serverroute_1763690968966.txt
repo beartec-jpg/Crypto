@@ -1,0 +1,48 @@
+// server/routes.ts
+import express from 'express';
+import axios from 'axios';
+import { WebSocketServer } from 'ws';
+
+const router = express.Router();
+
+// Layer 1+2+3: Combined endpoint
+router.get('/api/futures/liquidation/heatmap', async (req, res) => {
+  const [coinank, coinglass, orderbook] = await Promise.all([
+    axios.get('https://api.coinank.com/api/v1/liquidation/heatmap?symbol=BTC&interval=4h'),
+    axios.get('https://open-api.coinglass.com/public/v2/liquidation_history?symbol=BTC&interval=4h'),
+    axios.get('https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=1000'),
+  ]);
+
+  const base = coinank.data.data;
+  const hist = coinglass.data.data; // adjust structure as needed
+
+  res.json({
+    prices: base.priceList,
+    matrix: base.liquidationData,
+    historical: hist?.matrix || [],
+    orderbook: [
+      ...orderbook.data.bids.slice(0, 10).map(([p, q]: [string, string]) => ({ price: +p, amount: +q * +p })),
+      ...orderbook.data.asks.slice(0, 10).map(([p, q]: [string, string]) => ({ price: +p, amount: +q * +p })),
+    ].filter(w => w.amount > 1e8),
+  });
+});
+
+// Real-time WebSocket (Binance + Bybit)
+export const wss = new WebSocketServer({ port: 8080 });
+
+['wss://fstream.binance.com/ws/btcusdt@forceOrder', 'wss://stream.bybit.com/v5/public/linear'].forEach(url => {
+  const ws = new WebSocket(url);
+  ws.on('message', (data) => {
+    const msg = JSON.parse(data.toString());
+    const liq = msg.data || msg;
+    if (liq?.side) {
+      wss.clients.forEach(client => client.send(JSON.stringify({
+        price: liq.price || liq.last_price,
+        amount: liq.qty * liq.price || liq.size,
+        side: liq.side,
+      })));
+    }
+  });
+});
+
+export default router;

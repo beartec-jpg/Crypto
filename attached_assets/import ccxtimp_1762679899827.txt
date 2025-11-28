@@ -1,0 +1,42 @@
+import ccxt
+import time
+from collections import defaultdict
+
+# pip install ccxt
+EXCHANGES = ['binanceus', 'bybit', 'okx', 'gemini', 'bitfinex2', 'gate']  # ccxt ids
+SYMBOL = 'BTC/USDT'
+INTERVAL_MS = 60000  # 1m
+LIMIT = 1000
+
+def fetch_trades(ex):
+    exch = getattr(ccxt, ex)()
+    try:
+        return exch.fetch_trades(SYMBOL, limit=LIMIT)
+    except Exception:
+        return []
+
+def calc_delta_footprint(trades, exch):
+    candles = defaultdict(lambda: {'delta': 0})
+    for trade in trades:
+        ts = trade['timestamp'] // INTERVAL_MS * INTERVAL_MS
+        qty = trade['amount']
+        is_buy = trade['side'] == 'buy'  # taker buy
+        candles[ts]['delta'] += qty if is_buy else -qty
+    return candles
+
+all_deltas = defaultdict(list)
+for ex in EXCHANGES:
+    trades = fetch_trades(ex)
+    exch_deltas = calc_delta_footprint(trades, ex)
+    for ts, data in exch_deltas.items():
+        all_deltas[ts].append(data['delta'])
+
+# Average deltas
+avg_deltas = {}
+cvd = 0
+for ts in sorted(all_deltas):
+    deltas = all_deltas[ts]
+    avg_delta = sum(deltas) / len(deltas) if deltas else 0
+    avg_deltas[ts] = avg_delta
+    cvd += avg_delta
+    print(f"Candle {ts}: Avg Delta {avg_delta:.2f}, CVD {cvd:.2f}")

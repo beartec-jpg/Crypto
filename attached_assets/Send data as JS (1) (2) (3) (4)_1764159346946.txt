@@ -1,0 +1,31 @@
+Send data as JSON array in user prompt: [{"index":2900,"h":2.2046,"l":2.1953}, ...]. Limit to 50-100 candles max. Hanging: due to token limits (128k input) or rate limits (check console.x.ai). Use pivot extraction first to reduce size.
+
+Best format to stop hanging and force Grok-4 to analyse pivots instantly:
+
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a fast Elliott Wave pivot analyzer. Return valid JSON only, no markdown, no explanations."
+    },
+    {
+      "role": "user",
+      "content": "Analyse ONLY these 15–18 major pivots for XRPUSDT 15m and return the single best Elliott pattern.\n\nPivots (already filtered, chronological):\n[\n  {\"i\":2900,\"p\":2.2046,\"t\":\"high\"},\n  {\"i\":2914,\"p\":2.2290,\"t\":\"high\"},\n  {\"i\":2920,\"p\":2.1726,\"t\":\"low\"},\n  {\"i\":2938,\"p\":2.1486,\"t\":\"low\"},\n  {\"i\":2952,\"p\":2.2108,\"t\":\"high\"},\n  {\"i\":2996,\"p\":2.1717,\"t\":\"low\"}\n]\n\nReturn ONLY this exact JSON:\n{\"patternType\":\"...\",\"direction\":\"bullish|bearish\",\"confidence\":0.0-1.0,\"suggestedLabels\":[{\"label\":\"A\",\"candleIndex\":2938,\"price\":2.1486,\"snapTo\":\"low\"},...],\"analysis\":\"max 25 words\"}"
+    }
+  ],
+  "model": "grok-4",
+  "temperature": 0.0,
+  "max_tokens": 600
+}
+
+Key points that stop hanging:
+≤18 pivots only
+temperature 0.0
+max_tokens ≤600
+system reminder “return valid JSON only”
+no full candle dump
+This returns in <2 seconds every tim
+
+
+settings
+Yes: Set `temperature=0.0`, `max_tokens=600`, `timeout=30s` in API client. Verify XAI_API_KEY env var. Use `grok-4-0709` model. For reasoning tasks, increase max_tokens to 2000+ to avoid early cutoff. Check https://docs.x.ai for rate limits.

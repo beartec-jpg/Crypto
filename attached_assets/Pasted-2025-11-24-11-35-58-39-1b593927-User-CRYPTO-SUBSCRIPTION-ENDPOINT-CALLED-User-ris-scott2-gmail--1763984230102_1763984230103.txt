@@ -1,0 +1,56 @@
+2025-11-24 11:35:58.39
+1b593927
+User
+🚨 CRYPTO SUBSCRIPTION ENDPOINT CALLED! User: ris.scott2@gmail.com (ID: 46785828)
+2025-11-24 11:35:58.39
+1b593927
+User
+🔍 getUserSubscription called for userId: 46785828
+2025-11-24 11:35:58.43
+1b593927
+User
+✅ Found existing subscription with tier: free
+2025-11-24 11:35:58.43
+1b593927
+User
+📊 Database returned subscription: {"id":"de5e5c4b-b83c-4abb-8207-c06d9b9f1fb4","userId":"46785828","tier":"free","selectedTickers":[],"alertGrades":["A+","A"],"alertTimeframes":["15m","1h","4h"],"alertTypes":["bos","choch","fvg","liquidation"],"alertsEnabled":false,"aiCredits":0,"aiCreditsResetAt":"2025-11-22T14:02:34.541Z","autoRefreshInterval":null,"pushSubscription":null,"stripeSubscriptionId":null,"subscriptionStatus":"active","expiresAt":null,"createdAt":"2025-11-22T14:02:32.488Z","updatedAt":"2025-11-22T14:02:34.541Z"}
+2025-11-24 11:35:58.43
+1b593927
+User
+🔍 getUserSubscription called for userId: 46785828
+2025-11-24 11:35:58.46
+1b593927
+User
+✅ Database connection established
+2025-11-24 11:35:58.46
+1b593927
+User
+🎯 My-Subscription fetched for ris.scott2@gmail.com (46785828): {"tier":"free","aiCredits":0,"hasUnlimitedCredits":false,"status":"active","autoRefreshInterval":null,"selectedTickers":[],"alertGrades":["A+","A"]}
+2025-11-24 11:35:58.46
+1b593927
+User
+✅ Found existing subscription with tier: free
+2025-11-24 11:35:58.46
+1b593927
+User
+📊 Database returned subscription: {"id":"de5e5c4b-b83c-4abb-8207-c06d9b9f1fb4","userId":"46785828","tier":"free","selectedTickers":[],"alertGrades":["A+","A"],"alertTimeframes":["15m","1h","4h"],"alertTypes":["bos","choch","fvg","liquidation"],"alertsEnabled":false,"aiCredits":0,"aiCreditsResetAt":"2025-11-22T14:02:34.541Z","autoRefreshInterval":null,"pushSubscription":null,"stripeSubscriptionId":null,"subscriptionStatus":"active","expiresAt":null,"createdAt":"2025-11-22T14:02:32.488Z","updatedAt":"2025-11-22T14:02:34.541Z"}
+2025-11-24 11:35:58.49
+1b593927
+User
+✅ Database connection established
+2025-11-24 11:35:58.50
+1b593927
+User
+11:35:58 AM [express] GET /api/crypto/my-subscription 304 in 176ms :: {"tier":"free","aiCredits":0,"h…
+2025-11-24 11:35:58.50
+1b593927
+User
+🔍 /api/crypto-auth/user called - Session ID: 46785828, Crypto User ID: 46785828
+2025-11-24 11:35:58.53
+1b593927
+User
+🔍 getUserSubscription called for userId: 46785828
+2025-11-24 11:35:58.53
+1b593927
+User
+🎯 /api/crypto-auth/user - User: ris.scott2@gmail.com, ID: 46785828, Tier: free

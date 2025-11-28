@@ -1,0 +1,108 @@
+// Assuming LightweightCharts is loaded
+document.body.style.position = 'relative';
+var container = document.createElement('div');
+document.body.appendChild(container);
+var width = 600;
+var height = 300;
+var chart = LightweightCharts.createChart(container, { width: width, height: height });
+
+var candleSeries = chart.addCandlestickSeries();
+var data = generateBarsData(); // Modified to include volume
+candleSeries.setData(data);
+
+// Rolling VWAPs (flow with price over fixed periods)
+var vwap10 = calculateRollingVWAP(data, 10);
+var line10 = chart.addLineSeries({ color: 'blue', lineWidth: 2 });
+line10.setData(vwap10);
+
+var vwap20 = calculateRollingVWAP(data, 20);
+var line20 = chart.addLineSeries({ color: 'green', lineWidth: 2 });
+line20.setData(vwap20);
+
+var vwap50 = calculateRollingVWAP(data, 50);
+var line50 = chart.addLineSeries({ color: 'red', lineWidth: 2 });
+line50.setData(vwap50);
+
+// Anchored VWAPs (flow within periods, show only current)
+var sessionVWAP = calculatePeriodicVWAP(data, 'daily', true); // Session as daily for crypto
+var lineSession = chart.addLineSeries({ color: 'purple', lineWidth: 2 });
+lineSession.setData(sessionVWAP);
+
+var dailyVWAP = calculatePeriodicVWAP(data, 'daily', true);
+var lineDaily = chart.addLineSeries({ color: 'orange', lineWidth: 2 });
+lineDaily.setData(dailyVWAP);
+
+var weeklyVWAP = calculatePeriodicVWAP(data, 'weekly', true);
+var lineWeekly = chart.addLineSeries({ color: 'green', lineWidth: 2 });
+lineWeekly.setData(weeklyVWAP);
+
+var monthlyVWAP = calculatePeriodicVWAP(data, 'monthly', true);
+var lineMonthly = chart.addLineSeries({ color: 'blue', lineWidth: 2 });
+lineMonthly.setData(monthlyVWAP);
+
+function calculateRollingVWAP(data, count) {
+  var result = [];
+  for (var i = count - 1; i < data.length; i++) {
+    var slice = data.slice(i - count + 1, i + 1);
+    var sumPV = 0, sumV = 0;
+    slice.forEach(bar => {
+      var typical = (bar.high + bar.low + bar.close) / 3;
+      sumPV += typical * bar.volume;
+      sumV += bar.volume;
+    });
+    var vwap = sumPV / sumV;
+    result.push({ time: data[i].time, value: vwap });
+  }
+  return result;
+}
+
+function calculatePeriodicVWAP(data, period, currentOnly) {
+  if (data.length === 0) return [];
+  var result = [];
+  var sumPV = 0, sumV = 0;
+  var lastPeriodKey = getPeriodKey(data[data.length - 1].time, period);
+  var currentPeriodKey = lastPeriodKey;
+  data.forEach(bar => {
+    var periodKey = getPeriodKey(bar.time, period);
+    if (periodKey !== lastPeriodKey) {
+      sumPV = 0;
+      sumV = 0;
+    }
+    lastPeriodKey = periodKey;
+    var typical = (bar.high + bar.low + bar.close) / 3;
+    sumPV += typical * bar.volume;
+    sumV += bar.volume;
+    if (sumV > 0 && (!currentOnly || periodKey === currentPeriodKey)) {
+      result.push({ time: bar.time, value: sumPV / sumV });
+    }
+  });
+  return result;
+}
+
+function getPeriodKey(time, period) {
+  var date = new Date(time * 1000);
+  if (period === 'daily') {
+    return date.toUTCString().slice(0, 16); // Day accuracy
+  } else if (period === 'weekly') {
+    var startOfWeek = new Date(date);
+    startOfWeek.setUTCDate(date.getUTCDate() - date.getUTCDay());
+    return startOfWeek.toUTCString().slice(0, 16);
+  } else if (period === 'monthly') {
+    return date.getUTCFullYear() + '-' + (date.getUTCMonth() + 1);
+  }
+}
+
+function generateBarsData() {
+  var res = [];
+  var time = new Date(2018, 0, 1).getTime() / 1000; // Start timestamp
+  for (var i = 0; i < 500; i++) { // Generate 500 bars
+    var open = Math.round(Math.random() * 100) + 100;
+    var high = open + Math.round(Math.random() * 20);
+    var low = open - Math.round(Math.random() * 20);
+    var close = Math.round(Math.random() * (high - low)) + low;
+    var volume = Math.round(Math.random() * 10000) + 1000;
+    res.push({ time: time, open, high, low, close, volume });
+    time += 900; // 15min intervals for intra-day example
+  }
+  return res;
+}

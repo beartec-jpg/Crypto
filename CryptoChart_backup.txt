@@ -1,0 +1,992 @@
+import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Loader2, Lock, TrendingUp } from "lucide-react";
+import { Link } from 'wouter';
+import { useAuth } from '@/hooks/useAuth';
+
+interface MultiEMAData {
+  symbol: string;
+  period: string;
+  interval: string;
+  trend: 'bull' | 'bear' | 'neutral';
+  candlestick: Array<{
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  }>;
+  volume: Array<{
+    time: number;
+    value: number;
+  }>;
+  short: {
+    length: number;
+    score: number;
+    bull_touches: number;
+    bear_touches: number;
+    ema: Array<{
+      time: number;
+      value: number;
+    }>;
+  };
+  medium: {
+    length: number;
+    score: number;
+    bull_touches: number;
+    bear_touches: number;
+    ema: Array<{
+      time: number;
+      value: number;
+    }>;
+  };
+  long: {
+    length: number;
+    score: number;
+    bull_touches: number;
+    bear_touches: number;
+    ema: Array<{
+      time: number;
+      value: number;
+    }>;
+  };
+  adaptive: {
+    short: {
+      length: number;
+      score: number;
+      bull_touches: number;
+      bear_touches: number;
+      ema: Array<{
+        time: number;
+        value: number;
+      }>;
+    };
+    medium: {
+      length: number;
+      score: number;
+      bull_touches: number;
+      bear_touches: number;
+      ema: Array<{
+        time: number;
+        value: number;
+      }>;
+    };
+    long: {
+      length: number;
+      score: number;
+      bull_touches: number;
+      bear_touches: number;
+      ema: Array<{
+        time: number;
+        value: number;
+      }>;
+    };
+  };
+}
+
+interface MarketStructureData {
+  symbol: string;
+  period: string;
+  interval: string;
+  mode: 'present' | 'historical';
+  swing_highs: Array<{
+    index: number;
+    time: number;
+    price: number;
+  }>;
+  swing_lows: Array<{
+    index: number;
+    time: number;
+    price: number;
+  }>;
+  market_structure: Array<{
+    type: 'HH' | 'HL' | 'LH' | 'LL';
+    time: number;
+    price: number;
+    index: number;
+  }>;
+  fvgs: Array<{
+    type: 'bullish' | 'bearish';
+    top: number;
+    bottom: number;
+    start_time: number;
+    end_time: number;
+    current_time: number;
+    mitigated?: boolean;
+    size?: number;
+  }>;
+  bos_choch: Array<{
+    type: 'BOS' | 'ChoCh';
+    direction: 'bullish' | 'bearish';
+    time: number;
+    price: number;
+    broken_level: number;
+  }>;
+  stats?: {
+    total_structure_points: number;
+    total_bos_choch: number;
+    total_fvgs: number;
+    active_fvgs: number;
+    bullish_fvgs: number;
+    bearish_fvgs: number;
+  };
+}
+
+export default function CryptoChart() {
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+
+  const [symbol, setSymbol] = useState('XRP-USD');
+  const [period, setPeriod] = useState('1mo');
+  const [interval, setInterval] = useState('15m');
+  
+  // Pattern visibility toggles
+  const [showStructure, setShowStructure] = useState(true);
+  const [showFVG, setShowFVG] = useState(true);
+  const [showBOS, setShowBOS] = useState(true);
+  
+  // Market structure filtering options
+  const [structureMode, setStructureMode] = useState<'present' | 'historical'>('present');
+  const [minBosPercent, setMinBosPercent] = useState(1.0);
+  const [fvgFilter, setFvgFilter] = useState(true);
+
+  // Validation helper for period/interval combinations
+  const isValidCombination = (p: string, i: string): boolean => {
+    if (i === '1m' || i === '5m') {
+      return p === '1d' || p === '5d';
+    }
+    if (i === '15m' || i === '1h') {
+      return p === '1d' || p === '5d' || p === '1mo';
+    }
+    return true;
+  };
+
+  const getValidationMessage = (): string | null => {
+    if (!isValidCombination(period, interval)) {
+      if (interval === '1m' || interval === '5m') {
+        return `${interval} intervals only work with 1 Day or 5 Days periods`;
+      }
+      if (interval === '15m' || interval === '1h') {
+        return `${interval} intervals only work with periods up to 1 Month (Yahoo Finance limitation)`;
+      }
+    }
+    return null;
+  };
+
+  const validationMessage = getValidationMessage();
+
+  // Fetch multi-EMA data - MUST be called before any early returns
+  const { data, isLoading, error, refetch } = useQuery<MultiEMAData>({
+    queryKey: ['/api/crypto/multi-ema', symbol, period, interval],
+    queryFn: async () => {
+      const params = new URLSearchParams({ symbol, period, interval });
+      const res = await fetch(`/api/crypto/multi-ema?${params}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res.json();
+    },
+    enabled: validationMessage === null && isAuthenticated,
+    retry: false,
+  });
+
+  // Fetch market structure data
+  const { data: structureData, isLoading: structureLoading } = useQuery<MarketStructureData>({
+    queryKey: ['/api/crypto/market-structure', symbol, period, interval, structureMode, minBosPercent, fvgFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ 
+        symbol, 
+        period, 
+        interval,
+        mode: structureMode,
+        minBosPercent: minBosPercent.toString(),
+        fvgFilter: fvgFilter.toString()
+      });
+      const res = await fetch(`/api/crypto/market-structure?${params}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res.json();
+    },
+    enabled: validationMessage === null && isAuthenticated,
+    retry: false,
+  });
+
+  // Check for 403 Forbidden error (authenticated but not authorized)
+  const isForbidden = error && (error as any).message?.includes('403');
+
+  // Render chart effect - MUST be called before any early returns
+  useEffect(() => {
+    if (!chartContainerRef.current || !data) return;
+
+    const chart = createChart(chartContainerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: '#1E293B' },
+        textColor: '#D1D5DB',
+      },
+      grid: {
+        vertLines: { color: '#334155' },
+        horzLines: { color: '#334155' },
+      },
+      rightPriceScale: {
+        borderColor: '#334155',
+      },
+      timeScale: {
+        borderColor: '#334155',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+      },
+      width: chartContainerRef.current.clientWidth,
+      height: 500,
+    });
+
+    chartRef.current = chart;
+
+    // Add candlestick series (v5 API)
+    const candlestickSeries = chart.addSeries(CandlestickSeries, {
+      upColor: '#10B981',
+      downColor: '#EF4444',
+      borderUpColor: '#10B981',
+      borderDownColor: '#EF4444',
+      wickUpColor: '#10B981',
+      wickDownColor: '#EF4444',
+    });
+
+    candlestickSeries.setData(data.candlestick);
+
+    // Add adaptive short-term EMA (green)
+    const shortEmaSeries = chart.addSeries(LineSeries, {
+      color: '#10B981',
+      lineWidth: 2,
+      title: `Short EMA ${data.adaptive.short.length}`,
+    });
+    shortEmaSeries.setData(data.adaptive.short.ema);
+
+    // Add adaptive medium-term EMA (blue)
+    const mediumEmaSeries = chart.addSeries(LineSeries, {
+      color: '#3B82F6',
+      lineWidth: 2,
+      title: `Medium EMA ${data.adaptive.medium.length}`,
+    });
+    mediumEmaSeries.setData(data.adaptive.medium.ema);
+
+    // Add adaptive long-term EMA (purple)
+    const longEmaSeries = chart.addSeries(LineSeries, {
+      color: '#A855F7',
+      lineWidth: 2,
+      title: `Long EMA ${data.adaptive.long.length}`,
+    });
+    longEmaSeries.setData(data.adaptive.long.ema);
+
+    // Add market structure visualization if data is available
+    if (structureData) {
+      // Add market structure points (HH/HL/LH/LL) as markers at pivot points
+      if (showStructure) {
+        structureData.market_structure.forEach((point) => {
+          const isHigher = point.type === 'HH' || point.type === 'HL';
+          const color = isHigher ? '#10B98180' : '#EF444480';
+          
+          // Create a small horizontal line at the structure point
+          candlestickSeries.createPriceLine({
+            price: point.price,
+            color: color,
+            lineWidth: 1,
+            lineStyle: 3, // Dotted
+            axisLabelVisible: false,
+            title: point.type,
+          });
+        });
+      }
+
+      // Add BOS/ChoCh as line segments from broken level to break point
+      if (showBOS) {
+        structureData.bos_choch.forEach(event => {
+          const isBullish = event.direction === 'bullish';
+          const isBOS = event.type === 'BOS';
+          const color = isBOS ? (isBullish ? '#06B6D4' : '#F59E0B') : (isBullish ? '#8B5CF6' : '#EC4899');
+          
+          // Create a line series for this BOS/ChoCh event
+          // Line goes from broken_level to the break point
+          const bosLineSeries = chart.addSeries(LineSeries, {
+            color: color,
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+          });
+          
+          // Find the time when the broken level occurred (look back in data)
+          // For now, use a point slightly before the break as start
+          const startTime = event.time - 3600; // 1 hour before (approximate)
+          
+          // Draw line from broken level to break point
+          bosLineSeries.setData([
+            { time: startTime, value: event.broken_level },
+            { time: event.time, value: event.price }
+          ]);
+        });
+      }
+
+      // Add FVG visualization as shaded boxes
+      if (showFVG) {
+        structureData.fvgs.forEach((fvg) => {
+          const isBullish = fvg.type === 'bullish';
+          const fillColor = isBullish ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+          const borderColor = isBullish ? '#10B981' : '#EF4444';
+          
+          // Calculate end time: either when mitigated or extend to current time
+          const endTime = fvg.mitigated 
+            ? fvg.end_time + 3600 // Extend a bit past mitigation for visibility
+            : data.candlestick[data.candlestick.length - 1].time; // Extend to end of chart
+          
+          // Create multiple overlapping thin lines to simulate a filled box
+          // This creates a visual "shaded box" effect
+          const numFillLines = 20; // Number of lines to stack for fill effect
+          const priceStep = (fvg.top - fvg.bottom) / numFillLines;
+          
+          for (let i = 0; i < numFillLines; i++) {
+            const fillLevel = fvg.bottom + (priceStep * i);
+            const fillLine = chart.addSeries(LineSeries, {
+              color: fillColor,
+              lineWidth: 2,
+              priceLineVisible: false,
+              lastValueVisible: false,
+              crosshairMarkerVisible: false,
+            });
+            
+            fillLine.setData([
+              { time: fvg.start_time, value: fillLevel },
+              { time: endTime, value: fillLevel }
+            ]);
+          }
+          
+          // Draw top border of FVG
+          const fvgTopLine = chart.addSeries(LineSeries, {
+            color: borderColor,
+            lineWidth: 1,
+            lineStyle: 2, // Dashed
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+          });
+          
+          fvgTopLine.setData([
+            { time: fvg.start_time, value: fvg.top },
+            { time: endTime, value: fvg.top }
+          ]);
+          
+          // Draw bottom border of FVG
+          const fvgBottomLine = chart.addSeries(LineSeries, {
+            color: borderColor,
+            lineWidth: 1,
+            lineStyle: 2, // Dashed
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+          });
+          
+          fvgBottomLine.setData([
+            { time: fvg.start_time, value: fvg.bottom },
+            { time: endTime, value: fvg.bottom }
+          ]);
+        });
+      }
+    }
+
+    chart.timeScale().fitContent();
+
+    // Handle resize
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({ 
+          width: chartContainerRef.current.clientWidth 
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      try {
+        chart.remove();
+      } catch (e) {
+        // Chart already disposed
+      }
+    };
+  }, [data, structureData, showStructure, showFVG, showBOS]);
+
+  // Show loading while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-300">Checking access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login required if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
+        <Card className="max-w-md w-full bg-slate-800 border-slate-700">
+          <CardHeader>
+            <div className="flex items-center justify-center mb-4">
+              <Lock className="h-12 w-12 text-yellow-500" />
+            </div>
+            <CardTitle className="text-white text-center text-2xl">
+              Authentication Required
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
+            <p className="text-gray-300 mb-6">
+              This crypto analysis tool is private and requires authentication to access.
+            </p>
+            <div className="space-y-3">
+              <Button 
+                onClick={() => window.location.href = '/api/login'}
+                className="w-full"
+                data-testid="button-login"
+              >
+                Log in with Replit
+              </Button>
+              <Button 
+                onClick={() => window.location.href = '/api/auth/google'}
+                variant="outline"
+                className="w-full"
+                data-testid="button-google-login"
+              >
+                Log in with Google
+              </Button>
+              <Link href="/">
+                <Button variant="ghost" className="w-full text-gray-400" data-testid="button-back">
+                  ← Back to Home
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isForbidden) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
+        <Card className="max-w-md w-full bg-slate-800 border-slate-700">
+          <CardHeader>
+            <div className="flex items-center justify-center mb-4">
+              <Lock className="h-12 w-12 text-red-500" />
+            </div>
+            <CardTitle className="text-white text-center text-2xl">
+              Access Denied
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
+            <p className="text-gray-300 mb-6">
+              You are logged in, but this crypto analysis tool is restricted to authorized users only.
+            </p>
+            <p className="text-sm text-gray-400 mb-4">
+              If you believe you should have access, please contact the system administrator.
+            </p>
+            <Link href="/">
+              <Button variant="outline" className="w-full" data-testid="button-back">
+                ← Back to Home
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 py-8">
+      <div className="container mx-auto px-4">
+        {/* Header */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-2">
+                <TrendingUp className="h-8 w-8" />
+                Multi-Timeframe EMA Analysis
+              </h1>
+              <p className="text-gray-300">
+                Find optimal EMAs across 3 timeframes (short, medium, long) with smart touch validation
+              </p>
+            </div>
+            <Link href="/">
+              <Button variant="outline" data-testid="button-back-home">
+                ← Back to Home
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <Card className="mb-6 bg-slate-800 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white">Chart Settings</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Symbol Selection */}
+              <div>
+                <Label htmlFor="symbol" className="text-gray-300 mb-2 block">
+                  Cryptocurrency
+                </Label>
+                <Select value={symbol} onValueChange={setSymbol}>
+                  <SelectTrigger id="symbol" className="bg-slate-700 text-white border-slate-600" data-testid="select-symbol">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-700 text-white border-slate-600">
+                    <SelectItem value="XRP-USD">XRP/USD</SelectItem>
+                    <SelectItem value="BTC-USD">Bitcoin (BTC)</SelectItem>
+                    <SelectItem value="ETH-USD">Ethereum (ETH)</SelectItem>
+                    <SelectItem value="ADA-USD">Cardano (ADA)</SelectItem>
+                    <SelectItem value="SOL-USD">Solana (SOL)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Period Selection */}
+              <div>
+                <Label htmlFor="period" className="text-gray-300 mb-2 block">
+                  Period
+                </Label>
+                <Select value={period} onValueChange={setPeriod}>
+                  <SelectTrigger id="period" className="bg-slate-700 text-white border-slate-600" data-testid="select-period">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-700 text-white border-slate-600">
+                    <SelectItem value="1d">1 Day</SelectItem>
+                    <SelectItem value="5d">5 Days</SelectItem>
+                    <SelectItem value="1mo">1 Month</SelectItem>
+                    <SelectItem value="3mo">3 Months</SelectItem>
+                    <SelectItem value="6mo">6 Months</SelectItem>
+                    <SelectItem value="1y">1 Year</SelectItem>
+                    <SelectItem value="2y">2 Years</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Interval Selection */}
+              <div>
+                <Label htmlFor="interval" className="text-gray-300 mb-2 block">
+                  Interval
+                </Label>
+                <Select value={interval} onValueChange={setInterval}>
+                  <SelectTrigger id="interval" className="bg-slate-700 text-white border-slate-600" data-testid="select-interval">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-700 text-white border-slate-600">
+                    <SelectItem value="1m">1 Minute</SelectItem>
+                    <SelectItem value="5m">5 Minutes</SelectItem>
+                    <SelectItem value="15m">15 Minutes</SelectItem>
+                    <SelectItem value="1h">1 Hour</SelectItem>
+                    <SelectItem value="1d">1 Day</SelectItem>
+                    <SelectItem value="1wk">1 Week</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Pattern Toggles */}
+            <div className="mt-6 pt-4 border-t border-slate-700">
+              <Label className="text-white text-sm font-semibold mb-3 block">
+                Market Structure Patterns
+              </Label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-600">
+                  <div className="flex-1">
+                    <Label htmlFor="structure-toggle" className="text-gray-200 text-sm font-medium cursor-pointer">
+                      HH/HL/LH/LL
+                    </Label>
+                    <p className="text-xs text-gray-400 mt-1">Market structure points</p>
+                  </div>
+                  <Switch 
+                    id="structure-toggle"
+                    checked={showStructure}
+                    onCheckedChange={setShowStructure}
+                    data-testid="toggle-structure"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-600">
+                  <div className="flex-1">
+                    <Label htmlFor="fvg-toggle" className="text-gray-200 text-sm font-medium cursor-pointer">
+                      Fair Value Gaps
+                    </Label>
+                    <p className="text-xs text-gray-400 mt-1">Price inefficiencies</p>
+                  </div>
+                  <Switch 
+                    id="fvg-toggle"
+                    checked={showFVG}
+                    onCheckedChange={setShowFVG}
+                    data-testid="toggle-fvg"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-600">
+                  <div className="flex-1">
+                    <Label htmlFor="bos-toggle" className="text-gray-200 text-sm font-medium cursor-pointer">
+                      BOS / ChoCh
+                    </Label>
+                    <p className="text-xs text-gray-400 mt-1">Structure breaks</p>
+                  </div>
+                  <Switch 
+                    id="bos-toggle"
+                    checked={showBOS}
+                    onCheckedChange={setShowBOS}
+                    data-testid="toggle-bos"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Structure Filtering Options */}
+            <div className="mt-6 pt-4 border-t border-slate-700">
+              <Label className="text-white text-sm font-semibold mb-3 block">
+                Filter Settings
+              </Label>
+              
+              {/* Mode Selection */}
+              <div className="mb-4">
+                <Label htmlFor="structure-mode" className="text-gray-300 mb-2 block text-sm">
+                  Display Mode
+                </Label>
+                <Select value={structureMode} onValueChange={(value) => setStructureMode(value as 'present' | 'historical')}>
+                  <SelectTrigger id="structure-mode" className="bg-slate-700 text-white border-slate-600" data-testid="select-structure-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-700 text-white border-slate-600">
+                    <SelectItem value="present">Present (Recent/Active Only)</SelectItem>
+                    <SelectItem value="historical">Historical (All Patterns)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-400 mt-1">
+                  {structureMode === 'present' 
+                    ? '✨ Shows only recent structure points, active BOS/ChoCh events, and unfilled FVGs' 
+                    : '📊 Shows all detected patterns throughout the timeframe'}
+                </p>
+              </div>
+
+              {/* Advanced Filters */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-600">
+                  <div className="flex-1">
+                    <Label htmlFor="fvg-filter-toggle" className="text-gray-200 text-sm font-medium cursor-pointer">
+                      FVG ATR Filter
+                    </Label>
+                    <p className="text-xs text-gray-400 mt-1">Filter small gaps</p>
+                  </div>
+                  <Switch 
+                    id="fvg-filter-toggle"
+                    checked={fvgFilter}
+                    onCheckedChange={setFvgFilter}
+                    data-testid="toggle-fvg-filter"
+                  />
+                </div>
+
+                <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-600">
+                  <Label htmlFor="min-bos-percent" className="text-gray-200 text-sm font-medium block mb-2">
+                    Min BOS Move: {minBosPercent}%
+                  </Label>
+                  <input
+                    id="min-bos-percent"
+                    type="range"
+                    min="0"
+                    max="5"
+                    step="0.5"
+                    value={minBosPercent}
+                    onChange={(e) => setMinBosPercent(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                    data-testid="slider-min-bos"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Filter minor structure breaks</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Validation Warning */}
+            {validationMessage && (
+              <div className="mt-4 p-3 bg-yellow-900/30 border border-yellow-700 rounded-md">
+                <p className="text-yellow-200 text-sm">
+                  ⚠️ {validationMessage}
+                </p>
+              </div>
+            )}
+
+            <Button 
+              onClick={() => refetch()} 
+              className="mt-4"
+              disabled={isLoading || validationMessage !== null}
+              data-testid="button-refresh"
+            >
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Calculate Adaptive EMAs
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Adaptive Multi-EMA Metadata */}
+        {data && !isLoading && (
+          <>
+            {/* Trend Direction Banner */}
+            <Card className={`mb-4 ${
+              data.trend === 'bull' 
+                ? 'bg-gradient-to-r from-green-900/40 to-green-800/40 border-green-600' 
+                : data.trend === 'bear'
+                ? 'bg-gradient-to-r from-red-900/40 to-red-800/40 border-red-600'
+                : 'bg-gradient-to-r from-gray-900/40 to-gray-800/40 border-gray-600'
+            }`}>
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <TrendingUp className={`h-6 w-6 ${
+                      data.trend === 'bull' ? 'text-green-400' : 
+                      data.trend === 'bear' ? 'text-red-400 rotate-180' : 
+                      'text-gray-400'
+                    }`} />
+                    <div>
+                      <p className="text-sm text-gray-300">Current Market Trend</p>
+                      <p className={`text-2xl font-bold ${
+                        data.trend === 'bull' ? 'text-green-400' : 
+                        data.trend === 'bear' ? 'text-red-400' : 
+                        'text-gray-400'
+                      }`}>
+                        {data.trend === 'bull' ? '🚀 BULLISH' : 
+                         data.trend === 'bear' ? '📉 BEARISH' : 
+                         '⚖️ NEUTRAL'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-400">Adaptive Mode</p>
+                    <p className="text-lg font-semibold text-white">
+                      {data.trend === 'bull' ? 'Using Bull EMAs' : 
+                       data.trend === 'bear' ? 'Using Bear EMAs' : 
+                       'Using Balanced EMAs'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Adaptive EMA Cards */}
+            <Card className="mb-6 bg-gradient-to-r from-green-900/30 via-blue-900/30 to-purple-900/30 border-blue-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Adaptive Multi-Timeframe EMAs
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Short-term EMA */}
+                <div className="p-4 bg-slate-900/80 rounded-lg border border-green-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-lg font-semibold text-green-400">Short-term (5-15)</h3>
+                    <span className="text-sm text-green-300">EMA {data.adaptive.short.length}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-slate-800 p-3 rounded">
+                      <p className="text-xs text-white mb-1 font-medium">Reactivity</p>
+                      <p className="text-xl font-bold text-green-400">{data.adaptive.short.score}%</p>
+                    </div>
+                    <div className="bg-slate-800 p-3 rounded">
+                      <p className="text-xs text-white mb-1 font-medium">Bull Touches</p>
+                      <p className="text-xl font-bold text-emerald-400">{data.adaptive.short.bull_touches}</p>
+                    </div>
+                    <div className="bg-slate-800 p-3 rounded">
+                      <p className="text-xs text-white mb-1 font-medium">Bear Touches</p>
+                      <p className="text-xl font-bold text-red-400">{data.adaptive.short.bear_touches}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Medium-term EMA */}
+                <div className="p-4 bg-slate-900/80 rounded-lg border border-blue-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-lg font-semibold text-blue-400">Medium-term (20-50)</h3>
+                    <span className="text-sm text-blue-300">EMA {data.adaptive.medium.length}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-slate-800 p-3 rounded">
+                      <p className="text-xs text-white mb-1 font-medium">Reactivity</p>
+                      <p className="text-xl font-bold text-blue-400">{data.adaptive.medium.score}%</p>
+                    </div>
+                    <div className="bg-slate-800 p-3 rounded">
+                      <p className="text-xs text-white mb-1 font-medium">Bull Touches</p>
+                      <p className="text-xl font-bold text-emerald-400">{data.adaptive.medium.bull_touches}</p>
+                    </div>
+                    <div className="bg-slate-800 p-3 rounded">
+                      <p className="text-xs text-white mb-1 font-medium">Bear Touches</p>
+                      <p className="text-xl font-bold text-red-400">{data.adaptive.medium.bear_touches}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Long-term EMA */}
+                <div className="p-4 bg-slate-900/80 rounded-lg border border-purple-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-lg font-semibold text-purple-400">Long-term (100-200)</h3>
+                    <span className="text-sm text-purple-300">EMA {data.adaptive.long.length}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-slate-800 p-3 rounded">
+                      <p className="text-xs text-white mb-1 font-medium">Reactivity</p>
+                      <p className="text-xl font-bold text-purple-400">{data.adaptive.long.score}%</p>
+                    </div>
+                    <div className="bg-slate-800 p-3 rounded">
+                      <p className="text-xs text-white mb-1 font-medium">Bull Touches</p>
+                      <p className="text-xl font-bold text-emerald-400">{data.adaptive.long.bull_touches}</p>
+                    </div>
+                    <div className="bg-slate-800 p-3 rounded">
+                      <p className="text-xs text-white mb-1 font-medium">Bear Touches</p>
+                      <p className="text-xl font-bold text-red-400">{data.adaptive.long.bear_touches}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-sm text-gray-400 mt-4">
+                  🧠 <strong>Adaptive Selection:</strong> {
+                    data.trend === 'bull' 
+                      ? 'In bull trend, showing EMAs with best bullish touch performance' 
+                      : data.trend === 'bear'
+                      ? 'In bear trend, showing EMAs with best bearish touch performance'
+                      : 'In neutral trend, showing EMAs with best overall performance'
+                  }
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Market Structure Statistics */}
+            {structureData && structureData.stats && (
+              <Card className="mb-6 bg-gradient-to-r from-cyan-900/30 via-indigo-900/30 to-pink-900/30 border-cyan-700">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      📊 Market Structure Analysis
+                    </span>
+                    <span className="text-xs bg-cyan-700/50 px-3 py-1 rounded-full">
+                      {structureMode === 'present' ? '✨ Present Mode' : '📚 Historical Mode'}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 bg-slate-900/80 rounded-lg border border-cyan-700">
+                      <p className="text-xs text-gray-300 mb-1 font-medium">Structure Points</p>
+                      <p className="text-2xl font-bold text-cyan-400">{structureData.stats.total_structure_points}</p>
+                      <p className="text-xs text-gray-400 mt-1">HH/HL/LH/LL</p>
+                    </div>
+                    <div className="p-4 bg-slate-900/80 rounded-lg border border-indigo-700">
+                      <p className="text-xs text-gray-300 mb-1 font-medium">BOS / ChoCh</p>
+                      <p className="text-2xl font-bold text-indigo-400">{structureData.stats.total_bos_choch}</p>
+                      <p className="text-xs text-gray-400 mt-1">Structure breaks</p>
+                    </div>
+                    <div className="p-4 bg-slate-900/80 rounded-lg border border-emerald-700">
+                      <p className="text-xs text-gray-300 mb-1 font-medium">🟢 Bullish FVGs</p>
+                      <p className="text-2xl font-bold text-emerald-400">{structureData.stats.bullish_fvgs}</p>
+                      <p className="text-xs text-gray-400 mt-1">Green gaps</p>
+                    </div>
+                    <div className="p-4 bg-slate-900/80 rounded-lg border border-red-700">
+                      <p className="text-xs text-gray-300 mb-1 font-medium">🔴 Bearish FVGs</p>
+                      <p className="text-2xl font-bold text-red-400">{structureData.stats.bearish_fvgs}</p>
+                      <p className="text-xs text-gray-400 mt-1">Red gaps</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-400 mt-4">
+                    {structureMode === 'present' 
+                      ? '✨ Showing only significant, recent patterns to keep the chart clean and readable' 
+                      : '📊 Showing all detected patterns throughout the entire timeframe'}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
+
+        {/* Chart */}
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white">
+              {symbol} - {period} ({interval})
+              {data && (
+                <span className="text-sm ml-3 font-normal">
+                  <span className="text-green-400">Short {data.adaptive.short.length}</span>
+                  <span className="text-gray-500 mx-2">•</span>
+                  <span className="text-blue-400">Medium {data.adaptive.medium.length}</span>
+                  <span className="text-gray-500 mx-2">•</span>
+                  <span className="text-purple-400">Long {data.adaptive.long.length}</span>
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {error && !isForbidden && (
+              <div className="p-4 bg-red-900/30 border border-red-700 rounded-md">
+                <p className="text-red-200">Error loading chart data: {(error as Error).message}</p>
+              </div>
+            )}
+            
+            {isLoading && !data && (
+              <div className="flex items-center justify-center h-96">
+                <div className="text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-2" />
+                  <p className="text-gray-300">Analyzing trend and calculating adaptive EMAs...</p>
+                </div>
+              </div>
+            )}
+
+            {!validationMessage && (
+              <div ref={chartContainerRef} className="w-full" />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* How it works */}
+        <div className="mt-4 p-4 bg-slate-800 border border-slate-700 rounded-md">
+          <p className="text-white font-semibold mb-2">How Adaptive Multi-Timeframe EMA Works:</p>
+          <ul className="text-sm text-gray-300 space-y-2 list-disc list-inside">
+            <li>
+              <span className="font-semibold text-blue-400">Trend Detection</span>: System analyzes EMA positions to determine if market is bullish (short/medium above long), bearish (short/medium below long), or neutral
+            </li>
+            <li>
+              <span className="font-semibold text-green-400">Adaptive Selection</span>: 
+              <ul className="ml-6 mt-1 space-y-1 list-circle">
+                <li>🚀 <strong>Bull Trend</strong>: Uses EMAs with best bullish touch performance (price bouncing UP from EMAs)</li>
+                <li>📉 <strong>Bear Trend</strong>: Uses EMAs with best bearish touch performance (price rejecting DOWN from EMAs)</li>
+                <li>⚖️ <strong>Neutral</strong>: Uses EMAs with best overall reactivity</li>
+              </ul>
+            </li>
+            <li><span className="text-green-400 font-semibold">Short-term (5-15)</span>: Fast-moving EMAs for quick trend changes and scalping</li>
+            <li><span className="text-blue-400 font-semibold">Medium-term (20-50)</span>: Balanced EMAs for swing trading and trend following</li>
+            <li><span className="text-purple-400 font-semibold">Long-term (100-200)</span>: Slow-moving EMAs for major trend identification</li>
+            <li><span className="font-semibold">Smart Touch Detection</span>: Only counts touches where candle CLOSES on correct side (above for bull, below for bear)</li>
+            <li><span className="font-semibold">Reactivity Score</span>: Higher score = EMA acts as stronger support/resistance level</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,94 @@
+import dash
+from dash import dcc, html, Input, Output, callback
+import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+import pandas as pd
+import yfinance as yf  # replace with real-time broker feed for production
+from datetime import datetime
+
+# === Fetch data (example with yfinance, replace with real-time tick data) ===
+ticker = "ES=F"  # S&P futures example
+df = yf.download(ticker, period="5d", interval="1m")
+df = df.reset_index()
+df['mid'] = (df['High'] + df['Low']) / 2
+
+# === Calculate indicators ===
+# Cumulative Volume Delta (CVD)
+df['delta'] = (df['Close'] > df['Open']).astype(int) * df['Volume'] - \
+              (df['Close'] < df['Open']).astype(int) * df['Volume']
+df['cvd'] = df['delta'].cumsum()
+
+# Volume Profile (session-based approx)
+df['date'] = df['Datetime'].dt.date
+vp = df.groupby('date').apply(lambda x: pd.Series({
+    'poc': x.loc[x['Volume'].idxmax(), 'mid'],
+    'vah': x['mid'].quantile(0.84),
+    'val': x['mid'].quantile(0.16)
+})).reset_index()
+
+# Simple Order Blocks (last opposite swing before strong move)
+df['up'] = (df['Close'] > df['Open'])
+df['strong_up'] = df['up'] & (df['Close'] - df['Open'] > 2 * (df['High'] - df['Low']).rolling(20).mean())
+df['strong_dn'] = ~df['up'] & (df['Open'] - df['Close'] > 2 * (df['High'] - df['Low']).rolling(20).mean())
+df['ob_bull'] = df['strong_up'] & df['strong_up'].shift(1) == False
+df['ob_bear'] = df['strong_dn'] & df['strong_dn'].shift(1) == False
+
+# Liquidity / Equal Highs-Lows approx
+df['eq_high'] = df['High'].rolling(5, center=True).max().duplicated(keep=False)
+df['eq_low'] = df['Low'].rolling(5, center=True).min().duplicated(keep=False)
+
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARK])
+
+app.layout = html.Div([
+    html.H1("Real-Time Non-Lagging Trading Dashboard", style={'color': 'white'}),
+    dcc.Graph(id='chart'),
+    dcc.Interval(id='interval', interval=60*1000, n_intervals=0)  # update 1min
+])
+
+@callback(
+    Output('chart', 'figure'),
+    Input('interval', 'n_intervals')
+)
+def update_chart(n):
+    # Refresh data here in production
+    fig = go.Figure()
+
+    # Candles
+    fig.add_trace(go.Candlestick(x=df['Datetime'], open=df['Open'], high=df['High'],
+                                 low=df['Low'], close=df['Close'], name='Price'))
+
+    # CVD
+    fig.add_trace(go.Scatter(x=df['Datetime'], y=df['cvd'], name='CVD', yaxis='y2'))
+
+    # Volume Profile horizontal lines (latest session)
+    latest = vp.iloc[-1]
+    fig.add_hline(y=latest['poc'], line=dict(color='yellow', dash='dot'), annotation_text="POC")
+    fig.add_hline(y=latest['vah'], line=dict(color='green'), annotation_text="VAH")
+    fig.add_hline(y=latest['val'], line=dict(color='red'), annotation_text="VAL")
+
+    # Order Blocks
+    bull_obs = df[df['ob_bull']]['Low']
+    bear_obs = df[df['ob_bear']]['High']
+    fig.add_scatter(x=df[df['ob_bull']]['Datetime'], y=bull_obs, mode='markers',
+                    marker=dict(symbol='triangle-up', size=15, color='lime'), name='Bullish OB')
+    fig.add_scatter(x=df[df['ob_bear']]['Datetime'], y=bear_obs, mode='markers',
+                    marker=dict(symbol='triangle-down', size=15, color='red'), name='Bearish OB')
+
+    # Liquidity sweeps (equal highs/lows)
+    fig.add_scatter(x=df[df['eq_high']]['Datetime'], y=df[df['eq_high']]['High'],
+                    mode='markers', marker=dict(color='orange', symbol='circle-open'), name='Liquidity High')
+    fig.add_scatter(x=df[df['eq_low']]['Datetime'], y=df[df['eq_low']]['Low'],
+                    mode='markers', marker=dict(color='orange', symbol='circle-open'), name='Liquidity Low')
+
+    fig.update_layout(
+        title=f"{ticker} - Order Flow + Volume Profile + SMC Dashboard",
+        yaxis=dict(domain=[0.4, 1.0]),
+        yaxis2=dict(domain=[0.0, 0.35], title="CVD"),
+        template="plotly_dark",
+        hovermode="x unified",
+        height=900
+    )
+    return fig
+
+if __name__ == '__main__':
+    app.run_server(debug=True)

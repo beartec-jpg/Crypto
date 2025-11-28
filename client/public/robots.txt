@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://calc.beartec.uk/sitemap.xml
+
+# Disallow admin areas (if any exist in future)
+Disallow: /api/
+Disallow: /admin/
+
+# Allow important pages for Gas Safe engineers
+Allow: /commercial
+Allow: /industrial
+Allow: /calculations
+Allow: /consultancy
+Allow: /subscribe

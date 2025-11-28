@@ -1,0 +1,319 @@
+// Load LightweightCharts from CDN
+const script = document.createElement('script');
+script.src = 'https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js';
+document.head.appendChild(script);
+
+script.onload = async () => {
+  document.body.style.position = 'relative';
+  const container = document.createElement('div');
+  container.style.width = '800px';
+  container.style.height = '600px';
+  document.body.appendChild(container);
+
+  const chart = LightweightCharts.createChart(container, {
+    width: 800,
+    height: 600,
+    timeScale: { timeVisible: true, secondsVisible: false },
+  });
+
+  const candleSeries = chart.addCandlestickSeries();
+
+  // Fetch Binance data
+  const symbol = 'XRPUSDT';
+  const interval = '15m';
+  const limit = 1000;
+  let data = await fetchBinanceKlines(symbol, interval, limit);
+  candleSeries.setData(data);
+
+  // VWAP series
+  const vwapSeries = {
+    session: chart.addLineSeries({ color: 'purple', lineWidth: 2 }),
+    daily: chart.addLineSeries({ color: 'orange', lineWidth: 2 }),
+    weekly: chart.addLineSeries({ color: 'green', lineWidth: 2 }),
+    monthly: chart.addLineSeries({ color: 'blue', lineWidth: 2 }),
+    rolling10: chart.addLineSeries({ color: 'red', lineWidth: 2 }),
+    rolling20: chart.addLineSeries({ color: 'pink', lineWidth: 2 }),
+    rolling50: chart.addLineSeries({ color: 'cyan', lineWidth: 2 }),
+  };
+
+  // Order flow
+  const histogramSeries = chart.addHistogramSeries({
+    priceFormat: { type: 'volume' },
+    scaleMargins: { top: 0.8, bottom: 0 },
+  });
+  const cumDeltaSeries = chart.addLineSeries({ color: 'yellow', lineWidth: 2 });
+
+  let barDeltas = [];
+  let cumDeltaData = [];
+  let currentDelta = 0;
+  let cumDelta = 0;
+
+  // FVG and BOS
+  let fvgLines = []; // array of {lowerSeries, upperSeries, fvg}
+  let fvgAtrFilter = true;
+  let minBosMove = 0.01;
+
+  updateAll();
+
+  // UI toggles omitted for brevity, assume defaults
+
+  // WebSocket for real-time
+  const wsUrl = 'wss://stream.binance.com:9443/ws';
+  const ws = new WebSocket(wsUrl);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({
+      method: 'SUBSCRIBE',
+      params: [`${symbol.toLowerCase()}@kline_${interval}`, `${symbol.toLowerCase()}@trade`],
+      id: 1,
+    }));
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.e === 'kline') {
+      const k = msg.k;
+      const bar = {
+        time: k.t / 1000,
+        open: parseFloat(k.o),
+        high: parseFloat(k.h),
+        low: parseFloat(k.l),
+        close: parseFloat(k.c),
+        volume: parseFloat(k.v),
+      };
+      if (k.x) { // closed
+        if (bar.time > data[data.length - 1].time) {
+          barDeltas.push(currentDelta);
+          cumDelta += currentDelta;
+          cumDeltaData.push({ time: bar.time, value: cumDelta });
+          data.push(bar);
+        } else {
+          data[data.length - 1] = bar;
+        }
+        currentDelta = 0;
+      } else {
+        if (bar.time === data[data.length - 1].time) {
+          data[data.length - 1] = bar;
+        } else {
+          data.push(bar);
+        }
+      }
+      candleSeries.update(bar);
+      updateOrderFlow();
+      updateAll();
+    } else if (msg.e === 'trade') {
+      const trade = msg;
+      const qty = parseFloat(trade.q);
+      const isBuy = !trade.m;
+      currentDelta += isBuy ? qty : -qty;
+    }
+  };
+
+  function updateAll() {
+    vwapSeries.session.setData(calculatePeriodicVWAP(data, 'daily', true));
+    vwapSeries.daily.setData(calculatePeriodicVWAP(data, 'daily', true));
+    vwapSeries.weekly.setData(calculatePeriodicVWAP(data, 'weekly', true));
+    vwapSeries.monthly.setData(calculatePeriodicVWAP(data, 'monthly', true));
+    vwapSeries.rolling10.setData(calculateRollingVWAP(data, 10));
+    vwapSeries.rolling20.setData(calculateRollingVWAP(data, 20));
+    vwapSeries.rolling50.setData(calculateRollingVWAP(data, 50));
+
+    updateFVGs();
+    updateBOS();
+  }
+
+  function updateOrderFlow() {
+    const histData = barDeltas.map((d, i) => ({
+      time: data[data.length - barDeltas.length + i].time,
+      value: Math.abs(d),
+      color: d > 0 ? '#26a69a' : '#ef5350',
+    }));
+    histogramSeries.setData(histData);
+    cumDeltaSeries.setData(cumDeltaData);
+  }
+
+  function updateFVGs() {
+    // Remove old lines
+    fvgLines.forEach(fl => {
+      chart.removeSeries(fl.lowerSeries);
+      chart.removeSeries(fl.upperSeries);
+    });
+    fvgLines = [];
+
+    const fvgs = calculateFVGs(data, fvgAtrFilter);
+    fvgs.forEach(fvg => {
+      if (isActiveFVG(fvg, data)) {
+        const lastTime = data[data.length - 1].time;
+        const lowerData = [{ time: fvg.time, value: fvg.lower }, { time: lastTime, value: fvg.lower }];
+        const upperData = [{ time: fvg.time, value: fvg.upper }, { time: lastTime, value: fvg.upper }];
+        const lowerSeries = chart.addLineSeries({ color: fvg.type === 'bullish' ? 'green' : 'red', lineWidth: 1, priceLineVisible: false });
+        const upperSeries = chart.addLineSeries({ color: fvg.type === 'bullish' ? 'green' : 'red', lineWidth: 1, priceLineVisible: false });
+        lowerSeries.setData(lowerData);
+        upperSeries.setData(upperData);
+        fvgLines.push({ lowerSeries, upperSeries, fvg });
+      }
+    });
+  }
+
+  function updateBOS() {
+    const bos = calculateBOS(data, minBosMove);
+    const markers = bos.map(b => ({
+      time: b.time,
+      position: b.type === 'bullish' ? 'belowBar' : 'aboveBar',
+      shape: b.type === 'bullish' ? 'arrowUp' : 'arrowDown',
+      color: b.type === 'bullish' ? 'green' : 'red',
+      text: 'BOS',
+    }));
+    candleSeries.setMarkers(markers);
+  }
+
+  // Functions as defined earlier
+  async function fetchBinanceKlines(symbol, interval, limit) {
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    const response = await fetch(url);
+    const klines = await response.json();
+    return klines.map(k => ({
+      time: k[0] / 1000,
+      open: parseFloat(k[1]),
+      high: parseFloat(k[2]),
+      low: parseFloat(k[3]),
+      close: parseFloat(k[4]),
+      volume: parseFloat(k[5]),
+    }));
+  }
+
+  function calculateRollingVWAP(data, count) {
+    const result = [];
+    for (let i = count - 1; i < data.length; i++) {
+      const slice = data.slice(i - count + 1, i + 1);
+      let sumPV = 0, sumV = 0;
+      slice.forEach(bar => {
+        const typical = (bar.high + bar.low + bar.close) / 3;
+        sumPV += typical * bar.volume;
+        sumV += bar.volume;
+      });
+      result.push({ time: data[i].time, value: sumPV / sumV });
+    }
+    return result;
+  }
+
+  function calculatePeriodicVWAP(data, period, currentOnly) {
+    if (data.length === 0) return [];
+    const result = [];
+    let sumPV = 0, sumV = 0;
+    let lastPeriodKey = getPeriodKey(data[0].time, period);
+    let currentPeriodKey = getPeriodKey(data[data.length - 1].time, period);
+    data.forEach(bar => {
+      const periodKey = getPeriodKey(bar.time, period);
+      if (periodKey !== lastPeriodKey) {
+        sumPV = 0;
+        sumV = 0;
+      }
+      lastPeriodKey = periodKey;
+      const typical = (bar.high + bar.low + bar.close) / 3;
+      sumPV += typical * bar.volume;
+      sumV += bar.volume;
+      if (sumV > 0 && (!currentOnly || periodKey === currentPeriodKey)) {
+        result.push({ time: bar.time, value: sumPV / sumV });
+      }
+    });
+    return result;
+  }
+
+  function getPeriodKey(time, period) {
+    const date = new Date(time * 1000);
+    if (period === 'daily') {
+      return date.toISOString().slice(0, 10);
+    } else if (period === 'weekly') {
+      const startOfWeek = new Date(date);
+      startOfWeek.setUTCDate(date.getUTCDate() - date.getUTCDay());
+      return startOfWeek.toISOString().slice(0, 10);
+    } else if (period === 'monthly') {
+      return date.getUTCFullYear() + '-' + String(date.getUTCMonth() + 1).padStart(2, '0');
+    }
+  }
+
+  function calculateATR(data, period = 14) {
+    const tr = [];
+    for (let i = 1; i < data.length; i++) {
+      const highLow = data[i].high - data[i].low;
+      const highClose = Math.abs(data[i].high - data[i - 1].close);
+      const lowClose = Math.abs(data[i].low - data[i - 1].close);
+      tr.push(Math.max(highLow, highClose, lowClose));
+    }
+    const atr = [];
+    let sum = tr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    atr.push(sum);
+    for (let i = period; i < tr.length; i++) {
+      sum = (atr[atr.length - 1] * (period - 1) + tr[i]) / period;
+      atr.push(sum);
+    }
+    return atr;
+  }
+
+  function calculateFVGs(data, useAtrFilter = true, atrFactor = 1) {
+    const atr = calculateATR(data);
+    const fvgs = [];
+    for (let i = 2; i < data.length; i++) {
+      let minGap = 0;
+      if (useAtrFilter) minGap = atr[i - 2] * atrFactor;
+      if (data[i].low > data[i - 2].high) {
+        const lower = data[i - 2].high;
+        const upper = data[i].low;
+        if (upper - lower >= minGap) {
+          fvgs.push({ time: data[i].time, lower, upper, type: 'bullish' });
+        }
+      } else if (data[i].high < data[i - 2].low) {
+        const lower = data[i].high;
+        const upper = data[i - 2].low;
+        if (upper - lower >= minGap) {
+          fvgs.push({ time: data[i].time, lower, upper, type: 'bearish' });
+        }
+      }
+    }
+    return fvgs;
+  }
+
+  function isActiveFVG(fvg, data) {
+    const startIdx = data.findIndex(d => d.time === fvg.time);
+    for (let i = startIdx + 1; i < data.length; i++) {
+      if (fvg.type === 'bullish' && data[i].low <= fvg.lower) return false;
+      if (fvg.type === 'bearish' && data[i].high >= fvg.upper) return false;
+    }
+    return true;
+  }
+
+  function calculateBOS(data, minMovePct = 0.01, swingLength = 5) {
+    const swings = [];
+    for (let i = swingLength; i < data.length - swingLength; i++) {
+      const leftHighs = data.slice(i - swingLength, i).map(b => b.high);
+      const rightHighs = data.slice(i + 1, i + swingLength + 1).map(b => b.high);
+      if (data[i].high >= Math.max(...leftHighs) && data[i].high >= Math.max(...rightHighs)) {
+        swings.push({ time: data[i].time, value: data[i].high, type: 'high' });
+      }
+      const leftLows = data.slice(i - swingLength, i).map(b => b.low);
+      const rightLows = data.slice(i + 1, i + swingLength + 1).map(b => b.low);
+      if (data[i].low <= Math.min(...leftLows) && data[i].low <= Math.min(...rightLows)) {
+        swings.push({ time: data[i].time, value: data[i].low, type: 'low' });
+      }
+    }
+    const bos = [];
+    let lastHigh = null;
+    let lastLow = null;
+    for (let i = 0; i < data.length; i++) {
+      if (lastHigh && data[i].close > lastHigh.value && (data[i].close - lastHigh.value) / lastHigh.value > minMovePct) {
+        bos.push({ time: data[i].time, type: 'bullish' });
+        lastHigh = { time: data[i].time, value: data[i].high };
+      }
+      if (lastLow && data[i].close < lastLow.value && (lastLow.value - data[i].close) / lastLow.value > minMovePct) {
+        bos.push({ time: data[i].time, type: 'bearish' });
+        lastLow = { time: data[i].time, value: data[i].low };
+      }
+      const swing = swings.find(s => s.time === data[i].time);
+      if (swing) {
+        if (swing.type === 'high') lastHigh = swing;
+        if (swing.type === 'low') lastLow = swing;
+      }
+    }
+    return bos;
+  }
+};

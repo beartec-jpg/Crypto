@@ -1,0 +1,97 @@
+// Add these functions to previous code
+
+// === Fair Value Gap (FVG) ===
+const detectFVG = (bars: Bar[]) => {
+  const bullFVG: any[] = [];
+  const bearFVG: any[] = [];
+
+  for (let i = 2; i < bars.length; i++) {
+    const prev2 = bars[i-2];
+    const prev1 = bars[i-1];
+    const curr = bars[i];
+
+    // Bullish FVG: low[0] > high[-2]
+    if (prev1.low > prev2.high) {
+      bullFVG.push({
+        time: curr.time,
+        low: prev2.high,
+        high: prev1.low,
+        mitigated: false
+      });
+    }
+    // Bearish FVG: high[0] < low[-2]
+    if (prev1.high < prev2.low) {
+      bearFVG.push({
+        time: curr.time,
+        low: prev1.high,
+        high: prev2.low,
+        mitigated: false
+      });
+    }
+  }
+  return { bullFVG, bearFVG };
+};
+
+// === Stacked Imbalances / Poor Highs-Lows ===
+const detectImbalances = (profile: any[]) => {
+  const imbalances: any[] = [];
+  for (let i = 1; i < profile.length - 1; i++) {
+    const ratio = profile[i].buyVol / (profile[i].sellVol || 1);
+    if (ratio > 3) imbalances.push({ price: profile[i].price, type: 'buy' });
+    if (ratio < 0.33) imbalances.push({ price: profile[i].price, type: 'sell' });
+  }
+  return imbalances;
+};
+
+// === Absorption / Exhaustion ===
+const detectAbsorption = (bars: Bar[], cvdData: any[]) => {
+  const signals: any[] = [];
+  for (let i = 10; i < bars.length; i++) {
+    const deltaSum = cvdData[i].delta - cvdData[i-5].delta;
+    const priceMove = bars[i].close - bars[i-5].close;
+    if (Math.abs(deltaSum) > 3 * Math.abs(priceMove * 1000)) { // strong delta vs weak price
+      signals.push({
+        time: bars[i].time,
+        price: bars[i].close,
+        type: deltaSum > 0 ? 'bullAbsorb' : 'bearAbsorb'
+      });
+    }
+  }
+  return signals;
+};
+
+// In useEffect, after calculateVolumeProfile:
+const { profile: vpProfile } = calculateVolumeProfile(data.slice(-150));
+const { bullFVG, bearFVG } = detectFVG(data);
+const imbalances = detectImbalances(vpProfile);
+const absorption = detectAbsorption(data, cvdData);
+
+// Add visual markers
+candleSeriesRef.current!.setMarkers([
+  // Existing OB...
+  ...bullFVG.map(f => ({ time: f.time, position: 'belowBar', color: '#26a69a', shape: 'square', text: 'FVG↑' })),
+  ...bearFVG.map(f => ({ time: f.time, position: 'aboveBar', color: '#ef5350', shape: 'square', text: 'FVG↓' })),
+  ...imbalances.map(imb => ({
+    time: data[data.length-1].time,
+    position: imb.type === 'buy' ? 'belowBar' : 'aboveBar',
+    color: imb.type === 'buy' ? '#00ff9d' : '#ff3b69',
+    shape: 'circle',
+    price: imb.price
+  })),
+  ...absorption.map(a => ({
+    time: a.time,
+    position: a.type === 'bullAbsorb' ? 'belowBar' : 'aboveBar',
+    color: a.type === 'bullAbsorb' ? '#00c4b4' : '#ff5252',
+    shape: 'diamond',
+    text: 'ABS'
+  }))
+]);
+
+// Optional: draw FVG rectangles
+bullFVG.forEach(fvg => {
+  chart.addRectangle?.({
+    from: { time: data[0].time, price: fvg.low },
+    to: { time: data[data.length-1].time, price: fvg.high },
+    backgroundColor: 'rgba(38, 166, 154, 0.1)',
+  });
+});

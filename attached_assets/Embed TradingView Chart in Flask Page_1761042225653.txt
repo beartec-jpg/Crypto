@@ -1,0 +1,96 @@
+Embed TradingView Chart in Flask Page
+
+Get widget code from TradingView:
+
+Customize symbol (e.g., BTCUSD), theme, timeframe.
+Copy embed HTML/JS snippet (iframe or script).
+
+
+In Flask app.py:
+pythonfrom flask import Flask, render_template
+
+app = Flask(__name__)
+
+@app.route('/crypto')
+def crypto():
+    return render_template('crypto.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+Create templates/crypto.html:
+html<!DOCTYPE html>
+<html>
+<head><title>Crypto Chart</title></head>
+<body>
+<h1>Bitcoin Chart</h1>
+<!-- Paste TradingView embed code here -->
+<div class="tradingview-widget-container">
+  <div id="tradingview_chart"></div>
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+  <script type="text/javascript">
+  new TradingView.widget(
+    {
+      "width": 980,
+      "height": 610,
+      "symbol": "BINANCE:BTCUSDT",
+      "interval": "D",
+      "timezone": "Etc/UTC",
+      "theme": "light",
+      "style": "1",
+      "locale": "en",
+      "toolbar_bg": "#f1f3f6",
+      "enable_publishing": false,
+      "allow_symbol_change": true,
+      "container_id": "tradingview_chart"
+    }
+  );
+  </script>
+</div>
+</body>
+</html>
+
+Run: flask run. Access at http://beartec.uk/crypto.
+
+Run Python Code for Crypto Charts on Flask
+
+Install Flask, Plotly, yfinance: pip install flask plotly yfinance.
+In app.py:
+pythonfrom flask import Flask, render_template
+import plotly.graph_objects as go
+import yfinance as yf
+
+app = Flask(__name__)
+
+@app.route('/crypto')
+def crypto():
+    data = yf.download('BTC-USD', period='1y')
+    fig = go.Figure(data=[go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'])])
+    graph_json = fig.to_json()
+    return render_template('crypto.html', graph_json=graph_json)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+In templates/crypto.html:
+html<!DOCTYPE html>
+<html>
+<head><title>Crypto Chart</title>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script></head>
+<body>
+<h1>Bitcoin Chart</h1>
+<div id="chart"></div>
+<script>
+var graph = {{ graph_json | safe }};
+Plotly.newPlot('chart', graph.data, graph.layout);
+</script>
+</body>
+</html>
+
+Run: flask run. Access at http://beartec.uk/crypto. Adapt Python code in app.py for custom logic (e.g., TA-Lib for indicators).
+
+Add to beartec.uk/crypto
+
+In your web server (e.g., Flask app), add /crypto route as above.
+Deploy: Update your server code, restart (e.g., gunicorn app:app if using Gunicorn).
+Separate page: Create /crypto endpoint with Python/Plotly for interactive charts, or embed TradingView widget for quick setup.
