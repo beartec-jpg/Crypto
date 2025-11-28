@@ -1,0 +1,136 @@
+Clean Up Replit-Specific Code (GitHub Web Editor – 2 Minutes)
+Replit plugins (cartographer, runtimeErrorOverlay) cause build hangs on Vercel. Remove them.
+Edit vite.config.ts (root or client/):
+Replace entire content with this (keeps React, outputs to dist):
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  base: '/',
+  root: 'client', // If frontend in client/
+  build: {
+    outDir: '../dist', // Outputs to root/dist
+    emptyOutDir: true,
+    sourcemap: false
+  },
+  server: {
+    port: 3000
+  }
+})
+Commit: "Remove Replit plugins from vite.config for Vercel".
+Edit package.json (remove Replit deps if present):
+In "devDependencies", delete "@replit/vite-plugin-runtime-error-modal", "@replit/vite-plugin-cartographer".
+Ensure "scripts" has:
+"build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+"start": "node dist/index.js"
+
+Ensure Frontend Entry Points (GitHub – 2 Minutes)
+Your landing is in client/src/App.tsx – make sure it's populated and entry files exist.
+Edit client/index.html (if missing, create it):
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BearTec Crypto</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+Commit: "Add Vite index.html entry".
+Edit client/src/App.tsx (add your landing if empty):
+import React from 'react'
+import { Router } from 'wouter'
+import { useLocation } from 'wouter'
+
+function App() {
+  const [location] = useLocation()
+
+  return (
+    <Router base="/">
+      {location === '/' ? (
+        <div style={{ textAlign: 'center', padding: '50px', fontFamily: 'Arial', background: '#f0f0f0', minHeight: '100vh' }}>
+          <style>{`
+            @keyframes fadeInUp {
+              from { opacity: 0; transform: translateY(30px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+            .landing { animation: fadeInUp 1s ease-out; }
+            .button { background: linear-gradient(45deg, #667eea, #764ba2); color: white; padding: 15px 30px; border: none; border-radius: 50px; cursor: pointer; transition: transform 0.3s; font-size: 18px; }
+            .button:hover { transform: scale(1.05); }
+          `}</style>
+          <div className="landing">
+            <h1>BearTec Crypto Platform</h1>
+            <p>Push to enter the world of crypto trading</p>
+            <img src="/logo.svg" alt="Crypto Image" style={{ borderRadius: '10px', margin: '20px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)', width: '400px' }} />
+            <button className="button" onClick={() => window.location.href = '/dashboard'}>
+              Push to Enter Crypto
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ padding: '20px' }}>Dashboard</div>
+      )}
+    </Router>
+  )
+}
+
+export default App
+Commit: "Add landing JSX to App.tsx".
+
+Ensure client/src/main.tsx exists (create if missing):
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.tsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+Commit: "Add main.tsx React entry".
+
+Update vercel.json for Hybrid Serve (GitHub – 1 Minute)
+Edit vercel.json (root):
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    },
+    {
+      "src": "server/index.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/server/index.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/index.html"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type,Authorization" }
+      ]
+    }
+  ]
+}
+Commit: "Final vercel.json for static + API".

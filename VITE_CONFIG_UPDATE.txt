@@ -1,0 +1,101 @@
+================================================================================
+            VITE.CONFIG.TS UPDATE REQUIRED FOR VERCEL DEPLOYMENT
+================================================================================
+
+The vite.config.ts file needs to be edited on GitHub to remove Replit-specific
+plugins that cause build hangs on Vercel.
+
+--------------------------------------------------------------------------------
+STEPS TO UPDATE (GitHub Web Editor)
+--------------------------------------------------------------------------------
+
+1. Go to your GitHub repository
+2. Click on vite.config.ts
+3. Click the pencil icon (Edit)
+4. Replace the ENTIRE content with the code below
+5. Commit with message: "Remove Replit plugins from vite.config for Vercel"
+
+--------------------------------------------------------------------------------
+NEW VITE.CONFIG.TS CONTENT (Copy this exactly)
+--------------------------------------------------------------------------------
+
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+
+export default defineConfig({
+  plugins: [react()],
+  base: "/",
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "client", "src"),
+      "@shared": path.resolve(import.meta.dirname, "shared"),
+      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+    },
+  },
+  root: path.resolve(import.meta.dirname, "client"),
+  build: {
+    outDir: path.resolve(import.meta.dirname, "dist"),
+    emptyOutDir: true,
+    sourcemap: false,
+  },
+  server: {
+    port: 3000,
+    fs: {
+      strict: true,
+      deny: ["**/.*"],
+    },
+  },
+});
+
+--------------------------------------------------------------------------------
+WHAT WAS REMOVED
+--------------------------------------------------------------------------------
+
+1. import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal"
+   - Replit-specific error overlay plugin
+
+2. runtimeErrorOverlay() in plugins array
+   - Was causing build hangs
+
+3. Cartographer dynamic import block:
+   ...(process.env.NODE_ENV !== "production" &&
+   process.env.REPL_ID !== undefined
+     ? [await import("@replit/vite-plugin-cartographer").then((m) =>
+         m.cartographer(),
+       ),]
+     : []),
+   - Replit-specific plugin for development
+
+--------------------------------------------------------------------------------
+WHAT WAS CHANGED
+--------------------------------------------------------------------------------
+
+1. build.outDir: "dist/public" → "dist"
+   - Matches vercel.json distDir setting
+
+2. Added base: "/"
+   - Ensures proper asset paths
+
+3. Added sourcemap: false
+   - Reduces build size for production
+
+4. Added server.port: 3000
+   - Standard dev port (Vercel ignores this)
+
+--------------------------------------------------------------------------------
+WHAT WAS KEPT (Important for your app to work!)
+--------------------------------------------------------------------------------
+
+1. Path aliases preserved:
+   - "@" → client/src
+   - "@shared" → shared
+   - "@assets" → attached_assets
+
+2. root: client (your frontend directory)
+
+3. React plugin
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================
