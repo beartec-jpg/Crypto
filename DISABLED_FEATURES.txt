@@ -99,13 +99,35 @@ configuration. Each feature requires specific API keys to be enabled.
       - Affected: All browser push notifications disabled
 
 --------------------------------------------------------------------------------
-5. PREVIOUSLY REMOVED FEATURES (Stripe Integration)
+5. REMOVED FEATURES - OPEN ACCESS CONVERSION
 --------------------------------------------------------------------------------
 
-   - Stripe Checkout Sessions - Removed (all features now free)
-   - Stripe Webhooks - Removed (payment processing disabled)
-   - Subscription Management - Removed (open access model)
-   - Tier-based access control - Bypassed (elite tier for all)
+   STRIPE INTEGRATION (Completely Removed):
+   - Stripe Checkout Sessions - Removed from routes.ts
+   - Stripe Webhooks - Removed (/api/stripe/webhook endpoint deleted)
+   - Subscription Management - All subscription routes removed
+   - Payment Processing - No Stripe SDK calls remain active
+   - Tier-based access control - Bypassed (elite tier granted to all users)
+   - Files affected: server/routes.ts, client subscription components
+
+   AUTHENTICATION SYSTEM (Removed):
+   - Google OAuth Login - Removed (cryptoAuth.ts deleted)
+   - Replit OAuth Login - Removed (replitAuth.ts deleted)
+   - Session Management - Middleware bypassed (pass-through stubs)
+   - Login/Logout Flows - Crypto login page now redirects directly
+   - Protected Routes - All routes now publicly accessible
+   - Files deleted: server/cryptoAuth.ts, server/googleAuth.ts, server/replitAuth.ts
+
+   USER MANAGEMENT (Simplified):
+   - User Authentication Checks - Removed from all routes
+   - Crypto User Sessions - No longer created/validated
+   - Authorization Middleware - Returns pass-through (no blocking)
+
+   ROUTE CHANGES:
+   - Landing page "/" now shows click-to-enter animation
+   - After animation, navigates directly to /cryptoindicators
+   - No login redirect - immediate access to all features
+   - All /crypto/* routes accessible without authentication
 
 --------------------------------------------------------------------------------
 FEATURES STILL WORKING (Public APIs)
