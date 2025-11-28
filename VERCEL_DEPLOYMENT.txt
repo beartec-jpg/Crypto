@@ -59,10 +59,18 @@ Shared:
 BUILD CONFIGURATION
 --------------------------------------------------------------------------------
 
-Current vite.config.ts settings (unchanged):
+⚠️  IMPORTANT: You MUST update vite.config.ts on GitHub before deploying!
+    See VITE_CONFIG_UPDATE.txt for the exact changes required.
+    
+    Without this update:
+    - Vite outputs to: dist/public
+    - Vercel expects: dist
+    → Build will fail or serve empty site!
+
+After updating vite.config.ts:
   - root: client/
-  - build.outDir: dist/public
-  - Aliases: @, @shared, @assets
+  - build.outDir: dist (changed from dist/public)
+  - Aliases: @, @shared, @assets (preserved)
 
 Package.json scripts (unchanged):
   - "build": "vite build && esbuild server/index.ts ..."
@@ -71,6 +79,12 @@ Package.json scripts (unchanged):
 --------------------------------------------------------------------------------
 VERCEL DEPLOYMENT STEPS
 --------------------------------------------------------------------------------
+
+0. UPDATE VITE.CONFIG.TS (REQUIRED FIRST!):
+   
+   - On GitHub, edit vite.config.ts
+   - Replace content with code from VITE_CONFIG_UPDATE.txt
+   - Commit: "Remove Replit plugins from vite.config for Vercel"
 
 1. PUSH TO GITHUB:
    
