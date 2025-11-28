@@ -1,5 +1,9 @@
 {
   "version": 2,
+  "framework": "vite",
+  "buildCommand": "npm install & npm run build",
+  "outputDirectory": "dist/public",
+  "installCommand": "npm install",
   "builds": [
     {
       "src": "package.json",
