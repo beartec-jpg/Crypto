@@ -6,7 +6,7 @@ export default defineConfig({
   root: 'client',
   base: '/',
   build: {
-    outDir: '../dist', // Builds from client/ to root/dist
+    outDir: '../dist',
     emptyOutDir: true,
     sourcemap: false
   },
