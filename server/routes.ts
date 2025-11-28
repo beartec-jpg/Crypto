@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 // XAI API disabled - using null API key
 const xai = new OpenAI({
   baseURL: "https://api.x.ai/v1",
-  apiKey: "" // process.env.XAI_API_KEY disabled
+  apiKey: process.env.XAI_API_KEY // NOW USING THE SECRET
 });
 
 // Helper to check if XAI API key is configured - always returns false (disabled)
