@@ -1,0 +1,52 @@
+Build my app for Vercel deployment. Use this exact structure and content. Keep all existing backend schemas (crypto-prices.ts, elliott-wave.ts, user-sessions.ts, payment-schema.ts) and server/index.ts (Express API with OpenAI/Stripe/Drizzle). Add frontend in client/ for Vite/React landing page.
+
+**Root Files:**
+- package.json: Use my existing, but ensure "scripts": { "dev": "vite", "build": "vite build", "start": "node server/index.js" }, deps: vite, react, @vitejs/plugin-react, wouter, drizzle-orm, openai, stripe (devDeps: typescript).
+- vite.config.ts: Exact content:
+
+import { defineConfig } from 'vite' import react from '@vitejs/plugin-react'
+export default defineConfig({ plugins: [react()], root: 'client', base: '/', build: { outDir: '../dist', emptyOutDir: true, sourcemap: false }, server: { port: 3000 } })
+
+- vercel.json: Exact content:
+
+{ "version": 2, "builds": [ { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }, { "src": "server/index.ts", "use": "@vercel/node" } ], "routes": [ { "src": "/api/(.)", "dest": "/server/index.ts" }, { "src": "/(.)", "dest": "/dist/index.html" } ], "env": { "NODE_ENV": "production" }, "headers": [ { "source": "/api/(.)", "headers": [ { "key": "Access-Control-Allow-Origin", "value": "" }, { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" }, { "key": "Access-Control-Allow-Headers", "value": "Content-Type,Authorization" } ] } ] }
+
+- tsconfig.json: Exact content:
+
+{ "compilerOptions": { "target": "ES2022", "lib": ["ES2022", "DOM"], "module": "ESNext", "moduleResolution": "bundler", "allowImportingTsExtensions": true, "resolveJsonModule": true, "isolatedModules": true, "noEmit": true, "composite": true, "strict": true, "noUnusedLocals": true, "noUnusedParameters": true, "noFallthroughCasesInSwitch": true, "jsx": "react-jsx" }, "include": ["client/src"] }
+
+- .gitignore: Add:
+
+node_modules .env dist .replit
+
+**client/ Folder (Frontend – Vite/React):**
+- client/index.html: Exact content:
+
+BearTec Crypto Platform client/src/main.tsx: Exact content: `` import React from 'react' import ReactDOM from 'react-dom/client' import App from './App.tsx' import './index.css'
+
+ReactDOM.createRoot(document.getElementByld('root')!). render( <React.StrictMode> </React.StrictMode>,)
+
+- client/src/App.tsx: Exact content (landing with button/image/text/animation):
+
+import React from 'react' import { Router } from 'wouter' import { useLocation } from 'wouter'
+function App() { const [location] = useLocation()
+return (  {location === '/' ? ( <div style={{ textAlign: 'center', padding: '50px', fontFamily: 'Arial', background: '#f0f0f0', minHeight: '100vh' }}> {@keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } } .landing { animation: fadeInUp 1s ease-out; } .button { background: linear-gradient(45deg, #667eea, #764ba2); color: white; padding: 15px 30px; border: none; border-radius: 50px; cursor: pointer; transition: transform 0.3s; font-size: 18px; } .button:hover { transform: scale(1.05); }}  BearTec Crypto Platform Push to enter the world of crypto trading <img src="https://via.placeholder.com/400x200/667eea/ffffff?text=Crypto+Chart+Preview" alt="Crypto Image" style={{ borderRadius: '10px', margin: '20px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)', width: '400px' }} /> <button className="button" onClick={() => window.location.href = '/dashboard'}> Push to Enter Crypto    ) : ( <div style={{ padding: '20px' }}>Dashboard (Elliott Wave Analysis) )}  ) }
+export default App
+
+- client/src/index.css: Exact content:
+
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+code { font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace; }
+
+- client/public/logo.svg: Add a simple SVG or placeholder (Replit can generate).
+
+**server/ Folder (Backend – Unchanged, but ensure):**
+- server/index.ts: Keep existing Express server with API routes (/api/analyze-wave, /api/prices, OpenAI, Stripe, Drizzle).
+- drizzle.config.ts: Keep existing for DB migrations.
+
+**After Building:**
+- Run `npm run build` in Replit to test dist/ folder.
+- Push to GitHub.
+- Vercel auto-deploys – test landing page.
+
+Do not delete existing backend schemas or server code. Output the new structure and confirm build succeeds.
