@@ -483,6 +483,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Liquidation Grid Data (30×30 grid for heatmap visualization)
+  const apiKey = process.env.COINALYZE_API_KEY; // Enable key check
+
+if (!apiKey) {
+  console.log('Coinalyze API key missing, skipping liquidation grid data.');
+  // Return with an empty liquidations array so the rest of the app doesn't crash
+  return res.json({ liquidations: [] });
+}
+  
   app.get("/api/crypto/liquidations/grid", async (req, res) => {
     try {
       const symbol = (req.query.symbol as string)?.toUpperCase() || 'XRPUSDT';
