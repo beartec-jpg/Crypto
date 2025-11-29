@@ -902,12 +902,9 @@ if (!apiKey) {
         });
       }
 
-      // API disabled - feature not available
-      const apiKey = null; // process.env.COINGLASS_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          error: 'CoinGlass API temporarily disabled',
-          message: 'Orderbook feature requires API configuration'
+      // API key now uses Vercel secret
+      const apiKey = process.env.COINGLASS_API_KEY;
+
         });
       }
 
