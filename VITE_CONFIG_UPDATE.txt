@@ -1,52 +1,48 @@
 ================================================================================
-            VITE.CONFIG.TS UPDATE REQUIRED FOR VERCEL DEPLOYMENT
+     ⚠️  CRITICAL FIX REQUIRED - APP WILL NOT LOAD WITHOUT THIS ⚠️
 ================================================================================
 
-The vite.config.ts file needs to be edited on GitHub to remove Replit-specific
-plugins that cause build hangs on Vercel.
+The vite.config.ts is MISSING PATH ALIASES. Your app uses @/pages/..., 
+@shared/..., and @assets/... imports which won't resolve without aliases.
 
 --------------------------------------------------------------------------------
-STEPS TO UPDATE (GitHub Web Editor)
+STEPS TO FIX (GitHub Web Editor)
 --------------------------------------------------------------------------------
 
 1. Go to your GitHub repository
 2. Click on vite.config.ts
 3. Click the pencil icon (Edit)
 4. Replace the ENTIRE content with the code below
-5. Commit with message: "Remove Replit plugins from vite.config for Vercel"
+5. Commit with message: "Add path aliases to vite.config for Vercel"
 
 --------------------------------------------------------------------------------
 NEW VITE.CONFIG.TS CONTENT (Copy this exactly)
 --------------------------------------------------------------------------------
 
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  base: "/",
+  root: 'client',
+  base: '/',
   resolve: {
     alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      '@': path.resolve(__dirname, 'client/src'),
+      '@shared': path.resolve(__dirname, 'shared'),
+      '@assets': path.resolve(__dirname, 'attached_assets'),
     },
   },
-  root: path.resolve(import.meta.dirname, "client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist"),
+    outDir: '../dist',
     emptyOutDir: true,
-    sourcemap: false,
+    sourcemap: false
   },
   server: {
-    port: 3000,
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
-    },
-  },
-});
+    port: 3000
+  }
+})
 
 --------------------------------------------------------------------------------
 WHAT WAS REMOVED

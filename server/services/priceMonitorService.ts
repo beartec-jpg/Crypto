@@ -154,12 +154,12 @@ class PriceMonitorService {
 
   private async sendNotification(userId: number, notification: { title: string; body: string; tag: string }) {
     try {
-      // VAPID keys disabled - push notifications not available
-      const publicKey = null; // process.env.PUBLIC_VAPID_KEY;
-      const privateKey = null; // process.env.PRIVATE_VAPID_KEY;
+      // VAPID keys re-enabled for push notifications
+      const publicKey = process.env.PUBLIC_VAPID_KEY;
+      const privateKey = process.env.PRIVATE_VAPID_KEY;
       
       if (!publicKey || !privateKey) {
-        console.log("Push notifications temporarily disabled - API configuration required.");
+        console.log("Push notifications require VAPID keys - PUBLIC_VAPID_KEY and PRIVATE_VAPID_KEY");
         return;
       }
 
@@ -359,12 +359,12 @@ class PriceMonitorService {
 
   private async sendCryptoNotification(userId: string, notification: { title: string; body: string; tag: string }) {
     try {
-      // VAPID keys disabled - push notifications not available
-      const publicKey = null; // process.env.PUBLIC_VAPID_KEY;
-      const privateKey = null; // process.env.PRIVATE_VAPID_KEY;
+      // VAPID keys re-enabled for push notifications
+      const publicKey = process.env.PUBLIC_VAPID_KEY;
+      const privateKey = process.env.PRIVATE_VAPID_KEY;
       
       if (!publicKey || !privateKey) {
-        console.log("Push notifications temporarily disabled - API configuration required.");
+        console.log("Push notifications require VAPID keys - PUBLIC_VAPID_KEY and PRIVATE_VAPID_KEY");
         return;
       }
 

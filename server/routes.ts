@@ -11,19 +11,21 @@ import { calculationRequestSchema, insertFeedbackSchema } from "@shared/schema";
 
 const execFileAsync = promisify(execFile);
 
-// XAI API disabled - using null API key
+// XAI API - re-enabled for Elliott Wave analysis
 const xai = new OpenAI({
   baseURL: "https://api.x.ai/v1",
-  apiKey: "" // process.env.XAI_API_KEY disabled
+  apiKey: process.env.XAI_API_KEY || ""
 });
 
-// Helper to check if XAI API key is configured - always returns false (disabled)
+// Helper to check if XAI API key is configured
 function checkXaiApiKey(): { configured: boolean; error?: string } {
-  // API key disabled - always return not configured
-  return {
-    configured: false,
-    error: "AI analysis is temporarily disabled. API configuration required."
-  };
+  if (!process.env.XAI_API_KEY) {
+    return {
+      configured: false,
+      error: "AI analysis requires XAI_API_KEY to be configured."
+    };
+  }
+  return { configured: true };
 }
 
 // In-memory cache for market analysis (15 min TTL)
@@ -416,12 +418,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const to = Math.floor(Date.now() / 1000);
       const from = to - (30 * 24 * 60 * 60); // 30 days ago
       
-      // API key disabled - feature not available
-      const apiKey = null; // process.env.COINALYZE_API_KEY;
+      // Coinalyze API re-enabled
+      const apiKey = process.env.COINALYZE_API_KEY;
       if (!apiKey) {
         return res.status(503).json({
-          error: 'Coinalyze API temporarily disabled',
-          message: 'This feature requires API configuration'
+          error: 'Coinalyze API not configured',
+          message: 'COINALYZE_API_KEY environment variable required'
         });
       }
       
@@ -518,11 +520,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const NUM_TIME_BUCKETS = 30;
       const candlesPerBucket = Math.floor(priceCandles.length / NUM_TIME_BUCKETS);
       
-      // Fetch Coinalyze liquidation data - API disabled
+      // Fetch Coinalyze liquidation data - re-enabled
       const coinalyzeSymbol = `${binanceSymbol}_PERP.A`;
       const to = Math.floor(Date.now() / 1000);
       const from = to - (30 * 24 * 60 * 60);
-      const apiKey = null; // process.env.COINALYZE_API_KEY;
+      const apiKey = process.env.COINALYZE_API_KEY;
       
       let liquidations: any[] = [];
       if (apiKey) {
@@ -656,8 +658,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const orderbookColumn: number[] = Array(NUM_PRICE_BANDS).fill(0);
       
       try {
-        // API disabled - feature not available
-        const coinglassApiKey = null; // process.env.COINGLASS_API_KEY;
+        // CoinGlass API re-enabled
+        const coinglassApiKey = process.env.COINGLASS_API_KEY;
         if (coinglassApiKey) {
           const coinglassSymbol = symbol.replace('USDT', ''); // BTC, ETH, etc.
           const orderbookUrl = `https://open-api-v4.coinglass.com/api/futures/orderbook/aggregated-ask-bids-history?exchange_list=Binance&symbol=${coinglassSymbol}&interval=4h&range=2&limit=30`;
@@ -815,12 +817,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // API disabled - feature not available
-      const apiKey = null; // process.env.COINGLASS_API_KEY;
+      // CoinGlass API re-enabled
+      const apiKey = process.env.COINGLASS_API_KEY;
       if (!apiKey) {
         return res.status(503).json({
-          error: 'CoinGlass API temporarily disabled',
-          message: 'Liquidation history feature requires API configuration'
+          error: 'CoinGlass API not configured',
+          message: 'COINGLASS_API_KEY environment variable required'
         });
       }
 
@@ -890,12 +892,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // API disabled - feature not available
-      const apiKey = null; // process.env.COINGLASS_API_KEY;
+      // CoinGlass API re-enabled
+      const apiKey = process.env.COINGLASS_API_KEY;
       if (!apiKey) {
         return res.status(503).json({
-          error: 'CoinGlass API temporarily disabled',
-          message: 'Orderbook feature requires API configuration'
+          error: 'CoinGlass API not configured',
+          message: 'COINGLASS_API_KEY environment variable required'
         });
       }
 
@@ -1045,12 +1047,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // API disabled - feature not available
-      const apiKey = null; // process.env.COINALYZE_API_KEY;
+      // Coinalyze API re-enabled
+      const apiKey = process.env.COINALYZE_API_KEY;
       if (!apiKey) {
         return res.status(503).json({
-          error: 'Coinalyze API temporarily disabled',
-          message: 'Open Interest feature requires API configuration'
+          error: 'Coinalyze API not configured',
+          message: 'COINALYZE_API_KEY environment variable required'
         });
       }
 
@@ -1130,12 +1132,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // API disabled - feature not available
-      const apiKey = null; // process.env.COINALYZE_API_KEY;
+      // Coinalyze API re-enabled
+      const apiKey = process.env.COINALYZE_API_KEY;
       if (!apiKey) {
         return res.status(503).json({
-          error: 'Coinalyze API temporarily disabled',
-          message: 'Funding Rate feature requires API configuration'
+          error: 'Coinalyze API not configured',
+          message: 'COINALYZE_API_KEY environment variable required'
         });
       }
 
@@ -1215,12 +1217,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // API disabled - feature not available
-      const apiKey = null; // process.env.COINALYZE_API_KEY;
+      // Coinalyze API re-enabled
+      const apiKey = process.env.COINALYZE_API_KEY;
       if (!apiKey) {
         return res.status(503).json({
-          error: 'Coinalyze API temporarily disabled',
-          message: 'Long/Short Ratio feature requires API configuration'
+          error: 'Coinalyze API not configured',
+          message: 'COINALYZE_API_KEY environment variable required'
         });
       }
 
@@ -2097,12 +2099,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ ...cached.data, cached: true });
       }
 
-      // API disabled - feature not available
-      const apiKey = null; // process.env.COINGLASS_API_KEY;
+      // CoinGlass API re-enabled
+      const apiKey = process.env.COINGLASS_API_KEY;
       if (!apiKey) {
         return res.status(503).json({
-          error: 'CoinGlass API temporarily disabled',
-          message: 'Liquidation map feature requires API configuration'
+          error: 'CoinGlass API not configured',
+          message: 'COINGLASS_API_KEY environment variable required'
         });
       }
 
@@ -3366,12 +3368,12 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
 
     const webpush = await import('web-push');
     
-    // VAPID keys disabled - push notifications not available
-    const publicVapid = null; // process.env.PUBLIC_VAPID_KEY;
-    const privateVapid = null; // process.env.PRIVATE_VAPID_KEY;
+    // VAPID keys re-enabled for push notifications
+    const publicVapid = process.env.PUBLIC_VAPID_KEY;
+    const privateVapid = process.env.PRIVATE_VAPID_KEY;
     
     if (!publicVapid || !privateVapid) {
-      console.log('📭 Push notifications temporarily disabled - API configuration required');
+      console.log('📭 Push notifications require VAPID keys - PUBLIC_VAPID_KEY and PRIVATE_VAPID_KEY');
       return;
     }
     
