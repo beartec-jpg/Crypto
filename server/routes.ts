@@ -11,20 +11,23 @@ import { calculationRequestSchema, insertFeedbackSchema } from "@shared/schema";
 
 const execFileAsync = promisify(execFile);
 
-// XAI API disabled - using null API key
+// XAI API configured to use Vercel secret
 const xai = new OpenAI({
   baseURL: "https://api.x.ai/v1",
   apiKey: process.env.XAI_API_KEY // NOW USING THE SECRET
 });
 
-// Helper to check if XAI API key is configured - always returns false (disabled)
+// Helper to check if XAI API key is configured
 function checkXaiApiKey(): { configured: boolean; error?: string } {
-  // API key disabled - always return not configured
-  return {
-    configured: false,
-    error: "AI analysis is temporarily disabled. API configuration required."
-  };
+  if (!process.env.XAI_API_KEY) {
+    return {
+      configured: false,
+      error: "AI analysis is temporarily disabled. API configuration required."
+    };
+  }
+  return { configured: true };
 }
+
 
 // In-memory cache for market analysis (15 min TTL)
 interface AnalysisCache {
@@ -148,6 +151,7 @@ function initBybitLiquidationStream(symbol: string) {
     }));
     
     // Bybit requires ping every 20 seconds to keep connection alive
+  
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ op: 'ping' }));
