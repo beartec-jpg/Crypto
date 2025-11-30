@@ -24,7 +24,6 @@
       <button class="button" onclick="window.location.href='/dashboard'">Push to Enter Crypto</button>
     </div>
     <script>
-      // Optional: API call to backend on button click
       document.querySelector('.button').addEventListener('click', () => {
         fetch('/api/analyze-wave')
           .then(res => res.json())

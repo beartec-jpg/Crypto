@@ -11,10 +11,10 @@ import { calculationRequestSchema, insertFeedbackSchema } from "@shared/schema";
 
 const execFileAsync = promisify(execFile);
 
-// XAI API - re-enabled for Elliott Wave analysis
+// XAI API configured to use Vercel secret
 const xai = new OpenAI({
   baseURL: "https://api.x.ai/v1",
-  apiKey: process.env.XAI_API_KEY || ""
+  apiKey: process.env.XAI_API_KEY // NOW USING THE SECRET
 });
 
 // Helper to check if XAI API key is configured
@@ -27,6 +27,7 @@ function checkXaiApiKey(): { configured: boolean; error?: string } {
   }
   return { configured: true };
 }
+
 
 // In-memory cache for market analysis (15 min TTL)
 interface AnalysisCache {
@@ -150,6 +151,7 @@ function initBybitLiquidationStream(symbol: string) {
     }));
     
     // Bybit requires ping every 20 seconds to keep connection alive
+  
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ op: 'ping' }));
@@ -481,6 +483,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Liquidation Grid Data (30×30 grid for heatmap visualization)
+  const apiKey = process.env.COINALYZE_API_KEY; // Enable key check
+
+if (!apiKey) {
+  console.log('Coinalyze API key missing, skipping liquidation grid data.');
+  // Return with an empty liquidations array so the rest of the app doesn't crash
+  return res.json({ liquidations: [] });
+}
+  
   app.get("/api/crypto/liquidations/grid", async (req, res) => {
     try {
       const symbol = (req.query.symbol as string)?.toUpperCase() || 'XRPUSDT';
@@ -891,7 +901,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           cacheAge: Math.floor((Date.now() - cached.timestamp) / 1000 / 60)
         });
       }
-
       // CoinGlass API re-enabled
       const apiKey = process.env.COINGLASS_API_KEY;
       if (!apiKey) {
