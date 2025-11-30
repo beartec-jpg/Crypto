@@ -13,7 +13,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["shared/*"],
+      "@/*": ["client/src/*"],
+      "@assets/*": ["attached_assets/*"]
+    }
   },
-  "include": ["client/src"]
+  "include": ["client/src", "server", "shared"]
 }

@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const projects = pgTable("projects", {
@@ -90,38 +89,78 @@ const optionalNumeric = z.union([
   z.undefined()
 ]).optional();
 
-// Insert schemas
-export const insertProjectSchema = createInsertSchema(projects).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-}).extend({
+// Insert schemas - manually defined without drizzle-zod
+export const insertProjectSchema = z.object({
+  reference: z.string(),
+  engineerName: z.string(),
+  installationType: z.string(),
   maxOperatingPressure: optionalNumeric,
   maxIncidentalPressure: optionalNumeric,
+  gasType: z.string().optional().default("Natural Gas"),
+  operationType: z.string().optional().default("Purge"),
+  purgeMethod: z.string().optional().nullable(),
   safetyFactor: optionalNumeric,
   gasMeterPurgeVolume: optionalNumeric,
+  zoneType: z.string().optional().nullable(),
+  gaugeType: z.string().optional().nullable(),
+  testMedium: z.string().optional().nullable(),
   testPressure: optionalNumeric,
   stabilizationTime: optionalNumeric,
   maxPressureDropPercent: optionalNumeric,
   roomVolume: optionalNumeric,
   actualPressureDrop: optionalNumeric,
+  testResult: z.string().optional().nullable(),
   actualLeakageRate: optionalNumeric,
   mplr: optionalNumeric,
   actualFlowRate: optionalNumeric,
   actualGasContent: optionalNumeric,
+  purgeResult: z.string().optional().nullable(),
 });
 
-export const insertPipeConfigurationSchema = createInsertSchema(pipeConfigurations).omit({
-  id: true,
+export const insertPipeConfigurationSchema = z.object({
+  projectId: z.string(),
+  nominalSize: z.string(),
+  length: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
+  fittingsQuantity: z.number().int().optional().default(0),
+  internalDiameter: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
+  volume: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
 });
 
-export const insertMeterConfigurationSchema = createInsertSchema(meterConfigurations).omit({
-  id: true,
+export const insertMeterConfigurationSchema = z.object({
+  projectId: z.string(),
+  meterType: z.string(),
+  quantity: z.number().int().optional().default(1),
+  internalVolume: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
+  cyclicVolume: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
+  totalInternalVolume: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
+  totalCyclicVolume: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
 });
 
-export const insertCalculationSchema = createInsertSchema(calculations).omit({
-  id: true,
-  calculatedAt: true,
+export const insertCalculationSchema = z.object({
+  projectId: z.string(),
+  totalPipeVolume: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
+  totalFittingsVolume: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
+  totalMeterVolume: z.union([z.string(), z.number()]).optional().nullable(),
+  totalMeterCyclicVolume: z.union([z.string(), z.number()]).optional().nullable(),
+  totalSystemVolume: z.union([z.string(), z.number()]).transform((val) => typeof val === 'string' ? val : String(val)),
+  gasMeterPurgeVolume: z.union([z.string(), z.number()]).optional().nullable(),
+  requiredPurgeVolume: z.union([z.string(), z.number()]).optional().nullable(),
+  minimumFlowRate: z.union([z.string(), z.number()]).optional().nullable(),
+  maximumPurgeTime: z.string().optional().nullable(),
+  maximumPurgeTimeSeconds: z.number().int().optional().nullable(),
+  testPressure: z.union([z.string(), z.number()]).optional().nullable(),
+  testDuration: z.string().optional().nullable(),
+  testDurationSeconds: z.number().int().optional().nullable(),
+  maxPressureDrop: z.union([z.string(), z.number()]).optional().nullable(),
+  stabilizationTime: z.number().int().optional().nullable(),
+  maxPressureDropPercent: z.union([z.string(), z.number()]).optional().nullable(),
+  actualPressureDrop: z.union([z.string(), z.number()]).optional().nullable(),
+  testResult: z.string().optional().nullable(),
+  actualLeakageRate: z.union([z.string(), z.number()]).optional().nullable(),
+  mplr: z.union([z.string(), z.number()]).optional().nullable(),
+  largestPipeDiameter: z.union([z.string(), z.number()]).optional().nullable(),
+  isCompliant: z.boolean().optional().default(true),
+  complianceNotes: z.any().optional().nullable(),
 });
 
 // Calculation request schema
@@ -212,16 +251,38 @@ export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
 // Company branding types
-export const insertCompanyBrandingSchema = createInsertSchema(companyBranding).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertCompanyBrandingSchema = z.object({
+  userId: z.string(),
+  companyName: z.string(),
+  companyAddress: z.string().optional().nullable(),
+  companyPhone: z.string().optional().nullable(),
+  companyEmail: z.string().optional().nullable(),
+  companyWebsite: z.string().optional().nullable(),
+  logoUrl: z.string().optional().nullable(),
+  headerLogoUrl: z.string().optional().nullable(),
+  footerText: z.string().optional().nullable(),
+  primaryColor: z.string().optional().default("#2563eb"),
+  secondaryColor: z.string().optional().default("#64748b"),
+  engineerName: z.string().optional().nullable(),
+  gasSafeNumber: z.string().optional().nullable(),
+  engineerSignatureUrl: z.string().optional().nullable(),
+  isActive: z.boolean().optional().default(true),
 });
 export type InsertCompanyBranding = z.infer<typeof insertCompanyBrandingSchema>;
 export type CompanyBranding = typeof companyBranding.$inferSelect;
 
 // Subscription schemas
-export const insertUserSchema = createInsertSchema(users);
+export const insertUserSchema = z.object({
+  id: z.string().optional(),
+  email: z.string().optional().nullable(),
+  firstName: z.string().optional().nullable(),
+  lastName: z.string().optional().nullable(),
+  profileImageUrl: z.string().optional().nullable(),
+  stripeCustomerId: z.string().optional().nullable(),
+  stripeSubscriptionId: z.string().optional().nullable(),
+  subscriptionTier: z.string().optional().default("free"),
+  subscriptionStatus: z.string().optional().default("active"),
+});
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
 // Job section counter table
@@ -244,9 +305,10 @@ export const feedback = pgTable("feedback", {
 });
 
 // Feedback schemas
-export const insertFeedbackSchema = createInsertSchema(feedback).omit({
-  id: true,
-  createdAt: true,
+export const insertFeedbackSchema = z.object({
+  userId: z.string().optional().nullable(),
+  rating: z.number().int().min(1).max(5),
+  comment: z.string(),
 });
 
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
@@ -289,10 +351,21 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertCryptoSubscriptionSchema = createInsertSchema(cryptoSubscriptions).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertCryptoSubscriptionSchema = z.object({
+  userId: z.string(),
+  tier: z.string().optional().default("free"),
+  selectedTickers: z.array(z.string()).optional().default([]),
+  alertGrades: z.array(z.string()).optional().default(['A+', 'A']),
+  alertTimeframes: z.array(z.string()).optional().default(['15m', '1h', '4h']),
+  alertTypes: z.array(z.string()).optional().default(['bos', 'choch', 'fvg', 'liquidation']),
+  alertsEnabled: z.boolean().optional().default(false),
+  aiCredits: z.number().int().optional().default(0),
+  aiCreditsResetAt: z.date().optional().nullable(),
+  autoRefreshInterval: z.number().int().optional().nullable(),
+  pushSubscription: z.any().optional().nullable(),
+  stripeSubscriptionId: z.string().optional().nullable(),
+  subscriptionStatus: z.string().optional().default("active"),
+  expiresAt: z.date().optional().nullable(),
 });
 
 export type InsertCryptoSubscription = z.infer<typeof insertCryptoSubscriptionSchema>;
@@ -322,10 +395,11 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   lastUsedAt: timestamp("last_used_at").defaultNow(),
 });
 
-export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({
-  id: true,
-  createdAt: true,
-  lastUsedAt: true,
+export const insertPushSubscriptionSchema = z.object({
+  endpoint: z.string(),
+  p256dh: z.string(),
+  auth: z.string(),
+  userId: z.string().optional().nullable(),
 });
 
 export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
@@ -352,10 +426,21 @@ export const trackedTrades = pgTable("tracked_trades", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertTrackedTradeSchema = createInsertSchema(trackedTrades).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertTrackedTradeSchema = z.object({
+  userId: z.string(),
+  symbol: z.string(),
+  direction: z.string(),
+  grade: z.string(),
+  entry: z.union([z.string(), z.number()]).transform((val) => String(val)),
+  stopLoss: z.union([z.string(), z.number()]).transform((val) => String(val)),
+  targets: z.array(z.string()),
+  status: z.string().optional().default("pending"),
+  confluenceSignals: z.array(z.string()).optional().default([]),
+  reasoning: z.string().optional().nullable(),
+  entryHitAt: z.date().optional().nullable(),
+  slHitAt: z.date().optional().nullable(),
+  tpHitAt: z.date().optional().nullable(),
+  tpHitLevel: z.number().int().optional().nullable(),
 });
 
 export type InsertTrackedTrade = z.infer<typeof insertTrackedTradeSchema>;
@@ -374,9 +459,14 @@ export const indicatorAlertState = pgTable("indicator_alert_state", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertIndicatorAlertStateSchema = createInsertSchema(indicatorAlertState).omit({
-  id: true,
-  updatedAt: true,
+export const insertIndicatorAlertStateSchema = z.object({
+  userId: z.string(),
+  symbol: z.string(),
+  timeframe: z.string(),
+  lastCci: z.union([z.string(), z.number()]).optional().nullable(),
+  lastAdx: z.union([z.string(), z.number()]).optional().nullable(),
+  lastPlusDi: z.union([z.string(), z.number()]).optional().nullable(),
+  lastMinusDi: z.union([z.string(), z.number()]).optional().nullable(),
 });
 
 export type InsertIndicatorAlertState = z.infer<typeof insertIndicatorAlertStateSchema>;
@@ -490,10 +580,19 @@ export const elliottWaveLabels = pgTable("elliott_wave_labels", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertElliottWaveLabelSchema = createInsertSchema(elliottWaveLabels).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertElliottWaveLabelSchema = z.object({
+  userId: z.string(),
+  symbol: z.string(),
+  timeframe: z.string(),
+  degree: z.string(),
+  patternType: z.string(),
+  points: z.array(wavePointSchema),
+  fibMode: z.string().optional().default("measured"),
+  validationStatus: z.string().optional().default("valid"),
+  validationErrors: z.array(z.string()).optional().default([]),
+  isAutoGenerated: z.boolean().optional().default(false),
+  isConfirmed: z.boolean().optional().default(false),
+  metadata: z.any().optional().nullable(),
 });
 
 export type InsertElliottWaveLabel = z.infer<typeof insertElliottWaveLabelSchema>;
@@ -519,10 +618,20 @@ export const cachedCandles = pgTable("cached_candles", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertCachedCandlesSchema = createInsertSchema(cachedCandles).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertCachedCandlesSchema = z.object({
+  symbol: z.string(),
+  timeframe: z.string(),
+  startTime: z.date(),
+  endTime: z.date(),
+  candles: z.array(z.object({
+    time: z.number(),
+    open: z.number(),
+    high: z.number(),
+    low: z.number(),
+    close: z.number(),
+    volume: z.number(),
+  })),
+  candleCount: z.number().int(),
 });
 
 export type InsertCachedCandles = z.infer<typeof insertCachedCandlesSchema>;
