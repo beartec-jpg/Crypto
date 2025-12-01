@@ -2,6 +2,10 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/api/binance/klines",
+      "destination": "/api/binance/klines"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api"
     },

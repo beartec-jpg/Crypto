@@ -33,15 +33,27 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  await registerRoutes(app);
-  console.log("✅ Vercel serverless API ready - open access mode");
-})();
-
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   const status = err.status || err.statusCode || 500;
   const message = err.message || "Internal Server Error";
   res.status(status).json({ message });
 });
 
-export default app;
+let routesRegistered = false;
+let routesPromise: Promise<void> | null = null;
+
+async function ensureRoutesRegistered() {
+  if (routesRegistered) return;
+  if (!routesPromise) {
+    routesPromise = registerRoutes(app).then(() => {
+      routesRegistered = true;
+      console.log("✅ Vercel serverless API ready - open access mode");
+    });
+  }
+  await routesPromise;
+}
+
+export default async function handler(req: Request, res: Response) {
+  await ensureRoutesRegistered();
+  return app(req, res);
+}
