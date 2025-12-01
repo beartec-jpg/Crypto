@@ -1,51 +1,15 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/**/*.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
+  "framework": null,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs20.x"
     }
-  ],
-  "routes": [
-    {
-      "src": "/api/binance/klines",
-      "dest": "/api/binance/klines.ts"
-    },
-    {
-      "src": "/api/crypto/data",
-      "dest": "/api/crypto/data.ts"
-    },
-    {
-      "src": "/api/crypto/market-structure",
-      "dest": "/api/crypto/market-structure.ts"
-    },
-    {
-      "src": "/api/crypto/orderflow",
-      "dest": "/api/crypto/orderflow.ts"
-    },
-    {
-      "src": "/api/crypto/multi-exchange-orderflow",
-      "dest": "/api/crypto/multi-exchange-orderflow.ts"
-    },
-    {
-      "src": "/api/crypto/market-analysis",
-      "dest": "/api/crypto/market-analysis.ts"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.ts"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/$1"
-    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
     {
