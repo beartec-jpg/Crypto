@@ -25,8 +25,12 @@
       "destination": "/api/crypto/orderflow"
     },
     {
-      "source": "/api/(.*)",
-      "destination": "/api"
+      "source": "/api/crypto/multi-exchange-orderflow",
+      "destination": "/api/crypto/multi-exchange-orderflow"
+    },
+    {
+      "source": "/api/crypto/market-analysis",
+      "destination": "/api/crypto/market-analysis"
     },
     {
       "source": "/(.*)",
