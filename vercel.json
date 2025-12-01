@@ -6,6 +6,18 @@
       "destination": "/api/binance/klines"
     },
     {
+      "source": "/api/crypto/data",
+      "destination": "/api/crypto/data"
+    },
+    {
+      "source": "/api/crypto/market-structure",
+      "destination": "/api/crypto/market-structure"
+    },
+    {
+      "source": "/api/orderflow",
+      "destination": "/api/orderflow"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api"
     },

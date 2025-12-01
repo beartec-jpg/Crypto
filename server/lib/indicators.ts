@@ -1,10 +1,15 @@
-interface CandleData {
+export interface CandleData {
   time: number;
   open: number;
   high: number;
   low: number;
   close: number;
   volume: number;
+}
+
+export interface IndicatorPoint {
+  time: number;
+  value: number;
 }
 
 export interface CCIValue {
@@ -126,6 +131,240 @@ export function calculateADX(
       plusDI: pdiValues[i],
       minusDI: mdiValues[i]
     });
+  }
+  
+  return result;
+}
+
+/**
+ * Calculate Simple Moving Average (SMA)
+ */
+export function calculateSMA(data: CandleData[], period: number): IndicatorPoint[] {
+  const result: IndicatorPoint[] = [];
+  
+  for (let i = period - 1; i < data.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < period; j++) {
+      sum += data[i - j].close;
+    }
+    result.push({
+      time: data[i].time,
+      value: sum / period
+    });
+  }
+  
+  return result;
+}
+
+/**
+ * Calculate Exponential Moving Average (EMA)
+ */
+export function calculateEMA(data: CandleData[], period: number): IndicatorPoint[] {
+  if (data.length < period) return [];
+  
+  const result: IndicatorPoint[] = [];
+  const multiplier = 2 / (period + 1);
+  
+  let sum = 0;
+  for (let i = 0; i < period; i++) {
+    sum += data[i].close;
+  }
+  let ema = sum / period;
+  result.push({ time: data[period - 1].time, value: ema });
+  
+  for (let i = period; i < data.length; i++) {
+    ema = (data[i].close - ema) * multiplier + ema;
+    result.push({ time: data[i].time, value: ema });
+  }
+  
+  return result;
+}
+
+/**
+ * Calculate Relative Strength Index (RSI)
+ */
+export function calculateRSI(data: CandleData[], period: number = 14): IndicatorPoint[] {
+  if (data.length < period + 1) return [];
+  
+  const result: IndicatorPoint[] = [];
+  const gains: number[] = [];
+  const losses: number[] = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    const change = data[i].close - data[i - 1].close;
+    gains.push(change > 0 ? change : 0);
+    losses.push(change < 0 ? -change : 0);
+  }
+  
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    avgGain += gains[i];
+    avgLoss += losses[i];
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  
+  let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+  let rsi = 100 - (100 / (1 + rs));
+  result.push({ time: data[period].time, value: rsi });
+  
+  for (let i = period; i < gains.length; i++) {
+    avgGain = (avgGain * (period - 1) + gains[i]) / period;
+    avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+    rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsi = 100 - (100 / (1 + rs));
+    result.push({ time: data[i + 1].time, value: rsi });
+  }
+  
+  return result;
+}
+
+/**
+ * Calculate MACD
+ */
+export function calculateMACD(
+  data: CandleData[],
+  fastPeriod: number = 12,
+  slowPeriod: number = 26,
+  signalPeriod: number = 9
+): { macd: IndicatorPoint[]; signal: IndicatorPoint[]; histogram: IndicatorPoint[] } {
+  const emaFast = calculateEMA(data, fastPeriod);
+  const emaSlow = calculateEMA(data, slowPeriod);
+  
+  if (emaFast.length === 0 || emaSlow.length === 0) {
+    return { macd: [], signal: [], histogram: [] };
+  }
+  
+  const offset = slowPeriod - fastPeriod;
+  const macdValues: IndicatorPoint[] = [];
+  
+  for (let i = 0; i < emaSlow.length; i++) {
+    const fastIdx = i + offset;
+    if (fastIdx < emaFast.length) {
+      macdValues.push({
+        time: emaSlow[i].time,
+        value: emaFast[fastIdx].value - emaSlow[i].value
+      });
+    }
+  }
+  
+  if (macdValues.length < signalPeriod) {
+    return { macd: macdValues, signal: [], histogram: [] };
+  }
+  
+  const signalData: CandleData[] = macdValues.map(m => ({
+    time: m.time, open: m.value, high: m.value, low: m.value, close: m.value, volume: 0
+  }));
+  
+  const signalRaw = calculateEMA(signalData, signalPeriod);
+  
+  const histogram: IndicatorPoint[] = [];
+  const signal: IndicatorPoint[] = [];
+  const macd: IndicatorPoint[] = [];
+  
+  for (let i = 0; i < signalRaw.length; i++) {
+    const idx = i + signalPeriod - 1;
+    if (idx < macdValues.length) {
+      macd.push(macdValues[idx]);
+      signal.push(signalRaw[i]);
+      histogram.push({
+        time: macdValues[idx].time,
+        value: macdValues[idx].value - signalRaw[i].value
+      });
+    }
+  }
+  
+  return { macd, signal, histogram };
+}
+
+/**
+ * Calculate Bollinger Bands
+ */
+export function calculateBollingerBands(
+  data: CandleData[],
+  period: number = 20,
+  stdDevMultiplier: number = 2
+): { upper: IndicatorPoint[]; middle: IndicatorPoint[]; lower: IndicatorPoint[] } {
+  const upper: IndicatorPoint[] = [];
+  const middle: IndicatorPoint[] = [];
+  const lower: IndicatorPoint[] = [];
+  
+  for (let i = period - 1; i < data.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < period; j++) {
+      sum += data[i - j].close;
+    }
+    const sma = sum / period;
+    
+    let sumSquaredDiff = 0;
+    for (let j = 0; j < period; j++) {
+      sumSquaredDiff += Math.pow(data[i - j].close - sma, 2);
+    }
+    const stdDev = Math.sqrt(sumSquaredDiff / period);
+    
+    middle.push({ time: data[i].time, value: sma });
+    upper.push({ time: data[i].time, value: sma + stdDev * stdDevMultiplier });
+    lower.push({ time: data[i].time, value: sma - stdDev * stdDevMultiplier });
+  }
+  
+  return { upper, middle, lower };
+}
+
+/**
+ * Calculate ATR
+ */
+export function calculateATR(data: CandleData[], period: number = 14): IndicatorPoint[] {
+  if (data.length < period) return [];
+  
+  const result: IndicatorPoint[] = [];
+  const trueRanges: number[] = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i === 0) {
+      trueRanges.push(data[i].high - data[i].low);
+    } else {
+      const highLow = data[i].high - data[i].low;
+      const highClose = Math.abs(data[i].high - data[i - 1].close);
+      const lowClose = Math.abs(data[i].low - data[i - 1].close);
+      trueRanges.push(Math.max(highLow, highClose, lowClose));
+    }
+  }
+  
+  let atr = 0;
+  for (let i = 0; i < period; i++) {
+    atr += trueRanges[i];
+  }
+  atr /= period;
+  result.push({ time: data[period - 1].time, value: atr });
+  
+  for (let i = period; i < data.length; i++) {
+    atr = (atr * (period - 1) + trueRanges[i]) / period;
+    result.push({ time: data[i].time, value: atr });
+  }
+  
+  return result;
+}
+
+/**
+ * Calculate VWAP
+ */
+export function calculateVWAP(data: CandleData[]): IndicatorPoint[] {
+  const result: IndicatorPoint[] = [];
+  let cumulativePV = 0;
+  let cumulativeVolume = 0;
+  
+  for (const candle of data) {
+    const typicalPrice = (candle.high + candle.low + candle.close) / 3;
+    cumulativePV += typicalPrice * candle.volume;
+    cumulativeVolume += candle.volume;
+    
+    if (cumulativeVolume > 0) {
+      result.push({
+        time: candle.time,
+        value: cumulativePV / cumulativeVolume
+      });
+    }
   }
   
   return result;
