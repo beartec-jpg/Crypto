@@ -6,7 +6,7 @@ import {
   calculateMACD,
   calculateBollingerBands,
   CandleData
-} from '../../server/lib/indicators';
+} from '../lib/indicators';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');

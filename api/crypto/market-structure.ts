@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { calculateATR, CandleData } from '../../server/lib/indicators';
+import { calculateATR, CandleData } from '../lib/indicators';
 
 interface SwingPoint {
   index: number;
