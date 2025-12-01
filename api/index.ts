@@ -1,59 +1,38 @@
-import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "../server/routes";
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-      console.log(logLine);
-    }
-  });
-
-  next();
-});
-
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  const status = err.status || err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
-  res.status(status).json({ message });
-});
-
-let routesRegistered = false;
-let routesPromise: Promise<void> | null = null;
-
-async function ensureRoutesRegistered() {
-  if (routesRegistered) return;
-  if (!routesPromise) {
-    routesPromise = registerRoutes(app).then(() => {
-      routesRegistered = true;
-      console.log("✅ Vercel serverless API ready - open access mode");
+  const path = req.url?.split('?')[0] || '';
+  
+  if (path === '/api/health' || path === '/api') {
+    return res.status(200).json({ 
+      status: 'ok', 
+      environment: 'vercel',
+      message: 'Vercel serverless API is running',
+      endpoints: [
+        '/api/crypto/data',
+        '/api/crypto/market-structure',
+        '/api/orderflow',
+        '/api/binance/klines'
+      ]
     });
   }
-  await routesPromise;
-}
 
-export default async function handler(req: Request, res: Response) {
-  await ensureRoutesRegistered();
-  return app(req, res);
+  return res.status(404).json({ 
+    error: 'Not found',
+    message: `Endpoint ${path} not found. Use dedicated endpoints for crypto analytics.`,
+    availableEndpoints: [
+      '/api/crypto/data - Technical indicators and price data',
+      '/api/crypto/market-structure - FVG, swing points, BOS/ChoCh',
+      '/api/orderflow - CVD, VWAP, volume profile',
+      '/api/binance/klines - Raw Binance kline data'
+    ]
+  });
 }
