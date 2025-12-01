@@ -14,8 +14,8 @@
       "destination": "/api/crypto/market-structure"
     },
     {
-      "source": "/api/orderflow",
-      "destination": "/api/orderflow"
+      "source": "/api/crypto/orderflow",
+      "destination": "/api/crypto/orderflow"
     },
     {
       "source": "/api/(.*)",
