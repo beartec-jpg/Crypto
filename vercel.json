@@ -1,47 +1,27 @@
 {
-  "framework": null,
+  "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "dist/public",
-  "functions": {
-    "api/**/*.ts": {
-      "runtime": "nodejs20.x",
-      "excludeFiles": "api/lib/**"
-    }
-  },
+  "cleanUrls": true,
+  "trailingSlash": false,
   "routes": [
     {
+      "src": "/api/binance/(.*)",
+      "dest": "/api/binance/$1.ts"
+    },
+    {
+      "src": "/api/crypto/(.*)",
+      "dest": "/api/crypto/$1.ts"
+    },
+    {
       "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/assets/(.*)",
-      "dest": "/assets/$1"
-    },
-    {
-      "src": "/favicon.ico",
-      "dest": "/favicon.ico"
-    },
-    {
-      "src": "/robots.txt",
-      "dest": "/robots.txt"
-    },
-    {
-      "src": "/sitemap.xml",
-      "dest": "/sitemap.xml"
-    },
-    {
-      "src": "/sw.js",
-      "dest": "/sw.js"
-    },
-    {
-      "src": "/beartec-logo.png",
-      "dest": "/beartec-logo.png"
+      "dest": "/api/$1.ts"
     },
     {
       "handle": "filesystem"
     },
     {
-      "src": "/(.*)",
+      "src": "/((?!api/).*)",
       "dest": "/index.html"
     }
   ],
@@ -52,6 +32,12 @@
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type,Authorization" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
       ]
     }
   ]
