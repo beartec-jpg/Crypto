@@ -238,8 +238,7 @@ function initBybitLiquidationStream(symbol: string) {
   bybitWsConnections.set(symbol, ws);
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  // No authentication required - open site
+export function registerRoutes(app: Express): void {  // No authentication required - open site
   
   // Pass-through middleware (no-op for open access)
   // Sets default user objects for routes that expect authenticated users
