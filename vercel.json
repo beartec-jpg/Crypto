@@ -1,11 +1,11 @@
 {
   "version": 2,
-  "buildCommand": "vite build",
+  "installCommand": "npm install --include=dev",
+  "buildCommand": "npx vite build --config ./vite.config.ts",
   "outputDirectory": "client/dist",
   "functions": {
     "api/**/*.ts": {
-      "runtime": "nodejs20.x",
-      "excludeFiles": "api/lib/**"
+      "runtime": "nodejs20.x"
     }
   },
   "routes": [
