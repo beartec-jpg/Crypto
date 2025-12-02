@@ -1,27 +1,23 @@
 {
   "version": 2,
   "buildCommand": "npm run build",
-  "outputDirectory": "dist/public",
-  "cleanUrls": true,
-  "trailingSlash": false,
+  "outputDirectory": "client/dist",
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs20.x",
+      "excludeFiles": "api/lib/**"
+    }
+  },
   "routes": [
     {
-      "src": "/api/binance/(.*)",
-      "dest": "/api/binance/$1.ts"
-    },
-    {
-      "src": "/api/crypto/(.*)",
-      "dest": "/api/crypto/$1.ts"
-    },
-    {
       "src": "/api/(.*)",
-      "dest": "/api/$1.ts"
+      "dest": "/api/$1"
     },
     {
       "handle": "filesystem"
     },
     {
-      "src": "/((?!api/).*)",
+      "src": "/(.*)",
       "dest": "/index.html"
     }
   ],
@@ -32,12 +28,6 @@
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type,Authorization" }
-      ]
-    },
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" }
       ]
     }
   ]
