@@ -1,6 +1,10 @@
 {
   "version": 2,
   "functions": {
+    "server/index.js": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 60
+    },
     "api/**/*.ts": {
       "runtime": "nodejs20.x"
     }
@@ -8,7 +12,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "destination": "/server/index.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
