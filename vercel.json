@@ -1,12 +1,19 @@
 {
   "version": 2,
-  "build": {
-    "src": "package.json",
-    "use": "@vercel/static-build",
-    "config": { "distDir": "client/dist" }
-  },
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "client/dist"
+      }
+    }
+  ],
   "functions": {
-    "server/index.js": { "runtime": "nodejs20.x", "maxDuration": 60 }
+    "server/index.js": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 60
+    }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/server/index.js" },
