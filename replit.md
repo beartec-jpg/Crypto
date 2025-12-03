@@ -53,7 +53,16 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
 - **Required Environment Variables in Vercel**:
   - `XAI_API_KEY` - Required for AI market analysis features
   - `DATABASE_URL` - PostgreSQL connection string
+  - `COINGLASS_API_KEY` - For predicted liquidation data
+  - `COINALYZE_API_KEY` - Fallback for liquidation data
+  - `PUBLIC_VAPID_KEY` / `PRIVATE_VAPID_KEY` - Push notifications
 - **Serverless Functions**: Located in `/api` folder for Vercel serverless deployment
+  - `api/crypto/liquidations/realtime.ts` - Fetches real liquidation data from Binance/Bybit REST APIs
+  - `api/crypto/liquidations/predicted.ts` - Fetches predicted liquidation zones from Coinglass/Coinalyze
+  - `api/crypto/my-subscription.ts` - Returns open-access elite tier (hardcoded)
+  - `api/crypto/market-structure.ts` - Market structure analysis
+  - `api/crypto/multi-exchange-orderflow.ts` - Multi-exchange orderflow data
+  - `api/binance/klines.ts` - Candlestick data from Binance
 
 ## UI/UX and Features
 - **Gas Purging Calculators**: Industrial and Commercial calculators for new and existing installations, covering strength, tightness, and purge tests based on IGE/UP/1 standards.
