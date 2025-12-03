@@ -1,0 +1,149 @@
+Deployment Details
+
+Build Failed
+
+Command "npm run build" exited with 2
+
+Created
+
+￼beartec-48701m ago
+
+Status
+
+ErrorLatest
+
+Duration
+
+45s55s ago
+
+Environment
+
+Production
+
+Domains
+
+crypto-184k7p8ia-bear-tec.vercel.app
+
+Source
+
+main
+
+fb6ffc6Saved progress at the end of the loop
+
+Deployment Settings
+
+2 Recommendations
+
+Build Logs
+
+45s
+
+1 line selected
+
+CtrlF
+
+server/routes.ts(3741,80): error TS2554: Expected 0 arguments, but got 1.
+
+server/routes.ts(3857,68): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(3857,73): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(3909,67): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(3909,72): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(3928,75): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(3928,80): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(3951,73): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(3951,78): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(3988,74): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(3988,79): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4016,84): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4016,89): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4023,28): error TS6133: 'inArray' is declared but its value is never read.
+
+server/routes.ts(4046,49): error TS6133: 'req' is declared but its value is never read.
+
+server/routes.ts(4046,49): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4046,54): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4051,41): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4051,46): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4086,90): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4086,95): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4109,91): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4109,96): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4125,9): error TS2353: Object literal may only specify known properties, and 'isComplete' does not exist in type '{ symbol: string; points: { label: string; time: number; price: number; index: number; isCorrection: boolean; }[]; userId: string; timeframe: string; degree: string; patternType: string; fibMode: string; ... 4 more ...; metadata?: any; }'.
+
+server/routes.ts(4139,96): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4139,101): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4144,32): error TS6133: 'getWaveLabels' is declared but its value is never read.
+
+server/routes.ts(4167,97): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4167,102): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4193,112): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4193,117): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4208,92): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4208,97): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4227,97): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4227,102): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4267,95): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4267,100): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4305,93): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4305,98): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4307,36): error TS6133: 'isLeading' is declared but its value is never read.
+
+server/routes.ts(4343,54): error TS6133: 'req' is declared but its value is never read.
+
+server/routes.ts(4343,54): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4343,59): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4354,87): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4354,92): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4384,75): error TS7006: Parameter 'req' implicitly has an 'any' type.
+
+server/routes.ts(4384,80): error TS7006: Parameter 'res' implicitly has an 'any' type.
+
+server/routes.ts(4412,35): error TS1308: 'await' expressions are only allowed within async functions and at the top levels of modules.
+
+server/routes.ts(4416,3): error TS2322: Type 'Server<typeof IncomingMessage, typeof ServerResponse>' is not assignable to type 'void'.
+
+server/services/binanceOrderflow.ts(1,23): error TS2307: Cannot find module 'ws' or its corresponding type declarations.
+
+server/services/binanceOrderflow.ts(129,26): error TS7006: Parameter 'error' implicitly has an 'any' type.
+
+server/services/calculationService.ts(1,35): error TS6196: 'CalculationResult' is declared but never used.
+
+server/services/elliottWaveService.ts(259,7): error TS6133: 'IDEAL_FIB_RATIOS' is declared but its value is never read.

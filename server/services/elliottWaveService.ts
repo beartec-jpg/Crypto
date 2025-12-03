@@ -256,7 +256,7 @@ const FIBONACCI_RULES: Record<string, FibRule> = {
 };
 
 // Legacy compatibility - keep old format
-const IDEAL_FIB_RATIOS = {
+const _IDEAL_FIB_RATIOS = {
   wave2: [0.382, 0.5, 0.618],
   wave3: [1.618, 2.0, 2.618],
   wave4: [0.236, 0.382, 0.5],
@@ -264,6 +264,7 @@ const IDEAL_FIB_RATIOS = {
   waveB: [0.382, 0.5, 0.618, 0.786],
   waveC: [0.618, 1.0, 1.272, 1.618],
 };
+void _IDEAL_FIB_RATIOS;
 
 export function validateImpulseWave(points: WavePoint[]): ValidationResult {
   const errors: string[] = [];

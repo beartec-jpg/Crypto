@@ -4,8 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building, Wrench, TestTube, Gauge, Wind, Settings, Play, FileDown, ClipboardList, Flame, Shield, CheckCircle, Clock, AlertTriangle, ExternalLink, ArrowRight, ArrowLeft, RotateCcw, FileText } from "lucide-react";
-import { UserHeader } from "@/components/UserHeader";
+import { Building, Wrench, TestTube, Gauge, Wind, Settings, Play, FileDown, ClipboardList, Shield, CheckCircle, AlertTriangle, ExternalLink, ArrowRight, FileText } from "lucide-react";
+import { UserHeader as _UserHeader } from "@/components/UserHeader";
 import { Stopwatch } from "@/components/Stopwatch";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +38,8 @@ const PIPE_VOLUMES = {
     "67": { label: "67mm", volume: 0.0033 },
   }
 };
+
+const COMMERCIAL_PIPE_VOLUMES = PIPE_VOLUMES;
 
 const METER_VOLUMES = {
   "none": { internal: 0, label: "No Meter" },
@@ -157,7 +159,7 @@ export default function CommercialCalculatorFlow() {
 
   // Clear all form data
   // Render just the pipe configuration section
-  const renderPipeConfigSection = () => (
+  const _renderPipeConfigSection = () => (
     <div className="max-w-2xl mx-auto space-y-6">
       <Card>
         <CardHeader>
@@ -313,7 +315,7 @@ export default function CommercialCalculatorFlow() {
 
 
   // Render test equipment configuration step
-  const renderTestEquipmentConfig = () => {
+  const _renderTestEquipmentConfig = () => {
     // Block access if over 1m³ limit
     if (ivBreakdown && ivBreakdown.totalIV > 1.0) {
       return renderIVLimitCheck();
@@ -430,7 +432,7 @@ export default function CommercialCalculatorFlow() {
     if (purgeResult) saveTestResultToPersistent('purge', purgeResult);
   };
   
-  const clearAllData = () => {
+  const _clearAllData = () => {
     // Save current results before clearing
     saveAllCurrentResults();
     
@@ -478,7 +480,7 @@ export default function CommercialCalculatorFlow() {
   const [tightnessResult, setTightnessResult] = useState<TestResult | null>(null);
   const [purgeResult, setPurgeResult] = useState<any>(null);
   const [installationVolume, setInstallationVolume] = useState(0);
-  const [strengthTestDuration, setStrengthTestDuration] = useState(300); // 5 minutes
+  const [_strengthTestDuration, _setStrengthTestDuration] = useState(300); // 5 minutes
   const [tightnessTestDuration, setTightnessTestDuration] = useState(120); // Will be calculated
   const [letByTestDuration, setLetByTestDuration] = useState(120); // Will be calculated based on IV
   const [letByResult, setLetByResult] = useState<TestResult | null>(null);
@@ -564,7 +566,7 @@ export default function CommercialCalculatorFlow() {
     }
 
     const meter = COMMERCIAL_METER_VOLUMES[meterType as keyof typeof COMMERCIAL_METER_VOLUMES];
-    const meterVolume = meter ? meter.internal : 0;
+    const meterVolume = typeof meter === 'number' ? meter : 0;
     
     // Add 10% to pipe volume, then add meter volume
     const pipeVolumeWith10Percent = totalPipeVolume * 1.1;
@@ -2895,9 +2897,8 @@ export default function CommercialCalculatorFlow() {
         </Card>
       </div>
     );
-  };
 
-  const renderStrengthSection = () => (
+  const _renderStrengthSection = () => (
     <Card data-auto-scroll="true">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
@@ -2964,7 +2965,7 @@ export default function CommercialCalculatorFlow() {
     </Card>
   );
 
-  const renderTightnessSection = () => (
+  const _renderTightnessSection = () => (
     <Card data-auto-scroll="true">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
@@ -3114,3 +3115,27 @@ export default function CommercialCalculatorFlow() {
       </Card>
     );
   };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto p-6 max-w-4xl">
+        {currentStep === "job-details" && renderJobDetails()}
+        {currentStep === "installation-type" && renderInstallationTypeSelection()}
+        {currentStep === "test-selection" && renderTestSelection()}
+        {currentStep === "strength-setup" && renderStrengthSetup()}
+        {currentStep === "strength-timer" && renderStrengthTimer()}
+        {currentStep === "strength-reading" && renderStrengthReading()}
+        {currentStep === "strength-result" && renderStrengthResult()}
+        {currentStep === "tightness-setup" && renderTightnessSetup()}
+        {currentStep === "tightness-config" && renderTightnessSetup()}
+        {currentStep === "let-by-timer" && renderLetByTimer()}
+        {currentStep === "let-by-reading" && renderLetByReading()}
+        {currentStep === "tightness-timer" && renderTightnessTimer()}
+        {currentStep === "tightness-reading" && renderTightnessReading()}
+        {currentStep === "tightness-result" && renderTightnessResult()}
+        {currentStep === "purge-selection" && renderPurgeSelection()}
+        {currentStep === "purge-setup" && renderPurgeSetup()}
+      </div>
+    </div>
+  );
+}

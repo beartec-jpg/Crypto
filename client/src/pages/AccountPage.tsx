@@ -2,7 +2,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Crown, Zap, User, Building, Trash2 } from "lucide-react";
+import { Crown, Zap, User, Trash2 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -51,7 +51,7 @@ function RefreshSubscriptionButton({ toast }: { toast: any }) {
 }
 
 
-function CancelSubscriptionButton({ currentTier, toast }: { currentTier: string; toast: any }) {
+function CancelSubscriptionButton({ currentTier: _currentTier, toast }: { currentTier: string; toast: any }) {
   const cancelMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/cancel-subscription", {});

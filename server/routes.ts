@@ -1,6 +1,16 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
 import { createServer, type Server } from "http";
-import { execFile, execSync } from "child_process";
+import { execFile } from "child_process";
+
+// Extend Express Request type to include custom properties
+declare global {
+  namespace Express {
+    interface Request {
+      user?: any;
+      cryptoUser?: any;
+    }
+  }
+}
 import { promisify } from "util";
 import path from "path";
 import OpenAI from "openai";
@@ -238,11 +248,11 @@ function initBybitLiquidationStream(symbol: string) {
   bybitWsConnections.set(symbol, ws);
 }
 
-export function registerRoutes(app: Express): void {  // No authentication required - open site
+export async function registerRoutes(app: Express): Promise<Server> {  // No authentication required - open site
   
   // Pass-through middleware (no-op for open access)
   // Sets default user objects for routes that expect authenticated users
-  const noAuth = (req: any, _res: any, next: any) => {
+  const noAuth: RequestHandler = (req: Request, _res: Response, next: NextFunction) => {
     // Set default user for calculator routes
     if (!req.user) {
       req.user = {
@@ -275,9 +285,20 @@ export function registerRoutes(app: Express): void {  // No authentication requi
   
   // Stub for removed subscription service - returns elite tier for all users
   const cryptoSubscriptionService = {
-    getUserSubscription: async () => ({ tier: 'elite', subscriptionStatus: 'active', aiCredits: 999999 }),
+    getUserSubscription: async (_userId?: string) => ({ 
+      tier: 'elite', 
+      subscriptionStatus: 'active', 
+      aiCredits: 999999,
+      selectedTickers: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT'],
+      alertGrades: ['A+', 'A', 'B', 'C', 'D', 'E'],
+      alertTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d'],
+      alertTypes: ['bos', 'choch', 'fvg', 'liquidation'],
+      alertsEnabled: true,
+      pushSubscription: null,
+      hasUnlimitedCredits: true,
+    }),
     createCheckoutSession: async () => ({ url: null }),
-    handleWebhookEvent: async () => ({}),
+    handleWebhookEvent: async (_event: any, _signature: string) => ({}),
     cancelSubscription: async () => ({}),
     setDefaultTier: async () => ({}),
     getDefaultTier: () => 'elite',
@@ -287,11 +308,12 @@ export function registerRoutes(app: Express): void {  // No authentication requi
       subscriptionStatus: 'active',
       aiCredits: 999999,
       aiCreditsLimit: 999999,
-      renewalDate: null
+      renewalDate: null,
+      hasUnlimitedCredits: true,
     }),
     checkTierAccess: async () => true,
     useAICredit: async () => true,
-    saveAnalysis: async () => ({}),
+    saveAnalysis: async (_userId: string, _type: string, _content: any) => ({}),
     getAnalysisHistory: async () => [],
   };
 
@@ -482,14 +504,6 @@ export function registerRoutes(app: Express): void {  // No authentication requi
   });
 
   // Liquidation Grid Data (30×30 grid for heatmap visualization)
-  const apiKey = process.env.COINALYZE_API_KEY; // Enable key check
-
-if (!apiKey) {
-  console.log('Coinalyze API key missing, skipping liquidation grid data.');
-  // Return with an empty liquidations array so the rest of the app doesn't crash
-  return res.json({ liquidations: [] });
-}
-  
   app.get("/api/crypto/liquidations/grid", async (req, res) => {
     try {
       const symbol = (req.query.symbol as string)?.toUpperCase() || 'XRPUSDT';
@@ -632,7 +646,7 @@ if (!apiKey) {
       
       // Also add zones near current price (high liquidation risk)
       const currentPriceNormalized = (priceCandles[priceCandles.length - 1].close - minPrice) / priceBandHeight;
-      const currentBand = Math.floor(currentPriceNormalized);
+      const _currentBand = Math.floor(currentPriceNormalized);
       
       // Typical leverage levels: 10x, 25x, 50x, 100x
       const leverageLevels = [10, 25, 50, 100];
@@ -656,7 +670,7 @@ if (!apiKey) {
       });
       
       // Add historical density to predicted zones
-      topBands.forEach((bandIdx, rank) => {
+      topBands.forEach((bandIdx, _rank) => {
         const weight = bandDensity[bandIdx] * 0.3; // 30% of historical volume
         predictedColumn[bandIdx] += weight;
       });
@@ -713,7 +727,7 @@ if (!apiKey) {
               });
               
               // Map orderbook imbalances to price levels at those times
-              orderbookHistory.forEach((item: any, idx: number) => {
+              orderbookHistory.forEach((item: any, _idx: number) => {
                 const bids = item.aggregated_bids_usd || 0;
                 const asks = item.aggregated_asks_usd || 0;
                 const timestamp = item.time / 1000; // Convert ms to seconds
@@ -737,7 +751,7 @@ if (!apiKey) {
                 if (total === 0) return;
                 
                 const bidRatio = bids / total; // > 0.5 = more buyers (support)
-                const askRatio = asks / total; // > 0.5 = more sellers (resistance)
+                const _askRatio = asks / total; // > 0.5 = more sellers (resistance)
                 
                 // Significant imbalance threshold
                 const imbalanceStrength = Math.abs(bidRatio - 0.5) * 2; // 0 to 1 scale
@@ -999,7 +1013,7 @@ if (!apiKey) {
       const history: Array<{timestamp: number, value: number}> = [];
 
       for (const candle of klines) {
-        const [timestamp, open, high, low, close, volume] = candle;
+        const [timestamp, open, _high, _low, close, volume] = candle;
         const direction = parseFloat(close) > parseFloat(open) ? 1 : -1;
         const volumeValue = parseFloat(volume);
         const delta = volumeValue * direction;
@@ -2153,7 +2167,7 @@ if (!apiKey) {
       
       if (liquidationData.data && liquidationData.data.data) {
         // Data structure: { "48935": [[48935, 1579370.77, 25, null]], ... }
-        Object.entries(liquidationData.data.data).forEach(([price, levelData]: [string, any]) => {
+        Object.entries(liquidationData.data.data).forEach(([_price, levelData]: [string, any]) => {
           if (Array.isArray(levelData) && levelData.length > 0) {
             levelData.forEach((level: any[]) => {
               if (level && level.length >= 3) {
@@ -2287,27 +2301,27 @@ if (!apiKey) {
   });
 
   // Stripe removed - all features free
-  app.post('/api/create-subscription', async (req: any, res) => {
+  app.post('/api/create-subscription', async (_req: any, res) => {
     res.json({ message: "All features are now free - no subscription needed" });
   });
 
-  app.get('/api/subscription-status', async (req: any, res) => {
+  app.get('/api/subscription-status', async (_req: any, res) => {
     res.json({ tier: 'elite', status: 'active', message: "All features unlocked for free" });
   });
 
-  app.post('/api/cancel-subscription', async (req: any, res) => {
+  app.post('/api/cancel-subscription', async (_req: any, res) => {
     res.json({ message: "All features are free - nothing to cancel" });
   });
 
-  app.post('/api/refresh-subscription', async (req: any, res) => {
+  app.post('/api/refresh-subscription', async (_req: any, res) => {
     res.json({ tier: 'elite', status: 'active', message: "All features unlocked for free" });
   });
 
-  app.post('/api/cleanup-customers', async (req: any, res) => {
+  app.post('/api/cleanup-customers', async (_req: any, res) => {
     res.json({ message: "Stripe cleanup not needed - all features free" });
   });
 
-  app.post('/api/stripe-webhook', async (req, res) => {
+  app.post('/api/stripe-webhook', async (_req, res) => {
     res.status(200).json({ received: true, message: "Stripe disabled - all features free" });
   });
 
@@ -2614,7 +2628,7 @@ if (!apiKey) {
   // Serve uploaded logos from object storage
   app.get('/objects/logos/:logoId', async (req, res) => {
     try {
-      const { ObjectStorageService, ObjectNotFoundError } = await import('./objectStorage');
+      const { ObjectStorageService, ObjectNotFoundError: _ObjectNotFoundError } = await import('./objectStorage');
       const objectStorageService = new ObjectStorageService();
       const objectFile = await objectStorageService.getObjectEntityFile(req.path);
       await objectStorageService.downloadObject(objectFile, res);
@@ -2917,7 +2931,7 @@ if (!apiKey) {
     }
   });
 
-  app.get("/api/feedback", async (req, res) => {
+  app.get("/api/feedback", async (_req, res) => {
     try {
       const feedbackList = await storage.listFeedback();
       res.json(feedbackList);
@@ -3364,7 +3378,7 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
   async function sendPushNotification(payload: any) {
     const { db } = await import("./db");
     const { pushSubscriptions, cryptoSubscriptions } = await import("@shared/schema");
-    const { inArray, eq } = await import("drizzle-orm");
+    const { inArray, eq: _eq } = await import("drizzle-orm");
 
     // Get all push subscriptions from database
     const allSubscriptions = await db.select().from(pushSubscriptions);
@@ -4020,7 +4034,7 @@ Return ONLY valid JSON in this exact format:
 
       const { db } = await import("./db");
       const { trackedTrades } = await import("@shared/schema");
-      const { eq, and, or, inArray } = await import("drizzle-orm");
+      const { eq, and, or, inArray: _inArray } = await import("drizzle-orm");
 
       // Delete all pending and entry_hit trades for this symbol
       const deleted = await db.delete(trackedTrades)
@@ -4043,7 +4057,7 @@ Return ONLY valid JSON in this exact format:
   });
 
   // Stripe webhook removed - all features free
-  app.post('/api/crypto/stripe-webhook', async (req, res) => {
+  app.post('/api/crypto/stripe-webhook', async (_req, res) => {
     res.status(200).json({ received: true, message: "Stripe disabled - all features free" });
   });
 
@@ -4141,7 +4155,7 @@ Return ONLY valid JSON in this exact format:
       const { id } = req.params;
       const updates = req.body;
       
-      const { updateWaveLabel, getWaveLabels } = await import("./services/elliottWaveService");
+      const { updateWaveLabel, getWaveLabels: _getWaveLabels } = await import("./services/elliottWaveService");
       
       // First verify the label belongs to this user
       const { storage } = await import("./storage");
@@ -4304,7 +4318,7 @@ Return JSON:
   // Validate an Elliott Wave pattern
   app.post("/api/crypto/elliott-wave/validate", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {
-      const { patternType, points, isLeading } = req.body;
+      const { patternType, points, isLeading: _isLeading } = req.body;
       
       if (!patternType || !points) {
         return res.status(400).json({ error: 'Pattern type and points are required' });

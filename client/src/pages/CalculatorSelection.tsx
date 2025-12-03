@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { UserHeader } from "@/components/UserHeader";
 
 export default function CalculatorSelection() {
-  const { user } = useAuth();
+  const { user: _user } = useAuth();
 
   return (
     <div className="min-h-screen bg-background">

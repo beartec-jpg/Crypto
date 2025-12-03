@@ -76,7 +76,7 @@ const TIGHTNESS_DURATION_EXISTING = [
 ];
 
 // Table 8 - Let-by Test Duration for EXISTING installations only
-const LETBY_DURATION_EXISTING = [
+const _LETBY_DURATION_EXISTING = [
   { maxIV: 0.5, duration: 2 },
   { maxIV: 0.8, duration: 3 },
   { maxIV: 1.0, duration: 4 }
@@ -116,7 +116,7 @@ const COMMERCIAL_PURGE_FLOW_TABLE_B13 = {
 };
 
 // Unified certificate data builder for all calculators
-function buildCertificateData(
+function _buildCertificateData(
   calculatorType: 'commercial' | 'industrial',
   installationType: string,
   jobDetails: any,
@@ -337,7 +337,7 @@ export default function CommercialCalculator() {
   const [gaugeType, setGaugeType] = useState<string>("electronic05");
   const [maxOperatingPressure, setMaxOperatingPressure] = useState<string>("");
   const [maxIncidentalPressure, setMaxIncidentalPressure] = useState<string>("");
-  const [installationAge, setInstallationAge] = useState<string>("new");
+  const [installationAge, _setInstallationAge] = useState<string>("new");
   const [roomVolume, setRoomVolume] = useState<string>("");
   const [isCalculating, setIsCalculating] = useState(false);
   const [results, setResults] = useState<any>(null);
@@ -669,8 +669,8 @@ export default function CommercialCalculator() {
       if (installationVolume <= 0 || isNaN(installationVolume)) return null; // Need valid pipe config first
       
       // TTD calculation matching backend logic
-      const grm = (gaugeType === "electronic05" || gaugeType === "water" || gaugeType === "Water Gauge") ? 0.5 : 0.1;
-      const f1 = testMedium === "Air" ? 67 : 42;
+      const _grm = (gaugeType === "electronic05" || gaugeType === "water" || gaugeType === "Water Gauge") ? 0.5 : 0.1;
+      const _f1 = testMedium === "Air" ? 67 : 42;
       
       // Commercial TTD calculation using new Tables 6 & 7
       let ttdSeconds = 120; // Default 2 minutes minimum
@@ -761,7 +761,7 @@ export default function CommercialCalculator() {
     setIsCalculating(true);
     
     try {
-      const calculationData = {
+      const _calculationData = {
         calculatorType: "commercial", // Use commercial calculator type
         project: {
           reference: jobDetails.jobNumber, // Backend expects 'reference' not 'jobNumber'

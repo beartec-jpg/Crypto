@@ -50,7 +50,7 @@ function generateThemeColors(primaryHex: string, secondaryHex?: string) {
 
   // Extract HSL values for calculations
   const [primaryH, primaryS, primaryL] = primaryHsl.split(' ').map(v => parseInt(v));
-  const [secondaryH, secondaryS, secondaryL] = secondaryHsl.split(' ').map(v => parseInt(v));
+  const [_secondaryH, _secondaryS, secondaryL] = secondaryHsl.split(' ').map(v => parseInt(v));
 
   return {
     primary: primaryHsl,

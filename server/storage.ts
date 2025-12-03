@@ -160,7 +160,6 @@ export class MemStorage implements IStorage {
       directPurgeVolume: insertProject.directPurgeVolume || null,
       letByVolume: insertProject.letByVolume || null,
       purgeRate: insertProject.purgeRate || null,
-      purgeTime: insertProject.purgeTime || null,
       purgeResult: insertProject.purgeResult || null,
       createdAt: now,
       updatedAt: now,
@@ -177,11 +176,21 @@ export class MemStorage implements IStorage {
     const existing = this.projects.get(id);
     if (!existing) return undefined;
 
-    const updated: Project = {
-      ...existing,
+    const normalizedUpdate: Partial<Project> = {
       ...updateData,
+      maxOperatingPressure: updateData.maxOperatingPressure !== undefined 
+        ? (typeof updateData.maxOperatingPressure === 'number' ? String(updateData.maxOperatingPressure) : updateData.maxOperatingPressure) 
+        : existing.maxOperatingPressure,
+      maxIncidentalPressure: updateData.maxIncidentalPressure !== undefined 
+        ? (typeof updateData.maxIncidentalPressure === 'number' ? String(updateData.maxIncidentalPressure) : updateData.maxIncidentalPressure) 
+        : existing.maxIncidentalPressure,
       updatedAt: new Date(),
     };
+
+    const updated: Project = {
+      ...existing,
+      ...normalizedUpdate,
+    } as Project;
     this.projects.set(id, updated);
     return updated;
   }
@@ -260,10 +269,16 @@ export class MemStorage implements IStorage {
       id,
       isCompliant: insertCalculation.isCompliant !== undefined ? insertCalculation.isCompliant : true,
       complianceNotes: insertCalculation.complianceNotes || null,
-      actualPressureDrop: insertCalculation.actualPressureDrop || null,
+      actualPressureDrop: insertCalculation.actualPressureDrop !== undefined 
+        ? (typeof insertCalculation.actualPressureDrop === 'number' ? String(insertCalculation.actualPressureDrop) : insertCalculation.actualPressureDrop) 
+        : null,
       testResult: insertCalculation.testResult || null,
-      actualLeakageRate: insertCalculation.actualLeakageRate || null,
-      mplr: insertCalculation.mplr || null,
+      actualLeakageRate: insertCalculation.actualLeakageRate !== undefined 
+        ? (typeof insertCalculation.actualLeakageRate === 'number' ? String(insertCalculation.actualLeakageRate) : insertCalculation.actualLeakageRate) 
+        : null,
+      mplr: insertCalculation.mplr !== undefined 
+        ? (typeof insertCalculation.mplr === 'number' ? String(insertCalculation.mplr) : insertCalculation.mplr) 
+        : null,
       calculatedAt: new Date(),
     };
     this.calculations.set(id, calculation);
@@ -337,36 +352,36 @@ export class MemStorage implements IStorage {
   }
 
   // Elliott Wave Labels (stub - uses database storage in production)
-  async createElliottWaveLabel(label: InsertElliottWaveLabel): Promise<ElliottWaveLabel> {
+  async createElliottWaveLabel(_label: InsertElliottWaveLabel): Promise<ElliottWaveLabel> {
     throw new Error("Elliott Wave labels require database storage");
   }
 
-  async getElliottWaveLabels(userId: string, symbol: string, timeframe: string): Promise<ElliottWaveLabel[]> {
+  async getElliottWaveLabels(_userId: string, _symbol: string, _timeframe: string): Promise<ElliottWaveLabel[]> {
     return [];
   }
 
-  async getElliottWaveLabel(id: string): Promise<ElliottWaveLabel | undefined> {
+  async getElliottWaveLabel(_id: string): Promise<ElliottWaveLabel | undefined> {
     return undefined;
   }
 
-  async updateElliottWaveLabel(id: string, label: Partial<InsertElliottWaveLabel>): Promise<ElliottWaveLabel | undefined> {
+  async updateElliottWaveLabel(_id: string, _label: Partial<InsertElliottWaveLabel>): Promise<ElliottWaveLabel | undefined> {
     return undefined;
   }
 
-  async deleteElliottWaveLabel(id: string): Promise<boolean> {
+  async deleteElliottWaveLabel(_id: string): Promise<boolean> {
     return false;
   }
 
-  async deleteElliottWaveLabelsByUserSymbolTimeframe(userId: string, symbol: string, timeframe: string): Promise<boolean> {
+  async deleteElliottWaveLabelsByUserSymbolTimeframe(_userId: string, _symbol: string, _timeframe: string): Promise<boolean> {
     return false;
   }
 
   // Cached Candles (stub - uses database storage in production)
-  async getCachedCandles(symbol: string, timeframe: string): Promise<CachedCandles | undefined> {
+  async getCachedCandles(_symbol: string, _timeframe: string): Promise<CachedCandles | undefined> {
     return undefined;
   }
 
-  async upsertCachedCandles(candles: InsertCachedCandles): Promise<CachedCandles> {
+  async upsertCachedCandles(_candles: InsertCachedCandles): Promise<CachedCandles> {
     throw new Error("Cached candles require database storage");
   }
 }

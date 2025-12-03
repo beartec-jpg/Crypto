@@ -387,7 +387,7 @@ export function calculateOrderBlocks(
   
   for (let i = startIndex; i < candles.length - 1; i++) {
     const current = candles[i];
-    const prev = candles[i - 1];
+    const _prev = candles[i - 1];
     const next = candles[i + 1];
     
     // Check for bullish order block (bearish candle before strong bullish move)
@@ -634,7 +634,7 @@ export function calculateStochasticRSI(
   candles: CandleData[],
   rsiPeriod: number = 14,
   stochPeriod: number = 14,
-  kSmooth: number = 3,
+  _kSmooth: number = 3,
   dSmooth: number = 3
 ): StochasticRSIValue[] {
   if (candles.length < rsiPeriod + stochPeriod) return [];

@@ -1,4 +1,4 @@
-import type { CalculationRequest, CalculationResult } from "@shared/schema";
+import type { CalculationRequest } from "@shared/schema";
 
 // Standard pipe internal diameters (BS EN 10255 medium series) in mm
 const PIPE_INTERNAL_DIAMETERS: Record<string, number> = {
