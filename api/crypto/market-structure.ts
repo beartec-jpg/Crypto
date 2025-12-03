@@ -269,7 +269,7 @@ function detectFVGs(data: CandleData[], minGapSize: number): FVG[] {
   return fvgs;
 }
 
-function detectBOSChoCh(data: CandleData[], swingHighs: SwingPoint[], swingLows: SwingPoint[]): BOSChoCh[] {
+function detectBOSChoCh(_data: CandleData[], swingHighs: SwingPoint[], swingLows: SwingPoint[]): BOSChoCh[] {
   const bosChoch: BOSChoCh[] = [];
   
   for (let i = 2; i < swingHighs.length; i++) {
