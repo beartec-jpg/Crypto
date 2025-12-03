@@ -563,13 +563,16 @@ export default function CryptoIndicators() {
       bear.play().catch(err => console.log('Bear video play failed:', err));
     } else if (videoPhase === 'transition') {
       if (targetMarketState === 'bearish') {
-        // Play transition in reverse
-        transition.playbackRate = -1;
-        transition.currentTime = transition.duration;
-        transition.play().catch(err => console.log('Transition video play failed:', err));
+        // Skip reverse playback - not supported in all browsers
+        // Just go directly to final state
+        setVideoPhase('final');
       } else {
         // Play transition forward
-        transition.playbackRate = 1;
+        try {
+          transition.playbackRate = 1;
+        } catch (e) {
+          console.log('playbackRate not supported:', e);
+        }
         transition.currentTime = 0;
         transition.play().catch(err => console.log('Transition video play failed:', err));
       }
