@@ -73,20 +73,22 @@ export function LiquidationChart({ symbol, currentPrice: _currentPrice }: Liquid
     enabled: !!symbol && showPredicted
   });
 
-  const totalLongs = realtimeData?.events.filter(e => e.side === 'SELL').reduce((sum, e) => sum + e.quantity, 0) || 0;
-  const totalShorts = realtimeData?.events.filter(e => e.side === 'BUY').reduce((sum, e) => sum + e.quantity, 0) || 0;
+  const totalLongs = (realtimeData?.events || []).filter(e => e.side === 'SELL').reduce((sum, e) => sum + e.quantity, 0) || 0;
+  const totalShorts = (realtimeData?.events || []).filter(e => e.side === 'BUY').reduce((sum, e) => sum + e.quantity, 0) || 0;
   const totalVolume = totalLongs + totalShorts;
 
   const longsPercentage = totalVolume > 0 ? (totalLongs / totalVolume) * 100 : 50;
   const shortsPercentage = totalVolume > 0 ? (totalShorts / totalVolume) * 100 : 50;
 
-  const mostRecentLiquidation = realtimeData?.events[realtimeData.events.length - 1];
+  const events = realtimeData?.events || [];
+  const heatmap = realtimeData?.heatmap || [];
+  const mostRecentLiquidation = events[events.length - 1];
   const timeSinceLastLiquidation = mostRecentLiquidation 
     ? Math.floor((Date.now() - mostRecentLiquidation.timestamp) / 1000)
     : null;
 
   // Calculate max volumes for color scaling
-  const maxVolume = Math.max(...(realtimeData?.heatmap.map(h => h.totalVolume) || [1]));
+  const maxVolume = Math.max(...(heatmap.map(h => h.totalVolume) || [1]), 1);
 
   // Process predicted liquidation data for overlay
   const predictedZones = predictedData?.priceList?.map((price, idx) => {
@@ -102,11 +104,11 @@ export function LiquidationChart({ symbol, currentPrice: _currentPrice }: Liquid
   const maxPredictedVolume = Math.max(...(predictedZones.map(z => z.volume) || [1]));
 
   // Find confluence zones (where actual liquidations happened in predicted zones)
-  const confluenceZones = realtimeData?.heatmap.filter(actual => {
+  const confluenceZones = heatmap.filter(actual => {
     return predictedZones.some(predicted => 
       Math.abs(predicted.price - actual.price) / actual.price < 0.02 // Within 2%
     );
-  }) || [];
+  });
 
   // Request notification permission on mount
   useEffect(() => {
@@ -124,7 +126,7 @@ export function LiquidationChart({ symbol, currentPrice: _currentPrice }: Liquid
     if (now - lastAlertTimeRef.current < 30000) return;
 
     // Check recent events (last 60 seconds)
-    const recentEvents = realtimeData.events.filter(e => 
+    const recentEvents = (realtimeData?.events || []).filter(e => 
       now - e.timestamp < 60000
     );
 
