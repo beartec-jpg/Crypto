@@ -44,6 +44,16 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
 - **Code Quality**: ESLint and Prettier.
 - **Build Process**: Vite for frontend, esbuild for backend.
 - **Package Management**: npm.
+- **Error Handling**: React ErrorBoundary component wraps app to prevent white screen crashes.
+
+## Vercel Deployment
+- **Build Command**: `npx vite build` (skips TypeScript check for faster builds)
+- **Output Directory**: `client/dist`
+- **Root Directory**: `.` (project root)
+- **Required Environment Variables in Vercel**:
+  - `XAI_API_KEY` - Required for AI market analysis features
+  - `DATABASE_URL` - PostgreSQL connection string
+- **Serverless Functions**: Located in `/api` folder for Vercel serverless deployment
 
 ## UI/UX and Features
 - **Gas Purging Calculators**: Industrial and Commercial calculators for new and existing installations, covering strength, tightness, and purge tests based on IGE/UP/1 standards.
