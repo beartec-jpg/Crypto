@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export default defineConfig({
-  pluginsOLER: [react()],
+  plugins: [react()],
 
   // This tells Vite where your React app lives
   root: 'client',
