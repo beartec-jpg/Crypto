@@ -9806,21 +9806,21 @@ export default function CryptoIndicators() {
                 {multiExchangeLoading && (
                   <span className="text-xs text-yellow-400">Loading...</span>
                 )}
-                    {multiExchangeData?.metadata && (
+                    {multiExchangeData?.metadata?.exchanges && (
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-green-400">
                           🌐 Multi-Exchange
                         </span>
                         <details className="relative group">
                           <summary className="cursor-pointer text-xs text-cyan-400 hover:text-cyan-300 list-none">
-                            {multiExchangeData.metadata.exchanges.filter((e: any) => e.success).length}/{multiExchangeData.metadata.exchanges.length} ℹ️
+                            {(multiExchangeData.metadata.exchanges || []).filter((e: any) => e.success).length}/{(multiExchangeData.metadata.exchanges || []).length} ℹ️
                           </summary>
                           <div className="absolute right-0 top-6 z-50 bg-slate-900 border border-slate-700 rounded-md shadow-xl p-3 min-w-[280px]">
                             <div className="text-xs font-semibold text-white mb-2 border-b border-slate-700 pb-2">
                               Exchange Status
                             </div>
                             <div className="space-y-1.5">
-                              {multiExchangeData.metadata.exchanges.map((ex: any) => (
+                              {(multiExchangeData.metadata.exchanges || []).map((ex: any) => (
                                 <div key={ex.exchange_id} className="flex items-center justify-between text-xs">
                                   <div className="flex items-center gap-2">
                                     {ex.success ? (
