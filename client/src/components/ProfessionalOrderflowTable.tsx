@@ -24,8 +24,16 @@ interface ProfessionalOrderflowTableProps {
   className?: string;
 }
 
+interface OrderflowData {
+  error?: string;
+  cvd?: { history: Array<{ timestamp: number; value: number }> };
+  openInterest?: { history: Array<{ timestamp: number; value: number }> };
+  fundingRate?: { history: Array<{ timestamp: number; value: number }> };
+  longShortRatio?: { current: any };
+}
+
 export function ProfessionalOrderflowTable({ symbol, interval, className }: ProfessionalOrderflowTableProps) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<OrderflowData>({
     queryKey: [`/api/crypto/orderflow/professional/${symbol}/${interval}`],
     refetchInterval: 60000, // Refresh every minute
   });
@@ -222,7 +230,7 @@ export function ProfessionalOrderflowTable({ symbol, interval, className }: Prof
       priceAction: 'neutral',
       oiDelta,
       oiChange,
-      cvd: cvdValue,
+      cvd: cvdValue ?? 0,
       cvdTrend,
       fundingRate: fundingValue,
       fundingBias,

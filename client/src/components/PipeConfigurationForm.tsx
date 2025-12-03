@@ -51,6 +51,7 @@ export function PipeConfigurationForm({ configs, onChange }: PipeConfigurationFo
     const pipe = pipeList.find((p: any) => p.nominalSize === nominalSize);
     return pipe ? pipe.internalDiameter.toFixed(1) : "--";
   };
+  void getInternalDiameter;
 
   const calculateVolume = (config: PipeConfig): string => {
     if (!config.nominalSize || config.length <= 0) return "0.00";
@@ -65,6 +66,7 @@ export function PipeConfigurationForm({ configs, onChange }: PipeConfigurationFo
 
     return totalVolumeWithFittings.toFixed(4);
   };
+  void calculateVolume;
 
   return (
     <Card>

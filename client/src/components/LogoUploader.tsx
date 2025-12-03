@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Upload, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { Upload, X, CheckCircle2 } from "lucide-react";
 
 interface LogoUploaderProps {
   onUploadComplete?: (logoUrl: string) => void;

@@ -51,7 +51,7 @@ interface LiquidationChartProps {
   currentPrice?: number;
 }
 
-export function LiquidationChart({ symbol, currentPrice }: LiquidationChartProps) {
+export function LiquidationChart({ symbol, currentPrice: _currentPrice }: LiquidationChartProps) {
   const { toast } = useToast();
   const [limit, setLimit] = useState<100 | 200 | 500>(200);
   const [exchange, setExchange] = useState<'all' | 'binance' | 'bybit'>('all');

@@ -1,12 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { LogOut, Crown, Zap, Settings, MessageCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 
 export function UserHeader() {
-  const { user, isAuthenticated } = useAuth();
+  const { user: _user, isAuthenticated } = useAuth();
   const { data: subscription } = useQuery({
     queryKey: ["/api/subscription-status"],
     enabled: isAuthenticated,

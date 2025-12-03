@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
-import { Loader2, AlertTriangle, Activity } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 interface GridData {
   symbol: string;
@@ -27,6 +27,7 @@ export function LiquidationHeatmapChart({ symbol, currentPrice }: LiquidationHea
   const containerRef = useRef<HTMLDivElement>(null);
   const [spikeDetected, setSpikeDetected] = useState(false);
   const [spikeInfo, setSpikeInfo] = useState<string>('');
+  void currentPrice; void setSpikeDetected; void setSpikeInfo;
 
   // Fetch grid data
   const { data: gridData, isLoading } = useQuery<GridData>({

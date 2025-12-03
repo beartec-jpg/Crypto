@@ -1,13 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Box, Gauge, Download, FileText, Printer, CheckCircle, XCircle, Clock, MapPin } from "lucide-react";
+import { Box, Gauge, Download, FileText, Printer, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import type { CalculationResult } from "@shared/schema";
+
+// Stub for PDF generation - to be implemented
+async function generatePDF(_results: CalculationResult, _testResults: any, _branding?: any): Promise<void> {
+  console.log('PDF generation not yet implemented');
+}
 
 interface ResultsPanelProps {
   results: CalculationResult | null;
@@ -28,7 +33,7 @@ function PurgeResultsPanel({ results }: PurgeResultsPanelProps) {
   // Fetch company branding for Professional users
   const { data: companyBranding } = useQuery<any>({
     queryKey: ["/api/company-branding"],
-    enabled: user?.subscriptionTier === 'professional',
+    enabled: user?.tier === 'professional',
   });
   const [actualFlowRate, setActualFlowRate] = useState<string>("");
   const [actualGasContent, setActualGasContent] = useState<string>("");
@@ -51,7 +56,7 @@ function PurgeResultsPanel({ results }: PurgeResultsPanelProps) {
             description: `Lat: ${position.coords.latitude.toFixed(6)}, Long: ${position.coords.longitude.toFixed(6)}`,
           });
         },
-        (error) => {
+        (_error) => {
           toast({
             title: "Location Error",
             description: "Unable to get current location",
@@ -95,7 +100,7 @@ function PurgeResultsPanel({ results }: PurgeResultsPanelProps) {
     if (!results) return;
     
     // Check if user has PDF export privileges (Premium or Professional only)
-    if (user?.subscriptionTier === 'free' || user?.subscriptionTier === 'basic') {
+    if (user?.tier === 'free' || user?.tier === 'basic') {
       toast({
         title: "Premium Subscription Required",
         description: "PDF export requires Premium subscription. Upgrade to export professional reports and access advanced features.",
@@ -115,7 +120,7 @@ function PurgeResultsPanel({ results }: PurgeResultsPanelProps) {
         purgeCompleted: true
       };
       
-      await generatePDF(results, testResults, user?.subscriptionTier === 'professional' ? companyBranding : undefined);
+      await generatePDF(results, testResults, user?.tier === 'professional' ? companyBranding : undefined);
       toast({
         title: "PDF Generated",
         description: "Purge report has been generated and downloaded",
@@ -285,7 +290,7 @@ function StrengthResultsPanel({ results }: TestResultsPanelProps) {
   // Fetch company branding for Professional users
   const { data: companyBranding } = useQuery<any>({
     queryKey: ["/api/company-branding"],
-    enabled: user?.subscriptionTier === 'professional',
+    enabled: user?.tier === 'professional',
   });
   const [strengthPressureDrop, setStrengthPressureDrop] = useState<string>("");
   const [strengthResult, setStrengthResult] = useState<string>("PENDING");
@@ -319,7 +324,7 @@ function StrengthResultsPanel({ results }: TestResultsPanelProps) {
     if (!results) return;
     
     // Check if user has PDF export privileges (Premium or Professional only)
-    if (user?.subscriptionTier === 'free' || user?.subscriptionTier === 'basic') {
+    if (user?.tier === 'free' || user?.tier === 'basic') {
       toast({
         title: "Premium Subscription Required",
         description: "PDF export requires Premium subscription. Upgrade to export professional reports and access advanced features.",
@@ -339,7 +344,7 @@ function StrengthResultsPanel({ results }: TestResultsPanelProps) {
         strengthCompleted: true
       };
       
-      await generatePDF(results, testResults, user?.subscriptionTier === 'professional' ? companyBranding : undefined);
+      await generatePDF(results, testResults, user?.tier === 'professional' ? companyBranding : undefined);
       toast({
         title: "PDF Generated",
         description: "Strength test report has been generated and downloaded",
@@ -367,7 +372,7 @@ function StrengthResultsPanel({ results }: TestResultsPanelProps) {
             description: `Lat: ${position.coords.latitude.toFixed(6)}, Long: ${position.coords.longitude.toFixed(6)}`,
           });
         },
-        (error) => {
+        (_error) => {
           toast({
             title: "Location Error",
             description: "Unable to get current location",
@@ -533,7 +538,7 @@ function TestResultsPanel({ results }: TestResultsPanelProps) {
   // Fetch company branding for Professional users
   const { data: companyBranding } = useQuery<any>({
     queryKey: ["/api/company-branding"],
-    enabled: user?.subscriptionTier === 'professional',
+    enabled: user?.tier === 'professional',
   });
   const [tightnessPressureDrop, setTightnessPressureDrop] = useState<string>("");
   const [tightnessResult, setTightnessResult] = useState<string>("PENDING");
@@ -571,7 +576,7 @@ function TestResultsPanel({ results }: TestResultsPanelProps) {
     if (!results) return;
     
     // Check if user has PDF export privileges (Premium or Professional only)
-    if (user?.subscriptionTier === 'free' || user?.subscriptionTier === 'basic') {
+    if (user?.tier === 'free' || user?.tier === 'basic') {
       toast({
         title: "Premium Subscription Required",
         description: "PDF export requires Premium subscription. Upgrade to export professional reports and access advanced features.",
@@ -592,7 +597,7 @@ function TestResultsPanel({ results }: TestResultsPanelProps) {
         tightnessCompleted: true
       };
       
-      await generatePDF(results, testResults, user?.subscriptionTier === 'professional' ? companyBranding : undefined);
+      await generatePDF(results, testResults, user?.tier === 'professional' ? companyBranding : undefined);
       toast({
         title: "PDF Generated",
         description: "Tightness test report has been generated and downloaded",
@@ -620,7 +625,7 @@ function TestResultsPanel({ results }: TestResultsPanelProps) {
             description: `Lat: ${position.coords.latitude.toFixed(6)}, Long: ${position.coords.longitude.toFixed(6)}`,
           });
         },
-        (error) => {
+        (_error) => {
           toast({
             title: "Location Error",
             description: "Unable to get current location",
