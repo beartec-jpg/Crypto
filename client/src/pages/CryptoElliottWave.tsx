@@ -2903,18 +2903,15 @@ export default function CryptoElliottWave() {
     console.log(`🤖 Data size: ${candleDataLines.length} characters`);
 
     // Send to Grok AI with degree context
-    aiAnalyze.mutate({
-      chartImage: '',
-      candleData: candleDataLines,
-      symbol,
-      timeframe,
-      degreeContext: JSON.stringify(degreeContext),
-      visibleRange: JSON.stringify({ start: visibleStartIdx, end: visibleEndIdx, count: visibleCandles.length }),
-      existingLabels: currentPoints.length > 0 
-        ? currentPoints.map(p => `${p.label} at [${p.index}]`).join(', ')
-        : '',
-    });
-  };
+    aiAnalyze.mutate({ 
+    // Data submission for dynamic analysis:
+    candles: visibleCandles, // <<< The array of visible candles (30-200)
+    visibleStartIndex: visibleStartIdx, // <<< The historical index of the first candle
+    chartImage: chartImage, 
+    symbol: symbol, 
+    timeframe: timeframe, 
+    // ... other fields (existingLabels, degreeContext, etc.)
+});
 
   // Redirect if not authenticated
   useEffect(() => {
