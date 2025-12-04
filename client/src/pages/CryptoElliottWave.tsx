@@ -369,7 +369,21 @@ export default function CryptoElliottWave() {
 
   // AI-powered analysis mutation using Grok
   const aiAnalyze = useMutation({
-    mutationFn: async (data: { chartImage: string; candleData?: string; symbol: string; timeframe: string; existingLabels?: string; degreeContext?: string; visibleRange?: string }) => {
+    // IMPORTANT: Ensure you define visibleCandles and visibleStartIndex 
+    // elsewhere in this component and pass them in the data object.
+    mutationFn: async (data: { 
+      chartImage: string; 
+      symbol: string; 
+      timeframe: string; 
+      existingLabels?: string; 
+      degreeContext?: string; 
+      visibleRange?: string;
+      // ADDED THESE TWO CRITICAL FIELDS:
+      candles: CandleData[]; // The visible array of candles
+      visibleStartIndex: number; // The index of the first visible candle
+    }) => {
+      // NOTE: I removed 'candleData' from the payload as it seems redundant 
+      // with the new 'candles' array
       const response = await apiRequest('POST', '/api/crypto/elliott-wave/ai-analyze', data);
       return response.json();
     },
@@ -377,7 +391,8 @@ export default function CryptoElliottWave() {
       setAiAnalysis(result);
       toast({
         title: `AI: ${result.patternType.charAt(0).toUpperCase() + result.patternType.slice(1)} Pattern`,
-        description: `${(result.confidence * 100).toFixed(0)}% confidence - ${result.currentWave}`,
+        // FIX: REMOVED (result.confidence * 100)
+        description: `${result.confidence.toFixed(0)}% confidence - ${result.currentWave}`, 
       });
     },
     onError: (error: any) => {
@@ -388,6 +403,7 @@ export default function CryptoElliottWave() {
       });
     },
   });
+
 
   // Refs to hold current state values for click handler (avoids re-creating chart)
   const isDrawingRef = useRef(isDrawing);
