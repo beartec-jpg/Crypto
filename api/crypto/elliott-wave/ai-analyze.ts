@@ -97,7 +97,7 @@ interface GrokWaveAnalysis {
 
 export default function CryptoElliottWave() {
   const [location, setLocation] = useLocation();
-  const { user, isElite } = useCryptoAuth();
+  const { user, isElite } = useCryptoAuth(); // Hook provides isElite - no local state needed
   const { toast } = useToast();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartCaptureRef = useRef<HTMLDivElement>(null); // NEW: For screenshot
@@ -114,7 +114,6 @@ export default function CryptoElliottWave() {
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [timeframe, setTimeframe] = useState('1h');
   const [historyData, setHistoryData] = useState<{ candles: CandleData[] } | null>(null);
-  const [isElite, setIsElite] = useState(false); // From auth
 
   // ... (Your existing useQuery for historyData - unchanged)
   const historyQuery = useQuery({
