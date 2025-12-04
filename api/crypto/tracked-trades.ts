@@ -8,6 +8,28 @@ const pool = new Pool({
 
 const DEMO_USER_ID = 'demo-open-access-user';
 
+function mapRowToTrade(row: any) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    symbol: row.symbol,
+    direction: row.direction,
+    grade: row.grade,
+    entry: row.entry,
+    stopLoss: row.stop_loss,
+    targets: row.targets || [],
+    confluenceSignals: row.confluence_signals || [],
+    reasoning: row.reasoning,
+    status: row.status,
+    entryHitAt: row.entry_hit_at,
+    slHitAt: row.sl_hit_at,
+    tpHitAt: row.tp_hit_at,
+    tpHitLevel: row.tp_hit_level,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
@@ -35,32 +57,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         query += ' ORDER BY created_at DESC';
         
         const result = await client.query(query, params);
-        return res.json(result.rows.map(row => ({
-          id: row.id,
-          userId: row.user_id,
-          symbol: row.symbol,
-          direction: row.direction,
-          grade: row.grade,
-          entry: row.entry,
-          stopLoss: row.stop_loss,
-          targets: row.targets,
-          confluenceSignals: row.confluence_signals,
-          reasoning: row.reasoning,
-          status: row.status,
-          entryHitAt: row.entry_hit_at,
-          slHitAt: row.sl_hit_at,
-          tpHitAt: row.tp_hit_at,
-          tpHitLevel: row.tp_hit_level,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at
-        })));
+        return res.json(result.rows.map(mapRowToTrade));
       }
       
       if (req.method === 'POST') {
         const { symbol, direction, grade, entry, stopLoss, targets, confluenceSignals, reasoning } = req.body;
         
-        if (!symbol || !direction || !grade || !entry || !stopLoss || !targets) {
-          return res.status(400).json({ error: 'Missing required fields' });
+        if (!symbol || !direction || !grade || entry === undefined || stopLoss === undefined) {
+          return res.status(400).json({ error: 'Missing required fields: symbol, direction, grade, entry, stopLoss' });
         }
         
         const existingResult = await client.query(
@@ -69,25 +73,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
         
         if (existingResult.rows.length > 0) {
-          const row = existingResult.rows[0];
-          return res.json({
-            id: row.id,
-            userId: row.user_id,
-            symbol: row.symbol,
-            direction: row.direction,
-            grade: row.grade,
-            entry: row.entry,
-            stopLoss: row.stop_loss,
-            targets: row.targets,
-            confluenceSignals: row.confluence_signals,
-            reasoning: row.reasoning,
-            status: row.status,
-            createdAt: row.created_at
-          });
+          return res.json(mapRowToTrade(existingResult.rows[0]));
         }
         
-        const targetsArray = Array.isArray(targets) ? targets.map(t => t.toString()) : [targets.toString()];
-        const signalsArray = confluenceSignals || [];
+        const targetsArray = Array.isArray(targets) ? targets.map((t: any) => t.toString()) : targets ? [targets.toString()] : [];
+        const signalsArray = Array.isArray(confluenceSignals) ? confluenceSignals : [];
         
         const insertResult = await client.query(
           `INSERT INTO tracked_trades (user_id, symbol, direction, grade, entry, stop_loss, targets, confluence_signals, reasoning, status, created_at, updated_at)
@@ -96,21 +86,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           [DEMO_USER_ID, symbol, direction, grade, entry.toString(), stopLoss.toString(), targetsArray, signalsArray, reasoning || null]
         );
         
-        const row = insertResult.rows[0];
-        return res.json({
-          id: row.id,
-          userId: row.user_id,
-          symbol: row.symbol,
-          direction: row.direction,
-          grade: row.grade,
-          entry: row.entry,
-          stopLoss: row.stop_loss,
-          targets: row.targets,
-          confluenceSignals: row.confluence_signals,
-          reasoning: row.reasoning,
-          status: row.status,
-          createdAt: row.created_at
-        });
+        return res.json(mapRowToTrade(insertResult.rows[0]));
       }
       
       return res.status(405).json({ error: 'Method not allowed' });

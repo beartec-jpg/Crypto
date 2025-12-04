@@ -37,11 +37,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       safeFetch(`${baseUrl}/api/crypto/orderflow/long-short-ratio?symbol=${symbolStr}&interval=${intervalStr}`)
     ]);
     
+    const cvdHistory = multiExchange?.cvd?.map((item: any) => ({
+      timestamp: (item.time || item.timestamp) * 1000,
+      value: item.cvd || item.value || 0
+    })) || [];
+    
+    const oiHistory = openInterest?.history?.map((item: any) => ({
+      timestamp: item.timestamp,
+      value: item.value || item.oi || 0
+    })) || [];
+    
+    const frHistory = fundingRate?.history?.map((item: any) => ({
+      timestamp: item.timestamp,
+      value: item.value || item.rate || 0
+    })) || [];
+    
     res.json({
-      cvd: multiExchange ? { history: multiExchange.cvd || [] } : { history: [] },
-      openInterest: openInterest || { history: [] },
-      fundingRate: fundingRate || { history: [] },
-      longShortRatio: longShortRatio || { current: { ratio: 1.0 } },
+      cvd: { history: cvdHistory },
+      openInterest: { 
+        history: oiHistory,
+        current: openInterest?.current || null,
+        delta: oiHistory.length > 1 ? oiHistory[oiHistory.length - 1].value - oiHistory[oiHistory.length - 2].value : 0,
+        trend: oiHistory.length > 1 ? (oiHistory[oiHistory.length - 1].value > oiHistory[oiHistory.length - 2].value ? 'rising' : 'falling') : 'neutral'
+      },
+      fundingRate: { 
+        history: frHistory,
+        current: fundingRate?.current || null,
+        rate: frHistory.length > 0 ? frHistory[frHistory.length - 1].value : 0,
+        bias: frHistory.length > 0 ? (frHistory[frHistory.length - 1].value > 0.01 ? 'bullish' : frHistory[frHistory.length - 1].value < -0.01 ? 'bearish' : 'neutral') : 'neutral'
+      },
+      longShortRatio: longShortRatio || { current: { ratio: 1.0 }, ratio: 1.0 },
+      footprint: multiExchange?.footprint || [],
+      orderflowTable: multiExchange?.orderflowTable || [],
+      metadata: multiExchange?.metadata || { symbol: symbolStr, interval: intervalStr, exchange: 'binance' },
       symbol: symbolStr,
       interval: intervalStr,
       timestamp: Date.now()

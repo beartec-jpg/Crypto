@@ -8,6 +8,28 @@ const pool = new Pool({
 
 const DEMO_USER_ID = 'demo-open-access-user';
 
+function mapRowToTrade(row: any) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    symbol: row.symbol,
+    direction: row.direction,
+    grade: row.grade,
+    entry: row.entry,
+    stopLoss: row.stop_loss,
+    targets: row.targets || [],
+    confluenceSignals: row.confluence_signals || [],
+    reasoning: row.reasoning,
+    status: row.status,
+    entryHitAt: row.entry_hit_at,
+    slHitAt: row.sl_hit_at,
+    tpHitAt: row.tp_hit_at,
+    tpHitLevel: row.tp_hit_level,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,PATCH,DELETE,OPTIONS');
@@ -30,6 +52,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (req.method === 'PATCH') {
         const { status, entryHitAt, slHitAt, tpHitAt, tpHitLevel } = req.body;
         
+        if (!status && !entryHitAt && !slHitAt && !tpHitAt && !tpHitLevel) {
+          return res.status(400).json({ error: 'No update fields provided' });
+        }
+        
         const updates: string[] = ['updated_at = NOW()'];
         const params: any[] = [];
         let paramIndex = 1;
@@ -50,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           updates.push(`tp_hit_at = $${paramIndex++}`);
           params.push(new Date(tpHitAt));
         }
-        if (tpHitLevel) {
+        if (tpHitLevel !== undefined) {
           updates.push(`tp_hit_level = $${paramIndex++}`);
           params.push(tpHitLevel);
         }
@@ -66,19 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(404).json({ error: 'Trade not found' });
         }
         
-        const row = result.rows[0];
-        return res.json({
-          id: row.id,
-          userId: row.user_id,
-          symbol: row.symbol,
-          direction: row.direction,
-          grade: row.grade,
-          entry: row.entry,
-          stopLoss: row.stop_loss,
-          targets: row.targets,
-          status: row.status,
-          updatedAt: row.updated_at
-        });
+        return res.json(mapRowToTrade(result.rows[0]));
       }
       
       if (req.method === 'DELETE') {
@@ -91,7 +105,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(404).json({ error: 'Trade not found' });
         }
         
-        return res.json({ success: true, trade: result.rows[0] });
+        return res.json({ success: true, trade: mapRowToTrade(result.rows[0]) });
       }
       
       return res.status(405).json({ error: 'Method not allowed' });

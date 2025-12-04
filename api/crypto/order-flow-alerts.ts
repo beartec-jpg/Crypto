@@ -112,14 +112,40 @@ Identify 1-3 high-probability trade setups. Return JSON:
       temperature: 0.7
     });
 
-    const content = completion.choices[0]?.message?.content || '{"alerts":[],"marketInsights":{}}';
+    const content = completion.choices[0]?.message?.content || '';
     
-    let result;
+    let result: { alerts: any[]; marketInsights: { summary?: string; keyLevels?: string[]; noTradesReason?: string } } = { 
+      alerts: [], 
+      marketInsights: {} 
+    };
+    
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      result = jsonMatch ? JSON.parse(jsonMatch[0]) : { alerts: [], marketInsights: {} };
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        result = {
+          alerts: Array.isArray(parsed.alerts) ? parsed.alerts.map((a: any) => ({
+            grade: a.grade || 'C',
+            direction: a.direction || 'NEUTRAL',
+            entry: a.entry || 'N/A',
+            stopLoss: a.stopLoss || 'N/A',
+            targets: Array.isArray(a.targets) ? a.targets : [],
+            confluenceSignals: Array.isArray(a.confluenceSignals) ? a.confluenceSignals : [],
+            confluenceCount: typeof a.confluenceCount === 'number' ? a.confluenceCount : 0,
+            reasoning: a.reasoning || ''
+          })) : [],
+          marketInsights: {
+            summary: parsed.marketInsights?.summary || '',
+            keyLevels: Array.isArray(parsed.marketInsights?.keyLevels) ? parsed.marketInsights.keyLevels : [],
+            noTradesReason: parsed.marketInsights?.noTradesReason || ''
+          }
+        };
+      }
     } catch {
-      result = { alerts: [], marketInsights: { summary: content } };
+      result = { 
+        alerts: [], 
+        marketInsights: { summary: content.substring(0, 500) } 
+      };
     }
 
     res.json(result);
