@@ -402,4 +402,4 @@ export default function CryptoElliottWave() {
       </div>
     </div>
   );
-}
+                          }
