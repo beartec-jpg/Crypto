@@ -355,9 +355,9 @@ export default function CryptoElliottWave() {
         setCurrentPoints(pattern.points);
         setPatternType(pattern.type);
         toast({
-          title: 'Pattern Detected',
-          description: `Found ${pattern.type} pattern with ${(pattern.confidence * 100).toFixed(0)}% confidence`,
-        });
+  title: 'Pattern Detected',
+  description: `Found ${pattern.type} pattern with ${(pattern.confidence * 100).toFixed(0)}% confidence`,
+});
       } else {
         toast({
           title: 'No Pattern Found',
