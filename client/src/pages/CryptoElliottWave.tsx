@@ -2851,8 +2851,12 @@ const aiAnalyze = useMutation({
 
     // 1. Chart Image Capture
     setIsCapturingChart(true);
-    const chartImage = chartRef.current.takeScreenshot(); // Use the dedicated screenshot method
+    // Lightweight-charts method to get the chart as a Base64 image
+    const chartImage = chartRef.current.takeScreenshot(); 
     setIsCapturingChart(false);
+    
+    // 💡 ADD THIS LINE TO DEBUG THE IMAGE DATA
+    console.log('[Frontend] Chart Image Data (first 100 chars):', chartImage ? chartImage.substring(0, 100) : 'NULL/UNDEFINED');
     
     // 2. CRITICAL FIX: DYNAMIC CANDLE DATA COLLECTION
     const allCandles = candlesRef.current; // Get the full historical data from the ref
