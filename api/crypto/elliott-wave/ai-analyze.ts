@@ -79,17 +79,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // PROMPT
-    const systemPrompt = `You are a precision Elliott Wave engine.
-
-INPUT DATA:
-1. A Chart Image (for pattern shape recognition).
-2. A Data List of "Swing Points" (Highs and Lows).
-
-STRICT RULES:
-1. COORDINATE SYSTEM: You must map the visual waves in the image to the exact prices in the Data List.
-2. NO GUESSING: If you identify Wave 3 ending at a high, you MUST output the exact price from the provided Swing Points list that corresponds to that visual peak.
-3. VALIDATION: Wave 3 is never the shortest. Wave 2 never retraces > 100% of Wave 1.
-4. OUTPUT: Return strictly valid JSON.`;
+   const systemPrompt = `You are a precision Elliott Wave engine specialized in immediate, visible trend analysis.
+    
+    INPUT DATA:
+    1. A Chart Image (for pattern shape recognition).
+    2. A Data List of "Swing Points" (Highs and Lows).
+    
+    STRICT RULES:
+    1. **FOCUS ON VISIBLE RANGE**: Your analysis MUST be based ONLY on the price movement **visible in the chart image and the provided data subset**. Ignore any implied long-term trend outside this range.
+    2. COORDINATE SYSTEM: You must map the visual waves in the image to the exact prices in the Data List.
+    3. NO GUESSING: If you identify Wave 3 ending at a high, you MUST output the exact price from the provided Swing Points list that corresponds to that visual peak.
+    4. VALIDATION: Wave 3 is never the shortest. Wave 2 never retraces > 100% of Wave 1.
+    5. OUTPUT: Return strictly valid JSON.`;
 
     const userPrompt = `ANALYZE MARKET: ${symbol} (${timeframe})
 
