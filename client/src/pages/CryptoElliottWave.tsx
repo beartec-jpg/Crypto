@@ -386,13 +386,13 @@ const aiAnalyze = useMutation({
       return response.json();
     },
     onSuccess: (result: GrokWaveAnalysis) => {
-      setAiAnalysis(result);
-      toast({
-        title: `AI: ${result.patternType.charAt(0).toUpperCase() + result.patternType.slice(1)} Pattern`,
-        // FIX: Correctly uses standard template literal for display
-        description: `${result.confidence.toFixed(0)}% confidence - ${result.currentWave}`, 
-      });
-    },
+  setAiAnalysis(result);
+  toast({
+    title: `AI: ${result.patternType.charAt(0).toUpperCase() + result.patternType.slice(1)} Pattern`,
+    // **CRITICAL FIX:** Use standard template literals for correct display
+    description: `${result.confidence.toFixed(0)}% confidence - ${result.currentWave}`, 
+  });
+},
     onError: (error: any) => {
       toast({
         title: 'AI Analysis Failed',
