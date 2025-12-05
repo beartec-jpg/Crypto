@@ -5,7 +5,7 @@ import OpenAI from 'openai';
 const openai = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
-  timeout: 60000, 
+  timeout: 60000,
 });
 
 interface WavePoint {
@@ -25,10 +25,9 @@ interface CandleData {
 
 // Helper: Compact string format to fit tokens
 const formatCandlesCompact = (candles: CandleData[], offset: number) => {
-  return candles.map((c, i) => {
-    // Only show High/Low/Close to save tokens - that's all Elliott Wave needs
-    return `Idx:${offset + i} H:${c.high.toFixed(4)} L:${c.low.toFixed(4)} C:${c.close.toFixed(4)}`;
-  }).join('\n');
+  return candles
+    .map((c, i) => `Idx:${offset + i} H:${c.high.toFixed(4)} L:${c.low.toFixed(4)} C:${c.close.toFixed(4)}`)
+    .join('\n');
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -40,13 +39,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { 
-      chartImage, 
-      symbol, 
-      timeframe, 
-      candles, // The raw array of visible candles (e.g., 50-200)
-      visibleStartIndex, // <<< NEW REQUIRED FIELD for dynamic indexing
-      imageBase64
+    const {
+      chartImage,
+      symbol,
+      timeframe,
+      candles,
+      visibleStartIndex,
+      imageBase64,
     } = req.body;
 
     if (!process.env.XAI_API_KEY) {
@@ -55,93 +54,92 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const candleArray: CandleData[] = candles || [];
     const chartImageData = chartImage || imageBase64 || '';
-    
-    // --- 2. DYNAMIC DATA PRE-PROCESSING (The Fix for Dynamic Indexing) ---
-    // We assume 'candles' is the visible subset the user wants analyzed.
-    const relevantCandles = candleArray; 
-    
-    // Use the index provided by the frontend. Default to 0 if not a number.
-    const startIndex = typeof visibleStartIndex === 'number' ? visibleStartIndex : 0; 
+
+    // DYNAMIC INDEXING
+    const relevantCandles = candleArray;
+    const startIndex = typeof visibleStartIndex === 'number' ? visibleStartIndex : 0;
 
     if (relevantCandles.length < 10) {
-      return res.status(400).json({ error: "Not enough candle data provided (need at least 10)" });
+      return res.status(400).json({ error: 'Not enough candle data provided (need at least 10)' });
     }
 
-    // 3. IDENTIFY HARD ANCHORS (Updated to use full historical index)
+    // SWING POINT DETECTION (using full historical index)
     const swingPoints = [];
-    for(let i = 2; i < relevantCandles.length - 2; i++) {
-        const c = relevantCandles[i];
-        const prev = relevantCandles[i-1]; const next = relevantCandles[i+1];
-        
-        // Simple pivot detection
-        if (c.high > prev.high && c.high > next.high) {
-            // Index sent to AI is the full historical index: startIndex + i
-            swingPoints.push({ type: 'HIGH', price: c.high, idx: startIndex + i });
-        }
-        if (c.low < prev.low && c.low < next.low) {
-            // Index sent to AI is the full historical index: startIndex + i
-            swingPoints.push({ type: 'LOW', price: c.low, idx: startIndex + i });
-        }
+    for (let i = 2; i < relevantCandles.length - 2; i++) {
+      const c = relevantCandles[i];
+      const prev = relevantCandles[i - 1];
+      const next = relevantCandles[i + 1];
+
+      if (c.high > prev.high && c.high > next.high) {
+        swingPoints.push({ type: 'HIGH', price: c.high, idx: startIndex + i });
+      }
+      if (c.low < prev.low && c.low < next.low) {
+        swingPoints.push({ type: 'LOW', price: c.low, idx: startIndex + i });
+      }
     }
 
-    // 4. THE PROMPT (Updated with correct index range)
-    const systemPrompt = `You are a precision Elliott Wave engine. 
-    
-    INPUT DATA:
-    1. A Chart Image (for pattern shape recognition).
-    2. A Data List of "Swing Points" (Highs and Lows).
-    
-    STRICT RULES:
-    1. COORDINATE SYSTEM: You must map the visual waves in the image to the exact prices in the Data List.
-    2. NO GUESSING: If you identify Wave 3 ending at a high, you MUST output the exact price from the provided Swing Points list that corresponds to that visual peak.
-    3. VALIDATION: Wave 3 is never the shortest. Wave 2 never retraces > 100% of Wave 1.
-    4. OUTPUT: Return strictly valid JSON.`;
+    // PROMPT
+    const systemPrompt = `You are a precision Elliott Wave engine.
+
+INPUT DATA:
+1. A Chart Image (for pattern shape recognition).
+2. A Data List of "Swing Points" (Highs and Lows).
+
+STRICT RULES:
+1. COORDINATE SYSTEM: You must map the visual waves in the image to the exact prices in the Data List.
+2. NO GUESSING: If you identify Wave 3 ending at a high, you MUST output the exact price from the provided Swing Points list that corresponds to that visual peak.
+3. VALIDATION: Wave 3 is never the shortest. Wave 2 never retraces > 100% of Wave 1.
+4. OUTPUT: Return strictly valid JSON.`;
 
     const userPrompt = `ANALYZE MARKET: ${symbol} (${timeframe})
 
-    STEP 1: RECOGNIZE PATTERN FROM IMAGE
-    Look at the chart image. Is it an Impulse (5 waves up) or Correction (ABC)?
+STEP 1: RECOGNIZE PATTERN FROM IMAGE
+Look at the chart image. Is it an Impulse (5 waves up) or Correction (ABC)?
 
-    STEP 2: MAP TO DATA
-    Here is the Price Data for the visible range (Candle Indices ${startIndex} to ${startIndex + relevantCandles.length - 1}). 
-    Current Price: ${relevantCandles[relevantCandles.length - 1].close}
-    
-    Valid Swing Points (Choose your Wave Labels ONLY from this list using the full historical index):
-    ${swingPoints.map(s => `[Candle #${s.idx}] ${s.type}: ${s.price.toFixed(4)}`).join('\n')}
+STEP 2: MAP TO DATA
+Here is the Price Data for the visible range (Candle Indices ${startIndex} to ${
+      startIndex + relevantCandles.length - 1
+    }).
+Current Price: ${relevantCandles[relevantCandles.length - 1].close}
 
-    Detailed Candle Data (Reference):
-    ${formatCandlesCompact(relevantCandles, startIndex)}
+Valid Swing Points (Choose your Wave Labels ONLY from this list using the full historical index):
+${swingPoints.map((s) => `[Candle #${s.idx}] ${s.type}: ${s.price.toFixed(4)}`).join('\n')}
 
-    REQUIRED JSON OUTPUT:
+Detailed Candle Data (Reference):
+${formatCandlesCompact(relevantCandles, startIndex)}
+
+REQUIRED JSON OUTPUT:
+{
+  "patternType": "impulse" | "correction" | "triangle",
+  "degree": "Minor",
+  "confidence": number (0-100),
+  "analysis": "Short text explaining the visual match",
+  "suggestedLabels": [
     {
-      "patternType": "impulse" | "correction" | "triangle",
-      "degree": "Minor",
-      "confidence": number (0-100),
-      "analysis": "Short text explaining the visual match",
-      "suggestedLabels": [
-        { 
-          "label": "1", 
-          "priceLevel": number (MUST BE EXACT MATCH FROM SWING POINTS),
-          "candleIndex": number (MUST MATCH SWING POINT INDEX),
-          "snapTo": "high" or "low"
-        }
-        // ... repeat for other waves
-      ],
-       "continuation": {
-        "direction": "up" | "down",
-        "targetDescription": "Next move",
-        "upTargets": [{ "level": "1.618", "price": number }],
-        "downTargets": [{ "level": "0.618", "price": number }]
-      }
-    }`;
+      "label": "1",
+      "priceLevel": number (MUST BE EXACT MATCH FROM SWING POINTS),
+      "candleIndex": number (MUST MATCH SWING POINT INDEX),
+      "snapTo": "high" or "low"
+    }
+  ],
+  "continuation": {
+    "direction": "up" | "down",
+    "targetDescription": "Next move",
+    "upTargets": [{ "level": "1.618", "price": number }],
+    "downTargets": [{ "level": "0.618", "price": number }]
+  }
+}`;
 
+    // CRITICAL FIX: Safe check for chartImageData being a real base64 string
     let messageContent: any;
-    if (chartImageData && chartImageData.startsWith('data:image')) {
+
+    if (typeof chartImageData === 'string' && chartImageData.startsWith('data:image')) {
       messageContent = [
         { type: 'text', text: userPrompt },
-        { type: 'image_url', image_url: { url: chartImageData, detail: 'low' } }
+        { type: 'image_url', image_url: { url: chartImageData, detail: 'low' } },
       ];
     } else {
+      console.warn('[Grok] Chart image missing or invalid type (received:', typeof chartImageData, '). Proceeding without image.');
       messageContent = userPrompt;
     }
 
@@ -151,63 +149,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       model: 'grok-2-vision-1212',
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: messageContent }
+        { role: 'user', content: messageContent },
       ],
       max_tokens: 1000,
       temperature: 0.1,
     });
 
     const content = completion.choices[0]?.message?.content || '';
-    
-    // 5. PARSING & SANITIZATION (Confidence Fix is here)
+
+    // PARSING & SANITIZATION
     let result: any = { confidence: 0, suggestedLabels: [] };
-    
+
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        
-        // Sanitize Confidence (Fixing the 700% issue - ensures output is 0-100)
-        let safeConf = parseInt(parsed.confidence) || 0;
-        if (safeConf > 100) safeConf = 100; 
-        if (safeConf < 0) safeConf = 0;
 
-        // Sanitize Labels (Fixing the price mismatch)
+        // Sanitize confidence (0–100)
+        let safeConf = parseInt(parsed.confidence) || 0;
+        safeConf = Math.min(100, Math.max(0, safeConf));
+
+        // Sanitize labels (fix price mismatch using visibleStartIndex)
         const safeLabels = (parsed.suggestedLabels || []).map((lbl: any) => {
-            // targetIdx is the index within the RELEVANT (visible) array: 
-            // full historical index - visible start index
-            const targetIdx = lbl.candleIndex - startIndex; 
-            
-            // Check bounds: use the last candle if index is out of bounds
-            const candle = relevantCandles[targetIdx] || relevantCandles[relevantCandles.length - 1];
-            
-            return {
-                label: lbl.label,
-                candleIndex: lbl.candleIndex, // Keep the full historical index for chart plotting
-                // Force snap to High or Low of the actual candle
-                priceLevel: lbl.snapTo === 'high' ? candle.high : 
-                            lbl.snapTo === 'low' ? candle.low : 
-                            lbl.priceLevel,
-                snapTo: lbl.snapTo
-            };
+          const targetIdx = lbl.candleIndex - startIndex;
+          const candle = relevantCandles[targetIdx] || relevantCandles[relevantCandles.length - 1];
+
+          return {
+            label: lbl.label,
+            candleIndex: lbl.candleIndex,
+            priceLevel:
+              lbl.snapTo === 'high'
+                ? candle.high
+                : lbl.snapTo === 'low'
+                ? candle.low
+                : lbl.priceLevel,
+            snapTo: lbl.snapTo,
+          };
         });
 
         result = {
-            ...parsed,
-            confidence: safeConf, // This is the corrected 0-100 score
-            suggestedLabels: safeLabels,
-            timestamp: Date.now()
+          ...parsed,
+          confidence: safeConf,
+          suggestedLabels: safeLabels,
+          timestamp: Date.now(),
         };
       } else {
-          throw new Error("No JSON found");
+        throw new Error('No JSON found');
       }
     } catch (parseError) {
       console.error('[Grok] Parse failed:', content);
-      result.analysis = "AI Analysis failed to return structured data.";
+      result.analysis = 'AI Analysis failed to return structured data.';
     }
 
     return res.json(result);
-
   } catch (error: any) {
     console.error('[Grok] Critical Error:', error);
     return res.status(500).json({ error: error.message || 'Analysis failed' });
