@@ -391,7 +391,7 @@ export default function CryptoElliottWave() {
       setAiAnalysis(result);
       toast({
         title: `AI: ${result.patternType.charAt(0).toUpperCase() + result.patternType.slice(1)} Pattern`,
-        // FIX: REMOVED (result.confidence * 100)
+        // FIX APPLIED: Removed (result.confidence * 100)
         description: `${result.confidence.toFixed(0)}% confidence - ${result.currentWave}`, 
       });
     },
@@ -403,7 +403,6 @@ export default function CryptoElliottWave() {
       });
     },
   });
-
 
   // Refs to hold current state values for click handler (avoids re-creating chart)
   const isDrawingRef = useRef(isDrawing);
@@ -857,9 +856,8 @@ export default function CryptoElliottWave() {
         const isDowntrend = trendDirectionRef.current === 'down';
         
         // CORRECT marker positioning based on wave label and trend:
-        // - Motive waves (1, 3, 5): In uptrend → top (high), In downtrend → bottom (low)
-        // - Corrective waves (2, 4): In uptrend → bottom (low), In downtrend → top (high)
-        // - ABC pattern: In downtrend: A→low, B→high, C→low. In uptrend: A→high, B→low, C→high
+        // - Motive waves (1, 3, 5, A, C): In uptrend → top (high), In downtrend → bottom (low)
+        // - Corrective waves (2, 4, B, D): In uptrend → bottom (low), In downtrend → top (high)
         let snappedToHigh: boolean;
         if (['A', 'B', 'C', 'D', 'E'].includes(nextLabel)) {
           // Correction pattern labels
@@ -1234,6 +1232,7 @@ export default function CryptoElliottWave() {
                 const pointX = timeScale.timeToCoordinate(p.time as any);
                 if (pointX !== null) {
                   xMatch = Math.abs(clickX - pointX) <= 40; // 40px tolerance for future points
+
                   console.log('🔍 Future point check:', { pointX, clickX, diff: Math.abs(clickX - pointX), xMatch });
                 } else {
                   // timeToCoordinate returned null - try logical index comparison
@@ -1440,7 +1439,7 @@ export default function CryptoElliottWave() {
       } else {
         // For corrections/triangles: use click position to determine high/low snap
         snappedToHigh = clickedPrice > candleMid;
-        
+
         // Use 5-candle window to find best snap point
         const best = findBestCandle(snappedToHigh);
         finalCandleIndex = best.index;
@@ -1793,8 +1792,8 @@ export default function CryptoElliottWave() {
         // Extract wave label and Fib ratio separately
         const existingLabel = existing.text.split(' (')[0];
         const newLabel = marker.text.split(' (')[0];
-        const existingFib = existing.text.match(/\(([^)]+)\)/)?.[1]; // e.g., "121%"
-        const newFib = marker.text.match(/\(([^)]+)\)/)?.[1];
+        const existingFib = existing.text.match(/\( ([^)]+) \)/)?.[1]; // e.g., "121%"
+        const newFib = marker.text.match(/\( ([^)]+) \)/)?.[1];
         
         // Combine labels with "/" separator (avoid duplicates like "C/C")
         let combinedLabel = existingLabel;
@@ -2846,88 +2845,77 @@ export default function CryptoElliottWave() {
     }
   };
 
-  const handleAutoAnalyze = async () => {
-    if (candles.length < 50) {
-      toast({
-        title: 'Not Enough Data',
-        description: 'Need at least 50 candles for auto-analysis.',
-        variant: 'destructive',
-      });
+  const handleAutoAnalyze = useCallback(async () => {
+    if (!chartRef.current || !chartContainerRef.current) {
+      toast({ title: 'Chart Error', description: 'Chart is not initialized.', variant: 'destructive' });
       return;
     }
 
-    // Get VISIBLE candles only - what's on screen
-    let visibleCandles = candles;
-    let visibleStartIdx = 0;
-    let visibleEndIdx = candles.length - 1;
+    // 1. Chart Image Capture
+    setIsCapturingChart(true);
+    const chartImage = chartRef.current.takeScreenshot(); // Use the dedicated screenshot method
+    setIsCapturingChart(false);
     
-    if (chartRef.current) {
-      try {
-        const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
-        if (visibleRange) {
-          visibleStartIdx = Math.max(0, Math.floor(visibleRange.from));
-          visibleEndIdx = Math.min(candles.length - 1, Math.ceil(visibleRange.to));
-          visibleCandles = candles.slice(visibleStartIdx, visibleEndIdx + 1);
-          console.log(`📊 Visible range: indices ${visibleStartIdx} to ${visibleEndIdx} (${visibleCandles.length} candles)`);
-        }
-      } catch (e) {
-        console.log('📊 Could not get visible range, using last 500 candles');
-        visibleStartIdx = Math.max(0, candles.length - 500);
-        visibleEndIdx = candles.length - 1;
-        visibleCandles = candles.slice(visibleStartIdx);
-      }
+    // 2. CRITICAL FIX: DYNAMIC CANDLE DATA COLLECTION
+    const allCandles = candlesRef.current; // Get the full historical data from the ref
+    if (allCandles.length === 0) {
+        toast({ title: 'Data Error', description: 'No candle data available for analysis.', variant: 'destructive' });
+        return;
     }
-    
-    // Map timeframe to degree context
-    const getDegreeContext = (tf: string) => {
-      const smallTimeframes = ['1m', '5m', '15m', '30m'];
-      const mediumTimeframes = ['1h', '2h', '4h'];
-      const largeTimeframes = ['1d', '1w', '1M'];
-      
-      if (smallTimeframes.includes(tf)) {
-        return { primary: 'Minor', secondary: 'Minute', tertiary: 'Minuette' };
-      } else if (mediumTimeframes.includes(tf)) {
-        return { primary: 'Intermediate', secondary: 'Minor', tertiary: 'Minute' };
-      } else {
-        return { primary: 'Primary', secondary: 'Intermediate', tertiary: 'Minor' };
-      }
-    };
-    
-    const degreeContext = getDegreeContext(timeframe);
-    
-    toast({
-      title: 'Multi-Degree Wave Analysis',
-      description: `Analyzing ${visibleCandles.length} visible candles for ${degreeContext.primary} waves...`,
-    });
-    
-    // Store visible candles for Apply to Chart
-    (window as any).__aiVisibleCandles = visibleCandles.map((c, i) => ({
-      ...c,
-      localIndex: i,
-      globalIndex: visibleStartIdx + i,
-    }));
-    (window as any).__aiVisibleStartIdx = visibleStartIdx;
-    
-    // Build candle data with GLOBAL indices - COMPACT format (H/L only for Elliott Wave)
-    const candleDataLines = visibleCandles.map((c, i) => {
-      const globalIdx = visibleStartIdx + i;
-      return `[${globalIdx}] H:${c.high.toFixed(4)} L:${c.low.toFixed(4)}`;
-    }).join('\n');
 
-    console.log(`🤖 AI Analysis: Sending ${visibleCandles.length} visible candles (global indices ${visibleStartIdx}-${visibleEndIdx})`);
-    console.log(`🤖 Degree context: ${degreeContext.primary} → ${degreeContext.secondary} → ${degreeContext.tertiary}`);
-    console.log(`🤖 Data size: ${candleDataLines.length} characters`);
+    const timeScale = chartRef.current.timeScale();
+    const visibleRange = timeScale.getVisibleRange();
 
-    // Send to Grok AI with degree context
+    // Determine the index of the first visible candle
+    let visibleStartIdx = -1;
+    
+    // Find the first candle whose time is >= the visible start time
+    for (let i = 0; i < allCandles.length; i++) {
+        if (allCandles[i].time >= visibleRange.from) {
+            visibleStartIdx = i;
+            break;
+        }
+    }
+
+    // Filter the full data array to get only the candles visible on screen
+    const visibleCandles = allCandles.filter(
+        (c: CandleData) => c.time >= visibleRange.from && c.time <= visibleRange.to
+    );
+
+    if (visibleCandles.length < 10) {
+      toast({ title: 'Zoom In', description: 'Please zoom in to include at least 10 candles for analysis.', variant: 'destructive' });
+      return;
+    }
+
+    // Fallback in case time is not found precisely, assume start is 0
+    if (visibleStartIdx === -1) {
+        visibleStartIdx = 0;
+    }
+
+    // Prepare context data
+    const degreeContext = waveDegreesRef.current;
+    const currentPoints = currentPointsRef.current;
+    const degreeContextString = JSON.stringify(degreeContext);
+    
+    // Final check before mutation
+    if (aiAnalyze.isPending) return;
+
+    // 3. Trigger the Mutation with Fixed Payload
+    console.log('AI ANALYZE: data=', { symbol, timeframe, visibleStartIndex: visibleStartIdx, count: visibleCandles.length, currentPoints: currentPoints.length, degreeContext });
+    
     aiAnalyze.mutate({ 
-    // Data submission for dynamic analysis:
-    candles: visibleCandles, // <<< The array of visible candles (30-200)
-    visibleStartIndex: visibleStartIdx, // <<< The historical index of the first candle
-    chartImage: chartImage, 
-    symbol: symbol, 
-    timeframe: timeframe, 
-    // ... other fields (existingLabels, degreeContext, etc.)
-});
+        chartImage: chartImage, // Correct variable for Base64 image
+        candles: visibleCandles, // Array of visible candles (FIX for price mismatch)
+        visibleStartIndex: visibleStartIdx, // Index offset (FIX for wave label placement)
+        symbol, 
+        timeframe, 
+        degreeContext: degreeContextString,
+        // Removed candleData and visibleRange as they are now redundant with the new payload
+        existingLabels: currentPoints.length > 0 
+            ? currentPoints.map(p => `${p.label} at [${p.index}] ${p.price.toFixed(4)}`).join('\n') 
+            : undefined
+    });
+}, [symbol, timeframe, aiAnalyze, toast]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -3530,14 +3518,16 @@ export default function CryptoElliottWave() {
                              `${aiAnalysis.patternType} Pattern`}
                           </span>
                         </div>
-                        <Badge className={`${
-                          aiAnalysis.patternType === 'impulse' ? 'bg-green-500/20 text-green-400' :
-                          aiAnalysis.patternType === 'diagonal' ? 'bg-yellow-500/20 text-yellow-400' :
-                          aiAnalysis.patternType === 'zigzag' ? 'bg-orange-500/20 text-orange-400' :
-                          aiAnalysis.patternType === 'flat' ? 'bg-blue-500/20 text-blue-400' :
-                          aiAnalysis.patternType === 'triangle' ? 'bg-purple-500/20 text-purple-400' :
-                          'bg-[#00c4b4]/20 text-[#00c4b4]'
-                        }`}>
+                        <Badge className={`
+                          ${
+                            aiAnalysis.patternType === 'impulse' ? 'bg-green-500/20 text-green-400' :
+                            aiAnalysis.patternType === 'diagonal' ? 'bg-yellow-500/20 text-yellow-400' :
+                            aiAnalysis.patternType === 'zigzag' ? 'bg-orange-500/20 text-orange-400' :
+                            aiAnalysis.patternType === 'flat' ? 'bg-blue-500/20 text-blue-400' :
+                            aiAnalysis.patternType === 'triangle' ? 'bg-purple-500/20 text-purple-400' :
+                            'bg-[#00c4b4]/20 text-[#00c4b4]'
+                          }
+                        `}>
                           {(aiAnalysis.confidence * 100).toFixed(0)}% confidence
                         </Badge>
                       </div>
@@ -3576,16 +3566,20 @@ export default function CryptoElliottWave() {
                     {aiAnalysis.continuation && (
                     <div className="p-3 bg-slate-800/50 rounded">
                       <div className="flex items-center gap-2 mb-2">
-                        <TrendingUp className={`w-4 h-4 ${
-                          aiAnalysis.continuation.direction === 'up' ? 'text-green-400' :
-                          aiAnalysis.continuation.direction === 'down' ? 'text-red-400 rotate-180' :
-                          'text-yellow-400'
-                        }`} />
-                        <span className={`text-sm font-medium ${
-                          aiAnalysis.continuation.direction === 'up' ? 'text-green-400' :
-                          aiAnalysis.continuation.direction === 'down' ? 'text-red-400' :
-                          'text-yellow-400'
-                        }`}>
+                        <TrendingUp className={`
+                          w-4 h-4 ${
+                            aiAnalysis.continuation.direction === 'up' ? 'text-green-400' :
+                            aiAnalysis.continuation.direction === 'down' ? 'text-red-400 rotate-180' :
+                            'text-yellow-400'
+                          }
+                        `} />
+                        <span className={`
+                          text-sm font-medium ${
+                            aiAnalysis.continuation.direction === 'up' ? 'text-green-400' :
+                            aiAnalysis.continuation.direction === 'down' ? 'text-red-400' :
+                            'text-yellow-400'
+                          }
+                        `}>
                           Expected: {aiAnalysis.continuation.direction?.toUpperCase() || 'UNKNOWN'}
                         </span>
                       </div>
@@ -3912,6 +3906,7 @@ export default function CryptoElliottWave() {
                       {/* iii (extended - largest candles) */}
                       <line x1="80" y1="130" x2="80" y2="155" stroke="#0077b6" strokeWidth="1"/>
                       <rect x="77" y="132" width="5" height="18" fill="#00b4d8" rx="1"/>
+
                       <line x1="87" y1="112" x2="87" y2="138" stroke="#0077b6" strokeWidth="1"/>
                       <rect x="84" y="115" width="5" height="18" fill="#00b4d8" rx="1"/>
                       <line x1="94" y1="95" x2="94" y2="120" stroke="#0077b6" strokeWidth="1"/>
