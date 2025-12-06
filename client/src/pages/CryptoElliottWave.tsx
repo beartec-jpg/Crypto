@@ -3236,12 +3236,7 @@ const aiAnalyze = useMutation({
                           ))}
                         </div>
                       )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
+                        ) : (
             <div className="text-center py-20 text-gray-500 text-lg">
               Click “AI Check” to analyze the current chart
             </div>
@@ -3256,7 +3251,7 @@ const aiAnalyze = useMutation({
 <CryptoNavigation />
 </div>     {/* ← outermost min-h-screen div */}
 );
-           
+                    
 
       {/* Elliott Wave Training Manual Section */}
       <div className="max-w-7xl mx-auto px-4 py-8">
