@@ -29,9 +29,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bullishOBCount, bearishOBCount, bullFVGCount, bearFVGCount,
       buyImbalancesCount, sellImbalancesCount, absorptionCount,
       hiddenDivergenceCount, liquidityGrabCount, recentBars,
-      bullishOB, bearishOB, bullFVG, bearFVG,
-      buyImbalances, sellImbalances, absorption,
-      hiddenDivergences, liquidityGrabs,
       orderflowData,
       cci = 0, adx = 0, plusDI = 0, minusDI = 0
     } = req.body;
@@ -42,10 +39,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const last50Bars = recentBars.slice(-50);
     const priceChange = ((currentPrice - last50Bars[0].close) / last50Bars[0].close) * 100;
-    const highs = last50Bars.map((b: any) => b.high);
-    const lows = last50Bars.map((b: any) => b.low);
-    const recentHigh = Math.max(...highs.slice(-10));
-    const recentLow = Math.min(...lows.slice(-10));
 
     let orderflowAnalysis = '';
     if (orderflowData) {
