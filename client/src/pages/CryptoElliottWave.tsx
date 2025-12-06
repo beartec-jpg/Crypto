@@ -3256,6 +3256,7 @@ const aiAnalyze = useMutation({
  </div>   {/* ← grid container */}   
 
       {/* Elliott Wave Training Manual Section */}
+  {/* This section is placed AFTER the main grid container, but still INSIDE the min-h-screen outer div. */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <Card className="bg-slate-900/90 border-slate-700">
           <CardHeader>
@@ -4336,9 +4337,10 @@ const aiAnalyze = useMutation({
 
           </CardContent>
         </Card>
-      </div>
+    </div> {/* <-- Closing the Training Manual's outermost wrapper div */}
 
-      <CryptoNavigation />
-    </div>
-  );
-}
+{/* --- FINAL CLOSURE --- */}
+  <CryptoNavigation />
+</div>     {/* ← min-h-screen outer div */}
+);
+} // <-- REQUIRED: Don't forget to close the function body if it's the last thing in the file
