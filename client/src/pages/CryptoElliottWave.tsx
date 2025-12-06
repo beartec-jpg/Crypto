@@ -2813,7 +2813,7 @@ const aiAnalyze = useMutation({
   const jpeg = finalCanvas.toDataURL('image/jpeg', 0.85);  // Or 0.8 if preferred—keep consistent
   console.log('[Screenshot] Fallback capture succeeded');
   return jpeg;  // Ensure this is AFTER console.log (unreachable otherwise, but fine for now)
-**}** catch (err) {  // <-- This } NOW properly closes the try block
+}catch (err) {  // <-- This } NOW properly closes the try block
   console.error('[Screenshot] Fallback completely failed:', err);
   return null;
 }
