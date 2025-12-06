@@ -3163,7 +3163,7 @@ const aiAnalyze = useMutation({
         </Card>
       </div>
 
-      {/* Right Panel */}
+         {/* Right Panel */}
       <Card className="bg-slate-900/50 border-slate-800">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">Validation</CardTitle>
@@ -3173,7 +3173,8 @@ const aiAnalyze = useMutation({
             <TabsList className="grid w-full grid-cols-3 bg-slate-800">
               <TabsTrigger value="validation">Rules</TabsTrigger>
               <TabsTrigger value="fibonacci">Fib</TabsTrigger>
-              <TabsTrigger value="ai" className={aiAnalysis ? 'text-[#00c4b4]' : ''}>AI {aiAnalysis && 'Check'}</TabsTrigger>
+              <TabsTrigger value="ai" className={aiAnalysis ? 'text-[#00c4b4]' : ''}>
+                >AI {aiAnalysis && 'Check'}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="validation" className="mt-4">
@@ -3183,8 +3184,8 @@ const aiAnalyze = useMutation({
             <TabsContent value="fibonacci" className="mt-4">
               {/* Your existing fib UI */}
             </TabsContent>
-            
-           <TabsContent value="ai" className="mt-4 space-y-5">
+
+            <TabsContent value="ai" className="mt-4 space-y-5">
               {aiAnalyze.isPending ? (
                 <div className="text-center py-16">
                   <Loader2 className="w-10 h-10 animate-spin text-[#00c4b4] mx-auto mb-4" />
@@ -3232,24 +3233,28 @@ const aiAnalyze = useMutation({
                               <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
                                 <span className="text-red-300">{t.level}</span>
                                 <span className="font-mono text-red-200 text-lg">${t.price?.toFixed(4)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                        ) : (
-            <div className="text-center py-20 text-gray-500 text-lg">
-              Click “AI Check” to analyze the current chart
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-    </CardContent>
-  </Card>
-</div> {/* ← right panel column */}
-</div>   {/* ← grid container (max-w-7xl) */}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-20 text-gray-500 text-lg">
+                  Click “AI Check” to analyze the current chart
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div> {/* ← right panel column */}
+  </div>   {/* ← grid container */}
 
-<CryptoNavigation />
-</div>     {/* ← outermost min-h-screen div */}
+  <CryptoNavigation />
+</div>     {/* ← min-h-screen outer div */}
 );
                     
 
