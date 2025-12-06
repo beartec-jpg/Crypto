@@ -3245,7 +3245,6 @@ const aiAnalyze = useMutation({
       Click “AI Check” to analyze the current chart
     </div>
   )}
-</TabsContent>
            
 
       {/* Elliott Wave Training Manual Section */}
