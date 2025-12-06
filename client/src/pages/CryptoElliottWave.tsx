@@ -3202,7 +3202,6 @@ const aiAnalyze = useMutation({
         </CardContent>
       </Card>
     </div>
-  </div>
 );
 
       {/* Elliott Wave Training Manual Section */}
