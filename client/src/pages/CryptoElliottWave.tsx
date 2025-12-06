@@ -2763,62 +2763,60 @@ const aiAnalyze = useMutation({
       console.warn('[Screenshot] Built-in method failed (continuing to fallback):', err);
       // Fall through to manual capture
     }
-
     // 2. Manual fallback – captures EVERY canvas (chart + price/time axes)
-    try {
-      const container = chartContainerRef.current!;
-      const rect = container.getBoundingClientRect();
+**try {**  // <-- ADD THIS OPENING BRACE IMMEDIATELY AFTER 'try'
+  const container = chartContainerRef.current!;
+  const rect = container.getBoundingClientRect();
 
-      // High-res temp canvas (2x for crispness)
-      const tempCanvas = document.createElement('canvas');
-      const scaleFactor = window.devicePixelRatio >= 2 ? 2 : 1.5;
-      tempCanvas.width = rect.width * scaleFactor;
-      tempCanvas.height = rect.height * scaleFactor;
+  // High-res temp canvas (2x for crispness)
+  const tempCanvas = document.createElement('canvas');
+  const scaleFactor = window.devicePixelRatio >= 2 ? 2 : 1.5;
+  tempCanvas.width = rect.width * scaleFactor;
+  tempCanvas.height = rect.height * scaleFactor;
 
-      const ctx = tempCanvas.getContext('2d');
-      if (!ctx) return null;
+  const ctx = tempCanvas.getContext('2d');
+  if (!ctx) return null;
 
-      ctx.setTransform(scaleFactor, 0, 0, scaleFactor, 0, 0);
-      ctx.fillStyle = '#0a0a0a'; // Matches your chart background
-      ctx.fillRect(0, 0, rect.width, rect.height);
+  ctx.setTransform(scaleFactor, 0, 0, scaleFactor, 0, 0);
+  ctx.fillStyle = '#0a0a0a'; // Matches your chart background
+  ctx.fillRect(0, 0, rect.width, rect.height);
 
-      // Draw all canvas layers in correct order
-      const canvases = container.querySelectorAll('canvas');
-      canvases.forEach((c) => {
-        const cRect = c.getBoundingClientRect();
-        const offsetX = cRect.left - rect.left;
-        const offsetY = cRect.top - rect.top;
-        ctx.drawImage(c, offsetX, offsetY);
-      });
+  // Draw all canvas layers in correct order
+  const canvases = container.querySelectorAll('canvas');
+  canvases.forEach((c) => {
+    const cRect = c.getBoundingClientRect();
+    const offsetX = cRect.left - rect.left;
+    const offsetY = cRect.top - rect.top;
+    ctx.drawImage(c, offsetX, offsetY);
+  });
 
-      // Resize down to sane limits (1200×800 max)
-      const MAX_W = 1200;
-      const MAX_H = 800;
-      let { width, height } = tempCanvas;
+  // Resize down to sane limits (1200×800 max)
+  const MAX_W = 1200;
+  const MAX_H = 800;
+  let { width, height } = tempCanvas;
 
-      if (width > MAX_W) {
-        height = (height * MAX_W) / width;
-        width = MAX_W;
-      }
-      if (height > MAX_H) {
-        width = (width * MAX_H) / height;
-        height = MAX_H;
-      }
+  if (width > MAX_W) {
+    height = (height * MAX_W) / width;
+    width = MAX_W;
+  }
+  if (height > MAX_H) {
+    width = (width * MAX_H) / height;
+    height = MAX_H;
+  }
 
-      const finalCanvas = document.createElement('canvas');
-      finalCanvas.width = width;
-      finalCanvas.height = height;
-      const finalCtx = finalCanvas.getContext('2d')!;
-      finalCtx.drawImage(tempCanvas, 0, 0, width, height);
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = width;
+  finalCanvas.height = height;
+  const finalCtx = finalCanvas.getContext('2d')!;
+  finalCtx.drawImage(tempCanvas, 0, 0, width, height);
 
-      const jpeg = finalCanvas.toDataURL('image/jpeg', 0.85);
-      console.log('[Screenshot] Fallback capture succeeded');
-      return jpeg;
-    } catch (err) {
-      console.error('[Screenshot] Fallback completely failed:', err);
-      return null;
-    }
-  };
+  const jpeg = finalCanvas.toDataURL('image/jpeg', 0.85);  // Or 0.8 if preferred—keep consistent
+  console.log('[Screenshot] Fallback capture succeeded');
+  return jpeg;  // Ensure this is AFTER console.log (unreachable otherwise, but fine for now)
+**}** catch (err) {  // <-- This } NOW properly closes the try block
+  console.error('[Screenshot] Fallback completely failed:', err);
+  return null;
+}
 
   // ──────────────────────────────────────────────────────────────────────
   //  AI AUTO-ANALYZE HANDLER – Clean & Final Version
