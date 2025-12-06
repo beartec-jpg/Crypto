@@ -18,11 +18,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: 'grok-4',
-      messages: [{ role: 'user', content: 'Say exactly: GROK IS ALIVE' }],
-      max_tokens: 20,
-      temperature: 0,
-    });
+  model: 'grok-4',
+  messages: [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Analyze this chart for Elliott Wave pattern. Return valid JSON with patternType, confidence, suggestedLabels (with candleIndex and priceLevel), and continuation targets.' },
+        { type: 'image_url', image_url: { url: chartImageData } },
+      ],
+    },
+  ],
+  max_tokens: 1000,
+  temperature: 0,
+});
 
     const text = completion.choices[0]?.message?.content || 'no content';
     console.log('GROK SUCCESS:', text);
