@@ -2764,59 +2764,60 @@ const aiAnalyze = useMutation({
       // Fall through to manual capture
     }
     // 2. Manual fallback – captures EVERY canvas (chart + price/time axes)
-    try {  // <-- ADD THIS OPENING BRACE IMMEDIATELY AFTER 'try'
-  const container = chartContainerRef.current!;
-  const rect = container.getBoundingClientRect();
+    try {
+      const container = chartContainerRef.current!;
+      const rect = container.getBoundingClientRect();
 
-  // High-res temp canvas (2x for crispness)
-  const tempCanvas = document.createElement('canvas');
-  const scaleFactor = window.devicePixelRatio >= 2 ? 2 : 1.5;
-  tempCanvas.width = rect.width * scaleFactor;
-  tempCanvas.height = rect.height * scaleFactor;
+      // High-res temp canvas (2x for crispness)
+      const tempCanvas = document.createElement('canvas');
+      const scaleFactor = window.devicePixelRatio >= 2 ? 2 : 1.5;
+      tempCanvas.width = rect.width * scaleFactor;
+      tempCanvas.height = rect.height * scaleFactor;
 
-  const ctx = tempCanvas.getContext('2d');
-  if (!ctx) return null;
+      const ctx = tempCanvas.getContext('2d');
+      if (!ctx) return null;
 
-  ctx.setTransform(scaleFactor, 0, 0, scaleFactor, 0, 0);
-  ctx.fillStyle = '#0a0a0a'; // Matches your chart background
-  ctx.fillRect(0, 0, rect.width, rect.height);
+      ctx.setTransform(scaleFactor, 0, 0, scaleFactor, 0, 0);
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, rect.width, rect.height);
 
-  // Draw all canvas layers in correct order
-  const canvases = container.querySelectorAll('canvas');
-  canvases.forEach((c) => {
-    const cRect = c.getBoundingClientRect();
-    const offsetX = cRect.left - rect.left;
-    const offsetY = cRect.top - rect.top;
-    ctx.drawImage(c, offsetX, offsetY);
-  });
+      // Draw all canvas layers in correct order
+      const canvases = container.querySelectorAll('canvas');
+      canvases.forEach((c) => {
+        const cRect = c.getBoundingClientRect();
+        const offsetX = cRect.left - rect.left;
+        const offsetY = cRect.top - rect.top;
+        ctx.drawImage(c, offsetX, offsetY);
+      });
 
-  // Resize down to sane limits (1200×800 max)
-  const MAX_W = 1200;
-  const MAX_H = 800;
-  let { width, height } = tempCanvas;
+      // Resize down to sane limits (1200×800 max)
+      const MAX_W = 1200;
+      const MAX_H = 800;
+      let { width, height } = tempCanvas;
 
-  if (width > MAX_W) {
-    height = (height * MAX_W) / width;
-    width = MAX_W;
-  }
-  if (height > MAX_H) {
-    width = (width * MAX_H) / height;
-    height = MAX_H;
-  }
+      if (width > MAX_W) {
+        height = (height * MAX_W) / width;
+        width = MAX_W;
+      }
+      if (height > MAX_H) {
+        width = (width * MAX_H) / height;
+        height = MAX_H;
+      }
 
-  const finalCanvas = document.createElement('canvas');
-  finalCanvas.width = width;
-  finalCanvas.height = height;
-  const finalCtx = finalCanvas.getContext('2d')!;
-  finalCtx.drawImage(tempCanvas, 0, 0, width, height);
+      const finalCanvas = document.createElement('canvas');
+      finalCanvas.width = width;
+      finalCanvas.height = height;
+      const finalCtx = finalCanvas.getContext('2d')!;
+      finalCtx.drawImage(tempCanvas, 0, 0, width, height);
 
-  const jpeg = finalCanvas.toDataURL('image/jpeg', 0.85);  // Or 0.8 if preferred—keep consistent
-  console.log('[Screenshot] Fallback capture succeeded');
-  return jpeg;  // Ensure this is AFTER console.log (unreachable otherwise, but fine for now)
-}catch (err) {  // <-- This } NOW properly closes the try block
-  console.error('[Screenshot] Fallback completely failed:', err);
-  return null;
-}
+      const jpeg = finalCanvas.toDataURL('image/jpeg', 0.85);
+      console.log('[Screenshot] Fallback capture succeeded');
+      return jpeg;
+    } catch (err) {
+      console.error('[Screenshot] Fallback completely failed:', err);
+      return null;
+    }
+  };
 
   // ──────────────────────────────────────────────────────────────────────
   //  AI AUTO-ANALYZE HANDLER – Clean & Final Version
@@ -2835,20 +2836,17 @@ const aiAnalyze = useMutation({
     let chartImage: string | null = null;
 
     try {
-  chartImage = await captureChartScreenshot();
+      chartImage = await captureChartScreenshot();
+      if (chartImage) {
+        console.log('SCREENSHOT SUCCESS — Size:', (chartImage.length / 1024 / 1024).toFixed(2), 'MB');
+      } else {
+        console.log('SCREENSHOT FAILED — chartImage is null');
+      }
+    } finally {
+      setIsCapturingChart(false);
+    }
 
-  // ADD THESE 3 LINES — THIS IS YOUR PROOF
-  if (chartImage) {
-    console.log('SCREENSHOT SUCCESS — Size:', (chartImage.length / 1024 / 1024).toFixed(2), 'MB');
-    console.log('First 100 chars (should start with data:image/jpeg;base64,/9j/...):', chartImage.substring(0, 100));
-  } else {
-    console.log('SCREENSHOT FAILED — chartImage is null');
-  }
-} finally {
-  setIsCapturingChart(false);
-}
-
-    // ─── Candle data & visible range (your existing logic – unchanged) ───
+    // Candle data & visible range
     const allCandles = candlesRef.current || candles;
     if (allCandles.length === 0) {
       toast({ title: 'No data', description: 'No candle data available.', variant: 'destructive' });
@@ -3161,11 +3159,9 @@ const aiAnalyze = useMutation({
         </Card>
       </div>
 
-  // ... surrounding container divs not shown, starting with the right panel ...
-
-    {/* Right Panel */}
-    <Card className="bg-slate-900/50 border-slate-800">
-      <CardHeader className="pb-3">
+      {/* Right Panel */}
+      <Card className="bg-slate-900/50 border-slate-800">
+        <CardHeader className="pb-3">
         <CardTitle className="text-lg">Validation</CardTitle>
       </CardHeader>
       <CardContent>
@@ -3174,7 +3170,8 @@ const aiAnalyze = useMutation({
             <TabsTrigger value="validation">Rules</TabsTrigger>
             <TabsTrigger value="fibonacci">Fib</TabsTrigger>
             <TabsTrigger value="ai" className={aiAnalysis ? 'text-[#00c4b4]' : ''}>
-              AI {aiAnalysis && 'Check'}</TabsTrigger> {/* <-- FIX 1: Removed the invalid '>' */}
+              AI {aiAnalysis && 'Check'}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="validation" className="mt-4">
@@ -3250,11 +3247,9 @@ const aiAnalyze = useMutation({
         </Tabs>
       </CardContent>
     </Card>
-    </div> {/* ← right panel column */}
- </div>   {/* ← grid container */}   
+    </div>
 
       {/* Elliott Wave Training Manual Section */}
-  {/* This section is placed AFTER the main grid container, but still INSIDE the min-h-screen outer div. */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <Card className="bg-slate-900/90 border-slate-700">
           <CardHeader>
@@ -4335,10 +4330,9 @@ const aiAnalyze = useMutation({
 
           </CardContent>
         </Card>
-    </div> {/* <-- Closing the Training Manual's outermost wrapper div */}
+      </div>
 
-{/* --- FINAL CLOSURE --- */}
-  <CryptoNavigation />
-</div>     {/* ← min-h-screen outer div */}
-);
-} // <-- REQUIRED: Don't forget to close the function body if it's the last thing in the file
+      <CryptoNavigation />
+    </div>
+  );
+}
