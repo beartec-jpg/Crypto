@@ -3183,8 +3183,7 @@ const aiAnalyze = useMutation({
             <TabsContent value="fibonacci" className="mt-4">
               {/* Your existing fib UI */}
             </TabsContent>
-            
-<TabsContent value="ai" className="mt-4 space-y-5">
+            <TabsContent value="ai" className="mt-4 space-y-5">
   {aiAnalyze.isPending ? (
     <div className="text-center py-16">
       <Loader2 className="w-10 h-10 animate-spin text-[#00c4b4] mx-auto mb-4" />
@@ -3225,6 +3224,7 @@ const aiAnalyze = useMutation({
                 ))}
               </div>
             )}
+
             {aiAnalysis.continuation.downTargets?.length > 0 && (
               <div>
                 <h5 className="text-red-400 font-medium mb-3 text-lg">Downside Targets</h5>
