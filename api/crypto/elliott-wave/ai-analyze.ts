@@ -1,11 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import OpenAI from 'openai';
 
-// 1. TIMEOUT ADJUSTMENT
+// ──────────────────────────────────────────────────────────────────────
+//  OpenAI (xAI / Grok) Client – with generous timeout
+// ──────────────────────────────────────────────────────────────────────
 const openai = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
-  timeout: 120000,
+  timeout: 120000, // 2 minutes per request attempt
 });
 
 interface WavePoint {
@@ -23,11 +25,10 @@ interface CandleData {
   volume: number;
 }
 
-// Helper: Compact string format to fit tokens
+// Helper: Compact string format to save tokens
 const formatCandlesCompact = (candles: CandleData[], offset: number) => {
   return candles
-    // Time is included to link AI output indices to actual chart times
-    .map((c, i) => `Idx:${offset + i} H:${c.high.toFixed(4)} L:${c.low.toFixed(4)} C:${c.close.toFixed(4)} Time:${c.time}`) 
+    .map((c, i) => `Idx:${offset + i} H:${c.high.toFixed(4)} L:${c.low.toFixed(4)} C:${c.close.toFixed(4)} Time:${c.time}`)
     .join('\n');
 };
 
@@ -45,8 +46,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       chartImage,
       symbol,
       timeframe,
-      candles, // The raw array of visible candles
-      visibleStartIndex, // Index offset
+      candles,
+      visibleStartIndex,
       imageBase64,
     } = req.body;
 
@@ -57,7 +58,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const candleArray: CandleData[] = candles || [];
     const chartImageData = String(chartImage || imageBase64 || '');
 
-    // --- DYNAMIC DATA PRE-PROCESSING ---
     const relevantCandles = candleArray;
     const startIndex = typeof visibleStartIndex === 'number' ? visibleStartIndex : 0;
 
@@ -65,13 +65,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Not enough candle data provided (need at least 10)' });
     }
 
-    // --- SWING POINT DETECTION (using full historical index) ---
+    // ─── SWING POINT DETECTION (using full historical index) ───
     const swingPoints = [];
     for (let i = 2; i < relevantCandles.length - 2; i++) {
       const c = relevantCandles[i];
       const prev = relevantCandles[i - 1];
       const next = relevantCandles[i + 1];
-
       if (c.high > prev.high && c.high > next.high) {
         swingPoints.push({ type: 'HIGH', price: c.high, idx: startIndex + i });
       }
@@ -80,38 +79,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // --- PROMPT & MODEL CALL ---
-
+    // ─── PROMPT & MODEL CALL ───
     const systemPrompt = `You are a precision Elliott Wave engine specialized in immediate, visible trend analysis.
-    
-    INPUT DATA:
-    1. A Chart Image (for pattern shape recognition).
-    2. A Data List of "Swing Points" (Highs and Lows).
-    
-    STRICT RULES:
-    1. **FOCUS ON VISIBLE RANGE**: Your analysis MUST be based ONLY on the price movement **visible in the chart image and the provided data subset**. Ignore any implied long-term trend outside this range.
-    2. COORDINATE SYSTEM: You must map the visual waves in the image to the exact prices in the Data List.
-    3. NO GUESSING: If you identify Wave 3 ending at a high, you MUST output the exact price from the provided Swing Points list that corresponds to that visual peak.
-    4. VALIDATION: Wave 3 is never the shortest. Wave 2 never retraces > 100% of Wave 1.
-    5. OUTPUT: Return strictly valid JSON.`;
+
+INPUT DATA:
+1. A Chart Image (for pattern shape recognition).
+2. A Data List of "Swing Points" (Highs and Lows).
+
+STRICT RULES:
+1. FOCUS ON VISIBLE RANGE: Your analysis MUST be based ONLY on the price movement visible in the chart image and the provided data subset.
+2. COORDINATE SYSTEM: You must map the visual waves in the image to the exact prices in the Data List.
+3. NO GUESSING: If you identify Wave 3 ending at a high, you MUST output the exact price from the provided Swing Points list.
+4. VALIDATION: Wave 3 is never the shortest. Wave 2 never retraces > 100% of Wave 1.
+5. OUTPUT: Return strictly valid JSON.`;
 
     const userPrompt = `ANALYZE MARKET: ${symbol} (${timeframe})
-
 STEP 1: RECOGNIZE PATTERN FROM IMAGE
 Look at the chart image. Is it an Impulse (5 waves up) or Correction (ABC)?
-
 STEP 2: MAP TO DATA
 Here is the Price Data for the visible range (Candle Indices ${startIndex} to ${
       startIndex + relevantCandles.length - 1
     }).
 Current Price: ${relevantCandles[relevantCandles.length - 1].close}
-
 Valid Swing Points (Choose your Wave Labels ONLY from this list using the full historical index):
 ${swingPoints.map((s) => `[Candle #${s.idx}] ${s.type}: ${s.price.toFixed(4)}`).join('\n')}
-
 Detailed Candle Data (Reference):
 ${formatCandlesCompact(relevantCandles, startIndex)}
-
 REQUIRED JSON OUTPUT:
 {
   "patternType": "impulse" | "correction" | "triangle",
@@ -135,7 +128,7 @@ REQUIRED JSON OUTPUT:
 }`;
 
     let messageContent: any;
-    if (chartImageData.startsWith('data:image')) { 
+    if (chartImageData.startsWith('data:image')) {
       messageContent = [
         { type: 'text', text: userPrompt },
         { type: 'image_url', image_url: { url: chartImageData, detail: 'low' } },
@@ -145,35 +138,36 @@ REQUIRED JSON OUTPUT:
       messageContent = userPrompt;
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'grok-4', 
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: messageContent },
-      ],
-      max_tokens: 1000,
-      temperature: 0.1,
-    });
+    // ─── GROK CALL WITH SAFETY TIMEOUT (7 minutes max) ───
+    const completion = await Promise.race([
+      openai.chat.completions.create({
+        model: 'grok-4',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: messageContent },
+        ],
+        max_tokens: 1000,
+        temperature: 0.1,
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Grok took longer than 7 minutes')), 420000)
+      ),
+    ]);
 
     const content = completion.choices[0]?.message?.content || '';
 
-    // --- PARSING & SANITIZATION ---
+    // ─── PARSING & SANITIZATION ───
     let result: any = { confidence: 0, suggestedLabels: [] };
-
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
 
-        // Sanitize confidence (0–100)
-        let safeConf = parseInt(parsed.confidence) || 0;
-        safeConf = Math.min(100, Math.max(0, safeConf));
+        let safeConf = Math.min(100, Math.max(0, parseInt(parsed.confidence) || 0));
 
-        // Sanitize labels (fix price mismatch using visibleStartIndex)
         const safeLabels = (parsed.suggestedLabels || []).map((lbl: any) => {
           const targetIdx = lbl.candleIndex - startIndex;
           const candle = relevantCandles[targetIdx] || relevantCandles[relevantCandles.length - 1];
-
           return {
             label: lbl.label,
             candleIndex: lbl.candleIndex,
@@ -207,3 +201,11 @@ REQUIRED JSON OUTPUT:
     return res.status(500).json({ error: error.message || 'Analysis failed' });
   }
 }
+
+// ──────────────────────────────────────────────────────────────────────
+//  VERCEL FUNCTION CONFIG — THIS WAS MISSING (THE FIX!)
+// ──────────────────────────────────────────────────────────────────────
+export const config = {
+  maxDuration: 800,   // 13+ minutes — plenty for Grok-4
+  memory: 2048,       // Extra memory for large images
+};
