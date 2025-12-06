@@ -3182,7 +3182,7 @@ const aiAnalyze = useMutation({
 
             <TabsContent value="fibonacci" className="mt-4">
               {/* Your existing fib UI */}
-            </TabsContent>
+              
             <TabsContent value="ai" className="mt-4 space-y-5">
   {aiAnalyze.isPending ? (
     <div className="text-center py-16">
