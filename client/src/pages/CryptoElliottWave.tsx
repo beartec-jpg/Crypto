@@ -2875,7 +2875,6 @@ const aiAnalyze = useMutation({
       timeframe,
       visibleCandles: visibleCandles.length,
       hasImage: !!chartImage,
-   250
     });
 
     aiAnalyze.mutate({
