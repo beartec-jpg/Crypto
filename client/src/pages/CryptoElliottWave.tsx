@@ -3183,64 +3183,70 @@ const aiAnalyze = useMutation({
             <TabsContent value="fibonacci" className="mt-4">
               {/* Your existing fib UI */}
             </TabsContent>
-
-            <TabsContent value="ai" className="mt-4">
-              {aiAnalyze.isPending ? (
-                <div className="text-center py-6">
-                  <Loader2 className="w-8 h-8 animate-spin text-[#00c4b4] mx-auto mb-2" />
-                  <p className="text-sm text-gray-400">Grok is analyzing...</p>
-                </div>
-              ) : aiAnalysis ? (
-                <div className="space-y-3">
-                  {/* Your full AI analysis display */}
-                  {/* Including Apply to Chart button with fixed logic */}
-                  {aiAnalysis.suggestedLabels && aiAnalysis.suggestedLabels.length > 0 && (
-                    <Button
-                      size="sm"
-                      className="w-full bg-[#00c4b4] hover:bg-[#00a89c]"
-                      onClick={() => {
-                        // Use data stored during handleAutoAnalyze
-                        const stored = (window as any).__aiVisibleCandles;
-                        const startIdx = (window as any).__aiVisibleStartIdx || 0;
-                        if (!stored) return toast({ title: 'No data', description: 'Run AI first', variant: 'destructive' });
-
-                        const points: WavePoint[] = aiAnalysis.suggestedLabels
-                          .map(label => {
-                            const globalIdx = label.candleIndex;
-                            if (globalIdx === undefined) return null;
-                            const localIdx = globalIdx - startIdx;
-                            if (localIdx < 0 || localIdx >= stored.length) return null;
-                            const c = stored[localIdx];
-                            const price = label.snapTo === 'high' ? c.high : c.low;
-                            return { time: c.time, price, label: label.label, index: globalIdx, snappedToHigh: label.snapTo === 'high', isCorrection: true };
-                          })
-                          .filter(Boolean) as WavePoint[];
-
-                        if (points.length >= 3) {
-                          setCurrentPoints(points.sort((a, b) => a.index! - b.index!));
-                          setPatternType(aiAnalysis.patternType.includes('impulse') ? 'impulse' : 'correction');
-                          setIsDrawing(true);
-                          toast({ title: 'AI Labels Applied', description: `${points.length} points placed` });
-                        }
-                      }}
-                    >
-                      <Wand2 className="w-4 h-4 mr-2" /> Apply AI Labels to Chart
-                    </Button>
-                  )}
-                  {/* Rest of your AI panel */}
-                </div>
-              ) : (
-                <div className="text-center py-6">
-                  <Wand2 className="w-8 h-8 mx-auto text-gray-600 mb-2" />
-                  <p className="text-gray-400 text-sm">Click "AI" to analyze</p>
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+            
+<TabsContent value="ai" className="mt-4 space-y-5">
+  {aiAnalyze.isPending ? (
+    <div className="text-center py-16">
+      <Loader2 className="w-10 h-10 animate-spin text-[#00c4b4] mx-auto mb-4" />
+      <p className="text-gray-400 text-lg">Grok is analyzing the chart...</p>
     </div>
-);
+  ) : aiAnalysis ? (
+    <div className="space-y-6">
+      {/* Pattern Summary */}
+      <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-600/50 rounded-xl p-6">
+        <h3 className="text-2xl font-bold text-emerald-400 mb-3">
+          {aiAnalysis.patternType.charAt(0).toUpperCase() + aiAnalysis.patternType.slice(1)} Pattern
+        </h3>
+        <div className="flex items-center gap-5 text-lg">
+          <span className="text-gray-400">Confidence:</span>
+          <span className="text-3xl font-bold text-emerald-300">{aiAnalysis.confidence}%</span>
+          <span className="text-gray-300">— {aiAnalysis.currentWave}</span>
+        </div>
+        <p className="text-gray-200 mt-5 leading-relaxed text-base">{aiAnalysis.analysis}</p>
+      </div>
+
+      {/* Continuation Targets */}
+      {aiAnalysis.continuation && (
+        <div className="bg-slate-800/90 rounded-xl p-6 border border-slate-700">
+          <h4 className="text-xl font-semibold text-cyan-400 mb-4">
+            {aiAnalysis.continuation.direction === 'up' ? 'Bullish' : 'Bearish'} Continuation
+          </h4>
+          <p className="text-gray-300 mb-5 text-base">{aiAnalysis.continuation.targetDescription}</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {aiAnalysis.continuation.upTargets?.length > 0 && (
+              <div>
+                <h5 className="text-green-400 font-medium mb-3 text-lg">Upside Targets</h5>
+                {aiAnalysis.continuation.upTargets.map((t, i) => (
+                  <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
+                    <span className="text-green-300">{t.level}</span>
+                    <span className="font-mono text-green-200 text-lg">${t.price?.toFixed(4)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {aiAnalysis.continuation.downTargets?.length > 0 && (
+              <div>
+                <h5 className="text-red-400 font-medium mb-3 text-lg">Downside Targets</h5>
+                {aiAnalysis.continuation.downTargets.map((t, i) => (
+                  <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
+                    <span className="text-red-300">{t.level}</span>
+                    <span className="font-mono text-red-200 text-lg">${t.price?.toFixed(4)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="text-center py-20 text-gray-500 text-lg">
+      Click “AI Check” to analyze the current chart
+    </div>
+  )}
+</TabsContent>
+           
 
       {/* Elliott Wave Training Manual Section */}
       <div className="max-w-7xl mx-auto px-4 py-8">
