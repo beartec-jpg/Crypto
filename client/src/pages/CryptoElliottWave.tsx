@@ -2825,17 +2825,18 @@ const aiAnalyze = useMutation({
     let chartImage: string | null = null;
 
     try {
-      chartImage = await captureChartScreenshot();
-    } catch (err) {
-      console.error('[handleAutoAnalyze] Unexpected error during capture:', err);
-      toast({
-        title: 'Capture failed',
-        description: 'Proceeding with candle data only.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsCapturingChart(false);
-    }
+  chartImage = await captureChartScreenshot();
+
+  // ADD THESE 3 LINES — THIS IS YOUR PROOF
+  if (chartImage) {
+    console.log('SCREENSHOT SUCCESS — Size:', (chartImage.length / 1024 / 1024).toFixed(2), 'MB');
+    console.log('First 100 chars (should start with data:image/jpeg;base64,/9j/...):', chartImage.substring(0, 100));
+  } else {
+    console.log('SCREENSHOT FAILED — chartImage is null');
+  }
+} finally {
+  setIsCapturingChart(false);
+}
 
     // ─── Candle data & visible range (your existing logic – unchanged) ───
     const allCandles = candlesRef.current || candles;
