@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import OpenAI from 'openai';
 
 // ──────────────────────────────────────────────────────────────────────
-//  OpenAI (xAI / Grok) Client – with generous timeout
+// OpenAI (xAI / Grok) Client – with generous timeout
 // ──────────────────────────────────────────────────────────────────────
 const openai = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
@@ -33,11 +33,10 @@ const formatCandlesCompact = (candles: CandleData[], offset: number) => {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS Headers
+  // ─── CORS & Preflight ───
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -51,13 +50,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       imageBase64,
     } = req.body;
 
+    // ─── DEBUG: PROVE WE RECEIVED THE SCREENSHOT ───
+    console.log('BACKEND RECEIVED PAYLOAD');
+    console.log('Image present:', !!chartImage || !!imageBase64);
+    const chartImageData = String(chartImage || imageBase64 || '');
+    if (chartImageData.startsWith('data:image')) {
+      console.log('SCREENSHOT RECEIVED — Size:', (chartImageData.length / 1024 / 1024).toFixed(2), 'MB');
+      console.log('First 100 chars:', chartImageData.substring(0, 100));
+    } else {
+      console.warn('No valid screenshot received — falling back to text-only');
+    }
+
     if (!process.env.XAI_API_KEY) {
       return res.status(500).json({ error: 'XAI_API_KEY not configured' });
     }
 
     const candleArray: CandleData[] = candles || [];
-    const chartImageData = String(chartImage || imageBase64 || '');
-
     const relevantCandles = candleArray;
     const startIndex = typeof visibleStartIndex === 'number' ? visibleStartIndex : 0;
 
@@ -138,7 +146,8 @@ REQUIRED JSON OUTPUT:
       messageContent = userPrompt;
     }
 
-    // ─── GROK CALL WITH SAFETY TIMEOUT (7 minutes max) ───
+    // ─── GROK CALL WITH 7-MINUTE SAFETY TIMEOUT ───
+    console.log('Calling Grok-4...');
     const completion = await Promise.race([
       openai.chat.completions.create({
         model: 'grok-4',
@@ -154,6 +163,7 @@ REQUIRED JSON OUTPUT:
       ),
     ]);
 
+    console.log('Grok responded successfully');
     const content = completion.choices[0]?.message?.content || '';
 
     // ─── PARSING & SANITIZATION ───
@@ -203,9 +213,9 @@ REQUIRED JSON OUTPUT:
 }
 
 // ──────────────────────────────────────────────────────────────────────
-//  VERCEL FUNCTION CONFIG — THIS WAS MISSING (THE FIX!)
+// VERCEL FUNCTION CONFIG — THIS WAS MISSING (THE FIX!)
 // ──────────────────────────────────────────────────────────────────────
 export const config = {
-  maxDuration: 800,   // 13+ minutes — plenty for Grok-4
-  memory: 2048,       // Extra memory for large images
+  maxDuration: 800,   // 13+ minutes — more than enough for Grok-4
+  memory: 2048,       // Extra memory for large screenshots
 };
