@@ -3253,14 +3253,7 @@ const aiAnalyze = useMutation({
       </CardContent>
     </Card>
     </div> {/* ← right panel column */}
- </div>   {/* ← grid container */}
-
-  <CryptoNavigation />
-</div>     {/* ← min-h-screen outer div */}
-);
-  
- 
-                    
+ </div>   {/* ← grid container */}   
 
       {/* Elliott Wave Training Manual Section */}
       <div className="max-w-7xl mx-auto px-4 py-8">
