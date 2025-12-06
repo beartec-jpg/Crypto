@@ -25,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { symbol, timeframe } = req.query;
+    const { symbol, timeframe, endTime: endTimeParam, limit: limitParam } = req.query;
     
     if (!symbol || !timeframe) {
       return res.status(400).json({ error: 'Symbol and timeframe are required' });
@@ -46,9 +46,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                            intervalStr === '1d' ? '1d' :
                            intervalStr === '1w' ? '1w' : '1h';
 
-    const candlesNeeded = 500;
+    const candlesNeeded = limitParam ? Math.min(parseInt(limitParam as string, 10), 1000) : 600;
     const intervalMs = INTERVAL_MS[binanceInterval] || 60 * 60 * 1000;
-    const endTime = Date.now();
+    const endTime = endTimeParam ? parseInt(endTimeParam as string, 10) * 1000 : Date.now();
     const startTime = endTime - (candlesNeeded * intervalMs);
 
     console.log(`📊 Fetching extended history: ${symbolStr} ${binanceInterval}`);

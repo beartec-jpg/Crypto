@@ -150,6 +150,7 @@ export default function CryptoElliottWave() {
   const blueCandleMarkersRef = useRef<any>(null); // Markers on blue candle series
   const touchStartTimeRef = useRef<number>(0); // Track when touch/click started for long-press detection
   const timeframeRef = useRef<string>('1d'); // Track timeframe for click handler window sizing
+  const loadMoreCandlesRef = useRef<() => void>(() => {}); // Ref to loadMoreCandles for use in chart subscription
   
   // Dynamic click tolerances that scale with zoom level
   const dynamicTolerancesRef = useRef<{ barTolerance: number; priceTolerance: number }>({
@@ -177,6 +178,9 @@ export default function CryptoElliottWave() {
   const [isDragging, setIsDragging] = useState(false);
   const [markersVersion, setMarkersVersion] = useState(0); // Force marker refresh
   const [futurePointOverlays, setFuturePointOverlays] = useState<{ x: number; y: number; label: string; color: string }[]>([]); // HTML overlays for future points
+  const [visibleCandleCount, setVisibleCandleCount] = useState(0); // Track visible candles for counter display
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // Track if loading more historical candles
+  const oldestCandleTimeRef = useRef<number | null>(null); // Track oldest candle time for pagination
 
   // Check subscription tier
   const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string }>({
@@ -217,8 +221,45 @@ export default function CryptoElliottWave() {
   useEffect(() => {
     if (historyData?.candles) {
       setCandles(historyData.candles);
+      if (historyData.candles.length > 0) {
+        oldestCandleTimeRef.current = historyData.candles[0].time;
+      }
     }
   }, [historyData]);
+
+  // Load more historical candles when scrolling into the past
+  const loadMoreCandles = useCallback(async () => {
+    if (isLoadingMore || !oldestCandleTimeRef.current) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const response = await fetch(
+        `/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}&endTime=${oldestCandleTimeRef.current}&limit=200`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data.candles && data.candles.length > 0) {
+          setCandles(prev => {
+            const newCandles = data.candles.filter(
+              (c: CandleData) => !prev.some(p => p.time === c.time)
+            );
+            const merged = [...newCandles, ...prev].sort((a, b) => a.time - b.time);
+            oldestCandleTimeRef.current = merged[0].time;
+            return merged;
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load more candles:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [symbol, timeframe, isLoadingMore]);
+
+  // Keep ref updated for use in chart subscription
+  useEffect(() => {
+    loadMoreCandlesRef.current = loadMoreCandles;
+  }, [loadMoreCandles]);
 
   // Fetch saved wave labels
   const { data: labelsData, refetch: refetchLabels } = useQuery<ElliottWaveLabel[]>({
@@ -1523,14 +1564,30 @@ const aiAnalyze = useMutation({
     // Update tolerances on visible range change
     chart.timeScale().subscribeVisibleLogicalRangeChange(updateTolerances);
     
-    // Also update overlay positions when chart view changes (pan/zoom)
-    // This triggers a re-render by incrementing markersVersion
-    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+    // Also update overlay positions and visible candle count when chart view changes (pan/zoom)
+    // Trigger dynamic loading when scrolling into the past
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       setMarkersVersion(v => v + 1);
+      if (range) {
+        const visibleCount = Math.round(Math.abs(range.to - range.from));
+        setVisibleCandleCount(visibleCount);
+        
+        // Detect if user has scrolled to near the left edge (oldest candles)
+        // If range.from is less than 10, we're near the start - load more
+        if (range.from < 10) {
+          loadMoreCandlesRef.current();
+        }
+      }
     });
     
-    // Initial tolerance calculation
-    setTimeout(updateTolerances, 100);
+    // Initial tolerance calculation and visible candle count
+    setTimeout(() => {
+      updateTolerances();
+      const range = chart.timeScale().getVisibleLogicalRange();
+      if (range) {
+        setVisibleCandleCount(Math.round(Math.abs(range.to - range.from)));
+      }
+    }, 100);
 
     // Handle resize
     const resizeObserver = new ResizeObserver(() => {
@@ -3125,7 +3182,10 @@ const aiAnalyze = useMutation({
           ) : (
             <span>View mode</span>
           )}
-          <span className="ml-auto">{historyData?.candleCount || 0} candles</span>
+          <span className="ml-auto flex items-center gap-1">
+            {isLoadingMore && <Loader2 className="w-3 h-3 animate-spin" />}
+            {visibleCandleCount > 0 ? `${visibleCandleCount}/` : ''}{candles.length} candles
+          </span>
         </div>
 
         {/* Chart */}
@@ -3139,7 +3199,7 @@ const aiAnalyze = useMutation({
                 </div>
               </div>
             ) : (
-              <div ref={chartContainerRef} className={`w-full touch-manipulation ${isDrawing ? 'cursor-crosshair ring-2 ring-[#00c4b4]/50 rounded' : ''}`} style={{ touchAction: isDrawing ? 'none' : 'auto' }} />
+              <div ref={chartContainerRef} className={`w-full ${isDrawing ? 'cursor-crosshair ring-2 ring-[#00c4b4]/50 rounded' : ''}`} style={{ touchAction: isDrawing ? 'none' : 'pan-x pan-y pinch-zoom' }} />
             )}
 
             {currentPoints.length > 0 && (
