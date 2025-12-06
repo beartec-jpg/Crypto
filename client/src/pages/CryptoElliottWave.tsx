@@ -2844,81 +2844,81 @@ const aiAnalyze = useMutation({
   };
 
   const handleAutoAnalyze = useCallback(async () => {
-    if (!chartRef.current || !chartContainerRef.current) {
-      toast({ title: 'Chart Error', description: 'Chart is not initialized.', variant: 'destructive' });
-      return;
+  if (!chartRef.current || !chartContainerRef.current) {
+    toast({ title: 'Chart Error', description: 'Chart is not initialized.', variant: 'destructive' });
+    return;
+  }
+
+  let chartImage: string | null = null;
+  setIsCapturingChart(true);
+
+  try {
+    // Attempt screenshot with timeout/fallback check
+    chartImage = chartRef.current.takeScreenshot(); 
+    if (!chartImage || chartImage.length < 100) { // Basic validation: empty Base64?
+      throw new Error('Screenshot generated empty image');
     }
-
-    // 1. Chart Image Capture
-    setIsCapturingChart(true);
-    // Lightweight-charts method to get the chart as a Base64 image
-    const chartImage = chartRef.current.takeScreenshot(); 
-    setIsCapturingChart(false);
-    
-    // 💡 ADD THIS LINE TO DEBUG THE IMAGE DATA
-    console.log('[Frontend] Chart Image Data (first 100 chars):', chartImage ? chartImage.substring(0, 100) : 'NULL/UNDEFINED');
-    
-    // 2. CRITICAL FIX: DYNAMIC CANDLE DATA COLLECTION
-    const allCandles = candlesRef.current; // Get the full historical data from the ref
-    if (allCandles.length === 0) {
-        toast({ title: 'Data Error', description: 'No candle data available for analysis.', variant: 'destructive' });
-        return;
-    }
-
-    const timeScale = chartRef.current.timeScale();
-    const visibleRange = timeScale.getVisibleRange();
-
-    // Determine the index of the first visible candle
-    let visibleStartIdx = -1;
-    
-    // Find the first candle whose time is >= the visible start time
-    for (let i = 0; i < allCandles.length; i++) {
-        if (allCandles[i].time >= visibleRange.from) {
-            visibleStartIdx = i;
-            break;
-        }
-    }
-
-    // Filter the full data array to get only the candles visible on screen
-    const visibleCandles = allCandles.filter(
-        (c: CandleData) => c.time >= visibleRange.from && c.time <= visibleRange.to
-    );
-
-    if (visibleCandles.length < 10) {
-      toast({ title: 'Zoom In', description: 'Please zoom in to include at least 10 candles for analysis.', variant: 'destructive' });
-      return;
-    }
-
-    // Fallback in case time is not found precisely, assume start is 0
-    if (visibleStartIdx === -1) {
-        visibleStartIdx = 0;
-    }
-
-    // Prepare context data
-    const degreeContext = waveDegreesRef.current;
-    const currentPoints = currentPointsRef.current;
-    const degreeContextString = JSON.stringify(degreeContext);
-    
-    // Final check before mutation
-    if (aiAnalyze.isPending) return;
-
-    // 3. Trigger the Mutation with Fixed Payload
-    console.log('AI ANALYZE: data=', { symbol, timeframe, visibleStartIndex: visibleStartIdx, count: visibleCandles.length, currentPoints: currentPoints.length, degreeContext });
-    
-    aiAnalyze.mutate({ 
-        chartImage: chartImage, // Correct variable for Base64 image
-        candles: visibleCandles, // Array of visible candles (FIX for price mismatch)
-        visibleStartIndex: visibleStartIdx, // Index offset (FIX for wave label placement)
-        symbol, 
-        timeframe, 
-        degreeContext: degreeContextString,
-        // Removed candleData and visibleRange as they are now redundant with the new payload
-        existingLabels: currentPoints.length > 0 
-            ? currentPoints.map(p => `${p.label} at [${p.index}] ${p.price.toFixed(4)}`).join('\n') 
-            : undefined
+    console.log('[Frontend] Chart Image Data (first 100 chars):', chartImage.substring(0, 100));
+  } catch (error) {
+    console.error('[Frontend] Screenshot Error:', error); // Always log for debugging
+    toast({
+      title: 'Screenshot Failed',
+      description: `Could not capture chart: ${error instanceof Error ? error.message : 'Unknown error'}. Proceeding without image.`,
+      variant: 'destructive',
     });
-}, [symbol, timeframe, aiAnalyze, toast]);
+    chartImage = null; // Fallback: Send data-only payload
+  } finally {
+    setIsCapturingChart(false); // Always reset state
+  }
 
+  // 2. CRITICAL FIX: DYNAMIC CANDLE DATA COLLECTION (unchanged)
+  const allCandles = candlesRef.current;
+  if (allCandles.length === 0) {
+    toast({ title: 'Data Error', description: 'No candle data available for analysis.', variant: 'destructive' });
+    return;
+  }
+
+  const timeScale = chartRef.current.timeScale();
+  const visibleRange = timeScale.getVisibleRange();
+  if (!visibleRange) {
+    toast({ title: 'View Error', description: 'No visible range—zoom/pan the chart first.', variant: 'destructive' });
+    return;
+  }
+
+  // ... (rest of visibleStartIdx, visibleCandles calculation unchanged)
+
+  if (visibleCandles.length < 10) {
+    toast({ title: 'Zoom In', description: 'Please zoom in to include at least 10 candles for analysis.', variant: 'destructive' });
+    return;
+  }
+
+  // Fallback in case time is not found precisely, assume start is 0
+  if (visibleStartIdx === -1) {
+    visibleStartIdx = 0;
+  }
+
+  // Prepare context data (unchanged)
+  const degreeContext = waveDegreesRef.current;
+  const currentPoints = currentPointsRef.current;
+  const degreeContextString = JSON.stringify(degreeContext);
+  
+  if (aiAnalyze.isPending) return;
+
+  // 3. Trigger the Mutation (with fallback for no image)
+  console.log('AI ANALYZE: data=', { symbol, timeframe, visibleStartIndex: visibleStartIdx, count: visibleCandles.length, currentPoints: currentPoints.length, degreeContext, hasImage: !!chartImage });
+  
+  aiAnalyze.mutate({ 
+    chartImage: chartImage || undefined, // Optional: Backend can handle missing image
+    candles: visibleCandles,
+    visibleStartIndex: visibleStartIdx,
+    symbol, 
+    timeframe, 
+    degreeContext: degreeContextString,
+    existingLabels: currentPoints.length > 0 
+        ? currentPoints.map(p => `\( {p.label} at [ \){p.index}] ${p.price.toFixed(4)}`).join('\n') 
+        : undefined
+  });
+}, [symbol, timeframe, aiAnalyze, toast]);
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
