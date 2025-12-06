@@ -2764,7 +2764,7 @@ const aiAnalyze = useMutation({
       // Fall through to manual capture
     }
     // 2. Manual fallback – captures EVERY canvas (chart + price/time axes)
-**try {**  // <-- ADD THIS OPENING BRACE IMMEDIATELY AFTER 'try'
+    try {  // <-- ADD THIS OPENING BRACE IMMEDIATELY AFTER 'try'
   const container = chartContainerRef.current!;
   const rect = container.getBoundingClientRect();
 
