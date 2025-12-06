@@ -385,14 +385,26 @@ const aiAnalyze = useMutation({
       const response = await apiRequest('POST', '/api/crypto/elliott-wave/ai-analyze', data);
       return response.json();
     },
-    onSuccess: (result: GrokWaveAnalysis) => {
-  setAiAnalysis(result);
+  onSuccess: (data: any) => {
+  // Test mode returns { success: true, grokSaid: 'GROK IS ALIVE' }
+  if (data.grokSaid || data.mock) {
+    setAiAnalysis(null);
+    toast({
+      title: 'Grok Connection Test',
+      description: data.grokSaid || 'Grok is alive and ready!',
+    });
+    return;
+  }
+
+  // Normal Grok response
+  setAiAnalysis(data);
   toast({
-    title: `AI: ${result.patternType.charAt(0).toUpperCase() + result.patternType.slice(1)} Pattern`,
-    // **CRITICAL FIX:** Use standard template literals for correct display
-    description: `${result.confidence.toFixed(0)}% confidence - ${result.currentWave}`, 
+    title: `AI: ${data.patternType?.charAt(0).toUpperCase() + data.patternType?.slice(1) || 'Unknown'} Pattern`,
+    description: `${data.confidence?.toFixed(0) || '?'}% confidence - ${data.currentWave || 'Analyzing...'}`,
   });
 },
+
+  
     onError: (error: any) => {
       toast({
         title: 'AI Analysis Failed',
