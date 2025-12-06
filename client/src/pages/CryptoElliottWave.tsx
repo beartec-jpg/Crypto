@@ -3163,99 +3163,101 @@ const aiAnalyze = useMutation({
         </Card>
       </div>
 
-         {/* Right Panel */}
-      <Card className="bg-slate-900/50 border-slate-800">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Validation</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue={aiAnalysis ? "ai" : "validation"}>
-            <TabsList className="grid w-full grid-cols-3 bg-slate-800">
-              <TabsTrigger value="validation">Rules</TabsTrigger>
-              <TabsTrigger value="fibonacci">Fib</TabsTrigger>
-              <TabsTrigger value="ai" className={aiAnalysis ? 'text-[#00c4b4]' : ''}>
-                >AI {aiAnalysis && 'Check'}</TabsTrigger>
-            </TabsList>
+  // ... surrounding container divs not shown, starting with the right panel ...
 
-            <TabsContent value="validation" className="mt-4">
-              {/* Your existing validation UI */}
-            </TabsContent>
+    {/* Right Panel */}
+    <Card className="bg-slate-900/50 border-slate-800">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg">Validation</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue={aiAnalysis ? "ai" : "validation"}>
+          <TabsList className="grid w-full grid-cols-3 bg-slate-800">
+            <TabsTrigger value="validation">Rules</TabsTrigger>
+            <TabsTrigger value="fibonacci">Fib</TabsTrigger>
+            <TabsTrigger value="ai" className={aiAnalysis ? 'text-[#00c4b4]' : ''}>
+              AI {aiAnalysis && 'Check'}</TabsTrigger> {/* <-- FIX 1: Removed the invalid '>' */}
+          </TabsList>
 
-            <TabsContent value="fibonacci" className="mt-4">
-              {/* Your existing fib UI */}
-            </TabsContent>
+          <TabsContent value="validation" className="mt-4">
+            {/* Your existing validation UI */}
+          </TabsContent>
 
-            <TabsContent value="ai" className="mt-4 space-y-5">
-              {aiAnalyze.isPending ? (
-                <div className="text-center py-16">
-                  <Loader2 className="w-10 h-10 animate-spin text-[#00c4b4] mx-auto mb-4" />
-                  <p className="text-gray-400 text-lg">Grok is analyzing the chart...</p>
-                </div>
-              ) : aiAnalysis ? (
-                <div className="space-y-6">
-                  {/* Pattern Summary */}
-                  <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-600/50 rounded-xl p-6">
-                    <h3 className="text-2xl font-bold text-emerald-400 mb-3">
-                      {aiAnalysis.patternType.charAt(0).toUpperCase() + aiAnalysis.patternType.slice(1)} Pattern
-                    </h3>
-                    <div className="flex items-center gap-5 text-lg">
-                      <span className="text-gray-400">Confidence:</span>
-                      <span className="text-3xl font-bold text-emerald-300">{aiAnalysis.confidence}%</span>
-                      <span className="text-gray-300">— {aiAnalysis.currentWave}</span>
-                    </div>
-                    <p className="text-gray-200 mt-5 leading-relaxed text-base">{aiAnalysis.analysis}</p>
+          <TabsContent value="fibonacci" className="mt-4">
+            {/* Your existing fib UI */}
+          </TabsContent>
+
+          <TabsContent value="ai" className="mt-4 space-y-5">
+            {aiAnalyze.isPending ? (
+              <div className="text-center py-16">
+                <Loader2 className="w-10 h-10 animate-spin text-[#00c4b4] mx-auto mb-4" />
+                <p className="text-gray-400 text-lg">Grok is analyzing the chart...</p>
+              </div>
+            ) : aiAnalysis ? (
+              <div className="space-y-6">
+                {/* Pattern Summary */}
+                <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-600/50 rounded-xl p-6">
+                  <h3 className="text-2xl font-bold text-emerald-400 mb-3">
+                    {aiAnalysis.patternType.charAt(0).toUpperCase() + aiAnalysis.patternType.slice(1)} Pattern
+                  </h3>
+                  <div className="flex items-center gap-5 text-lg">
+                    <span className="text-gray-400">Confidence:</span>
+                    <span className="text-3xl font-bold text-emerald-300">{aiAnalysis.confidence}%</span>
+                    <span className="text-gray-300">— {aiAnalysis.currentWave}</span>
                   </div>
+                  <p className="text-gray-200 mt-5 leading-relaxed text-base">{aiAnalysis.analysis}</p>
+                </div>
 
-                  {/* Continuation Targets */}
-                  {aiAnalysis.continuation && (
-                    <div className="bg-slate-800/90 rounded-xl p-6 border border-slate-700">
-                      <h4 className="text-xl font-semibold text-cyan-400 mb-4">
-                        {aiAnalysis.continuation.direction === 'up' ? 'Bullish' : 'Bearish'} Continuation
-                      </h4>
-                      <p className="text-gray-300 mb-5 text-base">{aiAnalysis.continuation.targetDescription}</p>
+                {/* Continuation Targets */}
+                {aiAnalysis.continuation && (
+                  <div className="bg-slate-800/90 rounded-xl p-6 border border-slate-700">
+                    <h4 className="text-xl font-semibold text-cyan-400 mb-4">
+                      {aiAnalysis.continuation.direction === 'up' ? 'Bullish' : 'Bearish'} Continuation
+                    </h4>
+                    <p className="text-gray-300 mb-5 text-base">{aiAnalysis.continuation.targetDescription}</p>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {aiAnalysis.continuation.upTargets?.length > 0 && (
-                          <div>
-                            <h5 className="text-green-400 font-medium mb-3 text-lg">Upside Targets</h5>
-                            {aiAnalysis.continuation.upTargets.map((t, i) => (
-                              <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
-                                <span className="text-green-300">{t.level}</span>
-                                <span className="font-mono text-green-200 text-lg">${t.price?.toFixed(4)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {aiAnalysis.continuation.downTargets?.length > 0 && (
-                          <div>
-                            <h5 className="text-red-400 font-medium mb-3 text-lg">Downside Targets</h5>
-                            {aiAnalysis.continuation.downTargets.map((t, i) => (
-                              <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
-                                <span className="text-red-300">{t.level}</span>
-                                <span className="font-mono text-red-200 text-lg">${t.price?.toFixed(4)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {aiAnalysis.continuation.upTargets?.length > 0 && (
+                        <div>
+                          <h5 className="text-green-400 font-medium mb-3 text-lg">Upside Targets</h5>
+                          {aiAnalysis.continuation.upTargets.map((t, i) => (
+                            <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
+                              <span className="text-green-300">{t.level}</span>
+                              <span className="font-mono text-green-200 text-lg">${t.price?.toFixed(4)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {aiAnalysis.continuation.downTargets?.length > 0 && (
+                        <div>
+                          <h5 className="text-red-400 font-medium mb-3 text-lg">Downside Targets</h5>
+                          {aiAnalysis.continuation.downTargets.map((t, i) => (
+                            <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
+                              <span className="text-red-300">{t.level}</span>
+                              <span className="font-mono text-red-200 text-lg">${t.price?.toFixed(4)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-20 text-gray-500 text-lg">
-                  Click “AI Check” to analyze the current chart
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-    </div> {/* ← right panel column */}
-  </div>   {/* ← grid container */}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-20 text-gray-500 text-lg">
+                Click “AI Check” to analyze the current chart
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  </div> {/* ← right panel column */}
+</div>   {/* ← grid container */}
 
-  <CryptoNavigation />
+<CryptoNavigation />
 </div>     {/* ← min-h-screen outer div */}
-);
+); // <-- FIX 2: Added missing closing parenthesis here
                     
 
       {/* Elliott Wave Training Manual Section */}
