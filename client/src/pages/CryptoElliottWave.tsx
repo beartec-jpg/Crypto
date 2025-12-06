@@ -3252,12 +3252,14 @@ const aiAnalyze = useMutation({
         </Tabs>
       </CardContent>
     </Card>
-  </div> {/* ← right panel column */}
-</div>   {/* ← grid container */}
-
-<CryptoNavigation />
-</div>     {/* ← min-h-screen outer div */}
-); // <-- FIX 2: Added missing closing parenthesis here
+3255|    </div> {/* ← right panel column */}
+3256|  </div>   {/* ← grid container */}
+3257|
+3258|  <CryptoNavigation />
+3259|</div>     {/* ← min-h-screen outer div */}
+3260|) // <-- This is the final closing parenthesis needed for the component's return
+3261|; // <-- Semicolon for the statement (optional, but standard)
+3262|} // <-- If this is a functional component (optional, depending on surrounding structure)
                     
 
       {/* Elliott Wave Training Manual Section */}
