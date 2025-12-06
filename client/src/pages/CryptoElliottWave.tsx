@@ -3232,28 +3232,30 @@ const aiAnalyze = useMutation({
                               <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
                                 <span className="text-red-300">{t.level}</span>
                                 <span className="font-mono text-red-200 text-lg">${t.price?.toFixed(4)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-20 text-gray-500 text-lg">
-                  Click “AI Check” to analyze the current chart
+                  </div>
                 </div>
               )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-    </div>
-  </div>
+            </div>
+          ) : (
+            <div className="text-center py-20 text-gray-500 text-lg">
+              Click “AI Check” to analyze the current chart
+            </div>
+          )}
+        </TabsContent>
 
-  <CryptoNavigation />
-</div>
+      </Tabs>
+    </CardContent>
+  </Card>
+</div> {/* ← right panel column */}
+</div>   {/* ← grid container (max-w-7xl) */}
+
+<CryptoNavigation />
+</div>     {/* ← outermost min-h-screen div */}
 );
            
 
