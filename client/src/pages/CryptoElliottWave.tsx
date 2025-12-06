@@ -2741,25 +2741,24 @@ const aiAnalyze = useMutation({
     if (!chartRef.current) return null;
     
     try {
-      setIsCapturingChart(true);
-      
-      // Use lightweight-charts' takeScreenshot() which includes axes, labels, and all overlays
-      const chart = chartRef.current;
-      const screenshot = chart.takeScreenshot();
-      
-      if (screenshot) {
-        // Create a canvas to convert the screenshot blob/image to base64
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return null;
-        
-        // Load the screenshot into an image
-        const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = reject;
-          img.src = screenshot.toDataURL('image/png');
-        });
+  // Attempt screenshot with timeout/fallback check
+  const chartImage = await chartRef.current.takeScreenshot();  // 👈 Add 'await' here
+  
+  if (!chartImage || chartImage.length < 100) {  // Now chartImage is the actual string (or throws if rejected)
+    throw new Error('Screenshot generated empty image');
+  }
+  console.log('[Frontend] Chart Image Data (first 100 chars):', chartImage.substring(0, 100));
+} catch (error) {
+  console.error('[Frontend] Screenshot Error:', error);  // This will now log Promise rejections too (e.g., canvas draw failure)
+  toast({
+    title: 'Screenshot Failed',
+    description: `Could not capture chart: ${error instanceof Error ? error.message : 'Unknown error'}. Proceeding without image.`,
+    variant: 'destructive',
+  });
+  chartImage = null;  // Fallback: Send data-only payload
+} finally {
+  setIsCapturingChart(false);  // Always reset state
+}
         
         // Resize to max 1200px width while maintaining aspect ratio
         // This reduces file size significantly while keeping readability
