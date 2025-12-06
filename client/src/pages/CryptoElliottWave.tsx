@@ -3247,7 +3247,6 @@ const aiAnalyze = useMutation({
             </div>
           )}
         </TabsContent>
-
       </Tabs>
     </CardContent>
   </Card>
