@@ -11,7 +11,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const symbol = (req.query.symbol as string)?.toUpperCase() || 'BTCUSDT';
-    const interval = (req.query.interval as string) || '1h';
+    const _interval = (req.query.interval as string) || '1h'; // Reserved for future use
+    void _interval;
 
     const coinalyzeSymbol = `${symbol}_PERP.A`;
 

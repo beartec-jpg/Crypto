@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+// @ts-ignore - pg types available at runtime
 import { Pool } from 'pg';
 
 const pool = new Pool({
