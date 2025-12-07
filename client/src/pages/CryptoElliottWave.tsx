@@ -181,6 +181,8 @@ export default function CryptoElliottWave() {
   const [visibleCandleCount, setVisibleCandleCount] = useState(0); // Track visible candles for counter display
   const [isLoadingMore, setIsLoadingMore] = useState(false); // Track if loading more historical candles
   const oldestCandleTimeRef = useRef<number | null>(null); // Track oldest candle time for pagination
+  const hasMoreHistoryRef = useRef(true); // Track if there's more history to load
+  const lastLoadTriggerRef = useRef(0); // Throttle loading triggers
 
   // Check subscription tier
   const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string }>({
@@ -224,13 +226,20 @@ export default function CryptoElliottWave() {
       if (historyData.candles.length > 0) {
         oldestCandleTimeRef.current = historyData.candles[0].time;
       }
+      // Reset pagination state when data source changes
+      hasMoreHistoryRef.current = true;
+      lastLoadTriggerRef.current = 0;
     }
   }, [historyData]);
 
   // Load more historical candles when scrolling into the past
   const loadMoreCandles = useCallback(async () => {
-    if (isLoadingMore || !oldestCandleTimeRef.current) return;
+    const now = Date.now();
+    // Throttle: minimum 2 seconds between load attempts
+    if (now - lastLoadTriggerRef.current < 2000) return;
+    if (isLoadingMore || !oldestCandleTimeRef.current || !hasMoreHistoryRef.current) return;
     
+    lastLoadTriggerRef.current = now;
     setIsLoadingMore(true);
     try {
       const response = await fetch(
@@ -239,14 +248,30 @@ export default function CryptoElliottWave() {
       if (response.ok) {
         const data = await response.json();
         if (data.candles && data.candles.length > 0) {
+          const newUniqueCount = data.candles.filter(
+            (c: CandleData) => c.time < (oldestCandleTimeRef.current || 0)
+          ).length;
+          
+          // If we got less than 50 new unique candles, we're near the end
+          if (newUniqueCount < 50) {
+            hasMoreHistoryRef.current = false;
+          }
+          
           setCandles(prev => {
             const newCandles = data.candles.filter(
               (c: CandleData) => !prev.some(p => p.time === c.time)
             );
+            if (newCandles.length === 0) {
+              hasMoreHistoryRef.current = false;
+              return prev;
+            }
             const merged = [...newCandles, ...prev].sort((a, b) => a.time - b.time);
             oldestCandleTimeRef.current = merged[0].time;
             return merged;
           });
+        } else {
+          // No more candles available
+          hasMoreHistoryRef.current = false;
         }
       }
     } catch (err) {
