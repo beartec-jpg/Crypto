@@ -1,15 +1,39 @@
 import { Link, useLocation } from 'wouter';
-import { BarChart3, Bot, GraduationCap, LogIn, LogOut, Waves } from 'lucide-react';
-import { SignedIn, SignedOut, SignInButton, useClerk } from '@clerk/clerk-react';
+import { BarChart3, Bot, GraduationCap, Waves, Crown, CreditCard } from 'lucide-react';
+import { useCryptoAuth } from '@/hooks/useCryptoAuth';
+import { useQuery } from '@tanstack/react-query';
+
+interface SubscriptionData {
+  tier: string;
+  hasElliottAddon: boolean;
+  canUseElliott: boolean;
+  canUseAI: boolean;
+}
 
 export function CryptoNavigation() {
   const [location] = useLocation();
-  const { signOut } = useClerk();
+  const { tier: localTier } = useCryptoAuth();
+  
+  const { data: subData } = useQuery<SubscriptionData>({
+    queryKey: ['/api/crypto/my-subscription'],
+  });
+  
+  const tier = subData?.tier || localTier || 'free';
+  
+  const getTierColor = (t: string) => {
+    switch (t.toLowerCase()) {
+      case 'elite': return 'text-purple-400 bg-purple-900/50';
+      case 'pro': return 'text-yellow-400 bg-yellow-900/50';
+      case 'intermediate': return 'text-blue-400 bg-blue-900/50';
+      case 'beginner': return 'text-green-400 bg-green-900/50';
+      default: return 'text-slate-400 bg-slate-800';
+    }
+  };
   
   const navItems = [
     { path: '/crypto/training', icon: GraduationCap, label: 'Training' },
     { path: '/cryptoindicators', icon: BarChart3, label: 'Indicators' },
-    { path: '/cryptoai', icon: Bot, label: 'AI Analysis' },
+    { path: '/cryptoai', icon: Bot, label: 'AI' },
     { path: '/cryptoelliottwave', icon: Waves, label: 'Waves' },
   ];
 
@@ -28,7 +52,7 @@ export function CryptoNavigation() {
                 data-testid={`link-nav-${item.label.toLowerCase().replace(' ', '-')}`}
               >
                 <button
-                  className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all ${
+                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all ${
                     isActive
                       ? 'bg-blue-600 text-white'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -41,27 +65,26 @@ export function CryptoNavigation() {
             );
           })}
           
-          <SignedOut>
-            <SignInButton mode="modal">
-              <button
-                className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all text-slate-400 hover:text-white hover:bg-slate-800"
-                data-testid="button-login"
-              >
-                <LogIn className="w-5 h-5" />
-                <span className="text-xs font-medium">Login</span>
-              </button>
-            </SignInButton>
-          </SignedOut>
-          <SignedIn>
+          <Link href="/crypto/subscribe" data-testid="link-subscribe">
             <button
-              onClick={() => signOut()}
-              className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all text-slate-400 hover:text-white hover:bg-red-600/80"
-              data-testid="button-logout"
+              className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all ${
+                location === '/crypto/subscribe'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
             >
-              <LogOut className="w-5 h-5" />
-              <span className="text-xs font-medium">Logout</span>
+              <CreditCard className="w-5 h-5" />
+              <span className="text-xs font-medium">Upgrade</span>
             </button>
-          </SignedIn>
+          </Link>
+          
+          <div 
+            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg ${getTierColor(tier)}`}
+            data-testid="tier-indicator"
+          >
+            <Crown className="w-5 h-5" />
+            <span className="text-xs font-medium capitalize">{tier}</span>
+          </div>
         </div>
       </div>
     </div>

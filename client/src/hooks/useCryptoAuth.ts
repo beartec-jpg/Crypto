@@ -19,15 +19,15 @@ interface CryptoSubscription {
 }
 
 const openAccessUser: CryptoUser = {
-  id: 'open-access',
-  email: 'user@open.access',
+  id: 'open-access-crypto',
+  email: 'crypto@open.access',
   firstName: 'Open',
   lastName: 'Access',
 };
 
 const openAccessSubscription: CryptoSubscription = {
   id: 'open-sub',
-  userId: 'open-access',
+  userId: 'open-access-crypto',
   tier: 'elite',
   subscriptionStatus: 'active',
   aiCredits: 999999,

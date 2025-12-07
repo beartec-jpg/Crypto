@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { cryptoSubscriptions } from "@shared/schema";
+import { cryptoSubscriptions, cryptoUsers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 // Base tiers (Elliott Wave is a separate add-on, not a tier)
@@ -37,8 +37,32 @@ export function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {
 }
 
 export class CryptoSubscriptionService {
-  async getUserSubscription(userId: string) {
+  async ensureUserExists(userId: string, email?: string) {
+    // Check if user exists in crypto_users table
+    const [existingUser] = await db
+      .select()
+      .from(cryptoUsers)
+      .where(eq(cryptoUsers.id, userId))
+      .limit(1);
+
+    if (!existingUser) {
+      // Create user in crypto_users table first
+      await db
+        .insert(cryptoUsers)
+        .values({
+          id: userId,
+          email: email || `${userId}@open.access`,
+        })
+        .onConflictDoNothing();
+      console.log(`✅ Created crypto_user: ${userId}`);
+    }
+  }
+
+  async getUserSubscription(userId: string, email?: string) {
     console.log(`🔍 getUserSubscription called for userId: ${userId}`);
+    
+    // Ensure user exists first to satisfy foreign key constraint
+    await this.ensureUserExists(userId, email);
     
     let [subscription] = await db
       .select()
