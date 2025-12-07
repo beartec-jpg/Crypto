@@ -1,0 +1,121 @@
+Dec 07 08:16:47.53
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:16:43.00
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:16:37.63
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:16:32.14
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:16:32.14
+POST
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/market-analysis
+Dec 07 08:16:31.40
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/binance/klines
+2
+✅ Binance data received, array length: 1000
+Dec 07 08:16:31.06
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/binance/klines
+2
+✅ Binance data received, array length: 1000
+Dec 07 08:16:29.90
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/binance/klines
+2
+✅ Binance data received, array length: 1000
+Dec 07 08:16:29.56
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/cryptoindicators
+Dec 07 08:16:28.22
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:14:01.51
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:56.46
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:51.68
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:46.48
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:40.54
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:35.60
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:30.55
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:25.55
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:20.56
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:15.55
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:10.55
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:05.59
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-orderflow
+Dec 07 08:13:00.55
+GET
+200
+crypto-kgr2rukwz-bear-tec.vercel.app
+/api/crypto/multi-exchange-
