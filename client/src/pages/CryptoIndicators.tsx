@@ -1178,9 +1178,22 @@ export default function CryptoIndicators() {
   const fetchAIAnalysis = useCallback(async (force = false) => {
     if (aiAnalysisLoading || candles.length < 100) return;
     
-    // Skip if we've checked in the last 60 minutes (unless forced)
+    // Check 60-minute cooldown
     const now = Date.now();
-    if (!force && lastAnalysisCheck && (now - lastAnalysisCheck) < 60 * 60 * 1000) {
+    const cooldownMs = 60 * 60 * 1000; // 1 hour
+    const timeSinceLastCheck = lastAnalysisCheck ? now - lastAnalysisCheck : cooldownMs + 1;
+    
+    if (timeSinceLastCheck < cooldownMs) {
+      // User tried to refresh within the cooldown period
+      if (force) {
+        const remainingMs = cooldownMs - timeSinceLastCheck;
+        const remainingMins = Math.ceil(remainingMs / 60000);
+        toast({
+          title: "Analysis is up to date",
+          description: `This analysis was refreshed recently. Next refresh available in ${remainingMins} minute${remainingMins !== 1 ? 's' : ''}.`,
+          duration: 4000,
+        });
+      }
       return;
     }
     
@@ -1220,7 +1233,7 @@ export default function CryptoIndicators() {
     } finally {
       setAiAnalysisLoading(false);
     }
-  }, [candles, symbol, interval, aiAnalysisLoading, lastAnalysisCheck]);
+  }, [candles, symbol, interval, aiAnalysisLoading, lastAnalysisCheck, toast]);
 
   // Hourly AI Market Analysis auto-refresh
   useEffect(() => {
