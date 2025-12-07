@@ -97,14 +97,14 @@ export function useCryptoAuth() {
     },
   });
 
-  // In development mode, return dev user with elite access
+  // In development mode, ALWAYS return elite access for testing all features
   if (isDevelopment) {
     return {
       user: devUser,
-      subscription: subscription || devSubscription,
-      tier: ((subscription?.tier || 'elite') as 'free' | 'beginner' | 'intermediate' | 'pro' | 'elite'),
+      subscription: { ...devSubscription, ...subscription, tier: 'elite', canUseElliott: true, canUseAI: true, hasUnlimitedAI: true },
+      tier: 'elite' as const,
       isAuthenticated: true,
-      isLoading: subscriptionLoading,
+      isLoading: false,
       error: null,
       getToken: async () => 'dev-token',
       refetchSubscription,
