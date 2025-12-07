@@ -3516,22 +3516,7 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
 
       await cryptoSubscriptionService.resetMonthlyCredits(userId);
       const stats = await cryptoSubscriptionService.getSubscriptionStats(userId);
-      
-      // Add capability flags based on tier
-      const tier = stats.tier as string;
-      const tierHierarchy: Record<string, number> = {
-        free: 0, beginner: 1, intermediate: 2, elliotician: 3, pro: 4, elite: 5
-      };
-      const tierLevel = tierHierarchy[tier] || 0;
-      
-      const capabilities = {
-        canViewElliott: true,
-        canUseElliott: tierLevel >= tierHierarchy.elliotician,
-        canUseAI: tierLevel >= tierHierarchy.intermediate,
-        hasUnlimitedAI: tier === "pro" || tier === "elite",
-        canUsePushNotifications: tierLevel >= tierHierarchy.pro,
-        isElite: tier === "elite",
-      };
+      const capabilities = await cryptoSubscriptionService.getCapabilities(userId);
       
       res.json({ ...stats, ...capabilities });
     } catch (error: any) {

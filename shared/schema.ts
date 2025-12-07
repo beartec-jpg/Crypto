@@ -334,7 +334,9 @@ export type InsertCryptoUser = typeof cryptoUsers.$inferInsert;
 export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().unique().references(() => cryptoUsers.id, { onDelete: "cascade" }),
-  tier: varchar("tier").notNull().default("free"), // "free", "beginner", "intermediate", "pro", "elite"
+  tier: varchar("tier").notNull().default("free"), // Base tier: "free", "beginner", "intermediate", "pro", "elite"
+  hasElliottAddon: boolean("has_elliott_addon").default(false), // Elliott Wave add-on ($10/mo) - independent of tier
+  elliottStripeItemId: varchar("elliott_stripe_item_id"), // Stripe subscription item ID for Elliott add-on
   selectedTickers: text("selected_tickers").array().default(sql`ARRAY[]::text[]`), // Max 3 tickers
   alertGrades: text("alert_grades").array().default(sql`ARRAY['A+', 'A']::text[]`), // Which grades to alert on
   alertTimeframes: text("alert_timeframes").array().default(sql`ARRAY['15m', '1h', '4h']::text[]`), // Which timeframes to monitor
@@ -354,6 +356,8 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
 export const insertCryptoSubscriptionSchema = z.object({
   userId: z.string(),
   tier: z.string().optional().default("free"),
+  hasElliottAddon: z.boolean().optional().default(false),
+  elliottStripeItemId: z.string().optional().nullable(),
   selectedTickers: z.array(z.string()).optional().default([]),
   alertGrades: z.array(z.string()).optional().default(['A+', 'A']),
   alertTimeframes: z.array(z.string()).optional().default(['15m', '1h', '4h']),
