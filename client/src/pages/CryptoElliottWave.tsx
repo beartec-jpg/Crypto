@@ -244,10 +244,14 @@ export default function CryptoElliottWave() {
   }>({
     queryKey: ['/api/crypto/extended-history', symbol, timeframe],
     queryFn: async () => {
+      console.log('📊 Starting extended history query...');
       try {
         let token: string | null = null;
         try {
-          token = await getToken();
+          // Add timeout to prevent hanging
+          const tokenPromise = getToken();
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
+          token = await Promise.race([tokenPromise, timeoutPromise]);
         } catch (tokenErr) {
           console.warn('📊 Failed to get auth token:', tokenErr);
         }
