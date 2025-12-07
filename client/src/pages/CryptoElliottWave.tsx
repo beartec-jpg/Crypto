@@ -586,12 +586,20 @@ const aiAnalyze = useMutation({
 
   // Initialize chart - only recreate when candles data changes
   useEffect(() => {
-    if (!chartContainerRef.current || candles.length === 0) return;
+    console.log('📊 Chart effect triggered:', { hasContainer: !!chartContainerRef.current, candleCount: candles.length });
+    
+    if (!chartContainerRef.current || candles.length === 0) {
+      console.log('📊 Chart effect early return - container:', !!chartContainerRef.current, 'candles:', candles.length);
+      return;
+    }
     
     // Wait for container to have dimensions
     const containerWidth = chartContainerRef.current.clientWidth;
+    console.log('📊 Container width:', containerWidth);
+    
     if (containerWidth === 0) {
       // Container not ready yet, retry after a short delay
+      console.log('📊 Container width is 0, retrying...');
       const retryTimer = setTimeout(() => {
         // Force re-render by updating a ref or state
         setMarkersVersion(v => v + 1);
@@ -703,6 +711,7 @@ const aiAnalyze = useMutation({
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
+    console.log('📊 Chart created successfully with', candles.length, 'candles');
     
     // Create a secondary blue candlestick series for future projection candles
     // This allows markers to anchor at correct prices in the future area
