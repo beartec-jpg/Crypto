@@ -27,10 +27,12 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
 - **Calculation Engine**: Custom service for IGE/UP/1 gas purging calculations.
 - **Request Validation**: Zod schemas shared between frontend and backend.
 - **Security**: Removal of custom Python indicator execution endpoint (RCE risk).
-- **Access Model**: Open access - no authentication required. All features available without login.
-  - All route middleware bypassed (pass-through stubs)
-  - Stripe payment integration removed
-  - OAuth modules deleted (cryptoAuth.ts, googleAuth.ts, replitAuth.ts)
+- **Authentication**: Clerk authentication for crypto features (VITE_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY)
+- **Access Model**: Tiered subscription model with capability-based access control
+  - Tier hierarchy: free < beginner < intermediate < elliotician < pro < elite
+  - Elliotician tier ($10/mo): Elliott Wave features access
+  - API returns capability flags (canUseElliott, canUseAI, hasUnlimitedAI, etc.)
+  - Free users can VIEW pages but features require subscription
 
 ## Data Storage Solutions
 - **Database**: PostgreSQL via Drizzle ORM.
@@ -59,7 +61,7 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
 - **Serverless Functions**: Located in `/api` folder for Vercel serverless deployment
   - `api/crypto/liquidations/realtime.ts` - Fetches real liquidation data from Binance/Bybit REST APIs
   - `api/crypto/liquidations/predicted.ts` - Fetches predicted liquidation zones from Coinglass/Coinalyze
-  - `api/crypto/my-subscription.ts` - Returns open-access elite tier (hardcoded)
+  - `api/crypto/my-subscription.ts` - Returns subscription tier with capability flags
   - `api/crypto/market-structure.ts` - Market structure analysis
   - `api/crypto/multi-exchange-orderflow.ts` - Multi-exchange orderflow data
   - `api/binance/klines.ts` - Candlestick data from Binance

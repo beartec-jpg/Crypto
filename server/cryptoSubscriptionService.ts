@@ -79,11 +79,13 @@ export class CryptoSubscriptionService {
     const subscription = await this.getUserSubscription(userId);
     const tier = subscription.tier as Tier;
 
+    // Pro and Elite have unlimited credits
     if (tier === "pro" || tier === "elite") {
       return true;
     }
 
-    if (tier === "intermediate") {
+    // Intermediate and Elliotician tiers use credit-based AI
+    if (tier === "intermediate" || tier === "elliotician") {
       const credits = subscription.aiCredits || 0;
       if (credits <= 0) {
         return false;
