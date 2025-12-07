@@ -9787,7 +9787,7 @@ export default function CryptoIndicators() {
                 </CardTitle>
                 <img src={grokLogo} alt="Grok" className="h-4 brightness-110" />
                 <span className="ml-auto px-2 py-0.5 bg-purple-600/30 text-purple-300 text-[10px] font-semibold rounded border border-purple-500/50">
-                  BEGINNER+
+                  INTERMEDIATE+
                 </span>
               </div>
             </CardHeader>
@@ -9806,7 +9806,7 @@ export default function CryptoIndicators() {
                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm"
                   data-testid="button-upgrade-market-summary"
                 >
-                  Upgrade to Beginner - $10/month
+                  Upgrade to Intermediate - $15/month
                 </Button>
               </div>
             </CardContent>

@@ -22,7 +22,6 @@ interface SubscriptionData {
 
 const TIER_PRICES: Record<string, { price: string; description: string }> = {
   free: { price: 'Free', description: 'Basic access' },
-  beginner: { price: '$5/mo', description: 'Training & education' },
   intermediate: { price: '$15/mo', description: '50 AI credits/month' },
   pro: { price: '$30/mo', description: 'Unlimited AI + notifications' },
   elite: { price: '$50/mo', description: 'Everything included' },

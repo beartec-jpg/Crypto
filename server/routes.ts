@@ -3572,7 +3572,7 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
     }
   });
 
-  // AI Market Review (Beginner+ tier)
+  // AI Market Review (Intermediate+ tier)
   app.post("/api/crypto/ai-market-review", requireCryptoAuth, async (req, res) => {
     try {
       // Check if XAI API key is configured
@@ -3586,12 +3586,12 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
 
       const userId = (req as any).cryptoUser.id;
 
-      const hasAccess = await cryptoSubscriptionService.checkTierAccess(userId, 'beginner');
+      const hasAccess = await cryptoSubscriptionService.checkTierAccess(userId, 'intermediate');
       if (!hasAccess) {
         return res.status(403).json({ 
           error: 'Subscription required',
-          message: 'Please upgrade to Beginner tier or higher to access AI Market Review',
-          requiredTier: 'beginner'
+          message: 'Please upgrade to Intermediate tier or higher to access AI Market Review',
+          requiredTier: 'intermediate'
         });
       }
 
@@ -3883,12 +3883,6 @@ Return ONLY valid JSON in this exact format:
           allowedGrades: ['A+', 'A', 'B'],
           allowedTimeframes: ['15m', '1h', '4h', '1d']
         },
-        beginner: { 
-          maxTickers: 3, 
-          allowedAlertTypes: ['bos', 'choch', 'fvg', 'liquidation'],
-          allowedGrades: ['A+', 'A', 'B', 'C', 'D'],
-          allowedTimeframes: ['5m', '15m', '1h', '4h', '1d']
-        },
         intermediate: { 
           maxTickers: 3, 
           allowedAlertTypes: ['bos', 'choch', 'fvg', 'liquidation', 'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx'],
@@ -3926,7 +3920,7 @@ Return ONLY valid JSON in this exact format:
       if (selectedTickers && selectedTickers.length > limits.maxTickers) {
         return res.status(403).json({ 
           error: `${tier} tier allows maximum ${limits.maxTickers} ticker(s)`,
-          requiredTier: 'beginner'
+          requiredTier: 'intermediate'
         });
       }
 
@@ -3936,7 +3930,7 @@ Return ONLY valid JSON in this exact format:
         if (invalidTypes.length > 0) {
           return res.status(403).json({ 
             error: `${tier} tier does not support alert types: ${invalidTypes.join(', ')}`,
-            requiredTier: 'beginner'
+            requiredTier: 'intermediate'
           });
         }
       }
@@ -3947,7 +3941,7 @@ Return ONLY valid JSON in this exact format:
         if (invalidGrades.length > 0) {
           return res.status(403).json({ 
             error: `${tier} tier does not support grades: ${invalidGrades.join(', ')}`,
-            requiredTier: 'beginner'
+            requiredTier: 'intermediate'
           });
         }
       }
@@ -3958,7 +3952,7 @@ Return ONLY valid JSON in this exact format:
         if (invalidTimeframes.length > 0) {
           return res.status(403).json({ 
             error: `${tier} tier does not support timeframes: ${invalidTimeframes.join(', ')}`,
-            requiredTier: 'beginner'
+            requiredTier: 'intermediate'
           });
         }
       }
