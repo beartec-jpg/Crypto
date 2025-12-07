@@ -4479,8 +4479,8 @@ Return JSON:
   });
 
   // Get extended historical data for Elliott Wave analysis
-  // NOTE: Chart viewing is open to all authenticated users; only drawing/AI features need elite tier
-  app.get("/api/crypto/extended-history", requireCryptoAuth, async (req, res) => {
+  // Requires elite tier OR Elliott Wave add-on
+  app.get("/api/crypto/extended-history", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {
       const { symbol, timeframe, forceRefresh } = req.query;
       

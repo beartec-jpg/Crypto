@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 
 const INTERVAL_MS: Record<string, number> = {
   '1m': 60 * 1000,
@@ -15,16 +16,95 @@ const INTERVAL_MS: Record<string, number> = {
   '1w': 7 * 24 * 60 * 60 * 1000,
 };
 
+// Verify user authentication from Clerk token
+async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return null;
+    }
+
+    const token = authHeader.substring(7);
+    const secretKey = process.env.CLERK_SECRET_KEY;
+
+    if (!secretKey) {
+      console.error('CLERK_SECRET_KEY not set');
+      return null;
+    }
+    
+    const payload = await verifyToken(token, { secretKey });
+
+    if (!payload?.sub) {
+      return null;
+    }
+
+    const clerk = createClerkClient({ secretKey });
+    const user = await clerk.users.getUser(payload.sub);
+    const email = user.emailAddresses[0]?.emailAddress || '';
+
+    return { userId: payload.sub, email };
+  } catch (error) {
+    console.error('Auth verification failed:', error);
+    return null;
+  }
+}
+
+// Database connection
+async function getDb() {
+  const { Pool } = await import('pg');
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  return pool;
+}
+
+// Check if user has Elliott Wave access (elite tier OR Elliott add-on)
+async function hasElliottAccess(userId: string): Promise<boolean> {
+  let pool: any = null;
+  try {
+    pool = await getDb();
+    
+    const result = await pool.query(
+      `SELECT tier, has_elliott_addon FROM crypto_subscriptions WHERE user_id = $1`,
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return false;
+    }
+    
+    const { tier, has_elliott_addon } = result.rows[0];
+    return tier === 'elite' || has_elliott_addon === true;
+  } catch (error) {
+    console.error('Error checking Elliott access:', error);
+    return false;
+  } finally {
+    if (pool) {
+      await pool.end();
+    }
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   try {
+    // Verify authentication
+    const auth = await verifyAuth(req);
+    if (!auth) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Check for elite tier or Elliott add-on
+    const hasAccess = await hasElliottAccess(auth.userId);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Elliott Wave access requires Elite tier or Elliott Wave add-on' });
+    }
+
     const { symbol, timeframe, endTime: endTimeParam, limit: limitParam } = req.query;
     
     if (!symbol || !timeframe) {
@@ -51,7 +131,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const endTime = endTimeParam ? parseInt(endTimeParam as string, 10) * 1000 : Date.now();
     const startTime = endTime - (candlesNeeded * intervalMs);
 
-    console.log(`📊 Fetching extended history: ${symbolStr} ${binanceInterval}`);
+    console.log(`📊 Fetching extended history: ${symbolStr} ${binanceInterval} for user ${auth.userId}`);
 
     const allCandles: any[] = [];
     let currentEnd = endTime;

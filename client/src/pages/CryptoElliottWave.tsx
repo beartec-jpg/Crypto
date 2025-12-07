@@ -132,7 +132,7 @@ const FIBONACCI_MODES = [
 
 export default function CryptoElliottWave() {
   const [, setLocation] = useLocation();
-  const { user, isLoading: authLoading, isAuthenticated, tier: localTier } = useCryptoAuth();
+  const { user, isLoading: authLoading, isAuthenticated, tier: localTier, getToken } = useCryptoAuth();
   const { toast } = useToast();
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -237,14 +237,19 @@ export default function CryptoElliottWave() {
     }
   }, [degreesData]);
 
-  // Fetch extended historical data - always enabled for chart viewing
+  // Fetch extended historical data - requires elite tier or Elliott add-on
   const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<{
     candles: CandleData[];
     candleCount: number;
   }>({
     queryKey: ['/api/crypto/extended-history', symbol, timeframe],
     queryFn: async () => {
-      const response = await fetch(`/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}`);
+      const token = await getToken();
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const response = await fetch(`/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}`, { headers });
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to fetch history');
@@ -279,8 +284,14 @@ export default function CryptoElliottWave() {
     lastLoadTriggerRef.current = now;
     setIsLoadingMore(true);
     try {
+      const token = await getToken();
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       const response = await fetch(
-        `/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}&endTime=${oldestCandleTimeRef.current}&limit=200`
+        `/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}&endTime=${oldestCandleTimeRef.current}&limit=200`,
+        { headers }
       );
       if (response.ok) {
         const data = await response.json();
@@ -316,7 +327,7 @@ export default function CryptoElliottWave() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [symbol, timeframe, isLoadingMore]);
+  }, [symbol, timeframe, isLoadingMore, getToken]);
 
   // Keep ref updated for use in chart subscription
   useEffect(() => {
@@ -586,20 +597,12 @@ const aiAnalyze = useMutation({
 
   // Initialize chart - only recreate when candles data changes
   useEffect(() => {
-    console.log('📊 Chart effect triggered:', { hasContainer: !!chartContainerRef.current, candleCount: candles.length });
-    
-    if (!chartContainerRef.current || candles.length === 0) {
-      console.log('📊 Chart effect early return - container:', !!chartContainerRef.current, 'candles:', candles.length);
-      return;
-    }
+    if (!chartContainerRef.current || candles.length === 0) return;
     
     // Wait for container to have dimensions
     const containerWidth = chartContainerRef.current.clientWidth;
-    console.log('📊 Container width:', containerWidth);
-    
     if (containerWidth === 0) {
       // Container not ready yet, retry after a short delay
-      console.log('📊 Container width is 0, retrying...');
       const retryTimer = setTimeout(() => {
         // Force re-render by updating a ref or state
         setMarkersVersion(v => v + 1);
@@ -711,7 +714,6 @@ const aiAnalyze = useMutation({
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
-    console.log('📊 Chart created successfully with', candles.length, 'candles');
     
     // Create a secondary blue candlestick series for future projection candles
     // This allows markers to anchor at correct prices in the future area
