@@ -1570,36 +1570,34 @@ export default function CryptoIndicators() {
     const swingHighs = swings.filter(s => s.type === 'high');
     const swingLows = swings.filter(s => s.type === 'low');
     
-    // SMART APPROACH: Try multiple starting pivots near extremity, pick cleanest line
+    // EXTREMITY-FIRST APPROACH: Always anchor from the absolute extremity
     const findTrendlineFromExtremity = (pivots: typeof swings, type: 'resistance' | 'support'): Trendline | null => {
       if (pivots.length < 2) return null;
       
-      // Find absolute extremity
-      const absoluteExtremity = type === 'resistance' 
-        ? pivots.reduce((max, p) => p.value > max.value ? p : max)
-        : pivots.reduce((min, p) => p.value < min.value ? p : min);
+      // Find TOP 3 absolute extremities (highest highs or lowest lows)
+      const sortedByExtremity = type === 'resistance'
+        ? [...pivots].sort((a, b) => b.value - a.value) // Highest first
+        : [...pivots].sort((a, b) => a.value - b.value); // Lowest first
       
-      // Find top candidate starting pivots near the extremity (within 3% price range)
-      const candidateStarters = type === 'resistance'
-        ? pivots
-            .filter(p => p.value >= absoluteExtremity.value * 0.97) // Top 3% for resistance
-            .sort((a, b) => b.value - a.value) // Highest first
-            .slice(0, 5) // Top 5 candidates
-        : pivots
-            .filter(p => p.value <= absoluteExtremity.value * 1.03) // Bottom 3% for support
-            .sort((a, b) => a.value - b.value) // Lowest first
-            .slice(0, 5); // Top 5 candidates
+      // Use only the top 3 most extreme pivots as anchor points
+      const extremeAnchors = sortedByExtremity.slice(0, 3);
       
-      // Try building lines from each candidate starter
+      // Try building lines between extreme anchors
       const allCandidateLines: Array<Trendline & { violationRate: number }> = [];
       
-      for (const starter of candidateStarters) {
-        // Find pivots after this starter
+      // Try connecting each extreme anchor to other extreme anchors or nearby pivots
+      for (const starter of extremeAnchors) {
+        // Find pivots after this starter, prioritize other extreme anchors
         const pivotsAfterStarter = pivots.filter(p => p.index > starter.index);
         if (pivotsAfterStarter.length === 0) continue;
         
-        // Try connecting to each subsequent pivot
-        for (const secondPoint of pivotsAfterStarter) {
+        // Sort second points: prefer extreme values first (other extremities)
+        const sortedSecondPoints = type === 'resistance'
+          ? [...pivotsAfterStarter].sort((a, b) => b.value - a.value) // Highest first
+          : [...pivotsAfterStarter].sort((a, b) => a.value - b.value); // Lowest first
+        
+        // Try connecting to the top 5 most extreme second points
+        for (const secondPoint of sortedSecondPoints.slice(0, 5)) {
           const slope = (secondPoint.value - starter.value) / (secondPoint.index - starter.index);
           const intercept = starter.value - slope * starter.index;
           
@@ -1658,17 +1656,30 @@ export default function CryptoIndicators() {
       
       if (allCandidateLines.length === 0) return null;
       
-      // Pick the BEST line: lowest violation rate, then most touches, then most recent
+      // Calculate extremity score for each line (higher = touches more extreme points)
+      const getExtremityScore = (line: typeof allCandidateLines[0]) => {
+        const extremeIndices = new Set(extremeAnchors.map(e => e.index));
+        return line.points.filter(p => extremeIndices.has(p.index)).length;
+      };
+      
+      // Pick the BEST line: most extremity touches, then lowest violation rate, then most touches
       return allCandidateLines.reduce((best, current) => {
-        // Strongly prefer cleaner lines (lower violation rate)
-        if (current.violationRate < best.violationRate - 0.03) return current;
-        if (best.violationRate < current.violationRate - 0.03) return best;
+        const bestExtremity = getExtremityScore(best);
+        const currentExtremity = getExtremityScore(current);
         
-        // If similar cleanliness, prefer more touches
-        if (current.strength > best.strength + 1) return current;
-        if (best.strength > current.strength + 1) return best;
+        // Strongly prefer lines touching more extreme points
+        if (currentExtremity > bestExtremity) return current;
+        if (bestExtremity > currentExtremity) return best;
         
-        // If similar strength, prefer more recent last pivot
+        // Then prefer cleaner lines (lower violation rate)
+        if (current.violationRate < best.violationRate - 0.02) return current;
+        if (best.violationRate < current.violationRate - 0.02) return best;
+        
+        // Then prefer more touches
+        if (current.strength > best.strength) return current;
+        if (best.strength > current.strength) return best;
+        
+        // Finally prefer more recent last pivot
         const bestLastPivot = best.points[best.points.length - 1].index;
         const currentLastPivot = current.points[current.points.length - 1].index;
         return currentLastPivot > bestLastPivot ? current : best;
