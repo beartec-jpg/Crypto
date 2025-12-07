@@ -93,16 +93,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Verify authentication
+    // Allow unauthenticated access - chart viewing is free
+    // Premium features (drawing, AI analysis) are checked on the frontend
     const auth = await verifyAuth(req);
-    if (!auth) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    // Check for elite tier or Elliott add-on
-    const hasAccess = await hasElliottAccess(auth.userId);
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'Elliott Wave access requires Elite tier or Elliott Wave add-on' });
+    if (auth) {
+      console.log(`📊 Authenticated user: ${auth.userId}`);
+    } else {
+      console.log('📊 Anonymous access - chart viewing allowed');
     }
 
     const { symbol, timeframe, endTime: endTimeParam, limit: limitParam } = req.query;
@@ -131,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const endTime = endTimeParam ? parseInt(endTimeParam as string, 10) * 1000 : Date.now();
     const startTime = endTime - (candlesNeeded * intervalMs);
 
-    console.log(`📊 Fetching extended history: ${symbolStr} ${binanceInterval} for user ${auth.userId}`);
+    console.log(`📊 Fetching extended history: ${symbolStr} ${binanceInterval} for user ${auth?.userId || 'anonymous'}`);
 
     const allCandles: any[] = [];
     let currentEnd = endTime;
