@@ -102,7 +102,10 @@ export default function CryptoAI() {
   const [symbol, setSymbol] = useState('XRPUSDT');
   const [interval, setInterval] = useState('15m');
 
-  const { data: subscription } = useQuery<{tier: string, aiCreditsRemaining?: number, aiCreditsLimit?: number}>({
+  const { data: subscription, refetch: refetchSubscription } = useQuery<{
+    tier: string;
+    dailyUsage?: { used: number; limit: number; remainingToday: number };
+  }>({
     queryKey: ['/api/crypto/my-subscription'],
     enabled: isAuthenticated && !authLoading,
     staleTime: 0, // Force fresh data
@@ -985,13 +988,37 @@ export default function CryptoAI() {
         }),
       });
       
-      if (!response.ok) throw new Error('Failed to analyze trades');
-      
       const result = await response.json();
+      
+      // Handle daily limit error
+      if (!response.ok) {
+        if (result.error === 'Daily limit reached') {
+          toast({
+            title: "Daily limit reached",
+            description: "You've used all your AI trade calls for today. Limit resets at midnight.",
+            duration: 5000,
+          });
+          refetchSubscription(); // Refresh the counter
+          return;
+        }
+        if (result.error === 'Subscription required') {
+          toast({
+            title: "Subscription required",
+            description: "Please upgrade to Intermediate tier or higher for AI analysis.",
+            duration: 5000,
+          });
+          return;
+        }
+        throw new Error(result.message || 'Failed to analyze trades');
+      }
+      
       const alerts = result.alerts || [];
       
       setTradeAlerts(alerts);
       localStorage.setItem(`tradeAlerts_${symbol}_${interval}`, JSON.stringify(alerts));
+      
+      // Refresh subscription data to update the counter
+      refetchSubscription();
       
       // Store market insights for display
       if (result.marketInsights && alerts.length === 0) {
@@ -1008,7 +1035,7 @@ export default function CryptoAI() {
     } finally {
       setAnalyzing(false);
     }
-  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs]);
+  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, refetchSubscription, toast]);
 
   // === Track Trade ===
   const trackTrade = async (alert: TradeAlert) => {
@@ -2229,6 +2256,19 @@ export default function CryptoAI() {
                   )}
                 </Button>
               </div>
+              {/* Daily Usage Counter */}
+              {subscription?.dailyUsage && subscription.dailyUsage.limit > 0 && (
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700">
+                    <Zap className="w-3.5 h-3.5 text-[#00c4b4]" />
+                    <span className="text-xs text-gray-300">
+                      <span className="font-semibold text-white">{subscription.dailyUsage.remainingToday}</span>
+                      <span className="text-gray-500"> of {subscription.dailyUsage.limit}</span>
+                      <span className="ml-1 text-gray-400">remaining today</span>
+                    </span>
+                  </div>
+                </div>
+              )}
               {(tier === 'free' || tier === 'beginner') && (
                 <p className="text-xs text-gray-400 mt-2 text-center">
                   <Link href="/cryptosubscribe" className="text-[#00c4b4] hover:underline">

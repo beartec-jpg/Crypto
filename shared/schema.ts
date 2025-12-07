@@ -344,6 +344,8 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   alertsEnabled: boolean("alerts_enabled").default(false), // Master toggle for push notifications
   aiCredits: integer("ai_credits").default(0), // Remaining AI trade idea credits (Intermediate tier gets 50/month)
   aiCreditsResetAt: timestamp("ai_credits_reset_at"), // When credits were last reset (monthly)
+  dailyAiUsage: integer("daily_ai_usage").default(0), // Daily AI trade calls used today
+  dailyAiUsageResetAt: timestamp("daily_ai_usage_reset_at"), // When daily usage was last reset (midnight)
   autoRefreshInterval: integer("auto_refresh_interval"), // null=manual only, 3600=hourly, 900=15min
   pushSubscription: jsonb("push_subscription"), // Store push subscription data
   stripeSubscriptionId: varchar("stripe_subscription_id"),
@@ -365,6 +367,8 @@ export const insertCryptoSubscriptionSchema = z.object({
   alertsEnabled: z.boolean().optional().default(false),
   aiCredits: z.number().int().optional().default(0),
   aiCreditsResetAt: z.date().optional().nullable(),
+  dailyAiUsage: z.number().int().optional().default(0),
+  dailyAiUsageResetAt: z.date().optional().nullable(),
   autoRefreshInterval: z.number().int().optional().nullable(),
   pushSubscription: z.any().optional().nullable(),
   stripeSubscriptionId: z.string().optional().nullable(),

@@ -3030,7 +3030,7 @@ Be concise and direct.`;
   });
 
   // Order Flow Alerts endpoint using xAI Grok (publicly accessible)
-  app.post("/api/crypto/order-flow-alerts", async (req, res) => {
+  app.post("/api/crypto/order-flow-alerts", requireCryptoAuth, async (req, res) => {
     try {
       // Check if XAI API key is configured
       const apiKeyCheck = checkXaiApiKey();
@@ -3039,6 +3039,32 @@ Be concise and direct.`;
           error: apiKeyCheck.error,
           available: false,
           alerts: [] // Return empty alerts array for graceful degradation
+        });
+      }
+
+      const userId = (req as any).cryptoUser.id;
+
+      // Check tier access
+      const hasAccess = await cryptoSubscriptionService.checkTierAccess(userId, 'intermediate');
+      if (!hasAccess) {
+        return res.status(403).json({ 
+          error: 'Subscription required',
+          message: 'Please upgrade to Intermediate tier or higher to access AI Trade Analysis',
+          requiredTier: 'intermediate',
+          alerts: []
+        });
+      }
+
+      // Check daily limit
+      const dailyStatus = await cryptoSubscriptionService.checkAndUseDailyLimit(userId);
+      if (!dailyStatus.allowed) {
+        return res.status(403).json({ 
+          error: 'Daily limit reached',
+          message: 'You have used all your AI trade calls for today. Limit resets at midnight.',
+          dailyUsed: dailyStatus.used,
+          dailyLimit: dailyStatus.limit,
+          remainingToday: 0,
+          alerts: []
         });
       }
 
@@ -3286,7 +3312,10 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
         tokens: {
           input: inputTokens,
           output: outputTokens
-        }
+        },
+        dailyUsed: dailyStatus.used,
+        dailyLimit: dailyStatus.limit,
+        remainingToday: dailyStatus.remainingToday
       });
     } catch (error: any) {
       console.error('❌ Error generating order flow alerts:', error);
@@ -3484,8 +3513,9 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
       await cryptoSubscriptionService.resetMonthlyCredits(userId);
       const stats = await cryptoSubscriptionService.getSubscriptionStats(userId);
       const capabilities = await cryptoSubscriptionService.getCapabilities(userId);
+      const dailyUsage = await cryptoSubscriptionService.getDailyUsageStatus(userId);
       
-      res.json({ ...stats, ...capabilities });
+      res.json({ ...stats, ...capabilities, dailyUsage });
     } catch (error: any) {
       console.error('❌ Error fetching crypto subscription stats:', error);
       res.status(500).json({ error: error.message });
@@ -3582,11 +3612,15 @@ Keep the analysis concise but informative (200-300 words).`;
         });
       }
 
-      const canUseCredit = await cryptoSubscriptionService.useAICredit(userId);
-      if (!canUseCredit) {
+      // Check daily limit
+      const dailyStatus = await cryptoSubscriptionService.checkAndUseDailyLimit(userId);
+      if (!dailyStatus.allowed) {
         return res.status(403).json({ 
-          error: 'No AI credits remaining',
-          message: 'You have used all your AI credits for this month. Upgrade to Pro for unlimited credits.'
+          error: 'Daily limit reached',
+          message: 'You have used all your AI trade calls for today. Limit resets at midnight.',
+          dailyUsed: dailyStatus.used,
+          dailyLimit: dailyStatus.limit,
+          remainingToday: 0
         });
       }
 
@@ -3652,12 +3686,11 @@ Return ONLY valid JSON in this exact format:
         };
       }
 
-      const stats = await cryptoSubscriptionService.getSubscriptionStats(userId);
-
       res.json({ 
         ...tradeIdeas,
-        remainingCredits: stats.aiCredits,
-        hasUnlimitedCredits: stats.hasUnlimitedCredits,
+        dailyUsed: dailyStatus.used,
+        dailyLimit: dailyStatus.limit,
+        remainingToday: dailyStatus.remainingToday,
         timestamp: new Date().toISOString()
       });
     } catch (error: any) {

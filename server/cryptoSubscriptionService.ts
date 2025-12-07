@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { cryptoSubscriptions, cryptoUsers } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 // Base tiers (Elliott Wave is a separate add-on, not a tier)
 type BaseTier = "free" | "beginner" | "intermediate" | "pro" | "elite";
@@ -19,6 +19,15 @@ const MONTHLY_AI_CREDITS: Record<BaseTier, number> = {
   intermediate: 50,
   pro: -1, // -1 means unlimited
   elite: -1,
+};
+
+// Daily AI trade call limits per tier
+const DAILY_AI_LIMITS: Record<BaseTier, number> = {
+  free: 0,
+  beginner: 0,
+  intermediate: 3,
+  pro: 7,
+  elite: 11,
 };
 
 // Feature capability flags computed from base tier + add-ons
@@ -234,6 +243,74 @@ export class CryptoSubscriptionService {
     const tier = subscription.tier as BaseTier;
     const hasElliottAddon = subscription.hasElliottAddon || false;
     return getCapabilities(tier, hasElliottAddon);
+  }
+
+  // Check if user can make a daily AI trade call (and use it if allowed)
+  // Uses fully atomic SQL to prevent all race conditions including midnight reset
+  async checkAndUseDailyLimit(userId: string): Promise<{ allowed: boolean; used: number; limit: number; remainingToday: number }> {
+    const subscription = await this.getUserSubscription(userId);
+    const tier = subscription.tier as BaseTier;
+    const limit = DAILY_AI_LIMITS[tier] || 0;
+    
+    if (limit === 0) {
+      return { allowed: false, used: 0, limit: 0, remainingToday: 0 };
+    }
+
+    // Single atomic query that handles both:
+    // 1. Midnight reset (if reset_at < today's midnight, treat usage as 0)
+    // 2. Increment with limit check
+    // Uses CASE expression to reset usage if new day, then increment if under limit
+    const result = await db.execute(sql`
+      UPDATE crypto_subscriptions 
+      SET 
+        daily_ai_usage = CASE 
+          WHEN daily_ai_usage_reset_at IS NULL OR daily_ai_usage_reset_at < CURRENT_DATE 
+          THEN 1
+          WHEN COALESCE(daily_ai_usage, 0) < ${limit}
+          THEN COALESCE(daily_ai_usage, 0) + 1
+          ELSE daily_ai_usage
+        END,
+        daily_ai_usage_reset_at = NOW(),
+        updated_at = NOW()
+      WHERE user_id = ${userId} 
+        AND (
+          daily_ai_usage_reset_at IS NULL 
+          OR daily_ai_usage_reset_at < CURRENT_DATE 
+          OR COALESCE(daily_ai_usage, 0) < ${limit}
+        )
+      RETURNING daily_ai_usage
+    `);
+    
+    // If no rows were updated, limit was already reached
+    if (!result.rows || result.rows.length === 0) {
+      return { allowed: false, used: limit, limit, remainingToday: 0 };
+    }
+    
+    const newUsage = (result.rows[0] as any).daily_ai_usage as number;
+    return { allowed: true, used: newUsage, limit, remainingToday: limit - newUsage };
+  }
+
+  // Get current daily usage without incrementing
+  async getDailyUsageStatus(userId: string): Promise<{ used: number; limit: number; remainingToday: number }> {
+    const subscription = await this.getUserSubscription(userId);
+    const tier = subscription.tier as BaseTier;
+    const limit = DAILY_AI_LIMITS[tier] || 0;
+    
+    if (limit === 0) {
+      return { used: 0, limit: 0, remainingToday: 0 };
+    }
+
+    const now = new Date();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const lastReset = subscription.dailyAiUsageResetAt;
+    
+    // If last reset was before today, usage is effectively 0
+    let currentUsage = subscription.dailyAiUsage || 0;
+    if (!lastReset || lastReset < todayMidnight) {
+      currentUsage = 0;
+    }
+    
+    return { used: currentUsage, limit, remainingToday: limit - currentUsage };
   }
 }
 
