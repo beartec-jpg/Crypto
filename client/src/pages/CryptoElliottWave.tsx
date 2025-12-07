@@ -198,12 +198,13 @@ export default function CryptoElliottWave() {
   const prevOldestTimeRef = useRef<number | null>(null); // Track previous oldest candle time to detect prepends vs appends
   const isInitialLoadRef = useRef(true); // Track if this is the first load (for fitContent)
 
-  // Check subscription tier
-  const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string }>({
+  // Check subscription tier and Elliott Wave access
+  const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; canUseElliott?: boolean; hasElliottAddon?: boolean }>({
     queryKey: ['/api/crypto/my-subscription'],
-    enabled: isAuthenticated,
   });
 
+  // User can use Elliott features if they have the addon OR elite tier
+  const canUseElliottFeatures = subscription?.canUseElliott || subscription?.hasElliottAddon || subscription?.tier === 'elite' || localTier === 'elite';
   const isElite = subscription?.tier === 'elite' || localTier === 'elite';
 
   // Reset chart when symbol or timeframe changes
