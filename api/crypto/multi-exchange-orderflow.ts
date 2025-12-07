@@ -80,7 +80,7 @@ async function fetchKuCoinTrades(symbol: string): Promise<{ timestamp: number; s
   const data = await response.json();
   if (!data.data) throw new Error('KuCoin: No data');
   return data.data.slice(0, 100).map((t: any) => ({
-    timestamp: parseInt(t.time) / 1000000, // nanoseconds to ms
+    timestamp: parseInt(t.time) / 1000000, // KuCoin uses nanoseconds - convert to ms
     side: t.side,
     amount: parseFloat(t.size),
     price: parseFloat(t.price),

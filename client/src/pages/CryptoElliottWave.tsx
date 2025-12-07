@@ -15,6 +15,7 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useLocation } from 'wouter';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
+import { AuthButtons } from '@/components/AuthButtons';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 
 interface CandleData {
@@ -3050,6 +3051,8 @@ const aiAnalyze = useMutation({
           >
             <RefreshCw className={`w-4 h-4 ${historyLoading ? 'animate-spin' : ''}`} />
           </Button>
+
+          <AuthButtons />
         </div>
       </div>
     </div>
