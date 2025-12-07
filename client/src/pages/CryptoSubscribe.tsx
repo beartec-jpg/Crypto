@@ -149,16 +149,18 @@ export default function CryptoSubscribe() {
       name: 'Pro',
       price: '$30',
       period: '/month',
-      features: ['Everything in Intermediate', 'Unlimited AI credits', 'Push notifications', 'Priority support'],
+      features: ['Everything in Intermediate', 'Unlimited AI credits*', 'Push notifications', 'Priority support'],
       highlight: true,
+      footnote: '*Daily limits apply to maintain service quality',
     },
     {
       id: 'elite',
       name: 'Elite',
       price: '$50',
       period: '/month',
-      features: ['Everything in Pro', 'Elliott Wave tools (included)', 'All add-ons included', 'Early access to features'],
+      features: ['Everything in Pro', 'Elliott Wave tools (included)', 'Custom indicators & features on request**', 'Early access to new features'],
       highlight: false,
+      footnote: '**Subject to complexity and availability',
     },
   ];
 
@@ -226,10 +228,12 @@ export default function CryptoSubscribe() {
                       <div className="bg-zinc-800/50 rounded-lg p-4 flex-1 min-w-[200px]">
                         <p className="text-zinc-400 text-sm">AI Credits</p>
                         <p className="text-white text-lg font-semibold">
-                          {subscription?.hasUnlimitedAI ? 'Unlimited' : subscription?.aiCredits || 0}
+                          {subscription?.hasUnlimitedAI ? 'Unlimited*' : subscription?.aiCredits || 0}
                         </p>
                         <p className="text-zinc-500 text-sm">
-                          {subscription?.hasUnlimitedAI ? 'Pro/Elite plan' : 'Resets monthly'}
+                          {subscription?.hasUnlimitedAI ? (
+                            <span>*Daily limits apply ({currentTier === 'elite' ? '11' : '7'}/day)</span>
+                          ) : 'Resets monthly'}
                         </p>
                       </div>
                     )}
@@ -337,6 +341,9 @@ export default function CryptoSubscribe() {
                     </div>
                   ))}
                 </div>
+                {'footnote' in tier && tier.footnote && (
+                  <p className="text-xs text-zinc-500 italic mt-2">{tier.footnote}</p>
+                )}
                 <SignedIn>
                   {currentTier === tier.id ? (
                     <Button disabled className="w-full bg-zinc-700" data-testid={`button-current-${tier.id}`}>
