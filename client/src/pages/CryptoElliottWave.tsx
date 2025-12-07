@@ -236,7 +236,7 @@ export default function CryptoElliottWave() {
     }
   }, [degreesData]);
 
-  // Fetch extended historical data
+  // Fetch extended historical data - always enabled for chart viewing
   const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<{
     candles: CandleData[];
     candleCount: number;
@@ -250,7 +250,6 @@ export default function CryptoElliottWave() {
       }
       return response.json();
     },
-    enabled: isAuthenticated && isElite,
   });
 
   useEffect(() => {
