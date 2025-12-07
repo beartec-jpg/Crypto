@@ -238,24 +238,34 @@ export default function CryptoElliottWave() {
   }, [degreesData]);
 
   // Fetch extended historical data - requires elite tier or Elliott add-on
-  const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<{
+  const { data: historyData, isLoading: historyLoading, error: historyError, refetch: refetchHistory } = useQuery<{
     candles: CandleData[];
     candleCount: number;
   }>({
     queryKey: ['/api/crypto/extended-history', symbol, timeframe],
     queryFn: async () => {
-      const token = await getToken();
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      try {
+        const token = await getToken();
+        const headers: HeadersInit = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        console.log('📊 Fetching extended history, hasToken:', !!token);
+        const response = await fetch(`/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}`, { headers });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+          console.error('📊 Extended history error:', response.status, error);
+          throw new Error(error.error || `Failed to fetch history (${response.status})`);
+        }
+        const data = await response.json();
+        console.log('📊 Extended history loaded:', data.candleCount, 'candles');
+        return data;
+      } catch (err) {
+        console.error('📊 Extended history fetch failed:', err);
+        throw err;
       }
-      const response = await fetch(`/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}`, { headers });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to fetch history');
-      }
-      return response.json();
     },
+    retry: 1,
   });
 
   useEffect(() => {
@@ -3310,6 +3320,19 @@ const aiAnalyze = useMutation({
                 <div className="text-center">
                   <Loader2 className="w-8 h-8 animate-spin text-[#00c4b4] mx-auto mb-2" />
                   <p className="text-gray-400">Loading extended history...</p>
+                </div>
+              </div>
+            ) : historyError ? (
+              <div className="h-[500px] flex items-center justify-center">
+                <div className="text-center max-w-md">
+                  <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-3">
+                    <span className="text-red-400 text-xl">!</span>
+                  </div>
+                  <p className="text-red-400 font-medium mb-2">Failed to load chart data</p>
+                  <p className="text-gray-500 text-sm mb-4">{(historyError as Error).message}</p>
+                  <Button onClick={() => refetchHistory()} variant="outline" size="sm">
+                    Retry
+                  </Button>
                 </div>
               </div>
             ) : (
