@@ -379,7 +379,7 @@ export default function CryptoSubscribe() {
         </div>
 
         <div className="text-center text-zinc-500 text-sm space-y-2">
-          <p>All plans include a 7-day free trial. Cancel anytime.</p>
+          <p>Cancel anytime. No long-term commitments.</p>
           <p>
             Questions? Contact us at{' '}
             <a href="mailto:info@BearTec.uk" className="text-blue-400 hover:underline">
