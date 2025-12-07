@@ -94,7 +94,7 @@ export default function CryptoAI() {
   const volumeChartRef = useRef<HTMLDivElement>(null);
   const cvdChartRef = useRef<HTMLDivElement>(null);
 
-  const { isAuthenticated, isLoading: authLoading, tier } = useCryptoAuth();
+  const { isAuthenticated, isLoading: authLoading, tier, getToken } = useCryptoAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -949,9 +949,22 @@ export default function CryptoAI() {
         }
       }
       
+      const token = await getToken();
+      if (!token) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to use AI analysis.",
+          duration: 5000,
+        });
+        return;
+      }
+      
       const response = await fetch('/api/crypto/order-flow-alerts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
           symbol,
           interval: alertTimeframe,
@@ -1059,9 +1072,21 @@ export default function CryptoAI() {
 
     setTrackingTradeId(tradeKey);
     try {
+      const token = await getToken();
+      if (!token) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to track trades.",
+        });
+        return;
+      }
+      
       const response = await fetch('/api/crypto/tracked-trades', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
           symbol,
           direction: alert.direction,

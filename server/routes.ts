@@ -248,12 +248,53 @@ function initBybitLiquidationStream(symbol: string) {
   bybitWsConnections.set(symbol, ws);
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {  // No authentication required - open site
+export async function registerRoutes(app: Express): Promise<Server> {
   
-  // Pass-through middleware (no-op for open access)
-  // Sets default user objects for routes that expect authenticated users
+  // Clerk authentication middleware for crypto routes
+  const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader?.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const token = authHeader.substring(7);
+      
+      // Verify the JWT token with Clerk
+      const { createClerkClient, verifyToken } = await import('@clerk/backend');
+      const secretKey = process.env.CLERK_SECRET_KEY;
+
+      if (!secretKey) {
+        console.error('CLERK_SECRET_KEY not configured');
+        return res.status(500).json({ error: 'Server configuration error' });
+      }
+
+      const payload = await verifyToken(token, { secretKey });
+
+      if (!payload?.sub) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Get user details from Clerk
+      const clerk = createClerkClient({ secretKey });
+      const user = await clerk.users.getUser(payload.sub);
+      
+      req.cryptoUser = {
+        id: payload.sub,
+        email: user.emailAddresses[0]?.emailAddress || '',
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
+      };
+      
+      next();
+    } catch (error: any) {
+      console.error('Crypto auth error:', error.message);
+      return res.status(401).json({ error: 'Authentication failed' });
+    }
+  };
+  
+  // Pass-through middleware for calculator routes (kept for backward compatibility)
   const noAuth: RequestHandler = (req: Request, _res: Response, next: NextFunction) => {
-    // Set default user for calculator routes
     if (!req.user) {
       req.user = {
         id: 'open-access',
@@ -263,23 +304,13 @@ export async function registerRoutes(app: Express): Promise<Server> {  // No aut
         claims: { sub: 'open-access' }
       };
     }
-    // Set default user for crypto routes
-    if (!req.cryptoUser) {
-      req.cryptoUser = {
-        id: 'open-access-crypto',
-        email: 'crypto@open.access',
-        firstName: 'Open',
-        lastName: 'Access'
-      };
-    }
     next();
   };
   const isAuthenticated = noAuth;
   const optionalAuth = noAuth;
   const checkSubscription = noAuth;
   const checkExportAccess = noAuth;
-  const requireCryptoAuth = noAuth;
-  const requireEliteTier = noAuth;
+  const requireEliteTier = requireCryptoAuth;
   
   // Import real subscription service
   const { cryptoSubscriptionService } = await import('./cryptoSubscriptionService');
