@@ -250,8 +250,24 @@ function initBybitLiquidationStream(symbol: string) {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Check if we're in production (Vercel deployment or beartec.uk domain)
+  const isProduction = process.env.REPLIT_DEPLOYMENT === '1' || 
+                       process.env.VERCEL === '1' ||
+                       process.env.NODE_ENV === 'production';
+  
   // Clerk authentication middleware for crypto routes
   const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+    // In development, allow open access
+    if (!isProduction) {
+      req.cryptoUser = {
+        id: 'dev-open-access',
+        email: 'dev@open.access',
+        firstName: 'Dev',
+        lastName: 'User',
+      };
+      return next();
+    }
+    
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader?.startsWith('Bearer ')) {
@@ -311,6 +327,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const checkSubscription = noAuth;
   const checkExportAccess = noAuth;
   const requireEliteTier = requireCryptoAuth;
+  
+  console.log(`🔐 Auth mode: ${isProduction ? 'PRODUCTION (Clerk auth required)' : 'DEVELOPMENT (open access)'}`);
+  
   
   // Import real subscription service
   const { cryptoSubscriptionService } = await import('./cryptoSubscriptionService');
