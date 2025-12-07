@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { BarChart3, Bot, GraduationCap, Waves, Crown, CreditCard } from 'lucide-react';
+import { BarChart3, Bot, GraduationCap, Waves, Crown, CreditCard, User } from 'lucide-react';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useQuery } from '@tanstack/react-query';
 
@@ -32,15 +32,15 @@ export function CryptoNavigation() {
   
   const navItems = [
     { path: '/crypto/training', icon: GraduationCap, label: 'Training' },
-    { path: '/cryptoindicators', icon: BarChart3, label: 'Indicators' },
+    { path: '/cryptoindicators', icon: BarChart3, label: 'Charts' },
     { path: '/cryptoai', icon: Bot, label: 'AI' },
     { path: '/cryptoelliottwave', icon: Waves, label: 'Waves' },
   ];
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-sm border-t border-slate-700 z-50">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="flex items-center justify-around py-3">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4">
+        <div className="flex items-center justify-around py-2 sm:py-3">
           {navItems.map((item) => {
             const isActive = location === item.path;
             const Icon = item.icon;
@@ -52,14 +52,14 @@ export function CryptoNavigation() {
                 data-testid={`link-nav-${item.label.toLowerCase().replace(' ', '-')}`}
               >
                 <button
-                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all ${
+                  className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all ${
                     isActive
                       ? 'bg-blue-600 text-white'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800'
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span className="text-xs font-medium">{item.label}</span>
+                  <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-[10px] sm:text-xs font-medium">{item.label}</span>
                 </button>
               </Link>
             );
@@ -67,23 +67,36 @@ export function CryptoNavigation() {
           
           <Link href="/crypto/subscribe" data-testid="link-subscribe">
             <button
-              className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all ${
+              className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all ${
                 location === '/crypto/subscribe'
                   ? 'bg-blue-600 text-white'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              <CreditCard className="w-5 h-5" />
-              <span className="text-xs font-medium">Upgrade</span>
+              <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-[10px] sm:text-xs font-medium">Plans</span>
+            </button>
+          </Link>
+          
+          <Link href="/crypto/account" data-testid="link-account">
+            <button
+              className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all ${
+                location === '/crypto/account'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <User className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-[10px] sm:text-xs font-medium">Account</span>
             </button>
           </Link>
           
           <div 
-            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg ${getTierColor(tier)}`}
+            className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg ${getTierColor(tier)}`}
             data-testid="tier-indicator"
           >
-            <Crown className="w-5 h-5" />
-            <span className="text-xs font-medium capitalize">{tier}</span>
+            <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-xs font-medium capitalize">{tier}</span>
           </div>
         </div>
       </div>

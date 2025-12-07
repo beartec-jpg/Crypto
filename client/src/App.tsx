@@ -14,6 +14,7 @@ import CryptoLogin from '@/pages/CryptoLogin';
 import CryptoSubscribe from '@/pages/CryptoSubscribe';
 import CryptoPrivacy from '@/pages/CryptoPrivacy';
 import CryptoTerms from '@/pages/CryptoTerms';
+import CryptoAccount from '@/pages/CryptoAccount';
 import NotFound from '@/pages/not-found';
 
 function App() {
@@ -30,6 +31,8 @@ function App() {
             <Route path="/crypto/training" component={CryptoTraining} />
             <Route path="/cryptologin" component={CryptoLogin} />
             <Route path="/cryptosubscribe" component={CryptoSubscribe} />
+            <Route path="/crypto/subscribe" component={CryptoSubscribe} />
+            <Route path="/crypto/account" component={CryptoAccount} />
             <Route path="/cryptoprivacy" component={CryptoPrivacy} />
             <Route path="/cryptoterms" component={CryptoTerms} />
             <Route component={NotFound} />

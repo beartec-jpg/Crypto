@@ -132,7 +132,7 @@ const FIBONACCI_MODES = [
 
 export default function CryptoElliottWave() {
   const [, setLocation] = useLocation();
-  const { user, isLoading: authLoading, isAuthenticated } = useCryptoAuth();
+  const { user, isLoading: authLoading, isAuthenticated, tier: localTier } = useCryptoAuth();
   const { toast } = useToast();
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -194,7 +194,7 @@ export default function CryptoElliottWave() {
     enabled: isAuthenticated,
   });
 
-  const isElite = subscription?.tier === 'elite';
+  const isElite = subscription?.tier === 'elite' || localTier === 'elite';
 
   // Reset chart when symbol or timeframe changes
   useEffect(() => {

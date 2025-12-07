@@ -28,11 +28,15 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
 - **Request Validation**: Zod schemas shared between frontend and backend.
 - **Security**: Removal of custom Python indicator execution endpoint (RCE risk).
 - **Authentication**: Clerk authentication for crypto features (VITE_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY)
+- **Open Access Mode**: Currently running in open access mode where all features are available without login
+  - useCryptoAuth hook returns hardcoded elite tier user
+  - Backend uses `open-access-crypto` user ID for all requests
+  - Users are auto-created in crypto_users table if they don't exist
 - **Access Model**: Tiered subscription model with capability-based access control
-  - Tier hierarchy: free < beginner < intermediate < elliotician < pro < elite
-  - Elliotician tier ($10/mo): Elliott Wave features access
+  - Tier hierarchy: free < beginner < intermediate < pro < elite
+  - Elliott Wave add-on ($10/mo): Separate purchasable add-on
   - API returns capability flags (canUseElliott, canUseAI, hasUnlimitedAI, etc.)
-  - Free users can VIEW pages but features require subscription
+  - Formula: `canUseElliott = hasElliottAddon OR tier === "elite"`
 
 ## Data Storage Solutions
 - **Database**: PostgreSQL via Drizzle ORM.
