@@ -266,9 +266,9 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
         
         interval_ms = interval_map.get(interval, 900000)
         
-        # Calculate time range for last 6 candles (5 completed + 1 LIVE)
-        # This provides local context for spike detection
-        num_candles = 6
+        # Calculate time range for last 20 candles (19 completed + 1 LIVE)
+        # This provides full historical data for the orderflow table
+        num_candles = 20
         lookback_ms = interval_ms * num_candles
         
         now = datetime.now()
@@ -342,8 +342,9 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
             prev_cvd = cumulative_delta
         
         orderflow_table = []
-        last_10 = sorted(averaged_data.keys())[-10:]
-        for timestamp in last_10:
+        # Return all available candles for the table, not just last 10
+        all_timestamps = sorted(averaged_data.keys())
+        for timestamp in all_timestamps:
             data = averaged_data[timestamp]
             buy_vol = sum(e['volume'] for e in data['exchanges'] if e['delta'] > 0)
             sell_vol = sum(e['volume'] for e in data['exchanges'] if e['delta'] < 0)
