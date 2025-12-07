@@ -8274,19 +8274,8 @@ export default function CryptoIndicators() {
     return () => chart.remove();
   }, [showADX, candles, adxPeriod]);
 
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      setLocation('/cryptologin');
-    }
-  }, [authLoading, isAuthenticated, setLocation]);
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0e0e0e]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#00c4b4]" />
-      </div>
-    );
-  }
+  // Allow page to render for all users - unauthenticated get free tier
+  // Sign in button in header handles authentication
 
   return (
     <>
