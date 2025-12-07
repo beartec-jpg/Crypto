@@ -331,7 +331,7 @@ export default function CryptoTerms() {
         {/* Footer Navigation */}
         <div className="border-t border-[#2a2e39] mt-8 pt-6">
           <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
-            <Link href="/crypto/privacy">
+            <Link href="/cryptoprivacy">
               <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
                 Privacy Policy
               </Button>
@@ -341,7 +341,7 @@ export default function CryptoTerms() {
                 Subscriptions
               </Button>
             </Link>
-            <Link href="/cryptotraining">
+            <Link href="/crypto/training">
               <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
                 Trading Education
               </Button>

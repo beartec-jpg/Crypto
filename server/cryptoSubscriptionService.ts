@@ -2,23 +2,39 @@ import { db } from "./db";
 import { cryptoSubscriptions } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
-type Tier = "free" | "beginner" | "intermediate" | "pro" | "elite";
+type Tier = "free" | "beginner" | "intermediate" | "elliotician" | "pro" | "elite";
 
 const TIER_HIERARCHY: Record<Tier, number> = {
   free: 0,
   beginner: 1,
   intermediate: 2,
-  pro: 3,
-  elite: 4,
+  elliotician: 3, // Elliott Wave features ($10/mo)
+  pro: 4,
+  elite: 5,
 };
 
 const MONTHLY_AI_CREDITS: Record<Tier, number> = {
   free: 0,
   beginner: 0,
   intermediate: 50,
+  elliotician: 50, // Same as intermediate for AI credits
   pro: -1, // -1 means unlimited
   elite: -1,
 };
+
+// Feature capability flags by tier
+export function getTierCapabilities(tier: Tier) {
+  const tierLevel = TIER_HIERARCHY[tier] || 0;
+  return {
+    tier,
+    canViewElliott: true, // Everyone can VIEW the page
+    canUseElliott: tierLevel >= TIER_HIERARCHY.elliotician, // Elliotician+ can USE features
+    canUseAI: tierLevel >= TIER_HIERARCHY.intermediate, // Intermediate+ for AI
+    hasUnlimitedAI: tier === "pro" || tier === "elite",
+    canUsePushNotifications: tierLevel >= TIER_HIERARCHY.pro,
+    isElite: tier === "elite",
+  };
+}
 
 export class CryptoSubscriptionService {
   async getUserSubscription(userId: string) {

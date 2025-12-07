@@ -3506,25 +3506,34 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
     }
   });
 
-  // Get current user's subscription tier, credits, and stats (NO alert preferences - use /api/crypto/preferences for those)
+  // Get current user's subscription tier, credits, stats, and capabilities
   app.get("/api/crypto/my-subscription", requireCryptoAuth, async (req, res) => {
     try {
       const userId = (req as any).cryptoUser.id;
       const userEmail = (req as any).cryptoUser.email;
 
-      console.log(`🚨 CRYPTO SUBSCRIPTION ENDPOINT CALLED!`);
-      console.log(`   📧 Email: ${userEmail}`);
-      console.log(`   🆔 User ID: ${userId}`);
-      console.log(`   🔍 Type of userId: ${typeof userId}`);
+      console.log(`📊 Subscription check for ${userEmail} (${userId})`);
 
       await cryptoSubscriptionService.resetMonthlyCredits(userId);
       const stats = await cryptoSubscriptionService.getSubscriptionStats(userId);
       
-      console.log(`🎯 STATS RETURNED:`, JSON.stringify(stats, null, 2));
-      console.log(`   ⚠️ Tier in stats: ${stats.tier}`);
+      // Add capability flags based on tier
+      const tier = stats.tier as string;
+      const tierHierarchy: Record<string, number> = {
+        free: 0, beginner: 1, intermediate: 2, elliotician: 3, pro: 4, elite: 5
+      };
+      const tierLevel = tierHierarchy[tier] || 0;
       
-      // Return subscription stats only (tier, AI credits, renewal info)
-      res.json(stats);
+      const capabilities = {
+        canViewElliott: true,
+        canUseElliott: tierLevel >= tierHierarchy.elliotician,
+        canUseAI: tierLevel >= tierHierarchy.intermediate,
+        hasUnlimitedAI: tier === "pro" || tier === "elite",
+        canUsePushNotifications: tierLevel >= tierHierarchy.pro,
+        isElite: tier === "elite",
+      };
+      
+      res.json({ ...stats, ...capabilities });
     } catch (error: any) {
       console.error('❌ Error fetching crypto subscription stats:', error);
       res.status(500).json({ error: error.message });
