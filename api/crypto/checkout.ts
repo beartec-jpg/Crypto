@@ -13,7 +13,6 @@ async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: 
 
     const token = authHeader.substring(7);
     const secretKey = process.env.CLERK_SECRET_KEY;
-    const publishableKey = process.env.VITE_CLERK_PUBLISHABLE_KEY;
 
     if (!secretKey) {
       console.error('CLERK_SECRET_KEY not set');

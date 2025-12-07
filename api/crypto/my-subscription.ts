@@ -83,8 +83,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       id: null,
       userId: 'anonymous',
-      tier: 'free',
-      hasElliottAddon: false,
       subscriptionStatus: 'none',
       aiCredits: 0,
       stripeSubscriptionId: null,
@@ -136,8 +134,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       id: subscription.id,
       userId: subscription.user_id,
-      tier,
-      hasElliottAddon,
       subscriptionStatus: subscription.subscription_status || 'active',
       aiCredits: subscription.ai_credits || 0,
       stripeSubscriptionId: subscription.stripe_subscription_id,
@@ -153,8 +149,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       id: null,
       userId: auth.userId,
-      tier: 'free',
-      hasElliottAddon: false,
       subscriptionStatus: 'active',
       aiCredits: 0,
       stripeSubscriptionId: null,
