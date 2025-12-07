@@ -168,7 +168,17 @@ export default function CryptoElliottWave() {
   const [fibonacciMode, setFibonacciMode] = useState('measured');
   const [currentPoints, setCurrentPoints] = useState<WavePoint[]>([]);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
-  const [waveDegrees, setWaveDegrees] = useState<WaveDegree[]>([]);
+  const [waveDegrees, setWaveDegrees] = useState<WaveDegree[]>([
+    { name: 'Grand Supercycle', color: '#FF0000', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
+    { name: 'Supercycle', color: '#FF6B00', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
+    { name: 'Cycle', color: '#FFD700', labels: ['I', 'II', 'III', 'IV', 'V'] },
+    { name: 'Primary', color: '#00FF00', labels: ['1', '2', '3', '4', '5'] },
+    { name: 'Intermediate', color: '#00BFFF', labels: ['(1)', '(2)', '(3)', '(4)', '(5)'] },
+    { name: 'Minor', color: '#0000FF', labels: ['1', '2', '3', '4', '5'] },
+    { name: 'Minute', color: '#8B00FF', labels: ['i', 'ii', 'iii', 'iv', 'v'] },
+    { name: 'Minuette', color: '#FF1493', labels: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'] },
+    { name: 'Subminuette', color: '#808080', labels: ['i', 'ii', 'iii', 'iv', 'v'] },
+  ]);
   const [savedLabels, setSavedLabels] = useState<ElliottWaveLabel[]>([]);
   const [previewPoint, setPreviewPoint] = useState<{ time: number; price: number } | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<GrokWaveAnalysis | null>(null);
@@ -577,6 +587,17 @@ const aiAnalyze = useMutation({
   // Initialize chart - only recreate when candles data changes
   useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
+    
+    // Wait for container to have dimensions
+    const containerWidth = chartContainerRef.current.clientWidth;
+    if (containerWidth === 0) {
+      // Container not ready yet, retry after a short delay
+      const retryTimer = setTimeout(() => {
+        // Force re-render by updating a ref or state
+        setMarkersVersion(v => v + 1);
+      }, 100);
+      return () => clearTimeout(retryTimer);
+    }
 
     const chartData = candles.map(c => ({
       time: c.time as any,
@@ -1708,7 +1729,7 @@ const aiAnalyze = useMutation({
         // Chart may already be disposed
       }
     };
-  }, [candles]); // Only depend on candles - other state accessed via refs
+  }, [candles, markersVersion]); // markersVersion triggers retry when container width is 0
 
   // Calculate Fibonacci ratios for wave points (used by markers for measured mode text)
   // Returns a Map keyed by point label (e.g., "2", "3", "A", "B") for lookup
@@ -3281,7 +3302,7 @@ const aiAnalyze = useMutation({
                 </div>
               </div>
             ) : (
-              <div ref={chartContainerRef} className={`w-full ${isDrawing ? 'cursor-crosshair ring-2 ring-[#00c4b4]/50 rounded' : ''}`} style={{ touchAction: isDrawing ? 'none' : 'pan-x pan-y pinch-zoom' }} />
+              <div ref={chartContainerRef} className={`w-full h-[500px] ${isDrawing ? 'cursor-crosshair ring-2 ring-[#00c4b4]/50 rounded' : ''}`} style={{ touchAction: isDrawing ? 'none' : 'pan-x pan-y pinch-zoom' }} />
             )}
 
             {currentPoints.length > 0 && (
