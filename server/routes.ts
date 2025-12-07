@@ -3669,11 +3669,44 @@ Return ONLY valid JSON in this exact format:
   // Stripe checkout endpoint for local development
   app.post("/api/crypto/checkout", async (req, res) => {
     try {
-      const { userId, email, tier, type, action } = req.body;
-      
-      if (!userId || !email) {
-        return res.status(400).json({ error: 'userId and email required' });
+      // Verify authentication from Clerk token
+      const authHeader = req.headers.authorization;
+      if (!authHeader?.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Authentication required' });
       }
+
+      const token = authHeader.substring(7);
+      let userId: string;
+      let email: string;
+
+      try {
+        // Verify the JWT token with Clerk
+        const { createClerkClient, verifyToken } = await import('@clerk/backend');
+        const secretKey = process.env.CLERK_SECRET_KEY;
+
+        if (!secretKey) {
+          return res.status(500).json({ error: 'Server configuration error' });
+        }
+
+        const payload = await verifyToken(token, {
+          secretKey,
+        });
+
+        if (!payload?.sub) {
+          return res.status(401).json({ error: 'Invalid token' });
+        }
+
+        // Get user details from Clerk
+        const clerk = createClerkClient({ secretKey });
+        const user = await clerk.users.getUser(payload.sub);
+        userId = payload.sub;
+        email = user.emailAddresses[0]?.emailAddress || '';
+      } catch (authError: any) {
+        console.error('Auth verification failed:', authError);
+        return res.status(401).json({ error: 'Authentication failed' });
+      }
+
+      const { tier, type, action } = req.body;
 
       // Import stripe functions dynamically
       const { 

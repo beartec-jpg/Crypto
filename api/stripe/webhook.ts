@@ -1,48 +1,20 @@
 // Vercel serverless function for Stripe webhooks
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Inline Stripe client for Vercel
+// Simple Stripe client using environment variable
 async function getStripeClient() {
   const Stripe = (await import('stripe')).default;
   
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY
-    ? 'repl ' + process.env.REPL_IDENTITY
-    : process.env.WEB_REPL_RENEWAL
-      ? 'depl ' + process.env.WEB_REPL_RENEWAL
-      : null;
-
-  if (!xReplitToken || !hostname) {
-    throw new Error('Replit token not found');
-  }
-
-  const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
-  const targetEnvironment = isProduction ? 'production' : 'development';
-
-  const url = new URL(`https://${hostname}/api/v2/connection`);
-  url.searchParams.set('include_secrets', 'true');
-  url.searchParams.set('connector_names', 'stripe');
-  url.searchParams.set('environment', targetEnvironment);
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      'Accept': 'application/json',
-      'X_REPLIT_TOKEN': xReplitToken
-    }
-  });
-
-  const data = await response.json();
-  const connectionSettings = data.items?.[0];
-
-  if (!connectionSettings?.settings?.secret) {
-    throw new Error('Stripe connection not found');
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeSecretKey) {
+    throw new Error('STRIPE_SECRET_KEY not configured');
   }
 
   return {
-    stripe: new Stripe(connectionSettings.settings.secret, {
+    stripe: new Stripe(stripeSecretKey, {
       apiVersion: '2023-10-16',
     }),
-    webhookSecret: connectionSettings.settings.webhook_secret || null,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || null,
   };
 }
 

@@ -55,10 +55,17 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
 - **Required Environment Variables in Vercel**:
   - `XAI_API_KEY` - Required for AI market analysis features
   - `DATABASE_URL` - PostgreSQL connection string
+  - `CLERK_SECRET_KEY` - Clerk authentication backend
+  - `VITE_CLERK_PUBLISHABLE_KEY` - Clerk authentication frontend
+  - `STRIPE_SECRET_KEY` - Stripe API for subscription payments
+  - `STRIPE_WEBHOOK_SECRET` - Stripe webhook signature verification
+  - `SITE_URL` - Site URL for redirects (e.g., https://beartec.uk)
   - `COINGLASS_API_KEY` - For predicted liquidation data
   - `COINALYZE_API_KEY` - Fallback for liquidation data
   - `PUBLIC_VAPID_KEY` / `PRIVATE_VAPID_KEY` - Push notifications
 - **Serverless Functions**: Located in `/api` folder for Vercel serverless deployment
+  - `api/crypto/checkout.ts` - Stripe checkout session creation (authenticated)
+  - `api/stripe/webhook.ts` - Stripe webhook handler for subscription sync
   - `api/crypto/liquidations/realtime.ts` - Fetches real liquidation data from Binance/Bybit REST APIs
   - `api/crypto/liquidations/predicted.ts` - Fetches predicted liquidation zones from Coinglass/Coinalyze
   - `api/crypto/my-subscription.ts` - Returns subscription tier with capability flags

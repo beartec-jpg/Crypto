@@ -1,46 +1,79 @@
 // Vercel serverless function for Stripe checkout
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 
-// Inline Stripe client for Vercel (can't import from server/)
+// Verify user authentication from Clerk token
+async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
+  try {
+    // Get authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return null;
+    }
+
+    const token = authHeader.substring(7);
+    const secretKey = process.env.CLERK_SECRET_KEY;
+    const publishableKey = process.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+    if (!secretKey) {
+      console.error('CLERK_SECRET_KEY not set');
+      return null;
+    }
+    
+    // Verify the session token
+    const payload = await verifyToken(token, {
+      secretKey,
+    });
+
+    if (!payload?.sub) {
+      return null;
+    }
+
+    // Get user details from Clerk
+    const clerk = createClerkClient({ secretKey });
+    const user = await clerk.users.getUser(payload.sub);
+    const email = user.emailAddresses[0]?.emailAddress || '';
+
+    return { userId: payload.sub, email };
+  } catch (error) {
+    console.error('Auth verification failed:', error);
+    return null;
+  }
+}
+
+// Simple Stripe client using environment variable
 async function getStripeClient() {
   const Stripe = (await import('stripe')).default;
   
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY
-    ? 'repl ' + process.env.REPL_IDENTITY
-    : process.env.WEB_REPL_RENEWAL
-      ? 'depl ' + process.env.WEB_REPL_RENEWAL
-      : null;
-
-  if (!xReplitToken || !hostname) {
-    throw new Error('Replit token not found');
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeSecretKey) {
+    throw new Error('STRIPE_SECRET_KEY not configured');
   }
 
-  const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
-  const targetEnvironment = isProduction ? 'production' : 'development';
-
-  const url = new URL(`https://${hostname}/api/v2/connection`);
-  url.searchParams.set('include_secrets', 'true');
-  url.searchParams.set('connector_names', 'stripe');
-  url.searchParams.set('environment', targetEnvironment);
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      'Accept': 'application/json',
-      'X_REPLIT_TOKEN': xReplitToken
-    }
-  });
-
-  const data = await response.json();
-  const connectionSettings = data.items?.[0];
-
-  if (!connectionSettings?.settings?.secret) {
-    throw new Error('Stripe connection not found');
-  }
-
-  return new Stripe(connectionSettings.settings.secret, {
+  return new Stripe(stripeSecretKey, {
     apiVersion: '2023-10-16',
   });
+}
+
+// Get the site URL for redirects
+function getSiteUrl(req: VercelRequest): string {
+  // Priority: SITE_URL env var > request origin > fallback
+  if (process.env.SITE_URL) {
+    return process.env.SITE_URL;
+  }
+  
+  const origin = req.headers.origin;
+  if (origin) {
+    return origin;
+  }
+  
+  // Fallback for Replit dev environment
+  const replitDomain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(',')[0];
+  if (replitDomain) {
+    return `https://${replitDomain}`;
+  }
+  
+  return 'https://beartec.uk';
 }
 
 // Database connection for Vercel
@@ -55,15 +88,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Verify authentication before DB connection
+  const auth = await verifyAuth(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const { userId, email } = auth;
+  const { tier, type, action } = req.body;
+
+  let pool: any = null;
+
   try {
-    const { userId, email, tier, type, action } = req.body;
-
-    if (!userId || !email) {
-      return res.status(400).json({ error: 'userId and email required' });
-    }
-
     const stripe = await getStripeClient();
-    const pool = await getDb();
+    pool = await getDb();
 
     // Get or create Stripe customer
     const userResult = await pool.query(
@@ -87,11 +125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Determine base URL for redirects
-    const baseUrl = req.headers.origin || 
-      (process.env.REPLIT_DEPLOYMENT === '1' 
-        ? `https://${process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(',')[0]}`
-        : `https://${process.env.REPLIT_DEV_DOMAIN}`);
-
+    const baseUrl = getSiteUrl(req);
     const successUrl = `${baseUrl}/cryptosubscribe?success=true`;
     const cancelUrl = `${baseUrl}/cryptosubscribe?canceled=true`;
 
@@ -103,7 +137,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       if (products.data.length === 0) {
-        await pool.end();
         return res.status(400).json({ error: `No product found for tier: ${tier}` });
       }
 
@@ -113,7 +146,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       if (prices.data.length === 0) {
-        await pool.end();
         return res.status(400).json({ error: `No price found for tier: ${tier}` });
       }
 
@@ -133,7 +165,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           customer: customerId,
           return_url: successUrl,
         });
-        await pool.end();
         return res.json({ url: portal.url });
       }
 
@@ -150,7 +181,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
       });
 
-      await pool.end();
       return res.json({ url: session.url });
     }
 
@@ -161,7 +191,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       if (products.data.length === 0) {
-        await pool.end();
         return res.status(400).json({ error: 'Elliott Wave add-on product not found' });
       }
 
@@ -171,7 +200,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       if (prices.data.length === 0) {
-        await pool.end();
         return res.status(400).json({ error: 'Elliott Wave add-on price not found' });
       }
 
@@ -186,7 +214,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const existingSub = subResult.rows[0];
 
       if (existingSub?.has_elliott_addon) {
-        await pool.end();
         return res.status(400).json({ error: 'Already subscribed to Elliott Wave add-on' });
       }
 
@@ -206,7 +233,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           [subscriptionItem.id, userId]
         );
 
-        await pool.end();
         return res.json({ url: successUrl, added: true });
       }
 
@@ -223,7 +249,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
       });
 
-      await pool.end();
       return res.json({ url: session.url });
     }
 
@@ -247,7 +272,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         [userId]
       );
 
-      await pool.end();
       return res.json({ success: true, message: 'Elliott Wave add-on canceled' });
     }
 
@@ -258,15 +282,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return_url: successUrl,
       });
 
-      await pool.end();
       return res.json({ url: portal.url });
     }
 
-    await pool.end();
     return res.status(400).json({ error: 'Invalid checkout type' });
 
   } catch (error: any) {
     console.error('Checkout error:', error);
     return res.status(500).json({ error: error.message });
+  } finally {
+    // Always close the database connection
+    if (pool) {
+      try {
+        await pool.end();
+      } catch (e) {
+        console.error('Error closing pool:', e);
+      }
+    }
   }
 }

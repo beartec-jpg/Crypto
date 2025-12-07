@@ -29,7 +29,7 @@ const TIER_PRICES: Record<string, { price: string; description: string }> = {
 };
 
 export default function CryptoSubscribe() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { user } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -63,12 +63,18 @@ export default function CryptoSubscribe() {
   // Checkout mutation
   const checkoutMutation = useMutation({
     mutationFn: async ({ tier, type, action }: { tier?: string; type: string; action?: string }) => {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Please sign in to manage your subscription');
+      }
+
       const response = await fetch('/api/crypto/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          userId: user?.id,
-          email: user?.primaryEmailAddress?.emailAddress,
           tier,
           type,
           action,
