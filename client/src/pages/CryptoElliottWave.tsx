@@ -184,6 +184,9 @@ export default function CryptoElliottWave() {
   const oldestCandleTimeRef = useRef<number | null>(null); // Track oldest candle time for pagination
   const hasMoreHistoryRef = useRef(true); // Track if there's more history to load
   const lastLoadTriggerRef = useRef(0); // Throttle loading triggers
+  const prevCandleCountRef = useRef(0); // Track previous candle count to detect prepends
+  const prevOldestTimeRef = useRef<number | null>(null); // Track previous oldest candle time to detect prepends vs appends
+  const isInitialLoadRef = useRef(true); // Track if this is the first load (for fitContent)
 
   // Check subscription tier
   const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string }>({
@@ -192,6 +195,25 @@ export default function CryptoElliottWave() {
   });
 
   const isElite = subscription?.tier === 'elite';
+
+  // Reset chart when symbol or timeframe changes
+  useEffect(() => {
+    // Destroy existing chart so it gets recreated with new data
+    if (chartRef.current) {
+      try {
+        chartRef.current.remove();
+      } catch (e) {
+        // Chart may already be disposed
+      }
+      chartRef.current = null;
+      candleSeriesRef.current = null;
+      blueCandelSeriesRef.current = null;
+    }
+    // Reset refs for new data
+    prevCandleCountRef.current = 0;
+    prevOldestTimeRef.current = null;
+    isInitialLoadRef.current = true;
+  }, [symbol, timeframe]);
 
   // Fetch wave degrees
   const { data: degreesData } = useQuery<{ degrees: WaveDegree[] }>({
@@ -230,6 +252,10 @@ export default function CryptoElliottWave() {
       // Reset pagination state when data source changes
       hasMoreHistoryRef.current = true;
       lastLoadTriggerRef.current = 0;
+      // Reset candle count tracking for new data set
+      prevCandleCountRef.current = historyData.candles.length;
+      prevOldestTimeRef.current = historyData.candles.length > 0 ? historyData.candles[0].time : null;
+      isInitialLoadRef.current = true;
     }
   }, [historyData]);
 
@@ -552,17 +578,68 @@ const aiAnalyze = useMutation({
   useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
 
-    // Safely remove existing chart
-    if (chartRef.current) {
-      try {
-        chartRef.current.remove();
-      } catch (e) {
-        // Chart may already be disposed
-      }
-      chartRef.current = null;
-      candleSeriesRef.current = null;
+    const chartData = candles.map(c => ({
+      time: c.time as any,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+    }));
+
+    // Add virtual/invisible candles for future projection points so markers can be placed there
+    const lastCandle = candles[candles.length - 1];
+    const secondLastCandle = candles.length >= 2 ? candles[candles.length - 2] : candles[0];
+    const candleInterval = lastCandle.time - secondLastCandle.time || 60;
+    
+    // Extend chart data with 20 virtual future candles (invisible - all values equal close)
+    for (let i = 1; i <= 20; i++) {
+      const futureTime = lastCandle.time + (candleInterval * i);
+      chartData.push({
+        time: futureTime as any,
+        open: lastCandle.close,
+        high: lastCandle.close,
+        low: lastCandle.close,
+        close: lastCandle.close,
+      });
     }
 
+    // If chart already exists, update data in-place and preserve scroll position
+    if (chartRef.current && candleSeriesRef.current) {
+      const chart = chartRef.current;
+      const candleSeries = candleSeriesRef.current;
+      
+      // Get current visible range BEFORE updating data
+      const visibleRange = chart.timeScale().getVisibleLogicalRange();
+      const prevCount = prevCandleCountRef.current;
+      const newCount = candles.length;
+      const addedCount = newCount - prevCount;
+      
+      // Detect if candles were PREPENDED (oldest time changed) vs APPENDED (real-time)
+      const newOldestTime = candles.length > 0 ? candles[0].time : null;
+      const wasPrepended = prevOldestTimeRef.current !== null && 
+                           newOldestTime !== null && 
+                           newOldestTime < prevOldestTimeRef.current;
+      
+      // Update the series data
+      candleSeries.setData(chartData);
+      
+      // Only shift the range if candles were PREPENDED (historical load)
+      // Do NOT shift for real-time appends - user should stay where they are
+      if (wasPrepended && addedCount > 0 && visibleRange && prevCount > 0) {
+        // New candles were prepended, shift the range to keep view stable
+        const adjustedRange = {
+          from: visibleRange.from + addedCount,
+          to: visibleRange.to + addedCount,
+        };
+        chart.timeScale().setVisibleLogicalRange(adjustedRange);
+      }
+      
+      prevCandleCountRef.current = newCount;
+      prevOldestTimeRef.current = newOldestTime;
+      return;
+    }
+
+    // First time: create the chart
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#0e0e0e' },
@@ -595,36 +672,13 @@ const aiAnalyze = useMutation({
       wickDownColor: '#ef4444',
     });
 
-    const chartData = candles.map(c => ({
-      time: c.time as any,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-    }));
-
-    // Add virtual/invisible candles for future projection points so markers can be placed there
-    const lastCandle = candles[candles.length - 1];
-    const secondLastCandle = candles[candles.length - 2];
-    const candleInterval = lastCandle.time - secondLastCandle.time;
-    
-    // Extend chart data with 20 virtual future candles (invisible - all values equal close)
-    // This allows markers to be placed at future times
-    for (let i = 1; i <= 20; i++) {
-      const futureTime = lastCandle.time + (candleInterval * i);
-      chartData.push({
-        time: futureTime as any,
-        open: lastCandle.close,
-        high: lastCandle.close,
-        low: lastCandle.close,
-        close: lastCandle.close,
-      });
-    }
-
     candleSeries.setData(chartData);
     
-    // Fit content to show all candles (fully zoomed out)
+    // Only fit content on initial load
     chart.timeScale().fitContent();
+    prevCandleCountRef.current = candles.length;
+    prevOldestTimeRef.current = candles.length > 0 ? candles[0].time : null;
+    isInitialLoadRef.current = false;
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
