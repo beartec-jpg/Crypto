@@ -99,9 +99,18 @@ export function useCryptoAuth() {
 
   // In development mode, ALWAYS return elite access for testing all features
   if (isDevelopment) {
+    const eliteSubscription: CryptoSubscription = {
+      ...devSubscription,
+      ...(subscription || {}),
+      tier: 'elite',
+      canUseElliott: true,
+      canUseAI: true,
+      hasUnlimitedAI: true,
+      hasElliottAddon: true,
+    };
     return {
       user: devUser,
-      subscription: { ...devSubscription, ...subscription, tier: 'elite', canUseElliott: true, canUseAI: true, hasUnlimitedAI: true },
+      subscription: eliteSubscription,
       tier: 'elite' as const,
       isAuthenticated: true,
       isLoading: false,
