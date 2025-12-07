@@ -3174,15 +3174,15 @@ const aiAnalyze = useMutation({
               <MousePointer2 className="w-4 h-4" />
             </Button>
 
-            <Select value={selectedDegree} onValueChange={setSelectedDegree}>
+            <Select value={selectedDegree || 'Minor'} onValueChange={setSelectedDegree}>
               <SelectTrigger className="flex-1 min-w-0 lg:w-[100px] h-7 bg-slate-800 border-slate-700 text-xs px-2">
                 <span className="flex items-center gap-1">
                   <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: waveDegrees.find(d => d.name === selectedDegree)?.color || '#ffa500' }} />
-                  <span className="truncate">{selectedDegree.slice(0, 3)}</span>
+                  <span className="truncate">{(selectedDegree || 'Min').slice(0, 3)}</span>
                 </span>
               </SelectTrigger>
               <SelectContent>
-                {waveDegrees.map(d => (
+                {(waveDegrees.length > 0 ? waveDegrees : [{ name: 'Minor', color: '#ffa500' }]).map(d => (
                   <SelectItem key={d.name} value={d.name}>
                     <span className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
