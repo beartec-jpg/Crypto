@@ -245,7 +245,12 @@ export default function CryptoElliottWave() {
     queryKey: ['/api/crypto/extended-history', symbol, timeframe],
     queryFn: async () => {
       try {
-        const token = await getToken();
+        let token: string | null = null;
+        try {
+          token = await getToken();
+        } catch (tokenErr) {
+          console.warn('📊 Failed to get auth token:', tokenErr);
+        }
         const headers: HeadersInit = {};
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
