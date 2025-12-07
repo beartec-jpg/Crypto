@@ -2,10 +2,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Check, Waves, AlertCircle, Loader2 } from 'lucide-react';
-import { Link } from 'wouter';
-import { useQuery } from '@tanstack/react-query';
-import { SignedIn, SignedOut, SignInButton, useAuth } from '@clerk/clerk-react';
+import { Link, useLocation } from 'wouter';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { SignedIn, SignedOut, SignInButton, useAuth, useUser } from '@clerk/clerk-react';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
+import { useToast } from '@/hooks/use-toast';
+import { useEffect } from 'react';
 
 interface SubscriptionData {
   tier: string;
@@ -28,11 +30,94 @@ const TIER_PRICES: Record<string, { price: string; description: string }> = {
 
 export default function CryptoSubscribe() {
   const { isSignedIn } = useAuth();
+  const { user } = useUser();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [location, setLocation] = useLocation();
   
   const { data: subscription, isLoading } = useQuery<SubscriptionData>({
     queryKey: ['/api/crypto/my-subscription'],
     enabled: isSignedIn,
   });
+
+  // Handle success/cancel URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true') {
+      toast({
+        title: 'Subscription updated!',
+        description: 'Your subscription has been successfully updated.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/my-subscription'] });
+      window.history.replaceState({}, '', '/cryptosubscribe');
+    } else if (params.get('canceled') === 'true') {
+      toast({
+        title: 'Checkout canceled',
+        description: 'Your subscription was not changed.',
+        variant: 'destructive',
+      });
+      window.history.replaceState({}, '', '/cryptosubscribe');
+    }
+  }, [toast, queryClient]);
+
+  // Checkout mutation
+  const checkoutMutation = useMutation({
+    mutationFn: async ({ tier, type, action }: { tier?: string; type: string; action?: string }) => {
+      const response = await fetch('/api/crypto/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id,
+          email: user?.primaryEmailAddress?.emailAddress,
+          tier,
+          type,
+          action,
+        }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Checkout failed');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      } else if (data.added || data.success) {
+        toast({
+          title: 'Subscription updated!',
+          description: data.message || 'Your subscription has been updated.',
+        });
+        queryClient.invalidateQueries({ queryKey: ['/api/crypto/my-subscription'] });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleTierSelect = (tier: string) => {
+    if (tier === 'free') {
+      // Open portal to cancel/downgrade
+      checkoutMutation.mutate({ type: 'portal' });
+    } else {
+      checkoutMutation.mutate({ tier, type: 'base_tier' });
+    }
+  };
+
+  const handleAddElliott = () => {
+    checkoutMutation.mutate({ type: 'elliott_addon' });
+  };
+
+  const handleCancelElliott = () => {
+    checkoutMutation.mutate({ type: 'cancel_elliott', action: 'cancel_elliott' });
+  };
 
   const currentTier = subscription?.tier || 'free';
   const canUseElliott = subscription?.canUseElliott || false;
@@ -186,12 +271,25 @@ export default function CryptoSubscribe() {
                     currentTier === 'elite' ? (
                       <p className="text-green-400 text-sm">Included with your Elite subscription</p>
                     ) : (
-                      <Button variant="outline" className="border-red-600 text-red-400 hover:bg-red-900/20" data-testid="button-cancel-elliott">
+                      <Button 
+                        variant="outline" 
+                        className="border-red-600 text-red-400 hover:bg-red-900/20" 
+                        data-testid="button-cancel-elliott"
+                        onClick={handleCancelElliott}
+                        disabled={checkoutMutation.isPending}
+                      >
+                        {checkoutMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                         Cancel Elliott Add-on
                       </Button>
                     )
                   ) : (
-                    <Button className="bg-purple-600 hover:bg-purple-700" data-testid="button-add-elliott">
+                    <Button 
+                      className="bg-purple-600 hover:bg-purple-700" 
+                      data-testid="button-add-elliott"
+                      onClick={handleAddElliott}
+                      disabled={checkoutMutation.isPending}
+                    >
+                      {checkoutMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                       Add Elliott Wave - $10/mo
                     </Button>
                   )}
@@ -244,8 +342,11 @@ export default function CryptoSubscribe() {
                       className={`w-full ${tier.highlight ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
                       variant={tier.highlight ? 'default' : 'outline'}
                       data-testid={`button-select-${tier.id}`}
+                      onClick={() => handleTierSelect(tier.id)}
+                      disabled={checkoutMutation.isPending}
                     >
-                      {tier.id === 'free' ? 'Downgrade' : 'Upgrade'}
+                      {checkoutMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                      {tier.id === 'free' ? 'Manage Subscription' : 'Upgrade'}
                     </Button>
                   )}
                 </SignedIn>

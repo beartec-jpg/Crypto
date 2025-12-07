@@ -281,41 +281,8 @@ export async function registerRoutes(app: Express): Promise<Server> {  // No aut
   const requireCryptoAuth = noAuth;
   const requireEliteTier = noAuth;
   
-  // Stripe removed - all features are now free
-  
-  // Stub for removed subscription service - returns elite tier for all users
-  const cryptoSubscriptionService = {
-    getUserSubscription: async (_userId?: string) => ({ 
-      tier: 'elite', 
-      subscriptionStatus: 'active', 
-      aiCredits: 999999,
-      selectedTickers: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT'],
-      alertGrades: ['A+', 'A', 'B', 'C', 'D', 'E'],
-      alertTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d'],
-      alertTypes: ['bos', 'choch', 'fvg', 'liquidation'],
-      alertsEnabled: true,
-      pushSubscription: null,
-      hasUnlimitedCredits: true,
-    }),
-    createCheckoutSession: async () => ({ url: null }),
-    handleWebhookEvent: async (_event: any, _signature: string) => ({}),
-    cancelSubscription: async () => ({}),
-    setDefaultTier: async () => ({}),
-    getDefaultTier: () => 'elite',
-    resetMonthlyCredits: async () => ({}),
-    getSubscriptionStats: async () => ({ 
-      tier: 'elite', 
-      subscriptionStatus: 'active',
-      aiCredits: 999999,
-      aiCreditsLimit: 999999,
-      renewalDate: null,
-      hasUnlimitedCredits: true,
-    }),
-    checkTierAccess: async () => true,
-    useAICredit: async () => true,
-    saveAnalysis: async (_userId: string, _type: string, _content: any) => ({}),
-    getAnalysisHistory: async () => [],
-  };
+  // Import real subscription service
+  const { cryptoSubscriptionService } = await import('./cryptoSubscriptionService');
 
   // Initialize multi-exchange real-time liquidation WebSocket streams
   const SUPPORTED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT'];
@@ -3699,21 +3666,64 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
-  // Stripe removed - all features free
-  app.post("/api/crypto/subscribe-tier", async (req, res) => {
-    res.json({ 
-      message: 'All features are now free! No payment required.',
-      tier: 'elite',
-      freeAccess: true 
-    });
-  });
+  // Stripe checkout endpoint for local development
+  app.post("/api/crypto/checkout", async (req, res) => {
+    try {
+      const { userId, email, tier, type, action } = req.body;
+      
+      if (!userId || !email) {
+        return res.status(400).json({ error: 'userId and email required' });
+      }
 
-  app.post("/api/crypto/create-checkout", async (req, res) => {
-    res.json({ 
-      message: 'All features are now free! No payment required.',
-      tier: 'elite',
-      freeAccess: true 
-    });
+      // Import stripe functions dynamically
+      const { 
+        createTierCheckoutSession, 
+        createElliottAddonCheckoutSession, 
+        cancelElliottAddon,
+        createPortalSession 
+      } = await import('./stripeCheckout');
+
+      const baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      const successUrl = `${baseUrl}/cryptosubscribe?success=true`;
+      const cancelUrl = `${baseUrl}/cryptosubscribe?canceled=true`;
+
+      if (type === 'base_tier' && tier) {
+        const result = await createTierCheckoutSession(userId, email, tier, successUrl, cancelUrl);
+        if (result.error) {
+          return res.status(400).json({ error: result.error });
+        }
+        return res.json({ url: result.url });
+      }
+
+      if (type === 'elliott_addon') {
+        const result = await createElliottAddonCheckoutSession(userId, email, successUrl, cancelUrl);
+        if (result.error) {
+          return res.status(400).json({ error: result.error });
+        }
+        return res.json({ url: result.url, added: !result.url });
+      }
+
+      if (type === 'cancel_elliott' || action === 'cancel_elliott') {
+        const result = await cancelElliottAddon(userId);
+        if (!result.success) {
+          return res.status(400).json({ error: result.error });
+        }
+        return res.json({ success: true, message: 'Elliott Wave add-on canceled' });
+      }
+
+      if (type === 'portal') {
+        const result = await createPortalSession(userId, email, successUrl);
+        if (result.error) {
+          return res.status(400).json({ error: result.error });
+        }
+        return res.json({ url: result.url });
+      }
+
+      return res.status(400).json({ error: 'Invalid checkout type' });
+    } catch (error: any) {
+      console.error('Checkout error:', error);
+      return res.status(500).json({ error: error.message });
+    }
   });
 
   // Get crypto alert preferences
