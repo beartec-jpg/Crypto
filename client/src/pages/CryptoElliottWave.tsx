@@ -533,8 +533,8 @@ const aiAnalyze = useMutation({
       // Container not ready yet, retry after a short delay
       console.log('📊 Container width is 0, retrying in 100ms');
       const retryTimer = setTimeout(() => {
-        // Force re-render by updating a ref or state
-        setMarkersVersion(v => v + 1);
+        // Force re-run by toggling a temporary state
+        setCandles(prev => [...prev]);
       }, 100);
       return () => clearTimeout(retryTimer);
     }
@@ -1623,16 +1623,8 @@ const aiAnalyze = useMutation({
       resizeObserver.disconnect();
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('mousedown', handleMouseDown);
-      markersRef.current = null; // Clear markers when chart is destroyed
-      blueCandleMarkersRef.current = null;
-      blueCandelSeriesRef.current = null;
-      try {
-        chart.remove();
-      } catch (e) {
-        // Chart may already be disposed
-      }
     };
-  }, [candles, markersVersion]); // markersVersion triggers retry when container width is 0
+  }, [candles]); // Only recreate chart when candles data changes
 
   // Calculate Fibonacci ratios for wave points (used by markers for measured mode text)
   // Returns a Map keyed by point label (e.g., "2", "3", "A", "B") for lookup
