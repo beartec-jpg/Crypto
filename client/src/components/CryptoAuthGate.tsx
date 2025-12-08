@@ -1,6 +1,4 @@
-import { useAuth } from '@clerk/clerk-react';
-import { useLocation } from 'wouter';
-import { useEffect } from 'react';
+import { useAuth, RedirectToSignIn } from '@clerk/clerk-react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 
@@ -15,7 +13,6 @@ const isDevelopment = typeof window !== 'undefined' &&
 
 export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
   const { isSignedIn, isLoaded, getToken } = useAuth();
-  const [location, setLocation] = useLocation();
 
   const { isLoading: isBootstrapping } = useQuery({
     queryKey: ['/api/crypto/bootstrap'],
@@ -51,13 +48,6 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
     retry: 2,
   });
 
-  useEffect(() => {
-    if (!isDevelopment && isLoaded && !isSignedIn) {
-      const returnTo = encodeURIComponent(location);
-      setLocation(`/cryptologin?returnTo=${returnTo}`);
-    }
-  }, [isLoaded, isSignedIn, location, setLocation]);
-
   // In development, skip Clerk checks entirely
   if (isDevelopment) {
     if (isBootstrapping) {
@@ -86,14 +76,7 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
   }
 
   if (!isSignedIn) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0e0e0e]">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-[#00c4b4] animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Redirecting to login...</p>
-        </div>
-      </div>
-    );
+    return <RedirectToSignIn />;
   }
 
   if (isBootstrapping) {
