@@ -1,9 +1,11 @@
 import { Helmet } from 'react-helmet-async';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
-import { useCryptoAuth } from '@/hooks/useCryptoAuth';
+import { useCryptoAuth, isDevelopment } from '@/hooks/useCryptoAuth';
 import { useQuery } from '@tanstack/react-query';
-import { Crown, Sparkles, Info, CreditCard, Waves, Bot, Shield } from 'lucide-react';
+import { Crown, Sparkles, Info, CreditCard, Waves, Bot, Shield, LogIn, LogOut, User } from 'lucide-react';
 import { Link } from 'wouter';
+import { SignInButton, SignOutButton, useAuth, useUser } from '@clerk/clerk-react';
+import { Button } from '@/components/ui/button';
 
 interface SubscriptionData {
   tier: string;
@@ -17,9 +19,12 @@ interface SubscriptionData {
 
 export default function CryptoAccount() {
   const { tier: localTier } = useCryptoAuth();
+  const { isSignedIn, isLoaded } = useAuth();
+  const { user } = useUser();
   
   const { data: subscription, isLoading } = useQuery<SubscriptionData>({
     queryKey: ['/api/crypto/my-subscription'],
+    enabled: isDevelopment || isSignedIn === true,
   });
 
   const tier = subscription?.tier || localTier || 'free';
@@ -44,6 +49,8 @@ export default function CryptoAccount() {
     }
   };
 
+  const authLoading = !isLoaded && !isDevelopment;
+
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-20">
       <Helmet>
@@ -57,25 +64,70 @@ export default function CryptoAccount() {
           Account
         </h1>
         
-        <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-blue-500/30">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h3 className="font-semibold text-blue-300 mb-1">Open Access Mode</h3>
-              <p className="text-sm text-slate-300">
-                This platform is currently in open access mode. All features are available without requiring login. 
-                Your settings and preferences are stored locally.
-              </p>
+        {isDevelopment && (
+          <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-green-500/30">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <h3 className="font-semibold text-green-300 mb-1">Development Mode</h3>
+                <p className="text-sm text-slate-300">
+                  You're running in development mode with Elite tier access for testing all features.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {!isDevelopment && !isSignedIn && isLoaded && (
+          <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-blue-500/30">
+            <div className="text-center">
+              <User className="w-12 h-12 text-blue-400 mx-auto mb-4" />
+              <h3 className="font-semibold text-white text-lg mb-2">Sign in to your account</h3>
+              <p className="text-sm text-slate-300 mb-4">
+                Sign in to access your subscription, save Elliott Wave patterns, and unlock premium features.
+              </p>
+              <SignInButton mode="modal">
+                <Button className="bg-[#00c4b4] hover:bg-[#00a89c] text-black font-medium" data-testid="button-sign-in">
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign In with Google
+                </Button>
+              </SignInButton>
+            </div>
+          </div>
+        )}
+
+        {!isDevelopment && isSignedIn && user && (
+          <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-slate-700">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {user.imageUrl ? (
+                  <img src={user.imageUrl} alt="Profile" className="w-10 h-10 rounded-full" />
+                ) : (
+                  <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-slate-400" />
+                  </div>
+                )}
+                <div>
+                  <p className="font-medium text-white">{user.fullName || user.primaryEmailAddress?.emailAddress}</p>
+                  <p className="text-sm text-slate-400">{user.primaryEmailAddress?.emailAddress}</p>
+                </div>
+              </div>
+              <SignOutButton>
+                <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" data-testid="button-sign-out">
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </Button>
+              </SignOutButton>
+            </div>
+          </div>
+        )}
         
-        {isLoading ? (
+        {(authLoading || isLoading) ? (
           <div className="bg-slate-900 rounded-xl p-6 animate-pulse">
             <div className="h-6 bg-slate-700 rounded w-1/3 mb-4"></div>
             <div className="h-4 bg-slate-700 rounded w-2/3"></div>
           </div>
-        ) : (
+        ) : (isDevelopment || isSignedIn) && (
           <>
             <div className={`bg-gradient-to-r ${getTierColor(tier)} rounded-xl p-6 mb-6`}>
               <div className="flex items-center justify-between mb-4">
