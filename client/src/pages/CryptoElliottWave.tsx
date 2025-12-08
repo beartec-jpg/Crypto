@@ -3338,14 +3338,9 @@ const aiAnalyze = useMutation({
                   </div>
                 )}
               </div>
-            ) : currentPoints.length > 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                Analyzing pattern...
-              </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
-                Start drawing a pattern to see validation
+                {currentPoints.length >= 3 ? 'Validation will appear after pattern saves' : 'Place at least 3 points to see validation'}
               </div>
             )}
           </TabsContent>
@@ -3381,11 +3376,6 @@ const aiAnalyze = useMutation({
                     </div>
                   </div>
                 ))}
-              </div>
-            ) : currentPoints.length >= 3 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                Calculating Fibonacci ratios...
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
