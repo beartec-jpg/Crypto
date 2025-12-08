@@ -1909,10 +1909,19 @@ const aiAnalyze = useMutation({
       // Debug: log all markers being rendered with their details
       console.log('🎨 Creating markers:', allMarkers.length, 'total (merged from', rawMarkers.length, ')');
       console.log('📍 Saved labels count:', savedLabels.length, 
-        savedLabels.map(l => `${l.patternType}:${l.points.length}pts`));
+        savedLabels.map(l => `${l.patternType}:${l.points?.length || 0}pts`));
+      if (allMarkers.length > 0) {
+        console.log('📍 First marker:', JSON.stringify(allMarkers[0]));
+      }
       
       // Create fresh markers primitive each time
-      markersRef.current = createSeriesMarkers(candleSeriesRef.current, allMarkers);
+      if (allMarkers.length > 0) {
+        markersRef.current = createSeriesMarkers(candleSeriesRef.current, allMarkers);
+        console.log('✅ Markers primitive created successfully');
+      } else {
+        console.log('⚠️ No markers to create');
+        markersRef.current = null;
+      }
     } catch (e) {
       console.error('Failed to set wave markers:', e);
       markersRef.current = null;
