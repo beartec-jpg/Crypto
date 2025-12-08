@@ -1,6 +1,23 @@
 // Vercel serverless function for Stripe webhooks
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Disable body parsing to get raw body for Stripe signature verification
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+// Helper to get raw body as buffer
+async function getRawBody(req: VercelRequest): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 // Simple Stripe client using environment variable
 async function getStripeClient() {
   const Stripe = (await import('stripe')).default;
@@ -36,6 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pool = await getDb();
 
     // Get raw body for signature verification
+    const rawBody = await getRawBody(req);
     const signature = req.headers['stripe-signature'];
     
     let event;
@@ -43,8 +61,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (webhookSecret && signature) {
       try {
         event = stripe.webhooks.constructEvent(
-          req.body,
-          signature,
+          rawBody,
+          signature as string,
           webhookSecret
         );
       } catch (err: any) {
@@ -54,7 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } else {
       // In development, parse body directly
-      event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      event = JSON.parse(rawBody.toString());
     }
 
     console.log(`📩 Stripe webhook: ${event.type}`);
