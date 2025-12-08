@@ -74,12 +74,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         if (type === 'base_tier' && tier) {
-          // Update user's base tier
+          // Ensure crypto_users row exists first
           await pool.query(
-            `UPDATE crypto_subscriptions 
-             SET tier = $1, stripe_subscription_id = $2, subscription_status = 'active', updated_at = NOW()
-             WHERE user_id = $3`,
-            [tier, subscriptionId, userId]
+            `INSERT INTO crypto_users (id, email) VALUES ($1, $2)
+             ON CONFLICT (id) DO NOTHING`,
+            [userId, session.customer_email || `${userId}@stripe.checkout`]
+          );
+          
+          // Upsert subscription - create if not exists, update if exists
+          await pool.query(
+            `INSERT INTO crypto_subscriptions (user_id, tier, stripe_subscription_id, subscription_status)
+             VALUES ($1, $2, $3, 'active')
+             ON CONFLICT (user_id) DO UPDATE SET
+               tier = $2,
+               stripe_subscription_id = $3,
+               subscription_status = 'active',
+               updated_at = NOW()`,
+            [userId, tier, subscriptionId]
           );
           console.log(`✅ Updated user ${userId} to tier: ${tier}`);
         } else if (type === 'elliott_addon') {
