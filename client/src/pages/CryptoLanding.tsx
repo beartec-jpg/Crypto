@@ -65,11 +65,23 @@ export default function CryptoLanding() {
         if (isSignedInRef.current) {
           setLocation('/cryptoindicators');
         } else {
-          // Use Clerk's redirectToSignIn with afterSignInUrl
-          clerkRef.current.redirectToSignIn({
-            afterSignInUrl: '/cryptoindicators',
-            afterSignUpUrl: '/cryptoindicators',
-          });
+          // Try Clerk's redirectToSignIn, fallback to direct URL if it fails
+          try {
+            if (clerkRef.current && clerkRef.current.loaded) {
+              clerkRef.current.redirectToSignIn({
+                afterSignInUrl: '/cryptoindicators',
+                afterSignUpUrl: '/cryptoindicators',
+              });
+            } else {
+              // Fallback: redirect to Clerk hosted page directly
+              window.location.href = 'https://accounts.beartec.uk/sign-in?redirect_url=' + 
+                encodeURIComponent(window.location.origin + '/cryptoindicators');
+            }
+          } catch (e) {
+            // Fallback on error
+            window.location.href = 'https://accounts.beartec.uk/sign-in?redirect_url=' + 
+              encodeURIComponent(window.location.origin + '/cryptoindicators');
+          }
         }
       }, 500);
     };
