@@ -1,6 +1,7 @@
 import { useAuth, RedirectToSignIn } from '@clerk/clerk-react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface CryptoAuthGateProps {
   children: React.ReactNode;
@@ -13,6 +14,16 @@ const isDevelopment = typeof window !== 'undefined' &&
 
 export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
   const { isSignedIn, isLoaded, getToken } = useAuth();
+  const [loadTimeout, setLoadTimeout] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!isLoaded) {
+        setLoadTimeout(true);
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [isLoaded]);
 
   const { isLoading: isBootstrapping } = useQuery({
     queryKey: ['/api/crypto/bootstrap'],
@@ -65,6 +76,28 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
 
   // Production: require Clerk authentication
   if (!isLoaded) {
+    if (loadTimeout) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#0e0e0e] p-6">
+          <div className="text-center max-w-md">
+            <AlertTriangle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">Authentication Error</h2>
+            <p className="text-gray-400 mb-4">
+              Unable to connect to the login service. This may be a configuration issue.
+            </p>
+            <p className="text-gray-500 text-sm mb-4">
+              Please try refreshing the page or contact support if the problem persists.
+            </p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="bg-[#00c4b4] hover:bg-[#00a89c] text-black font-medium px-6 py-2 rounded"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0e0e0e]">
         <div className="text-center">
