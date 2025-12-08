@@ -302,8 +302,15 @@ export default function CryptoElliottWave() {
       // Force marker refresh to show the new pattern
       setMarkersVersion(v => v + 1);
       
-      // Also refetch to sync with server (in case of concurrent changes)
-      refetchLabels();
+      // Update React Query cache directly instead of refetching
+      // This prevents the race condition where refetch overwrites local state
+      queryClient.setQueryData(
+        ['/api/crypto/elliott-wave/labels', symbol, timeframe],
+        (oldData: ElliottWaveLabel[] | undefined) => {
+          const existing = oldData || [];
+          return [...existing, newLabel];
+        }
+      );
     },
     onError: (error: Error) => {
       toast({
@@ -341,7 +348,14 @@ export default function CryptoElliottWave() {
       
       // Force markers useEffect to re-run with updated savedLabels
       setMarkersVersion(v => v + 1);
-      refetchLabels(); // Also refetch to sync with server
+      
+      // Update React Query cache directly instead of refetching
+      queryClient.setQueryData(
+        ['/api/crypto/elliott-wave/labels', symbol, timeframe],
+        (oldData: ElliottWaveLabel[] | undefined) => {
+          return (oldData || []).filter(l => l.id !== deletedId);
+        }
+      );
     },
   });
 
