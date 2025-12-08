@@ -4,19 +4,23 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { TrendingUp, ArrowRight, Sparkles, BarChart2, LogIn } from 'lucide-react';
 import { SignInButton, useAuth } from '@clerk/clerk-react';
 import { isDevelopment } from '@/hooks/useCryptoAuth';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
 export default function CryptoLogin() {
   const { isSignedIn, isLoaded } = useAuth();
   const [, setLocation] = useLocation();
 
+  const returnToUrl = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const returnTo = params.get('returnTo');
+    return returnTo ? decodeURIComponent(returnTo) : '/cryptoindicators';
+  }, []);
+
   useEffect(() => {
     if (isLoaded && isSignedIn) {
-      const params = new URLSearchParams(window.location.search);
-      const returnTo = params.get('returnTo');
-      setLocation(returnTo ? decodeURIComponent(returnTo) : '/cryptoindicators');
+      setLocation(returnToUrl);
     }
-  }, [isLoaded, isSignedIn, setLocation]);
+  }, [isLoaded, isSignedIn, setLocation, returnToUrl]);
 
   if (isDevelopment) {
     return (
@@ -81,7 +85,7 @@ export default function CryptoLogin() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <SignInButton mode="modal">
+          <SignInButton mode="redirect" forceRedirectUrl={returnToUrl}>
             <Button
               className="w-full bg-[#00c4b4] hover:bg-[#00a89c] text-black font-medium py-6 text-lg"
               data-testid="button-sign-in"
