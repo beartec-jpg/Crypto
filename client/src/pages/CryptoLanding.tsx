@@ -1,13 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { Helmet } from 'react-helmet-async';
+import { useAuth, useClerk } from '@clerk/clerk-react';
 import videoFile from '@assets/grok_video_2025-11-13-19-48-28_1763063433278.mp4';
+
+const isDevelopment = typeof window !== 'undefined' && 
+  (window.location.hostname.includes('replit') || 
+   window.location.hostname.includes('localhost') ||
+   window.location.hostname.includes('127.0.0.1'));
 
 export default function CryptoLanding() {
   const [, setLocation] = useLocation();
+  const { isSignedIn } = useAuth();
+  const clerk = useClerk();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [showText, setShowText] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const isSignedInRef = useRef(isSignedIn);
+  const clerkRef = useRef(clerk);
+
+  // Keep refs in sync with latest state
+  useEffect(() => {
+    isSignedInRef.current = isSignedIn;
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    clerkRef.current = clerk;
+  }, [clerk]);
 
   useEffect(() => {
     // Ensure video starts paused on first frame
@@ -34,11 +53,24 @@ export default function CryptoLanding() {
     const video = videoRef.current;
     video.play();
 
-    // When video ends, freeze on last frame and navigate to indicators
-    // AuthGate will handle redirect to Clerk sign-in if not authenticated
     video.onended = () => {
       setTimeout(() => {
-        setLocation('/cryptoindicators');
+        // In development, go straight to indicators
+        if (isDevelopment) {
+          setLocation('/cryptoindicators');
+          return;
+        }
+        
+        // In production: if signed in, go to indicators; otherwise redirect to Clerk sign-in
+        if (isSignedInRef.current) {
+          setLocation('/cryptoindicators');
+        } else {
+          // Use Clerk's redirectToSignIn with afterSignInUrl
+          clerkRef.current.redirectToSignIn({
+            afterSignInUrl: '/cryptoindicators',
+            afterSignUpUrl: '/cryptoindicators',
+          });
+        }
       }, 500);
     };
   };
