@@ -3055,7 +3055,13 @@ const aiAnalyze = useMutation({
               variant="ghost"
               size="sm"
               className={`w-8 h-7 p-0 ${isDrawing ? 'bg-[#00c4b4] text-white hover:bg-[#00a89c]' : 'bg-slate-800 text-gray-300 hover:bg-slate-700 border border-slate-700'}`}
-              onClick={() => { setIsDrawing(!isDrawing); setSelectionMode(false); }}
+              onClick={() => { 
+                const newDrawing = !isDrawing;
+                setIsDrawing(newDrawing); 
+                isDrawingRef.current = newDrawing;
+                setSelectionMode(false);
+                selectionModeRef.current = false;
+              }}
               title="Draw mode"
             >
               <Pencil className="w-4 h-4" />
@@ -3065,7 +3071,13 @@ const aiAnalyze = useMutation({
               variant="ghost"
               size="sm"
               className={`w-8 h-7 p-0 ${selectionMode ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-slate-800 text-gray-300 hover:bg-slate-700 border border-slate-700'}`}
-              onClick={() => { setSelectionMode(!selectionMode); setIsDrawing(false); }}
+              onClick={() => { 
+                const newSelection = !selectionMode;
+                setSelectionMode(newSelection);
+                selectionModeRef.current = newSelection;
+                setIsDrawing(false);
+                isDrawingRef.current = false;
+              }}
               title="Select mode"
             >
               <MousePointer2 className="w-4 h-4" />
