@@ -1,13 +1,32 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { clerkClient, getAuth } from "@clerk/express";
-import { db } from '../../../server/db';
-import { cryptoUsers, cryptoSubscriptions, elliottWaveLabels } from '../../../shared/schema';
+import { createClerkClient, verifyToken } from '@clerk/backend';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import pg from 'pg';
 import { eq, and } from 'drizzle-orm';
 
+// Import schema directly to avoid path resolution issues
+import { cryptoUsers, cryptoSubscriptions, elliottWaveLabels } from '../../../shared/schema';
+
+// Create a new database connection for each request (serverless-compatible)
+function getDb() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL not configured');
+  }
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  return { client, db: drizzle(client) };
+}
+
+// Initialize Clerk client
+const clerkClient = createClerkClient({ 
+  secretKey: process.env.CLERK_SECRET_KEY 
+});
+
 // Helper to get or create crypto user and get their subscription
-async function getUserWithSubscription(clerkUserId: string, email?: string) {
-  // First try to find existing user
-  let user = await db.select().from(cryptoUsers).where(eq(cryptoUsers.email, email || '')).limit(1);
+async function getUserWithSubscription(db: ReturnType<typeof drizzle>, clerkUserId: string, email?: string) {
+  // First try to find existing user by email
+  let user = email 
+    ? await db.select().from(cryptoUsers).where(eq(cryptoUsers.email, email)).limit(1)
+    : [];
   
   if (user.length === 0 && email) {
     // Create new user
@@ -38,20 +57,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
+  // Create database connection for this request
+  const { client, db } = getDb();
+  
   try {
+    // Connect to database
+    await client.connect();
+    
     // Authenticate user with Clerk
-    const auth = getAuth(req as any);
-    if (!auth?.userId) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-
-    // Get user info from Clerk
+    
+    const token = authHeader.substring(7);
+    let clerkUserId: string;
     let userEmail = '';
+    
     try {
-      const clerkUser = await clerkClient.users.getUser(auth.userId);
+      // Verify the session token
+      const payload = await verifyToken(token, {
+        secretKey: process.env.CLERK_SECRET_KEY!,
+      });
+      clerkUserId = payload.sub;
+      
+      // Get user email from Clerk
+      const clerkUser = await clerkClient.users.getUser(clerkUserId);
       userEmail = clerkUser.emailAddresses?.[0]?.emailAddress || '';
     } catch (e) {
-      console.error('Failed to get Clerk user:', e);
+      console.error('Auth verification failed:', e);
+      return res.status(401).json({ error: 'Invalid authentication token' });
     }
 
     if (!userEmail) {
@@ -59,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Get or create crypto user
-    const userWithSub = await getUserWithSubscription(auth.userId, userEmail);
+    const userWithSub = await getUserWithSubscription(db, clerkUserId, userEmail);
     if (!userWithSub) {
       return res.status(500).json({ error: 'Failed to get user' });
     }
@@ -88,7 +123,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         )
       );
       
-      return res.json(labels);
+      // Map field names for frontend compatibility
+      const mappedLabels = labels.map(label => ({
+        ...label,
+        isComplete: label.isConfirmed,
+        fibonacciMode: label.fibMode,
+      }));
+      
+      return res.json(mappedLabels);
     }
     
     if (req.method === 'POST') {
@@ -190,5 +232,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: any) {
     console.error('Error with Elliott Wave labels:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    // Always close the database connection
+    try {
+      await client.end();
+    } catch (e) {
+      console.error('Error closing db connection:', e);
+    }
   }
 }

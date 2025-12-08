@@ -11,8 +11,10 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiRequest, queryClient } from '@/lib/queryClient';
-import { useCryptoAuth } from '@/hooks/useCryptoAuth';
+import { queryClient } from '@/lib/queryClient';
+import { authenticatedApiRequest, configureApiAuth } from '@/lib/apiAuth';
+import { useCryptoAuth, isDevelopment } from '@/hooks/useCryptoAuth';
+import { useEnsureAuthReady } from '@/hooks/useEnsureAuthReady';
 import { useLocation } from 'wouter';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { AuthButtons } from '@/components/AuthButtons';
@@ -133,7 +135,13 @@ const FIBONACCI_MODES = [
 export default function CryptoElliottWave() {
   const [, setLocation] = useLocation();
   const { user, isLoading: authLoading, isAuthenticated, tier: localTier, getToken } = useCryptoAuth();
+  const authReady = useEnsureAuthReady();
   const { toast } = useToast();
+  
+  // Configure apiAuth with Clerk's getToken on mount
+  useEffect(() => {
+    configureApiAuth(getToken);
+  }, [getToken]);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -251,15 +259,16 @@ export default function CryptoElliottWave() {
     }
   }, [historyData]);
 
-  // Fetch saved wave labels
+  // Fetch saved wave labels (with centralized auth)
+  // In development: open access, no auth required
+  // In production: require isAuthenticated, isElite, and authReady
   const { data: labelsData, refetch: refetchLabels } = useQuery<ElliottWaveLabel[]>({
     queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe],
     queryFn: async () => {
-      const response = await fetch(`/api/crypto/elliott-wave/labels?symbol=${symbol}&timeframe=${timeframe}`);
-      if (!response.ok) throw new Error('Failed to fetch labels');
+      const response = await authenticatedApiRequest('GET', `/api/crypto/elliott-wave/labels?symbol=${symbol}&timeframe=${timeframe}`);
       return response.json();
     },
-    enabled: isAuthenticated && isElite,
+    enabled: isDevelopment || (isAuthenticated && isElite && authReady.ready),
   });
 
   useEffect(() => {
@@ -268,10 +277,10 @@ export default function CryptoElliottWave() {
     }
   }, [labelsData]);
 
-  // Save wave label mutation
+  // Save wave label mutation (with centralized auth)
   const saveLabel = useMutation({
     mutationFn: async (label: Partial<ElliottWaveLabel>) => {
-      const response = await apiRequest('POST', '/api/crypto/elliott-wave/labels', label);
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/labels', label);
       return response.json();
     },
     onSuccess: (newLabel: ElliottWaveLabel) => {
@@ -321,10 +330,10 @@ export default function CryptoElliottWave() {
     },
   });
 
-  // Delete wave label mutation
+  // Delete wave label mutation (with centralized auth)
   const deleteLabel = useMutation({
     mutationFn: async (id: string) => {
-      const response = await apiRequest('DELETE', `/api/crypto/elliott-wave/labels/${id}`);
+      const response = await authenticatedApiRequest('DELETE', `/api/crypto/elliott-wave/labels/${id}`);
       return response.json();
     },
     onSuccess: (_, deletedId) => {
@@ -359,10 +368,10 @@ export default function CryptoElliottWave() {
     },
   });
 
-  // Update wave label mutation (for drag-and-drop point editing)
+  // Update wave label mutation (for drag-and-drop point editing, with centralized auth)
   const updateLabel = useMutation({
     mutationFn: async (data: { id: string; points: WavePoint[] }) => {
-      const response = await apiRequest('PATCH', `/api/crypto/elliott-wave/labels/${data.id}`, { points: data.points });
+      const response = await authenticatedApiRequest('PATCH', `/api/crypto/elliott-wave/labels/${data.id}`, { points: data.points });
       return response.json();
     },
     onSuccess: () => {
@@ -382,10 +391,10 @@ export default function CryptoElliottWave() {
     },
   });
 
-  // Validate wave pattern mutation
+  // Validate wave pattern mutation (with centralized auth)
   const validatePattern = useMutation({
     mutationFn: async (data: { patternType: string; points: WavePoint[] }) => {
-      const response = await apiRequest('POST', '/api/crypto/elliott-wave/validate', data);
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/validate', data);
       return response.json();
     },
     onSuccess: (result: ValidationResult) => {
@@ -393,10 +402,10 @@ export default function CryptoElliottWave() {
     },
   });
 
-  // Auto-analyze mutation (algorithmic)
+  // Auto-analyze mutation (algorithmic, with centralized auth)
   const autoAnalyze = useMutation({
     mutationFn: async (data: { candles: CandleData[]; startIndex: number; endIndex: number }) => {
-      const response = await apiRequest('POST', '/api/crypto/elliott-wave/analyze', data);
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze', data);
       return response.json();
     },
     onSuccess: (result) => {
@@ -417,10 +426,8 @@ export default function CryptoElliottWave() {
     },
   });
 
-  // AI-powered analysis mutation using Grok
+  // AI-powered analysis mutation using Grok (with centralized auth)
 const aiAnalyze = useMutation({
-    // IMPORTANT: Ensure you define visibleCandles and visibleStartIndex 
-    // elsewhere in this component and pass them in the data object.
     mutationFn: async (data: { 
       chartImage: string; 
       symbol: string; 
@@ -428,11 +435,10 @@ const aiAnalyze = useMutation({
       existingLabels?: string; 
       degreeContext?: string; 
       visibleRange?: string;
-      // CRITICAL: Added these two fields for index matching and trend analysis
-      candles: CandleData[]; // The visible array of candles
-      visibleStartIndex: number; // The index of the first visible candle
+      candles: CandleData[]; 
+      visibleStartIndex: number; 
     }) => {
-      const response = await apiRequest('POST', '/api/crypto/elliott-wave/ai-analyze', data);
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/ai-analyze', data);
       return response.json();
     },
   onSuccess: (data: any) => {
@@ -3275,11 +3281,117 @@ const aiAnalyze = useMutation({
           </TabsList>
 
           <TabsContent value="validation" className="mt-4">
-            {/* Your existing validation UI */}
+            {validation ? (
+              <div className="space-y-4">
+                {/* Status Badge */}
+                <div className={`p-3 rounded-lg border ${validation.isValid ? 'bg-emerald-900/30 border-emerald-600/50' : 'bg-amber-900/30 border-amber-600/50'}`}>
+                  <div className="flex items-center gap-2">
+                    {validation.isValid ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-amber-400" />
+                    )}
+                    <span className={`font-semibold ${validation.isValid ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {validation.isValid ? 'Valid Pattern' : 'Pattern Has Issues'}
+                    </span>
+                    {validation.detectedType && (
+                      <Badge variant="outline" className="ml-auto text-xs">
+                        {validation.detectedSubtype || validation.detectedType}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Errors */}
+                {validation.errors.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-red-400 flex items-center gap-1">
+                      <AlertCircle className="w-4 h-4" /> Errors
+                    </h4>
+                    {validation.errors.map((error, i) => (
+                      <div key={i} className="text-sm text-red-300 bg-red-900/20 px-3 py-2 rounded border border-red-800/50">
+                        {error}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Warnings */}
+                {validation.warnings.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-amber-400 flex items-center gap-1">
+                      <Info className="w-4 h-4" /> Warnings
+                    </h4>
+                    {validation.warnings.map((warning, i) => (
+                      <div key={i} className="text-sm text-amber-300 bg-amber-900/20 px-3 py-2 rounded border border-amber-800/50">
+                        {warning}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* No issues message */}
+                {validation.errors.length === 0 && validation.warnings.length === 0 && (
+                  <div className="text-sm text-gray-400 text-center py-4">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                    Pattern follows Elliott Wave rules correctly
+                  </div>
+                )}
+              </div>
+            ) : currentPoints.length > 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                Analyzing pattern...
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                Start drawing a pattern to see validation
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="fibonacci" className="mt-4">
-            {/* Your existing fib UI */}
+            {validation?.fibonacciRatios && validation.fibonacciRatios.length > 0 ? (
+              <div className="space-y-3">
+                {validation.fibonacciRatios.map((fib, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[#00c4b4] font-medium">{fib.wave}</span>
+                      <span className="text-gray-400 text-sm">Wave</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`font-mono text-lg ${
+                        fib.quality === 'excellent' ? 'text-emerald-400' :
+                        fib.quality === 'good' ? 'text-green-400' :
+                        fib.quality === 'ok' ? 'text-yellow-400' :
+                        fib.quality === 'valid' ? 'text-orange-400' :
+                        'text-red-400'
+                      }`}>
+                        {fib.ratio.toFixed(1)}%
+                      </span>
+                      <Badge variant="outline" className={`text-xs ${
+                        fib.quality === 'excellent' ? 'border-emerald-500 text-emerald-400' :
+                        fib.quality === 'good' ? 'border-green-500 text-green-400' :
+                        fib.quality === 'ok' ? 'border-yellow-500 text-yellow-400' :
+                        fib.quality === 'valid' ? 'border-orange-500 text-orange-400' :
+                        'border-red-500 text-red-400'
+                      }`}>
+                        {fib.quality}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : currentPoints.length >= 3 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                Calculating Fibonacci ratios...
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                Place at least 3 wave points to see Fibonacci analysis
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="ai" className="mt-4 space-y-5">

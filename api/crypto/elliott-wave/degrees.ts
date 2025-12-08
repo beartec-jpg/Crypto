@@ -1,22 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Wave degrees with format matching frontend expectations
 const WAVE_DEGREES = [
-  { id: 'supercycle', label: 'Supercycle', motive: ['(I)', '(II)', '(III)', '(IV)', '(V)'], corrective: ['(A)', '(B)', '(C)', '(D)', '(E)'] },
-  { id: 'cycle', label: 'Cycle', motive: ['I', 'II', 'III', 'IV', 'V'], corrective: ['A', 'B', 'C', 'D', 'E'] },
-  { id: 'primary', label: 'Primary', motive: ['①', '②', '③', '④', '⑤'], corrective: ['Ⓐ', 'Ⓑ', 'Ⓒ', 'Ⓓ', 'Ⓔ'] },
-  { id: 'intermediate', label: 'Intermediate', motive: ['(1)', '(2)', '(3)', '(4)', '(5)'], corrective: ['(a)', '(b)', '(c)', '(d)', '(e)'] },
-  { id: 'minor', label: 'Minor', motive: ['1', '2', '3', '4', '5'], corrective: ['a', 'b', 'c', 'd', 'e'] },
-  { id: 'minute', label: 'Minute', motive: ['i', 'ii', 'iii', 'iv', 'v'], corrective: ['a\'', 'b\'', 'c\'', 'd\'', 'e\''] },
-  { id: 'minuette', label: 'Minuette', motive: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'], corrective: ['(a\')', '(b\')', '(c\')', '(d\')', '(e\')'] },
+  { name: 'Grand Supercycle', color: '#FF0000', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
+  { name: 'Supercycle', color: '#FF6B00', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
+  { name: 'Cycle', color: '#FFD700', labels: ['I', 'II', 'III', 'IV', 'V'] },
+  { name: 'Primary', color: '#00FF00', labels: ['1', '2', '3', '4', '5'] },
+  { name: 'Intermediate', color: '#00BFFF', labels: ['(1)', '(2)', '(3)', '(4)', '(5)'] },
+  { name: 'Minor', color: '#0000FF', labels: ['1', '2', '3', '4', '5'] },
+  { name: 'Minute', color: '#8B00FF', labels: ['i', 'ii', 'iii', 'iv', 'v'] },
+  { name: 'Minuette', color: '#FF1493', labels: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'] },
+  { name: 'Subminuette', color: '#808080', labels: ['i', 'ii', 'iii', 'iv', 'v'] },
 ];
-
-const CORRECTION_LABELS = {
-  zigzag: ['A', 'B', 'C'],
-  flat: ['A', 'B', 'C'],
-  triangle: ['A', 'B', 'C', 'D', 'E'],
-  combo: ['W', 'X', 'Y'],
-  triple: ['W', 'X', 'Y', 'X', 'Z'],
-};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    res.json({ degrees: WAVE_DEGREES, correctionLabels: CORRECTION_LABELS });
+    res.json({ degrees: WAVE_DEGREES });
   } catch (error: any) {
     console.error('Error fetching wave degrees:', error);
     res.status(500).json({ error: error.message });
