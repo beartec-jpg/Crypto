@@ -3293,40 +3293,6 @@ const aiAnalyze = useMutation({
               {aiAnalyze.isPending || isCapturingChart ? <Loader2 className="w-4 h-4 animate-spin" /> : 'AI'}
             </Button>
 
-            {/* STAGE 2: DUMMY TEST BUTTON — REMOVE AFTER TESTING */}
-            <Button
-              onClick={() => {
-                if (!hasElliottAccess) {
-                  toast({
-                    title: 'Subscription Required',
-                    description: 'AI analysis requires Elite tier or the Elliott Wave add-on.',
-                    variant: 'destructive',
-                  });
-                  return;
-                }
-                console.log('Sending DUMMY payload to test Grok...');
-                aiAnalyze.mutate({
-                  symbol: 'BTCUSDT',
-                  timeframe: '1h',
-                  candles: Array.from({ length: 20 }, (_, i) => ({
-                    time: Math.floor(Date.now() / 1000) - (20 - i) * 3600,
-                    open: 45000 + i * 15,
-                    high: 45150 + i * 15,
-                    low: 44850 + i * 15,
-                    close: 45050 + i * 15,
-                    volume: 1000 + i * 200,
-                  })),
-                  visibleStartIndex: 0,
-                  chartImage: null,
-                  dummy: true,
-                });
-              }}
-              disabled={!hasElliottAccess}
-              className="h-7 px-3 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded disabled:opacity-50"
-            >
-              TEST GROK
-            </Button>
-
             <Button
               onClick={handleClearPoints}
               disabled={!isDrawing || currentPoints.length === 0}
