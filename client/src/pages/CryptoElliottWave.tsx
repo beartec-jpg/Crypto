@@ -14,6 +14,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import { authenticatedApiRequest, configureApiAuth } from '@/lib/apiAuth';
 import { useCryptoAuth, isDevelopment } from '@/hooks/useCryptoAuth';
+import { runValidation } from '@shared/elliottValidation';
 import { useEnsureAuthReady } from '@/hooks/useEnsureAuthReady';
 import { useLocation } from 'wouter';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
@@ -174,7 +175,6 @@ export default function CryptoElliottWave() {
   const [patternType, setPatternType] = useState('impulse');
   const [fibonacciMode, setFibonacciMode] = useState('measured');
   const [currentPoints, setCurrentPoints] = useState<WavePoint[]>([]);
-  const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [waveDegrees, setWaveDegrees] = useState<WaveDegree[]>([
     { name: 'Grand Supercycle', color: '#FF0000', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
     { name: 'Supercycle', color: '#FF6B00', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
@@ -391,16 +391,10 @@ export default function CryptoElliottWave() {
     },
   });
 
-  // Validate wave pattern mutation (with centralized auth)
-  const validatePattern = useMutation({
-    mutationFn: async (data: { patternType: string; points: WavePoint[] }) => {
-      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/validate', data);
-      return response.json();
-    },
-    onSuccess: (result: ValidationResult) => {
-      setValidation(result);
-    },
-  });
+  // Calculate validation instantly on client side (no API call)
+  const validation = currentPoints.length >= 3 
+    ? runValidation(currentPoints, patternType)
+    : null;
 
   // Auto-analyze mutation (algorithmic, with centralized auth)
   const autoAnalyze = useMutation({
@@ -483,7 +477,6 @@ const aiAnalyze = useMutation({
   const draggedPointIndexRef = useRef(draggedPointIndex);
   const isDraggingRef = useRef(isDragging);
   const updateLabelRef = useRef(updateLabel);
-  const validatePatternRef = useRef(validatePattern);
   
   // CRITICAL: Cache trend direction when point 0 is placed - used for all subsequent snaps
   const trendDirectionRef = useRef<'up' | 'down' | null>(null);
@@ -502,17 +495,9 @@ const aiAnalyze = useMutation({
     draggedPointIndexRef.current = draggedPointIndex;
     isDraggingRef.current = isDragging;
     updateLabelRef.current = updateLabel;
-    validatePatternRef.current = validatePattern;
     fibonacciModeRef.current = fibonacciMode;
     timeframeRef.current = timeframe;
-  }, [isDrawing, selectedDegree, patternType, currentPoints, waveDegrees, candles, selectionMode, savedLabels, selectedLabelId, draggedPointIndex, isDragging, updateLabel, validatePattern, fibonacciMode, timeframe]);
-
-  // Auto-validate when pattern has 3+ points (for Fib ratios)
-  useEffect(() => {
-    if (currentPoints.length >= 3 && !validatePattern.isPending) {
-      validatePattern.mutate({ patternType, points: currentPoints });
-    }
-  }, [currentPoints.length, patternType]);
+  }, [isDrawing, selectedDegree, patternType, currentPoints, waveDegrees, candles, selectionMode, savedLabels, selectedLabelId, draggedPointIndex, isDragging, updateLabel, fibonacciMode, timeframe]);
 
   // Auto-save when pattern is complete AND validation is available
   useEffect(() => {
@@ -978,11 +963,6 @@ const aiAnalyze = useMutation({
         const updatedPoints = [...currentPointsRef.current, newPoint];
         setCurrentPoints(updatedPoints);
         setPreviewPoint(null);
-        
-        // Validate when enough points
-        if (updatedPoints.length >= 3) {
-          validatePattern.mutate({ patternType: patternTypeRef.current, points: updatedPoints });
-        }
         return;
       }
       
@@ -1263,14 +1243,6 @@ const aiAnalyze = useMutation({
             setSavedLabels(updatedLabels);
             savedLabelsRef.current = updatedLabels;
             
-            // RE-VALIDATE after moving point - update Fib ratios in real-time
-            if (updatedPoints.length >= 3) {
-              validatePatternRef.current.mutate({ 
-                patternType: selectedLabel.patternType, 
-                points: updatedPoints 
-              });
-            }
-            
             // CRITICAL: Clear drag state, DESELECT pattern, and force marker refresh
             // Deselecting prevents accidental consecutive drags after a drop
             console.log('✅ Point dropped - clearing all state and re-validating');
@@ -1544,11 +1516,6 @@ const aiAnalyze = useMutation({
       const updatedPoints = [...currentPointsRef.current, newPoint];
       setCurrentPoints(updatedPoints);
       setPreviewPoint(null); // Clear preview after placing
-
-      // Validate when enough points are collected
-      if (updatedPoints.length >= 3) {
-        validatePattern.mutate({ patternType: patternTypeRef.current, points: updatedPoints });
-      }
     });
 
     // Handle crosshair move for preview (works on both desktop and mobile)
@@ -2829,7 +2796,6 @@ const aiAnalyze = useMutation({
 
   const handleClearPoints = () => {
     setCurrentPoints([]);
-    setValidation(null);
     trendDirectionRef.current = null; // Clear cached direction for next pattern
     detectedCorrectionTypeRef.current = null; // Clear detected correction type
     detectedDiagonalTypeRef.current = null; // Clear detected diagonal type

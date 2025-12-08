@@ -20,8 +20,8 @@ export interface ValidationResult {
   errors: string[];
   warnings: string[];
   fibonacciRatios: FibRatio[];
-  detectedType?: string;
-  detectedSubtype?: string;
+  detectedType?: 'zigzag' | 'flat' | 'impulse' | 'triangle' | 'diagonal';
+  detectedSubtype?: 'regular_flat' | 'expanded_flat' | 'running_flat';
 }
 
 export function calculateFibRatios(points: WavePoint[], patternType: string): FibRatio[] {
@@ -29,7 +29,7 @@ export function calculateFibRatios(points: WavePoint[], patternType: string): Fi
   if (points.length < 3) return ratios;
 
   const isImpulse = patternType === 'impulse' || patternType === 'diagonal';
-  const isCorrection = patternType === 'zigzag' || patternType === 'flat' || patternType === 'triangle';
+  const _isCorrection = patternType === 'zigzag' || patternType === 'flat' || patternType === 'triangle';
 
   // Wave 2/B retracement of Wave 1/A
   const p0 = points[0], p1 = points[1], p2 = points[2];
@@ -165,13 +165,13 @@ export function calculateFibRatios(points: WavePoint[], patternType: string): Fi
 export function validatePattern(points: WavePoint[], patternType: string): {
   errors: string[];
   warnings: string[];
-  detectedType?: string;
-  detectedSubtype?: string;
+  detectedType?: 'zigzag' | 'flat' | 'impulse' | 'triangle' | 'diagonal';
+  detectedSubtype?: 'regular_flat' | 'expanded_flat' | 'running_flat';
 } {
   const errors: string[] = [];
   const warnings: string[] = [];
-  let detectedType = patternType;
-  let detectedSubtype: string | undefined;
+  let detectedType = patternType as 'zigzag' | 'flat' | 'impulse' | 'triangle' | 'diagonal' | undefined;
+  let detectedSubtype: 'regular_flat' | 'expanded_flat' | 'running_flat' | undefined;
   
   if (points.length < 3) {
     return { errors, warnings, detectedType };
@@ -199,7 +199,7 @@ export function validatePattern(points: WavePoint[], patternType: string): {
     }
     
     if (points.length >= 5) {
-      const p3 = points[3], p4 = points[4];
+      const p4 = points[4];
       
       // Wave 4 cannot overlap Wave 1
       if (isUptrend && p4.price < p1.price) {
