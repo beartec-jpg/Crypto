@@ -281,13 +281,18 @@ export default function CryptoElliottWave() {
       });
       
       // IMMEDIATELY add the new label to local state to prevent visual gaps
-      // This avoids the race condition where currentPoints is cleared before refetch completes
-      const updatedLabels = [...savedLabels, newLabel];
-      setSavedLabels(updatedLabels);
-      savedLabelsRef.current = updatedLabels;
+      // Use functional update to avoid stale closure issue
+      console.log('💾 Save success - adding new label with', newLabel.points?.length, 'points');
+      setSavedLabels(prev => {
+        const updatedLabels = [...prev, newLabel];
+        savedLabelsRef.current = updatedLabels;
+        console.log('💾 Updated savedLabels count:', updatedLabels.length);
+        return updatedLabels;
+      });
       
       // Auto-select the newly saved label to keep trendlines visible
       setSelectedLabelId(newLabel.id);
+      console.log('💾 Selected label ID:', newLabel.id);
       
       // Clear current drawing state
       setCurrentPoints([]);
@@ -1694,6 +1699,8 @@ const aiAnalyze = useMutation({
 
   // Draw all wave markers (saved labels + current points + preview) - using v5 createSeriesMarkers API
   useEffect(() => {
+    console.log('🌊 Markers effect running - savedLabels:', savedLabels.length, 'currentPoints:', currentPoints.length, 'candleSeries:', !!candleSeriesRef.current);
+    
     if (!candleSeriesRef.current) {
       console.log('🌊 Skipping markers - series not ready');
       return;
@@ -3038,13 +3045,13 @@ const aiAnalyze = useMutation({
               <SelectTrigger className="flex-1 h-8 bg-slate-800 border-slate-700 text-sm">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>{SYMBOLS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+              <SelectContent className="bg-slate-800 border-slate-700">{SYMBOLS.map(s => <SelectItem key={s} value={s} className="text-gray-200 hover:bg-slate-700 focus:bg-slate-700">{s}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={timeframe} onValueChange={setTimeframe}>
               <SelectTrigger className="w-20 h-8 bg-slate-800 border-slate-700 text-sm">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>{TIMEFRAMES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+              <SelectContent className="bg-slate-800 border-slate-700">{TIMEFRAMES.map(t => <SelectItem key={t.value} value={t.value} className="text-gray-200 hover:bg-slate-700 focus:bg-slate-700">{t.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
 
@@ -3076,9 +3083,9 @@ const aiAnalyze = useMutation({
                   <span className="truncate">{(selectedDegree || 'Min').slice(0, 3)}</span>
                 </span>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-slate-800 border-slate-700">
                 {(waveDegrees.length > 0 ? waveDegrees : [{ name: 'Minor', color: '#ffa500' }]).map(d => (
-                  <SelectItem key={d.name} value={d.name}>
+                  <SelectItem key={d.name} value={d.name} className="text-gray-200 hover:bg-slate-700 focus:bg-slate-700">
                     <span className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
                       {d.name}
@@ -3094,8 +3101,8 @@ const aiAnalyze = useMutation({
                   {patternType === 'impulse' ? '12345' : patternType === 'diagonal' ? 'Diag' : patternType === 'zigzag' ? 'ZZ' : patternType === 'flat' ? 'Flat' : patternType === 'triangle' ? 'Tri' : 'ABC'}
                 </span>
               </SelectTrigger>
-              <SelectContent>
-                {PATTERN_TYPES.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+              <SelectContent className="bg-slate-800 border-slate-700">
+                {PATTERN_TYPES.map(p => <SelectItem key={p.value} value={p.value} className="text-gray-200 hover:bg-slate-700 focus:bg-slate-700">{p.label}</SelectItem>)}
               </SelectContent>
             </Select>
 
@@ -3103,8 +3110,8 @@ const aiAnalyze = useMutation({
               <SelectTrigger className="flex-1 min-w-0 lg:w-[70px] h-7 bg-slate-800 border-slate-700 text-xs px-2">
                 <span className="truncate">{fibonacciMode === 'measured' ? 'M%' : fibonacciMode === 'projected' ? 'P%' : 'Off'}</span>
               </SelectTrigger>
-              <SelectContent>
-                {FIBONACCI_MODES.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+              <SelectContent className="bg-slate-800 border-slate-700">
+                {FIBONACCI_MODES.map(m => <SelectItem key={m.value} value={m.value} className="text-gray-200 hover:bg-slate-700 focus:bg-slate-700">{m.label}</SelectItem>)}
               </SelectContent>
             </Select>
 
