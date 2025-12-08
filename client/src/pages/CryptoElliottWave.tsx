@@ -310,6 +310,16 @@ export default function CryptoElliottWave() {
       setIsDrawing(false); // Turn off drawing after save
       trendDirectionRef.current = null; // Clear cached direction for next pattern
       
+      // CRITICAL: Clear Fib projection data to prevent stale lines appearing on saved pattern
+      fibProjectionPricesRef.current = [];
+      // Also clean up any visible Fib lines from the chart
+      if (candleSeriesRef.current) {
+        fibLinesRef.current.forEach(line => {
+          try { candleSeriesRef.current?.removePriceLine(line); } catch (e) { /* ignore */ }
+        });
+        fibLinesRef.current = [];
+      }
+      
       // Force marker refresh to show the new pattern
       setMarkersVersion(v => v + 1);
       
@@ -2827,6 +2837,15 @@ const aiAnalyze = useMutation({
     trendDirectionRef.current = null; // Clear cached direction for next pattern
     detectedCorrectionTypeRef.current = null; // Clear detected correction type
     detectedDiagonalTypeRef.current = null; // Clear detected diagonal type
+    
+    // Clear Fib projection data when clearing points
+    fibProjectionPricesRef.current = [];
+    if (candleSeriesRef.current) {
+      fibLinesRef.current.forEach(line => {
+        try { candleSeriesRef.current?.removePriceLine(line); } catch (e) { /* ignore */ }
+      });
+      fibLinesRef.current = [];
+    }
     // Keep drawing mode enabled so user can continue labeling
   };
   // ──────────────────────────────────────────────────────────────────────
@@ -3105,11 +3124,15 @@ const aiAnalyze = useMutation({
                 selectionModeRef.current = newSelection;
                 setIsDrawing(false);
                 isDrawingRef.current = false;
-                console.log('🔘 SELECT BUTTON CLICKED:', { newSelection, savedLabelsCount: savedLabelsRef.current.length });
+                // CRITICAL: Use savedLabels state directly (always current in button closure)
+                // Not savedLabelsRef which may be stale due to useEffect timing
+                console.log('🔘 SELECT BUTTON CLICKED:', { newSelection, savedLabelsStateCount: savedLabels.length, savedLabelsRefCount: savedLabelsRef.current.length });
+                // Also force sync the ref NOW to ensure click handler has latest data
+                savedLabelsRef.current = savedLabels;
                 if (newSelection) {
                   toast({
                     title: 'Selection Mode ON',
-                    description: `${savedLabelsRef.current.length} pattern(s) available. Tap a wave point to select.`,
+                    description: `${savedLabels.length} pattern(s) available. Tap a wave point to select.`,
                   });
                 }
               }}
