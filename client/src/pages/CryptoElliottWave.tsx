@@ -3065,7 +3065,7 @@ const aiAnalyze = useMutation({
               variant="ghost"
               size="sm"
               className={`w-8 h-7 p-0 ${selectionMode ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-slate-800 text-gray-300 hover:bg-slate-700 border border-slate-700'}`}
-              onClick={() => { setSelectionMode(!selectionMode); setIsDrawing(false); setCurrentPoints([]); }}
+              onClick={() => { setSelectionMode(!selectionMode); setIsDrawing(false); }}
               title="Select mode"
             >
               <MousePointer2 className="w-4 h-4" />
@@ -3261,7 +3261,7 @@ const aiAnalyze = useMutation({
                       {validation.isValid ? 'Valid Pattern' : 'Pattern Has Issues'}
                     </span>
                     {validation.detectedType && (
-                      <Badge variant="outline" className="ml-auto text-xs">
+                      <Badge className="ml-auto text-xs bg-slate-700 text-white border border-slate-500 px-2 py-0.5">
                         {validation.detectedSubtype || validation.detectedType}
                       </Badge>
                     )}
