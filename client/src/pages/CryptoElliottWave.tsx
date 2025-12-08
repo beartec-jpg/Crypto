@@ -274,6 +274,8 @@ export default function CryptoElliottWave() {
   useEffect(() => {
     if (labelsData) {
       setSavedLabels(labelsData);
+      savedLabelsRef.current = labelsData; // Sync ref immediately for click handler
+      console.log('📋 Loaded labels from DB, count:', labelsData.length);
     }
   }, [labelsData]);
 
