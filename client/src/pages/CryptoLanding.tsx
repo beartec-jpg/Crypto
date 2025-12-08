@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { Helmet } from 'react-helmet-async';
-import { useCryptoAuth } from '@/hooks/useCryptoAuth';
+import { isDevelopment } from '@/hooks/useCryptoAuth';
+import { useAuth } from '@clerk/clerk-react';
 import videoFile from '@assets/grok_video_2025-11-13-19-48-28_1763063433278.mp4';
 
 export default function CryptoLanding() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading } = useCryptoAuth();
+  const { isSignedIn } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const isSignedInRef = useRef(isSignedIn);
   const [showText, setShowText] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Keep ref in sync with latest auth state
+  useEffect(() => {
+    isSignedInRef.current = isSignedIn;
+  }, [isSignedIn]);
 
   useEffect(() => {
     // Ensure video starts paused on first frame
@@ -36,11 +43,17 @@ export default function CryptoLanding() {
     const video = videoRef.current;
     video.play();
 
-    // When video ends, freeze on last frame and navigate
+    // When video ends, freeze on last frame and navigate based on auth
     video.onended = () => {
       setTimeout(() => {
-        // Navigate directly to indicators (open access - no auth required)
-        setLocation('/cryptoindicators');
+        // Use ref to get latest auth state (avoids stale closure)
+        // In development mode or if signed in, go to indicators
+        // Otherwise, redirect to login
+        if (isDevelopment || isSignedInRef.current) {
+          setLocation('/cryptoindicators');
+        } else {
+          setLocation('/cryptologin');
+        }
       }, 500);
     };
   };
