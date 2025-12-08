@@ -296,7 +296,7 @@ export default function CryptoIndicators() {
   const [chartReady, setChartReady] = useState(false);
   
   // Chart controls tab state - null means no tab selected (collapsed)
-  const [chartControlsTab, setChartControlsTab] = useState<'smc' | 'trend' | 'vwap' | 'oscillators' | null>('smc');
+  const [chartControlsTab, setChartControlsTab] = useState<'smc' | 'trend' | 'vwap' | 'oscillators' | null>(null);
   const chartControlsRef = useRef<HTMLDivElement>(null);
 
   // VWAP toggles
@@ -459,7 +459,7 @@ export default function CryptoIndicators() {
   const [currentDelta, setCurrentDelta] = useState(0);
   const [cumDelta, setCumDelta] = useState(0);
   const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; confidence?: number; divergence?: boolean }>>([]);
-  const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(true);
+  const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(false);
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
   const [cvdBearishThreshold, setCvdBearishThreshold] = useState(200); // % of average bearish delta
