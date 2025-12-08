@@ -616,12 +616,24 @@ const aiAnalyze = useMutation({
 
   // Initialize chart - only recreate when candles data changes
   useEffect(() => {
-    if (!chartContainerRef.current || candles.length === 0) return;
+    console.log('📊 Chart effect triggered, candles:', candles.length);
+    if (!chartContainerRef.current) {
+      console.log('📊 No chart container ref');
+      return;
+    }
+    if (candles.length === 0) {
+      console.log('📊 No candles data');
+      return;
+    }
     
     // Wait for container to have dimensions
     const containerWidth = chartContainerRef.current.clientWidth;
+    const containerHeight = chartContainerRef.current.clientHeight;
+    console.log('📊 Container dimensions:', containerWidth, 'x', containerHeight);
+    
     if (containerWidth === 0) {
       // Container not ready yet, retry after a short delay
+      console.log('📊 Container width is 0, retrying in 100ms');
       const retryTimer = setTimeout(() => {
         // Force re-render by updating a ref or state
         setMarkersVersion(v => v + 1);
@@ -691,6 +703,7 @@ const aiAnalyze = useMutation({
     }
 
     // First time: create the chart
+    console.log('📊 Creating new chart with', chartData.length, 'data points');
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#0e0e0e' },
@@ -1745,6 +1758,8 @@ const aiAnalyze = useMutation({
     
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
     container.addEventListener('mousedown', handleMouseDown, { passive: true });
+    
+    console.log('📊 Chart created successfully');
 
     return () => {
       resizeObserver.disconnect();
