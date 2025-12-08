@@ -1763,7 +1763,8 @@ export default function CryptoAI() {
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      setLocation('/cryptologin');
+      const returnUrl = encodeURIComponent('/cryptoai');
+      setLocation(`/cryptologin?returnTo=${returnUrl}`);
     }
   }, [authLoading, isAuthenticated, setLocation]);
 

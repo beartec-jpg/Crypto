@@ -50,6 +50,7 @@ export default function CryptoAccount() {
   };
 
   const authLoading = !isLoaded && !isDevelopment;
+  const showContent = isDevelopment || isSignedIn;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-20">
@@ -122,12 +123,17 @@ export default function CryptoAccount() {
           </div>
         )}
         
-        {(authLoading || isLoading) ? (
+        {authLoading ? (
           <div className="bg-slate-900 rounded-xl p-6 animate-pulse">
             <div className="h-6 bg-slate-700 rounded w-1/3 mb-4"></div>
             <div className="h-4 bg-slate-700 rounded w-2/3"></div>
           </div>
-        ) : (isDevelopment || isSignedIn) && (
+        ) : isLoading && showContent ? (
+          <div className="bg-slate-900 rounded-xl p-6 animate-pulse">
+            <div className="h-6 bg-slate-700 rounded w-1/3 mb-4"></div>
+            <div className="h-4 bg-slate-700 rounded w-2/3"></div>
+          </div>
+        ) : showContent && (
           <>
             <div className={`bg-gradient-to-r ${getTierColor(tier)} rounded-xl p-6 mb-6`}>
               <div className="flex items-center justify-between mb-4">

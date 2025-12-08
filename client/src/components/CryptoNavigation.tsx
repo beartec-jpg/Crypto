@@ -91,13 +91,14 @@ export function CryptoNavigation() {
             </button>
           </Link>
           
-          <div 
-            className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg ${getTierColor(tier)}`}
-            data-testid="tier-indicator"
-          >
-            <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs font-medium capitalize">{tier}</span>
-          </div>
+          <Link href="/crypto/account" data-testid="tier-indicator">
+            <button
+              className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg ${getTierColor(tier)}`}
+            >
+              <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-[10px] sm:text-xs font-medium capitalize">{tier}</span>
+            </button>
+          </Link>
         </div>
       </div>
     </div>

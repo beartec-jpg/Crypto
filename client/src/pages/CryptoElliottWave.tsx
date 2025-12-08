@@ -3114,10 +3114,11 @@ const aiAnalyze = useMutation({
     hasElliottAccess,
   ]);
 
-  // ─── Auth redirect (unchanged) ───
+  // ─── Auth redirect with returnTo ───
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      setLocation('/cryptologin');
+      const returnUrl = encodeURIComponent('/cryptoelliottwave');
+      setLocation(`/cryptologin?returnTo=${returnUrl}`);
     }
   }, [authLoading, isAuthenticated, setLocation]);
   

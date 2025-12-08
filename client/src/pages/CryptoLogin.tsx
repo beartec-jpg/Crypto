@@ -12,7 +12,9 @@ export default function CryptoLogin() {
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
-      setLocation('/cryptoindicators');
+      const params = new URLSearchParams(window.location.search);
+      const returnTo = params.get('returnTo');
+      setLocation(returnTo ? decodeURIComponent(returnTo) : '/cryptoindicators');
     }
   }, [isLoaded, isSignedIn, setLocation]);
 
