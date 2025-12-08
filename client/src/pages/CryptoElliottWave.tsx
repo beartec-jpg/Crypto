@@ -12,7 +12,7 @@ import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
-import { authenticatedApiRequest, configureApiAuth } from '@/lib/apiAuth';
+import { authenticatedApiRequest, configureApiAuth, ApiError } from '@/lib/apiAuth';
 import { useCryptoAuth, isDevelopment } from '@/hooks/useCryptoAuth';
 import { runValidation } from '@shared/elliottValidation';
 import { useEnsureAuthReady } from '@/hooks/useEnsureAuthReady';
@@ -206,6 +206,11 @@ export default function CryptoElliottWave() {
   // User can use Elliott features if they have the addon OR elite tier
   const canUseElliottFeatures = subscription?.canUseElliott || subscription?.hasElliottAddon || subscription?.tier === 'elite' || localTier === 'elite';
   const isElite = subscription?.tier === 'elite' || localTier === 'elite';
+  
+  // Computed access flag: In development = always allowed; In production = need auth + subscription + ready
+  // Also requires auth and subscription loading to be complete to prevent premature mutations
+  const authAndSubReady = authReady.ready && !authLoading && !subLoading;
+  const hasElliottAccess = isDevelopment || (authAndSubReady && isAuthenticated && canUseElliottFeatures);
 
   // Reset chart when symbol or timeframe changes
   useEffect(() => {
@@ -334,11 +339,33 @@ export default function CryptoElliottWave() {
       );
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Save Failed',
-        description: error.message,
-        variant: 'destructive',
-      });
+      if (error instanceof ApiError) {
+        if (error.status === 401) {
+          toast({
+            title: 'Sign In Required',
+            description: 'Please sign in to save wave patterns.',
+            variant: 'destructive',
+          });
+        } else if (error.status === 403) {
+          toast({
+            title: 'Subscription Required',
+            description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Save Failed',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+      } else {
+        toast({
+          title: 'Save Failed',
+          description: error.message || 'Network error or unexpected failure.',
+          variant: 'destructive',
+        });
+      }
     },
   });
 
@@ -378,6 +405,35 @@ export default function CryptoElliottWave() {
         }
       );
     },
+    onError: (error: Error) => {
+      if (error instanceof ApiError) {
+        if (error.status === 401) {
+          toast({
+            title: 'Sign In Required',
+            description: 'Please sign in to delete wave patterns.',
+            variant: 'destructive',
+          });
+        } else if (error.status === 403) {
+          toast({
+            title: 'Subscription Required',
+            description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Delete Failed',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+      } else {
+        toast({
+          title: 'Delete Failed',
+          description: error.message || 'Network error or unexpected failure.',
+          variant: 'destructive',
+        });
+      }
+    },
   });
 
   // Update wave label mutation (for drag-and-drop point editing, with centralized auth)
@@ -393,11 +449,33 @@ export default function CryptoElliottWave() {
       refetchLabels();
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Update Failed',
-        description: error.message,
-        variant: 'destructive',
-      });
+      if (error instanceof ApiError) {
+        if (error.status === 401) {
+          toast({
+            title: 'Sign In Required',
+            description: 'Please sign in to update wave patterns.',
+            variant: 'destructive',
+          });
+        } else if (error.status === 403) {
+          toast({
+            title: 'Subscription Required',
+            description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Update Failed',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+      } else {
+        toast({
+          title: 'Update Failed',
+          description: error.message || 'Network error or unexpected failure.',
+          variant: 'destructive',
+        });
+      }
       setIsDragging(false);
       setDraggedPointIndex(null);
     },
@@ -513,6 +591,11 @@ const aiAnalyze = useMutation({
 
   // Auto-save when pattern is complete AND validation is available
   useEffect(() => {
+    // Guard: Don't auto-save if user lacks access
+    if (!hasElliottAccess) {
+      return;
+    }
+    
     const labels = patternType === 'impulse' ? ['0', '1', '2', '3', '4', '5'] :
                    patternType === 'correction' || patternType === 'zigzag' || patternType === 'flat' ? ['0', 'A', 'B', 'C'] :
                    patternType === 'triangle' ? ['0', 'A', 'B', 'C', 'D', 'E'] :
@@ -532,7 +615,7 @@ const aiAnalyze = useMutation({
         validationResult: validation || undefined,
       });
     }
-  }, [currentPoints, patternType, symbol, timeframe, selectedDegree, fibonacciMode, validation]);
+  }, [currentPoints, patternType, symbol, timeframe, selectedDegree, fibonacciMode, validation, hasElliottAccess]);
 
   // Initialize chart - only recreate when candles data changes
   useEffect(() => {
@@ -2811,6 +2894,16 @@ const aiAnalyze = useMutation({
   }, [currentPoints, savedLabels, selectedLabelId, patternType]);
 
   const handleSaveLabel = () => {
+    // Guard: Check access before attempting save
+    if (!hasElliottAccess) {
+      toast({
+        title: 'Subscription Required',
+        description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     if (currentPoints.length < 3) {
       toast({
         title: 'Not Enough Points',
@@ -2925,6 +3018,16 @@ const aiAnalyze = useMutation({
   //  AI AUTO-ANALYZE HANDLER – Clean & Final Version
   // ──────────────────────────────────────────────────────────────────────
   const handleAutoAnalyze = useCallback(async () => {
+    // Guard: Check access before AI analysis
+    if (!hasElliottAccess) {
+      toast({
+        title: 'Subscription Required',
+        description: 'AI analysis requires Elite tier or the Elliott Wave add-on.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     if (!chartRef.current || !chartContainerRef.current) {
       toast({
         title: 'Chart not ready',
@@ -3008,7 +3111,7 @@ const aiAnalyze = useMutation({
     candles,
     aiAnalyze,
     toast,
-    // Add any other refs/states you actually use inside the callback
+    hasElliottAccess,
   ]);
 
   // ─── Auth redirect (unchanged) ───
@@ -3181,11 +3284,11 @@ const aiAnalyze = useMutation({
 
             <Button
               onClick={handleAutoAnalyze}
-              disabled={aiAnalyze.isPending || isCapturingChart}
+              disabled={aiAnalyze.isPending || isCapturingChart || !hasElliottAccess}
               variant="ghost"
               size="sm"
-              className="w-8 h-7 p-0 text-[#00c4b4] hover:bg-[#00c4b4]/10 font-bold text-xs bg-slate-800 border border-slate-700"
-              title="AI Auto-analyze"
+              className="w-8 h-7 p-0 text-[#00c4b4] hover:bg-[#00c4b4]/10 font-bold text-xs bg-slate-800 border border-slate-700 disabled:opacity-50"
+              title={!hasElliottAccess ? "Subscription required for AI analysis" : "AI Auto-analyze"}
             >
               {aiAnalyze.isPending || isCapturingChart ? <Loader2 className="w-4 h-4 animate-spin" /> : 'AI'}
             </Button>
@@ -3193,6 +3296,14 @@ const aiAnalyze = useMutation({
             {/* STAGE 2: DUMMY TEST BUTTON — REMOVE AFTER TESTING */}
             <Button
               onClick={() => {
+                if (!hasElliottAccess) {
+                  toast({
+                    title: 'Subscription Required',
+                    description: 'AI analysis requires Elite tier or the Elliott Wave add-on.',
+                    variant: 'destructive',
+                  });
+                  return;
+                }
                 console.log('Sending DUMMY payload to test Grok...');
                 aiAnalyze.mutate({
                   symbol: 'BTCUSDT',
@@ -3210,7 +3321,8 @@ const aiAnalyze = useMutation({
                   dummy: true,
                 });
               }}
-              className="h-7 px-3 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded"
+              disabled={!hasElliottAccess}
+              className="h-7 px-3 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded disabled:opacity-50"
             >
               TEST GROK
             </Button>
@@ -3227,13 +3339,26 @@ const aiAnalyze = useMutation({
             </Button>
 
             {isDrawing && currentPoints.length >= 3 && (
-              <Button onClick={handleSaveLabel} disabled={saveLabel.isPending} size="sm" className="h-7 px-2 bg-[#00c4b4] hover:bg-[#00a89c]">
+              <Button 
+                onClick={handleSaveLabel} 
+                disabled={saveLabel.isPending || !hasElliottAccess} 
+                size="sm" 
+                className="h-7 px-2 bg-[#00c4b4] hover:bg-[#00a89c] disabled:opacity-50"
+                title={!hasElliottAccess ? "Subscription required to save patterns" : "Save pattern"}
+              >
                 {saveLabel.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               </Button>
             )}
 
             {selectionMode && selectedLabelId && (
-              <Button onClick={() => deleteLabel.mutate(selectedLabelId)} disabled={deleteLabel.isPending} variant="ghost" size="sm" className="h-7 px-2 text-red-400 hover:bg-red-500/10">
+              <Button 
+                onClick={() => deleteLabel.mutate(selectedLabelId)} 
+                disabled={deleteLabel.isPending || !hasElliottAccess} 
+                variant="ghost" 
+                size="sm" 
+                className="h-7 px-2 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                title={!hasElliottAccess ? "Subscription required to delete patterns" : "Delete pattern"}
+              >
                 {deleteLabel.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
               </Button>
             )}
@@ -3255,6 +3380,51 @@ const aiAnalyze = useMutation({
             {visibleCandleCount > 0 ? `${visibleCandleCount}/` : ''}{candles.length} candles
           </span>
         </div>
+
+        {/* Permission prompt for non-authorized users in production */}
+        {!isDevelopment && !isAuthenticated && !authLoading && (
+          <Card className="bg-amber-900/20 border-amber-500/50 mb-4">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                  <AlertCircle className="w-5 h-5 text-amber-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-amber-300 font-medium">Sign in to access Elliott Wave features</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Elliott Wave analysis requires an account. Sign in to save and load your wave patterns.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!isDevelopment && isAuthenticated && !canUseElliottFeatures && !subLoading && (
+          <Card className="bg-purple-900/20 border-purple-500/50 mb-4">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                  <TrendingUp className="w-5 h-5 text-purple-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-purple-300 font-medium">Upgrade to access Elliott Wave features</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Elliott Wave analysis requires either the <span className="text-purple-400">Elite tier</span> or the <span className="text-cyan-400">Elliott Wave add-on ($10/mo)</span>. Upgrade on the Plans page to save and load patterns.
+                  </p>
+                </div>
+                <Button 
+                  onClick={() => setLocation('/crypto/plans')} 
+                  size="sm" 
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                  data-testid="button-upgrade-elliott"
+                >
+                  View Plans
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Chart */}
         <Card className="bg-slate-900/50 border-slate-800">

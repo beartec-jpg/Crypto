@@ -7,6 +7,17 @@ const isDevelopmentMode = typeof window !== 'undefined' &&
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
+// Custom error class that preserves HTTP status code
+export class ApiError extends Error {
+  status: number;
+  
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+    this.name = 'ApiError';
+  }
+}
+
 export function configureApiAuth(tokenFn: GetTokenFn) {
   getTokenFn = tokenFn;
 }
@@ -26,7 +37,7 @@ async function getAuthToken(): Promise<string | null> {
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    throw new ApiError(`${res.status}: ${text}`, res.status);
   }
 }
 
