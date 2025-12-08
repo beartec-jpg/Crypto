@@ -77,8 +77,9 @@ function getSiteUrl(req: VercelRequest): string {
 
 // Database connection for Vercel
 async function getDb() {
-  const { Pool } = await import('pg');
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pg = await import('pg');
+  const Pool = pg.default?.Pool || pg.Pool;
+  const pool = new (Pool as any)({ connectionString: process.env.DATABASE_URL });
   return pool;
 }
 

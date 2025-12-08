@@ -51,13 +51,14 @@ async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: 
 
 // Database connection
 async function getDb() {
-  const { Pool } = await import('pg');
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pg = await import('pg');
+  const Pool = pg.default?.Pool || pg.Pool;
+  const pool = new (Pool as any)({ connectionString: process.env.DATABASE_URL });
   return pool;
 }
 
 // Check if user has Elliott Wave access (elite tier OR Elliott add-on)
-async function hasElliottAccess(userId: string): Promise<boolean> {
+async function _hasElliottAccess(userId: string): Promise<boolean> {
   let pool: any = null;
   try {
     pool = await getDb();

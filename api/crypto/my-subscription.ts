@@ -60,8 +60,9 @@ async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: 
 
 // Database connection
 async function getDb() {
-  const { Pool } = await import('pg');
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pg = await import('pg');
+  const Pool = pg.default?.Pool || pg.Pool;
+  const pool = new (Pool as any)({ connectionString: process.env.DATABASE_URL });
   return pool;
 }
 

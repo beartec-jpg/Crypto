@@ -22,7 +22,7 @@ const clerkClient = createClerkClient({
 });
 
 // Helper to get or create crypto user and get their subscription
-async function getUserWithSubscription(db: ReturnType<typeof drizzle>, clerkUserId: string, email?: string) {
+async function getUserWithSubscription(db: ReturnType<typeof drizzle>, _clerkUserId: string, email?: string) {
   // First try to find existing user by email
   let user = email 
     ? await db.select().from(cryptoUsers).where(eq(cryptoUsers.email, email)).limit(1)

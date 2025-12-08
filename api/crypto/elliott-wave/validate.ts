@@ -60,7 +60,7 @@ function calculateFibRatios(points: WavePoint[], patternType: string): FibRatio[
   if (points.length < 3) return ratios;
 
   const isImpulse = patternType === 'impulse' || patternType === 'diagonal';
-  const isCorrection = patternType === 'zigzag' || patternType === 'flat' || patternType === 'triangle';
+  const _isCorrection = patternType === 'zigzag' || patternType === 'flat' || patternType === 'triangle';
 
   // Wave 2/B retracement of Wave 1/A
   const p0 = points[0], p1 = points[1], p2 = points[2];
@@ -220,8 +220,7 @@ function validatePattern(points: WavePoint[], patternType: string): {
     }
     
     if (points.length >= 4) {
-      const p3 = points[3];
-      const wave3Range = Math.abs(p3.price - p2.price);
+      const wave3Range = Math.abs(points[3].price - p2.price);
       
       // Wave 3 should be larger than Wave 1
       if (wave3Range < wave1Range * 0.8) {
@@ -230,7 +229,7 @@ function validatePattern(points: WavePoint[], patternType: string): {
     }
     
     if (points.length >= 5) {
-      const p3 = points[3], p4 = points[4];
+      const p4 = points[4];
       
       // Wave 4 cannot overlap Wave 1
       if (isUptrend && p4.price < p1.price) {
@@ -241,8 +240,8 @@ function validatePattern(points: WavePoint[], patternType: string): {
     }
     
     if (points.length >= 6) {
-      const p3 = points[3], p5 = points[5];
-      const wave3Range = Math.abs(p3.price - p2.price);
+      const p5 = points[5];
+      const wave3Range = Math.abs(points[3].price - p2.price);
       const wave5Range = Math.abs(p5.price - points[4].price);
       
       // Wave 3 cannot be the shortest
