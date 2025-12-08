@@ -32,7 +32,11 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
   - **Development** (Replit/localhost): Open access with `dev-open-access` user ID, elite tier fallback
   - **Production** (Vercel/beartec.uk): Full Clerk authentication required, real user subscriptions enforced
   - Backend checks `REPLIT_DEPLOYMENT`, `VERCEL`, `NODE_ENV` to determine environment
-  - Frontend checks `window.location.hostname` to detect development mode
+  - Frontend uses `client/src/lib/apiAuth.ts` centralized auth module:
+    - `isDevelopmentMode` derived from hostname (replit/localhost/127.0.0.1)
+    - `authenticatedApiRequest()` adds Authorization header in production only
+    - `useEnsureAuthReady` hook retries Clerk getToken until valid
+  - React Query enabled guards: `isDevelopment || (isAuthenticated && isElite && authReady.ready)`
   - Users are auto-created in crypto_users table if they don't exist
 - **Access Model**: Tiered subscription model with capability-based access control
   - Tier hierarchy: free < beginner < intermediate < pro < elite
