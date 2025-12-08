@@ -3221,7 +3221,7 @@ const aiAnalyze = useMutation({
                     setCurrentPoints(prev => prev.filter((_, i) => i !== idx));
                   }}>
                     <span className="text-[#00c4b4]">{point.label}</span>
-                    <span className="text-gray-400 ml-1">${point.price.toFixed(0)}</span>
+                    <span className="text-gray-400 ml-1">${point.price.toFixed(2)}</span>
                     <Trash2 className="w-3 h-3 ml-1" />
                   </Badge>
                 ))}
