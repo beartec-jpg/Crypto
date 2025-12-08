@@ -97,15 +97,16 @@ export default function CryptoLogin() {
           </div>
 
           <div className="border-t border-[#2a2e39] pt-4 mt-4">
-            <p className="text-center text-gray-400 text-sm mb-3">Or continue with limited access</p>
-            <Link href="/cryptoindicators">
+            <p className="text-center text-gray-400 text-sm">
+              New to BearTec? Sign in creates your free account automatically.
+            </p>
+            <Link href="/crypto" className="block mt-3">
               <Button
-                variant="outline"
-                className="w-full border-[#2a2e39] text-gray-300 hover:bg-[#2a2e39]"
-                data-testid="button-guest-access"
+                variant="ghost"
+                className="w-full text-gray-500 hover:text-gray-300 hover:bg-transparent"
+                data-testid="button-back-home"
               >
-                <BarChart2 className="w-4 h-4 mr-2" />
-                View Charts (Free)
+                ← Back to Home
               </Button>
             </Link>
           </div>

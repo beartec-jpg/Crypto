@@ -3523,6 +3523,32 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
     console.log(`✅ Push sent successfully to ${results.filter(r => r.status === 'fulfilled').length} subscriptions`);
   }
 
+  // === Crypto Bootstrap Endpoint ===
+  
+  // Bootstrap user account on first login - creates free tier subscription if not exists
+  app.post("/api/crypto/bootstrap", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const userEmail = (req as any).cryptoUser.email;
+
+      console.log(`🚀 Bootstrapping user: ${userEmail} (${userId})`);
+
+      // getUserSubscription auto-creates a free tier subscription if user doesn't exist
+      const subscription = await cryptoSubscriptionService.getUserSubscription(userId, userEmail);
+      
+      console.log(`✅ User bootstrapped: ${userEmail} - tier: ${subscription.tier}`);
+      return res.json({ 
+        success: true, 
+        message: 'Account ready',
+        tier: subscription.tier,
+        userId: userId
+      });
+    } catch (error: any) {
+      console.error('❌ Error bootstrapping user:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // === Crypto Subscription Endpoints ===
   
   // Get user's crypto subscription details (with tier and credits)
