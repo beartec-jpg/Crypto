@@ -1,0 +1,144 @@
+{
+  "id": "evt_1ScAtHFpNHlFwPZA7gQrjKYy",
+  "object": "event",
+  "api_version": "2025-07-30.basil",
+  "created": 1765225119,
+  "data": {
+    "object": {
+      "id": "cs_live_a1JwmCgRFJHJbQlj7O5TqAZTDssc7q4SoXq2HgMNq9D5VaEJ5jzTiRYUya",
+      "object": "checkout.session",
+      "adaptive_pricing": {
+        "enabled": false
+      },
+      "after_expiration": null,
+      "allow_promotion_codes": null,
+      "amount_subtotal": 1500,
+      "amount_total": 1500,
+      "automatic_tax": {
+        "enabled": false,
+        "liability": null,
+        "provider": null,
+        "status": null
+      },
+      "billing_address_collection": null,
+      "branding_settings": {
+        "background_color": "#ffffff",
+        "border_style": "rounded",
+        "button_color": "#0074d4",
+        "display_name": "BTUK",
+        "font_family": "default",
+        "icon": null,
+        "logo": null
+      },
+      "cancel_url": "https://www.beartec.uk/cryptosubscribe?canceled=true",
+      "client_reference_id": null,
+      "client_secret": null,
+      "collected_information": {
+        "business_name": null,
+        "individual_name": null,
+        "shipping_details": null
+      },
+      "consent": null,
+      "consent_collection": null,
+      "created": 1765225023,
+      "currency": "gbp",
+      "currency_conversion": null,
+      "custom_fields": [],
+      "custom_text": {
+        "after_submit": null,
+        "shipping_address": null,
+        "submit": null,
+        "terms_of_service_acceptance": null
+      },
+      "customer": "cus_TZJU0RZ4WVJB67",
+      "customer_account": null,
+      "customer_creation": null,
+      "customer_details": {
+        "address": {
+          "city": "Stafford",
+          "country": "GB",
+          "line1": "33 Saltworks Lane",
+          "line2": "Weston",
+          "postal_code": "ST180LW",
+          "state": null
+        },
+        "business_name": null,
+        "email": "ris.scott2@gmail.com",
+        "individual_name": null,
+        "name": "scott reynolds",
+        "phone": null,
+        "tax_exempt": "none",
+        "tax_ids": []
+      },
+      "customer_email": null,
+      "discounts": [],
+      "expires_at": 1765311423,
+      "invoice": "in_1ScAs9FpNHlFwPZALqD4fRLs",
+      "invoice_creation": null,
+      "livemode": true,
+      "locale": null,
+      "metadata": {
+        "tier": "intermediate",
+        "type": "base_tier",
+        "userId": "user_36ZjcwDa3WRysDoh4lqAE8MMvsg"
+      },
+      "mode": "subscription",
+      "origin_context": null,
+      "payment_intent": null,
+      "payment_link": null,
+      "payment_method_collection": "always",
+      "payment_method_configuration_details": {
+        "id": "pmc_1RzHdWFpNHlFwPZA1mcFRUhl",
+        "parent": null
+      },
+      "payment_method_options": {
+        "card": {
+          "request_three_d_secure": "automatic"
+        }
+      },
+      "payment_method_types": [
+        "card",
+        "klarna",
+        "link",
+        "revolut_pay",
+        "amazon_pay"
+      ],
+      "payment_status": "paid",
+      "permissions": null,
+      "phone_number_collection": {
+        "enabled": false
+      },
+      "recovered_from": null,
+      "saved_payment_method_options": {
+        "allow_redisplay_filters": [
+          "always"
+        ],
+        "payment_method_remove": "disabled",
+        "payment_method_save": null
+      },
+      "setup_intent": null,
+      "shipping_address_collection": null,
+      "shipping_cost": null,
+      "shipping_options": [],
+      "status": "complete",
+      "submit_type": null,
+      "subscription": "sub_1ScAs9FpNHlFwPZAI3z3rZXL",
+      "success_url": "https://www.beartec.uk/cryptosubscribe?success=true",
+      "total_details": {
+        "amount_discount": 0,
+        "amount_shipping": 0,
+        "amount_tax": 0
+      },
+      "ui_mode": "hosted",
+      "url": null,
+      "wallet_options": null
+    }
+  },
+  "livemode": true,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "checkout.session.completed"
+}
