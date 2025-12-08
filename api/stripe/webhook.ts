@@ -132,16 +132,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       case 'customer.subscription.updated': {
         const subscription = event.data.object;
-        const userId = subscription.metadata?.userId;
+        let userId = subscription.metadata?.userId;
+        const customerId = subscription.customer;
 
-        if (!userId) break;
+        // If no userId in subscription metadata, look up by stripe_subscription_id
+        if (!userId && subscription.id) {
+          const lookup = await pool.query(
+            `SELECT user_id FROM crypto_subscriptions WHERE stripe_subscription_id = $1`,
+            [subscription.id]
+          );
+          if (lookup.rows.length > 0) {
+            userId = lookup.rows[0].user_id;
+          }
+        }
 
-        const tier = subscription.metadata?.tier;
-        const items = subscription.items.data;
+        if (!userId) {
+          console.log('⚠️ No userId found for subscription update, customer:', customerId);
+          break;
+        }
+
+        // Get tier from items price metadata
+        const items = subscription.items?.data || [];
+        let tier = subscription.metadata?.tier;
+        
+        // If no tier in subscription metadata, check item prices
+        if (!tier) {
+          for (const item of items) {
+            const itemTier = item.price?.metadata?.tier;
+            if (itemTier && itemTier !== 'elliott_addon') {
+              tier = itemTier;
+              break;
+            }
+          }
+        }
 
         // Check for Elliott addon
         const elliottItem = items.find((item: any) => 
-          item.price.metadata?.tier === 'elliott_addon'
+          item.price?.metadata?.tier === 'elliott_addon'
         );
 
         await pool.query(
@@ -160,7 +187,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             userId
           ]
         );
-        console.log(`✅ Updated subscription for user ${userId}`);
+        console.log(`✅ Updated subscription for user ${userId}, status: ${subscription.status}`);
         break;
       }
 
