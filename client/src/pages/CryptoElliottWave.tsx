@@ -261,14 +261,14 @@ export default function CryptoElliottWave() {
 
   // Fetch saved wave labels (with centralized auth)
   // In development: open access, no auth required
-  // In production: require isAuthenticated, isElite, and authReady
+  // In production: require isAuthenticated, canUseElliott (elite OR addon), and authReady
   const { data: labelsData, refetch: refetchLabels } = useQuery<ElliottWaveLabel[]>({
     queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe],
     queryFn: async () => {
       const response = await authenticatedApiRequest('GET', `/api/crypto/elliott-wave/labels?symbol=${symbol}&timeframe=${timeframe}`);
       return response.json();
     },
-    enabled: isDevelopment || (isAuthenticated && isElite && authReady.ready),
+    enabled: isDevelopment || (isAuthenticated && canUseElliottFeatures && authReady.ready),
   });
 
   useEffect(() => {
@@ -3124,15 +3124,14 @@ const aiAnalyze = useMutation({
                 selectionModeRef.current = newSelection;
                 setIsDrawing(false);
                 isDrawingRef.current = false;
-                // CRITICAL: Use savedLabels state directly (always current in button closure)
-                // Not savedLabelsRef which may be stale due to useEffect timing
-                console.log('🔘 SELECT BUTTON CLICKED:', { newSelection, savedLabelsStateCount: savedLabels.length, savedLabelsRefCount: savedLabelsRef.current.length });
-                // Also force sync the ref NOW to ensure click handler has latest data
-                savedLabelsRef.current = savedLabels;
+                // CRITICAL: Use savedLabelsRef.current (always up-to-date via useEffect)
+                // The closure-captured `savedLabels` may be stale from an earlier render
+                const currentPatternCount = savedLabelsRef.current.length;
+                console.log('🔘 SELECT BUTTON CLICKED:', { newSelection, patternCount: currentPatternCount });
                 if (newSelection) {
                   toast({
                     title: 'Selection Mode ON',
-                    description: `${savedLabels.length} pattern(s) available. Tap a wave point to select.`,
+                    description: `${currentPatternCount} pattern(s) available. Tap a wave point to select.`,
                   });
                 }
               }}
