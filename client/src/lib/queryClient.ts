@@ -1,5 +1,16 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+let getAuthTokenFn: (() => Promise<string | null>) | null = null;
+
+export function setAuthTokenGetter(fn: () => Promise<string | null>) {
+  getAuthTokenFn = fn;
+}
+
+const isDevelopmentMode = typeof window !== 'undefined' && 
+  (window.location.hostname.includes('replit') || 
+   window.location.hostname.includes('localhost') ||
+   window.location.hostname.includes('127.0.0.1'));
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -38,8 +49,18 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    const headers: Record<string, string> = {};
+    
+    if (!isDevelopmentMode && getAuthTokenFn) {
+      const token = await getAuthTokenFn();
+      if (token && token.length > 0) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

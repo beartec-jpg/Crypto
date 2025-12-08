@@ -1,7 +1,9 @@
 import { useAuth, RedirectToSignIn } from '@clerk/clerk-react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertTriangle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { setAuthTokenGetter } from '@/lib/queryClient';
+import { configureApiAuth } from '@/lib/apiAuth';
 
 interface CryptoAuthGateProps {
   children: React.ReactNode;
@@ -15,6 +17,15 @@ const isDevelopment = typeof window !== 'undefined' &&
 export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
   const { isSignedIn, isLoaded, getToken } = useAuth();
   const [loadTimeout, setLoadTimeout] = useState(false);
+  const authConfigured = useRef(false);
+
+  useEffect(() => {
+    if (!authConfigured.current && getToken) {
+      setAuthTokenGetter(getToken);
+      configureApiAuth(getToken);
+      authConfigured.current = true;
+    }
+  }, [getToken]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
