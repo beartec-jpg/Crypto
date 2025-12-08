@@ -985,12 +985,26 @@ const aiAnalyze = useMutation({
         const clickX = param.point?.x ?? 0;
         const selectClickPrice = candleSeries.coordinateToPrice(param.point?.y ?? 0);
         const selectedId = selectedLabelIdRef.current;
+        const patternsCount = savedLabelsRef.current.length;
         console.log('🔧 Selection mode click:', { 
           selectedId, 
           isDragging: isDraggingRef.current, 
           draggedPointIndex: draggedPointIndexRef.current,
-          candleIndex 
+          candleIndex,
+          patternsCount,
+          clickX,
+          clickPrice: selectClickPrice
         });
+        
+        // DEBUG: Show that click was detected in selection mode
+        if (patternsCount === 0) {
+          toast({
+            title: 'No patterns to select',
+            description: 'Draw a pattern first, then use selection mode to edit it.',
+            variant: 'destructive',
+          });
+          return;
+        }
         
         // If currently dragging a point, this click is the DROP
         if (isDraggingRef.current && selectedId !== null && draggedPointIndexRef.current !== null) {
@@ -2141,13 +2155,25 @@ const aiAnalyze = useMutation({
 
     const candleSeries = candleSeriesRef.current;
     
-    // Only draw lines in PROJECTED mode
+    // Only draw lines in PROJECTED mode AND when actively drawing (not viewing completed patterns)
+    // Exception: Also draw when dragging a point of a selected pattern (for repositioning)
+    const hasActiveDrawing = currentPoints.length > 0;
+    const isDraggingSelectedPattern = isDragging && draggedPointIndex !== null && selectedLabelId;
+    
     if (!candleSeries || fibonacciMode !== 'projected') {
       return;
     }
+    
+    // CRITICAL: Only show projections when actively drawing OR dragging a point
+    // Don't show projections just because a saved pattern is selected for viewing
+    if (!hasActiveDrawing && !isDraggingSelectedPattern) {
+      console.log('📊 Fib projections skipped - no active drawing and not dragging');
+      return;
+    }
 
-    // Get the points to calculate Fib from (either currentPoints or selected pattern)
-    let pointsToUse = selectedLabelId 
+    // Get the points to calculate Fib from
+    // When dragging, use the selected pattern's points; otherwise use current drawing points
+    let pointsToUse = isDraggingSelectedPattern
       ? savedLabels.find(l => l.id === selectedLabelId)?.points || []
       : currentPoints;
     
@@ -3079,6 +3105,13 @@ const aiAnalyze = useMutation({
                 selectionModeRef.current = newSelection;
                 setIsDrawing(false);
                 isDrawingRef.current = false;
+                console.log('🔘 SELECT BUTTON CLICKED:', { newSelection, savedLabelsCount: savedLabelsRef.current.length });
+                if (newSelection) {
+                  toast({
+                    title: 'Selection Mode ON',
+                    description: `${savedLabelsRef.current.length} pattern(s) available. Tap a wave point to select.`,
+                  });
+                }
               }}
               title="Select mode"
             >
