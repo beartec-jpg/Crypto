@@ -33,7 +33,7 @@ interface CryptoSubscription {
 }
 
 // Check if we're in development mode (Replit dev environment)
-const isDevelopment = typeof window !== 'undefined' && 
+export const isDevelopment = typeof window !== 'undefined' && 
   (window.location.hostname.includes('replit') || 
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
@@ -59,6 +59,7 @@ const devSubscription: CryptoSubscription = {
 };
 
 export function useCryptoAuth() {
+  // Always call hooks (React rules), but only use results in production
   const { isSignedIn, getToken, isLoaded } = useAuth();
   const { user } = useUser();
   
@@ -115,6 +116,7 @@ export function useCryptoAuth() {
       isAuthenticated: true,
       isLoading: false,
       error: null,
+      isElite: true,
       getToken: async () => 'dev-token',
       refetchSubscription,
     };
@@ -128,6 +130,7 @@ export function useCryptoAuth() {
       isAuthenticated: false,
       isLoading: true,
       error: null,
+      isElite: false,
       getToken,
       refetchSubscription,
     };
@@ -141,6 +144,7 @@ export function useCryptoAuth() {
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      isElite: false,
       getToken,
       refetchSubscription,
     };
@@ -154,13 +158,17 @@ export function useCryptoAuth() {
     profileImageUrl: user.imageUrl,
   };
 
+  const tier = (subscription?.tier || 'free') as 'free' | 'beginner' | 'intermediate' | 'pro' | 'elite';
+  const isElite = tier === 'elite' || subscription?.hasElliottAddon === true;
+
   return {
     user: cryptoUser,
     subscription: subscription || null,
-    tier: (subscription?.tier || 'free') as 'free' | 'beginner' | 'intermediate' | 'pro' | 'elite',
+    tier,
     isAuthenticated: true,
     isLoading: subscriptionLoading,
     error: null,
+    isElite,
     getToken,
     refetchSubscription,
   };
