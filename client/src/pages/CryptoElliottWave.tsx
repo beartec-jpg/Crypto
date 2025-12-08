@@ -151,7 +151,6 @@ export default function CryptoElliottWave() {
   const blueCandleMarkersRef = useRef<any>(null); // Markers on blue candle series
   const touchStartTimeRef = useRef<number>(0); // Track when touch/click started for long-press detection
   const timeframeRef = useRef<string>('1d'); // Track timeframe for click handler window sizing
-  const loadMoreCandlesRef = useRef<() => void>(() => {}); // Ref to loadMoreCandles for use in chart subscription
   
   // Dynamic click tolerances that scale with zoom level
   const dynamicTolerancesRef = useRef<{ barTolerance: number; priceTolerance: number }>({
@@ -190,13 +189,6 @@ export default function CryptoElliottWave() {
   const [markersVersion, setMarkersVersion] = useState(0); // Force marker refresh
   const [futurePointOverlays, setFuturePointOverlays] = useState<{ x: number; y: number; label: string; color: string }[]>([]); // HTML overlays for future points
   const [visibleCandleCount, setVisibleCandleCount] = useState(0); // Track visible candles for counter display
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // Track if loading more historical candles
-  const oldestCandleTimeRef = useRef<number | null>(null); // Track oldest candle time for pagination
-  const hasMoreHistoryRef = useRef(true); // Track if there's more history to load
-  const lastLoadTriggerRef = useRef(0); // Throttle loading triggers
-  const prevCandleCountRef = useRef(0); // Track previous candle count to detect prepends
-  const prevOldestTimeRef = useRef<number | null>(null); // Track previous oldest candle time to detect prepends vs appends
-  const isInitialLoadRef = useRef(true); // Track if this is the first load (for fitContent)
 
   // Check subscription tier and Elliott Wave access
   const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; canUseElliott?: boolean; hasElliottAddon?: boolean }>({
@@ -220,10 +212,6 @@ export default function CryptoElliottWave() {
       candleSeriesRef.current = null;
       blueCandelSeriesRef.current = null;
     }
-    // Reset refs for new data
-    prevCandleCountRef.current = 0;
-    prevOldestTimeRef.current = null;
-    isInitialLoadRef.current = true;
   }, [symbol, timeframe]);
 
   // Fetch wave degrees
@@ -237,42 +225,22 @@ export default function CryptoElliottWave() {
     }
   }, [degreesData]);
 
-  // Fetch extended historical data - requires elite tier or Elliott add-on
+  // Fetch extended historical data (1000 candles) - free for viewing
   const { data: historyData, isLoading: historyLoading, error: historyError, refetch: refetchHistory } = useQuery<{
     candles: CandleData[];
     candleCount: number;
   }>({
     queryKey: ['/api/crypto/extended-history', symbol, timeframe],
     queryFn: async () => {
-      console.log('📊 Starting extended history query...');
-      try {
-        let token: string | null = null;
-        try {
-          // Add timeout to prevent hanging
-          const tokenPromise = getToken();
-          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
-          token = await Promise.race([tokenPromise, timeoutPromise]);
-        } catch (tokenErr) {
-          console.warn('📊 Failed to get auth token:', tokenErr);
-        }
-        const headers: HeadersInit = {};
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-        console.log('📊 Fetching extended history, hasToken:', !!token);
-        const response = await fetch(`/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}`, { headers });
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-          console.error('📊 Extended history error:', response.status, error);
-          throw new Error(error.error || `Failed to fetch history (${response.status})`);
-        }
-        const data = await response.json();
-        console.log('📊 Extended history loaded:', data.candleCount, 'candles');
-        return data;
-      } catch (err) {
-        console.error('📊 Extended history fetch failed:', err);
-        throw err;
+      console.log('📊 Fetching 1000 candles for', symbol, timeframe);
+      const response = await fetch(`/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}&limit=1000`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(error.error || `Failed to fetch history (${response.status})`);
       }
+      const data = await response.json();
+      console.log('📊 Loaded', data.candleCount, 'candles');
+      return data;
     },
     retry: 1,
   });
@@ -280,78 +248,8 @@ export default function CryptoElliottWave() {
   useEffect(() => {
     if (historyData?.candles) {
       setCandles(historyData.candles);
-      if (historyData.candles.length > 0) {
-        oldestCandleTimeRef.current = historyData.candles[0].time;
-      }
-      // Reset pagination state when data source changes
-      hasMoreHistoryRef.current = true;
-      lastLoadTriggerRef.current = 0;
-      // Reset candle count tracking for new data set
-      prevCandleCountRef.current = historyData.candles.length;
-      prevOldestTimeRef.current = historyData.candles.length > 0 ? historyData.candles[0].time : null;
-      isInitialLoadRef.current = true;
     }
   }, [historyData]);
-
-  // Load more historical candles when scrolling into the past
-  const loadMoreCandles = useCallback(async () => {
-    const now = Date.now();
-    // Throttle: minimum 2 seconds between load attempts
-    if (now - lastLoadTriggerRef.current < 2000) return;
-    if (isLoadingMore || !oldestCandleTimeRef.current || !hasMoreHistoryRef.current) return;
-    
-    lastLoadTriggerRef.current = now;
-    setIsLoadingMore(true);
-    try {
-      const token = await getToken();
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const response = await fetch(
-        `/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}&endTime=${oldestCandleTimeRef.current}&limit=200`,
-        { headers }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        if (data.candles && data.candles.length > 0) {
-          const newUniqueCount = data.candles.filter(
-            (c: CandleData) => c.time < (oldestCandleTimeRef.current || 0)
-          ).length;
-          
-          // If we got less than 50 new unique candles, we're near the end
-          if (newUniqueCount < 50) {
-            hasMoreHistoryRef.current = false;
-          }
-          
-          setCandles(prev => {
-            const newCandles = data.candles.filter(
-              (c: CandleData) => !prev.some(p => p.time === c.time)
-            );
-            if (newCandles.length === 0) {
-              hasMoreHistoryRef.current = false;
-              return prev;
-            }
-            const merged = [...newCandles, ...prev].sort((a, b) => a.time - b.time);
-            oldestCandleTimeRef.current = merged[0].time;
-            return merged;
-          });
-        } else {
-          // No more candles available
-          hasMoreHistoryRef.current = false;
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load more candles:', err);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [symbol, timeframe, isLoadingMore, getToken]);
-
-  // Keep ref updated for use in chart subscription
-  useEffect(() => {
-    loadMoreCandlesRef.current = loadMoreCandles;
-  }, [loadMoreCandles]);
 
   // Fetch saved wave labels
   const { data: labelsData, refetch: refetchLabels } = useQuery<ElliottWaveLabel[]>({
@@ -666,39 +564,9 @@ const aiAnalyze = useMutation({
       });
     }
 
-    // If chart already exists, update data in-place and preserve scroll position
+    // If chart already exists, update data in-place
     if (chartRef.current && candleSeriesRef.current) {
-      const chart = chartRef.current;
-      const candleSeries = candleSeriesRef.current;
-      
-      // Get current visible range BEFORE updating data
-      const visibleRange = chart.timeScale().getVisibleLogicalRange();
-      const prevCount = prevCandleCountRef.current;
-      const newCount = candles.length;
-      const addedCount = newCount - prevCount;
-      
-      // Detect if candles were PREPENDED (oldest time changed) vs APPENDED (real-time)
-      const newOldestTime = candles.length > 0 ? candles[0].time : null;
-      const wasPrepended = prevOldestTimeRef.current !== null && 
-                           newOldestTime !== null && 
-                           newOldestTime < prevOldestTimeRef.current;
-      
-      // Update the series data
-      candleSeries.setData(chartData);
-      
-      // Only shift the range if candles were PREPENDED (historical load)
-      // Do NOT shift for real-time appends - user should stay where they are
-      if (wasPrepended && addedCount > 0 && visibleRange && prevCount > 0) {
-        // New candles were prepended, shift the range to keep view stable
-        const adjustedRange = {
-          from: visibleRange.from + addedCount,
-          to: visibleRange.to + addedCount,
-        };
-        chart.timeScale().setVisibleLogicalRange(adjustedRange);
-      }
-      
-      prevCandleCountRef.current = newCount;
-      prevOldestTimeRef.current = newOldestTime;
+      candleSeriesRef.current.setData(chartData);
       return;
     }
 
@@ -738,11 +606,8 @@ const aiAnalyze = useMutation({
 
     candleSeries.setData(chartData);
     
-    // Only fit content on initial load
+    // Fit content to show all candles
     chart.timeScale().fitContent();
-    prevCandleCountRef.current = candles.length;
-    prevOldestTimeRef.current = candles.length > 0 ? candles[0].time : null;
-    isInitialLoadRef.current = false;
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
@@ -1709,18 +1574,11 @@ const aiAnalyze = useMutation({
     chart.timeScale().subscribeVisibleLogicalRangeChange(updateTolerances);
     
     // Also update overlay positions and visible candle count when chart view changes (pan/zoom)
-    // Trigger dynamic loading when scrolling into the past
     chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       setMarkersVersion(v => v + 1);
       if (range) {
         const visibleCount = Math.round(Math.abs(range.to - range.from));
         setVisibleCandleCount(visibleCount);
-        
-        // Detect if user has scrolled to near the left edge (oldest candles)
-        // If range.from is less than 10, we're near the start - load more
-        if (range.from < 10) {
-          loadMoreCandlesRef.current();
-        }
       }
     });
     
@@ -3330,8 +3188,7 @@ const aiAnalyze = useMutation({
           ) : (
             <span>View mode</span>
           )}
-          <span className="ml-auto flex items-center gap-1">
-            {isLoadingMore && <Loader2 className="w-3 h-3 animate-spin" />}
+          <span className="ml-auto">
             {visibleCandleCount > 0 ? `${visibleCandleCount}/` : ''}{candles.length} candles
           </span>
         </div>
