@@ -6025,6 +6025,8 @@ export default function CryptoIndicators() {
         }
         try {
           refs[key]!.setData(data as any);
+          // Update title in case period changed
+          refs[key]!.applyOptions({ title });
         } catch (e) {
           // Series might be disposed
         }
