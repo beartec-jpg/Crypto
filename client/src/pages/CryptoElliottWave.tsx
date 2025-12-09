@@ -2603,8 +2603,18 @@ const aiAnalyze = useMutation({
         const targetTime = fp.point.time;
         const targetPrice = fp.point.price;
         
-        // Only generate blue candles if the point is ACTUALLY in the future (beyond last real candle)
+        // Check if point is actually in the future (beyond last real candle)
         const isActuallyInFuture = targetTime > lastRealCandle.time;
+        
+        // ALWAYS add a marker for points in allFuturePoints (they were filtered from regular markers)
+        // This ensures points marked as isFutureProjection are ALWAYS rendered somewhere
+        blueMarkers.push({
+          time: targetTime as any,
+          position: (fp.point.snappedToHigh ? 'aboveBar' : 'belowBar') as 'aboveBar' | 'belowBar',
+          color: fp.color,
+          shape: fp.shape as 'circle' | 'square',
+          text: fp.labelText,
+        });
         
         if (isActuallyInFuture) {
           // Determine wave count based on label and Elliott Wave structure
@@ -2618,20 +2628,11 @@ const aiAnalyze = useMutation({
           const waveCandles = generateWaveCandles(prevTime, prevPrice, targetTime, targetPrice, waveCount);
           allBlueCandles.push(...waveCandles);
           
-          // Add marker at the final candle position on blue series
-          blueMarkers.push({
-            time: targetTime as any,
-            position: (fp.point.snappedToHigh ? 'aboveBar' : 'belowBar') as 'aboveBar' | 'belowBar',
-            color: fp.color,
-            shape: fp.shape as 'circle' | 'square',
-            text: fp.labelText,
-          });
-          
           console.log('🔵 Generated', waveCount, '-wave pattern (', waveCandles.length, 'candles) for', fp.labelText, 
             'from', prevPrice.toFixed(0), 'to', targetPrice.toFixed(0));
         } else {
-          // Point is on existing candle - will be rendered by normal marker system
-          console.log('📍 Point', fp.labelText, 'is on existing candle, skipping blue candles');
+          // Point is on existing candle - no blue candles needed, but marker was already added above
+          console.log('📍 Point', fp.labelText, 'is on existing candle, marker added without blue candles');
         }
         
         // Update previous point for next segment
