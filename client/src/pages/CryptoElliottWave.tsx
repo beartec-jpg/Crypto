@@ -76,6 +76,194 @@ interface ElliottWaveLabel {
   validationResult?: ValidationResult;
 }
 
+interface WaveStackEntry {
+  id: string;
+  timeframe: string;
+  degree: string;
+  patternType: string;
+  waveCount: number; // 5 for impulse, 3 for ABC/flat
+  direction: 'up' | 'down';
+  startPrice: number;
+  endPrice: number;
+  startTime: number;
+  endTime: number;
+  suggestedLabel?: string;
+}
+
+interface WaveStackSuggestion {
+  sequence: string; // e.g., "5-3-5-3-5"
+  suggestion: string; // e.g., "Possible W1 or A (Intermediate degree)"
+  confidence: 'high' | 'medium' | 'low';
+  startPrice: number;
+  endPrice: number;
+}
+
+// Pattern recognition: convert patternType to wave count
+function getWaveCount(patternType: string): number {
+  if (patternType === 'impulse' || patternType === 'diagonal') return 5;
+  if (patternType === 'abc' || patternType === 'flat' || patternType === 'zigzag' || patternType === 'correction') return 3;
+  if (patternType === 'triangle') return 5; // A-B-C-D-E
+  return 0;
+}
+
+// Detect pattern direction from points
+function getPatternDirection(points: WavePoint[]): 'up' | 'down' {
+  if (!points || points.length < 2) return 'up';
+  const first = points[0];
+  const last = points[points.length - 1];
+  return last.price > first.price ? 'up' : 'down';
+}
+
+// Analyze wave sequence and suggest higher degree patterns
+function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null {
+  if (entries.length === 0) return null;
+  
+  // Build sequence string (e.g., "5-3-5-3-5")
+  const sequence = entries.map(e => e.waveCount).join('-');
+  const directions = entries.map(e => e.direction);
+  
+  // Check for alternating directions
+  let isAlternating = true;
+  for (let i = 1; i < directions.length; i++) {
+    if (directions[i] === directions[i-1]) {
+      isAlternating = false;
+      break;
+    }
+  }
+  
+  const startPrice = entries[0].startPrice;
+  const endPrice = entries[entries.length - 1].endPrice;
+  
+  // Pattern recognition rules
+  // 5-3-5-3-5 = Impulse (potential W1 or A of higher degree)
+  if (sequence === '5-3-5-3-5' && isAlternating) {
+    return {
+      sequence,
+      suggestion: 'Complete impulse - Possible W1 or A of higher degree',
+      confidence: 'high',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  // 5-3-5 = Zigzag (ABC correction)
+  if (sequence === '5-3-5' && isAlternating) {
+    return {
+      sequence,
+      suggestion: 'Possible Zigzag (ABC correction)',
+      confidence: 'high',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  // 3-3-5 = Flat correction
+  if (sequence === '3-3-5') {
+    return {
+      sequence,
+      suggestion: 'Possible Flat correction (3-3-5)',
+      confidence: 'high',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  // Building patterns - partial matches
+  if (sequence === '5') {
+    return {
+      sequence,
+      suggestion: 'Single impulse - could be W1, W3, W5, or A/C',
+      confidence: 'low',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  if (sequence === '5-3') {
+    return {
+      sequence,
+      suggestion: 'Impulse + correction - building toward ABC or W1-W2',
+      confidence: 'medium',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  if (sequence === '5-3-5') {
+    return {
+      sequence,
+      suggestion: 'Possible Zigzag or W1-W2-W3 in progress',
+      confidence: 'medium',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  if (sequence === '5-3-5-3') {
+    return {
+      sequence,
+      suggestion: 'Building impulse - waiting for W5 (5-wave motive)',
+      confidence: 'medium',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  // After complete impulse, new patterns
+  if (sequence.startsWith('5-3-5-3-5-')) {
+    const remaining = sequence.substring(10); // After "5-3-5-3-5-"
+    
+    if (remaining === '5-3-5') {
+      return {
+        sequence,
+        suggestion: 'W1 complete + Possible W2 Zigzag',
+        confidence: 'high',
+        startPrice,
+        endPrice,
+      };
+    }
+    
+    if (remaining === '3-3-5') {
+      return {
+        sequence,
+        suggestion: 'W1 complete + Possible W2 Flat',
+        confidence: 'high',
+        startPrice,
+        endPrice,
+      };
+    }
+    
+    if (remaining === '5-3-5-3-5') {
+      return {
+        sequence,
+        suggestion: 'Possible W1-W2 complete of higher degree',
+        confidence: 'high',
+        startPrice,
+        endPrice,
+      };
+    }
+  }
+  
+  // Generic pattern for longer sequences
+  if (entries.length > 5) {
+    return {
+      sequence,
+      suggestion: `Complex pattern (${entries.length} waves) - analyze degree hierarchy`,
+      confidence: 'low',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  return {
+    sequence,
+    suggestion: 'Pattern building - add more waves for suggestions',
+    confidence: 'low',
+    startPrice,
+    endPrice,
+  };
+}
+
 interface GrokWaveAnalysis {
   patternType: string;
   degree: string;
@@ -284,6 +472,36 @@ export default function CryptoElliottWave() {
     }
   }, [labelsData]);
 
+  // Fetch ALL labels across all timeframes for Wave Stacking
+  const { data: allTimeframeLabels } = useQuery<ElliottWaveLabel[]>({
+    queryKey: ['/api/crypto/elliott-wave/labels-all', symbol],
+    queryFn: async () => {
+      const response = await authenticatedApiRequest('GET', `/api/crypto/elliott-wave/labels?symbol=${symbol}&allTimeframes=true`);
+      return response.json();
+    },
+    enabled: isDevelopment || (isAuthenticated && canUseElliottFeatures && authReady.ready),
+  });
+
+  // Convert labels to stack entries for pattern analysis
+  const waveStackEntries: WaveStackEntry[] = (allTimeframeLabels || [])
+    .filter(label => label.points && label.points.length >= 2)
+    .map(label => ({
+      id: label.id,
+      timeframe: label.timeframe,
+      degree: label.degree,
+      patternType: label.patternType,
+      waveCount: getWaveCount(label.patternType),
+      direction: getPatternDirection(label.points),
+      startPrice: label.points[0]?.price || 0,
+      endPrice: label.points[label.points.length - 1]?.price || 0,
+      startTime: label.points[0]?.time || 0,
+      endTime: label.points[label.points.length - 1]?.time || 0,
+    }))
+    .sort((a, b) => a.startTime - b.startTime); // Sort by start time
+
+  // Analyze the wave stack for patterns
+  const waveStackSuggestion = analyzeWaveStack(waveStackEntries);
+
   // Save wave label mutation (with centralized auth)
   const saveLabel = useMutation({
     mutationFn: async (label: Partial<ElliottWaveLabel>) => {
@@ -337,6 +555,9 @@ export default function CryptoElliottWave() {
           return [...existing, newLabel];
         }
       );
+      
+      // Invalidate all-timeframe query for Wave Stacking
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels-all', symbol] });
     },
     onError: (error: Error) => {
       if (error instanceof ApiError) {
@@ -404,6 +625,9 @@ export default function CryptoElliottWave() {
           return (oldData || []).filter(l => l.id !== deletedId);
         }
       );
+      
+      // Invalidate all-timeframe query for Wave Stacking
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels-all', symbol] });
     },
     onError: (error: Error) => {
       if (error instanceof ApiError) {
@@ -447,6 +671,8 @@ export default function CryptoElliottWave() {
       setIsDragging(false);
       setDraggedPointIndex(null);
       refetchLabels();
+      // Invalidate all-timeframe query for Wave Stacking
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels-all', symbol] });
     },
     onError: (error: Error) => {
       if (error instanceof ApiError) {
@@ -3444,11 +3670,14 @@ const aiAnalyze = useMutation({
       </CardHeader>
       <CardContent>
         <Tabs defaultValue={aiAnalysis ? "ai" : "validation"}>
-          <TabsList className="grid w-full grid-cols-3 bg-slate-800">
+          <TabsList className="grid w-full grid-cols-4 bg-slate-800">
             <TabsTrigger value="validation">Rules</TabsTrigger>
             <TabsTrigger value="fibonacci">Fib</TabsTrigger>
+            <TabsTrigger value="stack" className={waveStackEntries.length > 0 ? 'text-cyan-400' : ''}>
+              Stack {waveStackEntries.length > 0 && `(${waveStackEntries.length})`}
+            </TabsTrigger>
             <TabsTrigger value="ai" className={aiAnalysis ? 'text-[#00c4b4]' : ''}>
-              AI {aiAnalysis && 'Check'}
+              AI
             </TabsTrigger>
           </TabsList>
 
@@ -3552,6 +3781,114 @@ const aiAnalyze = useMutation({
             ) : (
               <div className="text-center py-8 text-gray-500">
                 Place at least 3 wave points to see Fibonacci analysis
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="stack" className="mt-4">
+            {waveStackEntries.length > 0 ? (
+              <div className="space-y-4">
+                {/* Pattern Suggestion Banner */}
+                {waveStackSuggestion && (
+                  <div className={`p-4 rounded-lg border ${
+                    waveStackSuggestion.confidence === 'high' ? 'bg-emerald-900/30 border-emerald-600/50' :
+                    waveStackSuggestion.confidence === 'medium' ? 'bg-cyan-900/30 border-cyan-600/50' :
+                    'bg-slate-800/50 border-slate-600/50'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className={`w-5 h-5 ${
+                        waveStackSuggestion.confidence === 'high' ? 'text-emerald-400' :
+                        waveStackSuggestion.confidence === 'medium' ? 'text-cyan-400' :
+                        'text-gray-400'
+                      }`} />
+                      <span className="font-semibold text-white">Pattern Analysis</span>
+                      <Badge variant="outline" className={`ml-auto text-xs ${
+                        waveStackSuggestion.confidence === 'high' ? 'border-emerald-500 text-emerald-400' :
+                        waveStackSuggestion.confidence === 'medium' ? 'border-cyan-500 text-cyan-400' :
+                        'border-gray-500 text-gray-400'
+                      }`}>
+                        {waveStackSuggestion.confidence}
+                      </Badge>
+                    </div>
+                    <p className="text-gray-200 text-sm mb-2">{waveStackSuggestion.suggestion}</p>
+                    <div className="flex items-center gap-4 text-xs text-gray-400">
+                      <span>Sequence: <span className="font-mono text-cyan-400">{waveStackSuggestion.sequence}</span></span>
+                      <span>From ${waveStackSuggestion.startPrice.toFixed(4)} → ${waveStackSuggestion.endPrice.toFixed(4)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Scrollable Wave Stack Table */}
+                <div className="overflow-x-auto -mx-4 px-4">
+                  <div className="min-w-[600px]">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-gray-400 text-xs border-b border-slate-700">
+                          <th className="text-left py-2 px-2">TF</th>
+                          <th className="text-left py-2 px-2">Degree</th>
+                          <th className="text-left py-2 px-2">Type</th>
+                          <th className="text-center py-2 px-2">Waves</th>
+                          <th className="text-center py-2 px-2">Dir</th>
+                          <th className="text-right py-2 px-2">Start</th>
+                          <th className="text-right py-2 px-2">End</th>
+                          <th className="text-left py-2 px-2">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {waveStackEntries.map((entry) => (
+                          <tr key={entry.id} className={`border-b border-slate-800 hover:bg-slate-800/50 ${
+                            entry.timeframe === timeframe ? 'bg-slate-800/30' : ''
+                          }`}>
+                            <td className="py-2 px-2">
+                              <Badge variant="outline" className="text-xs">
+                                {entry.timeframe}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-2 text-gray-300 text-xs">{entry.degree}</td>
+                            <td className="py-2 px-2">
+                              <span className={`text-xs font-medium ${
+                                entry.patternType === 'impulse' ? 'text-emerald-400' :
+                                entry.patternType === 'abc' ? 'text-amber-400' :
+                                entry.patternType === 'flat' ? 'text-orange-400' :
+                                entry.patternType === 'diagonal' ? 'text-purple-400' :
+                                'text-gray-400'
+                              }`}>
+                                {entry.patternType}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <span className="font-mono text-cyan-400">{entry.waveCount}</span>
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <span className={entry.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
+                                {entry.direction === 'up' ? '↑' : '↓'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono text-xs text-gray-300">
+                              ${entry.startPrice.toFixed(4)}
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono text-xs text-gray-300">
+                              ${entry.endPrice.toFixed(4)}
+                            </td>
+                            <td className="py-2 px-2 text-xs text-gray-500">
+                              {new Date(entry.startTime * 1000).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-500 text-center mt-2">
+                  Shows all waves across all timeframes for {symbol}. Current TF highlighted.
+                </p>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <TrendingUp className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                <p>No waves saved yet</p>
+                <p className="text-xs mt-1">Draw and save patterns to build your wave stack</p>
               </div>
             )}
           </TabsContent>

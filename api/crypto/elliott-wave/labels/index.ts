@@ -105,18 +105,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'GET') {
-      const { symbol, timeframe } = req.query;
+      const { symbol, timeframe, allTimeframes } = req.query;
       
-      if (!symbol || !timeframe) {
-        return res.status(400).json({ error: 'Symbol and timeframe are required' });
+      if (!symbol) {
+        return res.status(400).json({ error: 'Symbol is required' });
       }
       
-      const labels = await pool.query(
-        `SELECT * FROM elliott_wave_labels 
-         WHERE user_id = $1 AND symbol = $2 AND timeframe = $3
-         ORDER BY created_at DESC`,
-        [cryptoUserId, symbol, timeframe]
-      );
+      let labels;
+      
+      // If allTimeframes=true, fetch ALL labels for this symbol across all timeframes
+      if (allTimeframes === 'true') {
+        labels = await pool.query(
+          `SELECT * FROM elliott_wave_labels 
+           WHERE user_id = $1 AND symbol = $2
+           ORDER BY created_at ASC`,
+          [cryptoUserId, symbol]
+        );
+      } else {
+        // Standard query: filter by symbol AND timeframe
+        if (!timeframe) {
+          return res.status(400).json({ error: 'Timeframe is required (or use allTimeframes=true)' });
+        }
+        
+        labels = await pool.query(
+          `SELECT * FROM elliott_wave_labels 
+           WHERE user_id = $1 AND symbol = $2 AND timeframe = $3
+           ORDER BY created_at DESC`,
+          [cryptoUserId, symbol, timeframe]
+        );
+      }
       
       // Map field names for frontend compatibility
       const mappedLabels = labels.rows.map((label: any) => ({
