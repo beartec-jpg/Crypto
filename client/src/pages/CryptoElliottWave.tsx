@@ -1012,13 +1012,62 @@ export default function CryptoElliottWave() {
     enabled: isDevelopment || (isAuthenticated && canUseElliottFeatures && authReady.ready),
   });
 
-  useEffect(() => {
-    if (labelsData) {
-      setSavedLabels(labelsData);
-      savedLabelsRef.current = labelsData; // Sync ref immediately for click handler
-      console.log('📋 Loaded labels from DB, count:', labelsData.length);
+  // Helper to snap a time to the nearest valid candle time (for data layer)
+  // This is a stable version for use during data loading/processing
+  const snapTimeToCandle = useCallback((time: number, candlesArray: CandleData[]): number => {
+    if (candlesArray.length === 0) return time;
+    
+    // Binary search for the closest candle time
+    let left = 0;
+    let right = candlesArray.length - 1;
+    
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (candlesArray[mid].time < time) {
+        left = mid + 1;
+      } else {
+        right = mid;
+      }
     }
-  }, [labelsData]);
+    
+    // Check if left or left-1 is closer
+    const candleTime = candlesArray[left].time;
+    if (left > 0) {
+      const prevCandleTime = candlesArray[left - 1].time;
+      if (Math.abs(time - prevCandleTime) < Math.abs(time - candleTime)) {
+        return prevCandleTime;
+      }
+    }
+    return candleTime;
+  }, []);
+
+  // Helper to snap all point times in a label to valid candle times
+  const snapLabelPointTimes = useCallback((label: ElliottWaveLabel, candlesArray: CandleData[]): ElliottWaveLabel => {
+    if (!label.points || candlesArray.length === 0) return label;
+    
+    const snappedPoints = label.points.map(point => ({
+      ...point,
+      time: snapTimeToCandle(point.time, candlesArray),
+    }));
+    
+    return { ...label, points: snappedPoints };
+  }, [snapTimeToCandle]);
+
+  useEffect(() => {
+    if (labelsData && candles.length > 0) {
+      // CRITICAL: Snap all point times to valid candle times when loading
+      // This prevents markers from disappearing during pan/zoom
+      const snappedLabels = labelsData.map(label => snapLabelPointTimes(label, candles));
+      setSavedLabels(snappedLabels);
+      savedLabelsRef.current = snappedLabels; // Sync ref immediately for click handler
+      console.log('📋 Loaded labels from DB, count:', snappedLabels.length, '(times snapped to candles)');
+    } else if (labelsData && candles.length === 0) {
+      // Candles not loaded yet, store labels unsnapped (will snap when candles load)
+      setSavedLabels(labelsData);
+      savedLabelsRef.current = labelsData;
+      console.log('📋 Loaded labels from DB (unsnapped, waiting for candles)');
+    }
+  }, [labelsData, candles, snapLabelPointTimes]);
 
   // Fetch ALL labels across all timeframes for Wave Stacking
   const { data: allTimeframeLabels } = useQuery<ElliottWaveLabel[]>({
