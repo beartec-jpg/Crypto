@@ -5069,13 +5069,8 @@ const aiAnalyze = useMutation({
                                   const isProjectingImpulse = proj.waveRole === 'W3' || proj.waveRole === 'W5';
                                   const waveCount = isProjectingImpulse ? 5 : (waveProjectionMode === 'abc' ? 3 : 5);
                                   
-                                  // Calculate time span from first pattern using ITS OWN timeframe
-                                  const patternTfMs = getTimeframeMs(firstEntry.timeframe);
-                                  const patternCandleCount = Math.floor((firstEntry.endTime - firstEntry.startTime) / patternTfMs);
-                                  // Convert to current chart timeframe and cap at reasonable limit (5-30 candles)
-                                  const currentTfMs = getTimeframeMs(timeframe);
-                                  const scaledCandleCount = Math.floor((patternCandleCount * patternTfMs) / currentTfMs);
-                                  const candleCount = Math.max(5, Math.min(30, scaledCandleCount));
+                                  // Use 30 candles for the projection pattern (as specified)
+                                  const candleCount = 30;
                                   
                                   // Generate simulated wave path
                                   const priceRange = targetPrice - launchPrice;
@@ -5086,81 +5081,76 @@ const aiAnalyze = useMutation({
                                   const lastCandle = candles[candles.length - 1];
                                   const tfMs = getTimeframeMs(timeframe);
                                   
+                                  // Back-calculate wave structure from target using Elliott Wave Fib rules
+                                  // For 5-wave impulse: W1 + W2 retrace + W3 (longest) + W4 retrace + W5 = total
+                                  // Typical ratios: W2 = 61.8% of W1, W3 = 161.8% of W1, W4 = 38.2% of W3, W5 = 100% of W1
+                                  
+                                  const totalMove = Math.abs(priceRange);
+                                  const baseTime = (lastCandle?.time as number || 0);
+                                  
                                   if (waveCount === 3) {
-                                    // ABC pattern: A retraces, B corrects A, C extends to target
-                                    const aLen = Math.abs(priceRange) * 0.618; // A is 61.8% of total
-                                    const bRetrace = aLen * 0.5; // B retraces 50% of A
+                                    // ABC correction: C = 100% of A (zigzag) or 61.8% of A (flat)
+                                    // Back-calculate: A + B retrace + C = total, where C = target
+                                    // If C = 100% of A and B = 50% of A: A + (-0.5A) + A = total => 1.5A = total => A = total/1.5
+                                    const aLen = totalMove / 1.5;
+                                    const bRetrace = aLen * 0.5;
                                     
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs, 
-                                      price: launchPrice, 
-                                      label: '0' 
-                                    });
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs * Math.floor(candleCount * 0.4), 
-                                      price: launchPrice + (isUp ? aLen : -aLen), 
-                                      label: 'A' 
-                                    });
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs * Math.floor(candleCount * 0.6), 
-                                      price: launchPrice + (isUp ? aLen - bRetrace : -aLen + bRetrace), 
-                                      label: 'B' 
-                                    });
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs * candleCount, 
-                                      price: targetPrice, 
-                                      label: 'C' 
-                                    });
+                                    const p0 = launchPrice;
+                                    const pA = p0 + (isUp ? aLen : -aLen);
+                                    const pB = pA + (isUp ? -bRetrace : bRetrace);
+                                    const pC = targetPrice; // C hits our target exactly
+                                    
+                                    wavePoints.push({ time: baseTime + tfMs, price: p0, label: '0' });
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.35), price: pA, label: 'A' });
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.55), price: pB, label: 'B' });
+                                    wavePoints.push({ time: baseTime + tfMs * candleCount, price: pC, label: 'C' });
                                   } else {
-                                    // 12345 impulse pattern
-                                    const w1Len = Math.abs(priceRange) * 0.25;
-                                    const w2Retrace = w1Len * 0.618;
-                                    const w3Len = w1Len * 1.618;
-                                    const w4Retrace = w3Len * 0.382;
+                                    // 5-wave impulse back-calculation using Fib rules:
+                                    // W1 moves, W2 retraces 61.8%, W3 = 161.8% of W1, W4 retraces 38.2% of W3, W5 = 61.8% of W1
+                                    // Net move = W1 - 0.618*W1 + 1.618*W1 - 0.382*1.618*W1 + 0.618*W1
+                                    // Net = W1 * (1 - 0.618 + 1.618 - 0.618 + 0.618) = W1 * 2.0
+                                    // So W1 = totalMove / 2.0
+                                    const w1 = totalMove / 2.0;
+                                    const w2Retrace = w1 * 0.618;        // 61.8% retracement of W1
+                                    const w3 = w1 * 1.618;               // 161.8% extension of W1
+                                    const w4Retrace = w3 * 0.382;        // 38.2% retracement of W3
+                                    // W5 is what's left to hit target
                                     
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs, 
-                                      price: launchPrice, 
-                                      label: '0' 
-                                    });
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs * Math.floor(candleCount * 0.2), 
-                                      price: launchPrice + (isUp ? w1Len : -w1Len), 
-                                      label: '1' 
-                                    });
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs * Math.floor(candleCount * 0.35), 
-                                      price: launchPrice + (isUp ? w1Len - w2Retrace : -w1Len + w2Retrace), 
-                                      label: '2' 
-                                    });
-                                    const w2End = launchPrice + (isUp ? w1Len - w2Retrace : -w1Len + w2Retrace);
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs * Math.floor(candleCount * 0.65), 
-                                      price: w2End + (isUp ? w3Len : -w3Len), 
-                                      label: '3' 
-                                    });
-                                    const w3End = w2End + (isUp ? w3Len : -w3Len);
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs * Math.floor(candleCount * 0.8), 
-                                      price: w3End + (isUp ? -w4Retrace : w4Retrace), 
-                                      label: '4' 
-                                    });
-                                    wavePoints.push({ 
-                                      time: (lastCandle?.time as number || 0) + tfMs * candleCount, 
-                                      price: targetPrice, 
-                                      label: '5' 
-                                    });
+                                    const p0 = launchPrice;
+                                    const p1 = p0 + (isUp ? w1 : -w1);
+                                    const p2 = p1 + (isUp ? -w2Retrace : w2Retrace);
+                                    const p3 = p2 + (isUp ? w3 : -w3);
+                                    const p4 = p3 + (isUp ? -w4Retrace : w4Retrace);
+                                    const p5 = targetPrice; // W5 hits our target exactly
+                                    
+                                    // Time distribution: W1=18%, W2=12%, W3=35%, W4=15%, W5=20%
+                                    wavePoints.push({ time: baseTime + tfMs, price: p0, label: '0' });
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.18), price: p1, label: '1' });
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.30), price: p2, label: '2' });
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.65), price: p3, label: '3' });
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.80), price: p4, label: '4' });
+                                    wavePoints.push({ time: baseTime + tfMs * candleCount, price: p5, label: '5' });
                                   }
                                   
                                   // Store as prediction points (using existing system)
-                                  const predictionPoints: WavePoint[] = wavePoints.map((wp, idx) => ({
-                                    time: wp.time,
-                                    price: wp.price,
-                                    label: wp.label,
-                                    index: candles.length + idx, // Future candle index
-                                    isCorrection: waveCount === 3, // 3-wave = correction, 5-wave = impulse
-                                    isFuture: true,
-                                  }));
+                                  // Determine snappedToHigh for each point based on wave structure
+                                  // In uptrend: highs are 1,3,5,A,C and lows are 0,2,4,B
+                                  // In downtrend: lows are 1,3,5,A,C and highs are 0,2,4,B
+                                  const predictionPoints: WavePoint[] = wavePoints.map((wp, idx) => {
+                                    const isImpulseHigh = ['1', '3', '5'].includes(wp.label);
+                                    const isCorrectionHigh = ['A', 'C'].includes(wp.label);
+                                    const isHighPoint = isUp ? (isImpulseHigh || isCorrectionHigh) : !isImpulseHigh && !isCorrectionHigh;
+                                    
+                                    return {
+                                      time: wp.time,
+                                      price: wp.price,
+                                      label: wp.label,
+                                      index: candles.length + idx, // Future candle index
+                                      isCorrection: waveCount === 3, // 3-wave = correction, 5-wave = impulse
+                                      isFutureProjection: true, // Marks as future projection for blue candle rendering
+                                      snappedToHigh: isHighPoint, // Position marker above (high) or below (low) bar
+                                    };
+                                  });
                                   
                                   // Create a temporary pattern for visualization
                                   setCurrentPoints(predictionPoints);
