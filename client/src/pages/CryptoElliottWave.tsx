@@ -4894,37 +4894,44 @@ const aiAnalyze = useMutation({
                     {/* Projection Targets */}
                     {waveStackSuggestion.projections && waveStackSuggestion.projections.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-slate-700">
-                        {/* Mode Toggle: ABC (WXY) vs 12345 (Impulse) */}
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="text-xs text-gray-400 font-semibold">Predict as:</span>
-                          <div className="flex rounded-lg overflow-hidden border border-slate-600">
-                            <button
-                              onClick={() => setWaveProjectionMode('abc')}
-                              className={`px-3 py-1 text-xs font-medium transition-all ${
-                                waveProjectionMode === 'abc'
-                                  ? 'bg-amber-600 text-white'
-                                  : 'bg-slate-700 text-gray-400 hover:bg-slate-600'
-                              }`}
-                              data-testid="button-mode-abc"
-                            >
-                              ABC/WXY
-                            </button>
-                            <button
-                              onClick={() => setWaveProjectionMode('impulse')}
-                              className={`px-3 py-1 text-xs font-medium transition-all ${
-                                waveProjectionMode === 'impulse'
-                                  ? 'bg-cyan-600 text-white'
-                                  : 'bg-slate-700 text-gray-400 hover:bg-slate-600'
-                              }`}
-                              data-testid="button-mode-impulse"
-                            >
-                              12345
-                            </button>
-                          </div>
-                          <span className="text-xs text-gray-500 ml-2">
-                            {waveProjectionMode === 'abc' ? '(W-X-Y ratios)' : '(A-B-C ratios)'}
-                          </span>
-                        </div>
+                        {/* Mode Toggle: Only show when projecting corrections (C/Y), not when projecting impulses (W3/W5) */}
+                        {/* After 5-3 sequence, we predict W3 which is always a 5-wave impulse - no toggle needed */}
+                        {(() => {
+                          const firstProj = waveStackSuggestion.projections?.[0];
+                          const isProjectingImpulse = firstProj?.waveRole === 'W3' || firstProj?.waveRole === 'W5';
+                          return !isProjectingImpulse && (
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="text-xs text-gray-400 font-semibold">Predict as:</span>
+                              <div className="flex rounded-lg overflow-hidden border border-slate-600">
+                                <button
+                                  onClick={() => setWaveProjectionMode('abc')}
+                                  className={`px-3 py-1 text-xs font-medium transition-all ${
+                                    waveProjectionMode === 'abc'
+                                      ? 'bg-amber-600 text-white'
+                                      : 'bg-slate-700 text-gray-400 hover:bg-slate-600'
+                                  }`}
+                                  data-testid="button-mode-abc"
+                                >
+                                  ABC/WXY
+                                </button>
+                                <button
+                                  onClick={() => setWaveProjectionMode('impulse')}
+                                  className={`px-3 py-1 text-xs font-medium transition-all ${
+                                    waveProjectionMode === 'impulse'
+                                      ? 'bg-cyan-600 text-white'
+                                      : 'bg-slate-700 text-gray-400 hover:bg-slate-600'
+                                  }`}
+                                  data-testid="button-mode-impulse"
+                                >
+                                  12345
+                                </button>
+                              </div>
+                              <span className="text-xs text-gray-500 ml-2">
+                                {waveProjectionMode === 'abc' ? '(C/Y extension ratios)' : '(ABC retracement ratios)'}
+                              </span>
+                            </div>
+                          );
+                        })()}
                         
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xs text-gray-400 font-semibold">📊 Projection Targets</span>
@@ -5058,7 +5065,9 @@ const aiAnalyze = useMutation({
                                   const proj = waveStackSuggestion.projections[0];
                                   const launchPrice = proj.launchPrice;
                                   const targetPrice = selectedFibLevel.price;
-                                  const waveCount = waveProjectionMode === 'abc' ? 3 : 5;
+                                  // W3 and W5 are always 5-wave impulses, C and Y can be 3 or 5
+                                  const isProjectingImpulse = proj.waveRole === 'W3' || proj.waveRole === 'W5';
+                                  const waveCount = isProjectingImpulse ? 5 : (waveProjectionMode === 'abc' ? 3 : 5);
                                   
                                   // Calculate time span from first pattern using ITS OWN timeframe
                                   const patternTfMs = getTimeframeMs(firstEntry.timeframe);
@@ -5149,25 +5158,31 @@ const aiAnalyze = useMutation({
                                     price: wp.price,
                                     label: wp.label,
                                     index: candles.length + idx, // Future candle index
-                                    isCorrection: waveProjectionMode === 'abc',
+                                    isCorrection: waveCount === 3, // 3-wave = correction, 5-wave = impulse
                                     isFuture: true,
                                   }));
                                   
                                   // Create a temporary pattern for visualization
                                   setCurrentPoints(predictionPoints);
-                                  setPatternType('correction');
+                                  setPatternType(waveCount === 3 ? 'correction' : 'impulse');
                                   setIsDrawing(false); // Not actively drawing, just showing
                                   
+                                  // Label based on wave role and count
+                                  const patternLabel = isProjectingImpulse ? `${proj.waveRole} (12345)` : (waveCount === 3 ? 'ABC' : '12345');
                                   toast({
-                                    title: `${waveProjectionMode === 'abc' ? 'ABC' : '12345'} Wave Added`,
-                                    description: `Projected ${waveCount}-wave pattern to ${selectedFibLevel.label} target ($${selectedFibLevel.price.toFixed(4)})`,
+                                    title: `${patternLabel} Wave Added`,
+                                    description: `Projected ${waveCount}-wave ${isProjectingImpulse ? 'impulse' : 'pattern'} to ${selectedFibLevel.label} target ($${selectedFibLevel.price.toFixed(4)})`,
                                   });
                                 }}
                                 className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-500 transition-all flex items-center gap-2"
                                 data-testid="add-to-chart-btn"
                               >
                                 <Plus className="w-4 h-4" />
-                                Add {waveProjectionMode === 'abc' ? 'ABC' : '12345'} to Chart
+                                Add {(() => {
+                                  const proj = waveStackSuggestion.projections?.[0];
+                                  const isImpulse = proj?.waveRole === 'W3' || proj?.waveRole === 'W5';
+                                  return isImpulse ? `${proj?.waveRole} impulse` : (waveProjectionMode === 'abc' ? 'ABC' : '12345');
+                                })()} to Chart
                               </button>
                               <button
                                 onClick={() => setSelectedFibLevel(null)}
