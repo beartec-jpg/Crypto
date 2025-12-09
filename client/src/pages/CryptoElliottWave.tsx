@@ -1175,8 +1175,11 @@ const aiAnalyze = useMutation({
       if (isClickingFuture && !selectionModeRef.current) {
         // CHAIN PREDICTION: Check if clicking on a predicted point to start a new pattern
         // This allows starting an ABC correction from a predicted W5
+        // Works when: drawing mode OFF, OR drawing mode ON with 0 points (fresh start)
         const predictedPoints = futurePointsDataRef.current;
-        if (predictedPoints.length > 0 && !isDrawingRef.current) {
+        const canChainPredict = predictedPoints.length > 0 && 
+          (!isDrawingRef.current || currentPointsRef.current.length === 0);
+        if (canChainPredict) {
           // Find if click is near any predicted point
           for (const predictedPoint of predictedPoints) {
             const priceTolerance = predictedPoint.price * 0.02; // 2% tolerance
