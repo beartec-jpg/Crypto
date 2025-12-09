@@ -109,6 +109,144 @@ interface WaveStackSuggestion {
   projections?: ProjectionContext[]; // Fib projections for suggested wave
 }
 
+// Grouped structure for Wave Stack table
+interface GroupedStructure {
+  id: string;
+  degree: string;
+  archetype: string; // 'WXY', 'Zigzag', 'Flat', 'Impulse', 'WXYXZ', etc.
+  sequence: string; // '3-3-3', '5-3-5', etc.
+  entries: WaveStackEntry[];
+  startPrice: number;
+  endPrice: number;
+  startTime: number;
+  endTime: number;
+  priceRange: number; // abs(endPrice - startPrice)
+  percentMove: number; // percentage change
+  duration: number; // time in seconds
+  validityScore: number; // 0-100
+  validityTier: 'excellent' | 'good' | 'fair' | 'poor';
+  direction: 'up' | 'down';
+  isExpanded?: boolean;
+}
+
+// Group consecutive same-degree patterns into structures
+function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
+  if (entries.length === 0) return [];
+  
+  // Group by degree
+  const byDegree: Record<string, WaveStackEntry[]> = {};
+  entries.forEach(e => {
+    if (!byDegree[e.degree]) byDegree[e.degree] = [];
+    byDegree[e.degree].push(e);
+  });
+  
+  const structures: GroupedStructure[] = [];
+  
+  // For each degree, identify known structures
+  Object.entries(byDegree).forEach(([degree, degreeEntries]) => {
+    const sorted = degreeEntries.sort((a, b) => a.startTime - b.startTime);
+    const seq = sorted.map(e => e.waveCount).join('-');
+    
+    // Identify archetype based on sequence
+    let archetype = 'Unknown';
+    if (seq === '5-3-5-3-5') archetype = 'Impulse';
+    else if (seq === '5-3-5') archetype = 'Zigzag';
+    else if (seq === '3-3-5') archetype = 'Flat';
+    else if (seq === '3-3-3') archetype = 'WXY';
+    else if (seq === '3-3-3-3-3') archetype = 'WXYXZ';
+    else if (seq === '5-3') archetype = 'W1-W2';
+    else if (seq === '3-3') archetype = 'W-X';
+    else if (seq === '5') archetype = 'W1/A';
+    else if (seq === '3') archetype = 'Correction';
+    else if (sorted.some(e => e.patternType === 'triangle')) archetype = 'Triangle';
+    else if (sorted.some(e => e.patternType === 'diagonal')) archetype = 'Diagonal';
+    else archetype = seq;
+    
+    const startPrice = sorted[0].startPrice;
+    const endPrice = sorted[sorted.length - 1].endPrice;
+    const startTime = sorted[0].startTime;
+    const endTime = sorted[sorted.length - 1].endTime;
+    const priceRange = Math.abs(endPrice - startPrice);
+    const percentMove = Math.abs((endPrice - startPrice) / startPrice * 100);
+    const duration = endTime - startTime;
+    const direction = endPrice > startPrice ? 'up' : 'down';
+    
+    // Calculate validity score
+    const validityScore = calculateStructureValidity(sorted, archetype);
+    const validityTier = validityScore >= 80 ? 'excellent' : 
+                         validityScore >= 60 ? 'good' : 
+                         validityScore >= 40 ? 'fair' : 'poor';
+    
+    structures.push({
+      id: `${degree}-${seq}`,
+      degree,
+      archetype,
+      sequence: seq,
+      entries: sorted,
+      startPrice,
+      endPrice,
+      startTime,
+      endTime,
+      priceRange,
+      percentMove,
+      duration,
+      validityScore,
+      validityTier,
+      direction,
+      isExpanded: true, // Default expanded
+    });
+  });
+  
+  // Sort by degree order (highest first)
+  const degreeOrder = [
+    'Grand Supercycle', 'Supercycle', 'Cycle', 'Primary', 
+    'Intermediate', 'Minor', 'Minute', 'Minuette', 'Subminuette'
+  ];
+  structures.sort((a, b) => degreeOrder.indexOf(a.degree) - degreeOrder.indexOf(b.degree));
+  
+  return structures;
+}
+
+// Calculate validity score for a grouped structure
+function calculateStructureValidity(entries: WaveStackEntry[], archetype: string): number {
+  let score = 50; // Base score
+  
+  // Bonus for recognized archetypes
+  if (['Impulse', 'Zigzag', 'Flat', 'WXY', 'WXYXZ', 'W1-W2'].includes(archetype)) {
+    score += 20;
+  }
+  
+  // Check wave proportions for WXY (W and Y should be similar)
+  if (archetype === 'WXY' && entries.length >= 3) {
+    const wLength = Math.abs(entries[0].endPrice - entries[0].startPrice);
+    const yLength = Math.abs(entries[2].endPrice - entries[2].startPrice);
+    const ratio = Math.min(wLength, yLength) / Math.max(wLength, yLength);
+    // Ideally W and Y are similar (ratio close to 1)
+    if (ratio >= 0.618) score += 15;
+    else if (ratio >= 0.382) score += 10;
+    else score += 5;
+  }
+  
+  // Check for alternation in Zigzag/Impulse
+  if ((archetype === 'Zigzag' || archetype === 'Impulse') && entries.length >= 2) {
+    let alternates = true;
+    for (let i = 1; i < entries.length; i++) {
+      if (entries[i].direction === entries[i-1].direction) {
+        alternates = false;
+        break;
+      }
+    }
+    if (alternates) score += 15;
+  }
+  
+  // Bonus for complete patterns (odd wave counts usually)
+  if (entries.length >= 3) score += 5;
+  if (entries.length >= 5) score += 5;
+  
+  // Cap at 100
+  return Math.min(100, Math.max(0, score));
+}
+
 // Calculate Fibonacci projection levels based on wave type
 // launchPrice: the price to project FROM (defaults to anchorEnd but can be different, e.g., B endpoint for C wave)
 function calculateFibLevels(
