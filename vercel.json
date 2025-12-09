@@ -4,6 +4,7 @@
   "buildCommand": "npx vite build",
   "outputDirectory": "client/dist",
   "rewrites": [
+    { "source": "/api/crypto/elliott-wave/labels/:id", "destination": "/api/crypto/elliott-wave/labels/[id]" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
