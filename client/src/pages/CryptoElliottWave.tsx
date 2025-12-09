@@ -3381,7 +3381,7 @@ const aiAnalyze = useMutation({
                   </p>
                 </div>
                 <Button 
-                  onClick={() => setLocation('/crypto/plans')} 
+                  onClick={() => setLocation('/crypto/subscribe')} 
                   size="sm" 
                   className="bg-purple-600 hover:bg-purple-700 text-white"
                   data-testid="button-upgrade-elliott"

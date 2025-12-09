@@ -2,13 +2,22 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 
 // Base tiers (Elliott Wave is a separate add-on)
-type BaseTier = "free" | "intermediate" | "pro" | "elite";
+type BaseTier = "free" | "beginner" | "intermediate" | "pro" | "elite";
 
 const TIER_HIERARCHY: Record<BaseTier, number> = {
   free: 0,
-  intermediate: 1,
-  pro: 2,
-  elite: 3,
+  beginner: 1,
+  intermediate: 2,
+  pro: 3,
+  elite: 4,
+};
+
+const MONTHLY_AI_CREDITS: Record<BaseTier, number> = {
+  free: 0,
+  beginner: 0,
+  intermediate: 50,
+  pro: -1, // -1 means unlimited
+  elite: -1,
 };
 
 function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {
@@ -131,12 +140,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tier = (subscription.tier || 'free') as BaseTier;
     const hasElliottAddon = subscription.has_elliott_addon || false;
     const capabilities = getCapabilities(tier, hasElliottAddon);
+    
+    const monthlyLimit = MONTHLY_AI_CREDITS[tier] || 0;
+    const aiCreditsRemaining = subscription.ai_credits || 0;
+    const aiCreditsLimit = monthlyLimit >= 0 ? monthlyLimit : 0;
 
     return res.status(200).json({
       id: subscription.id,
       userId: subscription.user_id,
       subscriptionStatus: subscription.subscription_status || 'active',
       aiCredits: subscription.ai_credits || 0,
+      aiCreditsRemaining,
+      aiCreditsLimit,
       stripeSubscriptionId: subscription.stripe_subscription_id,
       elliottStripeItemId: subscription.elliott_stripe_item_id,
       ...capabilities,
