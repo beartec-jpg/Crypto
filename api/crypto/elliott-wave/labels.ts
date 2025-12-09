@@ -1,55 +1,45 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import pg from 'pg';
-import { eq, and } from 'drizzle-orm';
 
-// Import schema directly to avoid path resolution issues
-import { cryptoUsers, cryptoSubscriptions, elliottWaveLabels } from '../../../shared/schema';
-
-// Create a new database connection for each request (serverless-compatible)
-function getDb() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL not configured');
-  }
-  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
-  return { client, db: drizzle(client) };
+// Database connection using Pool (more reliable in serverless)
+async function getDb() {
+  const pg = await import('pg');
+  const Pool = pg.default?.Pool || pg.Pool;
+  const pool = new (Pool as any)({ connectionString: process.env.DATABASE_URL });
+  return pool;
 }
 
-// Initialize Clerk client
-const clerkClient = createClerkClient({ 
-  secretKey: process.env.CLERK_SECRET_KEY 
-});
+// Verify user authentication from Clerk token
+async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return null;
+    }
 
-// Helper to get or create crypto user and get their subscription
-async function getUserWithSubscription(db: ReturnType<typeof drizzle>, clerkUserId: string, email?: string) {
-  // First try to find existing user by Clerk user ID (the correct way)
-  let user = await db.select().from(cryptoUsers).where(eq(cryptoUsers.id, clerkUserId)).limit(1);
-  
-  // Fallback: try by email if not found by ID
-  if (user.length === 0 && email) {
-    user = await db.select().from(cryptoUsers).where(eq(cryptoUsers.email, email)).limit(1);
-  }
-  
-  if (user.length === 0 && email) {
-    // Create new user with Clerk user ID
-    user = await db.insert(cryptoUsers).values({
-      id: clerkUserId,
-      email: email,
-    }).returning();
-  }
-  
-  if (user.length === 0) {
+    const token = authHeader.substring(7);
+    const secretKey = process.env.CLERK_SECRET_KEY;
+
+    if (!secretKey) {
+      console.error('CLERK_SECRET_KEY not set');
+      return null;
+    }
+    
+    const payload = await verifyToken(token, { secretKey });
+
+    if (!payload?.sub) {
+      return null;
+    }
+
+    const clerk = createClerkClient({ secretKey });
+    const user = await clerk.users.getUser(payload.sub);
+    const email = user.emailAddresses[0]?.emailAddress || '';
+
+    return { userId: payload.sub, email };
+  } catch (error) {
+    console.error('Auth verification failed:', error);
     return null;
   }
-  
-  // Get subscription using the user's ID
-  const sub = await db.select().from(cryptoSubscriptions).where(eq(cryptoSubscriptions.userId, user[0].id)).limit(1);
-  
-  return {
-    user: user[0],
-    subscription: sub[0] || null,
-  };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -61,52 +51,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  // Create database connection for this request
-  const { client, db } = getDb();
-  
-  try {
-    // Connect to database
-    await client.connect();
-    
-    // Authenticate user with Clerk
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-    
-    const token = authHeader.substring(7);
-    let clerkUserId: string;
-    let userEmail = '';
-    
-    try {
-      // Verify the session token
-      const payload = await verifyToken(token, {
-        secretKey: process.env.CLERK_SECRET_KEY!,
-      });
-      clerkUserId = payload.sub;
-      
-      // Get user email from Clerk
-      const clerkUser = await clerkClient.users.getUser(clerkUserId);
-      userEmail = clerkUser.emailAddresses?.[0]?.emailAddress || '';
-    } catch (e) {
-      console.error('Auth verification failed:', e);
-      return res.status(401).json({ error: 'Invalid authentication token' });
-    }
+  const auth = await verifyAuth(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
 
-    if (!userEmail) {
-      return res.status(400).json({ error: 'User email not found' });
-    }
+  const { userId, email } = auth;
+  let pool: any = null;
+
+  try {
+    pool = await getDb();
 
     // Get or create crypto user
-    const userWithSub = await getUserWithSubscription(db, clerkUserId, userEmail);
-    if (!userWithSub) {
-      return res.status(500).json({ error: 'Failed to get user' });
+    let userResult = await pool.query(
+      'SELECT id FROM crypto_users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      // Try by email
+      userResult = await pool.query(
+        'SELECT id FROM crypto_users WHERE email = $1',
+        [email]
+      );
     }
-    
-    const { user, subscription } = userWithSub;
-    
-    // Check if user has Elliott Wave access (elite tier or addon)
-    const hasAccess = subscription?.tier === 'elite' || subscription?.hasElliottAddon;
+
+    if (userResult.rows.length === 0 && email) {
+      // Create new user with Clerk ID
+      await pool.query(
+        'INSERT INTO crypto_users (id, email) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
+        [userId, email]
+      );
+      userResult = await pool.query('SELECT id FROM crypto_users WHERE id = $1', [userId]);
+    }
+
+    if (userResult.rows.length === 0) {
+      return res.status(500).json({ error: 'Failed to get or create user' });
+    }
+
+    const cryptoUserId = userResult.rows[0].id;
+
+    // Get subscription and check Elliott access
+    const subResult = await pool.query(
+      'SELECT tier, has_elliott_addon FROM crypto_subscriptions WHERE user_id = $1',
+      [cryptoUserId]
+    );
+
+    const subscription = subResult.rows[0];
+    const hasAccess = subscription?.tier === 'elite' || subscription?.has_elliott_addon === true;
+
     if (!hasAccess) {
       return res.status(403).json({ error: 'Elliott Wave features require Elite tier or Elliott Wave add-on' });
     }
@@ -118,20 +111,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Symbol and timeframe are required' });
       }
       
-      // Fetch labels from database
-      const labels = await db.select().from(elliottWaveLabels).where(
-        and(
-          eq(elliottWaveLabels.userId, user.id),
-          eq(elliottWaveLabels.symbol, symbol as string),
-          eq(elliottWaveLabels.timeframe, timeframe as string)
-        )
+      const labels = await pool.query(
+        `SELECT * FROM elliott_wave_labels 
+         WHERE user_id = $1 AND symbol = $2 AND timeframe = $3
+         ORDER BY created_at DESC`,
+        [cryptoUserId, symbol, timeframe]
       );
       
       // Map field names for frontend compatibility
-      const mappedLabels = labels.map(label => ({
+      const mappedLabels = labels.rows.map((label: any) => ({
         ...label,
-        isComplete: label.isConfirmed,
-        fibonacciMode: label.fibMode,
+        userId: label.user_id,
+        patternType: label.pattern_type,
+        fibonacciMode: label.fib_mode,
+        isComplete: label.is_confirmed,
+        validationStatus: label.validation_status,
+        validationErrors: label.validation_errors,
+        isAutoGenerated: label.is_auto_generated,
+        createdAt: label.created_at,
+        updatedAt: label.updated_at,
       }));
       
       return res.json(mappedLabels);
@@ -144,30 +142,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
       
-      // Create new label - map field names to match schema
-      const newLabel = await db.insert(elliottWaveLabels).values({
-        userId: user.id,
-        symbol,
-        timeframe,
-        degree,
-        patternType,
-        points,
-        fibMode: fibonacciMode || 'measured',
-        validationStatus: validationResult?.isValid !== false ? 'valid' : 'warning',
-        validationErrors: validationResult?.errors || [],
-        isAutoGenerated: false,
-        isConfirmed: isComplete ?? false,
-        metadata: metadata || null,
-      }).returning();
+      const validationStatus = validationResult?.isValid !== false ? 'valid' : 'warning';
+      const validationErrors = validationResult?.errors || [];
+      
+      const result = await pool.query(
+        `INSERT INTO elliott_wave_labels 
+         (user_id, symbol, timeframe, degree, pattern_type, points, fib_mode, validation_status, validation_errors, is_auto_generated, is_confirmed, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING *`,
+        [
+          cryptoUserId,
+          symbol,
+          timeframe,
+          degree,
+          patternType,
+          JSON.stringify(points),
+          fibonacciMode || 'measured',
+          validationStatus,
+          JSON.stringify(validationErrors),
+          false,
+          isComplete ?? false,
+          metadata ? JSON.stringify(metadata) : null
+        ]
+      );
+      
+      const newLabel = result.rows[0];
       
       // Return with mapped field names for frontend compatibility
-      const result = {
-        ...newLabel[0],
-        isComplete: newLabel[0].isConfirmed,
-        fibonacciMode: newLabel[0].fibMode,
-      };
-      
-      return res.json(result);
+      return res.json({
+        ...newLabel,
+        userId: newLabel.user_id,
+        patternType: newLabel.pattern_type,
+        fibonacciMode: newLabel.fib_mode,
+        isComplete: newLabel.is_confirmed,
+        validationStatus: newLabel.validation_status,
+        validationErrors: newLabel.validation_errors,
+        isAutoGenerated: newLabel.is_auto_generated,
+        createdAt: newLabel.created_at,
+        updatedAt: newLabel.updated_at,
+      });
     }
     
     if (req.method === 'PATCH') {
@@ -180,31 +193,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       
       // Verify ownership
-      const existing = await db.select().from(elliottWaveLabels).where(eq(elliottWaveLabels.id, id)).limit(1);
-      if (existing.length === 0) {
+      const existing = await pool.query(
+        'SELECT user_id FROM elliott_wave_labels WHERE id = $1',
+        [id]
+      );
+      
+      if (existing.rows.length === 0) {
         return res.status(404).json({ error: 'Label not found' });
       }
-      if (existing[0].userId !== user.id) {
+      if (existing.rows[0].user_id !== cryptoUserId) {
         return res.status(403).json({ error: 'Not authorized' });
       }
       
-      // Update label - map field names
-      const { points, fibonacciMode, validationResult, isComplete, ...rest } = req.body;
-      const updateData: any = { ...rest, updatedAt: new Date() };
-      if (points !== undefined) updateData.points = points;
-      if (fibonacciMode !== undefined) updateData.fibMode = fibonacciMode;
-      if (isComplete !== undefined) updateData.isConfirmed = isComplete;
+      const { points, fibonacciMode, validationResult, isComplete } = req.body;
+      
+      // Build update query dynamically
+      const updates: string[] = ['updated_at = NOW()'];
+      const values: any[] = [];
+      let paramIndex = 1;
+      
+      if (points !== undefined) {
+        updates.push(`points = $${paramIndex++}`);
+        values.push(JSON.stringify(points));
+      }
+      if (fibonacciMode !== undefined) {
+        updates.push(`fib_mode = $${paramIndex++}`);
+        values.push(fibonacciMode);
+      }
+      if (isComplete !== undefined) {
+        updates.push(`is_confirmed = $${paramIndex++}`);
+        values.push(isComplete);
+      }
       if (validationResult !== undefined) {
-        updateData.validationStatus = validationResult?.isValid !== false ? 'valid' : 'warning';
-        updateData.validationErrors = validationResult?.errors || [];
+        updates.push(`validation_status = $${paramIndex++}`);
+        values.push(validationResult?.isValid !== false ? 'valid' : 'warning');
+        updates.push(`validation_errors = $${paramIndex++}`);
+        values.push(JSON.stringify(validationResult?.errors || []));
       }
       
-      const updated = await db.update(elliottWaveLabels)
-        .set(updateData)
-        .where(eq(elliottWaveLabels.id, id))
-        .returning();
+      values.push(id);
       
-      return res.json(updated[0]);
+      const result = await pool.query(
+        `UPDATE elliott_wave_labels SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+        values
+      );
+      
+      return res.json(result.rows[0]);
     }
     
     if (req.method === 'DELETE') {
@@ -217,16 +251,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       
       // Verify ownership
-      const existing = await db.select().from(elliottWaveLabels).where(eq(elliottWaveLabels.id, id)).limit(1);
-      if (existing.length === 0) {
+      const existing = await pool.query(
+        'SELECT user_id FROM elliott_wave_labels WHERE id = $1',
+        [id]
+      );
+      
+      if (existing.rows.length === 0) {
         return res.status(404).json({ error: 'Label not found' });
       }
-      if (existing[0].userId !== user.id) {
+      if (existing.rows[0].user_id !== cryptoUserId) {
         return res.status(403).json({ error: 'Not authorized' });
       }
       
-      // Delete label
-      await db.delete(elliottWaveLabels).where(eq(elliottWaveLabels.id, id));
+      await pool.query('DELETE FROM elliott_wave_labels WHERE id = $1', [id]);
       
       return res.json({ success: true });
     }
@@ -235,13 +272,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error('Error with Elliott Wave labels:', error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   } finally {
-    // Always close the database connection
-    try {
-      await client.end();
-    } catch (e) {
-      console.error('Error closing db connection:', e);
+    if (pool) {
+      try {
+        await pool.end();
+      } catch (e) {
+        console.error('Error closing db connection:', e);
+      }
     }
   }
 }
