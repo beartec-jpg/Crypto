@@ -5494,21 +5494,23 @@ export default function CryptoIndicators() {
       adxPeriod
     };
     
-    localStorage.setItem('indicatorDefaults', JSON.stringify(indicatorDefaults));
+    const storageKey = `indicatorDefaults_${symbol}_${interval}`;
+    localStorage.setItem(storageKey, JSON.stringify(indicatorDefaults));
     
     toast({
       title: "💾 Indicator Defaults Saved",
-      description: "Current indicator settings saved successfully",
+      description: `Settings saved for ${symbol} on ${interval} timeframe`,
       duration: 3000,
     });
     
-    console.log('💾 Saved indicator defaults:', indicatorDefaults);
-  }, [showEMA, emaFastPeriod, emaSlowPeriod, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showBB, bbPeriod, bbStdDev, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, alertFilterMode, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showSessionVWAP, showOrderBlocks, obSwingLength, orderBlockLength, showCCI, cciPeriod, showADX, adxPeriod, toast]);
+    console.log(`💾 Saved indicator defaults for ${symbol}_${interval}:`, indicatorDefaults);
+  }, [symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showBB, bbPeriod, bbStdDev, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, alertFilterMode, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showSessionVWAP, showOrderBlocks, obSwingLength, orderBlockLength, showCCI, cciPeriod, showADX, adxPeriod, toast]);
 
   // Load indicator defaults from localStorage
   const loadIndicatorDefaults = useCallback(() => {
     try {
-      const saved = localStorage.getItem('indicatorDefaults');
+      const storageKey = `indicatorDefaults_${symbol}_${interval}`;
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
         const defaults = JSON.parse(saved);
         
@@ -5605,23 +5607,23 @@ export default function CryptoIndicators() {
         
         toast({
           title: "📂 Indicator Defaults Loaded",
-          description: "Previous indicator settings restored",
+          description: `Settings restored for ${symbol} on ${interval}`,
           duration: 3000,
         });
         
-        console.log('📂 Loaded indicator defaults from localStorage');
+        console.log(`📂 Loaded indicator defaults for ${symbol}_${interval}`);
         return true;
       }
     } catch (error) {
       console.error('Failed to load indicator defaults:', error);
     }
     return false;
-  }, [toast]);
+  }, [symbol, interval, toast]);
 
-  // Load indicator defaults on mount
+  // Load indicator defaults when symbol or interval changes
   useEffect(() => {
     loadIndicatorDefaults();
-  }, [loadIndicatorDefaults]);
+  }, [symbol, interval, loadIndicatorDefaults]);
 
   // Click outside to deselect tab and collapse controls
   useEffect(() => {
@@ -8467,6 +8469,9 @@ export default function CryptoIndicators() {
                 <SelectItem value="15m">15m</SelectItem>
                 <SelectItem value="1h">1h</SelectItem>
                 <SelectItem value="4h">4h</SelectItem>
+                <SelectItem value="1d">1D</SelectItem>
+                <SelectItem value="1w">1W</SelectItem>
+                <SelectItem value="1M">1M</SelectItem>
               </SelectContent>
             </Select>
             <Button

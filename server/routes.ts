@@ -3190,7 +3190,28 @@ Be concise and direct.`;
 These signals reveal INSTITUTIONAL positioning. When OI+Funding+CVD align in the same direction, the trade has professional-grade edge. This is what separates retail from institutional trading.`;
       }
       
+      // Calculate expected trade duration based on timeframe
+      const timeframeDurations: Record<string, string> = {
+        '1m': '15-60 minutes',
+        '5m': '1-4 hours',
+        '15m': '4-12 hours',
+        '1h': '1-3 days',
+        '4h': '3-10 days',
+        '1d': '1-4 weeks',
+        '1w': '1-3 months',
+        '1M': '3-12 months'
+      };
+      const expectedDuration = timeframeDurations[interval] || '1-7 days';
+      
       const prompt = `You are a professional Smart Money Concepts (SMC) / Order Flow trader analyzing advanced market structure for ${symbol} on ${interval} timeframe.
+
+**CRITICAL TIMEFRAME CONTEXT:**
+You are analyzing the ${interval} chart. This means:
+- Expected trade duration: ${expectedDuration}
+- Stop loss and take profit levels should match ${interval} candle range movements
+- Do NOT suggest scalp/intraday trades for higher timeframes (4h, 1d, 1w)
+- Do NOT suggest swing/position trades for lower timeframes (1m, 5m, 15m)
+- Trade duration must be appropriate for someone trading the ${interval} timeframe
 
 **Current Market Data:**
 - Price: ${currentPrice.toFixed(4)}
