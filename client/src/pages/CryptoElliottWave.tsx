@@ -147,19 +147,55 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     const sorted = degreeEntries.sort((a, b) => a.startTime - b.startTime);
     const seq = sorted.map(e => e.waveCount).join('-');
     
-    // Identify archetype based on sequence
+    // Identify archetype based on sequence with proper Elliott Wave rules
     let archetype = 'Unknown';
+    const patternTypes = sorted.map(e => e.patternType);
+    const hasTriangle = patternTypes.some(p => p === 'triangle');
+    const hasDiagonal = patternTypes.some(p => p === 'diagonal');
+    
+    // Exact sequence matches first (most specific)
     if (seq === '5-3-5-3-5') archetype = 'Impulse';
     else if (seq === '5-3-5') archetype = 'Zigzag';
-    else if (seq === '3-3-5') archetype = 'Flat';
+    else if (seq === '3-3-5') {
+      // Check if B is triangle for ABC w/ B-triangle
+      if (sorted.length >= 2 && patternTypes[1] === 'triangle') {
+        archetype = 'ABC w/ B-tri';
+      } else {
+        archetype = 'Flat';
+      }
+    }
+    else if (seq === '3-5-5') {
+      // Check pattern types for ABC with B-wave triangle/diagonal
+      if (sorted.length >= 2 && patternTypes[1] === 'triangle') {
+        archetype = 'ABC w/ B-tri';
+      } else if (sorted.length >= 2 && patternTypes[1] === 'diagonal') {
+        archetype = 'ABC w/ B-diag';
+      } else {
+        archetype = 'ABC';
+      }
+    }
     else if (seq === '3-3-3') archetype = 'WXY';
-    else if (seq === '3-3-3-3-3') archetype = 'WXYXZ';
+    else if (seq === '3-3-3-3-3') {
+      // True triangle is 5 x 3-wave patterns forming ABCDE
+      // Check if all are corrections (not a triangle pattern itself)
+      const allCorrections = patternTypes.every(p => p === 'abc' || p === 'correction' || p === 'zigzag' || p === 'flat');
+      if (allCorrections) {
+        archetype = 'Triangle';
+      } else {
+        archetype = 'WXYXZ';
+      }
+    }
     else if (seq === '5-3') archetype = 'W1-W2';
     else if (seq === '3-3') archetype = 'W-X';
     else if (seq === '5') archetype = 'W1/A';
     else if (seq === '3') archetype = 'Correction';
-    else if (sorted.some(e => e.patternType === 'triangle')) archetype = 'Triangle';
-    else if (sorted.some(e => e.patternType === 'diagonal')) archetype = 'Diagonal';
+    // Composite patterns with triangles/diagonals
+    else if (hasTriangle && sorted.length === 1 && patternTypes[0] === 'triangle') {
+      archetype = 'Triangle';
+    }
+    else if (hasDiagonal && sorted.length === 1 && patternTypes[0] === 'diagonal') {
+      archetype = 'Diagonal';
+    }
     else archetype = seq;
     
     const startPrice = sorted[0].startPrice;
@@ -971,8 +1007,9 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   }
   
   // ========== MULTI-DEGREE PATTERN SUMMARY ==========
-  // If highest degree doesn't have a meaningful pattern, show ALL degrees with patterns
+  // Collect analyses AND projections from ALL degrees with actionable patterns
   const degreeAnalyses: string[] = [];
+  const allProjections: ProjectionContext[] = [];
   
   for (const degree of degreeOrder) {
     const patterns = byDegree[degree];
@@ -982,11 +1019,25 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     const seq = sorted.map(e => e.waveCount).join('-');
     const lastPattern = sorted[sorted.length - 1];
     
-    // Recognize patterns at each degree
+    // Recognize patterns at each degree AND collect projections
     if (seq === '5-3') {
-      const impulse = sorted[0];
-      const dir = impulse.direction === 'up' ? '↑' : '↓';
+      const impulsePattern = sorted[0];
+      const correctionPattern = sorted[1];
+      const impulseDir = impulsePattern.direction;
+      const dir = impulseDir === 'up' ? '↑' : '↓';
       degreeAnalyses.push(`${degree}: W1-W2 ${dir} (predict W3)`);
+      
+      // Generate W3 projection for this degree
+      const w3Proj = calculateFibLevels(
+        'W3',
+        impulsePattern.startPrice,
+        impulsePattern.endPrice,
+        impulseDir,
+        correctionPattern.endPrice, // Launch from W2 end
+        `${degree} W1: ${impulsePattern.startPrice.toFixed(4)} → ${impulsePattern.endPrice.toFixed(4)}`
+      );
+      w3Proj.sourcePatternInfo = `${degree} W3`;
+      allProjections.push(w3Proj);
     } else if (seq === '5') {
       degreeAnalyses.push(`${degree}: W1 or A complete`);
     } else if (seq === '3') {
@@ -1003,6 +1054,18 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       degreeAnalyses.push(`${degree}: ✅ WXYXZ complete`);
     } else if (seq === '3-3') {
       degreeAnalyses.push(`${degree}: W-X (need Y)`);
+      // Y projection
+      const firstPattern = sorted[0];
+      const yProj = calculateFibLevels(
+        'Y',
+        firstPattern.startPrice,
+        firstPattern.endPrice,
+        firstPattern.direction,
+        sorted[1].endPrice,
+        `${degree} W: ${firstPattern.startPrice.toFixed(4)} → ${firstPattern.endPrice.toFixed(4)}`
+      );
+      yProj.sourcePatternInfo = `${degree} Y`;
+      allProjections.push(yProj);
     } else if (seq === '3-3-5') {
       degreeAnalyses.push(`${degree}: Flat correction`);
     } else if (lastPattern?.patternType === 'triangle') {
@@ -1021,6 +1084,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       confidence: 'low',
       startPrice,
       endPrice,
+      projections: allProjections.length > 0 ? allProjections : undefined,
     };
   }
   // ========== END MULTI-DEGREE ==========
