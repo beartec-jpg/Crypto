@@ -4741,6 +4741,30 @@ const aiAnalyze = useMutation({
           <TabsContent value="stack" className="mt-4">
             {waveStackEntries.length > 0 ? (
               <div className="space-y-4">
+                {/* Clear Simulation Button - ALWAYS visible when there are future points */}
+                {currentPoints.some(p => p.isFuture) && (
+                  <div className="flex items-center justify-between p-3 bg-red-900/30 border border-red-600/50 rounded-lg">
+                    <span className="text-sm text-red-300">
+                      Simulated wave active on chart
+                    </span>
+                    <button
+                      onClick={() => {
+                        setCurrentPoints([]);
+                        setSelectedFibLevel(null);
+                        toast({
+                          title: 'Simulation Cleared',
+                          description: 'Wave projection removed from chart',
+                        });
+                      }}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-500 transition-all flex items-center gap-2"
+                      data-testid="clear-simulation-btn"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Clear Simulation
+                    </button>
+                  </div>
+                )}
+                
                 {/* Pattern Suggestion Banner */}
                 {waveStackSuggestion && (
                   <div className={`p-4 rounded-lg border ${
@@ -5055,27 +5079,6 @@ const aiAnalyze = useMutation({
                                 Deselect
                               </button>
                             </div>
-                          </div>
-                        )}
-                        
-                        {/* Clear Simulation Button - shows when there are future points */}
-                        {currentPoints.some(p => p.isFuture) && (
-                          <div className="mt-2 pt-2 border-t border-slate-700">
-                            <button
-                              onClick={() => {
-                                setCurrentPoints([]);
-                                setSelectedFibLevel(null);
-                                toast({
-                                  title: 'Simulation Cleared',
-                                  description: 'Wave projection removed from chart',
-                                });
-                              }}
-                              className="px-4 py-2 bg-red-600/80 text-white rounded-lg text-sm font-medium hover:bg-red-500 transition-all flex items-center gap-2"
-                              data-testid="clear-simulation-btn"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              Clear Simulation
-                            </button>
                           </div>
                         )}
                       </div>
