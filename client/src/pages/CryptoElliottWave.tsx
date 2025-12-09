@@ -1111,11 +1111,15 @@ export default function CryptoElliottWave() {
         description: 'Pattern saved! Drawing mode disabled - scroll freely.',
       });
       
-      // IMMEDIATELY add the new label to local state to prevent visual gaps
+      // CRITICAL: Snap point times to valid candle times before adding to state
+      // This prevents markers from disappearing during pan/zoom
+      const snappedLabel = snapLabelPointTimes(newLabel, candles);
+      
+      // IMMEDIATELY add the snapped label to local state to prevent visual gaps
       // Use functional update to avoid stale closure issue
-      console.log('💾 Save success - adding new label with', newLabel.points?.length, 'points');
+      console.log('💾 Save success - adding new label with', snappedLabel.points?.length, 'points (times snapped)');
       setSavedLabels(prev => {
-        const updatedLabels = [...prev, newLabel];
+        const updatedLabels = [...prev, snappedLabel];
         savedLabelsRef.current = updatedLabels;
         console.log('💾 Updated savedLabels count:', updatedLabels.length);
         return updatedLabels;
@@ -1150,7 +1154,7 @@ export default function CryptoElliottWave() {
         ['/api/crypto/elliott-wave/labels', symbol, timeframe],
         (oldData: ElliottWaveLabel[] | undefined) => {
           const existing = oldData || [];
-          return [...existing, newLabel];
+          return [...existing, snappedLabel]; // Use snapped label in cache too
         }
       );
       
