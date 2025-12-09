@@ -1173,6 +1173,60 @@ const aiAnalyze = useMutation({
       // In projected mode with Fib lines, also allow future clicks beyond last candle
       // BUT: Skip this if in selection mode - we need to check for future point selection first!
       if (isClickingFuture && !selectionModeRef.current) {
+        // CHAIN PREDICTION: Check if clicking on a predicted point to start a new pattern
+        // This allows starting an ABC correction from a predicted W5
+        const predictedPoints = futurePointsDataRef.current;
+        if (predictedPoints.length > 0 && !isDrawingRef.current) {
+          // Find if click is near any predicted point
+          for (const predictedPoint of predictedPoints) {
+            const priceTolerance = predictedPoint.price * 0.02; // 2% tolerance
+            const priceDiff = Math.abs(clickedPrice - predictedPoint.price);
+            
+            // Calculate time tolerance (within ~5 candles of the predicted point)
+            const secondLastCandle = candlesRef.current[candlesRef.current.length - 2];
+            const candleInterval = lastCandle.time - secondLastCandle.time;
+            const timeTolerance = candleInterval * 5;
+            
+            // Use logical coordinates to get clicked time
+            const clickLogical = timeScale.coordinateToLogical(param.point.x);
+            const lastCandleIndex = candlesRef.current.length - 1;
+            const barsFromLast = clickLogical !== null ? Math.ceil(clickLogical - lastCandleIndex) : 0;
+            const estimatedClickTime = lastCandle.time + (candleInterval * barsFromLast);
+            const timeDiff = Math.abs(estimatedClickTime - predictedPoint.time);
+            
+            if (priceDiff <= priceTolerance && timeDiff <= timeTolerance) {
+              console.log('🔗 CHAIN PREDICTION: Clicked on predicted point:', predictedPoint.label, 
+                'Starting new pattern from this point');
+              
+              // Start a new ABC correction pattern from this predicted point
+              setPatternType('correction');
+              setIsDrawing(true);
+              isDrawingRef.current = true;
+              
+              // Use the predicted point's time and price as point 0 of the new pattern
+              const newPoint: WavePoint = {
+                index: predictedPoint.index,
+                time: predictedPoint.time,
+                price: predictedPoint.price,
+                label: '0',
+                isCorrection: false,
+                snappedToHigh: predictedPoint.snappedToHigh,
+                isFutureProjection: true,
+              };
+              
+              setCurrentPoints([newPoint]);
+              currentPointsRef.current = [newPoint];
+              
+              toast({
+                title: 'Pattern Started from Prediction',
+                description: `Started ABC correction from predicted ${predictedPoint.label} at $${predictedPoint.price.toFixed(4)}`,
+              });
+              
+              return;
+            }
+          }
+        }
+        
         // Only allow future clicks if in drawing mode
         if (!isDrawingRef.current) {
           return;
