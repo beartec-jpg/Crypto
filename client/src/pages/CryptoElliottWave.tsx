@@ -416,12 +416,57 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       const nestCount = nestedSetups.length === 2 ? '1-2, 1-2' : 
                         `1-2, 1-2, 1-2${nestedSetups.length > 3 ? `... (${nestedSetups.length}x)` : ''}`;
       
+      // ========== W3 PROJECTION FOR NESTED 1-2 SETUPS ==========
+      // Use HIGHEST degree W1 as the base for W3 extensions
+      // Double: 1.618, 2.618, 3.618 | Triple: 2.618, 3.618, 4.236
+      const highestDegree = nestedSetups[0].degree; // First in degreeOrder is highest
+      const highestDegreePatterns = byDegree[highestDegree]?.sort((a, b) => a.startTime - b.startTime) || [];
+      const w1Pattern = highestDegreePatterns[0]; // First pattern is W1 (impulse)
+      const w2Pattern = highestDegreePatterns[1]; // Second pattern is W2 (correction)
+      
+      let w3Projection: ProjectionContext | null = null;
+      
+      if (w1Pattern && w2Pattern) {
+        const w1Range = Math.abs(w1Pattern.endPrice - w1Pattern.startPrice);
+        const launchPrice = w2Pattern.endPrice; // W3 launches from W2 end
+        
+        // Extension ratios based on nest count
+        const fibRatios = isUber 
+          ? [2.618, 3.618, 4.236] // Triple 1-2: more explosive
+          : [1.618, 2.618, 3.618]; // Double 1-2: standard
+        
+        const w3Levels = fibRatios.map(ratio => {
+          const extension = w1Range * ratio;
+          const targetPrice = primaryDirection === 'up'
+            ? launchPrice + extension
+            : launchPrice - extension;
+          return {
+            ratio,
+            price: targetPrice,
+            label: `${(ratio * 100).toFixed(1)}%`,
+          };
+        });
+        
+        w3Projection = {
+          waveRole: 'W3',
+          fibMode: 'extension',
+          anchorStartPrice: w1Pattern.startPrice,
+          anchorEndPrice: w1Pattern.endPrice,
+          launchPrice,
+          levels: w3Levels,
+          direction: primaryDirection,
+          sourcePatternInfo: `${highestDegree} W1: ${w1Pattern.startPrice.toFixed(4)} → ${w1Pattern.endPrice.toFixed(4)}`
+        };
+      }
+      // ========== END W3 PROJECTION ==========
+      
       return {
         sequence: nestedSetups.map(() => '5-3').join(' | '),
         suggestion: `🚀 ${nestCount} setup (${degreeNames}) - ${sentiment} on confirmation!`,
         confidence: 'high',
         startPrice: targetEntries[0]?.startPrice || 0,
         endPrice: targetEntries[targetEntries.length - 1]?.endPrice || 0,
+        projections: w3Projection ? [w3Projection] : undefined,
       };
     }
   }
