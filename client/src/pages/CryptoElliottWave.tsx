@@ -220,7 +220,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         archetype = 'WXYXZ';
       }
     }
-    else if (seq === '5-3') archetype = 'W1-W2';
+    else if (seq === '5-3') archetype = 'W1-W2 / A-B';
     else if (seq === '3-3') archetype = 'W-X';
     else if (seq === '5') archetype = 'W1/A';
     else if (seq === '3') archetype = 'Correction';
@@ -953,21 +953,34 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       };
     }
     
-    // W1-W2 is COMPLETE (impulse done + correction done) - now predict W3 extensions
+    // 5-3 could be W1-W2 OR A-B - show both scenarios
     const w3Projection = calculateFibLevels(
       'W3',
       impulsePattern.startPrice,
       impulsePattern.endPrice,
-      impulseDir // W3 continues same direction as W1
+      impulseDir, // W3 continues same direction as W1
+      w2Price, // Launch from W2 end
+      `${targetDegree} W1`
     );
+    w3Projection.sourcePatternInfo = `${targetDegree} W3 (impulse)`;
+    
+    const cProjection = calculateFibLevels(
+      'C',
+      impulsePattern.startPrice,
+      impulsePattern.endPrice,
+      impulseDir, // C continues same direction as A
+      w2Price, // Launch from B end
+      `${targetDegree} A`
+    );
+    cProjection.sourcePatternInfo = `${targetDegree} C (ABC)`;
     
     return {
       sequence,
-      suggestion: `${targetDegree}: W1-W2 COMPLETE - predict W3`,
+      suggestion: `${targetDegree}: W1-W2 or A-B - predict W3 or C`,
       confidence: 'medium',
-      startPrice: w5Price, // Show W5 peak (top of W1)
-      endPrice: w2Price,   // Show W2 low (bottom of correction)
-      projections: [w3Projection], // Only show W3 projections, W2 is done
+      startPrice: w5Price,
+      endPrice: w2Price,
+      projections: [w3Projection, cProjection], // Show both possibilities
     };
   }
   
@@ -1056,9 +1069,9 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       const correctionPattern = sorted[1];
       const impulseDir = impulsePattern.direction;
       const dir = impulseDir === 'up' ? '↑' : '↓';
-      degreeAnalyses.push(`${degree}: W1-W2 ${dir} (predict W3)`);
+      degreeAnalyses.push(`${degree}: W1-W2 or A-B ${dir} (predict W3 or C)`);
       
-      // Generate W3 projection for this degree
+      // Generate W3 projection for this degree (impulse scenario)
       const w3Proj = calculateFibLevels(
         'W3',
         impulsePattern.startPrice,
@@ -1069,6 +1082,18 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       );
       w3Proj.sourcePatternInfo = `${degree} W3`;
       allProjections.push(w3Proj);
+      
+      // Generate C wave projection for this degree (ABC correction scenario)
+      const cProj = calculateFibLevels(
+        'C',
+        impulsePattern.startPrice,
+        impulsePattern.endPrice,
+        impulseDir,
+        correctionPattern.endPrice, // Launch from B end
+        `${degree} A: ${impulsePattern.startPrice.toFixed(4)} → ${impulsePattern.endPrice.toFixed(4)}`
+      );
+      cProj.sourcePatternInfo = `${degree} C`;
+      allProjections.push(cProj);
     } else if (seq === '5') {
       degreeAnalyses.push(`${degree}: W1 or A complete`);
     } else if (seq === '3') {
