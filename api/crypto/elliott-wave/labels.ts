@@ -143,7 +143,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       
       const validationStatus = validationResult?.isValid !== false ? 'valid' : 'warning';
-      const validationErrors = validationResult?.errors || [];
+      const validationErrors: string[] = validationResult?.errors || [];
       
       const result = await pool.query(
         `INSERT INTO elliott_wave_labels 
@@ -159,7 +159,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           JSON.stringify(points),
           fibonacciMode || 'measured',
           validationStatus,
-          JSON.stringify(validationErrors),
+          validationErrors,
           false,
           isComplete ?? false,
           metadata ? JSON.stringify(metadata) : null
@@ -228,7 +228,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updates.push(`validation_status = $${paramIndex++}`);
         values.push(validationResult?.isValid !== false ? 'valid' : 'warning');
         updates.push(`validation_errors = $${paramIndex++}`);
-        values.push(JSON.stringify(validationResult?.errors || []));
+        values.push(validationResult?.errors || []);
       }
       
       values.push(id);
