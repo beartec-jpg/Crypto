@@ -152,6 +152,49 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     targetEntries = byDegree[targetDegree].sort((a, b) => a.startTime - b.startTime);
   }
   
+  // ========== NESTED 1-2, 1-2 DETECTION ==========
+  // Check for W1-W2 patterns at multiple degrees (uber bullish/bearish setup)
+  const nestedSetups: Array<{ degree: string; direction: 'up' | 'down' }> = [];
+  
+  for (const degree of degreeOrder) {
+    const degreePatterns = byDegree[degree];
+    if (!degreePatterns || degreePatterns.length < 2) continue;
+    
+    const sorted = degreePatterns.sort((a, b) => a.startTime - b.startTime);
+    const seq = sorted.map(e => e.waveCount).join('-');
+    
+    // Check for 5-3 pattern (impulse + correction = W1-W2)
+    if (seq === '5-3') {
+      // Determine direction: impulse direction determines bullish/bearish
+      const impulsePattern = sorted[0];
+      nestedSetups.push({ degree, direction: impulsePattern.direction });
+    }
+  }
+  
+  // If we have 2+ degrees with 1-2 patterns = nested 1-2, 1-2 setup!
+  if (nestedSetups.length >= 2) {
+    // All should have same direction for valid nesting
+    const primaryDirection = nestedSetups[0].direction;
+    const allSameDirection = nestedSetups.every(s => s.direction === primaryDirection);
+    
+    if (allSameDirection) {
+      const degreeNames = nestedSetups.map(s => s.degree).join(' + ');
+      const sentiment = primaryDirection === 'up' ? 'UBER BULLISH' : 'UBER BEARISH';
+      const nestCount = nestedSetups.length === 2 ? '1-2, 1-2' : 
+                        nestedSetups.length === 3 ? 'Triple 1-2' : 
+                        `${nestedSetups.length}x nested 1-2`;
+      
+      return {
+        sequence: nestedSetups.map(() => '5-3').join(' | '),
+        suggestion: `🚀 ${nestCount} setup (${degreeNames}) - ${sentiment} on confirmation!`,
+        confidence: 'high',
+        startPrice: targetEntries[0]?.startPrice || 0,
+        endPrice: targetEntries[targetEntries.length - 1]?.endPrice || 0,
+      };
+    }
+  }
+  // ========== END NESTED DETECTION ==========
+  
   // Build sequence string from SAME DEGREE patterns only
   const sequence = targetEntries.map(e => e.waveCount).join('-');
   const directions = targetEntries.map(e => e.direction);

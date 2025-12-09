@@ -123,6 +123,12 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
   - System finds highest (most significant) degree with patterns and analyzes only those
   - Suggestions now include degree name: "Minor: Impulse + correction - building W1-W2"
   - Lower degree patterns within the stack are shown but don't affect sequence counting
+- **Nested 1-2, 1-2 Detection (Uber Bullish/Bearish Setup)**:
+  - Detects W1-W2 patterns (5-3) at multiple degree levels simultaneously
+  - When 2+ degrees have 5-3 patterns with same direction = nested setup detected
+  - Shows "🚀 1-2, 1-2 setup (Minor + Minute) - UBER BULLISH on confirmation!"
+  - Triple nested (3 degrees) shows "Triple 1-2" setup
+  - Direction-aware: bullish for upward impulses, bearish for downward
 
 # External Dependencies
 
