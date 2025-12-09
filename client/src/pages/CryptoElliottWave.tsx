@@ -933,15 +933,15 @@ export default function CryptoElliottWave() {
   const [fibonacciMode, setFibonacciMode] = useState('measured');
   const [currentPoints, setCurrentPoints] = useState<WavePoint[]>([]);
   const [waveDegrees, setWaveDegrees] = useState<WaveDegree[]>([
-    { name: 'Grand Supercycle', color: '#FF0000', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
-    { name: 'Supercycle', color: '#FF6B00', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
-    { name: 'Cycle', color: '#FFD700', labels: ['I', 'II', 'III', 'IV', 'V'] },
-    { name: 'Primary', color: '#00FF00', labels: ['1', '2', '3', '4', '5'] },
-    { name: 'Intermediate', color: '#00BFFF', labels: ['(1)', '(2)', '(3)', '(4)', '(5)'] },
-    { name: 'Minor', color: '#0000FF', labels: ['1', '2', '3', '4', '5'] },
-    { name: 'Minute', color: '#8B00FF', labels: ['i', 'ii', 'iii', 'iv', 'v'] },
-    { name: 'Minuette', color: '#FF1493', labels: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'] },
-    { name: 'Subminuette', color: '#808080', labels: ['i', 'ii', 'iii', 'iv', 'v'] },
+    { name: 'Grand Supercycle', color: '#FF6B6B', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },  // Bright coral
+    { name: 'Supercycle', color: '#FFA94D', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },       // Bright orange
+    { name: 'Cycle', color: '#FFE066', labels: ['I', 'II', 'III', 'IV', 'V'] },                      // Bright gold
+    { name: 'Primary', color: '#69DB7C', labels: ['1', '2', '3', '4', '5'] },                        // Bright lime
+    { name: 'Intermediate', color: '#38D9A9', labels: ['(1)', '(2)', '(3)', '(4)', '(5)'] },         // Bright teal
+    { name: 'Minor', color: '#74C0FC', labels: ['1', '2', '3', '4', '5'] },                          // Bright sky blue
+    { name: 'Minute', color: '#B197FC', labels: ['i', 'ii', 'iii', 'iv', 'v'] },                     // Bright violet
+    { name: 'Minuette', color: '#F783AC', labels: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'] },         // Bright pink
+    { name: 'Subminuette', color: '#ADB5BD', labels: ['i', 'ii', 'iii', 'iv', 'v'] },                // Light gray
   ]);
   const [savedLabels, setSavedLabels] = useState<ElliottWaveLabel[]>([]);
   const [previewPoint, setPreviewPoint] = useState<{ time: number; price: number } | null>(null);
@@ -2950,8 +2950,12 @@ const aiAnalyze = useMutation({
       const degree = waveDegrees.find(d => d.name === label.degree);
       const baseColor = degree?.color || '#00c4b4';
       const isSelected = label.id === selectedLabelId;
-      // Use gold/amber color for selected pattern, otherwise use degree color
-      const color = isSelected ? '#fbbf24' : baseColor;
+      // Color distinction: Impulse uses degree color, Correction uses amber/orange tint
+      const isCorrectivePattern = ['correction', 'abc', 'flat', 'zigzag', 'triangle'].includes(label.patternType);
+      // For corrections, use warm amber (#FBBF24) instead of degree color for clear visual distinction
+      const patternColor = isCorrectivePattern ? '#FBBF24' : baseColor;
+      // Use bright cyan for selected pattern to stand out from both impulse and correction colors
+      const color = isSelected ? '#22D3EE' : patternColor;
       
       // ALWAYS calculate Fib ratios for percentage display on ALL waves (not just measured mode)
       const fibRatios = calculateFibRatios(label.points, label.patternType);
@@ -3021,7 +3025,10 @@ const aiAnalyze = useMutation({
     const currentFibRatios = calculateFibRatios(currentPoints, patternType);
     const currentMarkers = currentPoints.map((point) => {
       const degree = waveDegrees.find(d => d.name === selectedDegree);
-      const color = degree?.color || '#00c4b4';
+      const baseColor = degree?.color || '#00c4b4';
+      // Color distinction: Impulse uses degree color, Correction uses amber for clear visual contrast
+      const isCorrectivePatternType = ['correction', 'abc', 'flat', 'zigzag', 'triangle'].includes(patternType);
+      const color = isCorrectivePatternType ? '#FBBF24' : baseColor;
       
       // ALWAYS show Fib percentages - use stored fibLabel or calculate from positions
       let labelText = point.label;
