@@ -124,14 +124,14 @@ function calculateFibLevels(
   const range = Math.abs(anchorEnd - anchorStart);
   const projectFrom = launchPrice ?? anchorEnd; // Use launchPrice if provided
   
-  // Fib ratios by wave type
+  // Fib ratios by wave type (Elliott Wave standard ratios)
   const fibRatios: Record<string, number[]> = {
-    'W2': [0.382, 0.5, 0.618, 0.786], // Retracements
-    'W4': [0.236, 0.382, 0.5], // Shallow retracements
-    'C': [0.618, 1.0, 1.272, 1.618], // Extensions from A
-    'Y': [0.618, 1.0, 1.272, 1.618], // Extensions from W
-    'W5': [0.618, 1.0, 1.272, 1.618], // Extensions from W1 or W3-W4
-    'W3': [1.618, 2.0, 2.618], // Extensions
+    'W2': [0.382, 0.5, 0.618, 0.786], // Retracements of W1
+    'W4': [0.236, 0.382, 0.5], // Shallow retracements of W3
+    'C': [0.618, 1.0, 1.272, 1.618], // Extensions from A wave
+    'Y': [0.618, 1.0, 1.272, 1.618], // Extensions from W wave
+    'W5': [0.618, 1.0, 1.272, 1.618], // Extensions (W5 often truncated or equal to W1)
+    'W3': [1.382, 1.618, 2.0, 2.618], // W3 extensions: 138.2% (min), 161.8% (common), 200%, 261.8% (extended)
     'A': [0.382, 0.5, 0.618], // Retracements of prior impulse
     'B': [0.382, 0.5, 0.618, 0.786], // Retracements of A
     'W1_precursor': [0.382, 0.5, 0.618], // Initial pullback targets
