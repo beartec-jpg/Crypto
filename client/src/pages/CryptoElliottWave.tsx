@@ -1084,13 +1084,23 @@ export default function CryptoElliottWave() {
   }, []);
 
   // Helper to snap all point times in a label to valid candle times
+  // CRITICAL: Preserve future projection times - don't snap them to historical candles!
   const snapLabelPointTimes = useCallback((label: ElliottWaveLabel, candlesArray: CandleData[]): ElliottWaveLabel => {
     if (!label.points || candlesArray.length === 0) return label;
     
-    const snappedPoints = label.points.map(point => ({
-      ...point,
-      time: snapTimeToCandle(point.time, candlesArray),
-    }));
+    const lastCandleTime = candlesArray[candlesArray.length - 1]?.time || 0;
+    
+    const snappedPoints = label.points.map(point => {
+      // PRESERVE future projection times - don't snap to historical candles
+      // A point is in the future if it has isFutureProjection flag OR its time is beyond last candle
+      if (point.isFutureProjection || point.time > lastCandleTime) {
+        return point; // Keep original time for future points
+      }
+      return {
+        ...point,
+        time: snapTimeToCandle(point.time, candlesArray),
+      };
+    });
     
     return { ...label, points: snappedPoints };
   }, [snapTimeToCandle]);
