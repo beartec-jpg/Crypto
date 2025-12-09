@@ -22,15 +22,19 @@ const clerkClient = createClerkClient({
 });
 
 // Helper to get or create crypto user and get their subscription
-async function getUserWithSubscription(db: ReturnType<typeof drizzle>, _clerkUserId: string, email?: string) {
-  // First try to find existing user by email
-  let user = email 
-    ? await db.select().from(cryptoUsers).where(eq(cryptoUsers.email, email)).limit(1)
-    : [];
+async function getUserWithSubscription(db: ReturnType<typeof drizzle>, clerkUserId: string, email?: string) {
+  // First try to find existing user by Clerk user ID (the correct way)
+  let user = await db.select().from(cryptoUsers).where(eq(cryptoUsers.id, clerkUserId)).limit(1);
+  
+  // Fallback: try by email if not found by ID
+  if (user.length === 0 && email) {
+    user = await db.select().from(cryptoUsers).where(eq(cryptoUsers.email, email)).limit(1);
+  }
   
   if (user.length === 0 && email) {
-    // Create new user
+    // Create new user with Clerk user ID
     user = await db.insert(cryptoUsers).values({
+      id: clerkUserId,
       email: email,
     }).returning();
   }
@@ -39,7 +43,7 @@ async function getUserWithSubscription(db: ReturnType<typeof drizzle>, _clerkUse
     return null;
   }
   
-  // Get subscription
+  // Get subscription using the user's ID
   const sub = await db.select().from(cryptoSubscriptions).where(eq(cryptoSubscriptions.userId, user[0].id)).limit(1);
   
   return {
