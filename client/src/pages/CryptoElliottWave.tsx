@@ -5123,12 +5123,13 @@ const aiAnalyze = useMutation({
                                     const p4 = p3 + (isUp ? -w4Retrace : w4Retrace);
                                     const p5 = targetPrice; // W5 hits our target exactly
                                     
-                                    // Time distribution: W1=18%, W2=12%, W3=35%, W4=15%, W5=20%
+                                    // Time distribution: W3 is often SHORTEST in time (explosive move)
+                                    // W1=25%, W2=20%, W3=15% (fastest), W4=18%, W5=22%
                                     wavePoints.push({ time: baseTime + tfMs, price: p0, label: '0' });
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.18), price: p1, label: '1' });
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.30), price: p2, label: '2' });
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.65), price: p3, label: '3' });
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.80), price: p4, label: '4' });
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.25), price: p1, label: '1' });
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.45), price: p2, label: '2' });
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.60), price: p3, label: '3' }); // W3 only 15% of time
+                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.78), price: p4, label: '4' });
                                     wavePoints.push({ time: baseTime + tfMs * candleCount, price: p5, label: '5' });
                                   }
                                   
