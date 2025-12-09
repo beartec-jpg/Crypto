@@ -133,6 +133,12 @@ interface GroupedStructure {
 function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
   if (entries.length === 0) return [];
   
+  // Degree hierarchy (highest to lowest significance)
+  const degreeOrder = [
+    'Grand Supercycle', 'Supercycle', 'Cycle', 'Primary', 
+    'Intermediate', 'Minor', 'Minute', 'Minuette', 'Subminuette'
+  ];
+  
   // Group by degree
   const byDegree: Record<string, WaveStackEntry[]> = {};
   entries.forEach(e => {
@@ -141,6 +147,12 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
   });
   
   const structures: GroupedStructure[] = [];
+  
+  // Helper: get lower degree name
+  const getLowerDegree = (degree: string): string | null => {
+    const idx = degreeOrder.indexOf(degree);
+    return idx >= 0 && idx < degreeOrder.length - 1 ? degreeOrder[idx + 1] : null;
+  };
   
   // For each degree, identify known structures
   Object.entries(byDegree).forEach(([degree, degreeEntries]) => {
@@ -165,13 +177,36 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       }
     }
     else if (seq === '3-5-5') {
-      // Check pattern types for ABC with B-wave triangle/diagonal
+      // Check pattern types for WXY with X as triangle/diagonal
+      // W = 3-wave, X = triangle/diagonal (5), Y = 5-wave (impulse/diagonal)
+      // Check if lower degree has patterns building Y's subwaves
+      const lowerDegree = getLowerDegree(degree);
+      const lowerPatterns = lowerDegree ? byDegree[lowerDegree] : null;
+      let ySubwaveInfo = '';
+      
+      if (lowerPatterns && lowerPatterns.length > 0 && sorted.length >= 3) {
+        const yWave = sorted[2]; // Third pattern is Y
+        // Check if lower degree patterns overlap with Y wave timing
+        const lowerSorted = lowerPatterns.sort((a, b) => a.startTime - b.startTime);
+        const lowerOverlap = lowerSorted.filter(l => l.startTime >= yWave.startTime);
+        if (lowerOverlap.length > 0) {
+          const lowerSeq = lowerOverlap.map(e => e.waveCount).join('-');
+          if (lowerSeq === '5-3') {
+            ySubwaveInfo = ` Y=A-B`;
+          } else if (lowerSeq === '5-3-5') {
+            ySubwaveInfo = ` Y=ABC`;
+          } else if (lowerSeq === '5') {
+            ySubwaveInfo = ` Y=A`;
+          }
+        }
+      }
+      
       if (sorted.length >= 2 && patternTypes[1] === 'triangle') {
-        archetype = 'ABC w/ B-tri';
+        archetype = `WXY (X=tri${ySubwaveInfo})`;
       } else if (sorted.length >= 2 && patternTypes[1] === 'diagonal') {
-        archetype = 'ABC w/ B-diag';
+        archetype = `WXY (X=diag${ySubwaveInfo})`;
       } else {
-        archetype = 'ABC';
+        archetype = `WXY${ySubwaveInfo ? ` (${ySubwaveInfo.trim()})` : ''}`;
       }
     }
     else if (seq === '3-3-3') archetype = 'WXY';
@@ -233,11 +268,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     });
   });
   
-  // Sort by degree order (highest first)
-  const degreeOrder = [
-    'Grand Supercycle', 'Supercycle', 'Cycle', 'Primary', 
-    'Intermediate', 'Minor', 'Minute', 'Minuette', 'Subminuette'
-  ];
+  // Sort by degree order (highest first) - degreeOrder already defined above
   structures.sort((a, b) => degreeOrder.indexOf(a.degree) - degreeOrder.indexOf(b.degree));
   
   return structures;
