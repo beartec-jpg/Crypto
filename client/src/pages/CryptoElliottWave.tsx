@@ -2795,6 +2795,34 @@ const aiAnalyze = useMutation({
       return;
     }
 
+    // CRITICAL: If there are NO savedLabels and NO currentPoints, aggressively clear ALL markers
+    if (savedLabels.length === 0 && currentPoints.length === 0 && !isDrawing && !previewPoint) {
+      console.log('🧹 No labels or points - clearing all chart markers');
+      // Clear main markers
+      if (markersRef.current) {
+        try {
+          (markersRef.current as any).detach?.();
+        } catch (e) { /* ignore */ }
+        markersRef.current = null;
+      }
+      // Clear blue simulation candles
+      if (blueCandelSeriesRef.current) {
+        try {
+          blueCandelSeriesRef.current.setData([]);
+        } catch (e) { /* ignore */ }
+      }
+      // Clear blue simulation markers
+      if (blueCandleMarkersRef.current) {
+        try {
+          (blueCandleMarkersRef.current as any).detach?.();
+        } catch (e) { /* ignore */ }
+        blueCandleMarkersRef.current = null;
+      }
+      // Clear future points data
+      futurePointsDataRef.current = [];
+      return; // Exit early - nothing to render
+    }
+
     // Collect all future projection points - these need special rendering via the futurePointsSeries
     const allFuturePoints: { point: WavePoint; color: string; shape: 'circle' | 'square'; labelText: string }[] = [];
     
