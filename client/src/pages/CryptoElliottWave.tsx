@@ -5100,13 +5100,28 @@ const aiAnalyze = useMutation({
                           <th className="text-right py-2 px-2">Start</th>
                           <th className="text-right py-2 px-2">End</th>
                           <th className="text-left py-2 px-2">Time</th>
+                          <th className="text-center py-2 px-2">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {waveStackEntries.map((entry) => (
-                          <tr key={entry.id} className={`border-b border-slate-800 hover:bg-slate-800/50 ${
-                            entry.timeframe === timeframe ? 'bg-slate-800/30' : ''
-                          }`}>
+                          <tr 
+                            key={entry.id} 
+                            className={`border-b border-slate-800 hover:bg-slate-800/50 cursor-pointer transition-all ${
+                              entry.timeframe === timeframe ? 'bg-slate-800/30' : ''
+                            } ${selectedLabelId === entry.id ? 'ring-2 ring-cyan-500 bg-cyan-900/20' : ''}`}
+                            onClick={() => {
+                              // Select this pattern and switch to Fib tab to see details
+                              setSelectedLabelId(entry.id);
+                              setActiveTab('fib');
+                              // If different timeframe, optionally switch (or just show in Fib tab)
+                              toast({
+                                title: 'Pattern Selected',
+                                description: `${entry.degree} ${entry.patternType} - view Fib tab for details`,
+                              });
+                            }}
+                            data-testid={`wave-stack-row-${entry.id}`}
+                          >
                             <td className="py-2 px-2 whitespace-nowrap">
                               <Badge variant="outline" className="text-xs px-2 text-gray-200 border-gray-500">
                                 {entry.timeframe}
@@ -5140,6 +5155,21 @@ const aiAnalyze = useMutation({
                             </td>
                             <td className="py-2 px-2 text-xs text-gray-500">
                               {new Date(entry.startTime * 1000).toLocaleDateString()}
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent row click
+                                  if (confirm(`Delete ${entry.degree} ${entry.patternType} pattern?`)) {
+                                    deleteLabel.mutate(entry.id);
+                                  }
+                                }}
+                                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-all"
+                                data-testid={`delete-wave-${entry.id}`}
+                                title="Delete pattern"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </td>
                           </tr>
                         ))}
