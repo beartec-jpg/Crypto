@@ -144,6 +144,17 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
   - "Clear Lines" button removes all Stack projection lines
   - Cross-degree analysis includes projections (e.g., higher impulse + lower A-B → C wave targets)
   - Triangle patterns (B/X/4 waves) show C/Y/5 extension targets
+- **Wave Projection Mode Selection**:
+  - Toggle buttons: ABC (WXY ratios) vs 12345 (impulse ratios)
+  - ABC mode uses C/Y extension Fib targets (61.8%, 100%, 127.2%, 161.8%)
+  - 12345 mode uses ABC correction Fib targets (50%, 78.6%, 100%, 127.2%)
+  - Cross-degree C wave projections use A wave LENGTH measured from B endpoint (launchPrice)
+- **Simulated Wave Overlay ("Add to Chart")**:
+  - Click Fib level to select, then click "Add to Chart" button
+  - Generates 3-wave (ABC) or 5-wave (12345) pattern to selected target
+  - Uses candle count from first pattern in Wave Stack for time span
+  - Wave points rendered as future markers beyond current candles
+  - `getTimeframeMs()` helper converts timeframe to milliseconds for projection timing
 
 # External Dependencies
 
