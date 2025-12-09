@@ -676,6 +676,10 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     const impulsePattern = targetEntries[0];
     const impulseDir = impulsePattern.direction;
     
+    // For 5-3 pattern: W5 high is impulsePattern.endPrice, W2 low is correctionPattern.endPrice
+    const w5Price = impulsePattern.endPrice; // The peak of W1/impulse
+    const w2Price = correctionPattern.endPrice; // The low of W2/correction
+    
     if (correctionPattern && correctionPattern.patternType === 'triangle') {
       // C wave projects beyond B triangle - use A wave for extension
       const cProjection = calculateFibLevels(
@@ -688,34 +692,27 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
         sequence: '5-triangle',
         suggestion: `🔺 ${targetDegree}: Impulse + Triangle (B) - need C wave to complete W2/B/4`,
         confidence: 'high',
-        startPrice,
-        endPrice,
+        startPrice: w5Price, // Show W5 peak
+        endPrice: w2Price,   // Show current W2 position
         projections: [cProjection],
       };
     }
     
-    // W3 projection - extends from W1-W2
+    // W1-W2 is COMPLETE (impulse done + correction done) - now predict W3 extensions
     const w3Projection = calculateFibLevels(
       'W3',
       impulsePattern.startPrice,
       impulsePattern.endPrice,
       impulseDir // W3 continues same direction as W1
     );
-    // Also show where W3 typically starts (retracement end = W2)
-    const w2Target = calculateFibLevels(
-      'W2',
-      impulsePattern.startPrice,
-      impulsePattern.endPrice,
-      impulseDir === 'up' ? 'down' : 'up'
-    );
     
     return {
       sequence,
-      suggestion: `${targetDegree}: Impulse + correction - building W1-W2`,
+      suggestion: `${targetDegree}: W1-W2 COMPLETE - predict W3`,
       confidence: 'medium',
-      startPrice,
-      endPrice,
-      projections: [w2Target, w3Projection],
+      startPrice: w5Price, // Show W5 peak (top of W1)
+      endPrice: w2Price,   // Show W2 low (bottom of correction)
+      projections: [w3Projection], // Only show W3 projections, W2 is done
     };
   }
   
