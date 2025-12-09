@@ -604,6 +604,28 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     }
   }
   
+  // 3-3-3 pattern = Complete WXY double correction
+  if (sequence === '3-3-3') {
+    return {
+      sequence,
+      suggestion: `✅ ${targetDegree}: Complete WXY double correction (3-3-3) - could be W2, B, or 4 of higher degree`,
+      confidence: 'high',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  // 3-3-3-3-3 pattern = Complete WXYXZ triple correction
+  if (sequence === '3-3-3-3-3') {
+    return {
+      sequence,
+      suggestion: `✅ ${targetDegree}: Complete WXYXZ triple correction (3-3-3-3-3) - rare but valid`,
+      confidence: 'high',
+      startPrice,
+      endPrice,
+    };
+  }
+  
   // 3-3 pattern - could be building WXY or flat
   if (sequence === '3-3') {
     const firstPattern = targetEntries[0];
@@ -622,7 +644,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       );
       return {
         sequence,
-        suggestion: `${targetDegree}: 3-3 pattern - likely WXY, final Y could be ABC (3) or impulse C (5)`,
+        suggestion: `${targetDegree}: W-X complete (3-3) - need Y wave to complete WXY`,
         confidence: 'medium',
         startPrice,
         endPrice,
@@ -809,6 +831,61 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       endPrice,
     };
   }
+  
+  // ========== MULTI-DEGREE PATTERN SUMMARY ==========
+  // If highest degree doesn't have a meaningful pattern, show ALL degrees with patterns
+  const degreeAnalyses: string[] = [];
+  
+  for (const degree of degreeOrder) {
+    const patterns = byDegree[degree];
+    if (!patterns || patterns.length === 0) continue;
+    
+    const sorted = patterns.sort((a, b) => a.startTime - b.startTime);
+    const seq = sorted.map(e => e.waveCount).join('-');
+    const lastPattern = sorted[sorted.length - 1];
+    
+    // Recognize patterns at each degree
+    if (seq === '5-3') {
+      const impulse = sorted[0];
+      const dir = impulse.direction === 'up' ? '↑' : '↓';
+      degreeAnalyses.push(`${degree}: W1-W2 ${dir} (predict W3)`);
+    } else if (seq === '5') {
+      degreeAnalyses.push(`${degree}: W1 or A complete`);
+    } else if (seq === '3') {
+      degreeAnalyses.push(`${degree}: Correction (W2, B, or 4)`);
+    } else if (seq === '5-3-5') {
+      degreeAnalyses.push(`${degree}: Zigzag or W1-W2-W3`);
+    } else if (seq === '5-3-5-3') {
+      degreeAnalyses.push(`${degree}: Building W1-W2-W3-W4`);
+    } else if (seq === '5-3-5-3-5') {
+      degreeAnalyses.push(`${degree}: Complete impulse!`);
+    } else if (seq === '3-3-3') {
+      degreeAnalyses.push(`${degree}: ✅ WXY complete (W2/B/4)`);
+    } else if (seq === '3-3-3-3-3') {
+      degreeAnalyses.push(`${degree}: ✅ WXYXZ complete`);
+    } else if (seq === '3-3') {
+      degreeAnalyses.push(`${degree}: W-X (need Y)`);
+    } else if (seq === '3-3-5') {
+      degreeAnalyses.push(`${degree}: Flat correction`);
+    } else if (lastPattern?.patternType === 'triangle') {
+      degreeAnalyses.push(`${degree}: Triangle (B/X/4)`);
+    } else if (lastPattern?.patternType === 'diagonal') {
+      degreeAnalyses.push(`${degree}: Diagonal (ending)`);
+    } else if (patterns.length > 0) {
+      degreeAnalyses.push(`${degree}: ${seq} pattern`);
+    }
+  }
+  
+  if (degreeAnalyses.length > 0) {
+    return {
+      sequence,
+      suggestion: degreeAnalyses.join(' | '),
+      confidence: 'low',
+      startPrice,
+      endPrice,
+    };
+  }
+  // ========== END MULTI-DEGREE ==========
   
   return {
     sequence,
