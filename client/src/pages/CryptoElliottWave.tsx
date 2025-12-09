@@ -5260,13 +5260,11 @@ const aiAnalyze = useMutation({
                               entry.timeframe === timeframe ? 'bg-slate-800/30' : ''
                             } ${selectedLabelId === entry.id ? 'ring-2 ring-cyan-500 bg-cyan-900/20' : ''}`}
                             onClick={() => {
-                              // Select this pattern and switch to Fib tab to see details
+                              // Select this pattern to highlight it
                               setSelectedLabelId(entry.id);
-                              setActiveTab('fib');
-                              // If different timeframe, optionally switch (or just show in Fib tab)
                               toast({
                                 title: 'Pattern Selected',
-                                description: `${entry.degree} ${entry.patternType} - view Fib tab for details`,
+                                description: `${entry.degree} ${entry.patternType} selected`,
                               });
                             }}
                             data-testid={`wave-stack-row-${entry.id}`}
