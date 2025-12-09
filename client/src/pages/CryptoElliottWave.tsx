@@ -1345,6 +1345,25 @@ export default function CryptoElliottWave() {
 
   // Analyze the wave stack for patterns
   const waveStackSuggestion = analyzeWaveStack(waveStackEntries);
+  
+  // Group waves into structures by degree
+  const groupedStructures = groupWaveStructures(waveStackEntries);
+  
+  // State for expanded/collapsed structure groups
+  const [expandedStructures, setExpandedStructures] = useState<Set<string>>(new Set());
+  
+  // Toggle structure expansion
+  const toggleStructure = (structureId: string) => {
+    setExpandedStructures(prev => {
+      const next = new Set(prev);
+      if (next.has(structureId)) {
+        next.delete(structureId);
+      } else {
+        next.add(structureId);
+      }
+      return next;
+    });
+  };
 
   // Save wave label mutation (with centralized auth)
   const saveLabel = useMutation({
@@ -5204,32 +5223,12 @@ const aiAnalyze = useMutation({
             {waveStackEntries.length > 0 ? (
               <div className="space-y-4">
                 
-                {/* Pattern Suggestion Banner */}
-                {waveStackSuggestion && (
-                  <div className={`p-4 rounded-lg border ${
-                    waveStackSuggestion.confidence === 'high' ? 'bg-emerald-900/30 border-emerald-600/50' :
-                    waveStackSuggestion.confidence === 'medium' ? 'bg-cyan-900/30 border-cyan-600/50' :
-                    'bg-slate-800/50 border-slate-600/50'
-                  }`}>
+                {/* TOP: Next Wave Predictions */}
+                {waveStackSuggestion && waveStackSuggestion.projections && waveStackSuggestion.projections.length > 0 && (
+                  <div className="p-3 rounded-lg border bg-gradient-to-r from-cyan-900/30 to-emerald-900/30 border-cyan-600/50">
                     <div className="flex items-center gap-2 mb-2">
-                      <TrendingUp className={`w-5 h-5 ${
-                        waveStackSuggestion.confidence === 'high' ? 'text-emerald-400' :
-                        waveStackSuggestion.confidence === 'medium' ? 'text-cyan-400' :
-                        'text-gray-400'
-                      }`} />
-                      <span className="font-semibold text-white">Pattern Analysis</span>
-                      <Badge variant="outline" className={`ml-auto text-xs ${
-                        waveStackSuggestion.confidence === 'high' ? 'border-emerald-500 text-emerald-400' :
-                        waveStackSuggestion.confidence === 'medium' ? 'border-cyan-500 text-cyan-400' :
-                        'border-gray-500 text-gray-400'
-                      }`}>
-                        {waveStackSuggestion.confidence}
-                      </Badge>
-                    </div>
-                    <p className="text-gray-200 text-sm mb-2">{waveStackSuggestion.suggestion}</p>
-                    <div className="flex items-center gap-4 text-xs text-gray-400">
-                      <span>Sequence: <span className="font-mono text-cyan-400">{waveStackSuggestion.sequence}</span></span>
-                      <span>From ${waveStackSuggestion.startPrice.toFixed(4)} → ${waveStackSuggestion.endPrice.toFixed(4)}</span>
+                      <Target className="w-4 h-4 text-cyan-400" />
+                      <span className="font-semibold text-cyan-400 text-sm">Next Wave Predictions</span>
                     </div>
                     
                     {/* Projection Targets */}
@@ -5386,125 +5385,127 @@ const aiAnalyze = useMutation({
                   </div>
                 )}
 
-                {/* Scrollable Wave Stack Table */}
-                <div className="overflow-x-auto -mx-4 px-4">
-                  <div className="min-w-[600px]">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-gray-400 text-xs border-b border-slate-700">
-                          <th className="text-left py-2 px-2 min-w-[50px]">TF</th>
-                          <th className="text-left py-2 px-2">Degree</th>
-                          <th className="text-left py-2 px-2">Type</th>
-                          <th className="text-center py-2 px-2">Waves</th>
-                          <th className="text-center py-2 px-2">Dir</th>
-                          <th className="text-right py-2 px-2">Start</th>
-                          <th className="text-right py-2 px-2">End</th>
-                          <th className="text-left py-2 px-2">Time</th>
-                          <th className="text-center py-2 px-2">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {waveStackEntries.map((entry) => (
-                          <tr 
-                            key={entry.id} 
-                            className={`border-b border-slate-800 hover:bg-slate-800/50 cursor-pointer transition-all ${
-                              entry.timeframe === timeframe ? 'bg-slate-800/30' : ''
-                            } ${selectedLabelId === entry.id ? 'ring-2 ring-cyan-500 bg-cyan-900/20' : ''}`}
-                            onClick={() => {
-                              // Select this pattern to highlight it
-                              setSelectedLabelId(entry.id);
-                              toast({
-                                title: 'Pattern Selected',
-                                description: `${entry.degree} ${entry.patternType} selected`,
-                              });
-                            }}
-                            data-testid={`wave-stack-row-${entry.id}`}
-                          >
-                            <td className="py-2 px-2 whitespace-nowrap">
-                              <Badge variant="outline" className="text-xs px-2 text-gray-200 border-gray-500">
-                                {entry.timeframe}
-                              </Badge>
-                            </td>
-                            <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
-                              <select
-                                value={entry.degree}
-                                onChange={(e) => {
-                                  const newDegree = e.target.value;
-                                  updateLabel.mutate({ id: entry.id, degree: newDegree });
-                                  toast({
-                                    title: 'Degree Updated',
-                                    description: `Changed to ${newDegree}`,
-                                  });
-                                }}
-                                className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-gray-200 cursor-pointer hover:border-cyan-500 focus:border-cyan-500 focus:outline-none"
-                                style={{ 
-                                  color: waveDegrees.find(d => d.name === entry.degree)?.color || '#74C0FC'
-                                }}
-                                data-testid={`degree-select-${entry.id}`}
-                              >
-                                {waveDegrees.map(deg => (
-                                  <option 
-                                    key={deg.name} 
-                                    value={deg.name}
-                                    style={{ color: deg.color }}
+                {/* Grouped Wave Structures */}
+                <div className="space-y-3">
+                  {groupedStructures.map((structure) => {
+                    const isExpanded = expandedStructures.has(structure.id);
+                    const degreeColor = waveDegrees.find(d => d.name === structure.degree)?.color || '#74C0FC';
+                    
+                    return (
+                      <div key={structure.id} className="rounded-lg border border-slate-700 overflow-hidden">
+                        {/* Structure Header Row */}
+                        <div 
+                          className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-800/50 transition-all"
+                          style={{ backgroundColor: `${degreeColor}15`, borderLeft: `3px solid ${degreeColor}` }}
+                          onClick={() => toggleStructure(structure.id)}
+                          data-testid={`structure-${structure.id}`}
+                        >
+                          {/* Expand/Collapse */}
+                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
+                          
+                          {/* Degree */}
+                          <span className="font-medium text-sm" style={{ color: degreeColor }}>{structure.degree}</span>
+                          
+                          {/* Archetype Badge */}
+                          <Badge variant="outline" className={`text-xs ${
+                            structure.archetype === 'Impulse' ? 'border-emerald-500 text-emerald-400' :
+                            structure.archetype === 'WXY' ? 'border-amber-500 text-amber-400' :
+                            structure.archetype === 'W1-W2' ? 'border-cyan-500 text-cyan-400' :
+                            structure.archetype === 'Zigzag' ? 'border-purple-500 text-purple-400' :
+                            'border-gray-500 text-gray-400'
+                          }`}>
+                            {structure.archetype}
+                          </Badge>
+                          
+                          {/* Sequence */}
+                          <span className="font-mono text-xs text-gray-500">{structure.sequence}</span>
+                          
+                          {/* Direction */}
+                          <span className={structure.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
+                            {structure.direction === 'up' ? '↑' : '↓'}
+                          </span>
+                          
+                          {/* Validity Score */}
+                          <div className="ml-auto flex items-center gap-2">
+                            <span className="text-xs text-gray-400">{structure.percentMove.toFixed(1)}%</span>
+                            <Badge variant="outline" className={`text-xs ${
+                              structure.validityTier === 'excellent' ? 'border-emerald-500 text-emerald-400' :
+                              structure.validityTier === 'good' ? 'border-green-500 text-green-400' :
+                              structure.validityTier === 'fair' ? 'border-yellow-500 text-yellow-400' :
+                              'border-red-500 text-red-400'
+                            }`}>
+                              {structure.validityScore}%
+                            </Badge>
+                          </div>
+                        </div>
+                        
+                        {/* Expanded: Individual Wave Rows */}
+                        {isExpanded && (
+                          <div className="border-t border-slate-700">
+                            <table className="w-full text-xs">
+                              <tbody>
+                                {structure.entries.map((entry, idx) => (
+                                  <tr 
+                                    key={entry.id}
+                                    className={`border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer ${
+                                      selectedLabelId === entry.id ? 'bg-cyan-900/20' : ''
+                                    }`}
+                                    onClick={() => {
+                                      setSelectedLabelId(entry.id);
+                                      toast({ title: 'Pattern Selected', description: `${entry.patternType} selected` });
+                                    }}
                                   >
-                                    {deg.name}
-                                  </option>
+                                    <td className="py-1.5 px-3 text-gray-500 w-8">{idx + 1}</td>
+                                    <td className="py-1.5 px-2">
+                                      <Badge variant="outline" className="text-[10px] px-1.5 text-gray-300 border-gray-600">
+                                        {entry.timeframe}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-1.5 px-2">
+                                      <span className={`font-medium ${
+                                        entry.patternType === 'impulse' ? 'text-emerald-400' :
+                                        entry.patternType === 'abc' || entry.patternType === 'correction' ? 'text-amber-400' :
+                                        entry.patternType === 'diagonal' ? 'text-purple-400' :
+                                        'text-gray-400'
+                                      }`}>{entry.patternType}</span>
+                                    </td>
+                                    <td className="py-1.5 px-2 text-center font-mono text-cyan-400">{entry.waveCount}</td>
+                                    <td className="py-1.5 px-2 text-center">
+                                      <span className={entry.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
+                                        {entry.direction === 'up' ? '↑' : '↓'}
+                                      </span>
+                                    </td>
+                                    <td className="py-1.5 px-2 text-right font-mono text-gray-400">
+                                      ${entry.startPrice.toFixed(4)}
+                                    </td>
+                                    <td className="py-1.5 px-2 text-right font-mono text-gray-400">
+                                      ${entry.endPrice.toFixed(4)}
+                                    </td>
+                                    <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        onClick={() => {
+                                          if (confirm(`Delete this ${entry.patternType}?`)) {
+                                            deleteLabel.mutate(entry.id);
+                                          }
+                                        }}
+                                        className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </td>
+                                  </tr>
                                 ))}
-                              </select>
-                            </td>
-                            <td className="py-2 px-2">
-                              <span className={`text-xs font-medium ${
-                                entry.patternType === 'impulse' ? 'text-emerald-400' :
-                                entry.patternType === 'abc' ? 'text-amber-400' :
-                                entry.patternType === 'flat' ? 'text-orange-400' :
-                                entry.patternType === 'diagonal' ? 'text-purple-400' :
-                                'text-gray-400'
-                              }`}>
-                                {entry.patternType}
-                              </span>
-                            </td>
-                            <td className="py-2 px-2 text-center">
-                              <span className="font-mono text-cyan-400">{entry.waveCount}</span>
-                            </td>
-                            <td className="py-2 px-2 text-center">
-                              <span className={entry.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
-                                {entry.direction === 'up' ? '↑' : '↓'}
-                              </span>
-                            </td>
-                            <td className="py-2 px-2 text-right font-mono text-xs text-gray-300">
-                              ${entry.startPrice.toFixed(4)}
-                            </td>
-                            <td className="py-2 px-2 text-right font-mono text-xs text-gray-300">
-                              ${entry.endPrice.toFixed(4)}
-                            </td>
-                            <td className="py-2 px-2 text-xs text-gray-500">
-                              {new Date(entry.startTime * 1000).toLocaleDateString()}
-                            </td>
-                            <td className="py-2 px-2 text-center">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation(); // Prevent row click
-                                  if (confirm(`Delete ${entry.degree} ${entry.patternType} pattern?`)) {
-                                    deleteLabel.mutate(entry.id);
-                                  }
-                                }}
-                                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-all"
-                                data-testid={`delete-wave-${entry.id}`}
-                                title="Delete pattern"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <p className="text-xs text-gray-500 text-center mt-2">
-                  Shows all waves across all timeframes for {symbol}. Current TF highlighted.
+                  Grouped by degree. Click to expand. {symbol} patterns across all timeframes.
                 </p>
               </div>
             ) : (
