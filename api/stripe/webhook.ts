@@ -112,11 +112,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
           console.log(`✅ Updated user ${userId} to tier: ${tier}`);
         } else if (type === 'elliott_addon') {
-          // Get subscription item ID for Elliott
-          const stripeSub = await stripe.subscriptions.retrieve(subscriptionId as string);
-          const elliottItem = stripeSub.items.data.find((item: any) => 
-            item.price.metadata?.tier === 'elliott_addon'
-          );
+          // Get subscription item ID for Elliott by product name
+          const stripeSub = await stripe.subscriptions.retrieve(subscriptionId as string, {
+            expand: ['items.data.price.product'],
+          });
+          const elliottItem = stripeSub.items.data.find((item: any) => {
+            const productName = (item.price?.product as any)?.name || '';
+            return productName.toLowerCase().includes('elliot') || productName.toLowerCase().includes('elliott');
+          });
 
           await pool.query(
             `UPDATE crypto_subscriptions 
@@ -151,25 +154,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           break;
         }
 
-        // Get tier from items price metadata
+        // Map product names to tier values
+        const productNameToTier: Record<string, string> = {
+          'Beginner membership': 'beginner',
+          'Intermediate membership': 'intermediate',
+          'Pro membership': 'pro',
+          'Elite membership': 'elite',
+        };
+
+        // Get tier from subscription metadata first, then from product names
         const items = subscription.items?.data || [];
         let tier = subscription.metadata?.tier;
+        let elliottItem: any = null;
         
-        // If no tier in subscription metadata, check item prices
+        // If no tier in subscription metadata, check product names
         if (!tier) {
           for (const item of items) {
-            const itemTier = item.price?.metadata?.tier;
-            if (itemTier && itemTier !== 'elliott_addon') {
-              tier = itemTier;
-              break;
+            const productName = item.price?.product?.name || item.plan?.product?.name;
+            
+            // Check if this is Elliott Wave
+            if (productName && (productName.toLowerCase().includes('elliot') || productName.toLowerCase().includes('elliott'))) {
+              elliottItem = item;
+              continue;
+            }
+            
+            // Check for tier products
+            if (productName && productNameToTier[productName]) {
+              tier = productNameToTier[productName];
             }
           }
         }
-
-        // Check for Elliott addon
-        const elliottItem = items.find((item: any) => 
-          item.price?.metadata?.tier === 'elliott_addon'
-        );
+        
+        // Also check for Elliott if not found yet
+        if (!elliottItem) {
+          elliottItem = items.find((item: any) => {
+            const productName = item.price?.product?.name || item.plan?.product?.name || '';
+            return productName.toLowerCase().includes('elliot') || productName.toLowerCase().includes('elliott');
+          });
+        }
 
         await pool.query(
           `UPDATE crypto_subscriptions 

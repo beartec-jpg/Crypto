@@ -138,19 +138,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const successUrl = `${baseUrl}/cryptosubscribe?success=true`;
     const cancelUrl = `${baseUrl}/cryptosubscribe?canceled=true`;
 
+    // Map tier names to product names
+    const tierToProductName: Record<string, string> = {
+      'beginner': 'Beginner membership',
+      'intermediate': 'Intermediate membership',
+      'pro': 'Pro membership',
+      'elite': 'Elite membership',
+    };
+
     // Handle different checkout types
     if (type === 'base_tier' && tier) {
-      // Get price ID for the tier
-      const products = await stripe.products.search({
-        query: `metadata['tier']:'${tier}'`,
-      });
+      const productName = tierToProductName[tier];
+      if (!productName) {
+        return res.status(400).json({ error: `Invalid tier: ${tier}` });
+      }
 
-      if (products.data.length === 0) {
+      // Search by product name instead of metadata
+      const products = await stripe.products.list({ active: true, limit: 100 });
+      const product = products.data.find(p => p.name === productName);
+
+      if (!product) {
         return res.status(400).json({ error: `No product found for tier: ${tier}` });
       }
 
       const prices = await stripe.prices.list({
-        product: products.data[0].id,
+        product: product.id,
         active: true,
       });
 
@@ -194,17 +206,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (type === 'elliott_addon') {
-      // Get Elliott addon price
-      const products = await stripe.products.search({
-        query: `metadata['tier']:'elliott_addon'`,
-      });
+      // Search for Elliott Wave product by name
+      const products = await stripe.products.list({ active: true, limit: 100 });
+      const elliottProduct = products.data.find(p => 
+        p.name.toLowerCase().includes('elliot') || p.name.toLowerCase().includes('elliott')
+      );
 
-      if (products.data.length === 0) {
+      if (!elliottProduct) {
         return res.status(400).json({ error: 'Elliott Wave add-on product not found' });
       }
 
       const prices = await stripe.prices.list({
-        product: products.data[0].id,
+        product: elliottProduct.id,
         active: true,
       });
 

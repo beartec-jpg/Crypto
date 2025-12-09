@@ -33,23 +33,44 @@ async function getOrCreateCustomer(userId: string, email: string): Promise<strin
   return customer.id;
 }
 
-// Get price ID for a tier from Stripe
+// Map tier names to product names
+const tierToProductName: Record<string, string> = {
+  'beginner': 'Beginner membership',
+  'intermediate': 'Intermediate membership',
+  'pro': 'Pro membership',
+  'elite': 'Elite membership',
+  'elliott_addon': 'Elliot Wave', // Match exact Stripe product name
+};
+
+// Get price ID for a tier from Stripe by product name
 async function getPriceIdForTier(tier: string): Promise<string | null> {
   const stripe = await getUncachableStripeClient();
   
-  // Search for products with matching tier metadata
-  const products = await stripe.products.search({
-    query: `metadata['tier']:'${tier}'`,
-  });
+  // Get product name for tier
+  let productName = tierToProductName[tier];
   
-  if (products.data.length === 0) {
-    console.error(`No Stripe product found for tier: ${tier}`);
+  // For Elliott, also try alternate spellings
+  const isElliott = tier === 'elliott_addon';
+  
+  // List all active products and find by name
+  const products = await stripe.products.list({ active: true, limit: 100 });
+  let product = products.data.find(p => p.name === productName);
+  
+  // For Elliott, try flexible matching
+  if (!product && isElliott) {
+    product = products.data.find(p => 
+      p.name.toLowerCase().includes('elliot') || p.name.toLowerCase().includes('elliott')
+    );
+  }
+  
+  if (!product) {
+    console.error(`No Stripe product found for tier: ${tier} (looking for: ${productName})`);
     return null;
   }
   
   // Get active price for this product
   const prices = await stripe.prices.list({
-    product: products.data[0].id,
+    product: product.id,
     active: true,
   });
   
