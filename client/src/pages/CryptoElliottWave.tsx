@@ -1296,8 +1296,11 @@ export default function CryptoElliottWave() {
 
   // Update wave label mutation (for drag-and-drop point editing, with centralized auth)
   const updateLabel = useMutation({
-    mutationFn: async (data: { id: string; points: WavePoint[] }) => {
-      const response = await authenticatedApiRequest('PATCH', `/api/crypto/elliott-wave/labels/${data.id}`, { points: data.points });
+    mutationFn: async (data: { id: string; points?: WavePoint[]; degree?: string }) => {
+      const body: any = {};
+      if (data.points !== undefined) body.points = data.points;
+      if (data.degree !== undefined) body.degree = data.degree;
+      const response = await authenticatedApiRequest('PATCH', `/api/crypto/elliott-wave/labels/${data.id}`, body);
       return response.json();
     },
     onSuccess: () => {
@@ -5103,7 +5106,34 @@ const aiAnalyze = useMutation({
                                 {entry.timeframe}
                               </Badge>
                             </td>
-                            <td className="py-2 px-2 text-gray-300 text-xs">{entry.degree}</td>
+                            <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                              <select
+                                value={entry.degree}
+                                onChange={(e) => {
+                                  const newDegree = e.target.value;
+                                  updateLabel.mutate({ id: entry.id, degree: newDegree });
+                                  toast({
+                                    title: 'Degree Updated',
+                                    description: `Changed to ${newDegree}`,
+                                  });
+                                }}
+                                className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-gray-200 cursor-pointer hover:border-cyan-500 focus:border-cyan-500 focus:outline-none"
+                                style={{ 
+                                  color: waveDegrees.find(d => d.name === entry.degree)?.color || '#74C0FC'
+                                }}
+                                data-testid={`degree-select-${entry.id}`}
+                              >
+                                {waveDegrees.map(deg => (
+                                  <option 
+                                    key={deg.name} 
+                                    value={deg.name}
+                                    style={{ color: deg.color }}
+                                  >
+                                    {deg.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
                             <td className="py-2 px-2">
                               <span className={`text-xs font-medium ${
                                 entry.patternType === 'impulse' ? 'text-emerald-400' :

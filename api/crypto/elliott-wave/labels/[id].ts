@@ -140,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'PATCH') {
-      const { points, fibonacciMode, validationResult, isComplete } = req.body;
+      const { points, fibonacciMode, validationResult, isComplete, degree } = req.body;
       
       // Build update query dynamically
       const updates: string[] = ['updated_at = NOW()'];
@@ -158,6 +158,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (isComplete !== undefined) {
         updates.push(`is_confirmed = $${paramIndex++}`);
         values.push(isComplete);
+      }
+      if (degree !== undefined) {
+        updates.push(`degree = $${paramIndex++}`);
+        values.push(degree);
       }
       if (validationResult !== undefined) {
         updates.push(`validation_status = $${paramIndex++}`);
