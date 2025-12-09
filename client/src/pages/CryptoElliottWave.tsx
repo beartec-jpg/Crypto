@@ -2828,6 +2828,36 @@ const aiAnalyze = useMutation({
     
     // Helper to get last real candle time
     const lastRealCandleTime = candles.length > 0 ? candles[candles.length - 1].time : 0;
+    
+    // CRITICAL: Helper to snap a time to the nearest valid candle time
+    // This prevents markers from disappearing during pan/zoom when their timestamps
+    // don't exactly match candle times (lightweight-charts drops non-matching markers)
+    const snapToNearestCandleTime = (time: number): number => {
+      if (candles.length === 0) return time;
+      
+      // Binary search for the closest candle time
+      let left = 0;
+      let right = candles.length - 1;
+      
+      while (left < right) {
+        const mid = Math.floor((left + right) / 2);
+        if (candles[mid].time < time) {
+          left = mid + 1;
+        } else {
+          right = mid;
+        }
+      }
+      
+      // Check if left or left-1 is closer
+      const candleTime = candles[left].time;
+      if (left > 0) {
+        const prevCandleTime = candles[left - 1].time;
+        if (Math.abs(time - prevCandleTime) < Math.abs(time - candleTime)) {
+          return prevCandleTime;
+        }
+      }
+      return candleTime;
+    };
 
     // Build markers from saved labels (highlight selected pattern, SKIP dragged point entirely)
     // Also collect future projection points separately for special rendering
@@ -2887,8 +2917,11 @@ const aiAnalyze = useMutation({
             return null; // Don't create regular marker
           }
           
+          // SNAP time to nearest candle to prevent markers disappearing on pan/zoom
+          const snappedTime = snapToNearestCandleTime(point.time);
+          
           return {
-            time: point.time as any,
+            time: snappedTime as any,
             position: (isHigh ? 'aboveBar' : 'belowBar') as 'belowBar' | 'aboveBar',
             color: color,
             shape: (isSelected ? 'square' : 'circle') as 'square' | 'circle',
@@ -2929,8 +2962,11 @@ const aiAnalyze = useMutation({
         return null; // Don't create regular marker
       }
       
+      // SNAP time to nearest candle to prevent markers disappearing on pan/zoom
+      const snappedTime = snapToNearestCandleTime(point.time);
+      
       return {
-        time: point.time as any,
+        time: snappedTime as any,
         // Use snappedToHigh for marker position - high = aboveBar, low = belowBar
         position: (point.snappedToHigh ? 'aboveBar' : 'belowBar') as 'belowBar' | 'aboveBar',
         color,
@@ -2959,8 +2995,11 @@ const aiAnalyze = useMutation({
         }
       }
       
+      // SNAP time to nearest candle for preview marker too
+      const snappedPreviewTime = snapToNearestCandleTime(previewPoint.time);
+      
       previewMarkers.push({
-        time: previewPoint.time as any,
+        time: snappedPreviewTime as any,
         position: (previewSnappedToHigh ? 'aboveBar' : 'belowBar') as 'belowBar' | 'aboveBar',
         color: 'rgba(0, 196, 180, 0.5)', // Semi-transparent preview color
         shape: 'circle' as const,
