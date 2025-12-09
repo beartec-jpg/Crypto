@@ -708,8 +708,16 @@ export default function CryptoElliottWave() {
   });
 
   // Calculate validation instantly on client side (no API call)
-  const validation = currentPoints.length >= 3 
-    ? runValidation(currentPoints, patternType)
+  // Use current points if drawing, or selected saved label's points if in selection mode
+  const selectedLabel = selectedLabelId ? savedLabels.find(l => l.id === selectedLabelId) : null;
+  const validationPoints = currentPoints.length >= 3 
+    ? currentPoints 
+    : (selectedLabel?.points || []);
+  const validationPatternType = currentPoints.length >= 3 
+    ? patternType 
+    : (selectedLabel?.patternType || patternType);
+  const validation = validationPoints.length >= 3 
+    ? runValidation(validationPoints, validationPatternType)
     : null;
 
   // Auto-analyze mutation (algorithmic, with centralized auth)
@@ -3741,7 +3749,7 @@ const aiAnalyze = useMutation({
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
-                {currentPoints.length >= 3 ? 'Validation will appear after pattern saves' : 'Place at least 3 points to see validation'}
+                {currentPoints.length >= 3 ? 'Validation will appear after pattern saves' : (selectedLabelId ? 'Loading validation...' : 'Place at least 3 points to see validation')}
               </div>
             )}
           </TabsContent>

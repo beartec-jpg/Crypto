@@ -4257,13 +4257,38 @@ Return ONLY valid JSON in this exact format:
 
   // ==================== ELLIOTT WAVE ROUTES (OPEN ACCESS) ====================
 
-  // Get wave labels for a user/symbol/timeframe
+  // Get wave labels for a user/symbol/timeframe (or all timeframes with allTimeframes=true)
   app.get("/api/crypto/elliott-wave/labels", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {
-      const { symbol, timeframe } = req.query;
+      const { symbol, timeframe, allTimeframes } = req.query;
       
-      if (!symbol || !timeframe) {
-        return res.status(400).json({ error: 'Symbol and timeframe are required' });
+      if (!symbol) {
+        return res.status(400).json({ error: 'Symbol is required' });
+      }
+      
+      // If allTimeframes=true, fetch all labels for this symbol across ALL timeframes
+      if (allTimeframes === 'true') {
+        const { db } = await import("./db");
+        const { elliottWaveLabels } = await import("@shared/schema");
+        const { eq, and, asc } = await import("drizzle-orm");
+        
+        const labels = await db
+          .select()
+          .from(elliottWaveLabels)
+          .where(
+            and(
+              eq(elliottWaveLabels.userId, (req as any).cryptoUser.id),
+              eq(elliottWaveLabels.symbol, symbol as string)
+            )
+          )
+          .orderBy(asc(elliottWaveLabels.createdAt));
+        
+        return res.json(labels);
+      }
+      
+      // Standard query: require timeframe
+      if (!timeframe) {
+        return res.status(400).json({ error: 'Timeframe is required (or use allTimeframes=true)' });
       }
       
       const { getWaveLabels } = await import("./services/elliottWaveService");
