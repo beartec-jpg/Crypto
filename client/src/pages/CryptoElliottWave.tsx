@@ -4149,7 +4149,7 @@ const aiAnalyze = useMutation({
                             entry.timeframe === timeframe ? 'bg-slate-800/30' : ''
                           }`}>
                             <td className="py-2 px-2 whitespace-nowrap">
-                              <Badge variant="outline" className="text-xs px-2">
+                              <Badge variant="outline" className="text-xs px-2 text-gray-200 border-gray-500">
                                 {entry.timeframe}
                               </Badge>
                             </td>
