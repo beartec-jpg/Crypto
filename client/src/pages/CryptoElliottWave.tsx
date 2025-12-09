@@ -115,7 +115,7 @@ function getPatternDirection(points: WavePoint[]): 'up' | 'down' {
 }
 
 // Analyze wave sequence and suggest higher degree patterns
-// CRITICAL: Only analyzes patterns of the SAME DEGREE - different degrees are nested subwaves
+// Supports cross-degree analysis for nested corrections
 function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null {
   if (entries.length === 0) return null;
   
@@ -132,7 +132,75 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     'Intermediate', 'Minor', 'Minute', 'Minuette', 'Subminuette'
   ];
   
-  // Find the most significant degree with 2+ patterns (forms a valid sequence)
+  // ========== CROSS-DEGREE ANALYSIS ==========
+  // Look for higher-degree impulse with lower-degree corrections building underneath
+  for (let i = 0; i < degreeOrder.length - 1; i++) {
+    const higherDegree = degreeOrder[i];
+    const lowerDegree = degreeOrder[i + 1];
+    const higherPatterns = byDegree[higherDegree] || [];
+    const lowerPatterns = byDegree[lowerDegree] || [];
+    
+    if (higherPatterns.length === 0 || lowerPatterns.length === 0) continue;
+    
+    const higherSorted = higherPatterns.sort((a, b) => a.startTime - b.startTime);
+    const lowerSorted = lowerPatterns.sort((a, b) => a.startTime - b.startTime);
+    const lastHigher = higherSorted[higherSorted.length - 1];
+    
+    // Case 1: Higher degree has complete impulse (5 waves), lower degree building correction
+    if (lastHigher.waveCount === 5 && lastHigher.patternType === 'impulse') {
+      // Find lower degree patterns that come AFTER the higher degree impulse
+      const lowerAfterHigher = lowerSorted.filter(l => l.startTime >= lastHigher.endTime);
+      
+      if (lowerAfterHigher.length > 0) {
+        // Triangle as wave B - need C wave to complete W2/B/4
+        const lastLower = lowerAfterHigher[lowerAfterHigher.length - 1];
+        if (lastLower.patternType === 'triangle') {
+          const higherDir = lastHigher.direction;
+          const priorWave = higherDir === 'up' ? 'W2 or B or 4' : 'W2 or B or 4';
+          return {
+            sequence: `${higherDegree}:5 → ${lowerDegree}:triangle`,
+            suggestion: `🔺 ${lowerDegree} Triangle (wave B) complete - need C wave to finish ${higherDegree} ${priorWave}`,
+            confidence: 'high',
+            startPrice: lastHigher.startPrice,
+            endPrice: lastLower.endPrice,
+          };
+        }
+        
+        // 5-3 at lower degree after higher impulse = potential C wave needed
+        const lowerSeqStr = lowerAfterHigher.map(e => e.waveCount).join('-');
+        
+        if (lowerSeqStr === '5-3' || lowerSeqStr === '3-3') {
+          // Check if last pattern is correction (could be wave B)
+          if (lastLower.waveCount === 3) {
+            return {
+              sequence: `${higherDegree}:5 → ${lowerDegree}:${lowerSeqStr}`,
+              suggestion: `${lowerDegree}: ${lowerSeqStr === '5-3' ? 'Zigzag A-B' : 'Flat A-B'} - need C wave to complete ${higherDegree} W2`,
+              confidence: 'medium',
+              startPrice: lastHigher.startPrice,
+              endPrice: lastLower.endPrice,
+            };
+          }
+        }
+        
+        // 3-5 pattern = likely WXY with X as triangle
+        if (lowerSeqStr === '3-5' && lowerAfterHigher.length >= 2) {
+          const secondLower = lowerAfterHigher[1];
+          if (secondLower?.patternType === 'triangle') {
+            return {
+              sequence: `${higherDegree}:5 → ${lowerDegree}:3-triangle`,
+              suggestion: `📐 WXY pattern - W complete, X triangle complete - need Y wave`,
+              confidence: 'high',
+              startPrice: lastHigher.startPrice,
+              endPrice: lastLower.endPrice,
+            };
+          }
+        }
+      }
+    }
+  }
+  // ========== END CROSS-DEGREE ANALYSIS ==========
+  
+  // Find the most significant degree with 1+ patterns
   let targetDegree: string | null = null;
   let targetEntries: WaveStackEntry[] = [];
   
@@ -250,6 +318,105 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     };
   }
   
+  // ========== TRIANGLE AND WXY PATTERN DETECTION ==========
+  // Check if last pattern is a triangle - can be wave B, X, or 4
+  const lastPattern = targetEntries[targetEntries.length - 1];
+  if (lastPattern && lastPattern.patternType === 'triangle') {
+    // FIRST: Check for W4 triangle (5-3-5-triangle) - most specific case
+    if (targetEntries.length >= 4) {
+      const seq = targetEntries.slice(0, -1).map(e => e.waveCount).join('-');
+      if (seq === '5-3-5') {
+        return {
+          sequence: `5-3-5-triangle`,
+          suggestion: `🔺 ${targetDegree}: W1-W2-W3 + W4 triangle - need W5 to complete impulse!`,
+          confidence: 'high',
+          startPrice,
+          endPrice,
+        };
+      }
+    }
+    
+    // Single triangle pattern
+    if (targetEntries.length === 1) {
+      return {
+        sequence: 'triangle',
+        suggestion: `🔺 ${targetDegree} Triangle - likely wave B/X/4 - need C/Y/5 wave to complete`,
+        confidence: 'high',
+        startPrice,
+        endPrice,
+      };
+    }
+    
+    // Triangle after another pattern = wave B of correction
+    if (targetEntries.length >= 2) {
+      const priorPattern = targetEntries[targetEntries.length - 2];
+      if (priorPattern.waveCount === 5) {
+        return {
+          sequence: `5-triangle`,
+          suggestion: `🔺 ${targetDegree}: A wave (5) + B triangle - need C wave (5) to complete ABC`,
+          confidence: 'high',
+          startPrice,
+          endPrice,
+        };
+      }
+      if (priorPattern.waveCount === 3) {
+        return {
+          sequence: `3-triangle`,
+          suggestion: `📐 ${targetDegree}: W/A (3) + X/B triangle - need Y/C wave to complete WXY or ABC`,
+          confidence: 'high',
+          startPrice,
+          endPrice,
+        };
+      }
+    }
+  }
+  
+  // 3-3 pattern - could be building WXY or flat
+  if (sequence === '3-3') {
+    const firstDir = targetEntries[0].direction;
+    const secondDir = targetEntries[1].direction;
+    // Same direction = WXY in progress
+    if (firstDir === secondDir) {
+      return {
+        sequence,
+        suggestion: `${targetDegree}: 3-3 pattern - likely WXY, final Y could be ABC (3) or impulse C (5)`,
+        confidence: 'medium',
+        startPrice,
+        endPrice,
+      };
+    }
+    // Alternating = Flat A-B in progress
+    return {
+      sequence,
+      suggestion: `${targetDegree}: Flat A-B building - need C wave (5) to complete`,
+      confidence: 'medium',
+      startPrice,
+      endPrice,
+    };
+  }
+  
+  // 3-5 pattern - WXY with X triangle or impulse C
+  if (sequence === '3-5') {
+    const secondPattern = targetEntries[1];
+    if (secondPattern.patternType === 'triangle') {
+      return {
+        sequence: '3-triangle',
+        suggestion: `📐 ${targetDegree}: W wave + X triangle - need Y wave to complete WXY`,
+        confidence: 'high',
+        startPrice,
+        endPrice,
+      };
+    }
+    return {
+      sequence,
+      suggestion: `${targetDegree}: 3-5 pattern - could be A-B (need C) or W-X (need Y)`,
+      confidence: 'medium',
+      startPrice,
+      endPrice,
+    };
+  }
+  // ========== END TRIANGLE/WXY DETECTION ==========
+  
   // Building patterns - partial matches
   if (sequence === '5') {
     return {
@@ -262,6 +429,17 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   }
   
   if (sequence === '5-3') {
+    // Check if the 3-wave is a triangle
+    const correctionPattern = targetEntries[1];
+    if (correctionPattern && correctionPattern.patternType === 'triangle') {
+      return {
+        sequence: '5-triangle',
+        suggestion: `🔺 ${targetDegree}: Impulse + Triangle (B) - need C wave to complete W2/B/4`,
+        confidence: 'high',
+        startPrice,
+        endPrice,
+      };
+    }
     return {
       sequence,
       suggestion: `${targetDegree}: Impulse + correction - building W1-W2`,
