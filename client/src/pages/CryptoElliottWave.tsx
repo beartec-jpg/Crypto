@@ -209,7 +209,42 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         archetype = `WXY${ySubwaveInfo ? ` (${ySubwaveInfo.trim()})` : ''}`;
       }
     }
-    else if (seq === '3-3-3') archetype = 'WXY';
+    else if (seq === '3-5-3') {
+      // WXY where X is a triangle (5-wave) or diagonal
+      // W = 3-wave ABC, X = triangle/diagonal (5), Y = 3-wave ABC
+      // Check if lower degree is building Y's subwaves
+      const lowerDegree = getLowerDegree(degree);
+      const lowerPatterns = lowerDegree ? byDegree[lowerDegree] : null;
+      let ySubwaveInfo = '';
+      
+      if (lowerPatterns && lowerPatterns.length > 0 && sorted.length >= 3) {
+        const yWave = sorted[2]; // Third pattern is Y
+        const lowerSorted = lowerPatterns.sort((a, b) => a.startTime - b.startTime);
+        const lowerOverlap = lowerSorted.filter(l => l.startTime >= yWave.startTime);
+        if (lowerOverlap.length > 0) {
+          const lowerSeq = lowerOverlap.map(e => e.waveCount).join('-');
+          if (lowerSeq === '5-3') {
+            ySubwaveInfo = ' Y=A-B';
+          } else if (lowerSeq === '5-3-5') {
+            ySubwaveInfo = ' Y=ABC';
+          } else if (lowerSeq === '5') {
+            ySubwaveInfo = ' Y=A';
+          }
+        }
+      }
+      
+      if (patternTypes[1] === 'triangle') {
+        archetype = `WXY (X=tri${ySubwaveInfo})`;
+      } else if (patternTypes[1] === 'diagonal') {
+        archetype = `WXY (X=diag${ySubwaveInfo})`;
+      } else {
+        archetype = `WXY${ySubwaveInfo ? ` (${ySubwaveInfo.trim()})` : ''}`;
+      }
+    }
+    else if (seq === '3-3-3') {
+      // Check if this is subwave of higher degree's Y wave
+      archetype = 'WXY';
+    }
     else if (seq === '3-3-3-3-3') {
       // True triangle is 5 x 3-wave patterns forming ABCDE
       // Check if all are corrections (not a triangle pattern itself)
