@@ -90,12 +90,83 @@ interface WaveStackEntry {
   suggestedLabel?: string;
 }
 
+// Fibonacci projection context for Wave Stack suggestions
+interface ProjectionContext {
+  waveRole: 'W2' | 'W3' | 'W4' | 'W5' | 'A' | 'B' | 'C' | 'Y' | 'W1_precursor';
+  fibMode: 'retracement' | 'extension';
+  anchorStartPrice: number;
+  anchorEndPrice: number;
+  levels: { ratio: number; price: number; label: string }[];
+  direction: 'up' | 'down'; // Direction of the projected wave
+}
+
 interface WaveStackSuggestion {
   sequence: string; // e.g., "5-3-5-3-5"
   suggestion: string; // e.g., "Possible W1 or A (Intermediate degree)"
   confidence: 'high' | 'medium' | 'low';
   startPrice: number;
   endPrice: number;
+  projections?: ProjectionContext[]; // Fib projections for suggested wave
+}
+
+// Calculate Fibonacci projection levels based on wave type
+function calculateFibLevels(
+  waveRole: ProjectionContext['waveRole'],
+  anchorStart: number,
+  anchorEnd: number,
+  projectionDirection: 'up' | 'down'
+): ProjectionContext {
+  const range = Math.abs(anchorEnd - anchorStart);
+  
+  // Fib ratios by wave type
+  const fibRatios: Record<string, number[]> = {
+    'W2': [0.382, 0.5, 0.618, 0.786], // Retracements
+    'W4': [0.236, 0.382, 0.5], // Shallow retracements
+    'C': [0.618, 1.0, 1.272, 1.618], // Extensions from A
+    'Y': [0.618, 1.0, 1.272, 1.618], // Extensions
+    'W5': [0.618, 1.0, 1.272, 1.618], // Extensions from W1 or W3-W4
+    'W3': [1.618, 2.0, 2.618], // Extensions
+    'A': [0.382, 0.5, 0.618], // Retracements of prior impulse
+    'B': [0.382, 0.5, 0.618, 0.786], // Retracements of A
+    'W1_precursor': [0.382, 0.5, 0.618], // Initial pullback targets
+  };
+  
+  const ratios = fibRatios[waveRole] || [0.382, 0.5, 0.618];
+  const isRetracement = ['W2', 'W4', 'A', 'B', 'W1_precursor'].includes(waveRole);
+  
+  // Calculate price levels
+  const levels = ratios.map(ratio => {
+    let price: number;
+    if (isRetracement) {
+      // Retracement: project from anchorEnd back toward anchorStart
+      if (projectionDirection === 'down') {
+        price = anchorEnd - (range * ratio);
+      } else {
+        price = anchorEnd + (range * ratio);
+      }
+    } else {
+      // Extension: project beyond the anchor wave
+      if (projectionDirection === 'up') {
+        price = anchorEnd + (range * ratio);
+      } else {
+        price = anchorEnd - (range * ratio);
+      }
+    }
+    return {
+      ratio,
+      price,
+      label: `${(ratio * 100).toFixed(1)}%`
+    };
+  });
+  
+  return {
+    waveRole,
+    fibMode: isRetracement ? 'retracement' : 'extension',
+    anchorStartPrice: anchorStart,
+    anchorEndPrice: anchorEnd,
+    levels,
+    direction: projectionDirection
+  };
 }
 
 // Pattern recognition: convert patternType to wave count
@@ -157,12 +228,47 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
         if (lastLower.patternType === 'triangle') {
           const higherDir = lastHigher.direction;
           const priorWave = higherDir === 'up' ? 'W2 or B or 4' : 'W2 or B or 4';
+          
+          // Find the A wave (first pattern after higher impulse)
+          const aWave = lowerAfterHigher.length > 1 ? lowerAfterHigher[0] : null;
+          
+          // C wave projection: use A wave as base (C typically equals or extends A)
+          let cProjection: ProjectionContext;
+          if (aWave && aWave.patternType !== 'triangle') {
+            // Use A wave for C extension targets
+            cProjection = calculateFibLevels(
+              'C',
+              aWave.startPrice,
+              aWave.endPrice,
+              aWave.direction // C continues same direction as A
+            );
+          } else {
+            // Fallback: use retracement of higher impulse for C targets
+            const impulseRange = Math.abs(lastHigher.endPrice - lastHigher.startPrice);
+            const cRatios = [0.382, 0.5, 0.618, 0.786];
+            const cLevels = cRatios.map(ratio => {
+              const price = higherDir === 'up' 
+                ? lastHigher.endPrice - (impulseRange * ratio)
+                : lastHigher.endPrice + (impulseRange * ratio);
+              return { ratio, price, label: `${(ratio * 100).toFixed(1)}%` };
+            });
+            cProjection = {
+              waveRole: 'C',
+              fibMode: 'retracement',
+              anchorStartPrice: lastHigher.startPrice,
+              anchorEndPrice: lastHigher.endPrice,
+              levels: cLevels,
+              direction: higherDir === 'up' ? 'down' : 'up'
+            };
+          }
+          
           return {
             sequence: `${higherDegree}:5 → ${lowerDegree}:triangle`,
             suggestion: `🔺 ${lowerDegree} Triangle (wave B) complete - need C wave to finish ${higherDegree} ${priorWave}`,
             confidence: 'high',
             startPrice: lastHigher.startPrice,
             endPrice: lastLower.endPrice,
+            projections: [cProjection],
           };
         }
         
@@ -172,12 +278,22 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
         if (lowerSeqStr === '5-3' || lowerSeqStr === '3-3') {
           // Check if last pattern is correction (could be wave B)
           if (lastLower.waveCount === 3) {
+            const firstLower = lowerAfterHigher[0]; // A wave
+            const higherDir = lastHigher.direction;
+            // C wave projection: extends from B, use A wave for measurement
+            const cProjection = calculateFibLevels(
+              'C',
+              firstLower.startPrice,
+              firstLower.endPrice,
+              firstLower.direction // C continues same direction as A
+            );
             return {
               sequence: `${higherDegree}:5 → ${lowerDegree}:${lowerSeqStr}`,
               suggestion: `${lowerDegree}: ${lowerSeqStr === '5-3' ? 'Zigzag A-B' : 'Flat A-B'} - need C wave to complete ${higherDegree} W2`,
               confidence: 'medium',
               startPrice: lastHigher.startPrice,
               endPrice: lastLower.endPrice,
+              projections: [cProjection],
             };
           }
         }
@@ -186,12 +302,21 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
         if (lowerSeqStr === '3-5' && lowerAfterHigher.length >= 2) {
           const secondLower = lowerAfterHigher[1];
           if (secondLower?.patternType === 'triangle') {
+            const firstLower = lowerAfterHigher[0]; // W wave
+            // Y wave projection
+            const yProjection = calculateFibLevels(
+              'Y',
+              firstLower.startPrice,
+              firstLower.endPrice,
+              firstLower.direction // Y continues same direction as W
+            );
             return {
               sequence: `${higherDegree}:5 → ${lowerDegree}:3-triangle`,
               suggestion: `📐 WXY pattern - W complete, X triangle complete - need Y wave`,
               confidence: 'high',
               startPrice: lastHigher.startPrice,
               endPrice: lastLower.endPrice,
+              projections: [yProjection],
             };
           }
         }
@@ -326,12 +451,37 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     if (targetEntries.length >= 4) {
       const seq = targetEntries.slice(0, -1).map(e => e.waveCount).join('-');
       if (seq === '5-3-5') {
+        // W5 extends from W4 end - use W1 length as base for extension
+        const w1Pattern = targetEntries[0]; // First pattern is W1
+        const w4Triangle = lastPattern;
+        const trendDir = w1Pattern.direction; // W1 direction = trend
+        
+        // W5 projection: Fib extensions of W1 length, projected from W4 end
+        const w1Range = Math.abs(w1Pattern.endPrice - w1Pattern.startPrice);
+        const w5Ratios = [0.618, 1.0, 1.272, 1.618];
+        const w5Levels = w5Ratios.map(ratio => {
+          const price = trendDir === 'up' 
+            ? w4Triangle.endPrice + (w1Range * ratio)
+            : w4Triangle.endPrice - (w1Range * ratio);
+          return { ratio, price, label: `${(ratio * 100).toFixed(1)}%` };
+        });
+        
+        const w5Projection: ProjectionContext = {
+          waveRole: 'W5',
+          fibMode: 'extension',
+          anchorStartPrice: w1Pattern.startPrice,
+          anchorEndPrice: w1Pattern.endPrice,
+          levels: w5Levels,
+          direction: trendDir
+        };
+        
         return {
           sequence: `5-3-5-triangle`,
           suggestion: `🔺 ${targetDegree}: W1-W2-W3 + W4 triangle - need W5 to complete impulse!`,
           confidence: 'high',
           startPrice,
           endPrice,
+          projections: [w5Projection],
         };
       }
     }
@@ -351,21 +501,39 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     if (targetEntries.length >= 2) {
       const priorPattern = targetEntries[targetEntries.length - 2];
       if (priorPattern.waveCount === 5) {
+        // C wave extends from B triangle - project extensions from A wave
+        const aDir = priorPattern.direction;
+        const cProjection = calculateFibLevels(
+          'C',
+          priorPattern.startPrice,
+          priorPattern.endPrice,
+          aDir === 'up' ? 'down' : 'up' // C goes opposite to A
+        );
         return {
           sequence: `5-triangle`,
           suggestion: `🔺 ${targetDegree}: A wave (5) + B triangle - need C wave (5) to complete ABC`,
           confidence: 'high',
           startPrice,
           endPrice,
+          projections: [cProjection],
         };
       }
       if (priorPattern.waveCount === 3) {
+        // Y/C wave projection
+        const wDir = priorPattern.direction;
+        const yProjection = calculateFibLevels(
+          'Y',
+          priorPattern.startPrice,
+          priorPattern.endPrice,
+          wDir // Y continues same direction as W
+        );
         return {
           sequence: `3-triangle`,
           suggestion: `📐 ${targetDegree}: W/A (3) + X/B triangle - need Y/C wave to complete WXY or ABC`,
           confidence: 'high',
           startPrice,
           endPrice,
+          projections: [yProjection],
         };
       }
     }
@@ -373,46 +541,83 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   
   // 3-3 pattern - could be building WXY or flat
   if (sequence === '3-3') {
-    const firstDir = targetEntries[0].direction;
-    const secondDir = targetEntries[1].direction;
+    const firstPattern = targetEntries[0];
+    const secondPattern = targetEntries[1];
+    const firstDir = firstPattern.direction;
+    const secondDir = secondPattern.direction;
+    
     // Same direction = WXY in progress
     if (firstDir === secondDir) {
+      // Y wave projection (continues same direction as W and X)
+      const yProjection = calculateFibLevels(
+        'Y',
+        firstPattern.startPrice,
+        firstPattern.endPrice,
+        firstDir
+      );
       return {
         sequence,
         suggestion: `${targetDegree}: 3-3 pattern - likely WXY, final Y could be ABC (3) or impulse C (5)`,
         confidence: 'medium',
         startPrice,
         endPrice,
+        projections: [yProjection],
       };
     }
+    
     // Alternating = Flat A-B in progress
+    // C wave projection: uses A wave for measurement, continues A direction
+    const cProjection = calculateFibLevels(
+      'C',
+      firstPattern.startPrice,
+      firstPattern.endPrice,
+      firstDir // C continues same direction as A in flat
+    );
     return {
       sequence,
       suggestion: `${targetDegree}: Flat A-B building - need C wave (5) to complete`,
       confidence: 'medium',
       startPrice,
       endPrice,
+      projections: [cProjection],
     };
   }
   
   // 3-5 pattern - WXY with X triangle or impulse C
   if (sequence === '3-5') {
+    const firstPattern = targetEntries[0];
     const secondPattern = targetEntries[1];
     if (secondPattern.patternType === 'triangle') {
+      // Y wave projection
+      const yProjection = calculateFibLevels(
+        'Y',
+        firstPattern.startPrice,
+        firstPattern.endPrice,
+        firstPattern.direction
+      );
       return {
         sequence: '3-triangle',
         suggestion: `📐 ${targetDegree}: W wave + X triangle - need Y wave to complete WXY`,
         confidence: 'high',
         startPrice,
         endPrice,
+        projections: [yProjection],
       };
     }
+    // Could be A-B or W-X - show both C and Y projections
+    const cOrYProjection = calculateFibLevels(
+      'C',
+      firstPattern.startPrice,
+      firstPattern.endPrice,
+      firstPattern.direction
+    );
     return {
       sequence,
       suggestion: `${targetDegree}: 3-5 pattern - could be A-B (need C) or W-X (need Y)`,
       confidence: 'medium',
       startPrice,
       endPrice,
+      projections: [cOrYProjection],
     };
   }
   // ========== END TRIANGLE/WXY DETECTION ==========
@@ -431,21 +636,49 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   if (sequence === '5-3') {
     // Check if the 3-wave is a triangle
     const correctionPattern = targetEntries[1];
+    const impulsePattern = targetEntries[0];
+    const impulseDir = impulsePattern.direction;
+    
     if (correctionPattern && correctionPattern.patternType === 'triangle') {
+      // C wave projects beyond B triangle - use A wave for extension
+      const cProjection = calculateFibLevels(
+        'C',
+        impulsePattern.startPrice,
+        impulsePattern.endPrice,
+        impulseDir === 'up' ? 'down' : 'up' // C goes opposite to A
+      );
       return {
         sequence: '5-triangle',
         suggestion: `🔺 ${targetDegree}: Impulse + Triangle (B) - need C wave to complete W2/B/4`,
         confidence: 'high',
         startPrice,
         endPrice,
+        projections: [cProjection],
       };
     }
+    
+    // W3 projection - extends from W1-W2
+    const w3Projection = calculateFibLevels(
+      'W3',
+      impulsePattern.startPrice,
+      impulsePattern.endPrice,
+      impulseDir // W3 continues same direction as W1
+    );
+    // Also show where W3 typically starts (retracement end = W2)
+    const w2Target = calculateFibLevels(
+      'W2',
+      impulsePattern.startPrice,
+      impulsePattern.endPrice,
+      impulseDir === 'up' ? 'down' : 'up'
+    );
+    
     return {
       sequence,
       suggestion: `${targetDegree}: Impulse + correction - building W1-W2`,
       confidence: 'medium',
       startPrice,
       endPrice,
+      projections: [w2Target, w3Projection],
     };
   }
   
@@ -657,6 +890,7 @@ export default function CryptoElliottWave() {
   const [markersVersion, setMarkersVersion] = useState(0); // Force marker refresh
   const [futurePointOverlays, setFuturePointOverlays] = useState<{ x: number; y: number; label: string; color: string }[]>([]); // HTML overlays for future points
   const [visibleCandleCount, setVisibleCandleCount] = useState(0); // Track visible candles for counter display
+  const [stackProjectionLines, setStackProjectionLines] = useState<{ price: number; color: string; lineWidth: number; lineStyle: number; axisLabelVisible: boolean; title: string }[]>([]); // Wave Stack projection lines
 
   // Check subscription tier and Elliott Wave access
   const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; canUseElliott?: boolean; hasElliottAddon?: boolean }>({
@@ -3454,6 +3688,50 @@ const aiAnalyze = useMutation({
     };
   }, [fibonacciMode, currentPoints, savedLabels, selectedLabelId, candles, isDragging, draggedPointIndex]);
 
+  // Stack Projection Lines - render Wave Stack-based projections on chart
+  const stackProjectionLinesRef = useRef<any[]>([]);
+  
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    if (!candleSeries) return;
+    
+    // Clear existing stack projection lines
+    stackProjectionLinesRef.current.forEach(line => {
+      try {
+        candleSeries.removePriceLine(line);
+      } catch (e) { /* ignore */ }
+    });
+    stackProjectionLinesRef.current = [];
+    
+    // Add new projection lines
+    stackProjectionLines.forEach(proj => {
+      try {
+        const line = candleSeries.createPriceLine({
+          price: proj.price,
+          color: proj.color,
+          lineWidth: proj.lineWidth,
+          lineStyle: proj.lineStyle,
+          axisLabelVisible: proj.axisLabelVisible,
+          title: proj.title,
+        });
+        if (line) {
+          stackProjectionLinesRef.current.push(line);
+        }
+      } catch (e) {
+        console.warn('Failed to create projection line:', e);
+      }
+    });
+    
+    // Cleanup when component unmounts or projections change
+    return () => {
+      stackProjectionLinesRef.current.forEach(line => {
+        try {
+          candleSeries.removePriceLine(line);
+        } catch (e) { /* ignore */ }
+      });
+    };
+  }, [stackProjectionLines]);
+
   // Draw diagonal trendlines (W2→W4 and W1→W3, extended to W5 candle time)
   // These form the wedge channel and allow visualization of over/underthrow at Wave 5
   useEffect(() => {
@@ -4303,6 +4581,86 @@ const aiAnalyze = useMutation({
                       <span>Sequence: <span className="font-mono text-cyan-400">{waveStackSuggestion.sequence}</span></span>
                       <span>From ${waveStackSuggestion.startPrice.toFixed(4)} → ${waveStackSuggestion.endPrice.toFixed(4)}</span>
                     </div>
+                    
+                    {/* Projection Targets */}
+                    {waveStackSuggestion.projections && waveStackSuggestion.projections.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs text-gray-400 font-semibold">📊 Projection Targets</span>
+                          <span className="text-xs text-gray-500">(Click to add to chart)</span>
+                          {stackProjectionLines.length > 0 && (
+                            <button
+                              onClick={() => setStackProjectionLines([])}
+                              className="ml-auto px-2 py-0.5 text-xs bg-red-900/40 text-red-400 rounded hover:bg-red-800/60 border border-red-600/30"
+                              data-testid="clear-projections"
+                            >
+                              Clear Lines ({stackProjectionLines.length})
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {waveStackSuggestion.projections.map((proj, projIdx) => (
+                            <div key={projIdx} className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs font-medium ${
+                                  proj.fibMode === 'retracement' ? 'text-amber-400' : 'text-cyan-400'
+                                }`}>
+                                  {proj.waveRole} ({proj.fibMode})
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    // Add all levels for this projection
+                                    const newLines = proj.levels.map(level => ({
+                                      price: level.price,
+                                      color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
+                                      lineWidth: 1,
+                                      lineStyle: 2,
+                                      axisLabelVisible: true,
+                                      title: `${proj.waveRole} ${level.label}`,
+                                    }));
+                                    setStackProjectionLines(prev => [...prev, ...newLines]);
+                                  }}
+                                  className="px-1.5 py-0.5 text-xs bg-slate-700 text-gray-300 rounded hover:bg-slate-600"
+                                  data-testid={`show-all-${proj.waveRole}`}
+                                >
+                                  Show All
+                                </button>
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                {proj.levels.map((level, levelIdx) => (
+                                  <button
+                                    key={levelIdx}
+                                    onClick={() => {
+                                      // Add price line to chart for this level
+                                      if (chartRef.current) {
+                                        const priceLine = {
+                                          price: level.price,
+                                          color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
+                                          lineWidth: 1,
+                                          lineStyle: 2, // Dashed
+                                          axisLabelVisible: true,
+                                          title: `${proj.waveRole} ${level.label}`,
+                                        };
+                                        // Store for rendering
+                                        setStackProjectionLines(prev => [...prev, priceLine]);
+                                      }
+                                    }}
+                                    className={`px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105 ${
+                                      proj.fibMode === 'retracement' 
+                                        ? 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60 border border-amber-600/30'
+                                        : 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-800/60 border border-cyan-600/30'
+                                    }`}
+                                    data-testid={`projection-${proj.waveRole}-${level.label}`}
+                                  >
+                                    {level.label}: ${level.price.toFixed(4)}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

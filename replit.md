@@ -129,6 +129,15 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
   - Shows "🚀 1-2, 1-2 setup (Minor + Minute) - UBER BULLISH on confirmation!"
   - Triple nested (3 degrees) shows "Triple 1-2" setup
   - Direction-aware: bullish for upward impulses, bearish for downward
+- **Wave Stack Fibonacci Projections**:
+  - Automatic projection targets based on Wave Stack pattern analysis
+  - `analyzeWaveStack()` returns `ProjectionContext` with anchor prices and Fib levels
+  - **Retracement levels** (amber): W2 (38.2-78.6% of W1), W4 (23.6-50% of W3)
+  - **Extension levels** (cyan): W3/W5/C/Y (61.8-161.8% of prior wave)
+  - Click individual levels or "Show All" to add projection lines to chart
+  - "Clear Lines" button removes all Stack projection lines
+  - Cross-degree analysis includes projections (e.g., higher impulse + lower A-B → C wave targets)
+  - Triangle patterns (B/X/4 waves) show C/Y/5 extension targets
 
 # External Dependencies
 
