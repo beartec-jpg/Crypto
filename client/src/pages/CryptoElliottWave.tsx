@@ -179,10 +179,14 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     
     if (allSameDirection) {
       const degreeNames = nestedSetups.map(s => s.degree).join(' + ');
-      const sentiment = primaryDirection === 'up' ? 'UBER BULLISH' : 'UBER BEARISH';
+      // 2 degrees = 1-2, 1-2 bullish/bearish
+      // 3+ degrees = UBER bullish/bearish
+      const isUber = nestedSetups.length >= 3;
+      const sentiment = primaryDirection === 'up' 
+        ? (isUber ? 'UBER BULLISH' : 'bullish')
+        : (isUber ? 'UBER BEARISH' : 'bearish');
       const nestCount = nestedSetups.length === 2 ? '1-2, 1-2' : 
-                        nestedSetups.length === 3 ? 'Triple 1-2' : 
-                        `${nestedSetups.length}x nested 1-2`;
+                        `1-2, 1-2, 1-2${nestedSetups.length > 3 ? `... (${nestedSetups.length}x)` : ''}`;
       
       return {
         sequence: nestedSetups.map(() => '5-3').join(' | '),
