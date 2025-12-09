@@ -117,6 +117,12 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
     - Purple lines: 100%, 127.2%, 161.8% extension of Wave 5
     - Blue solid line: Wave 4 support/resistance level
   - Context cleared on pattern save, clear points, or pattern type change
+- **Wave Stack Degree Enforcement**:
+  - Pattern sequence analysis (5-3-5-3-5, etc.) only counts patterns of the SAME DEGREE
+  - Different degree patterns are nested subwaves, not continuations of the sequence
+  - System finds highest (most significant) degree with patterns and analyzes only those
+  - Suggestions now include degree name: "Minor: Impulse + correction - building W1-W2"
+  - Lower degree patterns within the stack are shown but don't affect sequence counting
 
 # External Dependencies
 

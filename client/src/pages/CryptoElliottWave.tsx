@@ -115,12 +115,46 @@ function getPatternDirection(points: WavePoint[]): 'up' | 'down' {
 }
 
 // Analyze wave sequence and suggest higher degree patterns
+// CRITICAL: Only analyzes patterns of the SAME DEGREE - different degrees are nested subwaves
 function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null {
   if (entries.length === 0) return null;
   
-  // Build sequence string (e.g., "5-3-5-3-5")
-  const sequence = entries.map(e => e.waveCount).join('-');
-  const directions = entries.map(e => e.direction);
+  // Group entries by degree (only same-degree patterns form a sequence)
+  const byDegree: Record<string, WaveStackEntry[]> = {};
+  entries.forEach(e => {
+    if (!byDegree[e.degree]) byDegree[e.degree] = [];
+    byDegree[e.degree].push(e);
+  });
+  
+  // Degree hierarchy (highest to lowest significance)
+  const degreeOrder = [
+    'Grand Supercycle', 'Supercycle', 'Cycle', 'Primary', 
+    'Intermediate', 'Minor', 'Minute', 'Minuette', 'Subminuette'
+  ];
+  
+  // Find the most significant degree with 2+ patterns (forms a valid sequence)
+  let targetDegree: string | null = null;
+  let targetEntries: WaveStackEntry[] = [];
+  
+  for (const degree of degreeOrder) {
+    if (byDegree[degree] && byDegree[degree].length >= 1) {
+      targetDegree = degree;
+      targetEntries = byDegree[degree].sort((a, b) => a.startTime - b.startTime);
+      break;
+    }
+  }
+  
+  // If no degree found, fall back to first available
+  if (!targetDegree) {
+    const degrees = Object.keys(byDegree);
+    if (degrees.length === 0) return null;
+    targetDegree = degrees[0];
+    targetEntries = byDegree[targetDegree].sort((a, b) => a.startTime - b.startTime);
+  }
+  
+  // Build sequence string from SAME DEGREE patterns only
+  const sequence = targetEntries.map(e => e.waveCount).join('-');
+  const directions = targetEntries.map(e => e.direction);
   
   // Check for alternating directions
   let isAlternating = true;
@@ -131,15 +165,16 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     }
   }
   
-  const startPrice = entries[0].startPrice;
-  const endPrice = entries[entries.length - 1].endPrice;
+  // Use targetEntries for price range (same degree patterns only)
+  const startPrice = targetEntries[0]?.startPrice || 0;
+  const endPrice = targetEntries[targetEntries.length - 1]?.endPrice || 0;
   
-  // Pattern recognition rules
+  // Pattern recognition rules (only for SAME DEGREE patterns)
   // 5-3-5-3-5 = Impulse (potential W1 or A of higher degree)
   if (sequence === '5-3-5-3-5' && isAlternating) {
     return {
       sequence,
-      suggestion: 'Complete impulse - Possible W1 or A of higher degree',
+      suggestion: `Complete ${targetDegree} impulse - Possible W1 or A of higher degree`,
       confidence: 'high',
       startPrice,
       endPrice,
@@ -150,7 +185,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   if (sequence === '5-3-5' && isAlternating) {
     return {
       sequence,
-      suggestion: 'Possible Zigzag (ABC correction)',
+      suggestion: `Possible ${targetDegree} Zigzag (ABC correction)`,
       confidence: 'high',
       startPrice,
       endPrice,
@@ -161,7 +196,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   if (sequence === '3-3-5') {
     return {
       sequence,
-      suggestion: 'Possible Flat correction (3-3-5)',
+      suggestion: `Possible ${targetDegree} Flat correction (3-3-5)`,
       confidence: 'high',
       startPrice,
       endPrice,
@@ -172,7 +207,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   if (sequence === '5') {
     return {
       sequence,
-      suggestion: 'Single impulse - could be W1, W3, W5, or A/C',
+      suggestion: `Single ${targetDegree} impulse - could be W1, W3, W5, or A/C`,
       confidence: 'low',
       startPrice,
       endPrice,
@@ -182,7 +217,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   if (sequence === '5-3') {
     return {
       sequence,
-      suggestion: 'Impulse + correction - building toward ABC or W1-W2',
+      suggestion: `${targetDegree}: Impulse + correction - building W1-W2`,
       confidence: 'medium',
       startPrice,
       endPrice,
@@ -192,7 +227,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   if (sequence === '5-3-5') {
     return {
       sequence,
-      suggestion: 'Possible Zigzag or W1-W2-W3 in progress',
+      suggestion: `${targetDegree}: Possible Zigzag or W1-W2-W3`,
       confidence: 'medium',
       startPrice,
       endPrice,
@@ -202,7 +237,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   if (sequence === '5-3-5-3') {
     return {
       sequence,
-      suggestion: 'Building impulse - waiting for W5 (5-wave motive)',
+      suggestion: `${targetDegree}: Building impulse - waiting for W5`,
       confidence: 'medium',
       startPrice,
       endPrice,
@@ -216,7 +251,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     if (remaining === '5-3-5') {
       return {
         sequence,
-        suggestion: 'W1 complete + Possible W2 Zigzag',
+        suggestion: `${targetDegree}: W1 complete + Possible W2 Zigzag`,
         confidence: 'high',
         startPrice,
         endPrice,
@@ -226,7 +261,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     if (remaining === '3-3-5') {
       return {
         sequence,
-        suggestion: 'W1 complete + Possible W2 Flat',
+        suggestion: `${targetDegree}: W1 complete + Possible W2 Flat`,
         confidence: 'high',
         startPrice,
         endPrice,
@@ -236,7 +271,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     if (remaining === '5-3-5-3-5') {
       return {
         sequence,
-        suggestion: 'Possible W1-W2 complete of higher degree',
+        suggestion: `${targetDegree}: Possible W1-W2 complete of higher degree`,
         confidence: 'high',
         startPrice,
         endPrice,
@@ -245,10 +280,10 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   }
   
   // Generic pattern for longer sequences
-  if (entries.length > 5) {
+  if (targetEntries.length > 5) {
     return {
       sequence,
-      suggestion: `Complex pattern (${entries.length} waves) - analyze degree hierarchy`,
+      suggestion: `${targetDegree}: Complex pattern (${targetEntries.length} waves)`,
       confidence: 'low',
       startPrice,
       endPrice,
@@ -257,7 +292,7 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   
   return {
     sequence,
-    suggestion: 'Pattern building - add more waves for suggestions',
+    suggestion: `${targetDegree}: Add more waves for suggestions`,
     confidence: 'low',
     startPrice,
     endPrice,
