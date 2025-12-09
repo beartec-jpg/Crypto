@@ -4133,7 +4133,7 @@ const aiAnalyze = useMutation({
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-gray-400 text-xs border-b border-slate-700">
-                          <th className="text-left py-2 px-2">TF</th>
+                          <th className="text-left py-2 px-2 min-w-[50px]">TF</th>
                           <th className="text-left py-2 px-2">Degree</th>
                           <th className="text-left py-2 px-2">Type</th>
                           <th className="text-center py-2 px-2">Waves</th>
@@ -4148,8 +4148,8 @@ const aiAnalyze = useMutation({
                           <tr key={entry.id} className={`border-b border-slate-800 hover:bg-slate-800/50 ${
                             entry.timeframe === timeframe ? 'bg-slate-800/30' : ''
                           }`}>
-                            <td className="py-2 px-2">
-                              <Badge variant="outline" className="text-xs">
+                            <td className="py-2 px-2 whitespace-nowrap">
+                              <Badge variant="outline" className="text-xs px-2">
                                 {entry.timeframe}
                               </Badge>
                             </td>
