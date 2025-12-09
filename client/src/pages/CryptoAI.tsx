@@ -112,8 +112,8 @@ export default function CryptoAI() {
     refetchOnMount: true
   });
 
-  const { data: trackedTradesData } = useQuery<any[]>({
-    queryKey: ['/api/crypto/tracked-trades', symbol],
+  const { data: trackedTradesData, refetch: refetchTrackedTrades } = useQuery<any[]>({
+    queryKey: [`/api/crypto/tracked-trades/${symbol}`],
     enabled: isAuthenticated && !authLoading,
     refetchInterval: 10000, // Refetch every 10 seconds to check for status updates
   });
@@ -1104,8 +1104,8 @@ export default function CryptoAI() {
       const tracked = await response.json();
       setTrackedTrades(prev => [...prev, tradeKey]);
       
-      // Invalidate query to refetch tracked trades and update chart
-      queryClient.invalidateQueries({ queryKey: ['/api/crypto/tracked-trades', symbol] });
+      // Refetch tracked trades to update chart
+      refetchTrackedTrades();
 
       toast({
         title: "Trade Tracked! 🎯",
