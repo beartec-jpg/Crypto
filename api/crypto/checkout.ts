@@ -228,6 +228,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // If user has existing subscription, add Elliott as additional item
       if (existingSub?.stripe_subscription_id) {
+        // First check if Elliott is already on the Stripe subscription
+        const subscription = await stripe.subscriptions.retrieve(existingSub.stripe_subscription_id, {
+          expand: ['items.data'],
+        });
+        
+        const existingElliottItem = subscription.items.data.find(
+          (item: any) => item.price.id === priceId
+        );
+        
+        if (existingElliottItem) {
+          // Elliott already exists on Stripe subscription - just sync database
+          await pool.query(
+            `UPDATE crypto_subscriptions 
+             SET has_elliott_addon = true, elliott_stripe_item_id = $1, updated_at = NOW()
+             WHERE user_id = $2`,
+            [existingElliottItem.id, userId]
+          );
+          
+          return res.json({ url: successUrl, added: true, synced: true });
+        }
+        
+        // Elliott doesn't exist on subscription, add it
         const subscriptionItem = await stripe.subscriptionItems.create({
           subscription: existingSub.stripe_subscription_id,
           price: priceId,

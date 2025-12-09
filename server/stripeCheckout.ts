@@ -142,6 +142,21 @@ export async function createElliottAddonCheckoutSession(
     
     // If user has existing subscription, add Elliott as additional item
     if (subscription.stripeSubscriptionId) {
+      // First check if Elliott is already on the Stripe subscription
+      const stripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId, {
+        expand: ['items.data'],
+      });
+      
+      const existingElliottItem = stripeSub.items.data.find(
+        (item: any) => item.price.id === priceId
+      );
+      
+      if (existingElliottItem) {
+        // Elliott already exists on Stripe subscription - just sync database
+        await cryptoSubscriptionService.toggleElliottAddon(userId, true);
+        return { url: successUrl };
+      }
+      
       // Add Elliott addon to existing subscription
       await stripe.subscriptionItems.create({
         subscription: subscription.stripeSubscriptionId,
