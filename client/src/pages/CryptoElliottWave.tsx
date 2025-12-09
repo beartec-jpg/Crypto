@@ -349,6 +349,18 @@ export default function CryptoElliottWave() {
   const touchStartTimeRef = useRef<number>(0); // Track when touch/click started for long-press detection
   const timeframeRef = useRef<string>('1d'); // Track timeframe for click handler window sizing
   
+  // Correction context: stores parent impulse data when starting ABC from predicted W5
+  // Used to calculate Wave A retracement targets
+  const correctionContextRef = useRef<{
+    parentLabelId: string;
+    parentDegree: string;
+    parentPoints: WavePoint[];
+    wave5Price: number;
+    wave4Price: number;
+    wave0Price: number;
+    isUptrend: boolean;
+  } | null>(null);
+  
   // Dynamic click tolerances that scale with zoom level
   const dynamicTolerancesRef = useRef<{ barTolerance: number; priceTolerance: number }>({
     barTolerance: 3,      // Default: 3 candles
@@ -532,6 +544,7 @@ export default function CryptoElliottWave() {
       setCurrentPoints([]);
       setIsDrawing(false); // Turn off drawing after save
       trendDirectionRef.current = null; // Clear cached direction for next pattern
+      correctionContextRef.current = null; // Clear correction context (parent impulse data)
       
       // CRITICAL: Clear Fib projection data to prevent stale lines appearing on saved pattern
       fibProjectionPricesRef.current = [];
@@ -822,6 +835,13 @@ const aiAnalyze = useMutation({
     fibonacciModeRef.current = fibonacciMode;
     timeframeRef.current = timeframe;
   }, [isDrawing, selectedDegree, patternType, currentPoints, waveDegrees, candles, selectionMode, savedLabels, selectedLabelId, draggedPointIndex, isDragging, updateLabel, fibonacciMode, timeframe]);
+  
+  // Clear correction context when switching away from correction pattern type
+  useEffect(() => {
+    if (patternType !== 'correction' && patternType !== 'zigzag' && patternType !== 'flat') {
+      correctionContextRef.current = null;
+    }
+  }, [patternType]);
 
   // Auto-save when pattern is complete AND validation is available
   useEffect(() => {
@@ -1199,7 +1219,65 @@ const aiAnalyze = useMutation({
             
             if (priceDiff <= priceTolerance && timeDiff <= timeTolerance) {
               console.log('🔗 CHAIN PREDICTION: Clicked on predicted point:', predictedPoint.label, 
-                'Starting new pattern from this point');
+                'Looking for parent impulse pattern...');
+              
+              // FIND PARENT IMPULSE: Look for a complete 5-wave impulse of the same degree
+              // that has a W5 at or near the predicted point's price
+              const parentImpulse = savedLabelsRef.current.find(label => {
+                // Must be impulse or diagonal with 6 points (complete 5-wave: 0,1,2,3,4,5)
+                const isCompleteImpulse = (label.patternType === 'impulse' || label.patternType === 'diagonal') 
+                  && label.points.length >= 6;
+                if (!isCompleteImpulse) return false;
+                
+                // Must be same degree
+                if (label.degree !== selectedDegreeRef.current) return false;
+                
+                // W5 should be close to the predicted point's price (within 3%)
+                const w5 = label.points[5];
+                const w5PriceDiff = Math.abs(w5.price - predictedPoint.price) / predictedPoint.price;
+                return w5PriceDiff < 0.03;
+              });
+              
+              if (!parentImpulse) {
+                console.log('🚫 No complete 5-wave impulse of same degree found for chain prediction');
+                toast({
+                  title: 'No Parent Impulse Found',
+                  description: `Need a complete 5-wave impulse of ${selectedDegreeRef.current} degree to start correction.`,
+                  variant: 'destructive',
+                });
+                return;
+              }
+              
+              console.log('✅ Found parent impulse:', parentImpulse.id, parentImpulse.degree);
+              
+              // VALIDATE parent points have all required indices before reading
+              if (parentImpulse.points.length < 6) {
+                console.log('🚫 Parent impulse missing required points, expected 6 got', parentImpulse.points.length);
+                return;
+              }
+              
+              // Store correction context for Wave A projections
+              const w0 = parentImpulse.points[0];
+              const w4 = parentImpulse.points[4];
+              const w5 = parentImpulse.points[5];
+              
+              // Additional safety check for undefined points
+              if (!w0 || !w4 || !w5) {
+                console.log('🚫 Parent impulse has undefined points at required indices');
+                return;
+              }
+              
+              const isUptrend = w5.price > w0.price;
+              
+              correctionContextRef.current = {
+                parentLabelId: parentImpulse.id,
+                parentDegree: parentImpulse.degree,
+                parentPoints: parentImpulse.points,
+                wave5Price: w5.price,
+                wave4Price: w4.price,
+                wave0Price: w0.price,
+                isUptrend,
+              };
               
               // Start a new ABC correction pattern from this predicted point
               setPatternType('correction');
@@ -1220,9 +1298,13 @@ const aiAnalyze = useMutation({
               setCurrentPoints([newPoint]);
               currentPointsRef.current = [newPoint];
               
+              // Switch to projected mode to show Wave A targets
+              setFibonacciMode('projected');
+              fibonacciModeRef.current = 'projected';
+              
               toast({
-                title: 'Pattern Started from Prediction',
-                description: `Started ABC correction from predicted ${predictedPoint.label} at $${predictedPoint.price.toFixed(4)}`,
+                title: 'Correction Started',
+                description: `Started ABC from ${parentImpulse.degree} W5. Wave A targets shown.`,
               });
               
               return;
@@ -2569,24 +2651,103 @@ const aiAnalyze = useMutation({
       console.log('📊 Fib targets adjusted for drag - showing targets for point', draggedPointIndex, 'using', pointsToUse.length, 'points');
     }
     
-    // Need at least 2 points to project targets
-    if (pointsToUse.length < 2) {
-      return;
-    }
-
-    const newLines: any[] = [];
-    const newPrices: { price: number; label: string; color: string; correctionType?: 'flat' | 'zigzag'; diagonalType?: 'contracting' | 'expanding' }[] = [];
-    const p0 = pointsToUse[0];
-    const p1 = pointsToUse[1];
-    const wave1Range = Math.abs(p1.price - p0.price);
-    const isUptrend = p1.price > p0.price;
-    
     // Get current pattern type from the label or current selection
     const currentPattern = selectedLabelId 
       ? savedLabels.find(l => l.id === selectedLabelId)?.patternType 
       : patternType;
     const isCorrection = currentPattern === 'correction' || currentPattern === 'zigzag' || currentPattern === 'flat';
     const isDiagonal = currentPattern === 'diagonal';
+    
+    const newLines: any[] = [];
+    const newPrices: { price: number; label: string; color: string; correctionType?: 'flat' | 'zigzag'; diagonalType?: 'contracting' | 'expanding' }[] = [];
+    
+    // WAVE A PROJECTIONS: Show when we have 1 point (0) and correction context from parent impulse
+    if (isCorrection && pointsToUse.length === 1 && correctionContextRef.current) {
+      const ctx = correctionContextRef.current;
+      const p0 = pointsToUse[0];
+      
+      // Wave A retraces the prior impulse - show retracement levels of full impulse and Wave 5
+      // Direction is opposite to parent trend
+      const impulseRange = Math.abs(ctx.wave5Price - ctx.wave0Price);
+      const wave5Range = Math.abs(ctx.wave5Price - ctx.wave4Price);
+      
+      console.log('📊 Wave A projections: impulse range', impulseRange.toFixed(4), 'W5 range', wave5Range.toFixed(4), 'uptrend:', ctx.isUptrend);
+      
+      // Wave A targets based on full impulse retracement (38.2%, 50%, 61.8%)
+      const impulseRetraceLevels = [0.382, 0.5, 0.618];
+      impulseRetraceLevels.forEach(level => {
+        // Correction moves OPPOSITE to impulse direction
+        const fibPrice = ctx.isUptrend 
+          ? ctx.wave5Price - (impulseRange * level)
+          : ctx.wave5Price + (impulseRange * level);
+        
+        const label = `A ${(level * 100).toFixed(0)}% imp`;
+        const line = candleSeries.createPriceLine({
+          price: fibPrice,
+          color: '#FF6B6B', // Red/coral for impulse retracements
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: label,
+        });
+        if (line) {
+          newLines.push(line);
+          newPrices.push({ price: fibPrice, label, color: '#FF6B6B' });
+        }
+      });
+      
+      // Wave A targets based on Wave 5 retracement (100%, 127.2%, 161.8%)
+      const wave5RetraceLevels = [1.0, 1.272, 1.618];
+      wave5RetraceLevels.forEach(level => {
+        const fibPrice = ctx.isUptrend 
+          ? ctx.wave5Price - (wave5Range * level)
+          : ctx.wave5Price + (wave5Range * level);
+        
+        const label = `A ${(level * 100).toFixed(0)}% W5`;
+        const line = candleSeries.createPriceLine({
+          price: fibPrice,
+          color: '#9B59B6', // Purple for W5 extensions
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: label,
+        });
+        if (line) {
+          newLines.push(line);
+          newPrices.push({ price: fibPrice, label, color: '#9B59B6' });
+        }
+      });
+      
+      // Also add W4 price as key support/resistance level
+      const w4Label = `W4 level`;
+      const w4Line = candleSeries.createPriceLine({
+        price: ctx.wave4Price,
+        color: '#3498DB', // Blue for W4
+        lineWidth: 2,
+        lineStyle: 0, // Solid line
+        axisLabelVisible: true,
+        title: w4Label,
+      });
+      if (w4Line) {
+        newLines.push(w4Line);
+        newPrices.push({ price: ctx.wave4Price, label: w4Label, color: '#3498DB' });
+      }
+      
+      // Store and return
+      fibProjectionPricesRef.current = newPrices;
+      fibLinesRef.current = newLines;
+      return;
+    }
+    
+    // Need at least 2 points to project targets for non-Wave-A scenarios
+    if (pointsToUse.length < 2) {
+      return;
+    }
+
+    const p0 = pointsToUse[0];
+    const p1 = pointsToUse[1];
+    const wave1Range = Math.abs(p1.price - p0.price);
+    const isUptrend = p1.price > p0.price;
     
     // CORRECTION PATTERNS: Show both flat and zigzag targets for Wave B
     if (isCorrection) {
@@ -3221,6 +3382,7 @@ const aiAnalyze = useMutation({
     trendDirectionRef.current = null; // Clear cached direction for next pattern
     detectedCorrectionTypeRef.current = null; // Clear detected correction type
     detectedDiagonalTypeRef.current = null; // Clear detected diagonal type
+    correctionContextRef.current = null; // Clear correction context (parent impulse data)
     
     // Clear Fib projection data when clearing points
     fibProjectionPricesRef.current = [];

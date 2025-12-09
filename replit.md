@@ -108,6 +108,15 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
   - Diagonal-specific Fibonacci rules: wave2 50-88.6%, wave3 61.8-161.8%, wave4 50-78.6%, wave5 38.2-123.6% of W3
   - **Prediction Fibs**: Two sets of projections for waves 2-5 (contracting in yellow, expanding in cyan)
   - Future candle attachment: Click on projection lines to snap points to predicted levels beyond current candles
+- **Chain Prediction with Conditional Wave A Projections**:
+  - Click on predicted W5 point to start ABC correction when drawing mode OFF or with 0 points
+  - **Requires complete 5-wave impulse of same degree**: System finds parent impulse with 6 points matching selected degree
+  - `correctionContextRef` stores parent pattern data (labelId, degree, points, W0/W4/W5 prices, trend direction)
+  - **Wave A projections** only appear when correction context exists:
+    - Red/coral lines: 38.2%, 50%, 61.8% retracement of full impulse
+    - Purple lines: 100%, 127.2%, 161.8% extension of Wave 5
+    - Blue solid line: Wave 4 support/resistance level
+  - Context cleared on pattern save, clear points, or pattern type change
 
 # External Dependencies
 
