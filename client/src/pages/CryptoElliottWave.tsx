@@ -5124,7 +5124,8 @@ const aiAnalyze = useMutation({
                                   // Wave points for simulated pattern
                                   const wavePoints: { time: number; price: number; label: string }[] = [];
                                   const lastCandle = candles[candles.length - 1];
-                                  const tfMs = getTimeframeMs(timeframe);
+                                  // Convert timeframe to SECONDS (not ms) since candle.time is Unix seconds
+                                  const tfSec = getTimeframeMs(timeframe) / 1000;
                                   
                                   // Back-calculate wave structure from target using Elliott Wave Fib rules
                                   // For 5-wave impulse: W1 + W2 retrace + W3 (longest) + W4 retrace + W5 = total
@@ -5145,10 +5146,10 @@ const aiAnalyze = useMutation({
                                     const pB = pA + (isUp ? -bRetrace : bRetrace);
                                     const pC = targetPrice; // C hits our target exactly
                                     
-                                    wavePoints.push({ time: baseTime + tfMs, price: p0, label: '0' });
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.35), price: pA, label: 'A' });
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.55), price: pB, label: 'B' });
-                                    wavePoints.push({ time: baseTime + tfMs * candleCount, price: pC, label: 'C' });
+                                    wavePoints.push({ time: baseTime + tfSec, price: p0, label: '0' });
+                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.35), price: pA, label: 'A' });
+                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.55), price: pB, label: 'B' });
+                                    wavePoints.push({ time: baseTime + tfSec * candleCount, price: pC, label: 'C' });
                                   } else {
                                     // 5-wave impulse back-calculation using Fib rules:
                                     // W1 moves, W2 retraces 61.8%, W3 = 161.8% of W1, W4 retraces 38.2% of W3, W5 = 61.8% of W1
@@ -5170,12 +5171,12 @@ const aiAnalyze = useMutation({
                                     
                                     // Time distribution: W3 is often SHORTEST in time (explosive move)
                                     // W1=25%, W2=20%, W3=15% (fastest), W4=18%, W5=22%
-                                    wavePoints.push({ time: baseTime + tfMs, price: p0, label: '0' });
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.25), price: p1, label: '1' });
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.45), price: p2, label: '2' });
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.60), price: p3, label: '3' }); // W3 only 15% of time
-                                    wavePoints.push({ time: baseTime + tfMs * Math.floor(candleCount * 0.78), price: p4, label: '4' });
-                                    wavePoints.push({ time: baseTime + tfMs * candleCount, price: p5, label: '5' });
+                                    wavePoints.push({ time: baseTime + tfSec, price: p0, label: '0' });
+                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.25), price: p1, label: '1' });
+                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.45), price: p2, label: '2' });
+                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.60), price: p3, label: '3' }); // W3 only 15% of time
+                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.78), price: p4, label: '4' });
+                                    wavePoints.push({ time: baseTime + tfSec * candleCount, price: p5, label: '5' });
                                   }
                                   
                                   // Store as prediction points (using existing system)
@@ -5199,6 +5200,12 @@ const aiAnalyze = useMutation({
                                   });
                                   
                                   // Create a temporary pattern for visualization
+                                  console.log('🔮 Adding W3 projection points:', predictionPoints.map(p => ({
+                                    label: p.label,
+                                    time: new Date(p.time * 1000).toISOString(),
+                                    price: p.price.toFixed(4),
+                                    isFutureProjection: p.isFutureProjection
+                                  })));
                                   setCurrentPoints(predictionPoints);
                                   setPatternType(waveCount === 3 ? 'correction' : 'impulse');
                                   setIsDrawing(false); // Not actively drawing, just showing
