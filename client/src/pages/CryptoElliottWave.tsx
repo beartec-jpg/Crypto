@@ -4827,11 +4827,115 @@ const aiAnalyze = useMutation({
                   </div>
                 )}
 
-                {/* No issues message */}
+                {/* Show pattern-specific rules that passed */}
                 {validation.errors.length === 0 && validation.warnings.length === 0 && (
-                  <div className="text-sm text-gray-400 text-center py-4">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                    Pattern follows Elliott Wave rules correctly
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-emerald-400 mb-3">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="font-medium">All rules validated</span>
+                    </div>
+                    
+                    {/* Impulse rules */}
+                    {patternType === 'impulse' && (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave 2 does not retrace beyond start of Wave 1</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave 3 is not the shortest wave in price</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave 4 does not overlap Wave 1 price territory</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave 5 extends beyond Wave 3 endpoint</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Diagonal rules */}
+                    {patternType === 'diagonal' && (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave 2 retraces 50-88.6% of Wave 1</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave 3 retraces 61.8-161.8% of Wave 2</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave 4 retraces 50-78.6% of Wave 3</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Trendlines converge (contracting) or diverge (expanding)</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave 4 overlaps Wave 1 territory (diagonal rule)</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* ABC correction rules */}
+                    {(patternType === 'abc' || patternType === 'zigzag') && (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave A establishes correction direction</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave B retraces 38.2-78.6% of Wave A</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave C extends beyond Wave A endpoint</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Flat correction rules */}
+                    {patternType === 'flat' && (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave A is a 3-wave structure</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave B retraces 90-138% of Wave A</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Wave C is approximately equal to Wave A in length</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Triangle rules */}
+                    {patternType === 'triangle' && (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Five overlapping waves (A-B-C-D-E)</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Each wave is smaller than the previous</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Trendlines converge toward apex</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
