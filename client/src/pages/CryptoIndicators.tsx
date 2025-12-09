@@ -5477,7 +5477,21 @@ export default function CryptoIndicators() {
       showVWAPMonthly,
       showVWAPRolling,
       vwapRollingPeriod,
-      alertFilterMode
+      alertFilterMode,
+      showSupertrend,
+      supertrendPeriod,
+      supertrendMultiplier,
+      showParabolicSAR,
+      sarStep,
+      sarMax,
+      showSessionVWAP,
+      showOrderBlocks,
+      obSwingLength,
+      orderBlockLength,
+      showCCI,
+      cciPeriod,
+      showADX,
+      adxPeriod
     };
     
     localStorage.setItem('indicatorDefaults', JSON.stringify(indicatorDefaults));
@@ -5489,7 +5503,7 @@ export default function CryptoIndicators() {
     });
     
     console.log('💾 Saved indicator defaults:', indicatorDefaults);
-  }, [showEMA, emaFastPeriod, emaSlowPeriod, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showBB, bbPeriod, bbStdDev, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, alertFilterMode, toast]);
+  }, [showEMA, emaFastPeriod, emaSlowPeriod, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showBB, bbPeriod, bbStdDev, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, alertFilterMode, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showSessionVWAP, showOrderBlocks, obSwingLength, orderBlockLength, showCCI, cciPeriod, showADX, adxPeriod, toast]);
 
   // Load indicator defaults from localStorage
   const loadIndicatorDefaults = useCallback(() => {
@@ -5549,6 +5563,45 @@ export default function CryptoIndicators() {
           setVwapRollingPeriodInput(defaults.vwapRollingPeriod.toString());
         }
         if (defaults.alertFilterMode !== undefined) setAlertFilterMode(defaults.alertFilterMode);
+        
+        if (defaults.showSupertrend !== undefined) setShowSupertrend(defaults.showSupertrend);
+        if (defaults.supertrendPeriod !== undefined) {
+          setSupertrendPeriod(defaults.supertrendPeriod);
+          setSupertrendPeriodInput(defaults.supertrendPeriod.toString());
+        }
+        if (defaults.supertrendMultiplier !== undefined) {
+          setSupertrendMultiplier(defaults.supertrendMultiplier);
+          setSupertrendMultiplierInput(defaults.supertrendMultiplier.toString());
+        }
+        if (defaults.showParabolicSAR !== undefined) setShowParabolicSAR(defaults.showParabolicSAR);
+        if (defaults.sarStep !== undefined) {
+          setSarStep(defaults.sarStep);
+          setSarStepInput(defaults.sarStep.toString());
+        }
+        if (defaults.sarMax !== undefined) {
+          setSarMax(defaults.sarMax);
+          setSarMaxInput(defaults.sarMax.toString());
+        }
+        if (defaults.showSessionVWAP !== undefined) setShowSessionVWAP(defaults.showSessionVWAP);
+        if (defaults.showOrderBlocks !== undefined) setShowOrderBlocks(defaults.showOrderBlocks);
+        if (defaults.obSwingLength !== undefined) {
+          setObSwingLength(defaults.obSwingLength);
+          setObSwingLengthInput(defaults.obSwingLength.toString());
+        }
+        if (defaults.orderBlockLength !== undefined) {
+          setOrderBlockLength(defaults.orderBlockLength);
+          setOrderBlockLengthInput(defaults.orderBlockLength.toString());
+        }
+        if (defaults.showCCI !== undefined) setShowCCI(defaults.showCCI);
+        if (defaults.cciPeriod !== undefined) {
+          setCciPeriod(defaults.cciPeriod);
+          setCciPeriodInput(defaults.cciPeriod.toString());
+        }
+        if (defaults.showADX !== undefined) setShowADX(defaults.showADX);
+        if (defaults.adxPeriod !== undefined) {
+          setAdxPeriod(defaults.adxPeriod);
+          setAdxPeriodInput(defaults.adxPeriod.toString());
+        }
         
         toast({
           title: "📂 Indicator Defaults Loaded",
