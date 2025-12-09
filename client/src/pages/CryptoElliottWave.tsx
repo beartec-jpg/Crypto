@@ -3,12 +3,10 @@ import { Helmet } from 'react-helmet-async';
 import { createChart, IChartApi, ISeriesApi, ColorType, CrosshairMode, CandlestickSeries, LineSeries, createSeriesMarkers } from 'lightweight-charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, Plus } from 'lucide-react';
+import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
@@ -193,21 +191,6 @@ function getPatternDirection(points: WavePoint[]): 'up' | 'down' {
   return last.price > first.price ? 'up' : 'down';
 }
 
-// Get timeframe duration in milliseconds
-function getTimeframeMs(tf: string): number {
-  const tfMap: Record<string, number> = {
-    '1m': 60 * 1000,
-    '5m': 5 * 60 * 1000,
-    '15m': 15 * 60 * 1000,
-    '30m': 30 * 60 * 1000,
-    '1h': 60 * 60 * 1000,
-    '4h': 4 * 60 * 60 * 1000,
-    '1d': 24 * 60 * 60 * 1000,
-    '1w': 7 * 24 * 60 * 60 * 1000,
-    '1M': 30 * 24 * 60 * 60 * 1000,
-  };
-  return tfMap[tf] || 24 * 60 * 60 * 1000; // Default to 1d
-}
 
 // Analyze wave sequence and suggest higher degree patterns
 // Supports cross-degree analysis for nested corrections
@@ -914,7 +897,6 @@ export default function CryptoElliottWave() {
   const detectedCorrectionTypeRef = useRef<'flat' | 'zigzag' | null>(null); // Track if user clicked flat or zigzag B target
   const detectedDiagonalTypeRef = useRef<'contracting' | 'expanding' | null>(null); // Track if user clicked contracting or expanding diagonal target
   const diagonalTrendlinesRef = useRef<any[]>([]); // Store diagonal trendline series for cleanup
-  const futurePointsSeriesRef = useRef<any>(null); // LineSeries for rendering future projection points
   const futurePointsDataRef = useRef<WavePoint[]>([]); // Store future projection points for virtual candle updates
   const blueCandelSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null); // Blue simulation candles for future projections
   const blueCandleMarkersRef = useRef<any>(null); // Markers on blue candle series
@@ -970,11 +952,9 @@ export default function CryptoElliottWave() {
   const [draggedPointIndex, setDraggedPointIndex] = useState<number | null>(null); // Index of point being dragged
   const [isDragging, setIsDragging] = useState(false);
   const [markersVersion, setMarkersVersion] = useState(0); // Force marker refresh
-  const [futurePointOverlays, setFuturePointOverlays] = useState<{ x: number; y: number; label: string; color: string }[]>([]); // HTML overlays for future points
   const [visibleCandleCount, setVisibleCandleCount] = useState(0); // Track visible candles for counter display
   const [stackProjectionLines, setStackProjectionLines] = useState<{ price: number; color: string; lineWidth: number; lineStyle: number; axisLabelVisible: boolean; title: string }[]>([]); // Wave Stack projection lines
   const [waveProjectionMode, setWaveProjectionMode] = useState<'abc' | 'impulse'>('abc'); // ABC (WXY) vs 12345 (impulse) mode
-  const [selectedFibLevel, setSelectedFibLevel] = useState<{ ratio: number; price: number; label: string; waveRole: string } | null>(null); // Selected Fib level for "Add to Chart"
 
   // Check subscription tier and Elliott Wave access
   const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; canUseElliott?: boolean; hasElliottAddon?: boolean }>({
@@ -4894,29 +4874,6 @@ const aiAnalyze = useMutation({
           <TabsContent value="stack" className="mt-4">
             {waveStackEntries.length > 0 ? (
               <div className="space-y-4">
-                {/* Clear Simulation Button - ALWAYS visible when there are future points */}
-                {currentPoints.some(p => p.isFuture) && (
-                  <div className="flex items-center justify-between p-3 bg-red-900/30 border border-red-600/50 rounded-lg">
-                    <span className="text-sm text-red-300">
-                      Simulated wave active on chart
-                    </span>
-                    <button
-                      onClick={() => {
-                        setCurrentPoints([]);
-                        setSelectedFibLevel(null);
-                        toast({
-                          title: 'Simulation Cleared',
-                          description: 'Wave projection removed from chart',
-                        });
-                      }}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-500 transition-all flex items-center gap-2"
-                      data-testid="clear-simulation-btn"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Clear Simulation
-                    </button>
-                  </div>
-                )}
                 
                 {/* Pattern Suggestion Banner */}
                 {waveStackSuggestion && (
@@ -4990,13 +4947,10 @@ const aiAnalyze = useMutation({
                         
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xs text-gray-400 font-semibold">📊 Projection Targets</span>
-                          <span className="text-xs text-gray-500">(Click to select, then Add to Chart)</span>
+                          <span className="text-xs text-gray-500">(Click to add price line)</span>
                           {stackProjectionLines.length > 0 && (
                             <button
-                              onClick={() => {
-                                setStackProjectionLines([]);
-                                setSelectedFibLevel(null);
-                              }}
+                              onClick={() => setStackProjectionLines([])}
                               className="ml-auto px-2 py-0.5 text-xs bg-red-900/40 text-red-400 rounded hover:bg-red-800/60 border border-red-600/30"
                               data-testid="clear-projections"
                             >
@@ -5058,195 +5012,35 @@ const aiAnalyze = useMutation({
                                   </button>
                                 </div>
                                 <div className="flex flex-wrap gap-1">
-                                  {adjustedLevels.map((level, levelIdx) => {
-                                    const isSelected = selectedFibLevel?.price === level.price && selectedFibLevel?.waveRole === proj.waveRole;
-                                    return (
-                                      <button
-                                        key={levelIdx}
-                                        onClick={() => {
-                                          // Select this level for "Add to Chart"
-                                          setSelectedFibLevel({
-                                            ratio: level.ratio,
-                                            price: level.price,
-                                            label: level.label,
-                                            waveRole: proj.waveRole
-                                          });
-                                          // Also add price line to chart
-                                          if (chartRef.current) {
-                                            const priceLine = {
-                                              price: level.price,
-                                              color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
-                                              lineWidth: 1,
-                                              lineStyle: 2,
-                                              axisLabelVisible: true,
-                                              title: `${proj.waveRole} ${level.label}`,
-                                            };
-                                            setStackProjectionLines(prev => [...prev, priceLine]);
-                                          }
-                                        }}
-                                        className={`px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105 ${
-                                          isSelected
-                                            ? 'bg-emerald-600 text-white border-2 border-emerald-400 ring-2 ring-emerald-400/30'
-                                            : proj.fibMode === 'retracement' 
-                                              ? 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60 border border-amber-600/30'
-                                              : 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-800/60 border border-cyan-600/30'
-                                        }`}
-                                        data-testid={`projection-${proj.waveRole}-${level.label}`}
-                                      >
-                                        {level.label}: ${level.price.toFixed(4)}
-                                      </button>
-                                    );
-                                  })}
+                                  {adjustedLevels.map((level, levelIdx) => (
+                                    <button
+                                      key={levelIdx}
+                                      onClick={() => {
+                                        const priceLine = {
+                                          price: level.price,
+                                          color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
+                                          lineWidth: 1,
+                                          lineStyle: 2,
+                                          axisLabelVisible: true,
+                                          title: `${proj.waveRole} ${level.label}`,
+                                        };
+                                        setStackProjectionLines(prev => [...prev, priceLine]);
+                                      }}
+                                      className={`px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105 ${
+                                        proj.fibMode === 'retracement' 
+                                          ? 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60 border border-amber-600/30'
+                                          : 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-800/60 border border-cyan-600/30'
+                                      }`}
+                                      data-testid={`projection-${proj.waveRole}-${level.label}`}
+                                    >
+                                      {level.label}: ${level.price.toFixed(4)}
+                                    </button>
+                                  ))}
                                 </div>
                               </div>
                             );
                           })}
                         </div>
-                        
-                        {/* Add to Chart Button - appears when a Fib level is selected */}
-                        {selectedFibLevel && waveStackSuggestion.projections[0] && (
-                          <div className="mt-3 pt-3 border-t border-slate-700">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs text-gray-400">
-                                Selected: <span className="text-emerald-400 font-medium">{selectedFibLevel.waveRole} {selectedFibLevel.label}</span> 
-                                @ ${selectedFibLevel.price.toFixed(4)}
-                              </span>
-                              <button
-                                onClick={() => {
-                                  // Get first pattern to determine candle count
-                                  const firstEntry = waveStackEntries[0];
-                                  if (!firstEntry || !waveStackSuggestion.projections?.[0]) return;
-                                  
-                                  const proj = waveStackSuggestion.projections[0];
-                                  const launchPrice = proj.launchPrice;
-                                  const targetPrice = selectedFibLevel.price;
-                                  // W3 and W5 are always 5-wave impulses, C and Y can be 3 or 5
-                                  const isProjectingImpulse = proj.waveRole === 'W3' || proj.waveRole === 'W5';
-                                  const waveCount = isProjectingImpulse ? 5 : (waveProjectionMode === 'abc' ? 3 : 5);
-                                  
-                                  // Use 30 candles for the projection pattern (as specified)
-                                  const candleCount = 30;
-                                  
-                                  // Generate simulated wave path
-                                  const priceRange = targetPrice - launchPrice;
-                                  const isUp = priceRange > 0;
-                                  
-                                  // Wave points for simulated pattern
-                                  const wavePoints: { time: number; price: number; label: string }[] = [];
-                                  const lastCandle = candles[candles.length - 1];
-                                  // Convert timeframe to SECONDS (not ms) since candle.time is Unix seconds
-                                  const tfSec = getTimeframeMs(timeframe) / 1000;
-                                  
-                                  // Back-calculate wave structure from target using Elliott Wave Fib rules
-                                  // For 5-wave impulse: W1 + W2 retrace + W3 (longest) + W4 retrace + W5 = total
-                                  // Typical ratios: W2 = 61.8% of W1, W3 = 161.8% of W1, W4 = 38.2% of W3, W5 = 100% of W1
-                                  
-                                  const totalMove = Math.abs(priceRange);
-                                  const baseTime = (lastCandle?.time as number || 0);
-                                  
-                                  if (waveCount === 3) {
-                                    // ABC correction: C = 100% of A (zigzag) or 61.8% of A (flat)
-                                    // Back-calculate: A + B retrace + C = total, where C = target
-                                    // If C = 100% of A and B = 50% of A: A + (-0.5A) + A = total => 1.5A = total => A = total/1.5
-                                    const aLen = totalMove / 1.5;
-                                    const bRetrace = aLen * 0.5;
-                                    
-                                    const p0 = launchPrice;
-                                    const pA = p0 + (isUp ? aLen : -aLen);
-                                    const pB = pA + (isUp ? -bRetrace : bRetrace);
-                                    const pC = targetPrice; // C hits our target exactly
-                                    
-                                    wavePoints.push({ time: baseTime + tfSec, price: p0, label: '0' });
-                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.35), price: pA, label: 'A' });
-                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.55), price: pB, label: 'B' });
-                                    wavePoints.push({ time: baseTime + tfSec * candleCount, price: pC, label: 'C' });
-                                  } else {
-                                    // 5-wave impulse back-calculation using Fib rules:
-                                    // W1 moves, W2 retraces 61.8%, W3 = 161.8% of W1, W4 retraces 38.2% of W3, W5 = 61.8% of W1
-                                    // Net move = W1 - 0.618*W1 + 1.618*W1 - 0.382*1.618*W1 + 0.618*W1
-                                    // Net = W1 * (1 - 0.618 + 1.618 - 0.618 + 0.618) = W1 * 2.0
-                                    // So W1 = totalMove / 2.0
-                                    const w1 = totalMove / 2.0;
-                                    const w2Retrace = w1 * 0.618;        // 61.8% retracement of W1
-                                    const w3 = w1 * 1.618;               // 161.8% extension of W1
-                                    const w4Retrace = w3 * 0.382;        // 38.2% retracement of W3
-                                    // W5 is what's left to hit target
-                                    
-                                    const p0 = launchPrice;
-                                    const p1 = p0 + (isUp ? w1 : -w1);
-                                    const p2 = p1 + (isUp ? -w2Retrace : w2Retrace);
-                                    const p3 = p2 + (isUp ? w3 : -w3);
-                                    const p4 = p3 + (isUp ? -w4Retrace : w4Retrace);
-                                    const p5 = targetPrice; // W5 hits our target exactly
-                                    
-                                    // Time distribution: W3 is often SHORTEST in time (explosive move)
-                                    // W1=25%, W2=20%, W3=15% (fastest), W4=18%, W5=22%
-                                    wavePoints.push({ time: baseTime + tfSec, price: p0, label: '0' });
-                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.25), price: p1, label: '1' });
-                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.45), price: p2, label: '2' });
-                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.60), price: p3, label: '3' }); // W3 only 15% of time
-                                    wavePoints.push({ time: baseTime + tfSec * Math.floor(candleCount * 0.78), price: p4, label: '4' });
-                                    wavePoints.push({ time: baseTime + tfSec * candleCount, price: p5, label: '5' });
-                                  }
-                                  
-                                  // Store as prediction points (using existing system)
-                                  // Determine snappedToHigh for each point based on wave structure
-                                  // In uptrend: highs are 1,3,5,A,C and lows are 0,2,4,B
-                                  // In downtrend: lows are 1,3,5,A,C and highs are 0,2,4,B
-                                  const predictionPoints: WavePoint[] = wavePoints.map((wp, idx) => {
-                                    const isImpulseHigh = ['1', '3', '5'].includes(wp.label);
-                                    const isCorrectionHigh = ['A', 'C'].includes(wp.label);
-                                    const isHighPoint = isUp ? (isImpulseHigh || isCorrectionHigh) : !isImpulseHigh && !isCorrectionHigh;
-                                    
-                                    return {
-                                      time: wp.time,
-                                      price: wp.price,
-                                      label: wp.label,
-                                      index: candles.length + idx, // Future candle index
-                                      isCorrection: waveCount === 3, // 3-wave = correction, 5-wave = impulse
-                                      isFutureProjection: true, // Marks as future projection for blue candle rendering
-                                      snappedToHigh: isHighPoint, // Position marker above (high) or below (low) bar
-                                    };
-                                  });
-                                  
-                                  // Create a temporary pattern for visualization
-                                  console.log('🔮 Adding W3 projection points:', predictionPoints.map(p => ({
-                                    label: p.label,
-                                    time: new Date(p.time * 1000).toISOString(),
-                                    price: p.price.toFixed(4),
-                                    isFutureProjection: p.isFutureProjection
-                                  })));
-                                  setCurrentPoints(predictionPoints);
-                                  setPatternType(waveCount === 3 ? 'correction' : 'impulse');
-                                  setIsDrawing(false); // Not actively drawing, just showing
-                                  
-                                  // Label based on wave role and count
-                                  const patternLabel = isProjectingImpulse ? `${proj.waveRole} (12345)` : (waveCount === 3 ? 'ABC' : '12345');
-                                  toast({
-                                    title: `${patternLabel} Wave Added`,
-                                    description: `Projected ${waveCount}-wave ${isProjectingImpulse ? 'impulse' : 'pattern'} to ${selectedFibLevel.label} target ($${selectedFibLevel.price.toFixed(4)})`,
-                                  });
-                                }}
-                                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-500 transition-all flex items-center gap-2"
-                                data-testid="add-to-chart-btn"
-                              >
-                                <Plus className="w-4 h-4" />
-                                Add {(() => {
-                                  const proj = waveStackSuggestion.projections?.[0];
-                                  const isImpulse = proj?.waveRole === 'W3' || proj?.waveRole === 'W5';
-                                  return isImpulse ? `${proj?.waveRole} impulse` : (waveProjectionMode === 'abc' ? 'ABC' : '12345');
-                                })()} to Chart
-                              </button>
-                              <button
-                                onClick={() => setSelectedFibLevel(null)}
-                                className="px-2 py-1 text-xs text-gray-400 hover:text-gray-200"
-                                data-testid="deselect-level"
-                              >
-                                Deselect
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
