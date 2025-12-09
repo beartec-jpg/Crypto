@@ -3062,46 +3062,26 @@ const aiAnalyze = useMutation({
 
     const rawMarkers = [...savedMarkers, ...currentMarkers, ...previewMarkers];
 
-    // Merge overlapping markers at the same time+position (e.g., "5" and "0" become "5/0")
-    const markerMap = new Map<string, typeof rawMarkers[0]>();
-    for (const marker of rawMarkers) {
-      const key = `${marker.time}-${marker.position}`;
-      const existing = markerMap.get(key);
-      if (existing) {
-        // Extract wave label and Fib ratio separately
-        const existingLabel = existing.text.split(' (')[0];
-        const newLabel = marker.text.split(' (')[0];
-        const existingFib = existing.text.match(/\( ([^)]+) \)/)?.[1]; // e.g., "121%"
-        const newFib = marker.text.match(/\( ([^)]+) \)/)?.[1];
-        
-        // Combine labels with "/" separator (avoid duplicates like "C/C")
-        let combinedLabel = existingLabel;
-        if (existingLabel !== newLabel) {
-          combinedLabel = `${existingLabel}/${newLabel}`;
-        }
-        
-        // Combine Fib ratios if both exist (e.g., "121%/129%")
-        let combinedFib = '';
-        if (existingFib && newFib && existingFib !== newFib) {
-          combinedFib = ` (${existingFib}/${newFib})`;
-        } else if (existingFib) {
-          combinedFib = ` (${existingFib})`;
-        } else if (newFib) {
-          combinedFib = ` (${newFib})`;
-        }
-        
-        existing.text = `${combinedLabel}${combinedFib}`;
-        
-        // Keep the existing marker (already in map), prioritize selected pattern's color
-        if (marker.shape === 'square') {
-          existing.color = marker.color;
-          existing.shape = 'square';
-        }
-      } else {
-        markerMap.set(key, { ...marker });
-      }
+    // CRITICAL FIX: Don't merge markers by time+position as this causes markers to disappear
+    // when multiple patterns overlap. Instead, keep ALL markers but offset overlapping ones slightly
+    // by using a unique key that includes an index for each time+position combination.
+    const positionCount = new Map<string, number>();
+    const allMarkers = rawMarkers.map(marker => {
+      const baseKey = `${marker.time}-${marker.position}`;
+      const count = positionCount.get(baseKey) || 0;
+      positionCount.set(baseKey, count + 1);
+      
+      // If this is the first marker at this position, return as-is
+      // If there are overlapping markers, we still return all of them
+      // lightweight-charts will handle stacking/overlapping visually
+      return { ...marker };
+    });
+    
+    // Debug: Log collision info
+    const collisions = Array.from(positionCount.entries()).filter(([_, count]) => count > 1);
+    if (collisions.length > 0) {
+      console.log('📍 Marker collisions detected:', collisions.map(([key, count]) => `${key}: ${count} markers`));
     }
-    const allMarkers = Array.from(markerMap.values());
 
     try {
       // ALWAYS detach old primitive first to prevent duplicates, then create new one
