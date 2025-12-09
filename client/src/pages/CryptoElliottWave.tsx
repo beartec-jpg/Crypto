@@ -5001,16 +5001,21 @@ const aiAnalyze = useMutation({
                                   </span>
                                   <button
                                     onClick={() => {
-                                      // Add all levels for this projection
-                                      const newLines = adjustedLevels.map(level => ({
-                                        price: level.price,
-                                        color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
-                                        lineWidth: 1,
-                                        lineStyle: 2,
-                                        axisLabelVisible: true,
-                                        title: `${proj.waveRole} ${level.label}`,
-                                      }));
-                                      setStackProjectionLines(prev => [...prev, ...newLines]);
+                                      // Add all levels for this projection (skip duplicates)
+                                      setStackProjectionLines(prev => {
+                                        const existingTitles = new Set(prev.map(l => l.title));
+                                        const newLines = adjustedLevels
+                                          .map(level => ({
+                                            price: level.price,
+                                            color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
+                                            lineWidth: 1,
+                                            lineStyle: 2,
+                                            axisLabelVisible: true,
+                                            title: `${proj.waveRole} ${level.label}`,
+                                          }))
+                                          .filter(line => !existingTitles.has(line.title));
+                                        return [...prev, ...newLines];
+                                      });
                                     }}
                                     className="px-1.5 py-0.5 text-xs bg-slate-700 text-gray-300 rounded hover:bg-slate-600"
                                     data-testid={`show-all-${proj.waveRole}`}
@@ -5023,15 +5028,21 @@ const aiAnalyze = useMutation({
                                     <button
                                       key={levelIdx}
                                       onClick={() => {
-                                        const priceLine = {
-                                          price: level.price,
-                                          color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
-                                          lineWidth: 1,
-                                          lineStyle: 2,
-                                          axisLabelVisible: true,
-                                          title: `${proj.waveRole} ${level.label}`,
-                                        };
-                                        setStackProjectionLines(prev => [...prev, priceLine]);
+                                        const lineTitle = `${proj.waveRole} ${level.label}`;
+                                        // Only add if this line doesn't already exist
+                                        setStackProjectionLines(prev => {
+                                          if (prev.some(l => l.title === lineTitle)) {
+                                            return prev; // Already exists, don't add duplicate
+                                          }
+                                          return [...prev, {
+                                            price: level.price,
+                                            color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
+                                            lineWidth: 1,
+                                            lineStyle: 2,
+                                            axisLabelVisible: true,
+                                            title: lineTitle,
+                                          }];
+                                        });
                                       }}
                                       className={`px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105 ${
                                         proj.fibMode === 'retracement' 
