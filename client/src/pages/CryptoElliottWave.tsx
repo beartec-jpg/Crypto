@@ -3640,9 +3640,9 @@ const aiAnalyze = useMutation({
       
       // Wave 2 targets after Wave 1 is placed (2 points: 0, 1)
       if (pointsToUse.length === 2) {
-        // Diagonal Wave 2: 50% - 88.6% retracement (deeper than impulse)
+        // Diagonal Wave 2: 66% - 81% retracement (Frost/Prechter guideline)
         // CONTRACTING (shorter waves) - YELLOW
-        const contractingW2Levels = [0.50, 0.618, 0.707];
+        const contractingW2Levels = [0.66, 0.707, 0.786];
         contractingW2Levels.forEach(level => {
           const fibPrice = isUptrend 
             ? p1.price - (wave1Range * level)
@@ -3754,8 +3754,8 @@ const aiAnalyze = useMutation({
         const detectedType = detectedDiagonalTypeRef.current || (wave2Ratio >= 0.75 ? 'expanding' : 'contracting');
         
         if (detectedType === 'contracting') {
-          // Contracting W4: 50% - 78.6% retracement of W3
-          const contractingW4Levels = [0.50, 0.618, 0.786];
+          // Contracting W4: 66% - 81% retracement of W3 (Frost/Prechter guideline)
+          const contractingW4Levels = [0.66, 0.707, 0.786];
           contractingW4Levels.forEach(level => {
             const fibPrice = isUptrend 
               ? p3.price - (wave3Range * level)
@@ -3886,9 +3886,10 @@ const aiAnalyze = useMutation({
       }
 
       // Project Wave 3 targets (extension of Wave 1 from Wave 2)
+      // Frost/Prechter: W3 is typically 161.8% or 261.8% of W1, minimum 138.2%
       if (pointsToUse.length >= 3) {
         const p2 = pointsToUse[2];
-        const w3Extensions = [1.618, 2.0, 2.618];
+        const w3Extensions = [1.382, 1.618, 2.0, 2.618];
         w3Extensions.forEach(ext => {
           const fibPrice = isUptrend 
             ? p2.price + (wave1Range * ext)
