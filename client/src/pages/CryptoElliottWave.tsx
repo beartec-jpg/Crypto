@@ -843,7 +843,7 @@ export default function CryptoElliottWave() {
   const timeframeRef = useRef<string>('1d'); // Track timeframe for click handler window sizing
   
   // Correction context: stores parent impulse data when starting ABC from predicted W5
-  // Used to calculate Wave A retracement targets
+  // Used to calculate Wave A retracement targets or C wave extension targets
   const correctionContextRef = useRef<{
     parentLabelId: string;
     parentDegree: string;
@@ -852,6 +852,9 @@ export default function CryptoElliottWave() {
     wave4Price: number;
     wave0Price: number;
     isUptrend: boolean;
+    isCrossDegreeCWave?: boolean;  // True if drawing C wave from lower-degree B triangle
+    aWaveStart?: number;           // A wave start price (for C wave extensions)
+    aWaveEnd?: number;             // A wave end price (for C wave extensions)
   } | null>(null);
   
   // Dynamic click tolerances that scale with zoom level
@@ -1715,9 +1718,9 @@ const aiAnalyze = useMutation({
               console.log('🔗 CHAIN PREDICTION: Clicked on predicted point:', predictedPoint.label, 
                 'Looking for parent impulse pattern...');
               
-              // FIND PARENT IMPULSE: Look for a complete 5-wave impulse of the same degree
-              // that has a W5 at or near the predicted point's price
-              const parentImpulse = savedLabelsRef.current.find(label => {
+              // FIND PARENT IMPULSE: First try same degree, then check for higher degree with lower corrective patterns
+              // Scenario 1: Same degree impulse (e.g., Minor impulse → Minor correction)
+              let parentImpulse = savedLabelsRef.current.find(label => {
                 // Must be impulse or diagonal with 6 points (complete 5-wave: 0,1,2,3,4,5)
                 const isCompleteImpulse = (label.patternType === 'impulse' || label.patternType === 'diagonal') 
                   && label.points.length >= 6;
@@ -1732,11 +1735,57 @@ const aiAnalyze = useMutation({
                 return w5PriceDiff < 0.03;
               });
               
+              // Scenario 2: Cross-degree - Higher degree impulse with lower degree corrective patterns
+              // Rule: Higher degree impulse present + 2 corrective moves in lower degree = C/Y wave can be drawn
+              let isCrossDegreeCWave = false;
               if (!parentImpulse) {
-                console.log('🚫 No complete 5-wave impulse of same degree found for chain prediction');
+                const selectedDegree = selectedDegreeRef.current;
+                const degreeHierarchy = ['Primary', 'Intermediate', 'Minor', 'Minute', 'Minuette'];
+                const currentDegreeIndex = degreeHierarchy.indexOf(selectedDegree);
+                
+                // Look for higher degree impulse (one step higher)
+                if (currentDegreeIndex > 0) {
+                  const higherDegree = degreeHierarchy[currentDegreeIndex - 1];
+                  
+                  // Find higher degree impulse
+                  const higherImpulse = savedLabelsRef.current.find(label => {
+                    const isCompleteImpulse = (label.patternType === 'impulse' || label.patternType === 'diagonal') 
+                      && label.points.length >= 6;
+                    return isCompleteImpulse && label.degree === higherDegree;
+                  });
+                  
+                  if (higherImpulse) {
+                    // Find lower degree corrective patterns after the higher impulse
+                    const higherW5Time = higherImpulse.points[5]?.time || 0;
+                    const lowerCorrections = savedLabelsRef.current.filter(label => {
+                      if (label.degree !== selectedDegree) return false;
+                      // Must be correction or triangle
+                      if (label.patternType !== 'correction' && label.patternType !== 'triangle') return false;
+                      // Must be after higher impulse W5
+                      const labelStartTime = label.points[0]?.time || 0;
+                      return labelStartTime >= higherW5Time;
+                    });
+                    
+                    // Need A-B pattern (2 corrective moves) or just a triangle (which is wave B)
+                    // If we have a triangle, that's the B wave - we need C wave
+                    const hasTriangle = lowerCorrections.some(l => l.patternType === 'triangle');
+                    const hasTwoCorrections = lowerCorrections.length >= 2;
+                    
+                    if (hasTriangle || hasTwoCorrections) {
+                      console.log('✅ Cross-degree chain: Found', higherDegree, 'impulse + ', 
+                        lowerCorrections.length, 'lower corrections');
+                      parentImpulse = higherImpulse;
+                      isCrossDegreeCWave = true;
+                    }
+                  }
+                }
+              }
+              
+              if (!parentImpulse) {
+                console.log('🚫 No parent impulse found for chain prediction');
                 toast({
                   title: 'No Parent Impulse Found',
-                  description: `Need a complete 5-wave impulse of ${selectedDegreeRef.current} degree to start correction.`,
+                  description: `Need a complete impulse of ${selectedDegreeRef.current} or higher degree with corrective structure.`,
                   variant: 'destructive',
                 });
                 return;
@@ -1763,6 +1812,30 @@ const aiAnalyze = useMutation({
               
               const isUptrend = w5.price > w0.price;
               
+              // For cross-degree C wave, find the A wave to use for extension calculations
+              let aWaveStart: number | undefined;
+              let aWaveEnd: number | undefined;
+              
+              if (isCrossDegreeCWave) {
+                const selectedDegree = selectedDegreeRef.current;
+                const higherW5Time = parentImpulse.points[5]?.time || 0;
+                
+                // Find the first correction (A wave) after the higher impulse
+                const aWavePattern = savedLabelsRef.current.find(label => {
+                  if (label.degree !== selectedDegree) return false;
+                  if (label.patternType !== 'correction' && label.patternType !== 'impulse') return false;
+                  if (label.patternType === 'triangle') return false; // Skip triangles, they're B wave
+                  const labelStartTime = label.points[0]?.time || 0;
+                  return labelStartTime >= higherW5Time;
+                });
+                
+                if (aWavePattern && aWavePattern.points.length >= 2) {
+                  aWaveStart = aWavePattern.points[0].price;
+                  aWaveEnd = aWavePattern.points[aWavePattern.points.length - 1].price;
+                  console.log('📊 Found A wave for C projection:', aWaveStart, '→', aWaveEnd);
+                }
+              }
+              
               correctionContextRef.current = {
                 parentLabelId: parentImpulse.id,
                 parentDegree: parentImpulse.degree,
@@ -1771,20 +1844,27 @@ const aiAnalyze = useMutation({
                 wave4Price: w4.price,
                 wave0Price: w0.price,
                 isUptrend,
+                isCrossDegreeCWave,
+                aWaveStart,
+                aWaveEnd,
               };
               
-              // Start a new ABC correction pattern from this predicted point
+              // Start a new pattern from this predicted point
               setPatternType('correction');
               setIsDrawing(true);
               isDrawingRef.current = true;
               
-              // Use the predicted point's time and price as point 0 of the new pattern
+              // For cross-degree C wave, we're starting C wave (not ABC)
+              // The label should be 'B' since C comes after B in ABC pattern
+              const startLabel = isCrossDegreeCWave ? 'B' : '0';
+              
+              // Use the predicted point's time and price as the starting point
               const newPoint: WavePoint = {
                 index: predictedPoint.index,
                 time: predictedPoint.time,
                 price: predictedPoint.price,
-                label: '0',
-                isCorrection: false,
+                label: startLabel,
+                isCorrection: isCrossDegreeCWave, // C wave is corrective
                 snappedToHigh: predictedPoint.snappedToHigh,
                 isFutureProjection: true,
               };
@@ -1792,14 +1872,21 @@ const aiAnalyze = useMutation({
               setCurrentPoints([newPoint]);
               currentPointsRef.current = [newPoint];
               
-              // Switch to projected mode to show Wave A targets
+              // Switch to projected mode to show targets
               setFibonacciMode('projected');
               fibonacciModeRef.current = 'projected';
               
-              toast({
-                title: 'Correction Started',
-                description: `Started ABC from ${parentImpulse.degree} W5. Wave A targets shown.`,
-              });
+              if (isCrossDegreeCWave) {
+                toast({
+                  title: 'C Wave Started',
+                  description: `Drawing C wave from ${selectedDegreeRef.current} B triangle. C targets shown.`,
+                });
+              } else {
+                toast({
+                  title: 'Correction Started',
+                  description: `Started ABC from ${parentImpulse.degree} W5. Wave A targets shown.`,
+                });
+              }
               
               return;
             }
@@ -3156,11 +3243,72 @@ const aiAnalyze = useMutation({
     const newLines: any[] = [];
     const newPrices: { price: number; label: string; color: string; correctionType?: 'flat' | 'zigzag'; diagonalType?: 'contracting' | 'expanding' }[] = [];
     
-    // WAVE A PROJECTIONS: Show when we have 1 point (0) and correction context from parent impulse
+    // WAVE A or C PROJECTIONS: Show when we have 1 point and correction context from parent impulse
     if (isCorrection && pointsToUse.length === 1 && correctionContextRef.current) {
       const ctx = correctionContextRef.current;
       const p0 = pointsToUse[0];
       
+      // CHECK: Is this a cross-degree C wave scenario?
+      if (ctx.isCrossDegreeCWave && ctx.aWaveStart !== undefined && ctx.aWaveEnd !== undefined) {
+        // C WAVE PROJECTIONS: Extensions of Wave A
+        const aWaveRange = Math.abs(ctx.aWaveEnd - ctx.aWaveStart);
+        const aWaveDirection = ctx.aWaveEnd < ctx.aWaveStart ? 'down' : 'up';
+        
+        console.log('📊 C Wave projections: A range', aWaveRange.toFixed(4), 'A direction:', aWaveDirection, 'from B at', p0.price);
+        
+        // C wave equals or extends A wave (61.8%, 100%, 127.2%, 161.8%)
+        const cExtensionLevels = [0.618, 1.0, 1.272, 1.618];
+        cExtensionLevels.forEach(level => {
+          // C continues same direction as A (opposite to B)
+          const fibPrice = aWaveDirection === 'down'
+            ? p0.price - (aWaveRange * level)
+            : p0.price + (aWaveRange * level);
+          
+          const label = `C ${(level * 100).toFixed(0)}%`;
+          const line = candleSeries.createPriceLine({
+            price: fibPrice,
+            color: '#00CED1', // Cyan for C wave extensions
+            lineWidth: 1,
+            lineStyle: 2,
+            axisLabelVisible: true,
+            title: label,
+          });
+          if (line) {
+            newLines.push(line);
+            newPrices.push({ price: fibPrice, label, color: '#00CED1' });
+          }
+        });
+        
+        // Also show retracement of higher impulse (38.2%, 50%, 61.8%)
+        const impulseRange = Math.abs(ctx.wave5Price - ctx.wave0Price);
+        const impulseRetraceLevels = [0.382, 0.5, 0.618];
+        impulseRetraceLevels.forEach(level => {
+          const fibPrice = ctx.isUptrend 
+            ? ctx.wave5Price - (impulseRange * level)
+            : ctx.wave5Price + (impulseRange * level);
+          
+          const label = `${(level * 100).toFixed(0)}% imp`;
+          const line = candleSeries.createPriceLine({
+            price: fibPrice,
+            color: '#FF6B6B', // Red/coral for impulse retracements
+            lineWidth: 1,
+            lineStyle: 2,
+            axisLabelVisible: true,
+            title: label,
+          });
+          if (line) {
+            newLines.push(line);
+            newPrices.push({ price: fibPrice, label, color: '#FF6B6B' });
+          }
+        });
+        
+        // Store and return
+        fibProjectionPricesRef.current = newPrices;
+        fibLinesRef.current = newLines;
+        return;
+      }
+      
+      // WAVE A PROJECTIONS (standard same-degree scenario)
       // Wave A retraces the prior impulse - show retracement levels of full impulse and Wave 5
       // Direction is opposite to parent trend
       const impulseRange = Math.abs(ctx.wave5Price - ctx.wave0Price);
