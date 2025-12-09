@@ -10,12 +10,19 @@ interface SubscriptionData {
   canUseAI: boolean;
 }
 
+const isDevelopment = typeof window !== 'undefined' && 
+  (window.location.hostname.includes('replit') || 
+   window.location.hostname.includes('localhost') ||
+   window.location.hostname.includes('127.0.0.1'));
+
 export function CryptoNavigation() {
   const [location] = useLocation();
-  const { tier: localTier } = useCryptoAuth();
+  const { tier: localTier, isAuthenticated, isLoading: authLoading } = useCryptoAuth();
   
   const { data: subData } = useQuery<SubscriptionData>({
     queryKey: ['/api/crypto/my-subscription'],
+    enabled: isDevelopment || (!authLoading && isAuthenticated),
+    staleTime: 30000,
   });
   
   const tier = subData?.tier || localTier || 'free';

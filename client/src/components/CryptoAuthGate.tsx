@@ -2,7 +2,7 @@ import { useAuth, RedirectToSignIn } from '@clerk/clerk-react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
-import { setAuthTokenGetter } from '@/lib/queryClient';
+import { setAuthTokenGetter, queryClient } from '@/lib/queryClient';
 import { configureApiAuth } from '@/lib/apiAuth';
 
 interface CryptoAuthGateProps {
@@ -24,6 +24,7 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
       setAuthTokenGetter(getToken);
       configureApiAuth(getToken);
       authConfigured.current = true;
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/my-subscription'] });
     }
   }, [getToken]);
 
