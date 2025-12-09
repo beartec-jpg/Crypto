@@ -4938,8 +4938,13 @@ const aiAnalyze = useMutation({
                                   const targetPrice = selectedFibLevel.price;
                                   const waveCount = waveProjectionMode === 'abc' ? 3 : 5;
                                   
-                                  // Calculate time span from first pattern (approximate candle count)
-                                  const candleCount = Math.max(5, Math.floor((firstEntry.endTime - firstEntry.startTime) / (getTimeframeMs(timeframe))));
+                                  // Calculate time span from first pattern using ITS OWN timeframe
+                                  const patternTfMs = getTimeframeMs(firstEntry.timeframe);
+                                  const patternCandleCount = Math.floor((firstEntry.endTime - firstEntry.startTime) / patternTfMs);
+                                  // Convert to current chart timeframe and cap at reasonable limit (5-30 candles)
+                                  const currentTfMs = getTimeframeMs(timeframe);
+                                  const scaledCandleCount = Math.floor((patternCandleCount * patternTfMs) / currentTfMs);
+                                  const candleCount = Math.max(5, Math.min(30, scaledCandleCount));
                                   
                                   // Generate simulated wave path
                                   const priceRange = targetPrice - launchPrice;
@@ -5050,6 +5055,27 @@ const aiAnalyze = useMutation({
                                 Deselect
                               </button>
                             </div>
+                          </div>
+                        )}
+                        
+                        {/* Clear Simulation Button - shows when there are future points */}
+                        {currentPoints.some(p => p.isFuture) && (
+                          <div className="mt-2 pt-2 border-t border-slate-700">
+                            <button
+                              onClick={() => {
+                                setCurrentPoints([]);
+                                setSelectedFibLevel(null);
+                                toast({
+                                  title: 'Simulation Cleared',
+                                  description: 'Wave projection removed from chart',
+                                });
+                              }}
+                              className="px-4 py-2 bg-red-600/80 text-white rounded-lg text-sm font-medium hover:bg-red-500 transition-all flex items-center gap-2"
+                              data-testid="clear-simulation-btn"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Clear Simulation
+                            </button>
                           </div>
                         )}
                       </div>
