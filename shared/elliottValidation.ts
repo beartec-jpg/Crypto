@@ -135,18 +135,21 @@ export function calculateFibRatios(points: WavePoint[], patternType: string): Fi
   }
 
   // Wave 5 extension (impulse only)
+  // Measures W5 as a ratio of the W0→W3 distance, projected from W4
   if (points.length >= 6 && isImpulse) {
     const p3 = points[3], p4 = points[4], p5 = points[5];
-    const wave3Range = Math.abs(p3.price - p2.price);
-    if (wave3Range > 0) {
+    // W0→W3 distance (entire impulse before W4 retracement)
+    const w0ToW3Distance = Math.abs(p3.price - p0.price);
+    if (w0ToW3Distance > 0) {
       const wave5Range = Math.abs(p5.price - p4.price);
-      const ratio = (wave5Range / wave3Range) * 100;
+      const ratio = (wave5Range / w0ToW3Distance) * 100;
       
       let quality: FibRatio['quality'] = 'poor';
-      // Wave 5: typically 61.8% of W3
-      if (ratio >= 61.8 && ratio <= 100) quality = 'excellent';
-      else if (ratio >= 38.2 && ratio <= 161.8) quality = 'good';
-      else quality = 'ok';
+      // Wave 5: typically 61.8%, 100%, or 161.8% of W0→W3 distance
+      if (ratio >= 50 && ratio <= 80) quality = 'excellent'; // Near 61.8%
+      else if (ratio >= 80 && ratio <= 120) quality = 'good'; // Near 100%
+      else if (ratio >= 38.2 && ratio <= 161.8) quality = 'ok';
+      else quality = 'poor';
       
       ratios.push({
         wave: '5',

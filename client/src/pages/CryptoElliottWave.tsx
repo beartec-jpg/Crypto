@@ -1117,18 +1117,19 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     if (targetEntries.length >= 4) {
       const seq = targetEntries.slice(0, -1).map(e => e.waveCount).join('-');
       if (seq === '5-3-5') {
-        // W5 extends from W4 end - use W1 length as base for extension
-        const w1Pattern = targetEntries[0]; // First pattern is W1
+        // W5 extends from W4 end - use W0→W3 distance as base for extension
+        const w1Pattern = targetEntries[0]; // First pattern (W1)
+        const w3Pattern = targetEntries[2]; // Third pattern (W3)
         const w4Triangle = lastPattern;
         const trendDir = w1Pattern.direction; // W1 direction = trend
         
-        // W5 projection: Fib extensions of W1 length, projected from W4 end
-        const w1Range = Math.abs(w1Pattern.endPrice - w1Pattern.startPrice);
+        // W5 projection: Fib extensions of W0→W3 distance, projected from W4 end
+        const w0ToW3Distance = Math.abs(w3Pattern.endPrice - w1Pattern.startPrice);
         const w5Ratios = [0.618, 1.0, 1.272, 1.618];
         const w5Levels = w5Ratios.map(ratio => {
           const price = trendDir === 'up' 
-            ? w4Triangle.endPrice + (w1Range * ratio)
-            : w4Triangle.endPrice - (w1Range * ratio);
+            ? w4Triangle.endPrice + (w0ToW3Distance * ratio)
+            : w4Triangle.endPrice - (w0ToW3Distance * ratio);
           return { ratio, price, label: `${(ratio * 100).toFixed(1)}%` };
         });
         
@@ -1136,11 +1137,11 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
           waveRole: 'W5',
           fibMode: 'extension',
           anchorStartPrice: w1Pattern.startPrice,
-          anchorEndPrice: w1Pattern.endPrice,
+          anchorEndPrice: w3Pattern.endPrice,
           launchPrice: w4Triangle.endPrice,
           levels: w5Levels,
           direction: trendDir,
-          sourcePatternInfo: `W1 leg: ${w1Pattern.startPrice.toFixed(4)} → ${w1Pattern.endPrice.toFixed(4)}`
+          sourcePatternInfo: `W0→W3: ${w1Pattern.startPrice.toFixed(4)} → ${w3Pattern.endPrice.toFixed(4)}`
         };
         
         return {
@@ -4842,13 +4843,17 @@ const aiAnalyze = useMutation({
       }
 
       // Project Wave 5 targets (extension from Wave 4)
+      // Uses distance from W0 to W3, projected from W4 end
       if (pointsToUse.length >= 5) {
+        const p3 = pointsToUse[3];
         const p4 = pointsToUse[4];
+        // Measure W0→W3 distance (entire impulse move before W4 retracement)
+        const w0ToW3Distance = Math.abs(p3.price - p0.price);
         const w5Extensions = [0.618, 1.0, 1.618];
         w5Extensions.forEach(ext => {
           const fibPrice = isUptrend 
-            ? p4.price + (wave1Range * ext)
-            : p4.price - (wave1Range * ext);
+            ? p4.price + (w0ToW3Distance * ext)
+            : p4.price - (w0ToW3Distance * ext);
           
           const label = `W5 ${(ext * 100).toFixed(0)}%`;
           const line = candleSeries.createPriceLine({
