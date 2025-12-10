@@ -475,6 +475,155 @@ function calculateStructureValidity(entries: WaveStackEntry[], archetype: string
   return Math.min(100, Math.max(0, score));
 }
 
+// Compute cascaded validity scores across generations
+// Lower degree pattern scores cascade up to boost/reduce higher degree scores
+function computeCascadeScores(structures: GroupedStructure[]): GroupedStructure[] {
+  if (structures.length === 0) return structures;
+  
+  const degreeOrder = [
+    'Grand Supercycle', 'Supercycle', 'Cycle', 'Primary', 
+    'Intermediate', 'Minor', 'Minute', 'Minuette', 'Subminuette'
+  ];
+  
+  // Scoring weights
+  const BASE_WEIGHT = 0.6; // 60% from intrinsic score
+  const CHILD_WEIGHT = 0.4; // 40% from children
+  const DEPTH_DECAY = 0.6; // Grandchildren weighted at 40% * 60% = 24%
+  
+  // Helper: check if child timespan is within parent timespan
+  const isWithin = (child: GroupedStructure, parent: GroupedStructure): boolean => {
+    const tolerance = (parent.endTime - parent.startTime) * 0.05;
+    return child.startTime >= (parent.startTime - tolerance) &&
+           child.endTime <= (parent.endTime + tolerance);
+  };
+  
+  // Build parent-child relationships based on degree and timespan containment
+  const structureMap = new Map<string, GroupedStructure>();
+  structures.forEach(s => structureMap.set(s.id, s));
+  
+  // Initialize relationship arrays
+  structures.forEach(s => {
+    s.childrenIds = [];
+    s.parentId = undefined;
+    s.cascadeBreakdown = [];
+  });
+  
+  // Find parent-child relationships
+  for (let i = 0; i < structures.length; i++) {
+    const child = structures[i];
+    const childDegreeIdx = degreeOrder.indexOf(child.degree);
+    
+    // Look for potential parent (one degree higher)
+    const parentDegreeIdx = childDegreeIdx - 1;
+    if (parentDegreeIdx >= 0) {
+      const parentDegree = degreeOrder[parentDegreeIdx];
+      
+      // Find parent that contains this child
+      for (const potentialParent of structures) {
+        if (potentialParent.degree === parentDegree && isWithin(child, potentialParent)) {
+          child.parentId = potentialParent.id;
+          potentialParent.childrenIds = potentialParent.childrenIds || [];
+          potentialParent.childrenIds.push(child.id);
+          break; // Only one parent per child
+        }
+      }
+    }
+  }
+  
+  // Post-order DFS to compute cascaded scores (children first, then parents)
+  const visited = new Set<string>();
+  
+  const computeScore = (structureId: string, depth: number = 0): { score: number; contributions: CascadeContribution[] } => {
+    const structure = structureMap.get(structureId);
+    if (!structure) return { score: 0, contributions: [] };
+    
+    if (visited.has(structureId)) {
+      return { score: structure.cascadedScore || structure.validityScore, contributions: [] };
+    }
+    visited.add(structureId);
+    
+    const children = structure.childrenIds || [];
+    
+    if (children.length === 0) {
+      // Leaf node: cascaded score = intrinsic score
+      structure.cascadedScore = structure.validityScore;
+      return { score: structure.validityScore, contributions: [] };
+    }
+    
+    // Compute children's cascaded scores first (post-order)
+    let totalChildContribution = 0;
+    let totalWeight = 0;
+    const allContributions: CascadeContribution[] = [];
+    
+    for (const childId of children) {
+      const childResult = computeScore(childId, 1);
+      const childStructure = structureMap.get(childId);
+      if (childStructure && childResult.score > 0) {
+        const weight = CHILD_WEIGHT * Math.pow(DEPTH_DECAY, 0); // Direct children
+        totalChildContribution += childResult.score * weight;
+        totalWeight += weight;
+        
+        // Track contribution from this child
+        const contribution = (childResult.score * weight) / (BASE_WEIGHT + weight);
+        allContributions.push({
+          sourceId: childId,
+          sourceDegree: childStructure.degree,
+          contribution: Math.round(contribution * 10) / 10,
+          depth: 1
+        });
+        
+        // Also inherit grandchildren contributions (with decay)
+        for (const grandContrib of childResult.contributions) {
+          const decayedContrib = grandContrib.contribution * DEPTH_DECAY;
+          if (decayedContrib >= 0.1) { // Only include meaningful contributions
+            allContributions.push({
+              sourceId: grandContrib.sourceId,
+              sourceDegree: grandContrib.sourceDegree,
+              contribution: Math.round(decayedContrib * 10) / 10,
+              depth: grandContrib.depth + 1
+            });
+          }
+        }
+      }
+    }
+    
+    // Calculate cascaded score: base * baseWeight + childContributions / totalWeight
+    let cascadedScore: number;
+    if (totalWeight > 0) {
+      const normalizedChildScore = totalChildContribution / totalWeight;
+      cascadedScore = structure.validityScore * BASE_WEIGHT + normalizedChildScore * CHILD_WEIGHT;
+    } else {
+      cascadedScore = structure.validityScore;
+    }
+    
+    structure.cascadedScore = Math.min(100, Math.max(0, Math.round(cascadedScore)));
+    structure.cascadeBreakdown = allContributions;
+    
+    return { score: structure.cascadedScore, contributions: allContributions };
+  };
+  
+  // Compute scores starting from highest degree (roots of the tree)
+  const sortedByDegree = [...structures].sort((a, b) => 
+    degreeOrder.indexOf(a.degree) - degreeOrder.indexOf(b.degree)
+  );
+  
+  for (const structure of sortedByDegree) {
+    if (!visited.has(structure.id)) {
+      computeScore(structure.id);
+    }
+  }
+  
+  // Update validity tiers based on cascaded scores
+  structures.forEach(s => {
+    const score = s.cascadedScore ?? s.validityScore;
+    s.validityTier = score >= 80 ? 'excellent' : 
+                     score >= 60 ? 'good' : 
+                     score >= 40 ? 'fair' : 'poor';
+  });
+  
+  return structures;
+}
+
 // Calculate Fibonacci projection levels based on wave type
 // launchPrice: the price to project FROM (defaults to anchorEnd but can be different, e.g., B endpoint for C wave)
 function calculateFibLevels(
@@ -1736,7 +1885,7 @@ export default function CryptoElliottWave() {
   const waveStackSuggestion = analyzeWaveStack(waveStackEntries);
   
   // Group waves into structures by degree
-  const groupedStructures = groupWaveStructures(waveStackEntries);
+  const groupedStructures = computeCascadeScores(groupWaveStructures(waveStackEntries));
   
   // State for expanded/collapsed structure groups
   const [expandedStructures, setExpandedStructures] = useState<Set<string>>(new Set());
