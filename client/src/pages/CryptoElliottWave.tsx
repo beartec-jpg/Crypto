@@ -480,17 +480,83 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       }
     }
     
-    // If no parent exists, create a single structure for this degree
+    // If no parent exists, split into multiple structures based on completion
+    // A complete impulse (5 waves) or correction (3 waves) ends a structure
     if (!hasParent) {
-      const existingCount = structures.filter(s => s.degree === currentDegree).length;
-      const structure = createStructure(currentDegree, sortedCurrent);
-      if (structure) {
-        structure.displayIndex = existingCount + 1;
-        structures.push(structure);
-        structure.entries.forEach(entry => {
-          const entryKey = `${currentDegree}-${entry.startTime}`;
-          waveEntryToStructureIndex[entryKey] = existingCount + 1;
-        });
+      let existingCount = structures.filter(s => s.degree === currentDegree).length;
+      let currentGroup: WaveStackEntry[] = [];
+      let totalWaveCount = 0;
+      
+      // Helper to check if current group represents a complete structure
+      const isGroupComplete = (group: WaveStackEntry[], waveTotal: number): boolean => {
+        if (group.length === 0) return false;
+        
+        // Check if we have a complete impulse (5 waves total)
+        if (waveTotal >= 5) {
+          // Check for 5-3-5-3-5 or similar impulse patterns
+          const seq = group.map(e => e.waveCount).join('-');
+          if (seq === '5-3-5-3-5' || seq === '5-3-5' || seq === '3-3-5') return true;
+          // Also complete if sum of waves is 5+ and ends with motive wave
+          const lastEntry = group[group.length - 1];
+          if (lastEntry.waveCount === 5 && waveTotal >= 5) return true;
+        }
+        
+        // Check for complete 3-wave correction
+        if (waveTotal === 3 && group.length >= 1) {
+          const lastEntry = group[group.length - 1];
+          if (lastEntry.patternType === 'correction' || lastEntry.patternType === 'zigzag' || 
+              lastEntry.patternType === 'flat') {
+            return true;
+          }
+        }
+        
+        return false;
+      };
+      
+      for (let i = 0; i < sortedCurrent.length; i++) {
+        const entry = sortedCurrent[i];
+        
+        // Check if adding this entry would continue OR if we should start fresh
+        // Key insight: if current group is complete AND this new entry starts AFTER the last one ends,
+        // then start a new structure
+        if (currentGroup.length > 0 && isGroupComplete(currentGroup, totalWaveCount)) {
+          const lastEntry = currentGroup[currentGroup.length - 1];
+          // New entry starts after last structure ends = new structure
+          if (entry.startTime >= lastEntry.endTime) {
+            // Emit current structure
+            existingCount++;
+            const structure = createStructure(currentDegree, currentGroup);
+            if (structure) {
+              structure.displayIndex = existingCount;
+              structures.push(structure);
+              structure.entries.forEach(e => {
+                const entryKey = `${currentDegree}-${e.startTime}`;
+                waveEntryToStructureIndex[entryKey] = existingCount;
+              });
+            }
+            // Start new group
+            currentGroup = [];
+            totalWaveCount = 0;
+          }
+        }
+        
+        // Add entry to current group
+        currentGroup.push(entry);
+        totalWaveCount += entry.waveCount;
+      }
+      
+      // Emit final group
+      if (currentGroup.length > 0) {
+        existingCount++;
+        const structure = createStructure(currentDegree, currentGroup);
+        if (structure) {
+          structure.displayIndex = existingCount;
+          structures.push(structure);
+          structure.entries.forEach(entry => {
+            const entryKey = `${currentDegree}-${entry.startTime}`;
+            waveEntryToStructureIndex[entryKey] = existingCount;
+          });
+        }
       }
     }
   }
