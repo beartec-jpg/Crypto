@@ -503,10 +503,15 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         for (let parentIdx = 0; parentIdx < sortedHigher.length; parentIdx++) {
           const parent = sortedHigher[parentIdx];
           
-          // Find lower degree patterns within this parent wave's timespan
+          // Find lower degree patterns that are truly INTERNAL to this parent wave
+          // Child must START before parent ENDS (not just be "within" the timespan)
+          // This prevents post-completion patterns from being absorbed into the parent
           const childPatterns = sortedCurrent.filter(child => {
-            return isWithinTimespan(child.startTime, parent.startTime, parent.endTime) &&
-                   isWithinTimespan(child.endTime, parent.startTime, parent.endTime);
+            const tolerance = (parent.endTime - parent.startTime) * 0.05;
+            const startsWithinParent = child.startTime >= (parent.startTime - tolerance) && 
+                                        child.startTime < parent.endTime; // Must start BEFORE parent ends
+            const endsWithinParent = child.endTime <= (parent.endTime + tolerance);
+            return startsWithinParent && endsWithinParent;
           });
           
           if (childPatterns.length > 0) {
@@ -545,12 +550,16 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         }
         
         // Also check for patterns that fall BETWEEN or AFTER parent waves (orphans)
-        // A pattern is only "assigned" if BOTH start AND end fall within a parent wave
+        // A pattern is only "assigned" if it's truly INTERNAL to a parent wave
+        // (starts BEFORE parent ends and ends within parent's timespan)
         const assignedIds = new Set<string>();
         sortedHigher.forEach(parent => {
           sortedCurrent.forEach(child => {
-            if (isWithinTimespan(child.startTime, parent.startTime, parent.endTime) &&
-                isWithinTimespan(child.endTime, parent.startTime, parent.endTime)) {
+            const tolerance = (parent.endTime - parent.startTime) * 0.05;
+            const startsWithinParent = child.startTime >= (parent.startTime - tolerance) && 
+                                        child.startTime < parent.endTime; // Must start BEFORE parent ends
+            const endsWithinParent = child.endTime <= (parent.endTime + tolerance);
+            if (startsWithinParent && endsWithinParent) {
               assignedIds.add(child.id);
             }
           });
@@ -857,11 +866,14 @@ function computeCascadeScores(structures: GroupedStructure[]): GroupedStructure[
   const DESCENDANT_WEIGHT = 0.4; // 40% from descendants
   const DEPTH_DECAY = 0.6; // Each generation deeper is weighted at 60% of previous
   
-  // Helper: check if child timespan is within parent timespan
+  // Helper: check if child timespan is truly INTERNAL to parent timespan
+  // Child must START before parent ENDS - patterns that start after parent completes are new structures
   const isWithin = (child: GroupedStructure, parent: GroupedStructure): boolean => {
     const tolerance = (parent.endTime - parent.startTime) * 0.05;
-    return child.startTime >= (parent.startTime - tolerance) &&
-           child.endTime <= (parent.endTime + tolerance);
+    const startsWithinParent = child.startTime >= (parent.startTime - tolerance) && 
+                                child.startTime < parent.endTime; // Must start BEFORE parent ends
+    const endsWithinParent = child.endTime <= (parent.endTime + tolerance);
+    return startsWithinParent && endsWithinParent;
   };
   
   // Build parent-child relationships based on degree and timespan containment
