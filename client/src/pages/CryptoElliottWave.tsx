@@ -1485,64 +1485,6 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       }
     }
     
-    // Case 2: Both degrees have single 5-wave patterns (W1/A at each degree)
-    // The lower degree W1/A could be building the W2/B of the higher degree
-    const higherSeq = higherSorted.map(e => e.waveCount).join('-');
-    const lowerSeq = lowerSorted.map(e => e.waveCount).join('-');
-    
-    if (higherSeq === '5' && lowerSeq === '5') {
-      const higherW1 = higherSorted[0];
-      const lowerW1 = lowerSorted[0];
-      
-      // Check if lower degree pattern starts at or after higher degree ends
-      // AND goes in opposite direction (suggesting correction)
-      const lowerStartsAfterHigher = lowerW1.startTime >= higherW1.endTime - 100; // Small tolerance
-      const oppositeDirections = higherW1.direction !== lowerW1.direction;
-      
-      if (lowerStartsAfterHigher && oppositeDirections) {
-        // The lower degree W1/A is likely building the higher degree W2/B
-        // Generate predictions for BOTH scenarios:
-        // 1. Higher degree W2/B retracement targets (of the higher W1)
-        // 2. Lower degree W2/B targets (of the lower W1/A)
-        const projections: ProjectionContext[] = [];
-        
-        // Higher degree W2/B: retracement of the higher impulse
-        const higherW2Proj = calculateFibLevels(
-          'W2',
-          higherW1.startPrice,
-          higherW1.endPrice,
-          higherW1.direction === 'up' ? 'down' : 'up',
-          higherW1.endPrice,
-          `${higherDegree} W1`
-        );
-        higherW2Proj.sourcePatternInfo = `${higherDegree} W2/B`;
-        projections.push(higherW2Proj);
-        
-        // Lower degree W2/B: retracement of the lower W1/A (for next move after lower completes)
-        const lowerW2Proj = calculateFibLevels(
-          'W2',
-          lowerW1.startPrice,
-          lowerW1.endPrice,
-          lowerW1.direction === 'up' ? 'down' : 'up',
-          lowerW1.endPrice,
-          `${lowerDegree} W1`
-        );
-        lowerW2Proj.sourcePatternInfo = `${lowerDegree} W2/B`;
-        projections.push(lowerW2Proj);
-        
-        const higherDir = higherW1.direction === 'up' ? '↑' : '↓';
-        const lowerDir = lowerW1.direction === 'up' ? '↑' : '↓';
-        
-        return {
-          sequence: `${higherDegree}:5${higherDir} | ${lowerDegree}:5${lowerDir}`,
-          suggestion: `🎯 Multi-degree W1/A: ${higherDegree} W1${higherDir} + ${lowerDegree} W1${lowerDir} (building ${higherDegree} W2?)`,
-          confidence: 'medium',
-          startPrice: higherW1.startPrice,
-          endPrice: lowerW1.endPrice,
-          projections,
-        };
-      }
-    }
   }
   // ========== END CROSS-DEGREE ANALYSIS ==========
   
