@@ -5605,13 +5605,19 @@ const aiAnalyze = useMutation({
                                   };
                                 });
                             
+                            // Extract degree name from sourcePatternInfo (e.g., "Minor W3" -> "Minor")
+                            const degreeName = proj.sourcePatternInfo?.split(' ')[0] || '';
+                            const degreeColor = waveDegrees.find(d => d.name === degreeName)?.color || '#74C0FC';
+                            const displayLabel = proj.sourcePatternInfo || proj.waveRole;
+                            
                             return (
                               <div key={projIdx} className="space-y-1">
                                 <div className="flex items-center gap-2">
-                                  <span className={`text-xs font-medium ${
-                                    proj.fibMode === 'retracement' ? 'text-amber-400' : 'text-cyan-400'
-                                  }`}>
-                                    {proj.waveRole} ({proj.fibMode})
+                                  <span 
+                                    className="text-xs font-medium"
+                                    style={{ color: degreeColor }}
+                                  >
+                                    {displayLabel} ({proj.fibMode})
                                   </span>
                                   <button
                                     onClick={() => {
@@ -5621,11 +5627,11 @@ const aiAnalyze = useMutation({
                                         const newLines = adjustedLevels
                                           .map(level => ({
                                             price: level.price,
-                                            color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
+                                            color: degreeColor,
                                             lineWidth: 1,
                                             lineStyle: 2,
                                             axisLabelVisible: true,
-                                            title: `${proj.waveRole} ${level.label}`,
+                                            title: `${displayLabel} ${level.label}`,
                                           }))
                                           .filter(line => !existingTitles.has(line.title));
                                         return [...prev, ...newLines];
@@ -5642,7 +5648,7 @@ const aiAnalyze = useMutation({
                                     <button
                                       key={levelIdx}
                                       onClick={() => {
-                                        const lineTitle = `${proj.waveRole} ${level.label}`;
+                                        const lineTitle = `${displayLabel} ${level.label}`;
                                         // Only add if this line doesn't already exist
                                         setStackProjectionLines(prev => {
                                           if (prev.some(l => l.title === lineTitle)) {
@@ -5650,7 +5656,7 @@ const aiAnalyze = useMutation({
                                           }
                                           return [...prev, {
                                             price: level.price,
-                                            color: proj.fibMode === 'retracement' ? '#F59E0B' : '#06B6D4',
+                                            color: degreeColor,
                                             lineWidth: 1,
                                             lineStyle: 2,
                                             axisLabelVisible: true,
@@ -5658,11 +5664,12 @@ const aiAnalyze = useMutation({
                                           }];
                                         });
                                       }}
-                                      className={`px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105 ${
-                                        proj.fibMode === 'retracement' 
-                                          ? 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60 border border-amber-600/30'
-                                          : 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-800/60 border border-cyan-600/30'
-                                      }`}
+                                      className="px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105"
+                                      style={{ 
+                                        backgroundColor: `${degreeColor}20`,
+                                        color: degreeColor,
+                                        border: `1px solid ${degreeColor}40`
+                                      }}
                                       data-testid={`projection-${proj.waveRole}-${level.label}`}
                                     >
                                       {level.label}: ${level.price.toFixed(4)}
