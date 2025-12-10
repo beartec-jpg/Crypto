@@ -1,4 +1,3 @@
-import { useAuth, RedirectToSignIn } from '@clerk/clerk-react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
@@ -14,13 +13,26 @@ const isDevelopment = typeof window !== 'undefined' &&
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
+function useClerkAuth() {
+  if (isDevelopment) {
+    return {
+      isSignedIn: true,
+      isLoaded: true,
+      getToken: async () => null,
+    };
+  }
+  
+  const { useAuth } = require('@clerk/clerk-react');
+  return useAuth();
+}
+
 export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
-  const { isSignedIn, isLoaded, getToken } = useAuth();
+  const { isSignedIn, isLoaded, getToken } = useClerkAuth();
   const [loadTimeout, setLoadTimeout] = useState(false);
   const authConfigured = useRef(false);
 
   useEffect(() => {
-    if (!authConfigured.current && getToken) {
+    if (!isDevelopment && !authConfigured.current && getToken) {
       setAuthTokenGetter(getToken);
       configureApiAuth(getToken);
       authConfigured.current = true;
@@ -71,7 +83,6 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
     retry: 2,
   });
 
-  // In development, skip Clerk checks entirely
   if (isDevelopment) {
     if (isBootstrapping) {
       return (
@@ -86,7 +97,6 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
     return <>{children}</>;
   }
 
-  // Production: require Clerk authentication
   if (!isLoaded) {
     if (loadTimeout) {
       return (
@@ -121,6 +131,7 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
   }
 
   if (!isSignedIn) {
+    const { RedirectToSignIn } = require('@clerk/clerk-react');
     return <RedirectToSignIn />;
   }
 

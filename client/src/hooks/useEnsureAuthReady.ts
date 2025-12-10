@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '@clerk/clerk-react';
 import { isDevelopment } from './useCryptoAuth';
 
 interface AuthReadyState {
@@ -9,8 +8,21 @@ interface AuthReadyState {
   isLoading: boolean;
 }
 
+function useClerkAuth() {
+  if (isDevelopment) {
+    return {
+      isLoaded: true,
+      isSignedIn: true,
+      getToken: async () => 'dev-token',
+    };
+  }
+  
+  const { useAuth } = require('@clerk/clerk-react');
+  return useAuth();
+}
+
 export function useEnsureAuthReady(maxRetries = 10, retryDelay = 300): AuthReadyState {
-  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const [state, setState] = useState<AuthReadyState>({
     ready: isDevelopment,
     token: null,

@@ -1,10 +1,20 @@
-import { useAuth } from '@clerk/clerk-react';
 import { useLocation } from 'wouter';
 import { useEffect } from 'react';
 import { isDevelopment } from './useCryptoAuth';
 
+function useClerkAuth() {
+  if (isDevelopment) {
+    return {
+      isSignedIn: true,
+      isLoaded: true,
+    };
+  }
+  const { useAuth } = require('@clerk/clerk-react');
+  return useAuth();
+}
+
 export function useRequireAuth(redirectTo: string = '/cryptologin') {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded } = useClerkAuth();
   const [, setLocation] = useLocation();
 
   useEffect(() => {

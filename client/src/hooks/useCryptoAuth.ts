@@ -1,4 +1,3 @@
-import { useAuth, useUser } from '@clerk/clerk-react';
 import { useQuery } from '@tanstack/react-query';
 
 interface CryptoUser {
@@ -32,13 +31,11 @@ interface CryptoSubscription {
   updatedAt?: Date;
 }
 
-// Check if we're in development mode (Replit dev environment)
 export const isDevelopment = typeof window !== 'undefined' && 
   (window.location.hostname.includes('replit') || 
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
-// Development fallback user
 const devUser: CryptoUser = {
   id: 'dev-open-access',
   email: 'dev@open.access',
@@ -58,26 +55,37 @@ const devSubscription: CryptoSubscription = {
   hasUnlimitedAI: true,
 };
 
-export function useCryptoAuth() {
-  // Always call hooks (React rules), but only use results in production
-  const { isSignedIn, getToken, isLoaded } = useAuth();
+function useClerkHooks() {
+  if (isDevelopment) {
+    return {
+      isSignedIn: true,
+      getToken: async () => 'dev-token',
+      isLoaded: true,
+      user: devUser,
+    };
+  }
+  
+  const { useAuth, useUser } = require('@clerk/clerk-react');
+  const auth = useAuth();
   const { user } = useUser();
+  return { ...auth, user };
+}
+
+export function useCryptoAuth() {
+  const { isSignedIn, getToken, isLoaded, user } = useClerkHooks();
   
   const { data: subscription, isLoading: subscriptionLoading, refetch: refetchSubscription } = useQuery<CryptoSubscription>({
     queryKey: ['/api/crypto/my-subscription'],
     enabled: isDevelopment || isSignedIn === true,
     queryFn: async () => {
-      // In development, fetch without auth token (backend allows open access)
       if (isDevelopment) {
         const response = await fetch('/api/crypto/my-subscription');
         if (!response.ok) {
-          // Return dev subscription as fallback
           return devSubscription;
         }
         return response.json();
       }
       
-      // Production: require auth token
       const token = await getToken();
       if (!token) throw new Error('No auth token');
       
@@ -98,7 +106,6 @@ export function useCryptoAuth() {
     },
   });
 
-  // In development mode, ALWAYS return elite access for testing all features
   if (isDevelopment) {
     const eliteSubscription: CryptoSubscription = {
       ...devSubscription,
@@ -155,16 +162,16 @@ export function useCryptoAuth() {
     email: user.primaryEmailAddress?.emailAddress || '',
     firstName: user.firstName || undefined,
     lastName: user.lastName || undefined,
-    profileImageUrl: user.imageUrl,
+    profileImageUrl: user.imageUrl || undefined,
   };
 
-  const tier = (subscription?.tier || 'free') as 'free' | 'beginner' | 'intermediate' | 'pro' | 'elite';
-  const isElite = tier === 'elite' || subscription?.hasElliottAddon === true;
+  const tier = subscription?.tier || 'free';
+  const isElite = tier === 'elite';
 
   return {
     user: cryptoUser,
     subscription: subscription || null,
-    tier,
+    tier: tier as 'free' | 'beginner' | 'intermediate' | 'pro' | 'elite',
     isAuthenticated: true,
     isLoading: subscriptionLoading,
     error: null,
@@ -172,12 +179,4 @@ export function useCryptoAuth() {
     getToken,
     refetchSubscription,
   };
-}
-
-export async function cryptoLogin(_provider: 'replit' | 'google') {
-  console.log('Login is handled by Clerk SignInButton');
-}
-
-export function cryptoLogout() {
-  console.log('Logout is handled by Clerk UserButton');
 }

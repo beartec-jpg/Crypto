@@ -4,8 +4,37 @@ import { useCryptoAuth, isDevelopment } from '@/hooks/useCryptoAuth';
 import { useQuery } from '@tanstack/react-query';
 import { Crown, Sparkles, Info, CreditCard, Waves, Bot, Shield, LogIn, LogOut, User } from 'lucide-react';
 import { Link } from 'wouter';
-import { SignInButton, SignOutButton, useAuth, useUser } from '@clerk/clerk-react';
 import { Button } from '@/components/ui/button';
+
+function useClerkHooks() {
+  if (isDevelopment) {
+    return {
+      isSignedIn: true,
+      isLoaded: true,
+      user: { firstName: 'Dev', lastName: 'User', primaryEmailAddress: { emailAddress: 'dev@open.access' }, imageUrl: null }
+    };
+  }
+  const { useAuth, useUser } = require('@clerk/clerk-react');
+  const auth = useAuth();
+  const { user } = useUser();
+  return { ...auth, user };
+}
+
+function ClerkSignInButton({ children, mode }: { children: React.ReactNode; mode?: string }) {
+  if (isDevelopment) {
+    return <>{children}</>;
+  }
+  const { SignInButton } = require('@clerk/clerk-react');
+  return <SignInButton mode={mode}>{children}</SignInButton>;
+}
+
+function ClerkSignOutButton({ children }: { children: React.ReactNode }) {
+  if (isDevelopment) {
+    return <>{children}</>;
+  }
+  const { SignOutButton } = require('@clerk/clerk-react');
+  return <SignOutButton>{children}</SignOutButton>;
+}
 
 interface SubscriptionData {
   tier: string;
@@ -19,8 +48,7 @@ interface SubscriptionData {
 
 export default function CryptoAccount() {
   const { tier: localTier } = useCryptoAuth();
-  const { isSignedIn, isLoaded } = useAuth();
-  const { user } = useUser();
+  const { isSignedIn, isLoaded, user } = useClerkHooks();
   
   const { data: subscription, isLoading } = useQuery<SubscriptionData>({
     queryKey: ['/api/crypto/my-subscription'],
@@ -87,12 +115,12 @@ export default function CryptoAccount() {
               <p className="text-sm text-slate-300 mb-4">
                 Sign in to access your subscription, save Elliott Wave patterns, and unlock premium features.
               </p>
-              <SignInButton mode="modal">
+              <ClerkSignInButton mode="modal">
                 <Button className="bg-[#00c4b4] hover:bg-[#00a89c] text-black font-medium" data-testid="button-sign-in">
                   <LogIn className="w-4 h-4 mr-2" />
                   Sign In with Google
                 </Button>
-              </SignInButton>
+              </ClerkSignInButton>
             </div>
           </div>
         )}
@@ -113,12 +141,12 @@ export default function CryptoAccount() {
                   <p className="text-sm text-slate-400">{user.primaryEmailAddress?.emailAddress}</p>
                 </div>
               </div>
-              <SignOutButton>
+              <ClerkSignOutButton>
                 <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" data-testid="button-sign-out">
                   <LogOut className="w-4 h-4 mr-2" />
                   Sign Out
                 </Button>
-              </SignOutButton>
+              </ClerkSignOutButton>
             </div>
           </div>
         )}

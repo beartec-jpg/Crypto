@@ -4,10 +4,48 @@ import { Badge } from '@/components/ui/badge';
 import { Check, Waves, AlertCircle, Loader2 } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { SignedIn, SignedOut, SignInButton, useAuth, useUser } from '@clerk/clerk-react';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
+import { isDevelopment } from '@/hooks/useCryptoAuth';
+
+function useClerkHooks() {
+  if (isDevelopment) {
+    return {
+      isSignedIn: true,
+      getToken: async () => 'dev-token',
+      user: { firstName: 'Dev', lastName: 'User' }
+    };
+  }
+  const { useAuth, useUser } = require('@clerk/clerk-react');
+  const auth = useAuth();
+  const { user } = useUser();
+  return { ...auth, user };
+}
+
+function ClerkSignedIn({ children }: { children: React.ReactNode }) {
+  if (isDevelopment) {
+    return <>{children}</>;
+  }
+  const { SignedIn } = require('@clerk/clerk-react');
+  return <SignedIn>{children}</SignedIn>;
+}
+
+function ClerkSignedOut({ children }: { children: React.ReactNode }) {
+  if (isDevelopment) {
+    return null;
+  }
+  const { SignedOut } = require('@clerk/clerk-react');
+  return <SignedOut>{children}</SignedOut>;
+}
+
+function ClerkSignInButton({ children, mode }: { children: React.ReactNode; mode?: string }) {
+  if (isDevelopment) {
+    return <>{children}</>;
+  }
+  const { SignInButton } = require('@clerk/clerk-react');
+  return <SignInButton mode={mode}>{children}</SignInButton>;
+}
 
 interface SubscriptionData {
   tier: string;
@@ -28,8 +66,7 @@ const TIER_PRICES: Record<string, { price: string; description: string }> = {
 };
 
 export default function CryptoSubscribe() {
-  const { isSignedIn, getToken } = useAuth();
-  const { user } = useUser();
+  const { isSignedIn, getToken, user } = useClerkHooks();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [location, setLocation] = useLocation();
@@ -172,22 +209,22 @@ export default function CryptoSubscribe() {
           <p className="text-zinc-400">Choose the plan that fits your trading needs</p>
         </div>
 
-        <SignedOut>
+        <ClerkSignedOut>
           <Card className="max-w-md mx-auto bg-zinc-900/80 border-zinc-800 mb-8">
             <CardContent className="pt-6 text-center">
               <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-white mb-2">Sign in to manage subscriptions</h3>
               <p className="text-zinc-400 mb-4">Create an account or sign in to subscribe and manage your plan.</p>
-              <SignInButton mode="modal">
+              <ClerkSignInButton mode="modal">
                 <Button className="bg-blue-600 hover:bg-blue-700" data-testid="button-signin">
                   Sign In / Create Account
                 </Button>
-              </SignInButton>
+              </ClerkSignInButton>
             </CardContent>
           </Card>
-        </SignedOut>
+        </ClerkSignedOut>
 
-        <SignedIn>
+        <ClerkSignedIn>
           {isLoading ? (
             <div className="flex justify-center py-10">
               <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
@@ -306,7 +343,7 @@ export default function CryptoSubscribe() {
               </Card>
             </>
           )}
-        </SignedIn>
+        </ClerkSignedIn>
 
         <h2 className="text-2xl font-bold text-white text-center mb-6">Choose Your Base Plan</h2>
         
@@ -344,7 +381,7 @@ export default function CryptoSubscribe() {
                 {'footnote' in tier && tier.footnote && (
                   <p className="text-xs text-zinc-500 italic mt-2">{tier.footnote}</p>
                 )}
-                <SignedIn>
+                <ClerkSignedIn>
                   {currentTier === tier.id ? (
                     <Button disabled className="w-full bg-zinc-700" data-testid={`button-current-${tier.id}`}>
                       Current Plan
@@ -361,9 +398,9 @@ export default function CryptoSubscribe() {
                       {tier.id === 'free' ? 'Manage Subscription' : 'Upgrade'}
                     </Button>
                   )}
-                </SignedIn>
-                <SignedOut>
-                  <SignInButton mode="modal">
+                </ClerkSignedIn>
+                <ClerkSignedOut>
+                  <ClerkSignInButton mode="modal">
                     <Button 
                       className={`w-full ${tier.highlight ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
                       variant={tier.highlight ? 'default' : 'outline'}
@@ -371,8 +408,8 @@ export default function CryptoSubscribe() {
                     >
                       Get Started
                     </Button>
-                  </SignInButton>
-                </SignedOut>
+                  </ClerkSignInButton>
+                </ClerkSignedOut>
               </CardContent>
             </Card>
           ))}

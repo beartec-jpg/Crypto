@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { Helmet } from 'react-helmet-async';
-import { useAuth, useClerk } from '@clerk/clerk-react';
 import videoFile from '@assets/grok_video_2025-11-13-19-48-28_1763063433278.mp4';
 
 const isDevelopment = typeof window !== 'undefined' && 
@@ -9,24 +8,35 @@ const isDevelopment = typeof window !== 'undefined' &&
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
+function useClerkAuth() {
+  if (isDevelopment) {
+    return {
+      isSignedIn: true,
+      openSignIn: () => {},
+    };
+  }
+  const { useAuth, useClerk } = require('@clerk/clerk-react');
+  const auth = useAuth();
+  const clerk = useClerk();
+  return { isSignedIn: auth.isSignedIn, openSignIn: clerk.openSignIn };
+}
+
 export default function CryptoLanding() {
   const [, setLocation] = useLocation();
-  const { isSignedIn } = useAuth();
-  const clerk = useClerk();
+  const { isSignedIn, openSignIn } = useClerkAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [showText, setShowText] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const isSignedInRef = useRef(isSignedIn);
-  const clerkRef = useRef(clerk);
+  const openSignInRef = useRef(openSignIn);
 
-  // Keep refs in sync with latest state
   useEffect(() => {
     isSignedInRef.current = isSignedIn;
   }, [isSignedIn]);
 
   useEffect(() => {
-    clerkRef.current = clerk;
-  }, [clerk]);
+    openSignInRef.current = openSignIn;
+  }, [openSignIn]);
 
   useEffect(() => {
     // Ensure video starts paused on first frame

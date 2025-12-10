@@ -2,12 +2,27 @@ import { Link, useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { TrendingUp, ArrowRight, Sparkles, BarChart2, LogIn } from 'lucide-react';
-import { SignInButton, useAuth } from '@clerk/clerk-react';
 import { isDevelopment } from '@/hooks/useCryptoAuth';
 import { useEffect, useMemo } from 'react';
 
+function useClerkAuth() {
+  if (isDevelopment) {
+    return { isSignedIn: true, isLoaded: true };
+  }
+  const { useAuth } = require('@clerk/clerk-react');
+  return useAuth();
+}
+
+function ClerkSignInButton({ children, mode, forceRedirectUrl }: { children: React.ReactNode; mode?: string; forceRedirectUrl?: string }) {
+  if (isDevelopment) {
+    return <>{children}</>;
+  }
+  const { SignInButton } = require('@clerk/clerk-react');
+  return <SignInButton mode={mode} forceRedirectUrl={forceRedirectUrl}>{children}</SignInButton>;
+}
+
 export default function CryptoLogin() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded } = useClerkAuth();
   const [, setLocation] = useLocation();
 
   const returnToUrl = useMemo(() => {
@@ -85,7 +100,7 @@ export default function CryptoLogin() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <SignInButton mode="redirect" forceRedirectUrl={returnToUrl}>
+          <ClerkSignInButton mode="redirect" forceRedirectUrl={returnToUrl}>
             <Button
               className="w-full bg-[#00c4b4] hover:bg-[#00a89c] text-black font-medium py-6 text-lg"
               data-testid="button-sign-in"
@@ -94,7 +109,7 @@ export default function CryptoLogin() {
               Sign In with Google
               <ArrowRight className="w-5 h-5 ml-3" />
             </Button>
-          </SignInButton>
+          </ClerkSignInButton>
 
           <div className="text-center text-sm text-gray-500">
             <p>New user? Sign in to create your account automatically.</p>
