@@ -444,6 +444,8 @@ function calculateFibLevels(
         price = projectFrom - (range * ratio);
       }
     }
+    // Clamp minimum price to 0.0001 (crypto can't go below zero)
+    price = Math.max(0.0001, price);
     return {
       ratio,
       price,
