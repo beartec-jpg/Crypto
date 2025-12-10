@@ -866,6 +866,29 @@ function computeCascadeScores(structures: GroupedStructure[]): GroupedStructure[
   return structures;
 }
 
+// Helper: Calculate maximum nested depth below an entry (counts unique degrees)
+function getNestedDepth(entry: WaveStackEntry, parentStructure: GroupedStructure, allStructures: GroupedStructure[], visited = new Set<string>()): number {
+  if (visited.has(entry.id)) return 0;
+  visited.add(entry.id);
+  
+  const children = getChildrenForEntry(entry, parentStructure, allStructures);
+  if (children.length === 0) return 0;
+  
+  let maxDepth = 0;
+  for (const childStructure of children) {
+    // Each child structure is 1 level deep
+    let childMaxDepth = 1;
+    // Check if any entry in this child structure has further children
+    for (const childEntry of childStructure.entries) {
+      const entryDepth = getNestedDepth(childEntry, childStructure, allStructures, visited);
+      childMaxDepth = Math.max(childMaxDepth, 1 + entryDepth);
+    }
+    maxDepth = Math.max(maxDepth, childMaxDepth);
+  }
+  
+  return maxDepth;
+}
+
 // Recursive Wave Entry Row Component for hierarchical tree display
 interface WaveEntryRowProps {
   entry: WaveStackEntry;
@@ -961,10 +984,10 @@ function WaveEntryRow({
           {entry.direction === 'up' ? '↑' : '↓'}
         </span>
         
-        {/* Child count badge */}
+        {/* Nested depth badge - shows how many degree levels are below */}
         {hasChildren && (
           <Badge variant="outline" className="text-[9px] px-1 border-cyan-600 text-cyan-400">
-            {entryChildren.length} nested
+            {getNestedDepth(entry, parentStructure, allStructures)} deep
           </Badge>
         )}
         
