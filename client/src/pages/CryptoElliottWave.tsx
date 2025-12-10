@@ -892,58 +892,104 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     }
   }
   
-  // 3-3-3 pattern = Complete WXY double correction
-  // Also collect projections from OTHER degrees (like Minor 5-3)
-  if (sequence === '3-3-3') {
-    const otherDegreeProjections: ProjectionContext[] = [];
+  // ========== OPEN-ENDED PATTERN PROJECTIONS ==========
+  // Find ALL open-ended patterns at ANY degree and generate projections
+  // Complete patterns (3-3-3, 5-3-5-3-5, etc.) = no predictions
+  // Open patterns (5-3, 3-3, 5, etc.) = show predictions for next move
+  const openPatternProjections: ProjectionContext[] = [];
+  const openPatternAnalyses: string[] = [];
+  
+  for (const degree of degreeOrder) {
+    const patterns = byDegree[degree];
+    if (!patterns || patterns.length === 0) continue;
     
-    // Check all other degrees for actionable patterns
-    for (const degree of degreeOrder) {
-      if (degree === targetDegree) continue;
-      const patterns = byDegree[degree];
-      if (!patterns || patterns.length === 0) continue;
+    const sorted = [...patterns].sort((a, b) => a.startTime - b.startTime);
+    const seq = sorted.map(e => e.waveCount).join('-');
+    
+    // Skip complete patterns - they don't need predictions
+    const completePatterns = ['3-3-3', '5-3-5-3-5', '3-3-3-3-3', '5-3-5'];
+    if (completePatterns.includes(seq)) continue;
+    
+    // 5-3 = W1-W2 or A-B - predict W3 or C
+    if (seq === '5-3') {
+      const impulsePattern = sorted[0];
+      const correctionPattern = sorted[1];
+      const impulseDir = impulsePattern.direction;
+      const dir = impulseDir === 'up' ? '↑' : '↓';
       
-      const sorted = [...patterns].sort((a, b) => a.startTime - b.startTime);
-      const seq = sorted.map(e => e.waveCount).join('-');
+      openPatternAnalyses.push(`${degree}: 5-3 ${dir} → predict W3/C`);
       
-      if (seq === '5-3') {
-        const impulsePattern = sorted[0];
-        const correctionPattern = sorted[1];
-        const impulseDir = impulsePattern.direction;
-        
-        // W3 projection
-        const w3Proj = calculateFibLevels(
-          'W3',
-          impulsePattern.startPrice,
-          impulsePattern.endPrice,
-          impulseDir,
-          correctionPattern.endPrice,
-          `${degree} W1`
-        );
-        w3Proj.sourcePatternInfo = `${degree} W3`;
-        otherDegreeProjections.push(w3Proj);
-        
-        // C wave projection
-        const cProj = calculateFibLevels(
-          'C',
-          impulsePattern.startPrice,
-          impulsePattern.endPrice,
-          impulseDir,
-          correctionPattern.endPrice,
-          `${degree} A`
-        );
-        cProj.sourcePatternInfo = `${degree} C`;
-        otherDegreeProjections.push(cProj);
-      }
+      // W3 projection
+      const w3Proj = calculateFibLevels(
+        'W3',
+        impulsePattern.startPrice,
+        impulsePattern.endPrice,
+        impulseDir,
+        correctionPattern.endPrice,
+        `${degree} W1`
+      );
+      w3Proj.sourcePatternInfo = `${degree} W3`;
+      openPatternProjections.push(w3Proj);
+      
+      // C wave projection
+      const cProj = calculateFibLevels(
+        'C',
+        impulsePattern.startPrice,
+        impulsePattern.endPrice,
+        impulseDir,
+        correctionPattern.endPrice,
+        `${degree} A`
+      );
+      cProj.sourcePatternInfo = `${degree} C`;
+      openPatternProjections.push(cProj);
     }
+    // 3-3 = W-X - predict Y
+    else if (seq === '3-3') {
+      const firstPattern = sorted[0];
+      openPatternAnalyses.push(`${degree}: 3-3 → predict Y`);
+      
+      const yProj = calculateFibLevels(
+        'Y',
+        firstPattern.startPrice,
+        firstPattern.endPrice,
+        firstPattern.direction,
+        sorted[1].endPrice,
+        `${degree} W`
+      );
+      yProj.sourcePatternInfo = `${degree} Y`;
+      openPatternProjections.push(yProj);
+    }
+    // 5 = single impulse - predict W2
+    else if (seq === '5') {
+      const impulsePattern = sorted[0];
+      openPatternAnalyses.push(`${degree}: W1/A → predict W2/B`);
+      
+      const w2Proj = calculateFibLevels(
+        'W2',
+        impulsePattern.startPrice,
+        impulsePattern.endPrice,
+        impulsePattern.direction === 'up' ? 'down' : 'up', // W2 goes opposite
+        impulsePattern.endPrice,
+        `${degree} W1`
+      );
+      w2Proj.sourcePatternInfo = `${degree} W2`;
+      openPatternProjections.push(w2Proj);
+    }
+  }
+  
+  // 3-3-3 pattern = Complete WXY double correction
+  if (sequence === '3-3-3') {
+    const suggestion = openPatternAnalyses.length > 0
+      ? `✅ ${targetDegree}: WXY complete | ${openPatternAnalyses.join(' | ')}`
+      : `✅ ${targetDegree}: Complete WXY double correction (3-3-3) - could be W2, B, or 4 of higher degree`;
     
     return {
       sequence,
-      suggestion: `✅ ${targetDegree}: Complete WXY double correction (3-3-3) - could be W2, B, or 4 of higher degree`,
+      suggestion,
       confidence: 'high',
       startPrice,
       endPrice,
-      projections: otherDegreeProjections.length > 0 ? otherDegreeProjections : undefined,
+      projections: openPatternProjections.length > 0 ? openPatternProjections : undefined,
     };
   }
   
