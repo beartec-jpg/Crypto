@@ -567,6 +567,9 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         
         const orphanPatterns = sortedCurrent.filter(child => !assignedIds.has(child.id));
         
+        // Track orphans that get their own structure (to avoid re-processing in "no parent" path)
+        const orphanStructureIds = new Set<string>();
+        
         // Group orphans into separate structures based on time gaps (don't lump them all together)
         if (orphanPatterns.length > 0) {
           let currentOrphanGroup: WaveStackEntry[] = [];
@@ -589,6 +592,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
                   structure.entries.forEach(e => {
                     const entryKey = `${currentDegree}-${e.startTime}`;
                     waveEntryToStructureIndex[entryKey] = structureCount;
+                    orphanStructureIds.add(e.id); // Mark as processed
                   });
                 }
                 currentOrphanGroup = [];
@@ -608,9 +612,15 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
               structure.entries.forEach(entry => {
                 const entryKey = `${currentDegree}-${entry.startTime}`;
                 waveEntryToStructureIndex[entryKey] = structureCount;
+                orphanStructureIds.add(entry.id); // Mark as processed
               });
             }
           }
+        }
+        
+        // If ALL patterns at this degree were processed as orphans, skip the "no parent" path
+        if (orphanStructureIds.size === sortedCurrent.length) {
+          hasParent = true; // Pretend we have a parent to skip the no-parent path
         }
       }
     }
