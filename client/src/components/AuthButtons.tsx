@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
-import { User, LogOut } from 'lucide-react';
+import { User } from 'lucide-react';
+import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from '@clerk/clerk-react';
 
 const isDevelopment = typeof window !== 'undefined' && 
   (window.location.hostname.includes('replit') || 
@@ -7,8 +8,6 @@ const isDevelopment = typeof window !== 'undefined' &&
    window.location.hostname.includes('127.0.0.1'));
 
 function ProductionAuthButtons() {
-  const { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } = require('@clerk/clerk-react');
-  
   return (
     <div className="flex items-center gap-2" data-testid="auth-buttons">
       <SignedOut>

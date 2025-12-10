@@ -5,8 +5,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Crown, Sparkles, Info, CreditCard, Waves, Bot, Shield, LogIn, LogOut, User } from 'lucide-react';
 import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
+import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/clerk-react';
 
 function useClerkHooks() {
+  const auth = useAuth();
+  const { user } = useUser();
+  
   if (isDevelopment) {
     return {
       isSignedIn: true,
@@ -14,9 +18,6 @@ function useClerkHooks() {
       user: { firstName: 'Dev', lastName: 'User', primaryEmailAddress: { emailAddress: 'dev@open.access' }, imageUrl: null }
     };
   }
-  const { useAuth, useUser } = require('@clerk/clerk-react');
-  const auth = useAuth();
-  const { user } = useUser();
   return { ...auth, user };
 }
 
@@ -24,15 +25,13 @@ function ClerkSignInButton({ children, mode }: { children: React.ReactNode; mode
   if (isDevelopment) {
     return <>{children}</>;
   }
-  const { SignInButton } = require('@clerk/clerk-react');
-  return <SignInButton mode={mode}>{children}</SignInButton>;
+  return <SignInButton mode={mode as any}>{children}</SignInButton>;
 }
 
 function ClerkSignOutButton({ children }: { children: React.ReactNode }) {
   if (isDevelopment) {
     return <>{children}</>;
   }
-  const { SignOutButton } = require('@clerk/clerk-react');
   return <SignOutButton>{children}</SignOutButton>;
 }
 
@@ -83,185 +82,131 @@ export default function CryptoAccount() {
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-20">
       <Helmet>
-        <title>Account - Crypto Analysis Platform</title>
-        <meta name="description" content="Manage your account and subscription for the crypto trading analysis platform." />
+        <title>Account | BearTec Crypto</title>
+        <meta name="description" content="Manage your BearTec Crypto account and subscription" />
       </Helmet>
       
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <Shield className="w-6 h-6 text-blue-400" />
-          Account
-        </h1>
+      <CryptoNavigation />
+      
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold mb-8">My Account</h1>
         
-        {isDevelopment && (
-          <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-green-500/30">
-            <div className="flex items-start gap-3">
-              <Info className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <h3 className="font-semibold text-green-300 mb-1">Development Mode</h3>
-                <p className="text-sm text-slate-300">
-                  You're running in development mode with Elite tier access for testing all features.
-                </p>
-              </div>
-            </div>
+        {authLoading ? (
+          <div className="flex justify-center py-12">
+            <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full" />
           </div>
-        )}
-
-        {!isDevelopment && !isSignedIn && isLoaded && (
-          <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-blue-500/30">
-            <div className="text-center">
-              <User className="w-12 h-12 text-blue-400 mx-auto mb-4" />
-              <h3 className="font-semibold text-white text-lg mb-2">Sign in to your account</h3>
-              <p className="text-sm text-slate-300 mb-4">
-                Sign in to access your subscription, save Elliott Wave patterns, and unlock premium features.
-              </p>
-              <ClerkSignInButton mode="modal">
-                <Button className="bg-[#00c4b4] hover:bg-[#00a89c] text-black font-medium" data-testid="button-sign-in">
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Sign In with Google
-                </Button>
-              </ClerkSignInButton>
-            </div>
+        ) : !showContent ? (
+          <div className="bg-slate-900 border border-slate-800 rounded-lg p-8 text-center">
+            <LogIn className="w-12 h-12 text-cyan-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold mb-2">Sign In Required</h2>
+            <p className="text-gray-400 mb-6">Please sign in to view your account</p>
+            <ClerkSignInButton mode="modal">
+              <Button className="bg-cyan-600 hover:bg-cyan-700">
+                <LogIn className="w-4 h-4 mr-2" />
+                Sign In
+              </Button>
+            </ClerkSignInButton>
           </div>
-        )}
-
-        {!isDevelopment && isSignedIn && user && (
-          <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-slate-700">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {user.imageUrl ? (
-                  <img src={user.imageUrl} alt="Profile" className="w-10 h-10 rounded-full" />
+        ) : (
+          <div className="space-y-6">
+            {/* User Info Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+              <div className="flex items-center gap-4 mb-6">
+                {user?.imageUrl ? (
+                  <img src={user.imageUrl} alt="Profile" className="w-16 h-16 rounded-full" />
                 ) : (
-                  <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center">
-                    <User className="w-5 h-5 text-slate-400" />
+                  <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center">
+                    <User className="w-8 h-8 text-gray-500" />
                   </div>
                 )}
                 <div>
-                  <p className="font-medium text-white">{user.fullName || user.primaryEmailAddress?.emailAddress}</p>
-                  <p className="text-sm text-slate-400">{user.primaryEmailAddress?.emailAddress}</p>
+                  <h2 className="text-xl font-bold">
+                    {user?.firstName} {user?.lastName}
+                  </h2>
+                  <p className="text-gray-400">{user?.primaryEmailAddress?.emailAddress}</p>
                 </div>
               </div>
-              <ClerkSignOutButton>
-                <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" data-testid="button-sign-out">
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Sign Out
-                </Button>
-              </ClerkSignOutButton>
+              
+              {!isDevelopment && (
+                <ClerkSignOutButton>
+                  <Button variant="outline" className="border-slate-700 text-gray-300">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </Button>
+                </ClerkSignOutButton>
+              )}
             </div>
-          </div>
-        )}
-        
-        {authLoading ? (
-          <div className="bg-slate-900 rounded-xl p-6 animate-pulse">
-            <div className="h-6 bg-slate-700 rounded w-1/3 mb-4"></div>
-            <div className="h-4 bg-slate-700 rounded w-2/3"></div>
-          </div>
-        ) : isLoading && showContent ? (
-          <div className="bg-slate-900 rounded-xl p-6 animate-pulse">
-            <div className="h-6 bg-slate-700 rounded w-1/3 mb-4"></div>
-            <div className="h-4 bg-slate-700 rounded w-2/3"></div>
-          </div>
-        ) : showContent && (
-          <>
-            <div className={`bg-gradient-to-r ${getTierColor(tier)} rounded-xl p-6 mb-6`}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <Crown className="w-8 h-8 text-white" />
-                  <div>
-                    <h2 className="text-xl font-bold capitalize">{tier} Tier</h2>
-                    <p className="text-white/80 text-sm">
-                      {subscription?.status === 'active' ? 'Active subscription' : 'Current plan'}
+
+            {/* Subscription Card */}
+            <div className={`bg-gradient-to-r ${getTierColor(tier)} p-1 rounded-lg`}>
+              <div className="bg-slate-900 rounded-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <Crown className="w-6 h-6 text-yellow-400" />
+                    <h3 className="text-lg font-bold">Subscription</h3>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getTierBadgeColor(tier)}`}>
+                    {tier.charAt(0).toUpperCase() + tier.slice(1)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-slate-800/50 rounded-lg p-4 text-center">
+                    <Bot className="w-6 h-6 text-cyan-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">AI Credits</p>
+                    <p className="text-lg font-bold">
+                      {subscription?.hasUnlimitedAI ? '∞' : subscription?.aiCredits || 0}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-4 text-center">
+                    <Waves className="w-6 h-6 text-purple-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Elliott Wave</p>
+                    <p className="text-lg font-bold">
+                      {subscription?.canUseElliott ? 'Active' : 'Locked'}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-4 text-center">
+                    <Sparkles className="w-6 h-6 text-yellow-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">AI Analysis</p>
+                    <p className="text-lg font-bold">
+                      {subscription?.canUseAI ? 'Active' : 'Locked'}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-4 text-center">
+                    <Shield className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Status</p>
+                    <p className="text-lg font-bold capitalize">
+                      {subscription?.status || 'Active'}
                     </p>
                   </div>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getTierBadgeColor(tier)}`}>
-                  {tier.toUpperCase()}
-                </span>
+
+                <Link href="/cryptosubscribe">
+                  <Button className="w-full bg-cyan-600 hover:bg-cyan-700">
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    Manage Subscription
+                  </Button>
+                </Link>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                <div className="bg-black/20 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Waves className="w-4 h-4" />
-                    <span className="text-sm font-medium">Elliott Wave</span>
-                  </div>
-                  <p className="text-white/80 text-xs">
-                    {subscription?.canUseElliott ? 'Enabled' : 'Not available'}
+            </div>
+
+            {/* Info */}
+            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-cyan-400 mt-0.5" />
+                <div className="text-sm text-gray-400">
+                  <p className="mb-1">
+                    Your subscription renews automatically each month. You can cancel anytime from the subscription management page.
                   </p>
-                </div>
-                
-                <div className="bg-black/20 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Bot className="w-4 h-4" />
-                    <span className="text-sm font-medium">AI Analysis</span>
-                  </div>
-                  <p className="text-white/80 text-xs">
-                    {subscription?.canUseAI 
-                      ? subscription?.hasUnlimitedAI 
-                        ? 'Unlimited' 
-                        : `${subscription?.aiCredits || 0} credits`
-                      : 'Not available'}
+                  <p>
+                    Need help? Contact support at <a href="mailto:support@beartec.uk" className="text-cyan-400 hover:underline">support@beartec.uk</a>
                   </p>
                 </div>
               </div>
             </div>
-            
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-yellow-400" />
-                Quick Actions
-              </h3>
-              
-              <Link href="/crypto/subscribe">
-                <div className="bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl p-4 cursor-pointer transition-all" data-testid="link-manage-subscription">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <CreditCard className="w-5 h-5 text-blue-400" />
-                      <div>
-                        <h4 className="font-medium">Manage Subscription</h4>
-                        <p className="text-sm text-slate-400">View plans and upgrade options</p>
-                      </div>
-                    </div>
-                    <span className="text-slate-500">&rarr;</span>
-                  </div>
-                </div>
-              </Link>
-              
-              <Link href="/cryptoelliottwave">
-                <div className="bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl p-4 cursor-pointer transition-all" data-testid="link-elliott-wave">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Waves className="w-5 h-5 text-purple-400" />
-                      <div>
-                        <h4 className="font-medium">Elliott Wave Analysis</h4>
-                        <p className="text-sm text-slate-400">Advanced wave pattern analysis</p>
-                      </div>
-                    </div>
-                    <span className="text-slate-500">&rarr;</span>
-                  </div>
-                </div>
-              </Link>
-              
-              <Link href="/cryptoai">
-                <div className="bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl p-4 cursor-pointer transition-all" data-testid="link-ai-analysis">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Bot className="w-5 h-5 text-green-400" />
-                      <div>
-                        <h4 className="font-medium">AI Market Analysis</h4>
-                        <p className="text-sm text-slate-400">Get AI-powered insights</p>
-                      </div>
-                    </div>
-                    <span className="text-slate-500">&rarr;</span>
-                  </div>
-                </div>
-              </Link>
-            </div>
-          </>
+          </div>
         )}
       </div>
-      
-      <CryptoNavigation />
     </div>
   );
 }

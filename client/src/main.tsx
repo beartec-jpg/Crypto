@@ -10,22 +10,15 @@ const isDevelopment =
   window.location.hostname.includes('localhost') ||
   window.location.hostname.includes('127.0.0.1');
 
-if (!isDevelopment && !PUBLISHABLE_KEY) {
+// Always require the key - it should be available in both dev and production
+if (!PUBLISHABLE_KEY) {
   throw new Error('Missing Clerk Publishable Key - add VITE_CLERK_PUBLISHABLE_KEY to secrets')
 }
 
-function AppWrapper() {
-  if (isDevelopment) {
-    return <App />;
-  }
-  
-  return (
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY || ''}>
-      <App />
-    </ClerkProvider>
-  );
-}
-
+// Always wrap with ClerkProvider so Clerk hooks work everywhere
+// The individual components handle dev mode behavior (auto-login, bypassing auth checks)
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <AppWrapper />,
+  <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    <App />
+  </ClerkProvider>,
 )

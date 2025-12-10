@@ -3,6 +3,7 @@ import { Loader2, AlertTriangle } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { setAuthTokenGetter, queryClient } from '@/lib/queryClient';
 import { configureApiAuth } from '@/lib/apiAuth';
+import { useAuth, RedirectToSignIn } from '@clerk/clerk-react';
 
 interface CryptoAuthGateProps {
   children: React.ReactNode;
@@ -14,6 +15,8 @@ const isDevelopment = typeof window !== 'undefined' &&
    window.location.hostname.includes('127.0.0.1'));
 
 function useClerkAuth() {
+  const clerkAuth = useAuth();
+  
   if (isDevelopment) {
     return {
       isSignedIn: true,
@@ -22,8 +25,7 @@ function useClerkAuth() {
     };
   }
   
-  const { useAuth } = require('@clerk/clerk-react');
-  return useAuth();
+  return clerkAuth;
 }
 
 export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
@@ -131,7 +133,6 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
   }
 
   if (!isSignedIn) {
-    const { RedirectToSignIn } = require('@clerk/clerk-react');
     return <RedirectToSignIn />;
   }
 

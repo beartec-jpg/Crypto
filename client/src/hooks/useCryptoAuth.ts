@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useAuth, useUser } from '@clerk/clerk-react';
 
 interface CryptoUser {
   id: string;
@@ -56,6 +57,9 @@ const devSubscription: CryptoSubscription = {
 };
 
 function useClerkHooks() {
+  const auth = useAuth();
+  const { user } = useUser();
+  
   if (isDevelopment) {
     return {
       isSignedIn: true,
@@ -65,9 +69,6 @@ function useClerkHooks() {
     };
   }
   
-  const { useAuth, useUser } = require('@clerk/clerk-react');
-  const auth = useAuth();
-  const { user } = useUser();
   return { ...auth, user };
 }
 
@@ -123,60 +124,31 @@ export function useCryptoAuth() {
       isAuthenticated: true,
       isLoading: false,
       error: null,
-      isElite: true,
-      getToken: async () => 'dev-token',
+      canUseElliottFeatures: true,
+      canUseAI: true,
+      hasUnlimitedAI: true,
       refetchSubscription,
     };
   }
 
-  if (!isLoaded) {
-    return {
-      user: null,
-      subscription: null,
-      tier: 'free' as const,
-      isAuthenticated: false,
-      isLoading: true,
-      error: null,
-      isElite: false,
-      getToken,
-      refetchSubscription,
-    };
-  }
-
-  if (!isSignedIn || !user) {
-    return {
-      user: null,
-      subscription: null,
-      tier: 'free' as const,
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
-      isElite: false,
-      getToken,
-      refetchSubscription,
-    };
-  }
-
-  const cryptoUser: CryptoUser = {
+  const cryptoUser: CryptoUser | null = user ? {
     id: user.id,
-    email: user.primaryEmailAddress?.emailAddress || '',
+    email: (user as any).primaryEmailAddress?.emailAddress || (user as any).email || '',
     firstName: user.firstName || undefined,
     lastName: user.lastName || undefined,
-    profileImageUrl: user.imageUrl || undefined,
-  };
-
-  const tier = subscription?.tier || 'free';
-  const isElite = tier === 'elite';
+    profileImageUrl: (user as any).imageUrl || (user as any).profileImageUrl || undefined,
+  } : null;
 
   return {
     user: cryptoUser,
     subscription: subscription || null,
-    tier: tier as 'free' | 'beginner' | 'intermediate' | 'pro' | 'elite',
-    isAuthenticated: true,
-    isLoading: subscriptionLoading,
+    tier: subscription?.tier || 'free',
+    isAuthenticated: isSignedIn === true && isLoaded,
+    isLoading: !isLoaded || subscriptionLoading,
     error: null,
-    isElite,
-    getToken,
+    canUseElliottFeatures: subscription?.canUseElliott || false,
+    canUseAI: subscription?.canUseAI || false,
+    hasUnlimitedAI: subscription?.hasUnlimitedAI || false,
     refetchSubscription,
   };
 }

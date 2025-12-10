@@ -4,21 +4,22 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { TrendingUp, ArrowRight, Sparkles, BarChart2, LogIn } from 'lucide-react';
 import { isDevelopment } from '@/hooks/useCryptoAuth';
 import { useEffect, useMemo } from 'react';
+import { useAuth, SignInButton } from '@clerk/clerk-react';
 
 function useClerkAuth() {
+  const auth = useAuth();
+  
   if (isDevelopment) {
     return { isSignedIn: true, isLoaded: true };
   }
-  const { useAuth } = require('@clerk/clerk-react');
-  return useAuth();
+  return auth;
 }
 
 function ClerkSignInButton({ children, mode, forceRedirectUrl }: { children: React.ReactNode; mode?: string; forceRedirectUrl?: string }) {
   if (isDevelopment) {
     return <>{children}</>;
   }
-  const { SignInButton } = require('@clerk/clerk-react');
-  return <SignInButton mode={mode} forceRedirectUrl={forceRedirectUrl}>{children}</SignInButton>;
+  return <SignInButton mode={mode as any} forceRedirectUrl={forceRedirectUrl}>{children}</SignInButton>;
 }
 
 export default function CryptoLogin() {
@@ -94,41 +95,35 @@ export default function CryptoLogin() {
             <TrendingUp className="w-10 h-10 text-[#00c4b4]" />
             <h1 className="text-3xl font-bold text-white">Crypto Trading Suite</h1>
           </div>
-          <CardTitle className="text-2xl text-white">Welcome!</CardTitle>
+          <CardTitle className="text-2xl text-white">Welcome Back</CardTitle>
           <CardDescription className="text-gray-400">
-            Sign in to access premium features and manage your subscription
+            Sign in to access your trading dashboard
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <ClerkSignInButton mode="redirect" forceRedirectUrl={returnToUrl}>
+          <ClerkSignInButton mode="modal" forceRedirectUrl={returnToUrl}>
             <Button
               className="w-full bg-[#00c4b4] hover:bg-[#00a89c] text-black font-medium py-6 text-lg"
               data-testid="button-sign-in"
             >
               <LogIn className="w-5 h-5 mr-3" />
-              Sign In with Google
+              Sign In
               <ArrowRight className="w-5 h-5 ml-3" />
             </Button>
           </ClerkSignInButton>
 
           <div className="text-center text-sm text-gray-500">
-            <p>New user? Sign in to create your account automatically.</p>
+            <p>Don't have an account? Sign up during login</p>
           </div>
 
-          <div className="border-t border-[#2a2e39] pt-4 mt-4">
-            <p className="text-center text-gray-400 text-sm">
-              New to BearTec? Sign in creates your free account automatically.
-            </p>
-            <Link href="/crypto" className="block mt-3">
-              <Button
-                variant="ghost"
-                className="w-full text-gray-500 hover:text-gray-300 hover:bg-transparent"
-                data-testid="button-back-home"
-              >
-                ← Back to Home
-              </Button>
-            </Link>
-          </div>
+          <Link href="/">
+            <Button
+              variant="outline"
+              className="w-full border-[#2a2e39] text-gray-300 hover:bg-[#2a2e39]"
+            >
+              Back to Home
+            </Button>
+          </Link>
         </CardContent>
       </Card>
     </div>

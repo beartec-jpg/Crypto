@@ -8,8 +8,12 @@ import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
 import { isDevelopment } from '@/hooks/useCryptoAuth';
+import { useAuth, useUser, SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
 
 function useClerkHooks() {
+  const auth = useAuth();
+  const { user } = useUser();
+  
   if (isDevelopment) {
     return {
       isSignedIn: true,
@@ -17,9 +21,6 @@ function useClerkHooks() {
       user: { firstName: 'Dev', lastName: 'User' }
     };
   }
-  const { useAuth, useUser } = require('@clerk/clerk-react');
-  const auth = useAuth();
-  const { user } = useUser();
   return { ...auth, user };
 }
 
@@ -27,7 +28,6 @@ function ClerkSignedIn({ children }: { children: React.ReactNode }) {
   if (isDevelopment) {
     return <>{children}</>;
   }
-  const { SignedIn } = require('@clerk/clerk-react');
   return <SignedIn>{children}</SignedIn>;
 }
 
@@ -35,7 +35,6 @@ function ClerkSignedOut({ children }: { children: React.ReactNode }) {
   if (isDevelopment) {
     return null;
   }
-  const { SignedOut } = require('@clerk/clerk-react');
   return <SignedOut>{children}</SignedOut>;
 }
 
@@ -43,8 +42,7 @@ function ClerkSignInButton({ children, mode }: { children: React.ReactNode; mode
   if (isDevelopment) {
     return <>{children}</>;
   }
-  const { SignInButton } = require('@clerk/clerk-react');
-  return <SignInButton mode={mode}>{children}</SignInButton>;
+  return <SignInButton mode={mode as any}>{children}</SignInButton>;
 }
 
 interface SubscriptionData {
@@ -76,7 +74,6 @@ export default function CryptoSubscribe() {
     enabled: isSignedIn,
   });
 
-  // Handle success/cancel URL params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('success') === 'true') {
@@ -96,7 +93,6 @@ export default function CryptoSubscribe() {
     }
   }, [toast, queryClient]);
 
-  // Checkout mutation
   const checkoutMutation = useMutation({
     mutationFn: async ({ tier, type, action }: { tier?: string; type: string; action?: string }) => {
       const token = await getToken();
@@ -127,10 +123,10 @@ export default function CryptoSubscribe() {
     onSuccess: (data) => {
       if (data.url) {
         window.location.href = data.url;
-      } else if (data.added || data.success) {
+      } else if (data.message) {
         toast({
-          title: 'Subscription updated!',
-          description: data.message || 'Your subscription has been updated.',
+          title: 'Success',
+          description: data.message,
         });
         queryClient.invalidateQueries({ queryKey: ['/api/crypto/my-subscription'] });
       }
@@ -144,80 +140,100 @@ export default function CryptoSubscribe() {
     },
   });
 
-  const handleTierSelect = (tier: string) => {
-    if (tier === 'free') {
-      // Open portal to cancel/downgrade
-      checkoutMutation.mutate({ type: 'portal' });
-    } else {
-      checkoutMutation.mutate({ tier, type: 'base_tier' });
-    }
+  const handleSubscribe = (tier: string) => {
+    checkoutMutation.mutate({ tier, type: 'subscription' });
   };
 
-  const handleAddElliott = () => {
-    checkoutMutation.mutate({ type: 'elliott_addon' });
+  const handleAddon = () => {
+    checkoutMutation.mutate({ type: 'addon' });
   };
 
-  const handleCancelElliott = () => {
-    checkoutMutation.mutate({ type: 'cancel_elliott', action: 'cancel_elliott' });
+  const handleManage = () => {
+    checkoutMutation.mutate({ type: 'manage', action: 'portal' });
   };
 
   const currentTier = subscription?.tier || 'free';
-  const canUseElliott = subscription?.canUseElliott || false;
+  const hasElliottAddon = subscription?.hasElliottAddon || false;
 
   const tiers = [
     {
-      id: 'free',
       name: 'Free',
-      price: '$0',
-      period: 'forever',
-      features: ['View all pages', 'Basic chart access', 'Training content'],
-      highlight: false,
+      tier: 'free',
+      price: 'Free',
+      description: 'Get started with basic features',
+      features: [
+        'Basic chart indicators',
+        'Standard timeframes',
+        'Price alerts (limited)',
+      ],
+      current: currentTier === 'free',
     },
     {
-      id: 'intermediate',
       name: 'Intermediate',
-      price: '$15',
-      period: '/month',
-      features: ['Everything in Free', '50 AI credits/month', 'AI market analysis'],
-      highlight: false,
+      tier: 'intermediate',
+      price: '£15/mo',
+      description: 'Enhanced trading tools',
+      features: [
+        'All Free features',
+        '50 AI credits/month',
+        'Advanced indicators',
+        'CCI & ADX alerts',
+      ],
+      current: currentTier === 'intermediate',
+      popular: true,
     },
     {
-      id: 'pro',
       name: 'Pro',
-      price: '$30',
-      period: '/month',
-      features: ['Everything in Intermediate', 'Unlimited AI credits*', 'Push notifications', 'Priority support'],
-      highlight: true,
-      footnote: '*Daily limits apply to maintain service quality',
+      tier: 'pro',
+      price: '£30/mo',
+      description: 'Professional trading suite',
+      features: [
+        'All Intermediate features',
+        'Unlimited AI analysis',
+        'Priority notifications',
+        'Multi-timeframe analysis',
+      ],
+      current: currentTier === 'pro',
     },
     {
-      id: 'elite',
       name: 'Elite',
-      price: '$50',
-      period: '/month',
-      features: ['Everything in Pro', 'Elliott Wave tools (included)', 'Custom indicators & features on request**', 'Early access to new features'],
-      highlight: false,
-      footnote: '**Subject to complexity and availability',
+      tier: 'elite',
+      price: '£50/mo',
+      description: 'Complete trading arsenal',
+      features: [
+        'All Pro features',
+        'Elliott Wave analysis',
+        'Wave Stack system',
+        'Predictive projections',
+        'Priority support',
+      ],
+      current: currentTier === 'elite',
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-950 to-zinc-900 pb-24">
-      <div className="max-w-6xl mx-auto p-4 pt-8">
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-white mb-2">Subscription Plans</h1>
-          <p className="text-zinc-400">Choose the plan that fits your trading needs</p>
+    <div className="min-h-screen bg-slate-950 text-white pb-20">
+      <CryptoNavigation />
+      
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold mb-4">Choose Your Plan</h1>
+          <p className="text-gray-400 text-lg">
+            Unlock powerful trading tools and analysis features
+          </p>
         </div>
 
         <ClerkSignedOut>
-          <Card className="max-w-md mx-auto bg-zinc-900/80 border-zinc-800 mb-8">
+          <Card className="max-w-md mx-auto bg-slate-900 border-slate-800 mb-8">
             <CardContent className="pt-6 text-center">
               <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">Sign in to manage subscriptions</h3>
-              <p className="text-zinc-400 mb-4">Create an account or sign in to subscribe and manage your plan.</p>
+              <h3 className="text-xl font-bold mb-2">Sign in to Subscribe</h3>
+              <p className="text-gray-400 mb-4">
+                Create an account or sign in to access premium features
+              </p>
               <ClerkSignInButton mode="modal">
-                <Button className="bg-blue-600 hover:bg-blue-700" data-testid="button-signin">
-                  Sign In / Create Account
+                <Button className="bg-cyan-600 hover:bg-cyan-700">
+                  Sign In
                 </Button>
               </ClerkSignInButton>
             </CardContent>
@@ -226,215 +242,129 @@ export default function CryptoSubscribe() {
 
         <ClerkSignedIn>
           {isLoading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
             </div>
           ) : (
             <>
-              <Card className="bg-zinc-900/80 border-zinc-800 mb-8">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    Current Plan
-                    <Badge variant="secondary" className="ml-2 capitalize">
-                      {currentTier}
-                    </Badge>
-                  </CardTitle>
-                  <CardDescription className="text-zinc-400">
-                    {subscription?.status === 'active' ? 'Your subscription is active' : 'No active subscription'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-4">
-                    <div className="bg-zinc-800/50 rounded-lg p-4 flex-1 min-w-[200px]">
-                      <p className="text-zinc-400 text-sm">Base Tier</p>
-                      <p className="text-white text-lg font-semibold capitalize">{currentTier}</p>
-                      <p className="text-zinc-500 text-sm">{TIER_PRICES[currentTier]?.price}</p>
-                    </div>
-                    <div className="bg-zinc-800/50 rounded-lg p-4 flex-1 min-w-[200px]">
-                      <p className="text-zinc-400 text-sm">Elliott Wave Add-on</p>
-                      <p className="text-white text-lg font-semibold">
-                        {canUseElliott ? (
-                          <span className="text-green-400">Active</span>
-                        ) : (
-                          <span className="text-zinc-500">Not subscribed</span>
-                        )}
-                      </p>
-                      <p className="text-zinc-500 text-sm">$10/month</p>
-                    </div>
-                    {subscription?.canUseAI && (
-                      <div className="bg-zinc-800/50 rounded-lg p-4 flex-1 min-w-[200px]">
-                        <p className="text-zinc-400 text-sm">AI Credits</p>
-                        <p className="text-white text-lg font-semibold">
-                          {subscription?.hasUnlimitedAI ? 'Unlimited*' : subscription?.aiCredits || 0}
-                        </p>
-                        <p className="text-zinc-500 text-sm">
-                          {subscription?.hasUnlimitedAI ? (
-                            <span>*Daily limits apply ({currentTier === 'elite' ? '11' : '7'}/day)</span>
-                          ) : 'Resets monthly'}
-                        </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                {tiers.map((tier) => (
+                  <Card 
+                    key={tier.tier}
+                    className={`bg-slate-900 border-slate-800 relative ${
+                      tier.current ? 'ring-2 ring-cyan-500' : ''
+                    } ${tier.popular ? 'border-cyan-500' : ''}`}
+                  >
+                    {tier.popular && (
+                      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                        <Badge className="bg-cyan-600 text-white">Most Popular</Badge>
                       </div>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 border-purple-800/50 mb-8">
-                <CardHeader>
-                  <div className="flex items-center gap-3">
-                    <Waves className="w-8 h-8 text-purple-400" />
-                    <div>
-                      <CardTitle className="text-white">Elliott Wave Add-on</CardTitle>
-                      <CardDescription className="text-purple-300">
-                        $10/month - Works with any tier
+                    {tier.current && (
+                      <div className="absolute -top-3 right-4">
+                        <Badge className="bg-green-600 text-white">Current</Badge>
+                      </div>
+                    )}
+                    <CardHeader>
+                      <CardTitle className="text-xl">{tier.name}</CardTitle>
+                      <CardDescription className="text-gray-400">
+                        {tier.description}
                       </CardDescription>
+                      <div className="text-3xl font-bold text-white mt-2">
+                        {tier.price}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2 mb-6">
+                        {tier.features.map((feature, idx) => (
+                          <li key={idx} className="flex items-center gap-2 text-sm text-gray-300">
+                            <Check className="w-4 h-4 text-cyan-500" />
+                            {feature}
+                          </li>
+                        ))}
+                      </ul>
+                      {tier.tier === 'free' ? (
+                        tier.current ? (
+                          <Button disabled className="w-full bg-slate-700">
+                            Current Plan
+                          </Button>
+                        ) : (
+                          <Button 
+                            onClick={handleManage}
+                            className="w-full bg-slate-700 hover:bg-slate-600"
+                          >
+                            Downgrade
+                          </Button>
+                        )
+                      ) : tier.current ? (
+                        <Button 
+                          onClick={handleManage}
+                          className="w-full bg-slate-700 hover:bg-slate-600"
+                        >
+                          Manage Subscription
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => handleSubscribe(tier.tier)}
+                          disabled={checkoutMutation.isPending}
+                          className="w-full bg-cyan-600 hover:bg-cyan-700"
+                        >
+                          {checkoutMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            `Subscribe to ${tier.name}`
+                          )}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {currentTier !== 'elite' && (
+                <Card className="max-w-2xl mx-auto bg-gradient-to-r from-purple-900/50 to-pink-900/50 border-purple-500">
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <Waves className="w-8 h-8 text-purple-400" />
+                      <div>
+                        <CardTitle>Elliott Wave Add-on</CardTitle>
+                        <CardDescription className="text-purple-300">
+                          Advanced wave analysis for any subscription tier
+                        </CardDescription>
+                      </div>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid md:grid-cols-2 gap-4 mb-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-zinc-300">
-                        <Check className="w-4 h-4 text-purple-400" />
-                        <span>Draw and label Elliott Waves</span>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-2xl font-bold text-white">£10/mo</p>
+                        <p className="text-sm text-purple-300">
+                          Add Elliott Wave analysis to your current plan
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2 text-zinc-300">
-                        <Check className="w-4 h-4 text-purple-400" />
-                        <span>AI-powered wave validation</span>
-                      </div>
+                      {hasElliottAddon ? (
+                        <Badge className="bg-green-600 text-white">Active</Badge>
+                      ) : (
+                        <Button
+                          onClick={handleAddon}
+                          disabled={checkoutMutation.isPending}
+                          className="bg-purple-600 hover:bg-purple-700"
+                        >
+                          {checkoutMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            'Add Elliott Wave'
+                          )}
+                        </Button>
+                      )}
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-zinc-300">
-                        <Check className="w-4 h-4 text-purple-400" />
-                        <span>Fibonacci projections</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-zinc-300">
-                        <Check className="w-4 h-4 text-purple-400" />
-                        <span>Multi-degree wave analysis</span>
-                      </div>
-                    </div>
-                  </div>
-                  {canUseElliott ? (
-                    currentTier === 'elite' ? (
-                      <p className="text-green-400 text-sm">Included with your Elite subscription</p>
-                    ) : (
-                      <Button 
-                        variant="outline" 
-                        className="border-red-600 text-red-400 hover:bg-red-900/20" 
-                        data-testid="button-cancel-elliott"
-                        onClick={handleCancelElliott}
-                        disabled={checkoutMutation.isPending}
-                      >
-                        {checkoutMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                        Cancel Elliott Add-on
-                      </Button>
-                    )
-                  ) : (
-                    <Button 
-                      className="bg-purple-600 hover:bg-purple-700" 
-                      data-testid="button-add-elliott"
-                      onClick={handleAddElliott}
-                      disabled={checkoutMutation.isPending}
-                    >
-                      {checkoutMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                      Add Elliott Wave - $10/mo
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </ClerkSignedIn>
-
-        <h2 className="text-2xl font-bold text-white text-center mb-6">Choose Your Base Plan</h2>
-        
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {tiers.map((tier) => (
-            <Card 
-              key={tier.id}
-              className={`relative ${
-                tier.highlight 
-                  ? 'bg-gradient-to-b from-blue-900/50 to-zinc-900/80 border-blue-600' 
-                  : 'bg-zinc-900/80 border-zinc-800'
-              }`}
-            >
-              {tier.highlight && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-blue-600">Popular</Badge>
-                </div>
-              )}
-              <CardHeader className="text-center pb-2">
-                <CardTitle className="text-white">{tier.name}</CardTitle>
-                <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-3xl font-bold text-white">{tier.price}</span>
-                  <span className="text-zinc-400 text-sm">{tier.period}</span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  {tier.features.map((feature, idx) => (
-                    <div key={idx} className="flex items-center gap-2 text-sm text-zinc-300">
-                      <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                      <span>{feature}</span>
-                    </div>
-                  ))}
-                </div>
-                {'footnote' in tier && tier.footnote && (
-                  <p className="text-xs text-zinc-500 italic mt-2">{tier.footnote}</p>
-                )}
-                <ClerkSignedIn>
-                  {currentTier === tier.id ? (
-                    <Button disabled className="w-full bg-zinc-700" data-testid={`button-current-${tier.id}`}>
-                      Current Plan
-                    </Button>
-                  ) : (
-                    <Button 
-                      className={`w-full ${tier.highlight ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
-                      variant={tier.highlight ? 'default' : 'outline'}
-                      data-testid={`button-select-${tier.id}`}
-                      onClick={() => handleTierSelect(tier.id)}
-                      disabled={checkoutMutation.isPending}
-                    >
-                      {checkoutMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                      {tier.id === 'free' ? 'Manage Subscription' : 'Upgrade'}
-                    </Button>
-                  )}
-                </ClerkSignedIn>
-                <ClerkSignedOut>
-                  <ClerkSignInButton mode="modal">
-                    <Button 
-                      className={`w-full ${tier.highlight ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
-                      variant={tier.highlight ? 'default' : 'outline'}
-                      data-testid={`button-signup-${tier.id}`}
-                    >
-                      Get Started
-                    </Button>
-                  </ClerkSignInButton>
-                </ClerkSignedOut>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <div className="text-center text-zinc-500 text-sm space-y-2">
-          <p>Cancel anytime. No long-term commitments.</p>
-          <p>
-            Questions? Contact us at{' '}
-            <a href="mailto:info@BearTec.uk" className="text-blue-400 hover:underline">
-              info@BearTec.uk
-            </a>
-          </p>
-          <div className="flex justify-center gap-4 pt-4">
-            <Link href="/cryptoterms">
-              <span className="text-zinc-400 hover:text-white cursor-pointer">Terms of Service</span>
-            </Link>
-            <Link href="/cryptoprivacy">
-              <span className="text-zinc-400 hover:text-white cursor-pointer">Privacy Policy</span>
-            </Link>
-          </div>
-        </div>
       </div>
-      
-      <CryptoNavigation />
     </div>
   );
 }

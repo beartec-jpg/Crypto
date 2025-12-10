@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { isDevelopment } from './useCryptoAuth';
+import { useAuth } from '@clerk/clerk-react';
 
 interface AuthReadyState {
   ready: boolean;
@@ -9,6 +10,8 @@ interface AuthReadyState {
 }
 
 function useClerkAuth() {
+  const auth = useAuth();
+  
   if (isDevelopment) {
     return {
       isLoaded: true,
@@ -17,8 +20,7 @@ function useClerkAuth() {
     };
   }
   
-  const { useAuth } = require('@clerk/clerk-react');
-  return useAuth();
+  return auth;
 }
 
 export function useEnsureAuthReady(maxRetries = 10, retryDelay = 300): AuthReadyState {
@@ -87,14 +89,19 @@ export function useEnsureAuthReady(maxRetries = 10, retryDelay = 300): AuthReady
             });
           }
         }
-      } catch (err) {
-        if (!cancelled) {
-          setState({
-            ready: false,
-            token: null,
-            error: err instanceof Error ? err : new Error('Authentication error'),
-            isLoading: false,
-          });
+      } catch (error) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(checkAuth, retryDelay);
+        } else {
+          if (!cancelled) {
+            setState({
+              ready: false,
+              token: null,
+              error: error instanceof Error ? error : new Error('Unknown authentication error'),
+              isLoading: false,
+            });
+          }
         }
       }
     };
