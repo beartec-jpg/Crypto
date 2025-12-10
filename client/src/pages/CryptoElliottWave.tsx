@@ -866,6 +866,175 @@ function computeCascadeScores(structures: GroupedStructure[]): GroupedStructure[
   return structures;
 }
 
+// Recursive Wave Entry Row Component for hierarchical tree display
+interface WaveEntryRowProps {
+  entry: WaveStackEntry;
+  parentStructure: GroupedStructure;
+  entryIndex: number;
+  allStructures: GroupedStructure[];
+  depth: number;
+  expandedEntries: Set<string>;
+  toggleEntry: (id: string) => void;
+  selectedLabelId: string | null;
+  setSelectedLabelId: (id: string | null) => void;
+  deleteLabel: { mutate: (id: string) => void };
+  toast: (opts: { title: string; description: string }) => void;
+  waveDegrees: WaveDegree[];
+}
+
+function WaveEntryRow({
+  entry,
+  parentStructure,
+  entryIndex,
+  allStructures,
+  depth,
+  expandedEntries,
+  toggleEntry,
+  selectedLabelId,
+  setSelectedLabelId,
+  deleteLabel,
+  toast,
+  waveDegrees
+}: WaveEntryRowProps) {
+  // Get child structures for this entry
+  const entryChildren = getChildrenForEntry(entry, parentStructure, allStructures);
+  const hasChildren = entryChildren.length > 0;
+  const isExpanded = expandedEntries.has(entry.id);
+  
+  // Determine wave label based on parent archetype
+  const waveLabels = ['A', 'B', 'C', 'D', 'E'];
+  const waveLabel = parentStructure.archetype.includes('WXY') || parentStructure.archetype === 'W-X' 
+    ? (entryIndex === 0 ? 'W' : entryIndex === 1 ? 'X' : entryIndex === 2 ? 'Y' : String(entryIndex + 1))
+    : waveLabels[entryIndex] || String(entryIndex + 1);
+  
+  const degreeColor = waveDegrees.find((d: WaveDegree) => d.name === parentStructure.degree)?.color || '#74C0FC';
+  const indentPx = depth * 16;
+  
+  return (
+    <div>
+      {/* Entry Row */}
+      <div 
+        className={`flex items-center gap-2 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer ${
+          selectedLabelId === entry.id ? 'bg-cyan-900/20' : ''
+        }`}
+        style={{ paddingLeft: `${12 + indentPx}px`, paddingRight: '12px' }}
+        onClick={(e) => {
+          if (hasChildren) {
+            e.stopPropagation();
+            toggleEntry(entry.id);
+          } else {
+            setSelectedLabelId(entry.id);
+            toast({ title: 'Pattern Selected', description: `${parentStructure.degree} ${waveLabel} selected` });
+          }
+        }}
+      >
+        {/* Expand/Collapse indicator for entries with children */}
+        {hasChildren ? (
+          <ChevronDown className={`w-3 h-3 text-gray-500 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
+        ) : (
+          <span className="w-3" /> // Spacer for alignment
+        )}
+        
+        {/* Wave Label */}
+        <span className="w-6 text-center font-bold" style={{ color: degreeColor }}>
+          {waveLabel}
+        </span>
+        
+        {/* Timeframe */}
+        <Badge variant="outline" className="text-[10px] px-1.5 text-gray-300 border-gray-600">
+          {entry.timeframe}
+        </Badge>
+        
+        {/* Pattern Type */}
+        <span className={`text-xs font-medium ${
+          entry.patternType === 'impulse' ? 'text-emerald-400' :
+          entry.patternType === 'abc' || entry.patternType === 'correction' ? 'text-amber-400' :
+          entry.patternType === 'diagonal' ? 'text-purple-400' :
+          'text-gray-400'
+        }`}>{entry.patternType}</span>
+        
+        {/* Wave Count */}
+        <span className="font-mono text-xs text-cyan-400">{entry.waveCount}</span>
+        
+        {/* Direction */}
+        <span className={entry.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
+          {entry.direction === 'up' ? '↑' : '↓'}
+        </span>
+        
+        {/* Child count badge */}
+        {hasChildren && (
+          <Badge variant="outline" className="text-[9px] px-1 border-cyan-600 text-cyan-400">
+            {entryChildren.length} nested
+          </Badge>
+        )}
+        
+        {/* Price */}
+        <span className="ml-auto text-xs font-mono text-gray-400">
+          ${entry.endPrice.toFixed(4)}
+        </span>
+        
+        {/* Delete */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (confirm(`Delete this ${entry.patternType}?`)) {
+              deleteLabel.mutate(entry.id);
+            }
+          }}
+          className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+      
+      {/* Recursively render child structures when expanded */}
+      {hasChildren && isExpanded && (
+        <div className="border-l-2 border-slate-700" style={{ marginLeft: `${16 + indentPx}px` }}>
+          {entryChildren.map(childStructure => {
+            const childDegreeColor = waveDegrees.find((d: WaveDegree) => d.name === childStructure.degree)?.color || '#666';
+            return (
+              <div key={childStructure.id}>
+                {/* Child structure header (degree label) */}
+                <div 
+                  className="flex items-center gap-2 py-1.5 px-2 text-xs text-gray-400 bg-slate-800/20"
+                  style={{ borderLeft: `2px solid ${childDegreeColor}` }}
+                >
+                  <span style={{ color: childDegreeColor }}>
+                    {childStructure.degree}
+                  </span>
+                  <Badge variant="outline" className="text-[9px] px-1 border-gray-600">
+                    {childStructure.archetype}
+                  </Badge>
+                  <span className="font-mono text-gray-500">{childStructure.sequence}</span>
+                </div>
+                
+                {/* Child structure entries (recursive) */}
+                {childStructure.entries.map((childEntry, childIdx) => (
+                  <WaveEntryRow
+                    key={childEntry.id}
+                    entry={childEntry}
+                    parentStructure={childStructure}
+                    entryIndex={childIdx}
+                    allStructures={allStructures}
+                    depth={depth + 1}
+                    expandedEntries={expandedEntries}
+                    toggleEntry={toggleEntry}
+                    selectedLabelId={selectedLabelId}
+                    setSelectedLabelId={setSelectedLabelId}
+                    deleteLabel={deleteLabel}
+                    toast={toast}
+                    waveDegrees={waveDegrees}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Calculate Fibonacci projection levels based on wave type
 // launchPrice: the price to project FROM (defaults to anchorEnd but can be different, e.g., B endpoint for C wave)
 function calculateFibLevels(
@@ -2133,6 +2302,9 @@ export default function CryptoElliottWave() {
   // State for expanded/collapsed structure groups
   const [expandedStructures, setExpandedStructures] = useState<Set<string>>(new Set());
   
+  // State for expanded/collapsed individual entries (for nested tree)
+  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
+  
   // Toggle structure expansion
   const toggleStructure = (structureId: string) => {
     setExpandedStructures(prev => {
@@ -2141,6 +2313,19 @@ export default function CryptoElliottWave() {
         next.delete(structureId);
       } else {
         next.add(structureId);
+      }
+      return next;
+    });
+  };
+  
+  // Toggle entry expansion (for recursive tree)
+  const toggleEntry = (entryId: string) => {
+    setExpandedEntries(prev => {
+      const next = new Set(prev);
+      if (next.has(entryId)) {
+        next.delete(entryId);
+      } else {
+        next.add(entryId);
       }
       return next;
     });
@@ -6225,15 +6410,14 @@ const aiAnalyze = useMutation({
                   </div>
                 )}
 
-                {/* Grouped Wave Structures */}
+                {/* Grouped Wave Structures - PURE HIERARCHICAL TREE */}
+                {/* Only render ROOT structures (no parentId), children appear ONLY when parent entry is expanded */}
                 <div className="space-y-3">
-                  {groupedStructures.map((structure) => {
+                  {groupedStructures
+                    .filter(s => !s.parentId) // Only root structures at top level
+                    .map((structure) => {
                     const isExpanded = expandedStructures.has(structure.id);
                     const degreeColor = waveDegrees.find(d => d.name === structure.degree)?.color || '#74C0FC';
-                    
-                    // Get parent context for this structure
-                    const completionChain = getCompletionChain(structure, groupedStructures);
-                    const parentLabel = completionChain.length > 0 ? completionChain[0] : null;
                     
                     return (
                       <div key={structure.id} className="rounded-lg border border-slate-700 overflow-hidden">
@@ -6247,22 +6431,19 @@ const aiAnalyze = useMutation({
                           {/* Expand/Collapse */}
                           <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
                           
-                          {/* Index + Degree */}
+                          {/* Degree */}
                           <span className="font-medium text-sm" style={{ color: degreeColor }}>
-                            {structure.displayIndex && <span className="text-gray-500 mr-1">{structure.displayIndex}.</span>}
                             {structure.degree}
                           </span>
                           
-                          {/* Archetype Badge + Parent Context */}
+                          {/* Archetype Badge */}
                           <Badge variant="outline" className={`text-xs ${
                             structure.archetype === 'Impulse' ? 'border-emerald-500 text-emerald-400' :
-                            structure.archetype === 'WXY' ? 'border-amber-500 text-amber-400' :
-                            structure.archetype === 'W1-W2' || structure.archetype === 'W1/A' ? 'border-cyan-500 text-cyan-400' :
+                            structure.archetype.includes('WXY') ? 'border-amber-500 text-amber-400' :
                             structure.archetype === 'Zigzag' ? 'border-purple-500 text-purple-400' :
                             'border-gray-500 text-gray-400'
                           }`}>
                             {structure.archetype}
-                            {parentLabel && <span className="ml-1 text-cyan-300">= {parentLabel}</span>}
                           </Badge>
                           
                           {/* Sequence */}
@@ -6273,152 +6454,41 @@ const aiAnalyze = useMutation({
                             {structure.direction === 'up' ? '↑' : '↓'}
                           </span>
                           
-                          {/* Validity Score with Cascade Info */}
+                          {/* Validity Score */}
                           <div className="ml-auto flex items-center gap-2">
                             <span className="text-xs text-gray-400">{structure.percentMove.toFixed(1)}%</span>
-                            <div className="relative group">
-                              <Badge variant="outline" className={`text-xs cursor-help ${
-                                structure.validityTier === 'excellent' ? 'border-emerald-500 text-emerald-400' :
-                                structure.validityTier === 'good' ? 'border-green-500 text-green-400' :
-                                structure.validityTier === 'fair' ? 'border-yellow-500 text-yellow-400' :
-                                'border-red-500 text-red-400'
-                              }`}>
-                                {structure.cascadedScore ?? structure.validityScore}%
-                                {(structure.cascadeBreakdown && structure.cascadeBreakdown.length > 0) && (
-                                  <span className="ml-1 text-[10px] text-cyan-400">↑</span>
-                                )}
-                              </Badge>
-                              {/* Cascade Breakdown Tooltip */}
-                              {structure.cascadeBreakdown && structure.cascadeBreakdown.length > 0 && (
-                                <div className="absolute z-50 hidden group-hover:block bottom-full right-0 mb-1 w-48 bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs shadow-xl">
-                                  <div className="text-gray-300 mb-1 font-medium">Score Breakdown:</div>
-                                  <div className="text-gray-400 mb-1">Base: {structure.validityScore}% × 60%</div>
-                                  {structure.cascadeBreakdown.slice(0, 5).map((contrib, idx) => (
-                                    <div key={idx} className="text-gray-400 flex justify-between">
-                                      <span>{contrib.sourceDegree}</span>
-                                      <span className="text-cyan-400">+{contrib.contribution}%</span>
-                                    </div>
-                                  ))}
-                                  {structure.cascadeBreakdown.length > 5 && (
-                                    <div className="text-gray-500 text-[10px]">+{structure.cascadeBreakdown.length - 5} more...</div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                            <Badge variant="outline" className={`text-xs ${
+                              structure.validityTier === 'excellent' ? 'border-emerald-500 text-emerald-400' :
+                              structure.validityTier === 'good' ? 'border-green-500 text-green-400' :
+                              structure.validityTier === 'fair' ? 'border-yellow-500 text-yellow-400' :
+                              'border-red-500 text-red-400'
+                            }`}>
+                              {structure.cascadedScore ?? structure.validityScore}%
+                            </Badge>
                           </div>
                         </div>
                         
-                        {/* Expanded: Individual Wave Rows with Nested Children */}
+                        {/* Expanded: Recursive Wave Tree */}
                         {isExpanded && (
                           <div className="border-t border-slate-700">
-                            {structure.entries.map((entry, idx) => {
-                              // Get child structures that fall within this entry's timespan
-                              const entryChildren = getChildrenForEntry(entry, structure, groupedStructures);
-                              const waveLabels = ['A', 'B', 'C', 'D', 'E', 'W', 'X', 'Y', 'Z'];
-                              const waveLabel = structure.archetype.includes('WXY') || structure.archetype === 'W-X' 
-                                ? (idx === 0 ? 'W' : idx === 1 ? 'X' : idx === 2 ? 'Y' : waveLabels[idx] || String(idx + 1))
-                                : waveLabels[idx] || String(idx + 1);
-                              const entryDegreeColor = waveDegrees.find(d => d.name === structure.degree)?.color || '#74C0FC';
-                              
-                              return (
-                                <div key={entry.id}>
-                                  {/* Parent Entry Row */}
-                                  <div 
-                                    className={`flex items-center gap-2 px-3 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer ${
-                                      selectedLabelId === entry.id ? 'bg-cyan-900/20' : ''
-                                    }`}
-                                    onClick={() => {
-                                      setSelectedLabelId(entry.id);
-                                      toast({ title: 'Pattern Selected', description: `Wave ${waveLabel} selected` });
-                                    }}
-                                  >
-                                    {/* Wave Label (A, B, C, etc.) */}
-                                    <span className="w-6 text-center font-bold" style={{ color: entryDegreeColor }}>
-                                      {waveLabel}
-                                    </span>
-                                    
-                                    {/* Timeframe */}
-                                    <Badge variant="outline" className="text-[10px] px-1.5 text-gray-300 border-gray-600">
-                                      {entry.timeframe}
-                                    </Badge>
-                                    
-                                    {/* Pattern Type */}
-                                    <span className={`text-xs font-medium ${
-                                      entry.patternType === 'impulse' ? 'text-emerald-400' :
-                                      entry.patternType === 'abc' || entry.patternType === 'correction' ? 'text-amber-400' :
-                                      entry.patternType === 'diagonal' ? 'text-purple-400' :
-                                      'text-gray-400'
-                                    }`}>{entry.patternType}</span>
-                                    
-                                    {/* Wave Count */}
-                                    <span className="font-mono text-xs text-cyan-400">{entry.waveCount}</span>
-                                    
-                                    {/* Direction */}
-                                    <span className={entry.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
-                                      {entry.direction === 'up' ? '↑' : '↓'}
-                                    </span>
-                                    
-                                    {/* Price Range */}
-                                    <span className="ml-auto text-xs font-mono text-gray-400">
-                                      ${entry.endPrice.toFixed(4)}
-                                    </span>
-                                    
-                                    {/* Delete Button */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (confirm(`Delete this ${entry.patternType}?`)) {
-                                          deleteLabel.mutate(entry.id);
-                                        }
-                                      }}
-                                      className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                  
-                                  {/* Nested Child Structures under this entry */}
-                                  {entryChildren.length > 0 && (
-                                    <div className="ml-6 border-l-2 border-slate-700 pl-2 py-1">
-                                      {entryChildren.map(child => {
-                                        const childDegreeColor = waveDegrees.find(d => d.name === child.degree)?.color || '#74C0FC';
-                                        // Get contextual role label (e.g., "= Minor C" instead of "W1/A")
-                                        const contextRole = getContextualWaveRole(child, entry, structure, idx);
-                                        // Get completion chain if this completes higher degree waves
-                                        const completionChain = getCompletionChain(child, groupedStructures);
-                                        
-                                        return (
-                                          <div 
-                                            key={child.id}
-                                            className="flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-slate-800/30 rounded flex-wrap"
-                                          >
-                                            <span className="text-gray-500">└</span>
-                                            <span className="font-medium" style={{ color: childDegreeColor }}>
-                                              {child.displayIndex}. {child.degree}
-                                            </span>
-                                            <Badge variant="outline" className="text-[9px] px-1 border-gray-600 text-gray-400">
-                                              {child.archetype}
-                                            </Badge>
-                                            <span className="font-mono text-gray-500">{child.sequence}</span>
-                                            <span className="text-cyan-400 text-[10px]">{contextRole}</span>
-                                            <span className={child.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
-                                              {child.direction === 'up' ? '↑' : '↓'}
-                                            </span>
-                                            <span className="text-gray-500">{child.percentMove.toFixed(1)}%</span>
-                                            {/* Completion Chain Badge */}
-                                            {completionChain.length > 1 && (
-                                              <Badge variant="outline" className="text-[8px] px-1 border-amber-500/50 text-amber-400 ml-auto">
-                                                → {completionChain.slice(1).join(' → ')}
-                                              </Badge>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                            {/* Render entries with recursive children */}
+                            {structure.entries.map((entry, idx) => (
+                              <WaveEntryRow
+                                key={entry.id}
+                                entry={entry}
+                                parentStructure={structure}
+                                entryIndex={idx}
+                                allStructures={groupedStructures}
+                                depth={0}
+                                expandedEntries={expandedEntries}
+                                toggleEntry={toggleEntry}
+                                selectedLabelId={selectedLabelId}
+                                setSelectedLabelId={setSelectedLabelId}
+                                deleteLabel={deleteLabel}
+                                toast={toast}
+                                waveDegrees={waveDegrees}
+                              />
+                            ))}
                           </div>
                         )}
                       </div>
