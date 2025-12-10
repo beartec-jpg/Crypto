@@ -1068,6 +1068,7 @@ interface WaveEntryRowProps {
   selectedLabelId: string | null;
   setSelectedLabelId: (id: string | null) => void;
   deleteLabel: { mutate: (id: string) => void };
+  updateLabel: { mutate: (data: { id: string; degree: string }) => void };
   toast: (opts: { title: string; description: string }) => void;
   waveDegrees: WaveDegree[];
 }
@@ -1083,6 +1084,7 @@ function WaveEntryRow({
   selectedLabelId,
   setSelectedLabelId,
   deleteLabel,
+  updateLabel,
   toast,
   waveDegrees
 }: WaveEntryRowProps) {
@@ -1163,6 +1165,29 @@ function WaveEntryRow({
           ${entry.endPrice.toFixed(4)}
         </span>
         
+        {/* Degree dropdown */}
+        <select
+          value={entry.degree}
+          onChange={(e) => {
+            e.stopPropagation();
+            const newDegree = e.target.value;
+            updateLabel.mutate({ id: entry.id, degree: newDegree });
+            toast({ title: 'Degree Updated', description: `Changed to ${newDegree}` });
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="text-[10px] bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-gray-300 hover:border-amber-500/50 focus:border-amber-500 focus:outline-none cursor-pointer"
+          style={{ 
+            color: waveDegrees.find(d => d.name === entry.degree)?.color || '#ffa500',
+            minWidth: '60px'
+          }}
+        >
+          {waveDegrees.map(d => (
+            <option key={d.name} value={d.name} style={{ color: d.color }}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+        
         {/* Delete */}
         <button
           onClick={(e) => {
@@ -1212,6 +1237,7 @@ function WaveEntryRow({
                     selectedLabelId={selectedLabelId}
                     setSelectedLabelId={setSelectedLabelId}
                     deleteLabel={deleteLabel}
+                    updateLabel={updateLabel}
                     toast={toast}
                     waveDegrees={waveDegrees}
                   />
@@ -6783,6 +6809,7 @@ const aiAnalyze = useMutation({
                                 selectedLabelId={selectedLabelId}
                                 setSelectedLabelId={setSelectedLabelId}
                                 deleteLabel={deleteLabel}
+                                updateLabel={updateLabel}
                                 toast={toast}
                                 waveDegrees={waveDegrees}
                               />

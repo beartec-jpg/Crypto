@@ -3,38 +3,24 @@ import { Loader2, AlertTriangle } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { setAuthTokenGetter, queryClient } from '@/lib/queryClient';
 import { configureApiAuth } from '@/lib/apiAuth';
-import { useAuth, RedirectToSignIn } from '@clerk/clerk-react';
-
-interface CryptoAuthGateProps {
-  children: React.ReactNode;
-}
 
 const isDevelopment = typeof window !== 'undefined' && 
   (window.location.hostname.includes('replit') || 
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
-function useClerkAuth() {
-  const clerkAuth = useAuth();
-  
-  if (isDevelopment) {
-    return {
-      isSignedIn: true,
-      isLoaded: true,
-      getToken: async () => null,
-    };
-  }
-  
-  return clerkAuth;
+interface CryptoAuthGateProps {
+  children: React.ReactNode;
 }
 
-export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
-  const { isSignedIn, isLoaded, getToken } = useClerkAuth();
+function ProductionAuthGate({ children }: CryptoAuthGateProps) {
+  const { useAuth, RedirectToSignIn } = require('@clerk/clerk-react');
+  const { isSignedIn, isLoaded, getToken } = useAuth();
   const [loadTimeout, setLoadTimeout] = useState(false);
   const authConfigured = useRef(false);
 
   useEffect(() => {
-    if (!isDevelopment && !authConfigured.current && getToken) {
+    if (!authConfigured.current && getToken) {
       setAuthTokenGetter(getToken);
       configureApiAuth(getToken);
       authConfigured.current = true;
@@ -53,17 +39,8 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
 
   const { isLoading: isBootstrapping } = useQuery({
     queryKey: ['/api/crypto/bootstrap'],
-    enabled: isDevelopment || (isLoaded && isSignedIn === true),
+    enabled: isLoaded && isSignedIn === true,
     queryFn: async () => {
-      if (isDevelopment) {
-        const response = await fetch('/api/crypto/bootstrap', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        if (!response.ok) throw new Error('Failed to bootstrap user');
-        return response.json();
-      }
-      
       const token = await getToken();
       if (!token) throw new Error('No auth token');
       
@@ -84,20 +61,6 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
     staleTime: Infinity,
     retry: 2,
   });
-
-  if (isDevelopment) {
-    if (isBootstrapping) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-[#0e0e0e]">
-          <div className="text-center">
-            <Loader2 className="w-12 h-12 text-[#00c4b4] animate-spin mx-auto mb-4" />
-            <p className="text-gray-400">Setting up dev account...</p>
-          </div>
-        </div>
-      );
-    }
-    return <>{children}</>;
-  }
 
   if (!isLoaded) {
     if (loadTimeout) {
@@ -148,4 +111,41 @@ export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
   }
 
   return <>{children}</>;
+}
+
+function DevelopmentAuthGate({ children }: CryptoAuthGateProps) {
+  const { isLoading: isBootstrapping } = useQuery({
+    queryKey: ['/api/crypto/bootstrap'],
+    queryFn: async () => {
+      const response = await fetch('/api/crypto/bootstrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) throw new Error('Failed to bootstrap user');
+      return response.json();
+    },
+    staleTime: Infinity,
+    retry: 2,
+  });
+
+  if (isBootstrapping) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0e0e0e]">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-[#00c4b4] animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Setting up dev account...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return <>{children}</>;
+}
+
+export function CryptoAuthGate({ children }: CryptoAuthGateProps) {
+  if (isDevelopment) {
+    return <DevelopmentAuthGate>{children}</DevelopmentAuthGate>;
+  }
+  
+  return <ProductionAuthGate>{children}</ProductionAuthGate>;
 }
