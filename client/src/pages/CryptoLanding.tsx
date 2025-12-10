@@ -9,22 +9,11 @@ const isDevelopment = typeof window !== 'undefined' &&
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
-function useClerkAuth() {
-  const auth = useAuth();
-  const clerk = useClerk();
-  
-  if (isDevelopment) {
-    return {
-      isSignedIn: true,
-      openSignIn: () => {},
-    };
-  }
-  return { isSignedIn: auth.isSignedIn, openSignIn: clerk.openSignIn };
-}
-
-export default function CryptoLanding() {
+// Production component that uses Clerk hooks
+function ProdLanding() {
   const [, setLocation] = useLocation();
-  const { isSignedIn, openSignIn } = useClerkAuth();
+  const { isSignedIn } = useAuth();
+  const { openSignIn } = useClerk();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [showText, setShowText] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -64,20 +53,72 @@ export default function CryptoLanding() {
 
     video.onended = () => {
       setTimeout(() => {
-        if (isDevelopment) {
-          setLocation('/cryptoindicators');
-          return;
-        }
-        
-        if (isSignedInRef.current) {
-          setLocation('/cryptoindicators');
-        } else {
-          setLocation('/cryptoindicators');
-        }
+        setLocation('/cryptoindicators');
       }, 500);
     };
   };
 
+  return (
+    <LandingUI 
+      videoRef={videoRef} 
+      showText={showText} 
+      handleClick={handleClick} 
+    />
+  );
+}
+
+// Development component without Clerk hooks
+function DevLanding() {
+  const [, setLocation] = useLocation();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showText, setShowText] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      const video = videoRef.current;
+      video.load();
+      video.currentTime = 0.1;
+      video.pause();
+      
+      video.addEventListener('loadeddata', () => {
+        video.currentTime = 0.1;
+        video.pause();
+      });
+    }
+  }, []);
+
+  const handleClick = () => {
+    if (isPlaying || !videoRef.current) return;
+
+    setShowText(false);
+    setIsPlaying(true);
+
+    const video = videoRef.current;
+    video.play();
+
+    video.onended = () => {
+      setTimeout(() => {
+        setLocation('/cryptoindicators');
+      }, 500);
+    };
+  };
+
+  return (
+    <LandingUI 
+      videoRef={videoRef} 
+      showText={showText} 
+      handleClick={handleClick} 
+    />
+  );
+}
+
+// Shared UI component
+function LandingUI({ videoRef, showText, handleClick }: {
+  videoRef: React.RefObject<HTMLVideoElement>;
+  showText: boolean;
+  handleClick: () => void;
+}) {
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden">
       <Helmet>
@@ -116,4 +157,12 @@ export default function CryptoLanding() {
       )}
     </div>
   );
+}
+
+// Main export - conditionally renders Dev or Prod component
+export default function CryptoLanding() {
+  if (isDevelopment) {
+    return <DevLanding />;
+  }
+  return <ProdLanding />;
 }

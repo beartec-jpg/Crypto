@@ -1,0 +1,44 @@
+1 line selected
+17:17:56 
+17:17:56 
+Using TypeScript 5.6.3 (local user-provided)
+17:17:57 
+Using TypeScript 5.6.3 (local user-provided)
+17:17:57 
+api/crypto/extended-history.ts(54,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+17:17:57 
+  Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+17:17:57 
+api/crypto/extended-history.ts(61,16): error TS6133: '_hasElliottAccess' is declared but its value is never read.
+17:17:57 
+17:17:58 
+Using TypeScript 5.6.3 (local user-provided)
+17:17:59 
+Using TypeScript 5.6.3 (local user-provided)
+17:17:59 
+Using TypeScript 5.6.3 (local user-provided)
+17:18:00 
+Using TypeScript 5.6.3 (local user-provided)
+17:18:00 
+api/crypto/my-subscription.ts(72,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+17:18:00 
+  Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+17:18:00 
+17:18:00 
+Using TypeScript 5.6.3 (local user-provided)
+17:18:01 
+Using TypeScript 5.6.3 (local user-provided)
+17:18:02 
+Using TypeScript 5.6.3 (local user-provided)
+17:18:02 
+api/crypto/tracked-trades.ts(39,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+17:18:02 
+  Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+17:18:02 
+17:18:03 
+Using TypeScript 5.6.3 (local user-provided)
+17:18:03 
+api/stripe/webhook.ts(40,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+17:18:03 
+  Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+17:18:03

@@ -58,7 +58,8 @@ async function getDb() {
 }
 
 // Check if user has Elliott Wave access (elite tier OR Elliott add-on)
-async function _hasElliottAccess(userId: string): Promise<boolean> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function hasElliottAccess(userId: string): Promise<boolean> {
   let pool: any = null;
   try {
     pool = await getDb();
@@ -83,6 +84,9 @@ async function _hasElliottAccess(userId: string): Promise<boolean> {
     }
   }
 }
+
+// Export to prevent unused warning (can be used for future access control)
+export { hasElliottAccess };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
