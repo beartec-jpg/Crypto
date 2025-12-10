@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target } from 'lucide-react';
+import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
@@ -72,6 +72,21 @@ interface ElliottWaveLabel {
   isComplete: boolean;
   fibonacciMode: string;
   validationResult?: ValidationResult;
+}
+
+interface SavedProjectionLine {
+  id: string;
+  userId: string;
+  symbol: string;
+  timeframe: string;
+  structureId: string;
+  levelLabel: string;
+  price: number;
+  color: string;
+  waveType: string;
+  alertEnabled: boolean;
+  alertTriggered: boolean;
+  createdAt: string;
 }
 
 interface WaveStackEntry {
@@ -2722,6 +2737,105 @@ export default function CryptoElliottWave() {
       setDraggedPointIndex(null);
     },
   });
+
+  // === Saved Projection Lines ===
+  // Query to fetch saved projection lines for current symbol
+  const { data: savedProjectionLinesData, refetch: refetchProjectionLines } = useQuery<SavedProjectionLine[]>({
+    queryKey: ['/api/crypto/projection-lines', symbol],
+    queryFn: async () => {
+      const response = await authenticatedApiRequest('GET', `/api/crypto/projection-lines?symbol=${symbol}`);
+      return response.json();
+    },
+    enabled: isDevelopment || (isAuthenticated && canUseElliottFeatures && authReady.ready),
+  });
+  
+  const savedProjectionLinesFromDB = savedProjectionLinesData || [];
+  
+  // Mutation to save a projection line
+  const saveProjectionLine = useMutation({
+    mutationFn: async (data: { 
+      symbol: string; 
+      timeframe: string; 
+      structureId: string; 
+      levelLabel: string; 
+      price: number; 
+      color: string;
+      waveType: string;
+    }) => {
+      const response = await authenticatedApiRequest('POST', '/api/crypto/projection-lines', data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Target Saved', description: 'Projection line saved to chart' });
+      refetchProjectionLines();
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Save Failed', description: error.message, variant: 'destructive' });
+    },
+  });
+  
+  // Mutation to delete a projection line
+  const deleteProjectionLine = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await authenticatedApiRequest('DELETE', `/api/crypto/projection-lines/${id}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Target Removed', description: 'Projection line removed from chart' });
+      refetchProjectionLines();
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Delete Failed', description: error.message, variant: 'destructive' });
+    },
+  });
+  
+  // Mutation to toggle alert on a projection line
+  const toggleProjectionAlert = useMutation({
+    mutationFn: async (data: { id: string; alertEnabled: boolean }) => {
+      const response = await authenticatedApiRequest('PATCH', `/api/crypto/projection-lines/${data.id}/alert`, { alertEnabled: data.alertEnabled });
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      toast({ 
+        title: variables.alertEnabled ? 'Alert Enabled' : 'Alert Disabled', 
+        description: variables.alertEnabled ? 'You will be notified when price hits this target' : 'Alert removed' 
+      });
+      refetchProjectionLines();
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Alert Update Failed', description: error.message, variant: 'destructive' });
+    },
+  });
+  
+  // Helper to check if a projection line is saved
+  const isProjectionSaved = (structureId: string, levelLabel: string): SavedProjectionLine | undefined => {
+    return savedProjectionLinesFromDB.find(line => 
+      line.structureId === structureId && line.levelLabel === levelLabel && line.symbol === symbol
+    );
+  };
+  
+  // Load saved projection lines onto chart when data loads
+  useEffect(() => {
+    if (savedProjectionLinesFromDB.length > 0) {
+      const linesToAdd = savedProjectionLinesFromDB
+        .filter(line => line.symbol === symbol) // Only lines for current symbol
+        .map(line => ({
+          price: line.price,
+          color: line.color,
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: `${line.levelLabel}`, // Simplified title for DB-loaded lines
+        }));
+      
+      // Merge with existing lines (avoiding duplicates by title)
+      setStackProjectionLines(prev => {
+        const existingTitles = new Set(prev.map(l => l.title));
+        const newLines = linesToAdd.filter(l => !existingTitles.has(l.title));
+        return [...prev, ...newLines];
+      });
+    }
+  }, [savedProjectionLinesFromDB, symbol]);
 
   // Calculate validation instantly on client side (no API call)
   // Use current points if drawing, or selected saved label's points if in selection mode
@@ -6703,8 +6817,8 @@ const aiAnalyze = useMutation({
                                   
                                   return (
                                     <>
-                                      {/* Selection prompt for dual interpretations */}
-                                      {isDualInterpretation && !selectedType && (
+                                      {/* Selection buttons for dual interpretations - always show as toggles */}
+                                      {isDualInterpretation && (
                                         <div className="mb-3">
                                           <span className="text-xs text-amber-400 font-semibold mb-2 block">
                                             🔮 What are you predicting?
@@ -6713,9 +6827,16 @@ const aiAnalyze = useMutation({
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
-                                                setSelectedPredictionType(prev => ({...prev, [structure.id]: 'impulse'}));
+                                                setSelectedPredictionType(prev => ({
+                                                  ...prev, 
+                                                  [structure.id]: prev[structure.id] === 'impulse' ? null : 'impulse'
+                                                }));
                                               }}
-                                              className="px-3 py-1.5 rounded text-xs font-medium bg-cyan-700/40 text-cyan-300 border border-cyan-500/50 hover:bg-cyan-600/50 transition-all"
+                                              className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                                                selectedType === 'impulse'
+                                                  ? 'bg-cyan-600 text-white border-cyan-400 ring-2 ring-cyan-400/50'
+                                                  : 'bg-cyan-700/40 text-cyan-300 border-cyan-500/50 hover:bg-cyan-600/50'
+                                              }`}
                                               data-testid={`select-impulse-${structure.id}`}
                                             >
                                               ⚡ Wave 3/5 (Impulse)
@@ -6723,9 +6844,16 @@ const aiAnalyze = useMutation({
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
-                                                setSelectedPredictionType(prev => ({...prev, [structure.id]: 'correction'}));
+                                                setSelectedPredictionType(prev => ({
+                                                  ...prev, 
+                                                  [structure.id]: prev[structure.id] === 'correction' ? null : 'correction'
+                                                }));
                                               }}
-                                              className="px-3 py-1.5 rounded text-xs font-medium bg-amber-700/40 text-amber-300 border border-amber-500/50 hover:bg-amber-600/50 transition-all"
+                                              className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                                                selectedType === 'correction'
+                                                  ? 'bg-amber-600 text-white border-amber-400 ring-2 ring-amber-400/50'
+                                                  : 'bg-amber-700/40 text-amber-300 border-amber-500/50 hover:bg-amber-600/50'
+                                              }`}
                                               data-testid={`select-correction-${structure.id}`}
                                             >
                                               🔄 Wave C/Y (Correction)
@@ -6744,49 +6872,91 @@ const aiAnalyze = useMutation({
                                             <span className="text-xs text-gray-500">
                                               (Click to add projection line)
                                             </span>
-                                            {isDualInterpretation && selectedType && (
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setSelectedPredictionType(prev => ({...prev, [structure.id]: null}));
-                                                }}
-                                                className="ml-auto text-xs text-gray-400 hover:text-white"
-                                                data-testid={`change-prediction-${structure.id}`}
-                                              >
-                                                Change
-                                              </button>
-                                            )}
                                           </div>
                                           <div className="flex flex-wrap gap-1">
-                                            {filteredLevels.map((level, levelIdx) => (
-                                              <button
-                                                key={levelIdx}
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  const lineTitle = `${structure.degree} ${structure.expectedNextWave} ${level.label}`;
-                                                  setStackProjectionLines(prev => {
-                                                    if (prev.some(l => l.title === lineTitle)) return prev;
-                                                    return [...prev, {
-                                                      price: level.price,
-                                                      color: level.label.startsWith('W') ? '#00CED1' : '#FBBF24',
-                                                      lineWidth: 1,
-                                                      lineStyle: 2,
-                                                      axisLabelVisible: true,
-                                                      title: lineTitle,
-                                                    }];
-                                                  });
-                                                  toast({ title: 'Projection Added', description: lineTitle });
-                                                }}
-                                                className={`px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105 ${
-                                                  level.label.startsWith('W') 
-                                                    ? 'bg-cyan-900/40 text-cyan-400 border border-cyan-600/40'
-                                                    : 'bg-amber-900/40 text-amber-400 border border-amber-600/40'
-                                                }`}
-                                                data-testid={`predictive-${structure.expectedNextWave}-${level.label}`}
-                                              >
-                                                {level.label}: ${level.price.toFixed(4)}
-                                              </button>
-                                            ))}
+                                            {filteredLevels.map((level, levelIdx) => {
+                                              const savedLine = isProjectionSaved(structure.id, level.label);
+                                              const isSaved = !!savedLine;
+                                              const isAlertEnabled = savedLine?.alertEnabled || false;
+                                              const isImpulse = level.label.startsWith('W');
+                                              const lineColor = isImpulse ? '#00CED1' : '#FBBF24';
+                                              
+                                              return (
+                                                <div key={levelIdx} className="flex items-center gap-0.5">
+                                                  {/* Price target button - toggle save */}
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      const lineTitle = `${structure.degree} ${structure.expectedNextWave} ${level.label}`;
+                                                      
+                                                      if (isSaved) {
+                                                        // Delete from DB
+                                                        deleteProjectionLine.mutate(savedLine.id);
+                                                        // Remove from chart
+                                                        setStackProjectionLines(prev => prev.filter(l => l.title !== lineTitle));
+                                                      } else {
+                                                        // Save to DB
+                                                        saveProjectionLine.mutate({
+                                                          symbol,
+                                                          timeframe,
+                                                          structureId: structure.id,
+                                                          levelLabel: level.label,
+                                                          price: level.price,
+                                                          color: lineColor,
+                                                          waveType: isImpulse ? 'impulse' : 'correction',
+                                                        });
+                                                        // Add to chart
+                                                        setStackProjectionLines(prev => {
+                                                          if (prev.some(l => l.title === lineTitle)) return prev;
+                                                          return [...prev, {
+                                                            price: level.price,
+                                                            color: lineColor,
+                                                            lineWidth: 1,
+                                                            lineStyle: 2,
+                                                            axisLabelVisible: true,
+                                                            title: lineTitle,
+                                                          }];
+                                                        });
+                                                      }
+                                                    }}
+                                                    className={`px-2 py-1 rounded-l text-xs font-mono transition-all hover:scale-105 ${
+                                                      isSaved 
+                                                        ? (isImpulse 
+                                                            ? 'bg-cyan-600 text-white border border-cyan-400 ring-1 ring-cyan-400/50'
+                                                            : 'bg-amber-600 text-white border border-amber-400 ring-1 ring-amber-400/50')
+                                                        : (isImpulse 
+                                                            ? 'bg-cyan-900/40 text-cyan-400 border border-cyan-600/40'
+                                                            : 'bg-amber-900/40 text-amber-400 border border-amber-600/40')
+                                                    }`}
+                                                    data-testid={`predictive-${structure.expectedNextWave}-${level.label}`}
+                                                  >
+                                                    {level.label}: ${level.price.toFixed(4)}
+                                                  </button>
+                                                  
+                                                  {/* Alert toggle button - only show if saved */}
+                                                  {isSaved && (
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleProjectionAlert.mutate({
+                                                          id: savedLine.id,
+                                                          alertEnabled: !isAlertEnabled,
+                                                        });
+                                                      }}
+                                                      className={`px-1.5 py-1 rounded-r text-xs transition-all ${
+                                                        isAlertEnabled
+                                                          ? 'bg-green-600 text-white border border-green-400'
+                                                          : 'bg-slate-700 text-gray-400 border border-slate-600 hover:bg-slate-600'
+                                                      }`}
+                                                      title={isAlertEnabled ? 'Alert enabled - click to disable' : 'Click to enable price alert'}
+                                                      data-testid={`alert-${structure.expectedNextWave}-${level.label}`}
+                                                    >
+                                                      {isAlertEnabled ? <Bell className="w-3 h-3" /> : <BellOff className="w-3 h-3" />}
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
                                           </div>
                                         </>
                                       )}

@@ -4404,6 +4404,118 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
+  // === Saved Projection Lines API ===
+  
+  // Get all saved projection lines for a symbol
+  app.get("/api/crypto/projection-lines", requireCryptoAuth, requireEliteTier, async (req, res) => {
+    try {
+      const { symbol } = req.query;
+      const userId = (req as any).cryptoUser.id;
+      
+      const { db } = await import("./db");
+      const { savedProjectionLines } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      let query = db.select().from(savedProjectionLines).where(eq(savedProjectionLines.userId, userId));
+      
+      if (symbol) {
+        query = db.select().from(savedProjectionLines).where(
+          and(eq(savedProjectionLines.userId, userId), eq(savedProjectionLines.symbol, symbol as string))
+        );
+      }
+      
+      const lines = await query;
+      res.json(lines);
+    } catch (error: any) {
+      console.error('Error getting projection lines:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Save a projection line
+  app.post("/api/crypto/projection-lines", requireCryptoAuth, requireEliteTier, async (req, res) => {
+    try {
+      const { symbol, timeframe, structureId, levelLabel, price, color, waveType, alertEnabled } = req.body;
+      const userId = (req as any).cryptoUser.id;
+      
+      if (!symbol || !timeframe || !structureId || !levelLabel || price === undefined || !waveType) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+      
+      const { db } = await import("./db");
+      const { savedProjectionLines } = await import("@shared/schema");
+      
+      const [newLine] = await db.insert(savedProjectionLines).values({
+        userId,
+        symbol,
+        timeframe,
+        structureId,
+        levelLabel,
+        price,
+        color: color || (waveType === 'impulse' ? '#00CED1' : '#FBBF24'),
+        waveType,
+        alertEnabled: alertEnabled || false,
+      }).returning();
+      
+      res.json(newLine);
+    } catch (error: any) {
+      console.error('Error saving projection line:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Toggle alert for a projection line
+  app.patch("/api/crypto/projection-lines/:id/alert", requireCryptoAuth, requireEliteTier, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { alertEnabled } = req.body;
+      const userId = (req as any).cryptoUser.id;
+      
+      const { db } = await import("./db");
+      const { savedProjectionLines } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      const [updated] = await db.update(savedProjectionLines)
+        .set({ alertEnabled })
+        .where(and(eq(savedProjectionLines.id, id), eq(savedProjectionLines.userId, userId)))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: 'Projection line not found' });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error('Error updating projection line:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Delete a projection line
+  app.delete("/api/crypto/projection-lines/:id", requireCryptoAuth, requireEliteTier, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = (req as any).cryptoUser.id;
+      
+      const { db } = await import("./db");
+      const { savedProjectionLines } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      const [deleted] = await db.delete(savedProjectionLines)
+        .where(and(eq(savedProjectionLines.id, id), eq(savedProjectionLines.userId, userId)))
+        .returning();
+      
+      if (!deleted) {
+        return res.status(404).json({ error: 'Projection line not found' });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error deleting projection line:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Auto-analyze for Elliott Wave patterns
   app.post("/api/crypto/elliott-wave/analyze", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {

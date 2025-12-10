@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 export const projects = pgTable("projects", {
@@ -644,3 +644,34 @@ export const insertCachedCandlesSchema = z.object({
 
 export type InsertCachedCandles = z.infer<typeof insertCachedCandlesSchema>;
 export type CachedCandles = typeof cachedCandles.$inferSelect;
+
+// Saved projection lines for Elliott Wave predictions
+export const savedProjectionLines = pgTable("saved_projection_lines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  symbol: varchar("symbol").notNull(),
+  timeframe: varchar("timeframe").notNull(),
+  structureId: varchar("structure_id").notNull(), // Links to the wave structure
+  levelLabel: varchar("level_label").notNull(), // e.g., "W3 100%", "C 127%"
+  price: doublePrecision("price").notNull(),
+  color: varchar("color").notNull().default("#00CED1"),
+  waveType: varchar("wave_type").notNull(), // 'impulse' or 'correction'
+  alertEnabled: boolean("alert_enabled").notNull().default(false),
+  alertTriggered: boolean("alert_triggered").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSavedProjectionLineSchema = z.object({
+  userId: z.string(),
+  symbol: z.string(),
+  timeframe: z.string(),
+  structureId: z.string(),
+  levelLabel: z.string(),
+  price: z.number(),
+  color: z.string().optional().default("#00CED1"),
+  waveType: z.string(),
+  alertEnabled: z.boolean().optional().default(false),
+});
+
+export type InsertSavedProjectionLine = z.infer<typeof insertSavedProjectionLineSchema>;
+export type SavedProjectionLine = typeof savedProjectionLines.$inferSelect;
