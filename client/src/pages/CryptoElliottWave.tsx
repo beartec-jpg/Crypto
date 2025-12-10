@@ -354,9 +354,9 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
   // Find which degrees exist in entries
   const presentDegrees = degreeOrder.filter(d => byDegree[d] && byDegree[d].length > 0);
   
-  // Map to track which structure each wave entry belongs to (by startTime)
-  // Key: `${degree}-${startTime}`, Value: { displayIndex, archetype, semanticLabel }
-  const waveToStructureMap: Record<string, { displayIndex: number; archetype: string; semanticLabel: string }> = {};
+  // Map to track structure displayIndex for each wave entry (by its startTime)
+  // Key: `${degree}-${waveEntryStartTime}`, Value: displayIndex of containing structure
+  const waveEntryToStructureIndex: Record<string, number> = {};
   
   // Helper to generate semantic label from archetype and position
   const getSemanticLabel = (archetype: string, position: number): string => {
@@ -383,6 +383,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
   };
   
   // Process each degree, segmenting lower degrees by parent wave timespans
+  // This is the ORIGINAL per-wave-entry approach that correctly segments by parent timespan
   for (let i = 0; i < presentDegrees.length; i++) {
     const currentDegree = presentDegrees[i];
     const currentEntries = byDegree[currentDegree];
@@ -399,130 +400,98 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       if (higherEntries && higherEntries.length > 0) {
         const sortedHigher = [...higherEntries].sort((a, b) => a.startTime - b.startTime);
         
-        // Get archetype for the higher degree
-        const higherSeq = sortedHigher.map(e => e.waveCount).join('-');
-        const higherTypes = sortedHigher.map(e => e.patternType);
-        const higherArchetype = identifyArchetype(higherSeq, higherTypes);
+        // Get parent's archetype for semantic labeling
+        const parentSeq = sortedHigher.map(e => e.waveCount).join('-');
+        const parentTypes = sortedHigher.map(e => e.patternType);
+        const parentArchetype = identifyArchetype(parentSeq, parentTypes);
         
-        // Group higher entries by their containing structure (based on waveToStructureMap)
-        // If no mapping exists (this is the highest degree), each wave is its own "structure"
-        const parentStructures: { entries: WaveStackEntry[]; displayIndex: number; archetype: string }[] = [];
+        // Track how many structures we create at this degree (for displayIndex)
+        let structureCount = structures.filter(s => s.degree === currentDegree).length;
         
-        // Check if we have structure mapping for this higher degree
-        const firstKey = `${higherDegree}-${sortedHigher[0]?.startTime}`;
-        if (waveToStructureMap[firstKey]) {
-          // Group by displayIndex
-          const byIndex: Record<number, WaveStackEntry[]> = {};
-          sortedHigher.forEach(entry => {
-            const key = `${higherDegree}-${entry.startTime}`;
-            const mapping = waveToStructureMap[key];
-            if (mapping) {
-              if (!byIndex[mapping.displayIndex]) byIndex[mapping.displayIndex] = [];
-              byIndex[mapping.displayIndex].push(entry);
-            }
-          });
-          Object.entries(byIndex).forEach(([idx, entries]) => {
-            const sortedEntries = entries.sort((a, b) => a.startTime - b.startTime);
-            const key = `${higherDegree}-${sortedEntries[0].startTime}`;
-            const mapping = waveToStructureMap[key];
-            parentStructures.push({
-              entries: sortedEntries,
-              displayIndex: parseInt(idx),
-              archetype: mapping?.archetype || higherArchetype
-            });
-          });
-          parentStructures.sort((a, b) => a.displayIndex - b.displayIndex);
-        } else {
-          // No mapping - treat as single structure
-          parentStructures.push({
-            entries: sortedHigher,
-            displayIndex: 1,
-            archetype: higherArchetype
-          });
-        }
-        
-        // For each parent structure, find which current degree patterns belong to it
-        for (const parentStruct of parentStructures) {
-          // Find the timespan of this parent structure
-          const parentStart = Math.min(...parentStruct.entries.map(e => e.startTime));
-          const parentEnd = Math.max(...parentStruct.entries.map(e => e.endTime));
+        // For each parent WAVE ENTRY, find which lower degree patterns belong to it
+        // This preserves the correct segmentation (Minor A gets its own Minute structure, etc.)
+        for (let parentIdx = 0; parentIdx < sortedHigher.length; parentIdx++) {
+          const parent = sortedHigher[parentIdx];
           
-          // Find child patterns within this parent structure's timespan
+          // Find lower degree patterns within this parent wave's timespan
           const childPatterns = sortedCurrent.filter(child => {
-            return isWithinTimespan(child.startTime, parentStart, parentEnd) &&
-                   isWithinTimespan(child.endTime, parentStart, parentEnd);
+            return isWithinTimespan(child.startTime, parent.startTime, parent.endTime) &&
+                   isWithinTimespan(child.endTime, parent.startTime, parent.endTime);
           });
           
           if (childPatterns.length > 0) {
             hasParent = true;
+            structureCount++;
             
-            // Get archetype for these child patterns
-            const childSeq = childPatterns.map(e => e.waveCount).join('-');
-            const childTypes = childPatterns.map(e => e.patternType);
-            const childArchetype = identifyArchetype(childSeq, childTypes);
+            // Also pass individual parent's patternType for diagonal/triangle disambiguation
+            const parentPatternType = parent.patternType;
             
-            // Parent label uses the structure's displayIndex
-            const parentPatternType = parentStruct.entries[0]?.patternType || '';
-            const parentLabel = `${higherDegree} ${parentStruct.displayIndex}`;
+            // Generate semantic wave label based on parent's position in higher degree archetype
+            const semanticLabel = getSemanticLabel(parentArchetype, parentIdx);
+            
+            // Look up parent wave entry's structure displayIndex if available
+            const parentWaveKey = `${higherDegree}-${parent.startTime}`;
+            const parentDisplayIdx = waveEntryToStructureIndex[parentWaveKey] || (parentIdx + 1);
+            const parentLabel = parent.suggestedLabel || `${higherDegree} ${parentDisplayIdx}`;
             
             const structure = createStructure(currentDegree, childPatterns, {
               parentDegree: higherDegree,
-              parentWaveIndex: parentStruct.displayIndex - 1, // 0-based
-              parentArchetype: parentStruct.archetype,
+              parentWaveIndex: parentIdx,
+              parentArchetype,
               parentPatternType,
               parentLabel
             });
-            if (structure) structures.push(structure);
+            if (structure) {
+              structure.displayIndex = structureCount;
+              structures.push(structure);
+              
+              // Record each wave entry's structure index for child degrees to reference
+              structure.entries.forEach(entry => {
+                const entryKey = `${currentDegree}-${entry.startTime}`;
+                waveEntryToStructureIndex[entryKey] = structureCount;
+              });
+            }
           }
         }
         
-        // Also check for orphan patterns
+        // Also check for patterns that fall BETWEEN or AFTER parent waves (orphans)
         const assignedTimes = new Set<number>();
-        for (const parentStruct of parentStructures) {
-          const parentStart = Math.min(...parentStruct.entries.map(e => e.startTime));
-          const parentEnd = Math.max(...parentStruct.entries.map(e => e.endTime));
+        sortedHigher.forEach(parent => {
           sortedCurrent.forEach(child => {
-            if (isWithinTimespan(child.startTime, parentStart, parentEnd)) {
+            if (isWithinTimespan(child.startTime, parent.startTime, parent.endTime)) {
               assignedTimes.add(child.startTime);
             }
           });
-        }
+        });
         
         const orphanPatterns = sortedCurrent.filter(child => !assignedTimes.has(child.startTime));
         if (orphanPatterns.length > 0) {
+          structureCount++;
           const structure = createStructure(currentDegree, orphanPatterns);
-          if (structure) structures.push(structure);
+          if (structure) {
+            structure.displayIndex = structureCount;
+            structures.push(structure);
+            structure.entries.forEach(entry => {
+              const entryKey = `${currentDegree}-${entry.startTime}`;
+              waveEntryToStructureIndex[entryKey] = structureCount;
+            });
+          }
         }
       }
     }
     
     // If no parent exists, create a single structure for this degree
     if (!hasParent) {
+      const existingCount = structures.filter(s => s.degree === currentDegree).length;
       const structure = createStructure(currentDegree, sortedCurrent);
-      if (structure) structures.push(structure);
-    }
-    
-    // After creating structures for this degree, build the mapping for child degrees
-    // Sort structures by time and assign displayIndex per degree
-    const degreeStructures = structures.filter(s => s.degree === currentDegree)
-      .sort((a, b) => a.startTime - b.startTime);
-    
-    let idx = 0;
-    for (const s of degreeStructures) {
-      idx++;
-      s.displayIndex = idx;
-      // Map each wave entry to this structure
-      const seq = s.entries.map(e => e.waveCount).join('-');
-      const types = s.entries.map(e => e.patternType);
-      const arch = identifyArchetype(seq, types);
-      s.entries.forEach((entry, entryIdx) => {
-        const key = `${currentDegree}-${entry.startTime}`;
-        waveToStructureMap[key] = {
-          displayIndex: idx,
-          archetype: arch,
-          semanticLabel: getSemanticLabel(arch, entryIdx)
-        };
-      });
+      if (structure) {
+        structure.displayIndex = existingCount + 1;
+        structures.push(structure);
+        structure.entries.forEach(entry => {
+          const entryKey = `${currentDegree}-${entry.startTime}`;
+          waveEntryToStructureIndex[entryKey] = existingCount + 1;
+        });
+      }
     }
   }
   
@@ -533,12 +502,17 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     return a.startTime - b.startTime;
   });
   
-  // Re-assign displayIndex per degree after final sort (in case it shifted)
+  // Re-assign displayIndex per degree after final sort
   const indexByDegree: Record<string, number> = {};
   structures.forEach(s => {
     if (!indexByDegree[s.degree]) indexByDegree[s.degree] = 0;
     indexByDegree[s.degree]++;
     s.displayIndex = indexByDegree[s.degree];
+    // Update the map with final indices for each wave entry
+    s.entries.forEach(entry => {
+      const entryKey = `${s.degree}-${entry.startTime}`;
+      waveEntryToStructureIndex[entryKey] = s.displayIndex;
+    });
   });
   
   return structures;
