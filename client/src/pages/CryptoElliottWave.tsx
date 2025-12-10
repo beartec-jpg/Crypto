@@ -129,7 +129,43 @@ interface GroupedStructure {
   isExpanded?: boolean;
 }
 
+// Helper: identify archetype from wave sequence
+function identifyArchetype(seq: string, patternTypes: string[]): string {
+  const hasTriangle = patternTypes.some(p => p === 'triangle');
+  const hasDiagonal = patternTypes.some(p => p === 'diagonal');
+  
+  if (seq === '5-3-5-3-5') return 'Impulse';
+  if (seq === '5-3-5') return 'Zigzag';
+  if (seq === '3-3-5') {
+    if (patternTypes.length >= 2 && patternTypes[1] === 'triangle') return 'ABC w/ B-tri';
+    return 'Flat';
+  }
+  if (seq === '3-5-5') {
+    if (patternTypes.length >= 2 && patternTypes[1] === 'triangle') return 'WXY (X=tri)';
+    if (patternTypes.length >= 2 && patternTypes[1] === 'diagonal') return 'WXY (X=diag)';
+    return 'WXY';
+  }
+  if (seq === '3-5-3') {
+    if (patternTypes[1] === 'triangle') return 'WXY (X=tri)';
+    if (patternTypes[1] === 'diagonal') return 'WXY (X=diag)';
+    return 'WXY';
+  }
+  if (seq === '3-3-3') return 'WXY';
+  if (seq === '3-3-3-3-3') {
+    const allCorrections = patternTypes.every(p => p === 'abc' || p === 'correction' || p === 'zigzag' || p === 'flat');
+    return allCorrections ? 'Triangle' : 'WXYXZ';
+  }
+  if (seq === '5-3') return 'W1-W2 / A-B';
+  if (seq === '3-3') return 'W-X';
+  if (seq === '5') return 'W1/A';
+  if (seq === '3') return 'Correction';
+  if (hasTriangle && patternTypes.length === 1 && patternTypes[0] === 'triangle') return 'Triangle';
+  if (hasDiagonal && patternTypes.length === 1 && patternTypes[0] === 'diagonal') return 'Diagonal';
+  return seq;
+}
+
 // Group consecutive same-degree patterns into structures
+// KEY: Lower degree patterns are segmented by parent wave timespan
 function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
   if (entries.length === 0) return [];
   
@@ -139,7 +175,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     'Intermediate', 'Minor', 'Minute', 'Minuette', 'Subminuette'
   ];
   
-  // Group by degree
+  // Group by degree first
   const byDegree: Record<string, WaveStackEntry[]> = {};
   entries.forEach(e => {
     if (!byDegree[e.degree]) byDegree[e.degree] = [];
@@ -148,173 +184,79 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
   
   const structures: GroupedStructure[] = [];
   
-  // Helper: get lower degree name
-  const getLowerDegree = (degree: string): string | null => {
-    const idx = degreeOrder.indexOf(degree);
-    return idx >= 0 && idx < degreeOrder.length - 1 ? degreeOrder[idx + 1] : null;
-  };
-  
-  // For each degree, identify known structures
-  Object.entries(byDegree).forEach(([degree, degreeEntries]) => {
-    const sorted = degreeEntries.sort((a, b) => a.startTime - b.startTime);
+  // Helper: create structure from entries
+  const createStructure = (
+    degree: string, 
+    entries: WaveStackEntry[], 
+    parentInfo?: { parentDegree: string; parentWaveIndex: number; parentArchetype: string }
+  ): GroupedStructure | null => {
+    if (entries.length === 0) return null;
+    
+    const sorted = entries.sort((a, b) => a.startTime - b.startTime);
     const seq = sorted.map(e => e.waveCount).join('-');
-    
-    // Identify archetype based on sequence with proper Elliott Wave rules
-    let archetype = 'Unknown';
     const patternTypes = sorted.map(e => e.patternType);
-    const hasTriangle = patternTypes.some(p => p === 'triangle');
-    const hasDiagonal = patternTypes.some(p => p === 'diagonal');
     
-    // Exact sequence matches first (most specific)
-    if (seq === '5-3-5-3-5') archetype = 'Impulse';
-    else if (seq === '5-3-5') archetype = 'Zigzag';
-    else if (seq === '3-3-5') {
-      // Check if B is triangle for ABC w/ B-triangle
-      if (sorted.length >= 2 && patternTypes[1] === 'triangle') {
-        archetype = 'ABC w/ B-tri';
+    let archetype = identifyArchetype(seq, patternTypes);
+    
+    // Add cross-degree info if this is internal to a parent wave
+    if (parentInfo) {
+      const { parentDegree, parentWaveIndex, parentArchetype } = parentInfo;
+      // Determine wave label based on parent structure
+      // Use includes/startsWith for annotated archetypes like 'WXY (X=tri)'
+      let waveLabel: string;
+      
+      // For COMPLETE patterns, use definitive labels
+      if (parentArchetype === 'Impulse' || parentArchetype.startsWith('Impulse')) {
+        const impulseLabels = ['1', '2', '3', '4', '5'];
+        waveLabel = impulseLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
+      } else if (parentArchetype.startsWith('Zigzag') || parentArchetype === '5-3-5') {
+        // Zigzag is A-B-C where A=5, B=3, C=5
+        const abcLabels = ['A', 'B', 'C'];
+        waveLabel = abcLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
+      } else if (parentArchetype.startsWith('Flat') || parentArchetype === '3-3-5' || parentArchetype.includes('ABC')) {
+        // Flat is A-B-C where A=3, B=3, C=5
+        const abcLabels = ['A', 'B', 'C'];
+        waveLabel = abcLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
+      } else if (parentArchetype.startsWith('WXY') || parentArchetype === '3-3-3') {
+        // WXY double correction (includes 'WXY (X=tri)', 'WXY (X=diag)', etc.)
+        const wxyLabels = ['W', 'X', 'Y'];
+        waveLabel = wxyLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
+      } else if (parentArchetype.startsWith('WXYXZ') || parentArchetype === '3-3-3-3-3') {
+        // Triple correction
+        const wxyxzLabels = ['W', 'X', 'Y', 'X2', 'Z'];
+        waveLabel = wxyxzLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
+      } else if (parentArchetype.startsWith('Triangle')) {
+        // Triangle ABCDE
+        const triLabels = ['A', 'B', 'C', 'D', 'E'];
+        waveLabel = triLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
+      } else if (parentArchetype.startsWith('Diagonal')) {
+        // Diagonal 12345
+        const diagLabels = ['1', '2', '3', '4', '5'];
+        waveLabel = diagLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
+      }
+      // For INCOMPLETE/AMBIGUOUS patterns, show both possibilities
+      else if (parentArchetype === 'W-X' || parentArchetype === '3-3') {
+        // 3-3 could be A-B (flat building) or W-X (WXY building)
+        const ambiguousLabels = ['A/W', 'B/X', 'C/Y'];
+        waveLabel = ambiguousLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
+      } else if (parentArchetype.includes('W1-W2') || parentArchetype.includes('A-B') || parentArchetype === '5-3') {
+        // 5-3 could be W1-W2 (impulse) or A-B (zigzag)
+        const ambiguousLabels = ['1/A', '2/B', '3/C', '4/D', '5/E'];
+        waveLabel = ambiguousLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
+      } else if (parentArchetype.includes('W1/A') || parentArchetype === '5' || parentArchetype === 'W1/A') {
+        // Single impulse could be W1 or A
+        waveLabel = parentWaveIndex === 0 ? '1/A' : `${parentWaveIndex + 1}`;
+      } else if (parentArchetype === 'Correction' || parentArchetype === '3') {
+        // Single correction could be any corrective wave
+        const corrLabels = ['A/W', 'B/X', 'C/Y'];
+        waveLabel = corrLabels[parentWaveIndex] || `${parentWaveIndex + 1}`;
       } else {
-        archetype = 'Flat';
-      }
-    }
-    else if (seq === '3-5-5') {
-      // Check pattern types for WXY with X as triangle/diagonal
-      // W = 3-wave, X = triangle/diagonal (5), Y = 5-wave (impulse/diagonal)
-      // Check if lower degree has patterns building Y's subwaves
-      const lowerDegree = getLowerDegree(degree);
-      const lowerPatterns = lowerDegree ? byDegree[lowerDegree] : null;
-      let ySubwaveInfo = '';
-      
-      if (lowerPatterns && lowerPatterns.length > 0 && sorted.length >= 3) {
-        const yWave = sorted[2]; // Third pattern is Y
-        // Check if lower degree patterns overlap with Y wave timing
-        const lowerSorted = lowerPatterns.sort((a, b) => a.startTime - b.startTime);
-        const lowerOverlap = lowerSorted.filter(l => l.startTime >= yWave.startTime);
-        if (lowerOverlap.length > 0) {
-          const lowerSeq = lowerOverlap.map(e => e.waveCount).join('-');
-          if (lowerSeq === '5-3') {
-            ySubwaveInfo = ` Y=A-B`;
-          } else if (lowerSeq === '5-3-5') {
-            ySubwaveInfo = ` Y=ABC`;
-          } else if (lowerSeq === '5') {
-            ySubwaveInfo = ` Y=A`;
-          }
-        }
+        // Fallback: use numeric labels
+        waveLabel = `${parentWaveIndex + 1}`;
       }
       
-      if (sorted.length >= 2 && patternTypes[1] === 'triangle') {
-        archetype = `WXY (X=tri${ySubwaveInfo})`;
-      } else if (sorted.length >= 2 && patternTypes[1] === 'diagonal') {
-        archetype = `WXY (X=diag${ySubwaveInfo})`;
-      } else {
-        archetype = `WXY${ySubwaveInfo ? ` (${ySubwaveInfo.trim()})` : ''}`;
-      }
+      archetype = `${archetype} = ${parentDegree} ${waveLabel}`;
     }
-    else if (seq === '3-5-3') {
-      // WXY where X is a triangle (5-wave) or diagonal
-      // W = 3-wave ABC, X = triangle/diagonal (5), Y = 3-wave ABC
-      // Check if this structure is the internal subwaves of a higher degree wave (by time overlap)
-      const higherDegreeIdx = degreeOrder.indexOf(degree) - 1;
-      let crossDegreeInfo = '';
-      
-      if (higherDegreeIdx >= 0) {
-        const higherDegree = degreeOrder[higherDegreeIdx];
-        const higherPatterns = byDegree[higherDegree];
-        if (higherPatterns && higherPatterns.length > 0) {
-          const thisStart = sorted[0].startTime;
-          const thisEnd = sorted[sorted.length - 1].endTime;
-          const thisDuration = thisEnd - thisStart;
-          
-          // Sort a copy to avoid mutation
-          const hpSorted = [...higherPatterns].sort((a, b) => a.startTime - b.startTime);
-          
-          for (let i = 0; i < hpSorted.length; i++) {
-            const hp = hpSorted[i];
-            const hpDuration = hp.endTime - hp.startTime;
-            // Use 25% tolerance and check for significant overlap
-            const tolerance = Math.max(thisDuration, hpDuration) * 0.25;
-            const startDiff = Math.abs(hp.startTime - thisStart);
-            const endDiff = Math.abs(hp.endTime - thisEnd);
-            
-            // Check if times overlap significantly (start and end within tolerance)
-            if (startDiff <= tolerance && endDiff <= tolerance) {
-              const waveLabels = ['W', 'X', 'Y', 'X2', 'Z'];
-              if (i < waveLabels.length) {
-                crossDegreeInfo = ` = ${higherDegree} ${waveLabels[i]}`;
-              }
-              break;
-            }
-          }
-        }
-      }
-      
-      if (patternTypes[1] === 'triangle') {
-        archetype = `WXY (X=tri)${crossDegreeInfo}`;
-      } else if (patternTypes[1] === 'diagonal') {
-        archetype = `WXY (X=diag)${crossDegreeInfo}`;
-      } else {
-        archetype = `WXY${crossDegreeInfo}`;
-      }
-    }
-    else if (seq === '3-3-3') {
-      // Check if this degree's structure is the internal subwaves of a higher degree's wave
-      // by comparing time spans with better tolerance
-      const higherDegreeIdx = degreeOrder.indexOf(degree) - 1;
-      let crossDegreeInfo = '';
-      
-      if (higherDegreeIdx >= 0) {
-        const higherDegree = degreeOrder[higherDegreeIdx];
-        const higherPatterns = byDegree[higherDegree];
-        if (higherPatterns && higherPatterns.length > 0) {
-          const thisStart = sorted[0].startTime;
-          const thisEnd = sorted[sorted.length - 1].endTime;
-          const thisDuration = thisEnd - thisStart;
-          
-          // Sort a copy to avoid mutation
-          const hpSorted = [...higherPatterns].sort((a, b) => a.startTime - b.startTime);
-          
-          for (let i = 0; i < hpSorted.length; i++) {
-            const hp = hpSorted[i];
-            const hpDuration = hp.endTime - hp.startTime;
-            // Use 25% tolerance and check for significant overlap
-            const tolerance = Math.max(thisDuration, hpDuration) * 0.25;
-            const startDiff = Math.abs(hp.startTime - thisStart);
-            const endDiff = Math.abs(hp.endTime - thisEnd);
-            
-            if (startDiff <= tolerance && endDiff <= tolerance) {
-              const waveLabels = ['W', 'X', 'Y', 'X2', 'Z'];
-              if (i < waveLabels.length) {
-                crossDegreeInfo = ` = ${higherDegree} ${waveLabels[i]}`;
-              }
-              break;
-            }
-          }
-        }
-      }
-      
-      archetype = `WXY${crossDegreeInfo}`;
-    }
-    else if (seq === '3-3-3-3-3') {
-      // True triangle is 5 x 3-wave patterns forming ABCDE
-      // Check if all are corrections (not a triangle pattern itself)
-      const allCorrections = patternTypes.every(p => p === 'abc' || p === 'correction' || p === 'zigzag' || p === 'flat');
-      if (allCorrections) {
-        archetype = 'Triangle';
-      } else {
-        archetype = 'WXYXZ';
-      }
-    }
-    else if (seq === '5-3') archetype = 'W1-W2 / A-B';
-    else if (seq === '3-3') archetype = 'W-X';
-    else if (seq === '5') archetype = 'W1/A';
-    else if (seq === '3') archetype = 'Correction';
-    // Composite patterns with triangles/diagonals
-    else if (hasTriangle && sorted.length === 1 && patternTypes[0] === 'triangle') {
-      archetype = 'Triangle';
-    }
-    else if (hasDiagonal && sorted.length === 1 && patternTypes[0] === 'diagonal') {
-      archetype = 'Diagonal';
-    }
-    else archetype = seq;
     
     const startPrice = sorted[0].startPrice;
     const endPrice = sorted[sorted.length - 1].endPrice;
@@ -325,14 +267,15 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     const duration = endTime - startTime;
     const direction = endPrice > startPrice ? 'up' : 'down';
     
-    // Calculate validity score
     const validityScore = calculateStructureValidity(sorted, archetype);
     const validityTier = validityScore >= 80 ? 'excellent' : 
                          validityScore >= 60 ? 'good' : 
                          validityScore >= 40 ? 'fair' : 'poor';
     
-    structures.push({
-      id: `${degree}-${seq}`,
+    const idSuffix = parentInfo ? `-${parentInfo.parentWaveIndex}` : '';
+    
+    return {
+      id: `${degree}-${seq}${idSuffix}`,
       degree,
       archetype,
       sequence: seq,
@@ -347,11 +290,90 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       validityScore,
       validityTier,
       direction,
-      isExpanded: true, // Default expanded
-    });
-  });
+      isExpanded: true,
+    };
+  };
   
-  // Sort by degree order (highest first) - degreeOrder already defined above
+  // Helper: check if a time falls within a range (with small tolerance)
+  const isWithinTimespan = (time: number, start: number, end: number): boolean => {
+    const tolerance = (end - start) * 0.05; // 5% tolerance at boundaries
+    return time >= (start - tolerance) && time <= (end + tolerance);
+  };
+  
+  // Find which degrees exist in entries
+  const presentDegrees = degreeOrder.filter(d => byDegree[d] && byDegree[d].length > 0);
+  
+  // Process each degree, segmenting lower degrees by parent wave timespans
+  for (let i = 0; i < presentDegrees.length; i++) {
+    const currentDegree = presentDegrees[i];
+    const currentEntries = byDegree[currentDegree];
+    const sortedCurrent = [...currentEntries].sort((a, b) => a.startTime - b.startTime);
+    
+    // Check if there's a higher degree that should be the parent
+    const higherDegreeIdx = degreeOrder.indexOf(currentDegree) - 1;
+    let hasParent = false;
+    
+    if (higherDegreeIdx >= 0) {
+      const higherDegree = degreeOrder[higherDegreeIdx];
+      const higherEntries = byDegree[higherDegree];
+      
+      if (higherEntries && higherEntries.length > 0) {
+        const sortedHigher = [...higherEntries].sort((a, b) => a.startTime - b.startTime);
+        
+        // For each parent wave, find which lower degree patterns belong to it
+        for (let parentIdx = 0; parentIdx < sortedHigher.length; parentIdx++) {
+          const parent = sortedHigher[parentIdx];
+          
+          // Find lower degree patterns within this parent's timespan
+          const childPatterns = sortedCurrent.filter(child => {
+            // Child should start within parent's time range
+            return isWithinTimespan(child.startTime, parent.startTime, parent.endTime) &&
+                   isWithinTimespan(child.endTime, parent.startTime, parent.endTime);
+          });
+          
+          if (childPatterns.length > 0) {
+            hasParent = true;
+            
+            // Get parent's archetype for proper labeling
+            const parentSeq = sortedHigher.map(e => e.waveCount).join('-');
+            const parentTypes = sortedHigher.map(e => e.patternType);
+            const parentArchetype = identifyArchetype(parentSeq, parentTypes);
+            
+            const structure = createStructure(currentDegree, childPatterns, {
+              parentDegree: higherDegree,
+              parentWaveIndex: parentIdx,
+              parentArchetype
+            });
+            if (structure) structures.push(structure);
+          }
+        }
+        
+        // Also check for patterns that fall BETWEEN or AFTER parent waves (orphans)
+        const assignedTimes = new Set<number>();
+        sortedHigher.forEach(parent => {
+          sortedCurrent.forEach(child => {
+            if (isWithinTimespan(child.startTime, parent.startTime, parent.endTime)) {
+              assignedTimes.add(child.startTime);
+            }
+          });
+        });
+        
+        const orphanPatterns = sortedCurrent.filter(child => !assignedTimes.has(child.startTime));
+        if (orphanPatterns.length > 0) {
+          const structure = createStructure(currentDegree, orphanPatterns);
+          if (structure) structures.push(structure);
+        }
+      }
+    }
+    
+    // If no parent exists, create a single structure for this degree
+    if (!hasParent) {
+      const structure = createStructure(currentDegree, sortedCurrent);
+      if (structure) structures.push(structure);
+    }
+  }
+  
+  // Sort by degree order (highest first)
   structures.sort((a, b) => degreeOrder.indexOf(a.degree) - degreeOrder.indexOf(b.degree));
   
   return structures;
@@ -5625,17 +5647,39 @@ const aiAnalyze = useMutation({
                             
                             // Extract degree name from sourcePatternInfo (e.g., "Minor W3" -> "Minor")
                             const degreeName = proj.sourcePatternInfo?.split(' ')[0] || '';
-                            const degreeColor = waveDegrees.find(d => d.name === degreeName)?.color || '#74C0FC';
                             const displayLabel = proj.sourcePatternInfo || proj.waveRole;
+                            
+                            // Determine if this is impulse (W3, W5) or correction (C, Y, W2, W4)
+                            const isImpulseWave = ['W3', 'W5'].includes(proj.waveRole);
+                            
+                            // Color pairs per degree: impulse = brighter/more saturated, correction = complementary
+                            // Using bright colors visible on black backgrounds
+                            const degreeColorPairs: Record<string, { impulse: string; correction: string }> = {
+                              'Grand Supercycle': { impulse: '#FF6B6B', correction: '#FFE066' },
+                              'Supercycle': { impulse: '#FF8C42', correction: '#FECA57' },
+                              'Cycle': { impulse: '#FF5252', correction: '#FFD93D' },
+                              'Primary': { impulse: '#4ADE80', correction: '#A3E635' },
+                              'Intermediate': { impulse: '#22D3EE', correction: '#A78BFA' },
+                              'Minor': { impulse: '#FB923C', correction: '#FBBF24' },
+                              'Minute': { impulse: '#38BDF8', correction: '#C084FC' },
+                              'Minuette': { impulse: '#34D399', correction: '#F472B6' },
+                              'Subminuette': { impulse: '#67E8F9', correction: '#FDA4AF' },
+                            };
+                            
+                            const colorPair = degreeColorPairs[degreeName] || { impulse: '#22D3EE', correction: '#FBBF24' };
+                            const projColor = isImpulseWave ? colorPair.impulse : colorPair.correction;
                             
                             return (
                               <div key={projIdx} className="space-y-1">
                                 <div className="flex items-center gap-2">
                                   <span 
                                     className="text-xs font-medium"
-                                    style={{ color: degreeColor }}
+                                    style={{ color: projColor }}
                                   >
                                     {displayLabel} ({proj.fibMode})
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {isImpulseWave ? '⚡' : '🔄'}
                                   </span>
                                   <button
                                     onClick={() => {
@@ -5645,7 +5689,7 @@ const aiAnalyze = useMutation({
                                         const newLines = adjustedLevels
                                           .map(level => ({
                                             price: level.price,
-                                            color: degreeColor,
+                                            color: projColor,
                                             lineWidth: 1,
                                             lineStyle: 2,
                                             axisLabelVisible: true,
@@ -5674,7 +5718,7 @@ const aiAnalyze = useMutation({
                                           }
                                           return [...prev, {
                                             price: level.price,
-                                            color: degreeColor,
+                                            color: projColor,
                                             lineWidth: 1,
                                             lineStyle: 2,
                                             axisLabelVisible: true,
@@ -5684,9 +5728,9 @@ const aiAnalyze = useMutation({
                                       }}
                                       className="px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105"
                                       style={{ 
-                                        backgroundColor: `${degreeColor}20`,
-                                        color: degreeColor,
-                                        border: `1px solid ${degreeColor}40`
+                                        backgroundColor: `${projColor}20`,
+                                        color: projColor,
+                                        border: `1px solid ${projColor}40`
                                       }}
                                       data-testid={`projection-${proj.waveRole}-${level.label}`}
                                     >
