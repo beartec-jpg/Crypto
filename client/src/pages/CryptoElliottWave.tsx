@@ -545,26 +545,62 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         }
         
         // Also check for patterns that fall BETWEEN or AFTER parent waves (orphans)
-        const assignedTimes = new Set<number>();
+        // A pattern is only "assigned" if BOTH start AND end fall within a parent wave
+        const assignedIds = new Set<string>();
         sortedHigher.forEach(parent => {
           sortedCurrent.forEach(child => {
-            if (isWithinTimespan(child.startTime, parent.startTime, parent.endTime)) {
-              assignedTimes.add(child.startTime);
+            if (isWithinTimespan(child.startTime, parent.startTime, parent.endTime) &&
+                isWithinTimespan(child.endTime, parent.startTime, parent.endTime)) {
+              assignedIds.add(child.id);
             }
           });
         });
         
-        const orphanPatterns = sortedCurrent.filter(child => !assignedTimes.has(child.startTime));
+        const orphanPatterns = sortedCurrent.filter(child => !assignedIds.has(child.id));
+        
+        // Group orphans into separate structures based on time gaps (don't lump them all together)
         if (orphanPatterns.length > 0) {
-          structureCount++;
-          const structure = createStructure(currentDegree, orphanPatterns);
-          if (structure) {
-            structure.displayIndex = structureCount;
-            structures.push(structure);
-            structure.entries.forEach(entry => {
-              const entryKey = `${currentDegree}-${entry.startTime}`;
-              waveEntryToStructureIndex[entryKey] = structureCount;
-            });
+          let currentOrphanGroup: WaveStackEntry[] = [];
+          
+          for (let idx = 0; idx < orphanPatterns.length; idx++) {
+            const entry = orphanPatterns[idx];
+            
+            if (currentOrphanGroup.length > 0) {
+              const lastEntry = currentOrphanGroup[currentOrphanGroup.length - 1];
+              const timeGap = entry.startTime - lastEntry.endTime;
+              const avgDuration = currentOrphanGroup.reduce((sum, e) => sum + (e.endTime - e.startTime), 0) / currentOrphanGroup.length;
+              
+              // Split if significant time gap (new wave sequence starting)
+              if (timeGap > avgDuration * 0.5) {
+                structureCount++;
+                const structure = createStructure(currentDegree, currentOrphanGroup);
+                if (structure) {
+                  structure.displayIndex = structureCount;
+                  structures.push(structure);
+                  structure.entries.forEach(e => {
+                    const entryKey = `${currentDegree}-${e.startTime}`;
+                    waveEntryToStructureIndex[entryKey] = structureCount;
+                  });
+                }
+                currentOrphanGroup = [];
+              }
+            }
+            
+            currentOrphanGroup.push(entry);
+          }
+          
+          // Emit final orphan group
+          if (currentOrphanGroup.length > 0) {
+            structureCount++;
+            const structure = createStructure(currentDegree, currentOrphanGroup);
+            if (structure) {
+              structure.displayIndex = structureCount;
+              structures.push(structure);
+              structure.entries.forEach(entry => {
+                const entryKey = `${currentDegree}-${entry.startTime}`;
+                waveEntryToStructureIndex[entryKey] = structureCount;
+              });
+            }
           }
         }
       }
