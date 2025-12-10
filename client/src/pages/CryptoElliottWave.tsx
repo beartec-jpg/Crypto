@@ -2480,6 +2480,10 @@ export default function CryptoElliottWave() {
   // State for expanded/collapsed individual entries (for nested tree)
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
   
+  // State for selected prediction type (W3 vs C) per structure
+  // Maps structure.id to 'impulse' (W3/W5) or 'correction' (C/Y)
+  const [selectedPredictionType, setSelectedPredictionType] = useState<Record<string, 'impulse' | 'correction' | null>>({});
+  
   // Toggle structure expansion
   const toggleStructure = (structureId: string) => {
     setExpandedStructures(prev => {
@@ -6678,41 +6682,117 @@ const aiAnalyze = useMutation({
                             {/* Predictive Projections for forming patterns */}
                             {structure.isForming && structure.predictiveContext && (
                               <div className="px-3 py-2 bg-cyan-900/20 border-t border-cyan-700/30">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-xs text-cyan-400 font-semibold">
-                                    📈 {structure.predictiveContext.sourcePatternInfo?.split(' ').slice(1).join(' ') || structure.expectedNextWave} Targets
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    (Click to add projection line)
-                                  </span>
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                  {structure.predictiveContext.levels.map((level, levelIdx) => (
-                                    <button
-                                      key={levelIdx}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const lineTitle = `${structure.degree} ${structure.expectedNextWave} ${level.label}`;
-                                        setStackProjectionLines(prev => {
-                                          if (prev.some(l => l.title === lineTitle)) return prev;
-                                          return [...prev, {
-                                            price: level.price,
-                                            color: '#00CED1',
-                                            lineWidth: 1,
-                                            lineStyle: 2,
-                                            axisLabelVisible: true,
-                                            title: lineTitle,
-                                          }];
-                                        });
-                                        toast({ title: 'Projection Added', description: lineTitle });
-                                      }}
-                                      className="px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105 bg-cyan-900/40 text-cyan-400 border border-cyan-600/40"
-                                      data-testid={`predictive-${structure.expectedNextWave}-${level.label}`}
-                                    >
-                                      {level.label}: ${level.price.toFixed(4)}
-                                    </button>
-                                  ))}
-                                </div>
+                                {/* Check if this is a dual interpretation (W3/C) */}
+                                {(() => {
+                                  const hasImpulseLevels = structure.predictiveContext!.levels.some(l => 
+                                    l.label.startsWith('W3') || l.label.startsWith('W5'));
+                                  const hasCorrectionLevels = structure.predictiveContext!.levels.some(l => 
+                                    l.label.startsWith('C') || l.label.startsWith('Y'));
+                                  const isDualInterpretation = hasImpulseLevels && hasCorrectionLevels;
+                                  const selectedType = selectedPredictionType[structure.id];
+                                  
+                                  // Filter levels based on selection
+                                  const filteredLevels = selectedType 
+                                    ? structure.predictiveContext!.levels.filter(l => {
+                                        if (selectedType === 'impulse') {
+                                          return l.label.startsWith('W3') || l.label.startsWith('W5');
+                                        }
+                                        return l.label.startsWith('C') || l.label.startsWith('Y');
+                                      })
+                                    : structure.predictiveContext!.levels;
+                                  
+                                  return (
+                                    <>
+                                      {/* Selection prompt for dual interpretations */}
+                                      {isDualInterpretation && !selectedType && (
+                                        <div className="mb-3">
+                                          <span className="text-xs text-amber-400 font-semibold mb-2 block">
+                                            🔮 What are you predicting?
+                                          </span>
+                                          <div className="flex gap-2">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedPredictionType(prev => ({...prev, [structure.id]: 'impulse'}));
+                                              }}
+                                              className="px-3 py-1.5 rounded text-xs font-medium bg-cyan-700/40 text-cyan-300 border border-cyan-500/50 hover:bg-cyan-600/50 transition-all"
+                                              data-testid={`select-impulse-${structure.id}`}
+                                            >
+                                              ⚡ Wave 3/5 (Impulse)
+                                            </button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedPredictionType(prev => ({...prev, [structure.id]: 'correction'}));
+                                              }}
+                                              className="px-3 py-1.5 rounded text-xs font-medium bg-amber-700/40 text-amber-300 border border-amber-500/50 hover:bg-amber-600/50 transition-all"
+                                              data-testid={`select-correction-${structure.id}`}
+                                            >
+                                              🔄 Wave C/Y (Correction)
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Show targets (filtered if selection made, or all if not dual interpretation) */}
+                                      {(!isDualInterpretation || selectedType) && (
+                                        <>
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <span className="text-xs text-cyan-400 font-semibold">
+                                              📈 {selectedType === 'impulse' ? 'W3/W5' : selectedType === 'correction' ? 'C/Y' : structure.expectedNextWave} Targets
+                                            </span>
+                                            <span className="text-xs text-gray-500">
+                                              (Click to add projection line)
+                                            </span>
+                                            {isDualInterpretation && selectedType && (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setSelectedPredictionType(prev => ({...prev, [structure.id]: null}));
+                                                }}
+                                                className="ml-auto text-xs text-gray-400 hover:text-white"
+                                                data-testid={`change-prediction-${structure.id}`}
+                                              >
+                                                Change
+                                              </button>
+                                            )}
+                                          </div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {filteredLevels.map((level, levelIdx) => (
+                                              <button
+                                                key={levelIdx}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  const lineTitle = `${structure.degree} ${structure.expectedNextWave} ${level.label}`;
+                                                  setStackProjectionLines(prev => {
+                                                    if (prev.some(l => l.title === lineTitle)) return prev;
+                                                    return [...prev, {
+                                                      price: level.price,
+                                                      color: level.label.startsWith('W') ? '#00CED1' : '#FBBF24',
+                                                      lineWidth: 1,
+                                                      lineStyle: 2,
+                                                      axisLabelVisible: true,
+                                                      title: lineTitle,
+                                                    }];
+                                                  });
+                                                  toast({ title: 'Projection Added', description: lineTitle });
+                                                }}
+                                                className={`px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105 ${
+                                                  level.label.startsWith('W') 
+                                                    ? 'bg-cyan-900/40 text-cyan-400 border border-cyan-600/40'
+                                                    : 'bg-amber-900/40 text-amber-400 border border-amber-600/40'
+                                                }`}
+                                                data-testid={`predictive-${structure.expectedNextWave}-${level.label}`}
+                                              >
+                                                {level.label}: ${level.price.toFixed(4)}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                             )}
                           </div>
