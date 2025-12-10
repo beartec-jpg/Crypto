@@ -477,6 +477,8 @@ function calculateStructureValidity(entries: WaveStackEntry[], archetype: string
 
 // Compute cascaded validity scores across generations
 // Lower degree pattern scores cascade up to boost/reduce higher degree scores
+// Formula: cascadedScore = baseScore × 0.6 + weightedDescendantAverage × 0.4
+// Decay: direct children at 1.0, grandchildren at 0.6, great-grandchildren at 0.36, etc.
 function computeCascadeScores(structures: GroupedStructure[]): GroupedStructure[] {
   if (structures.length === 0) return structures;
   
@@ -487,8 +489,8 @@ function computeCascadeScores(structures: GroupedStructure[]): GroupedStructure[
   
   // Scoring weights
   const BASE_WEIGHT = 0.6; // 60% from intrinsic score
-  const CHILD_WEIGHT = 0.4; // 40% from children
-  const DEPTH_DECAY = 0.6; // Grandchildren weighted at 40% * 60% = 24%
+  const DESCENDANT_WEIGHT = 0.4; // 40% from descendants
+  const DEPTH_DECAY = 0.6; // Each generation deeper is weighted at 60% of previous
   
   // Helper: check if child timespan is within parent timespan
   const isWithin = (child: GroupedStructure, parent: GroupedStructure): boolean => {
@@ -530,86 +532,87 @@ function computeCascadeScores(structures: GroupedStructure[]): GroupedStructure[
     }
   }
   
-  // Post-order DFS to compute cascaded scores (children first, then parents)
-  const visited = new Set<string>();
+  // Collect all descendants with proper depth-based weights
+  interface DescendantInfo {
+    id: string;
+    degree: string;
+    intrinsicScore: number;
+    depth: number;
+    weight: number; // DEPTH_DECAY^(depth-1)
+  }
   
-  const computeScore = (structureId: string, depth: number = 0): { score: number; contributions: CascadeContribution[] } => {
+  const getDescendants = (structureId: string, currentDepth: number = 1): DescendantInfo[] => {
     const structure = structureMap.get(structureId);
-    if (!structure) return { score: 0, contributions: [] };
-    
-    if (visited.has(structureId)) {
-      return { score: structure.cascadedScore || structure.validityScore, contributions: [] };
-    }
-    visited.add(structureId);
+    if (!structure) return [];
     
     const children = structure.childrenIds || [];
-    
-    if (children.length === 0) {
-      // Leaf node: cascaded score = intrinsic score
-      structure.cascadedScore = structure.validityScore;
-      return { score: structure.validityScore, contributions: [] };
-    }
-    
-    // Compute children's cascaded scores first (post-order)
-    let totalChildContribution = 0;
-    let totalWeight = 0;
-    const allContributions: CascadeContribution[] = [];
+    const descendants: DescendantInfo[] = [];
     
     for (const childId of children) {
-      const childResult = computeScore(childId, 1);
-      const childStructure = structureMap.get(childId);
-      if (childStructure && childResult.score > 0) {
-        const weight = CHILD_WEIGHT * Math.pow(DEPTH_DECAY, 0); // Direct children
-        totalChildContribution += childResult.score * weight;
-        totalWeight += weight;
-        
-        // Track contribution from this child
-        const contribution = (childResult.score * weight) / (BASE_WEIGHT + weight);
-        allContributions.push({
-          sourceId: childId,
-          sourceDegree: childStructure.degree,
-          contribution: Math.round(contribution * 10) / 10,
-          depth: 1
+      const child = structureMap.get(childId);
+      if (child) {
+        const weight = Math.pow(DEPTH_DECAY, currentDepth - 1);
+        descendants.push({
+          id: childId,
+          degree: child.degree,
+          intrinsicScore: child.validityScore,
+          depth: currentDepth,
+          weight
         });
-        
-        // Also inherit grandchildren contributions (with decay)
-        for (const grandContrib of childResult.contributions) {
-          const decayedContrib = grandContrib.contribution * DEPTH_DECAY;
-          if (decayedContrib >= 0.1) { // Only include meaningful contributions
-            allContributions.push({
-              sourceId: grandContrib.sourceId,
-              sourceDegree: grandContrib.sourceDegree,
-              contribution: Math.round(decayedContrib * 10) / 10,
-              depth: grandContrib.depth + 1
-            });
-          }
-        }
+        // Recursively get grandchildren, great-grandchildren, etc.
+        const grandDescendants = getDescendants(childId, currentDepth + 1);
+        descendants.push(...grandDescendants);
       }
     }
     
-    // Calculate cascaded score: base * baseWeight + childContributions / totalWeight
-    let cascadedScore: number;
-    if (totalWeight > 0) {
-      const normalizedChildScore = totalChildContribution / totalWeight;
-      cascadedScore = structure.validityScore * BASE_WEIGHT + normalizedChildScore * CHILD_WEIGHT;
-    } else {
-      cascadedScore = structure.validityScore;
-    }
-    
-    structure.cascadedScore = Math.min(100, Math.max(0, Math.round(cascadedScore)));
-    structure.cascadeBreakdown = allContributions;
-    
-    return { score: structure.cascadedScore, contributions: allContributions };
+    return descendants;
   };
   
-  // Compute scores starting from highest degree (roots of the tree)
-  const sortedByDegree = [...structures].sort((a, b) => 
-    degreeOrder.indexOf(a.degree) - degreeOrder.indexOf(b.degree)
-  );
-  
-  for (const structure of sortedByDegree) {
-    if (!visited.has(structure.id)) {
-      computeScore(structure.id);
+  // Compute cascaded scores for all structures
+  for (const structure of structures) {
+    const descendants = getDescendants(structure.id);
+    
+    if (descendants.length === 0) {
+      // Leaf node: cascaded score = intrinsic score
+      structure.cascadedScore = structure.validityScore;
+      structure.cascadeBreakdown = [];
+    } else {
+      // Calculate weighted average of all descendants
+      let totalWeightedScore = 0;
+      let totalWeight = 0;
+      
+      for (const desc of descendants) {
+        totalWeightedScore += desc.intrinsicScore * desc.weight;
+        totalWeight += desc.weight;
+      }
+      
+      const weightedDescendantAverage = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
+      
+      // Final score: 60% base + 40% descendants
+      const cascadedScore = structure.validityScore * BASE_WEIGHT + weightedDescendantAverage * DESCENDANT_WEIGHT;
+      structure.cascadedScore = Math.min(100, Math.max(0, Math.round(cascadedScore)));
+      
+      // Calculate actual marginal contribution from each descendant for tooltip
+      // Each descendant contributes: (intrinsicScore × weight / totalWeight) × DESCENDANT_WEIGHT
+      // This is the actual percentage points added/subtracted to the final score
+      const contributions: CascadeContribution[] = [];
+      for (const desc of descendants) {
+        // True marginal contribution = (weighted score share) × 40%
+        const actualContribution = (desc.intrinsicScore * desc.weight / totalWeight) * DESCENDANT_WEIGHT;
+        
+        if (Math.abs(actualContribution) >= 0.5) { // Only show contributions >= 0.5%
+          contributions.push({
+            sourceId: desc.id,
+            sourceDegree: desc.degree,
+            contribution: Math.round(actualContribution * 10) / 10,
+            depth: desc.depth
+          });
+        }
+      }
+      
+      // Sort by absolute contribution (highest first) and limit to top contributors
+      contributions.sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
+      structure.cascadeBreakdown = contributions.slice(0, 8);
     }
   }
   
@@ -5992,17 +5995,38 @@ const aiAnalyze = useMutation({
                             {structure.direction === 'up' ? '↑' : '↓'}
                           </span>
                           
-                          {/* Validity Score */}
+                          {/* Validity Score with Cascade Info */}
                           <div className="ml-auto flex items-center gap-2">
                             <span className="text-xs text-gray-400">{structure.percentMove.toFixed(1)}%</span>
-                            <Badge variant="outline" className={`text-xs ${
-                              structure.validityTier === 'excellent' ? 'border-emerald-500 text-emerald-400' :
-                              structure.validityTier === 'good' ? 'border-green-500 text-green-400' :
-                              structure.validityTier === 'fair' ? 'border-yellow-500 text-yellow-400' :
-                              'border-red-500 text-red-400'
-                            }`}>
-                              {structure.validityScore}%
-                            </Badge>
+                            <div className="relative group">
+                              <Badge variant="outline" className={`text-xs cursor-help ${
+                                structure.validityTier === 'excellent' ? 'border-emerald-500 text-emerald-400' :
+                                structure.validityTier === 'good' ? 'border-green-500 text-green-400' :
+                                structure.validityTier === 'fair' ? 'border-yellow-500 text-yellow-400' :
+                                'border-red-500 text-red-400'
+                              }`}>
+                                {structure.cascadedScore ?? structure.validityScore}%
+                                {(structure.cascadeBreakdown && structure.cascadeBreakdown.length > 0) && (
+                                  <span className="ml-1 text-[10px] text-cyan-400">↑</span>
+                                )}
+                              </Badge>
+                              {/* Cascade Breakdown Tooltip */}
+                              {structure.cascadeBreakdown && structure.cascadeBreakdown.length > 0 && (
+                                <div className="absolute z-50 hidden group-hover:block bottom-full right-0 mb-1 w-48 bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs shadow-xl">
+                                  <div className="text-gray-300 mb-1 font-medium">Score Breakdown:</div>
+                                  <div className="text-gray-400 mb-1">Base: {structure.validityScore}% × 60%</div>
+                                  {structure.cascadeBreakdown.slice(0, 5).map((contrib, idx) => (
+                                    <div key={idx} className="text-gray-400 flex justify-between">
+                                      <span>{contrib.sourceDegree}</span>
+                                      <span className="text-cyan-400">+{contrib.contribution}%</span>
+                                    </div>
+                                  ))}
+                                  {structure.cascadeBreakdown.length > 5 && (
+                                    <div className="text-gray-500 text-[10px]">+{structure.cascadeBreakdown.length - 5} more...</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                         
