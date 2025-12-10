@@ -6823,7 +6823,7 @@ const aiAnalyze = useMutation({
                                           <span className="text-xs text-amber-400 font-semibold mb-2 block">
                                             🔮 What are you predicting?
                                           </span>
-                                          <div className="flex gap-2">
+                                          <div className="flex gap-2 flex-wrap items-center">
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
@@ -6857,6 +6857,28 @@ const aiAnalyze = useMutation({
                                               data-testid={`select-correction-${structure.id}`}
                                             >
                                               🔄 Wave C/Y (Correction)
+                                            </button>
+                                            {/* Test Push Notification Button */}
+                                            <button
+                                              onClick={async (e) => {
+                                                e.stopPropagation();
+                                                try {
+                                                  const response = await authenticatedApiRequest('POST', '/api/crypto/test-push');
+                                                  const result = await response.json();
+                                                  if (result.success) {
+                                                    toast({ title: '🔔 Test Sent!', description: 'Check your notifications' });
+                                                  } else {
+                                                    toast({ title: 'Test Failed', description: result.error || 'Unknown error', variant: 'destructive' });
+                                                  }
+                                                } catch (error: any) {
+                                                  toast({ title: 'Test Failed', description: error.message, variant: 'destructive' });
+                                                }
+                                              }}
+                                              className="px-3 py-1.5 rounded text-xs font-medium border bg-green-700/40 text-green-300 border-green-500/50 hover:bg-green-600/50 transition-all"
+                                              data-testid="test-push-notification"
+                                            >
+                                              <Bell className="w-3 h-3 inline mr-1" />
+                                              Test Push
                                             </button>
                                           </div>
                                         </div>

@@ -3544,6 +3544,29 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
     console.log(`✅ Push sent successfully to ${results.filter(r => r.status === 'fulfilled').length} subscriptions`);
   }
 
+  // === Test Push Notification Endpoint ===
+  app.post("/api/crypto/test-push", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      console.log(`🧪 Sending test push notification for user: ${userId}`);
+      
+      await sendPushNotification({
+        title: '🔔 Test Notification',
+        body: 'Push notifications are working! Your price alerts are active.',
+        data: {
+          type: 'test',
+          userId: userId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      res.json({ success: true, message: 'Test notification sent' });
+    } catch (error: any) {
+      console.error('❌ Error sending test notification:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // === Crypto Bootstrap Endpoint ===
   
   // Bootstrap user account on first login - creates free tier subscription if not exists
