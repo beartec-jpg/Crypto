@@ -212,7 +212,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     else if (seq === '3-5-3') {
       // WXY where X is a triangle (5-wave) or diagonal
       // W = 3-wave ABC, X = triangle/diagonal (5), Y = 3-wave ABC
-      // Check if this structure is the internal subwaves of a higher degree wave (by time)
+      // Check if this structure is the internal subwaves of a higher degree wave (by time overlap)
       const higherDegreeIdx = degreeOrder.indexOf(degree) - 1;
       let crossDegreeInfo = '';
       
@@ -222,16 +222,24 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         if (higherPatterns && higherPatterns.length > 0) {
           const thisStart = sorted[0].startTime;
           const thisEnd = sorted[sorted.length - 1].endTime;
+          const thisDuration = thisEnd - thisStart;
           
-          for (const hp of higherPatterns) {
-            const tolerance = Math.abs(hp.endTime - hp.startTime) * 0.1;
-            if (Math.abs(hp.startTime - thisStart) < tolerance && 
-                Math.abs(hp.endTime - thisEnd) < tolerance) {
-              const hpSorted = higherPatterns.sort((a, b) => a.startTime - b.startTime);
-              const waveIdx = hpSorted.findIndex(w => w === hp);
+          // Sort a copy to avoid mutation
+          const hpSorted = [...higherPatterns].sort((a, b) => a.startTime - b.startTime);
+          
+          for (let i = 0; i < hpSorted.length; i++) {
+            const hp = hpSorted[i];
+            const hpDuration = hp.endTime - hp.startTime;
+            // Use 25% tolerance and check for significant overlap
+            const tolerance = Math.max(thisDuration, hpDuration) * 0.25;
+            const startDiff = Math.abs(hp.startTime - thisStart);
+            const endDiff = Math.abs(hp.endTime - thisEnd);
+            
+            // Check if times overlap significantly (start and end within tolerance)
+            if (startDiff <= tolerance && endDiff <= tolerance) {
               const waveLabels = ['W', 'X', 'Y', 'X2', 'Z'];
-              if (waveIdx >= 0 && waveIdx < waveLabels.length) {
-                crossDegreeInfo = ` = ${higherDegree} ${waveLabels[waveIdx]}`;
+              if (i < waveLabels.length) {
+                crossDegreeInfo = ` = ${higherDegree} ${waveLabels[i]}`;
               }
               break;
             }
@@ -249,7 +257,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     }
     else if (seq === '3-3-3') {
       // Check if this degree's structure is the internal subwaves of a higher degree's wave
-      // by comparing time spans
+      // by comparing time spans with better tolerance
       const higherDegreeIdx = degreeOrder.indexOf(degree) - 1;
       let crossDegreeInfo = '';
       
@@ -259,20 +267,23 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         if (higherPatterns && higherPatterns.length > 0) {
           const thisStart = sorted[0].startTime;
           const thisEnd = sorted[sorted.length - 1].endTime;
+          const thisDuration = thisEnd - thisStart;
           
-          // Find which higher degree wave this spans
-          for (const hp of higherPatterns) {
-            // Check if this structure's time span matches a higher degree wave
-            const tolerance = Math.abs(hp.endTime - hp.startTime) * 0.1; // 10% tolerance
-            if (Math.abs(hp.startTime - thisStart) < tolerance && 
-                Math.abs(hp.endTime - thisEnd) < tolerance) {
-              // This structure is the internal subwaves of the higher degree wave
-              // Determine which wave based on position in higher sequence
-              const hpSorted = higherPatterns.sort((a, b) => a.startTime - b.startTime);
-              const waveIdx = hpSorted.findIndex(w => w === hp);
+          // Sort a copy to avoid mutation
+          const hpSorted = [...higherPatterns].sort((a, b) => a.startTime - b.startTime);
+          
+          for (let i = 0; i < hpSorted.length; i++) {
+            const hp = hpSorted[i];
+            const hpDuration = hp.endTime - hp.startTime;
+            // Use 25% tolerance and check for significant overlap
+            const tolerance = Math.max(thisDuration, hpDuration) * 0.25;
+            const startDiff = Math.abs(hp.startTime - thisStart);
+            const endDiff = Math.abs(hp.endTime - thisEnd);
+            
+            if (startDiff <= tolerance && endDiff <= tolerance) {
               const waveLabels = ['W', 'X', 'Y', 'X2', 'Z'];
-              if (waveIdx >= 0 && waveIdx < waveLabels.length) {
-                crossDegreeInfo = ` (${higherDegree} ${waveLabels[waveIdx]})`;
+              if (i < waveLabels.length) {
+                crossDegreeInfo = ` = ${higherDegree} ${waveLabels[i]}`;
               }
               break;
             }
@@ -882,13 +893,57 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
   }
   
   // 3-3-3 pattern = Complete WXY double correction
+  // Also collect projections from OTHER degrees (like Minor 5-3)
   if (sequence === '3-3-3') {
+    const otherDegreeProjections: ProjectionContext[] = [];
+    
+    // Check all other degrees for actionable patterns
+    for (const degree of degreeOrder) {
+      if (degree === targetDegree) continue;
+      const patterns = byDegree[degree];
+      if (!patterns || patterns.length === 0) continue;
+      
+      const sorted = [...patterns].sort((a, b) => a.startTime - b.startTime);
+      const seq = sorted.map(e => e.waveCount).join('-');
+      
+      if (seq === '5-3') {
+        const impulsePattern = sorted[0];
+        const correctionPattern = sorted[1];
+        const impulseDir = impulsePattern.direction;
+        
+        // W3 projection
+        const w3Proj = calculateFibLevels(
+          'W3',
+          impulsePattern.startPrice,
+          impulsePattern.endPrice,
+          impulseDir,
+          correctionPattern.endPrice,
+          `${degree} W1`
+        );
+        w3Proj.sourcePatternInfo = `${degree} W3`;
+        otherDegreeProjections.push(w3Proj);
+        
+        // C wave projection
+        const cProj = calculateFibLevels(
+          'C',
+          impulsePattern.startPrice,
+          impulsePattern.endPrice,
+          impulseDir,
+          correctionPattern.endPrice,
+          `${degree} A`
+        );
+        cProj.sourcePatternInfo = `${degree} C`;
+        otherDegreeProjections.push(cProj);
+      }
+    }
+    
     return {
       sequence,
       suggestion: `✅ ${targetDegree}: Complete WXY double correction (3-3-3) - could be W2, B, or 4 of higher degree`,
       confidence: 'high',
       startPrice,
       endPrice,
+      projections: otherDegreeProjections.length > 0 ? otherDegreeProjections : undefined,
     };
   }
   
