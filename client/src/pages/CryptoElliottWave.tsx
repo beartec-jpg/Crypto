@@ -4637,10 +4637,13 @@ const aiAnalyze = useMutation({
       console.log('📊 Fib targets adjusted for drag - showing targets for point', draggedPointIndex, 'using', pointsToUse.length, 'points');
     }
     
-    // Get current pattern type from the label or current selection
-    const currentPattern = selectedLabelId 
+    // Get current pattern type:
+    // - If actively drawing new points (hasActiveDrawing), use the patternType from the dropdown
+    // - If dragging a saved pattern, use the saved pattern's type
+    // - Otherwise fall back to patternType
+    const currentPattern = isDraggingSelectedPattern
       ? savedLabels.find(l => l.id === selectedLabelId)?.patternType 
-      : patternType;
+      : patternType; // Always use current patternType when drawing new points
     const isCorrection = currentPattern === 'correction' || currentPattern === 'zigzag' || currentPattern === 'flat';
     const isDiagonal = currentPattern === 'diagonal';
     
