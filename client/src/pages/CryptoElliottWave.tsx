@@ -590,6 +590,90 @@ function getChildrenForEntry(
   });
 }
 
+// Helper: Get context-aware wave role label for a child structure
+// Instead of generic "W1/A", shows what parent wave it's completing
+function getContextualWaveRole(
+  childStructure: GroupedStructure,
+  parentEntry: WaveStackEntry,
+  parentStructure: GroupedStructure,
+  entryIndex: number // 0-based index within parent entries
+): string {
+  const parentArchetype = parentStructure.archetype;
+  
+  // Determine what wave this entry represents in the parent structure
+  let parentWaveLabel: string;
+  if (parentArchetype.includes('WXY')) {
+    parentWaveLabel = entryIndex === 0 ? 'W' : entryIndex === 1 ? 'X' : 'Y';
+  } else if (parentArchetype === 'Impulse') {
+    parentWaveLabel = String(entryIndex * 2 + 1); // 1, 3, 5 for motive waves
+  } else {
+    // ABC type corrections
+    parentWaveLabel = ['A', 'B', 'C', 'D', 'E'][entryIndex] || String(entryIndex + 1);
+  }
+  
+  // For motive waves (5-count), child completes this wave
+  // For corrective waves (3-count), child is the internal structure
+  const isMotiveEntry = parentEntry.waveCount === 5;
+  const isCorrectionEntry = parentEntry.waveCount === 3;
+  
+  if (isMotiveEntry) {
+    // This is a 5-wave motive - child completes it
+    return `= ${parentStructure.degree} ${parentWaveLabel}`;
+  } else if (isCorrectionEntry) {
+    // This is a 3-wave correction - child is internal structure
+    return `= ${parentStructure.degree} ${parentWaveLabel}`;
+  }
+  
+  return `= ${parentStructure.degree} ${parentWaveLabel}`;
+}
+
+// Helper: Get completion chain - what higher degree waves are completed by this structure
+function getCompletionChain(
+  structure: GroupedStructure,
+  allStructures: GroupedStructure[]
+): string[] {
+  const chain: string[] = [];
+  
+  // Find parent structure
+  if (!structure.parentId) return chain;
+  
+  const parent = allStructures.find(s => s.id === structure.parentId);
+  if (!parent) return chain;
+  
+  // Find which entry in parent this structure belongs to
+  const parentEntry = parent.entries.find(entry => {
+    const tolerance = (entry.endTime - entry.startTime) * 0.1;
+    return structure.startTime >= (entry.startTime - tolerance) &&
+           structure.endTime <= (entry.endTime + tolerance);
+  });
+  
+  if (!parentEntry) return chain;
+  
+  // Check if this is the LAST entry in the parent (completes the structure)
+  const entryIndex = parent.entries.findIndex(e => e.id === parentEntry.id);
+  const isLastEntry = entryIndex === parent.entries.length - 1;
+  
+  // Determine wave label
+  let waveLabel: string;
+  if (parent.archetype.includes('WXY')) {
+    waveLabel = entryIndex === 0 ? 'W' : entryIndex === 1 ? 'X' : 'Y';
+  } else if (parent.archetype === 'Impulse') {
+    waveLabel = ['1', '2', '3', '4', '5'][entryIndex] || String(entryIndex + 1);
+  } else {
+    waveLabel = ['A', 'B', 'C', 'D', 'E'][entryIndex] || String(entryIndex + 1);
+  }
+  
+  chain.push(`${parent.degree} ${waveLabel}`);
+  
+  // If this completes the parent, recurse up
+  if (isLastEntry) {
+    const parentChain = getCompletionChain(parent, allStructures);
+    chain.push(...parentChain);
+  }
+  
+  return chain;
+}
+
 // Calculate validity score for a grouped structure
 function calculateStructureValidity(entries: WaveStackEntry[], archetype: string): number {
   let score = 50; // Base score
@@ -6147,11 +6231,15 @@ const aiAnalyze = useMutation({
                     const isExpanded = expandedStructures.has(structure.id);
                     const degreeColor = waveDegrees.find(d => d.name === structure.degree)?.color || '#74C0FC';
                     
+                    // Get parent context for this structure
+                    const completionChain = getCompletionChain(structure, groupedStructures);
+                    const parentLabel = completionChain.length > 0 ? completionChain[0] : null;
+                    
                     return (
                       <div key={structure.id} className="rounded-lg border border-slate-700 overflow-hidden">
                         {/* Structure Header Row */}
                         <div 
-                          className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-800/50 transition-all"
+                          className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-800/50 transition-all flex-wrap"
                           style={{ backgroundColor: `${degreeColor}15`, borderLeft: `3px solid ${degreeColor}` }}
                           onClick={() => toggleStructure(structure.id)}
                           data-testid={`structure-${structure.id}`}
@@ -6165,15 +6253,16 @@ const aiAnalyze = useMutation({
                             {structure.degree}
                           </span>
                           
-                          {/* Archetype Badge */}
+                          {/* Archetype Badge + Parent Context */}
                           <Badge variant="outline" className={`text-xs ${
                             structure.archetype === 'Impulse' ? 'border-emerald-500 text-emerald-400' :
                             structure.archetype === 'WXY' ? 'border-amber-500 text-amber-400' :
-                            structure.archetype === 'W1-W2' ? 'border-cyan-500 text-cyan-400' :
+                            structure.archetype === 'W1-W2' || structure.archetype === 'W1/A' ? 'border-cyan-500 text-cyan-400' :
                             structure.archetype === 'Zigzag' ? 'border-purple-500 text-purple-400' :
                             'border-gray-500 text-gray-400'
                           }`}>
                             {structure.archetype}
+                            {parentLabel && <span className="ml-1 text-cyan-300">= {parentLabel}</span>}
                           </Badge>
                           
                           {/* Sequence */}
@@ -6293,10 +6382,15 @@ const aiAnalyze = useMutation({
                                     <div className="ml-6 border-l-2 border-slate-700 pl-2 py-1">
                                       {entryChildren.map(child => {
                                         const childDegreeColor = waveDegrees.find(d => d.name === child.degree)?.color || '#74C0FC';
+                                        // Get contextual role label (e.g., "= Minor C" instead of "W1/A")
+                                        const contextRole = getContextualWaveRole(child, entry, structure, idx);
+                                        // Get completion chain if this completes higher degree waves
+                                        const completionChain = getCompletionChain(child, groupedStructures);
+                                        
                                         return (
                                           <div 
                                             key={child.id}
-                                            className="flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-slate-800/30 rounded"
+                                            className="flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-slate-800/30 rounded flex-wrap"
                                           >
                                             <span className="text-gray-500">└</span>
                                             <span className="font-medium" style={{ color: childDegreeColor }}>
@@ -6306,10 +6400,17 @@ const aiAnalyze = useMutation({
                                               {child.archetype}
                                             </Badge>
                                             <span className="font-mono text-gray-500">{child.sequence}</span>
+                                            <span className="text-cyan-400 text-[10px]">{contextRole}</span>
                                             <span className={child.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
                                               {child.direction === 'up' ? '↑' : '↓'}
                                             </span>
-                                            <span className="ml-auto text-gray-500">{child.percentMove.toFixed(1)}%</span>
+                                            <span className="text-gray-500">{child.percentMove.toFixed(1)}%</span>
+                                            {/* Completion Chain Badge */}
+                                            {completionChain.length > 1 && (
+                                              <Badge variant="outline" className="text-[8px] px-1 border-amber-500/50 text-amber-400 ml-auto">
+                                                → {completionChain.slice(1).join(' → ')}
+                                              </Badge>
+                                            )}
                                           </div>
                                         );
                                       })}
