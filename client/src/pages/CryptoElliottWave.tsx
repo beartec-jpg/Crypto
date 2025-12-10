@@ -153,7 +153,8 @@ function identifyArchetype(seq: string, patternTypes: string[]): string {
   if (seq === '3-3-3') return 'WXY';
   if (seq === '3-3-3-3-3') {
     const allCorrections = patternTypes.every(p => p === 'abc' || p === 'correction' || p === 'zigzag' || p === 'flat');
-    return allCorrections ? 'Triangle' : 'WXYXZ';
+    // Return ambiguous archetype - parent context will clarify if it's diagonal internals or triangle
+    return allCorrections ? 'Triangle or Diagonal' : 'WXYXZ';
   }
   if (seq === '5-3') return 'W1-W2 / A-B';
   if (seq === '3-3') return 'W-X';
@@ -188,7 +189,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
   const createStructure = (
     degree: string, 
     entries: WaveStackEntry[], 
-    parentInfo?: { parentDegree: string; parentWaveIndex: number; parentArchetype: string }
+    parentInfo?: { parentDegree: string; parentWaveIndex: number; parentArchetype: string; parentPatternType?: string; parentLabel?: string }
   ): GroupedStructure | null => {
     if (entries.length === 0) return null;
     
@@ -200,7 +201,45 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     
     // Add cross-degree info if this is internal to a parent wave
     if (parentInfo) {
-      const { parentDegree, parentWaveIndex, parentArchetype } = parentInfo;
+      const { parentDegree, parentWaveIndex, parentArchetype, parentPatternType, parentLabel } = parentInfo;
+      
+      // CRITICAL: If parent is a diagonal and children are 3-3-3-3-3, they are diagonal internal waves, not a triangle
+      if (parentPatternType === 'diagonal' && seq === '3-3-3-3-3') {
+        const parentDesc = parentLabel || `${parentDegree} wave`;
+        archetype = `Diagonal waves 1-5 = ${parentDesc}`;
+        // Return early with this definitive archetype
+        const startPrice = sorted[0].startPrice;
+        const endPrice = sorted[sorted.length - 1].endPrice;
+        const startTime = sorted[0].startTime;
+        const endTime = sorted[sorted.length - 1].endTime;
+        const priceRange = Math.abs(endPrice - startPrice);
+        const percentMove = Math.abs((endPrice - startPrice) / startPrice * 100);
+        const duration = endTime - startTime;
+        const direction = endPrice > startPrice ? 'up' : 'down';
+        const validityScore = calculateStructureValidity(sorted, archetype);
+        const validityTier = validityScore >= 80 ? 'excellent' : 
+                             validityScore >= 60 ? 'good' : 
+                             validityScore >= 40 ? 'fair' : 'poor';
+        const idSuffix = `-${parentWaveIndex}`;
+        return {
+          id: `${degree}-${seq}${idSuffix}`,
+          degree,
+          archetype,
+          sequence: seq,
+          entries: sorted,
+          startPrice,
+          endPrice,
+          startTime,
+          endTime,
+          priceRange,
+          percentMove,
+          duration,
+          validityScore,
+          validityTier,
+          direction,
+          isExpanded: true,
+        };
+      }
       // Determine wave label based on parent structure
       // Use includes/startsWith for annotated archetypes like 'WXY (X=tri)'
       let waveLabel: string;
@@ -339,10 +378,16 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
             const parentTypes = sortedHigher.map(e => e.patternType);
             const parentArchetype = identifyArchetype(parentSeq, parentTypes);
             
+            // Also pass individual parent's patternType and label for diagonal/triangle disambiguation
+            const parentPatternType = parent.patternType;
+            const parentLabel = parent.suggestedLabel || `${higherDegree} ${parentIdx + 1}`;
+            
             const structure = createStructure(currentDegree, childPatterns, {
               parentDegree: higherDegree,
               parentWaveIndex: parentIdx,
-              parentArchetype
+              parentArchetype,
+              parentPatternType,
+              parentLabel
             });
             if (structure) structures.push(structure);
           }
