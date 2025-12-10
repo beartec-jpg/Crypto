@@ -100,6 +100,9 @@ interface ProjectionContext {
   sourcePatternInfo?: string; // Info about source pattern for display
 }
 
+// Extended type for forming patterns that may expect additional wave types
+type FormingWaveRole = 'W3' | 'W4' | 'W5' | 'C' | 'Y';
+
 interface WaveStackSuggestion {
   sequence: string; // e.g., "5-3-5-3-5"
   suggestion: string; // e.g., "Possible W1 or A (Intermediate degree)"
@@ -136,6 +139,9 @@ interface GroupedStructure {
   validityTier: 'excellent' | 'good' | 'fair' | 'poor';
   direction: 'up' | 'down';
   isExpanded?: boolean;
+  isForming?: boolean; // True if this is a partial sequence (e.g., 5-3 = W1-W2 or A-B)
+  expectedNextWave?: 'W3' | 'W4' | 'W5' | 'C' | 'Y'; // What wave is expected next
+  predictiveContext?: ProjectionContext; // Projections for the next expected wave
   childrenIds?: string[]; // IDs of child structures (lower degree)
   parentId?: string; // ID of parent structure (higher degree)
   displayIndex?: number; // 1-based index within this degree for identification
@@ -325,6 +331,81 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     
     const idSuffix = parentInfo ? `-${parentInfo.parentWaveIndex}` : '';
     
+    // Detect forming patterns (partial sequences) and set predictive context
+    // Each entry specifies: expectedNextWave, fibMode (extension vs retracement), and anchor wave indices
+    type FormingConfig = { 
+      expectedNextWave: 'W3' | 'W4' | 'W5' | 'C' | 'Y';
+      fibMode: 'extension' | 'retracement';
+      anchorWaveIdx: number; // Which wave to measure from (0=W1, 1=W2, etc.)
+    };
+    const formingSequences: Record<string, FormingConfig> = {
+      '5-3': { expectedNextWave: 'W3', fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2 → W3 extends W1
+      '5-3-5-3': { expectedNextWave: 'W5', fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2-W3-W4 → W5 extends from W4 using W1 length
+      '3-3': { expectedNextWave: 'Y', fibMode: 'extension', anchorWaveIdx: 0 }, // W-X → Y extends W
+      '5-3-5': { expectedNextWave: 'W4', fibMode: 'retracement', anchorWaveIdx: 2 }, // W1-W2-W3 → W4 retraces W3
+    };
+    
+    const formingInfo = formingSequences[seq];
+    const isForming = !!formingInfo;
+    const expectedNextWave = formingInfo?.expectedNextWave;
+    
+    // Compute predictive context for forming patterns
+    let predictiveContext: ProjectionContext | undefined;
+    if (isForming && sorted.length >= 2) {
+      const lastEntry = sorted[sorted.length - 1];
+      const launchPrice = lastEntry.endPrice;
+      
+      // Get the anchor wave for Fib calculations
+      const anchorIdx = formingInfo.anchorWaveIdx;
+      const anchorWave = sorted[anchorIdx];
+      const anchorRange = Math.abs(anchorWave.endPrice - anchorWave.startPrice);
+      
+      // Determine direction based on expected wave type
+      // Extensions: continue in trend direction; Retracements: counter-trend
+      const trendDirection = sorted[0].direction; // Overall pattern direction from W1
+      const nextDirection: 'up' | 'down' = formingInfo.fibMode === 'retracement'
+        ? (trendDirection === 'up' ? 'down' : 'up') // Retracements go counter-trend
+        : trendDirection; // Extensions continue trend
+      
+      // Calculate Fib levels based on wave type
+      const levels: { ratio: number; price: number; label: string }[] = [];
+      let ratios: number[];
+      
+      if (expectedNextWave === 'W3' || expectedNextWave === 'C') {
+        // W3/C: Extensions of W1/A from W2/B end
+        ratios = [1.0, 1.272, 1.618, 2.0, 2.618];
+      } else if (expectedNextWave === 'W5') {
+        // W5: Extensions from W4, typically 61.8% to 100% of W1→W3 distance
+        ratios = [0.618, 0.786, 1.0, 1.618];
+      } else if (expectedNextWave === 'W4') {
+        // W4: Retracement of W3 (23.6% to 50%)
+        ratios = [0.236, 0.382, 0.5];
+      } else if (expectedNextWave === 'Y') {
+        // Y wave: Often equals W in length
+        ratios = [0.618, 1.0, 1.272, 1.618];
+      } else {
+        ratios = [0.618, 1.0, 1.272];
+      }
+      
+      ratios.forEach(ratio => {
+        const price = nextDirection === 'up'
+          ? launchPrice + (anchorRange * ratio)
+          : launchPrice - (anchorRange * ratio);
+        levels.push({ ratio, price, label: `${(ratio * 100).toFixed(0)}%` });
+      });
+      
+      predictiveContext = {
+        waveRole: expectedNextWave,
+        fibMode: formingInfo.fibMode,
+        anchorStartPrice: anchorWave.startPrice,
+        anchorEndPrice: anchorWave.endPrice,
+        launchPrice,
+        levels,
+        direction: nextDirection,
+        sourcePatternInfo: `${degree} ${expectedNextWave}`,
+      };
+    }
+    
     return {
       id: `${degree}-${seq}${idSuffix}`,
       degree,
@@ -342,6 +423,9 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       validityTier,
       direction,
       isExpanded: true,
+      isForming,
+      expectedNextWave,
+      predictiveContext,
     };
   };
   
@@ -750,14 +834,15 @@ function computeCascadeScores(structures: GroupedStructure[]): GroupedStructure[
   });
   
   // Find parent-child relationships
+  // Look for ANY higher degree parent (not just one degree higher) to handle skipped degrees
   for (let i = 0; i < structures.length; i++) {
     const child = structures[i];
     const childDegreeIdx = degreeOrder.indexOf(child.degree);
     
-    // Look for potential parent (one degree higher)
-    const parentDegreeIdx = childDegreeIdx - 1;
-    if (parentDegreeIdx >= 0) {
+    // Look for potential parent at ANY higher degree (closest first)
+    for (let parentDegreeIdx = childDegreeIdx - 1; parentDegreeIdx >= 0; parentDegreeIdx--) {
       const parentDegree = degreeOrder[parentDegreeIdx];
+      let foundParent = false;
       
       // Find parent that contains this child
       for (const potentialParent of structures) {
@@ -765,9 +850,12 @@ function computeCascadeScores(structures: GroupedStructure[]): GroupedStructure[
           child.parentId = potentialParent.id;
           potentialParent.childrenIds = potentialParent.childrenIds || [];
           potentialParent.childrenIds.push(child.id);
-          break; // Only one parent per child
+          foundParent = true;
+          break; // Only one parent per child at this degree
         }
       }
+      
+      if (foundParent) break; // Stop looking for higher degrees once we found a parent
     }
   }
   
@@ -6472,6 +6560,13 @@ const aiAnalyze = useMutation({
                             {structure.archetype}
                           </Badge>
                           
+                          {/* Forming Badge - shows when pattern is partial and expecting next wave */}
+                          {structure.isForming && structure.expectedNextWave && (
+                            <Badge variant="outline" className="text-xs border-cyan-500 text-cyan-400 animate-pulse">
+                              → {structure.expectedNextWave}
+                            </Badge>
+                          )}
+                          
                           {/* Sequence */}
                           <span className="font-mono text-xs text-gray-500">{structure.sequence}</span>
                           
@@ -6515,6 +6610,47 @@ const aiAnalyze = useMutation({
                                 waveDegrees={waveDegrees}
                               />
                             ))}
+                            
+                            {/* Predictive Projections for forming patterns */}
+                            {structure.isForming && structure.predictiveContext && (
+                              <div className="px-3 py-2 bg-cyan-900/20 border-t border-cyan-700/30">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-xs text-cyan-400 font-semibold">
+                                    📈 {structure.expectedNextWave} Targets
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    (Click to add projection line)
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {structure.predictiveContext.levels.map((level, levelIdx) => (
+                                    <button
+                                      key={levelIdx}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const lineTitle = `${structure.degree} ${structure.expectedNextWave} ${level.label}`;
+                                        setStackProjectionLines(prev => {
+                                          if (prev.some(l => l.title === lineTitle)) return prev;
+                                          return [...prev, {
+                                            price: level.price,
+                                            color: '#00CED1',
+                                            lineWidth: 1,
+                                            lineStyle: 2,
+                                            axisLabelVisible: true,
+                                            title: lineTitle,
+                                          }];
+                                        });
+                                        toast({ title: 'Projection Added', description: lineTitle });
+                                      }}
+                                      className="px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105 bg-cyan-900/40 text-cyan-400 border border-cyan-600/40"
+                                      data-testid={`predictive-${structure.expectedNextWave}-${level.label}`}
+                                    >
+                                      {level.label}: ${level.price.toFixed(4)}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
