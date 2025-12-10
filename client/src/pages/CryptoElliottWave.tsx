@@ -5498,16 +5498,42 @@ const aiAnalyze = useMutation({
             )}
 
             {selectionMode && selectedLabelId && (
-              <Button 
-                onClick={() => deleteLabel.mutate(selectedLabelId)} 
-                disabled={deleteLabel.isPending || !hasElliottAccess} 
-                variant="ghost" 
-                size="sm" 
-                className="h-7 px-2 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
-                title={!hasElliottAccess ? "Subscription required to delete patterns" : "Delete pattern"}
-              >
-                {deleteLabel.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              </Button>
+              <>
+                <Select 
+                  value={savedLabels.find(l => l.id === selectedLabelId)?.degree || 'Minor'} 
+                  onValueChange={(newDegree) => {
+                    updateLabel.mutate({ id: selectedLabelId, degree: newDegree });
+                    toast({ title: 'Degree Updated', description: `Changed to ${newDegree}` });
+                  }}
+                >
+                  <SelectTrigger className="w-[100px] h-7 bg-slate-800 border-amber-500/50 text-xs px-2">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: waveDegrees.find(d => d.name === savedLabels.find(l => l.id === selectedLabelId)?.degree)?.color || '#ffa500' }} />
+                      <span className="truncate">{savedLabels.find(l => l.id === selectedLabelId)?.degree || 'Minor'}</span>
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {(waveDegrees.length > 0 ? waveDegrees : [{ name: 'Minor', color: '#ffa500' }]).map(d => (
+                      <SelectItem key={d.name} value={d.name} className="text-gray-200 hover:bg-slate-700 focus:bg-slate-700">
+                        <span className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
+                          {d.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button 
+                  onClick={() => deleteLabel.mutate(selectedLabelId)} 
+                  disabled={deleteLabel.isPending || !hasElliottAccess} 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 px-2 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                  title={!hasElliottAccess ? "Subscription required to delete patterns" : "Delete pattern"}
+                >
+                  {deleteLabel.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -5518,7 +5544,7 @@ const aiAnalyze = useMutation({
             <span className="text-[#00c4b4]">Tap candles ({currentPoints.length}/{patternType === 'impulse' ? 6 : patternType === 'triangle' ? 6 : 4})</span>
           ) : selectionMode ? (
             <span className="text-amber-400">
-              {selectedLabelId ? `Selected: ${savedLabels.find(l => l.id === selectedLabelId)?.patternType} (${savedLabels.find(l => l.id === selectedLabelId)?.degree})` : "Tap a pattern"}
+              {selectedLabelId ? `Selected: ${savedLabels.find(l => l.id === selectedLabelId)?.patternType}` : "Tap a pattern"}
             </span>
           ) : (
             <span>View mode</span>
