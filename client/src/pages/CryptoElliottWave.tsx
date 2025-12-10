@@ -3140,12 +3140,12 @@ const aiAnalyze = useMutation({
                     }
                   }
                 } else if (label === '5') {
-                  // Extension relative to Wave 1 (standard Elliott Wave measurement)
-                  if (point0 && pointA && point4) {
-                    const wave1Range = Math.abs(pointA.price - point0.price);
-                    if (wave1Range > 0) {
+                  // Extension relative to W0→W3 distance, projected from W4
+                  if (point0 && point3 && point4) {
+                    const w0ToW3Distance = Math.abs(point3.price - point0.price);
+                    if (w0ToW3Distance > 0) {
                       const extension = Math.abs(newPrice - point4.price);
-                      percentage = (extension / wave1Range) * 100;
+                      percentage = (extension / w0ToW3Distance) * 100;
                     }
                   }
                 }
@@ -3237,11 +3237,11 @@ const aiAnalyze = useMutation({
                     }
                   }
                 } else if (label === '5') {
-                  // Extension relative to Wave 1 (standard Elliott Wave measurement)
-                  if (point0 && pointA && point4) {
-                    const wave1Range = Math.abs(pointA.price - point0.price);
-                    if (wave1Range > 0) {
-                      percentage = (Math.abs(newPrice - point4.price) / wave1Range) * 100;
+                  // Extension relative to W0→W3 distance, projected from W4
+                  if (point0 && point3 && point4) {
+                    const w0ToW3Distance = Math.abs(point3.price - point0.price);
+                    if (w0ToW3Distance > 0) {
+                      percentage = (Math.abs(newPrice - point4.price) / w0ToW3Distance) * 100;
                     }
                   }
                 }
@@ -3706,25 +3706,25 @@ const aiAnalyze = useMutation({
       }
     }
 
-    // Wave 5 extension - measured as % of Wave 1 (standard Elliott Wave)
+    // Wave 5 extension - measured as % of W0→W3 distance, projected from W4
     // Common targets: 61.8% (if W3 extended), 100%, 161.8% (extended W5)
-    // For DIAGONALS: also measure against Wave 3 for comparison
+    // For DIAGONALS: measure against Wave 3 for comparison
     if (points.length >= 6) {
-      const p4 = points[4], p5 = points[5];
+      const p3 = points[3], p4 = points[4], p5 = points[5];
       const wave5Range = Math.abs(p5.price - p4.price);
       
       if (isDiagonal) {
         // Diagonal: Wave 5 as % of Wave 3 (contracting diagonals have W5 < W3)
-        const p3 = points[3];
         const wave3Range = Math.abs(p3.price - p2.price);
         if (wave3Range > 0) {
           const extension = (wave5Range / wave3Range) * 100;
           ratios.set(p5.label, `${extension.toFixed(0)}%`);
         }
       } else {
-        // Impulse: Wave 5 as % of Wave 1 (standard measurement)
-        if (wave1Range > 0) {
-          const extension = (wave5Range / wave1Range) * 100;
+        // Impulse: Wave 5 as % of W0→W3 distance (start to Wave 3 end)
+        const w0ToW3Distance = Math.abs(p3.price - p0.price);
+        if (w0ToW3Distance > 0) {
+          const extension = (wave5Range / w0ToW3Distance) * 100;
           ratios.set(p5.label, `${extension.toFixed(0)}%`);
         }
       }
