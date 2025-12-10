@@ -10,7 +10,7 @@ import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
-import { authenticatedApiRequest, configureApiAuth, ApiError } from '@/lib/apiAuth';
+import { authenticatedApiRequest, ApiError } from '@/lib/apiAuth';
 import { useCryptoAuth, isDevelopment } from '@/hooks/useCryptoAuth';
 import { runValidation } from '@shared/elliottValidation';
 import { useEnsureAuthReady } from '@/hooks/useEnsureAuthReady';
@@ -2237,11 +2237,6 @@ export default function CryptoElliottWave() {
   const authReady = useEnsureAuthReady();
   const { toast } = useToast();
   
-  // Configure apiAuth with Clerk's getToken on mount
-  useEffect(() => {
-    configureApiAuth(getToken);
-  }, [getToken]);
-
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);

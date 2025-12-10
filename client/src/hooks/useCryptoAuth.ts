@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, useUser } from '@clerk/clerk-react';
+import { configureApiAuth } from '@/lib/apiAuth';
 
 interface CryptoUser {
   id: string;
@@ -75,6 +77,14 @@ function useClerkHooks() {
 export function useCryptoAuth() {
   const { isSignedIn, getToken, isLoaded, user } = useClerkHooks();
   
+  // Configure API auth with Clerk's getToken in production
+  // This ensures all authenticated API requests have the correct token
+  useEffect(() => {
+    if (!isDevelopment && isLoaded && isSignedIn) {
+      configureApiAuth(getToken);
+    }
+  }, [isLoaded, isSignedIn, getToken]);
+  
   const { data: subscription, isLoading: subscriptionLoading, refetch: refetchSubscription } = useQuery<CryptoSubscription>({
     queryKey: ['/api/crypto/my-subscription'],
     enabled: isDevelopment || isSignedIn === true,
@@ -128,6 +138,7 @@ export function useCryptoAuth() {
       canUseAI: true,
       hasUnlimitedAI: true,
       refetchSubscription,
+      getToken,
     };
   }
 
@@ -150,5 +161,6 @@ export function useCryptoAuth() {
     canUseAI: subscription?.canUseAI || false,
     hasUnlimitedAI: subscription?.hasUnlimitedAI || false,
     refetchSubscription,
+    getToken,
   };
 }

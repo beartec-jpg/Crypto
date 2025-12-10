@@ -16,7 +16,7 @@ if (!isDevelopment && !PUBLISHABLE_KEY) {
 }
 
 function AppWrapper() {
-  // In development (Replit), don't use ClerkProvider - auth is bypassed
+  // In development (Replit), don't use ClerkProvider - Clerk key is for production only
   if (isDevelopment) {
     return <App />;
   }
