@@ -354,6 +354,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       anchorWaveIdx: number; // Which wave to measure from (0=W1, 1=W2, etc.)
     };
     const formingSequences: Record<string, FormingConfig> = {
+      '5': { expectedNextWaves: [{ wave: 'W2', label: 'W2' }, { wave: 'B', label: 'B' }], fibMode: 'retracement', anchorWaveIdx: 0 }, // W1/A only → W2/B
       '5-3': { expectedNextWaves: [{ wave: 'W3', label: 'W3' }, { wave: 'C', label: 'C' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2 OR A-B
       '5-3-5-3': { expectedNextWaves: [{ wave: 'W5', label: 'W5' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2-W3-W4 → W5
       '3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W-X → Y
@@ -395,6 +396,8 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
           ratios = [0.618, 0.786, 1.0, 1.618];
         } else if (wave === 'W4') {
           ratios = [0.236, 0.382, 0.5];
+        } else if (wave === 'W2' || wave === 'B') {
+          ratios = [0.382, 0.5, 0.618, 0.786]; // W2/B retracement ratios
         } else if (wave === 'Y') {
           ratios = [0.618, 1.0, 1.272, 1.618];
         } else {
@@ -6542,198 +6545,6 @@ const aiAnalyze = useMutation({
           <TabsContent value="stack" className="mt-4">
             {waveStackEntries.length > 0 ? (
               <div className="space-y-4">
-                
-                {/* TOP: Next Wave Predictions */}
-                {waveStackSuggestion && waveStackSuggestion.projections && waveStackSuggestion.projections.length > 0 && (
-                  <div className="p-3 rounded-lg border bg-gradient-to-r from-cyan-900/30 to-emerald-900/30 border-cyan-600/50">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Target className="w-4 h-4 text-cyan-400" />
-                      <span className="font-semibold text-cyan-400 text-sm">Next Wave Predictions</span>
-                    </div>
-                    
-                    {/* Projection Targets */}
-                    {waveStackSuggestion.projections && waveStackSuggestion.projections.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-slate-700">
-                        {/* Mode Toggle: Only show when projecting corrections (C/Y), not when projecting impulses (W3/W5) */}
-                        {/* After 5-3 sequence, we predict W3 which is always a 5-wave impulse - no toggle needed */}
-                        {(() => {
-                          const firstProj = waveStackSuggestion.projections?.[0];
-                          const isProjectingImpulse = firstProj?.waveRole === 'W3' || firstProj?.waveRole === 'W5';
-                          return !isProjectingImpulse && (
-                            <div className="flex items-center gap-2 mb-3">
-                              <span className="text-xs text-gray-400 font-semibold">Predict as:</span>
-                              <div className="flex rounded-lg overflow-hidden border border-slate-600">
-                                <button
-                                  onClick={() => setWaveProjectionMode('abc')}
-                                  className={`px-3 py-1 text-xs font-medium transition-all ${
-                                    waveProjectionMode === 'abc'
-                                      ? 'bg-amber-600 text-white'
-                                      : 'bg-slate-700 text-gray-400 hover:bg-slate-600'
-                                  }`}
-                                  data-testid="button-mode-abc"
-                                >
-                                  ABC/WXY
-                                </button>
-                                <button
-                                  onClick={() => setWaveProjectionMode('impulse')}
-                                  className={`px-3 py-1 text-xs font-medium transition-all ${
-                                    waveProjectionMode === 'impulse'
-                                      ? 'bg-cyan-600 text-white'
-                                      : 'bg-slate-700 text-gray-400 hover:bg-slate-600'
-                                  }`}
-                                  data-testid="button-mode-impulse"
-                                >
-                                  12345
-                                </button>
-                              </div>
-                              <span className="text-xs text-gray-500 ml-2">
-                                {waveProjectionMode === 'abc' ? '(C/Y extension ratios)' : '(ABC retracement ratios)'}
-                              </span>
-                            </div>
-                          );
-                        })()}
-                        
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs text-gray-400 font-semibold">📊 Projection Targets</span>
-                          <span className="text-xs text-gray-500">(Click to add price line)</span>
-                          {stackProjectionLines.length > 0 && (
-                            <button
-                              onClick={() => setStackProjectionLines([])}
-                              className="ml-auto px-2 py-0.5 text-xs bg-red-900/40 text-red-400 rounded hover:bg-red-800/60 border border-red-600/30"
-                              data-testid="clear-projections"
-                            >
-                              Clear Lines ({stackProjectionLines.length})
-                            </button>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {waveStackSuggestion.projections.map((proj, projIdx) => {
-                            // Adjust Fib ratios based on mode
-                            const adjustedLevels = waveProjectionMode === 'abc'
-                              ? proj.levels // WXY mode: use C/Y extension ratios (already correct)
-                              : proj.levels.map(level => {
-                                  // Impulse mode: adjust ratios for ABC corrections
-                                  // ABC corrections tend to retrace more deeply
-                                  const impulseRatios: Record<number, number> = {
-                                    0.618: 0.5,
-                                    1.0: 0.786,
-                                    1.272: 1.0,
-                                    1.618: 1.272,
-                                  };
-                                  const newRatio = impulseRatios[level.ratio] || level.ratio;
-                                  const range = Math.abs(proj.anchorEndPrice - proj.anchorStartPrice);
-                                  const newPrice = proj.direction === 'up'
-                                    ? proj.launchPrice + (range * newRatio)
-                                    : proj.launchPrice - (range * newRatio);
-                                  return {
-                                    ratio: newRatio,
-                                    price: newPrice,
-                                    label: `${(newRatio * 100).toFixed(1)}%`
-                                  };
-                                });
-                            
-                            // Extract degree name from sourcePatternInfo (e.g., "Minor W3" -> "Minor")
-                            const degreeName = proj.sourcePatternInfo?.split(' ')[0] || '';
-                            const displayLabel = proj.sourcePatternInfo || proj.waveRole;
-                            
-                            // Determine if this is impulse (W3, W5) or correction (C, Y, W2, W4)
-                            const isImpulseWave = ['W3', 'W5'].includes(proj.waveRole);
-                            
-                            // Color pairs per degree: impulse = brighter/more saturated, correction = complementary
-                            // Using bright colors visible on black backgrounds
-                            const degreeColorPairs: Record<string, { impulse: string; correction: string }> = {
-                              'Grand Supercycle': { impulse: '#FF6B6B', correction: '#FFE066' },
-                              'Supercycle': { impulse: '#FF8C42', correction: '#FECA57' },
-                              'Cycle': { impulse: '#FF5252', correction: '#FFD93D' },
-                              'Primary': { impulse: '#4ADE80', correction: '#A3E635' },
-                              'Intermediate': { impulse: '#22D3EE', correction: '#A78BFA' },
-                              'Minor': { impulse: '#FB923C', correction: '#FBBF24' },
-                              'Minute': { impulse: '#38BDF8', correction: '#C084FC' },
-                              'Minuette': { impulse: '#34D399', correction: '#F472B6' },
-                              'Subminuette': { impulse: '#67E8F9', correction: '#FDA4AF' },
-                            };
-                            
-                            const colorPair = degreeColorPairs[degreeName] || { impulse: '#22D3EE', correction: '#FBBF24' };
-                            const projColor = isImpulseWave ? colorPair.impulse : colorPair.correction;
-                            
-                            return (
-                              <div key={projIdx} className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span 
-                                    className="text-xs font-medium"
-                                    style={{ color: projColor }}
-                                  >
-                                    {displayLabel} ({proj.fibMode})
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    {isImpulseWave ? '⚡' : '🔄'}
-                                  </span>
-                                  <button
-                                    onClick={() => {
-                                      // Add all levels for this projection (skip duplicates)
-                                      setStackProjectionLines(prev => {
-                                        const existingTitles = new Set(prev.map(l => l.title));
-                                        const newLines = adjustedLevels
-                                          .map(level => ({
-                                            price: level.price,
-                                            color: projColor,
-                                            lineWidth: 1,
-                                            lineStyle: 2,
-                                            axisLabelVisible: true,
-                                            title: `${displayLabel} ${level.label}`,
-                                          }))
-                                          .filter(line => !existingTitles.has(line.title));
-                                        return [...prev, ...newLines];
-                                      });
-                                    }}
-                                    className="px-1.5 py-0.5 text-xs bg-slate-700 text-gray-300 rounded hover:bg-slate-600"
-                                    data-testid={`show-all-${proj.waveRole}`}
-                                  >
-                                    Show All
-                                  </button>
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                  {adjustedLevels.map((level, levelIdx) => (
-                                    <button
-                                      key={levelIdx}
-                                      onClick={() => {
-                                        const lineTitle = `${displayLabel} ${level.label}`;
-                                        // Only add if this line doesn't already exist
-                                        setStackProjectionLines(prev => {
-                                          if (prev.some(l => l.title === lineTitle)) {
-                                            return prev; // Already exists, don't add duplicate
-                                          }
-                                          return [...prev, {
-                                            price: level.price,
-                                            color: projColor,
-                                            lineWidth: 1,
-                                            lineStyle: 2,
-                                            axisLabelVisible: true,
-                                            title: lineTitle,
-                                          }];
-                                        });
-                                      }}
-                                      className="px-2 py-1 rounded text-xs font-mono transition-all hover:scale-105"
-                                      style={{ 
-                                        backgroundColor: `${projColor}20`,
-                                        color: projColor,
-                                        border: `1px solid ${projColor}40`
-                                      }}
-                                      data-testid={`projection-${proj.waveRole}-${level.label}`}
-                                    >
-                                      {level.label}: ${level.price.toFixed(4)}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Grouped Wave Structures - PURE HIERARCHICAL TREE */}
                 {/* Only render ROOT structures (no parentId), children appear ONLY when parent entry is expanded */}
                 <div className="space-y-3">
