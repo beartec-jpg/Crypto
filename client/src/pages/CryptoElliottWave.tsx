@@ -480,49 +480,38 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       }
     }
     
-    // If no parent exists, split into multiple structures based on completion
-    // A complete impulse (5 waves) or correction (3 waves) ends a structure
+    // If no parent exists, split ONLY when we have a complete high-level structure
+    // followed by a completely separate structure (different time, different trend)
+    // Key: ABC/Impulse should stay together, but a NEW impulse after ABC ends = new structure
     if (!hasParent) {
       let existingCount = structures.filter(s => s.degree === currentDegree).length;
       let currentGroup: WaveStackEntry[] = [];
-      let totalWaveCount = 0;
       
-      // Helper to check if current group represents a complete structure
-      const isGroupComplete = (group: WaveStackEntry[], waveTotal: number): boolean => {
+      // Helper to check if current group is a COMPLETE high-level structure
+      // that warrants starting fresh for the next pattern
+      const isHighLevelComplete = (group: WaveStackEntry[]): boolean => {
         if (group.length === 0) return false;
+        const seq = group.map(e => e.waveCount).join('-');
+        const patternTypes = group.map(e => e.patternType);
+        const archetype = identifyArchetype(seq, patternTypes);
         
-        // Check if we have a complete impulse (5 waves total)
-        if (waveTotal >= 5) {
-          // Check for 5-3-5-3-5 or similar impulse patterns
-          const seq = group.map(e => e.waveCount).join('-');
-          if (seq === '5-3-5-3-5' || seq === '5-3-5' || seq === '3-3-5') return true;
-          // Also complete if sum of waves is 5+ and ends with motive wave
-          const lastEntry = group[group.length - 1];
-          if (lastEntry.waveCount === 5 && waveTotal >= 5) return true;
-        }
-        
-        // Check for complete 3-wave correction
-        if (waveTotal === 3 && group.length >= 1) {
-          const lastEntry = group[group.length - 1];
-          if (lastEntry.patternType === 'correction' || lastEntry.patternType === 'zigzag' || 
-              lastEntry.patternType === 'flat') {
-            return true;
-          }
-        }
-        
-        return false;
+        // Only split after truly complete archetypes
+        return ['Impulse', 'Zigzag', 'Flat', 'WXY', 'Triangle'].includes(archetype);
       };
       
       for (let i = 0; i < sortedCurrent.length; i++) {
         const entry = sortedCurrent[i];
         
-        // Check if adding this entry would continue OR if we should start fresh
-        // Key insight: if current group is complete AND this new entry starts AFTER the last one ends,
-        // then start a new structure
-        if (currentGroup.length > 0 && isGroupComplete(currentGroup, totalWaveCount)) {
+        // Check if we should start a new structure
+        // Only split if: (1) current group is complete archetype AND (2) new entry starts AFTER with significant time gap
+        if (currentGroup.length > 0 && isHighLevelComplete(currentGroup)) {
           const lastEntry = currentGroup[currentGroup.length - 1];
-          // New entry starts after last structure ends = new structure
-          if (entry.startTime >= lastEntry.endTime) {
+          const timeGap = entry.startTime - lastEntry.endTime;
+          const avgDuration = currentGroup.reduce((sum, e) => sum + (e.endTime - e.startTime), 0) / currentGroup.length;
+          
+          // Only split if there's a significant time gap (> 50% of avg pattern duration)
+          // This prevents splitting ABC that are close in time
+          if (entry.startTime >= lastEntry.endTime && timeGap > avgDuration * 0.5) {
             // Emit current structure
             existingCount++;
             const structure = createStructure(currentDegree, currentGroup);
@@ -536,13 +525,11 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
             }
             // Start new group
             currentGroup = [];
-            totalWaveCount = 0;
           }
         }
         
         // Add entry to current group
         currentGroup.push(entry);
-        totalWaveCount += entry.waveCount;
       }
       
       // Emit final group
@@ -582,6 +569,25 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
   });
   
   return structures;
+}
+
+// Helper: Get child structures for a specific parent wave entry
+// Maps child structures to the parent entry whose timespan contains them
+function getChildrenForEntry(
+  entry: WaveStackEntry, 
+  structure: GroupedStructure, 
+  allStructures: GroupedStructure[]
+): GroupedStructure[] {
+  if (!structure.childrenIds || structure.childrenIds.length === 0) return [];
+  
+  return allStructures.filter(child => {
+    if (!structure.childrenIds?.includes(child.id)) return false;
+    
+    // Check if child falls within this specific entry's timespan
+    const tolerance = (entry.endTime - entry.startTime) * 0.1;
+    return child.startTime >= (entry.startTime - tolerance) &&
+           child.endTime <= (entry.endTime + tolerance);
+  });
 }
 
 // Calculate validity score for a grouped structure
@@ -6213,64 +6219,105 @@ const aiAnalyze = useMutation({
                           </div>
                         </div>
                         
-                        {/* Expanded: Individual Wave Rows */}
+                        {/* Expanded: Individual Wave Rows with Nested Children */}
                         {isExpanded && (
                           <div className="border-t border-slate-700">
-                            <table className="w-full text-xs">
-                              <tbody>
-                                {structure.entries.map((entry, idx) => (
-                                  <tr 
-                                    key={entry.id}
-                                    className={`border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer ${
+                            {structure.entries.map((entry, idx) => {
+                              // Get child structures that fall within this entry's timespan
+                              const entryChildren = getChildrenForEntry(entry, structure, groupedStructures);
+                              const waveLabels = ['A', 'B', 'C', 'D', 'E', 'W', 'X', 'Y', 'Z'];
+                              const waveLabel = structure.archetype.includes('WXY') || structure.archetype === 'W-X' 
+                                ? (idx === 0 ? 'W' : idx === 1 ? 'X' : idx === 2 ? 'Y' : waveLabels[idx] || String(idx + 1))
+                                : waveLabels[idx] || String(idx + 1);
+                              const entryDegreeColor = waveDegrees.find(d => d.name === structure.degree)?.color || '#74C0FC';
+                              
+                              return (
+                                <div key={entry.id}>
+                                  {/* Parent Entry Row */}
+                                  <div 
+                                    className={`flex items-center gap-2 px-3 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer ${
                                       selectedLabelId === entry.id ? 'bg-cyan-900/20' : ''
                                     }`}
                                     onClick={() => {
                                       setSelectedLabelId(entry.id);
-                                      toast({ title: 'Pattern Selected', description: `${entry.patternType} selected` });
+                                      toast({ title: 'Pattern Selected', description: `Wave ${waveLabel} selected` });
                                     }}
                                   >
-                                    <td className="py-1.5 px-3 text-gray-500 w-8">{idx + 1}</td>
-                                    <td className="py-1.5 px-2">
-                                      <Badge variant="outline" className="text-[10px] px-1.5 text-gray-300 border-gray-600">
-                                        {entry.timeframe}
-                                      </Badge>
-                                    </td>
-                                    <td className="py-1.5 px-2">
-                                      <span className={`font-medium ${
-                                        entry.patternType === 'impulse' ? 'text-emerald-400' :
-                                        entry.patternType === 'abc' || entry.patternType === 'correction' ? 'text-amber-400' :
-                                        entry.patternType === 'diagonal' ? 'text-purple-400' :
-                                        'text-gray-400'
-                                      }`}>{entry.patternType}</span>
-                                    </td>
-                                    <td className="py-1.5 px-2 text-center font-mono text-cyan-400">{entry.waveCount}</td>
-                                    <td className="py-1.5 px-2 text-center">
-                                      <span className={entry.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
-                                        {entry.direction === 'up' ? '↑' : '↓'}
-                                      </span>
-                                    </td>
-                                    <td className="py-1.5 px-2 text-right font-mono text-gray-400">
-                                      ${entry.startPrice.toFixed(4)}
-                                    </td>
-                                    <td className="py-1.5 px-2 text-right font-mono text-gray-400">
+                                    {/* Wave Label (A, B, C, etc.) */}
+                                    <span className="w-6 text-center font-bold" style={{ color: entryDegreeColor }}>
+                                      {waveLabel}
+                                    </span>
+                                    
+                                    {/* Timeframe */}
+                                    <Badge variant="outline" className="text-[10px] px-1.5 text-gray-300 border-gray-600">
+                                      {entry.timeframe}
+                                    </Badge>
+                                    
+                                    {/* Pattern Type */}
+                                    <span className={`text-xs font-medium ${
+                                      entry.patternType === 'impulse' ? 'text-emerald-400' :
+                                      entry.patternType === 'abc' || entry.patternType === 'correction' ? 'text-amber-400' :
+                                      entry.patternType === 'diagonal' ? 'text-purple-400' :
+                                      'text-gray-400'
+                                    }`}>{entry.patternType}</span>
+                                    
+                                    {/* Wave Count */}
+                                    <span className="font-mono text-xs text-cyan-400">{entry.waveCount}</span>
+                                    
+                                    {/* Direction */}
+                                    <span className={entry.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
+                                      {entry.direction === 'up' ? '↑' : '↓'}
+                                    </span>
+                                    
+                                    {/* Price Range */}
+                                    <span className="ml-auto text-xs font-mono text-gray-400">
                                       ${entry.endPrice.toFixed(4)}
-                                    </td>
-                                    <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                                      <button
-                                        onClick={() => {
-                                          if (confirm(`Delete this ${entry.patternType}?`)) {
-                                            deleteLabel.mutate(entry.id);
-                                          }
-                                        }}
-                                        className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                    </span>
+                                    
+                                    {/* Delete Button */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm(`Delete this ${entry.patternType}?`)) {
+                                          deleteLabel.mutate(entry.id);
+                                        }
+                                      }}
+                                      className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                  
+                                  {/* Nested Child Structures under this entry */}
+                                  {entryChildren.length > 0 && (
+                                    <div className="ml-6 border-l-2 border-slate-700 pl-2 py-1">
+                                      {entryChildren.map(child => {
+                                        const childDegreeColor = waveDegrees.find(d => d.name === child.degree)?.color || '#74C0FC';
+                                        return (
+                                          <div 
+                                            key={child.id}
+                                            className="flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-slate-800/30 rounded"
+                                          >
+                                            <span className="text-gray-500">└</span>
+                                            <span className="font-medium" style={{ color: childDegreeColor }}>
+                                              {child.displayIndex}. {child.degree}
+                                            </span>
+                                            <Badge variant="outline" className="text-[9px] px-1 border-gray-600 text-gray-400">
+                                              {child.archetype}
+                                            </Badge>
+                                            <span className="font-mono text-gray-500">{child.sequence}</span>
+                                            <span className={child.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
+                                              {child.direction === 'up' ? '↑' : '↓'}
+                                            </span>
+                                            <span className="ml-auto text-gray-500">{child.percentMove.toFixed(1)}%</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
