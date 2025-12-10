@@ -332,77 +332,83 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     const idSuffix = parentInfo ? `-${parentInfo.parentWaveIndex}` : '';
     
     // Detect forming patterns (partial sequences) and set predictive context
-    // Each entry specifies: expectedNextWave, fibMode (extension vs retracement), and anchor wave indices
+    // Many sequences have dual interpretations (e.g., 5-3 could be W1-W2 OR A-B)
     type FormingConfig = { 
-      expectedNextWave: 'W3' | 'W4' | 'W5' | 'C' | 'Y';
+      expectedNextWaves: { wave: string; label: string }[]; // Multiple possibilities
       fibMode: 'extension' | 'retracement';
       anchorWaveIdx: number; // Which wave to measure from (0=W1, 1=W2, etc.)
     };
     const formingSequences: Record<string, FormingConfig> = {
-      '5-3': { expectedNextWave: 'W3', fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2 → W3 extends W1
-      '5-3-5-3': { expectedNextWave: 'W5', fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2-W3-W4 → W5 extends from W4 using W1 length
-      '3-3': { expectedNextWave: 'Y', fibMode: 'extension', anchorWaveIdx: 0 }, // W-X → Y extends W
-      '5-3-5': { expectedNextWave: 'W4', fibMode: 'retracement', anchorWaveIdx: 2 }, // W1-W2-W3 → W4 retraces W3
+      '5-3': { expectedNextWaves: [{ wave: 'W3', label: 'W3' }, { wave: 'C', label: 'C' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2 OR A-B
+      '5-3-5-3': { expectedNextWaves: [{ wave: 'W5', label: 'W5' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2-W3-W4 → W5
+      '3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W-X → Y
+      '5-3-5': { expectedNextWaves: [{ wave: 'W4', label: 'W4' }], fibMode: 'retracement', anchorWaveIdx: 2 }, // W1-W2-W3 → W4
+      '3': { expectedNextWaves: [{ wave: 'C', label: 'C' }, { wave: 'W3', label: 'W3' }], fibMode: 'extension', anchorWaveIdx: 0 }, // Just W/A - could be many things
     };
     
     const formingInfo = formingSequences[seq];
     const isForming = !!formingInfo;
-    const expectedNextWave = formingInfo?.expectedNextWave;
+    // Show primary expected wave in badge, but track all possibilities
+    const expectedNextWave = formingInfo?.expectedNextWaves?.[0]?.wave || undefined;
+    const allExpectedWaves = formingInfo?.expectedNextWaves || [];
     
-    // Compute predictive context for forming patterns
+    // Compute predictive context for forming patterns (uses primary wave's ratios)
     let predictiveContext: ProjectionContext | undefined;
-    if (isForming && sorted.length >= 2) {
+    if (isForming && sorted.length >= 1 && formingInfo) {
       const lastEntry = sorted[sorted.length - 1];
       const launchPrice = lastEntry.endPrice;
       
       // Get the anchor wave for Fib calculations
-      const anchorIdx = formingInfo.anchorWaveIdx;
+      const anchorIdx = Math.min(formingInfo.anchorWaveIdx, sorted.length - 1);
       const anchorWave = sorted[anchorIdx];
       const anchorRange = Math.abs(anchorWave.endPrice - anchorWave.startPrice);
       
       // Determine direction based on expected wave type
-      // Extensions: continue in trend direction; Retracements: counter-trend
-      const trendDirection = sorted[0].direction; // Overall pattern direction from W1
+      const trendDirection = sorted[0].direction;
       const nextDirection: 'up' | 'down' = formingInfo.fibMode === 'retracement'
-        ? (trendDirection === 'up' ? 'down' : 'up') // Retracements go counter-trend
-        : trendDirection; // Extensions continue trend
+        ? (trendDirection === 'up' ? 'down' : 'up')
+        : trendDirection;
       
-      // Calculate Fib levels based on wave type
+      // Build levels for ALL expected waves with labels indicating which wave
       const levels: { ratio: number; price: number; label: string }[] = [];
-      let ratios: number[];
       
-      if (expectedNextWave === 'W3' || expectedNextWave === 'C') {
-        // W3/C: Extensions of W1/A from W2/B end
-        ratios = [1.0, 1.272, 1.618, 2.0, 2.618];
-      } else if (expectedNextWave === 'W5') {
-        // W5: Extensions from W4, typically 61.8% to 100% of W1→W3 distance
-        ratios = [0.618, 0.786, 1.0, 1.618];
-      } else if (expectedNextWave === 'W4') {
-        // W4: Retracement of W3 (23.6% to 50%)
-        ratios = [0.236, 0.382, 0.5];
-      } else if (expectedNextWave === 'Y') {
-        // Y wave: Often equals W in length
-        ratios = [0.618, 1.0, 1.272, 1.618];
-      } else {
-        ratios = [0.618, 1.0, 1.272];
-      }
-      
-      ratios.forEach(ratio => {
-        const price = nextDirection === 'up'
-          ? launchPrice + (anchorRange * ratio)
-          : launchPrice - (anchorRange * ratio);
-        levels.push({ ratio, price, label: `${(ratio * 100).toFixed(0)}%` });
+      allExpectedWaves.forEach(({ wave, label }) => {
+        let ratios: number[];
+        if (wave === 'W3' || wave === 'C') {
+          ratios = [1.0, 1.272, 1.618, 2.0, 2.618];
+        } else if (wave === 'W5') {
+          ratios = [0.618, 0.786, 1.0, 1.618];
+        } else if (wave === 'W4') {
+          ratios = [0.236, 0.382, 0.5];
+        } else if (wave === 'Y') {
+          ratios = [0.618, 1.0, 1.272, 1.618];
+        } else {
+          ratios = [0.618, 1.0, 1.272];
+        }
+        
+        ratios.forEach(ratio => {
+          const price = nextDirection === 'up'
+            ? launchPrice + (anchorRange * ratio)
+            : launchPrice - (anchorRange * ratio);
+          // Label includes wave type if multiple possibilities
+          const ratioLabel = allExpectedWaves.length > 1 
+            ? `${label} ${(ratio * 100).toFixed(0)}%`
+            : `${(ratio * 100).toFixed(0)}%`;
+          levels.push({ ratio, price, label: ratioLabel });
+        });
       });
       
       predictiveContext = {
-        waveRole: expectedNextWave,
+        waveRole: expectedNextWave as any,
         fibMode: formingInfo.fibMode,
         anchorStartPrice: anchorWave.startPrice,
         anchorEndPrice: anchorWave.endPrice,
         launchPrice,
         levels,
         direction: nextDirection,
-        sourcePatternInfo: `${degree} ${expectedNextWave}`,
+        sourcePatternInfo: allExpectedWaves.length > 1 
+          ? `${degree} ${allExpectedWaves.map(w => w.label).join('/')}`
+          : `${degree} ${expectedNextWave}`,
       };
     }
     
@@ -6561,9 +6567,9 @@ const aiAnalyze = useMutation({
                           </Badge>
                           
                           {/* Forming Badge - shows when pattern is partial and expecting next wave */}
-                          {structure.isForming && structure.expectedNextWave && (
+                          {structure.isForming && structure.predictiveContext?.sourcePatternInfo && (
                             <Badge variant="outline" className="text-xs border-cyan-500 text-cyan-400 animate-pulse">
-                              → {structure.expectedNextWave}
+                              → {structure.predictiveContext.sourcePatternInfo.split(' ').slice(1).join(' ')}
                             </Badge>
                           )}
                           
@@ -6616,7 +6622,7 @@ const aiAnalyze = useMutation({
                               <div className="px-3 py-2 bg-cyan-900/20 border-t border-cyan-700/30">
                                 <div className="flex items-center gap-2 mb-2">
                                   <span className="text-xs text-cyan-400 font-semibold">
-                                    📈 {structure.expectedNextWave} Targets
+                                    📈 {structure.predictiveContext.sourcePatternInfo?.split(' ').slice(1).join(' ') || structure.expectedNextWave} Targets
                                   </span>
                                   <span className="text-xs text-gray-500">
                                     (Click to add projection line)
