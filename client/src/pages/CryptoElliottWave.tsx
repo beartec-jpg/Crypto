@@ -110,6 +110,13 @@ interface WaveStackSuggestion {
 }
 
 // Grouped structure for Wave Stack table
+interface CascadeContribution {
+  sourceId: string;
+  sourceDegree: string;
+  contribution: number; // percentage points contributed
+  depth: number; // 1 = direct child, 2 = grandchild, etc.
+}
+
 interface GroupedStructure {
   id: string;
   degree: string;
@@ -123,10 +130,14 @@ interface GroupedStructure {
   priceRange: number; // abs(endPrice - startPrice)
   percentMove: number; // percentage change
   duration: number; // time in seconds
-  validityScore: number; // 0-100
+  validityScore: number; // 0-100 (intrinsic score before cascade)
+  cascadedScore?: number; // 0-100 (final score including child contributions)
+  cascadeBreakdown?: CascadeContribution[]; // breakdown of how children contributed
   validityTier: 'excellent' | 'good' | 'fair' | 'poor';
   direction: 'up' | 'down';
   isExpanded?: boolean;
+  childrenIds?: string[]; // IDs of child structures (lower degree)
+  parentId?: string; // ID of parent structure (higher degree)
 }
 
 // Helper: identify archetype from wave sequence
