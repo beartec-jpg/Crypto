@@ -9,6 +9,17 @@ Additionally, it includes a standalone feature for cryptocurrency chart analysis
 - Preferred communication style: Simple, everyday language.
 - Testing: User works directly in live environment. DO NOT run automated tests or suggest testing - user tests features themselves in production.
 
+# CRITICAL Rules (Must Follow)
+
+## NEVER use require() in frontend code
+- **NEVER use `require()` in any file under `client/src/`** - this is Node.js syntax that breaks production builds
+- Browser code must use ES modules: `import` statements or `import()` for dynamic loading
+- For conditional imports (like Clerk hooks in production-only code), use React's `lazy()` with dynamic `import()`:
+  ```typescript
+  const ProductionComponent = lazy(() => import('./ProductionComponent'));
+  ```
+- This has broken production (beartec.uk) multiple times - NEVER repeat this mistake
+
 # System Architecture
 
 ## Frontend Architecture
