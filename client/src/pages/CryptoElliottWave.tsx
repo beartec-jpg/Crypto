@@ -212,38 +212,75 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     else if (seq === '3-5-3') {
       // WXY where X is a triangle (5-wave) or diagonal
       // W = 3-wave ABC, X = triangle/diagonal (5), Y = 3-wave ABC
-      // Check if lower degree is building Y's subwaves
-      const lowerDegree = getLowerDegree(degree);
-      const lowerPatterns = lowerDegree ? byDegree[lowerDegree] : null;
-      let ySubwaveInfo = '';
+      // Check if this structure is the internal subwaves of a higher degree wave (by time)
+      const higherDegreeIdx = degreeOrder.indexOf(degree) - 1;
+      let crossDegreeInfo = '';
       
-      if (lowerPatterns && lowerPatterns.length > 0 && sorted.length >= 3) {
-        const yWave = sorted[2]; // Third pattern is Y
-        const lowerSorted = lowerPatterns.sort((a, b) => a.startTime - b.startTime);
-        const lowerOverlap = lowerSorted.filter(l => l.startTime >= yWave.startTime);
-        if (lowerOverlap.length > 0) {
-          const lowerSeq = lowerOverlap.map(e => e.waveCount).join('-');
-          if (lowerSeq === '5-3') {
-            ySubwaveInfo = ' Y=A-B';
-          } else if (lowerSeq === '5-3-5') {
-            ySubwaveInfo = ' Y=ABC';
-          } else if (lowerSeq === '5') {
-            ySubwaveInfo = ' Y=A';
+      if (higherDegreeIdx >= 0) {
+        const higherDegree = degreeOrder[higherDegreeIdx];
+        const higherPatterns = byDegree[higherDegree];
+        if (higherPatterns && higherPatterns.length > 0) {
+          const thisStart = sorted[0].startTime;
+          const thisEnd = sorted[sorted.length - 1].endTime;
+          
+          for (const hp of higherPatterns) {
+            const tolerance = Math.abs(hp.endTime - hp.startTime) * 0.1;
+            if (Math.abs(hp.startTime - thisStart) < tolerance && 
+                Math.abs(hp.endTime - thisEnd) < tolerance) {
+              const hpSorted = higherPatterns.sort((a, b) => a.startTime - b.startTime);
+              const waveIdx = hpSorted.findIndex(w => w === hp);
+              const waveLabels = ['W', 'X', 'Y', 'X2', 'Z'];
+              if (waveIdx >= 0 && waveIdx < waveLabels.length) {
+                crossDegreeInfo = ` = ${higherDegree} ${waveLabels[waveIdx]}`;
+              }
+              break;
+            }
           }
         }
       }
       
       if (patternTypes[1] === 'triangle') {
-        archetype = `WXY (X=tri${ySubwaveInfo})`;
+        archetype = `WXY (X=tri)${crossDegreeInfo}`;
       } else if (patternTypes[1] === 'diagonal') {
-        archetype = `WXY (X=diag${ySubwaveInfo})`;
+        archetype = `WXY (X=diag)${crossDegreeInfo}`;
       } else {
-        archetype = `WXY${ySubwaveInfo ? ` (${ySubwaveInfo.trim()})` : ''}`;
+        archetype = `WXY${crossDegreeInfo}`;
       }
     }
     else if (seq === '3-3-3') {
-      // Check if this is subwave of higher degree's Y wave
-      archetype = 'WXY';
+      // Check if this degree's structure is the internal subwaves of a higher degree's wave
+      // by comparing time spans
+      const higherDegreeIdx = degreeOrder.indexOf(degree) - 1;
+      let crossDegreeInfo = '';
+      
+      if (higherDegreeIdx >= 0) {
+        const higherDegree = degreeOrder[higherDegreeIdx];
+        const higherPatterns = byDegree[higherDegree];
+        if (higherPatterns && higherPatterns.length > 0) {
+          const thisStart = sorted[0].startTime;
+          const thisEnd = sorted[sorted.length - 1].endTime;
+          
+          // Find which higher degree wave this spans
+          for (const hp of higherPatterns) {
+            // Check if this structure's time span matches a higher degree wave
+            const tolerance = Math.abs(hp.endTime - hp.startTime) * 0.1; // 10% tolerance
+            if (Math.abs(hp.startTime - thisStart) < tolerance && 
+                Math.abs(hp.endTime - thisEnd) < tolerance) {
+              // This structure is the internal subwaves of the higher degree wave
+              // Determine which wave based on position in higher sequence
+              const hpSorted = higherPatterns.sort((a, b) => a.startTime - b.startTime);
+              const waveIdx = hpSorted.findIndex(w => w === hp);
+              const waveLabels = ['W', 'X', 'Y', 'X2', 'Z'];
+              if (waveIdx >= 0 && waveIdx < waveLabels.length) {
+                crossDegreeInfo = ` (${higherDegree} ${waveLabels[waveIdx]})`;
+              }
+              break;
+            }
+          }
+        }
+      }
+      
+      archetype = `WXY${crossDegreeInfo}`;
     }
     else if (seq === '3-3-3-3-3') {
       // True triangle is 5 x 3-wave patterns forming ABCDE
