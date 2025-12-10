@@ -210,13 +210,24 @@ export function validatePattern(points: WavePoint[], patternType: string): {
     }
     
     if (points.length >= 6) {
-      const p3 = points[3], p5 = points[5];
+      const p3 = points[3], p4 = points[4], p5 = points[5];
       const wave3Range = Math.abs(p3.price - p2.price);
-      const wave5Range = Math.abs(p5.price - points[4].price);
+      const wave5Range = Math.abs(p5.price - p4.price);
       
       // Wave 3 cannot be the shortest
       if (wave3Range < wave1Range && wave3Range < wave5Range) {
         errors.push('Wave 3 cannot be the shortest wave');
+      }
+      
+      // Check for Wave 5 truncation (W5 doesn't extend past W3)
+      // In uptrend: W5 end should be higher than W3 end
+      // In downtrend: W5 end should be lower than W3 end
+      const isTruncated = isUptrend 
+        ? p5.price < p3.price 
+        : p5.price > p3.price;
+      
+      if (isTruncated) {
+        warnings.push('Wave 5 truncation detected - W5 does not extend beyond W3 (unusual but valid in strong momentum)');
       }
     }
   } else if (patternType === 'flat') {
