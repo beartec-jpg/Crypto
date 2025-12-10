@@ -138,6 +138,7 @@ interface GroupedStructure {
   isExpanded?: boolean;
   childrenIds?: string[]; // IDs of child structures (lower degree)
   parentId?: string; // ID of parent structure (higher degree)
+  displayIndex?: number; // 1-based index within this degree for identification
 }
 
 // Helper: identify archetype from wave sequence
@@ -391,7 +392,31 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
             
             // Also pass individual parent's patternType and label for diagonal/triangle disambiguation
             const parentPatternType = parent.patternType;
-            const parentLabel = parent.suggestedLabel || `${higherDegree} ${parentIdx + 1}`;
+            
+            // Generate semantic wave label based on parent's position in higher degree archetype
+            let semanticLabel: string;
+            if (parentArchetype === 'Impulse' || parentArchetype.startsWith('Impulse')) {
+              const labels = ['1', '2', '3', '4', '5'];
+              semanticLabel = labels[parentIdx] || `${parentIdx + 1}`;
+            } else if (parentArchetype.startsWith('Flat') || parentArchetype === '3-3-5' || parentArchetype.startsWith('Zigzag') || parentArchetype === '5-3-5') {
+              const labels = ['A', 'B', 'C'];
+              semanticLabel = labels[parentIdx] || `${parentIdx + 1}`;
+            } else if (parentArchetype.startsWith('WXY') || parentArchetype === '3-3-3') {
+              const labels = ['W', 'X', 'Y'];
+              semanticLabel = labels[parentIdx] || `${parentIdx + 1}`;
+            } else if (parentArchetype.startsWith('WXYXZ') || parentArchetype === '3-3-3-3-3') {
+              const labels = ['W', 'X', 'Y', 'X2', 'Z'];
+              semanticLabel = labels[parentIdx] || `${parentIdx + 1}`;
+            } else if (parentArchetype.startsWith('Triangle')) {
+              const labels = ['A', 'B', 'C', 'D', 'E'];
+              semanticLabel = labels[parentIdx] || `${parentIdx + 1}`;
+            } else if (parentArchetype.startsWith('Diagonal')) {
+              const labels = ['1', '2', '3', '4', '5'];
+              semanticLabel = labels[parentIdx] || `${parentIdx + 1}`;
+            } else {
+              semanticLabel = `${parentIdx + 1}`;
+            }
+            const parentLabel = parent.suggestedLabel || `${higherDegree} ${semanticLabel}`;
             
             const structure = createStructure(currentDegree, childPatterns, {
               parentDegree: higherDegree,
@@ -429,8 +454,20 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     }
   }
   
-  // Sort by degree order (highest first)
-  structures.sort((a, b) => degreeOrder.indexOf(a.degree) - degreeOrder.indexOf(b.degree));
+  // Sort by degree order (highest first), then by time
+  structures.sort((a, b) => {
+    const degreeCompare = degreeOrder.indexOf(a.degree) - degreeOrder.indexOf(b.degree);
+    if (degreeCompare !== 0) return degreeCompare;
+    return a.startTime - b.startTime;
+  });
+  
+  // Assign displayIndex per degree (1-based ordinal within each degree group)
+  const indexByDegree: Record<string, number> = {};
+  structures.forEach(s => {
+    if (!indexByDegree[s.degree]) indexByDegree[s.degree] = 0;
+    indexByDegree[s.degree]++;
+    s.displayIndex = indexByDegree[s.degree];
+  });
   
   return structures;
 }
@@ -5973,8 +6010,11 @@ const aiAnalyze = useMutation({
                           {/* Expand/Collapse */}
                           <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
                           
-                          {/* Degree */}
-                          <span className="font-medium text-sm" style={{ color: degreeColor }}>{structure.degree}</span>
+                          {/* Index + Degree */}
+                          <span className="font-medium text-sm" style={{ color: degreeColor }}>
+                            {structure.displayIndex && <span className="text-gray-500 mr-1">{structure.displayIndex}.</span>}
+                            {structure.degree}
+                          </span>
                           
                           {/* Archetype Badge */}
                           <Badge variant="outline" className={`text-xs ${
