@@ -943,20 +943,36 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
       cProj.sourcePatternInfo = `${degree} C`;
       openPatternProjections.push(cProj);
     }
-    // 3-3 = W-X - predict Y
+    // 3-3 = Could be Flat A-B (needs C) OR WXY W-X (needs Y)
     else if (seq === '3-3') {
       const firstPattern = sorted[0];
-      openPatternAnalyses.push(`${degree}: 3-3 → predict Y`);
+      const secondPattern = sorted[1];
+      openPatternAnalyses.push(`${degree}: 3-3 → predict C/Y`);
       
+      // C wave projection (for Flat: A-B → C)
+      // C continues same direction as A, measured from B end
+      const cProj = calculateFibLevels(
+        'C',
+        firstPattern.startPrice,
+        firstPattern.endPrice,
+        firstPattern.direction,
+        secondPattern.endPrice,
+        `${degree} A`
+      );
+      cProj.sourcePatternInfo = `${degree} C (flat)`;
+      openPatternProjections.push(cProj);
+      
+      // Y wave projection (for WXY: W-X → Y)
+      // Y continues same direction as W, measured from X end
       const yProj = calculateFibLevels(
         'Y',
         firstPattern.startPrice,
         firstPattern.endPrice,
         firstPattern.direction,
-        sorted[1].endPrice,
+        secondPattern.endPrice,
         `${degree} W`
       );
-      yProj.sourcePatternInfo = `${degree} Y`;
+      yProj.sourcePatternInfo = `${degree} Y (wxy)`;
       openPatternProjections.push(yProj);
     }
     // 5 = single impulse - predict W2
