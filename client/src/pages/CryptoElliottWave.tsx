@@ -2826,7 +2826,8 @@ export default function CryptoElliottWave() {
   // Mutation to toggle alert on a projection line
   const toggleProjectionAlert = useMutation({
     mutationFn: async (data: { id: string; alertEnabled: boolean }) => {
-      const response = await authenticatedApiRequest('PATCH', `/api/crypto/projection-lines/${data.id}`, { alertEnabled: data.alertEnabled });
+      // Include id in body as fallback for Vercel routing issues
+      const response = await authenticatedApiRequest('PATCH', `/api/crypto/projection-lines/${data.id}`, { id: data.id, alertEnabled: data.alertEnabled });
       return response.json();
     },
     onSuccess: (_, variables) => {

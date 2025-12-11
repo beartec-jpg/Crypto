@@ -60,10 +60,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: 'Elite subscription required' });
     }
 
-    // Extract ID from URL path for PATCH/DELETE: /api/crypto/projection-lines/{id}
+    // Extract ID from multiple sources - Vercel routing can be inconsistent
+    // Try: URL path, query param, or body
     const urlParts = req.url?.split('/') || [];
     const lastPart = urlParts[urlParts.length - 1]?.split('?')[0];
-    const idFromUrl = lastPart !== 'projection-lines' ? lastPart : null;
+    const idFromPath = lastPart && lastPart !== 'projection-lines' && !lastPart.includes('=') ? lastPart : null;
+    const idFromQuery = typeof req.query.id === 'string' ? req.query.id : null;
+    const idFromBody = req.body?.id;
+    const idFromUrl = idFromPath || idFromQuery || idFromBody;
+    
+    // Debug logging for production
+    console.log('[projection-lines] method:', req.method, 'url:', req.url, 'idFromUrl:', idFromUrl);
 
     // GET - List all projection lines
     if (req.method === 'GET') {

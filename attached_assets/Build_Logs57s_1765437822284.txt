@@ -1,0 +1,53 @@
+Build Logs
+
+57s
+
+1 line selected
+
+Using TypeScript 5.6.3 (local user-provided)
+
+Using TypeScript 5.6.3 (local user-provided)
+
+Using TypeScript 5.6.3 (local user-provided)
+
+api/crypto/my-subscription.ts(72,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+Using TypeScript 5.6.3 (local user-provided)
+
+Using TypeScript 5.6.3 (local user-provided)
+
+Using TypeScript 5.6.3 (local user-provided)
+
+api/crypto/projection-lines.ts(3,16): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+Using TypeScript 5.6.3 (local user-provided)
+
+api/crypto/test-push.ts(3,16): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+Using TypeScript 5.6.3 (local user-provided)
+
+api/crypto/tracked-trades.ts(39,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+Using TypeScript 5.6.3 (local user-provided)
+
+api/stripe/webhook.ts(40,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+Using TypeScript 5.6.3 (local user-provided)
+
+Build Completed in /vercel/output [32s]
+
+Deploying outputs...
+
+Deployment completed
+
+Creating build cache
