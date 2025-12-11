@@ -3,6 +3,12 @@
   "installCommand": "npm install --include=dev",
   "buildCommand": "npx vite build",
   "outputDirectory": "client/dist",
+  "crons": [
+    {
+      "path": "/api/cron/check-alerts",
+      "schedule": "* * * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/api/crypto/elliott-wave/labels/:id", "destination": "/api/crypto/elliott-wave/labels/[id]" },
     { "source": "/api/crypto/projection-lines/:id", "destination": "/api/crypto/projection-lines/[id]" },
