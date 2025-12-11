@@ -6636,22 +6636,33 @@ const aiAnalyze = useMutation({
                             {/* Predictive Projections for forming patterns */}
                             {structure.isForming && structure.predictiveContext && (
                               <div className="px-3 py-2 bg-cyan-900/20 border-t border-cyan-700/30">
-                                {/* Check if this is a dual interpretation (W3/C) */}
+                                {/* Check if this is a dual interpretation (W2/B or W3/C) */}
                                 {(() => {
                                   const hasImpulseLevels = structure.predictiveContext!.levels.some(l => 
-                                    l.label.startsWith('W3') || l.label.startsWith('W5'));
+                                    l.label.startsWith('W2') || l.label.startsWith('W3') || l.label.startsWith('W5'));
                                   const hasCorrectionLevels = structure.predictiveContext!.levels.some(l => 
-                                    l.label.startsWith('C') || l.label.startsWith('Y'));
+                                    l.label.startsWith('B') || l.label.startsWith('C') || l.label.startsWith('Y'));
                                   const isDualInterpretation = hasImpulseLevels && hasCorrectionLevels;
+                                  
+                                  // Determine which wave types are present for button labels
+                                  const hasW2 = structure.predictiveContext!.levels.some(l => l.label.startsWith('W2'));
+                                  const hasW3 = structure.predictiveContext!.levels.some(l => l.label.startsWith('W3'));
+                                  const hasW5 = structure.predictiveContext!.levels.some(l => l.label.startsWith('W5'));
+                                  const hasB = structure.predictiveContext!.levels.some(l => l.label.startsWith('B'));
+                                  const hasC = structure.predictiveContext!.levels.some(l => l.label.startsWith('C'));
+                                  const hasY = structure.predictiveContext!.levels.some(l => l.label.startsWith('Y'));
+                                  
+                                  const impulseLabel = hasW2 ? 'Wave 2' : hasW3 && hasW5 ? 'Wave 3/5' : hasW3 ? 'Wave 3' : 'Wave 5';
+                                  const correctionLabel = hasB ? 'Wave B' : hasC && hasY ? 'Wave C/Y' : hasC ? 'Wave C' : 'Wave Y';
                                   const selectedType = selectedPredictionType[structure.id];
                                   
                                   // Filter levels based on selection
                                   const filteredLevels = selectedType 
                                     ? structure.predictiveContext!.levels.filter(l => {
                                         if (selectedType === 'impulse') {
-                                          return l.label.startsWith('W3') || l.label.startsWith('W5');
+                                          return l.label.startsWith('W2') || l.label.startsWith('W3') || l.label.startsWith('W5');
                                         }
-                                        return l.label.startsWith('C') || l.label.startsWith('Y');
+                                        return l.label.startsWith('B') || l.label.startsWith('C') || l.label.startsWith('Y');
                                       })
                                     : structure.predictiveContext!.levels;
                                   
@@ -6679,7 +6690,7 @@ const aiAnalyze = useMutation({
                                               }`}
                                               data-testid={`select-impulse-${structure.id}`}
                                             >
-                                              ⚡ Wave 3/5 (Impulse)
+                                              ⚡ {impulseLabel} (Impulse)
                                             </button>
                                             <button
                                               onClick={(e) => {
@@ -6696,7 +6707,7 @@ const aiAnalyze = useMutation({
                                               }`}
                                               data-testid={`select-correction-${structure.id}`}
                                             >
-                                              🔄 Wave C/Y (Correction)
+                                              🔄 {correctionLabel} (Correction)
                                             </button>
                                             {/* Test Push Notification Button */}
                                             <button
@@ -6729,7 +6740,7 @@ const aiAnalyze = useMutation({
                                         <>
                                           <div className="flex items-center gap-2 mb-2">
                                             <span className="text-xs text-cyan-400 font-semibold">
-                                              📈 {selectedType === 'impulse' ? 'W3/W5' : selectedType === 'correction' ? 'C/Y' : structure.expectedNextWave} Targets
+                                              📈 {selectedType === 'impulse' ? impulseLabel : selectedType === 'correction' ? correctionLabel : structure.expectedNextWave} Targets
                                             </span>
                                             <span className="text-xs text-gray-500">
                                               (Click to add projection line)
