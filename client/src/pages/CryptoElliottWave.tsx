@@ -2826,7 +2826,7 @@ export default function CryptoElliottWave() {
   // Mutation to toggle alert on a projection line
   const toggleProjectionAlert = useMutation({
     mutationFn: async (data: { id: string; alertEnabled: boolean }) => {
-      const response = await authenticatedApiRequest('PATCH', `/api/crypto/projection-lines/${data.id}/alert`, { alertEnabled: data.alertEnabled });
+      const response = await authenticatedApiRequest('PATCH', `/api/crypto/projection-lines/${data.id}`, { alertEnabled: data.alertEnabled });
       return response.json();
     },
     onSuccess: (_, variables) => {
@@ -2841,10 +2841,10 @@ export default function CryptoElliottWave() {
     },
   });
   
-  // Helper to check if a projection line is saved
+  // Helper to check if a projection line is saved (match by levelLabel and symbol only, structureId may change on reload)
   const isProjectionSaved = (structureId: string, levelLabel: string): SavedProjectionLine | undefined => {
     return savedProjectionLinesFromDB.find(line => 
-      line.structureId === structureId && line.levelLabel === levelLabel && line.symbol === symbol
+      line.levelLabel === levelLabel && line.symbol === symbol
     );
   };
   
