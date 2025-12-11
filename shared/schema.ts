@@ -693,6 +693,12 @@ export const chartDrawings = pgTable("chart_drawings", {
     lineStyle?: number;
     fillColor?: string;
     showLabels?: boolean;
+    label?: string;
+    labelPosition?: 'left' | 'right';
+    hiddenLevels?: number[];
+    alertActive?: boolean;  // For horizontal line price alerts
+    alertTriggered?: boolean;  // Track if alert has been triggered
+    lastCheckedPrice?: number;  // Track last price to detect crossings
   }>(),
   isLocked: boolean("is_locked").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
@@ -717,6 +723,12 @@ export const insertChartDrawingSchema = z.object({
     lineStyle: z.number().optional(),
     fillColor: z.string().optional(),
     showLabels: z.boolean().optional(),
+    label: z.string().optional(),
+    labelPosition: z.enum(['left', 'right']).optional(),
+    hiddenLevels: z.array(z.number()).optional(),
+    alertActive: z.boolean().optional(),
+    alertTriggered: z.boolean().optional(),
+    lastCheckedPrice: z.number().optional(),
   }).optional(),
   isLocked: z.boolean().optional().default(false),
 });
