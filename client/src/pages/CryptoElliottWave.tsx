@@ -2530,6 +2530,9 @@ export default function CryptoElliottWave() {
   // Maps structure.id to 'impulse' (W3/W5) or 'correction' (C/Y)
   const [selectedPredictionType, setSelectedPredictionType] = useState<Record<string, 'impulse' | 'correction' | null>>({});
   
+  // State for B wave type selection (flat vs zigzag) when correction is selected
+  const [selectedBWaveType, setSelectedBWaveType] = useState<Record<string, 'flat' | 'zigzag' | null>>({});
+  
   // Toggle structure expansion
   const toggleStructure = (structureId: string) => {
     setExpandedStructures(prev => {
@@ -6657,10 +6660,20 @@ const aiAnalyze = useMutation({
                                   const selectedType = selectedPredictionType[structure.id];
                                   
                                   // Filter levels based on selection
+                                  const bWaveType = selectedBWaveType[structure.id];
                                   const filteredLevels = selectedType 
                                     ? structure.predictiveContext!.levels.filter(l => {
                                         if (selectedType === 'impulse') {
                                           return l.label.startsWith('W2') || l.label.startsWith('W3') || l.label.startsWith('W5');
+                                        }
+                                        // For correction, check B wave type if applicable
+                                        if (l.label.startsWith('B') && bWaveType) {
+                                          // Flat: 38.2%, 50% | Zigzag: 50%, 61.8%, 78.6%
+                                          if (bWaveType === 'flat') {
+                                            return l.label.includes('38%') || l.label.includes('50%');
+                                          } else if (bWaveType === 'zigzag') {
+                                            return l.label.includes('50%') || l.label.includes('62%') || l.label.includes('79%');
+                                          }
                                         }
                                         return l.label.startsWith('B') || l.label.startsWith('C') || l.label.startsWith('Y');
                                       })
@@ -6735,6 +6748,51 @@ const aiAnalyze = useMutation({
                                         </div>
                                       )}
                                       
+                                      {/* Secondary toggle for B wave type when correction is selected and hasB */}
+                                      {selectedType === 'correction' && hasB && (
+                                        <div className="mb-3 ml-4">
+                                          <span className="text-xs text-purple-400 font-semibold mb-2 block">
+                                            📐 What type of B wave?
+                                          </span>
+                                          <div className="flex gap-2 flex-wrap">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedBWaveType(prev => ({
+                                                  ...prev,
+                                                  [structure.id]: prev[structure.id] === 'flat' ? null : 'flat'
+                                                }));
+                                              }}
+                                              className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                                                selectedBWaveType[structure.id] === 'flat'
+                                                  ? 'bg-purple-600 text-white border-purple-400 ring-2 ring-purple-400/50'
+                                                  : 'bg-purple-700/40 text-purple-300 border-purple-500/50 hover:bg-purple-600/50'
+                                              }`}
+                                              data-testid={`select-flat-${structure.id}`}
+                                            >
+                                              📊 Flat (38-50%)
+                                            </button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedBWaveType(prev => ({
+                                                  ...prev,
+                                                  [structure.id]: prev[structure.id] === 'zigzag' ? null : 'zigzag'
+                                                }));
+                                              }}
+                                              className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                                                selectedBWaveType[structure.id] === 'zigzag'
+                                                  ? 'bg-pink-600 text-white border-pink-400 ring-2 ring-pink-400/50'
+                                                  : 'bg-pink-700/40 text-pink-300 border-pink-500/50 hover:bg-pink-600/50'
+                                              }`}
+                                              data-testid={`select-zigzag-${structure.id}`}
+                                            >
+                                              ⚡ Zigzag (50-78.6%)
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                      
                                       {/* Show targets only after selection (for dual interpretation) or always for single options */}
                                       {(isDualInterpretation ? selectedType : true) && (
                                         <>
@@ -6760,8 +6818,7 @@ const aiAnalyze = useMutation({
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      // Use level.label directly as it already contains wave type (e.g., "W3 162%", "C 100%")
-                                                      const lineTitle = `${structure.degree} ${level.label}`;
+                                                      const lineTitle = `${structure.degree} ${structure.expectedNextWave} ${level.label}`;
                                                       
                                                       if (isSaved) {
                                                         // Delete from DB
