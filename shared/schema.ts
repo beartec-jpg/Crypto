@@ -675,3 +675,51 @@ export const insertSavedProjectionLineSchema = z.object({
 
 export type InsertSavedProjectionLine = z.infer<typeof insertSavedProjectionLineSchema>;
 export type SavedProjectionLine = typeof savedProjectionLines.$inferSelect;
+
+// Chart drawings for manual drawing tools (trend lines, fibs, rectangles, etc.)
+export const chartDrawings = pgTable("chart_drawings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  symbol: varchar("symbol").notNull(),
+  timeframe: varchar("timeframe").notNull(),
+  drawingType: varchar("drawing_type").notNull(), // 'trendline', 'horizontal', 'rectangle', 'fib_retracement', 'trend_fib'
+  coordinates: jsonb("coordinates").notNull().$type<{
+    points: { time: number; price: number }[];
+    levels?: number[]; // For fib tools
+  }>(),
+  style: jsonb("style").$type<{
+    color?: string;
+    lineWidth?: number;
+    lineStyle?: number;
+    fillColor?: string;
+    showLabels?: boolean;
+  }>(),
+  isLocked: boolean("is_locked").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertChartDrawingSchema = z.object({
+  userId: z.string(),
+  symbol: z.string(),
+  timeframe: z.string(),
+  drawingType: z.enum(['trendline', 'horizontal', 'rectangle', 'fib_retracement', 'trend_fib']),
+  coordinates: z.object({
+    points: z.array(z.object({
+      time: z.number(),
+      price: z.number(),
+    })),
+    levels: z.array(z.number()).optional(),
+  }),
+  style: z.object({
+    color: z.string().optional(),
+    lineWidth: z.number().optional(),
+    lineStyle: z.number().optional(),
+    fillColor: z.string().optional(),
+    showLabels: z.boolean().optional(),
+  }).optional(),
+  isLocked: z.boolean().optional().default(false),
+});
+
+export type InsertChartDrawing = z.infer<typeof insertChartDrawingSchema>;
+export type ChartDrawing = typeof chartDrawings.$inferSelect;

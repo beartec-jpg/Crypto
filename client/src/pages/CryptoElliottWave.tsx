@@ -2860,7 +2860,7 @@ export default function CryptoElliottWave() {
           lineWidth: 1,
           lineStyle: 2,
           axisLabelVisible: true,
-          title: `${line.levelLabel}`, // Simplified title for DB-loaded lines
+          title: line.alertEnabled ? `🔔 ${line.levelLabel}` : `${line.levelLabel}`, // Bell icon if alert active
         }));
       
       // Merge with existing lines (avoiding duplicates by title)
