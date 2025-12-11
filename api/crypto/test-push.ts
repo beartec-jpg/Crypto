@@ -53,12 +53,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pool = await getDb();
 
   try {
-    const publicVapidKey = process.env.PUBLIC_VAPID_KEY;
-    const privateVapidKey = process.env.PRIVATE_VAPID_KEY;
+    // Sanitize VAPID keys - remove quotes, newlines, whitespace
+    let publicVapidKey = process.env.PUBLIC_VAPID_KEY?.replace(/["\n\r\s]/g, '').trim();
+    let privateVapidKey = process.env.PRIVATE_VAPID_KEY?.replace(/["\n\r\s]/g, '').trim();
     
     if (!publicVapidKey || !privateVapidKey) {
       await pool.end();
       return res.status(500).json({ error: 'VAPID keys not configured' });
+    }
+    
+    // Validate public key length (should be ~87 chars base64)
+    if (publicVapidKey.length < 80 || publicVapidKey.length > 100) {
+      await pool.end();
+      return res.status(500).json({ error: `Invalid PUBLIC_VAPID_KEY length: ${publicVapidKey.length} (expected ~87)` });
     }
     
     webpush.setVapidDetails(

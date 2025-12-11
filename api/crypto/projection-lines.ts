@@ -39,7 +39,7 @@ async function checkEliteTier(pool: any, userId: string): Promise<boolean> {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
   if (req.method === 'OPTIONS') {
@@ -60,6 +60,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: 'Elite subscription required' });
     }
 
+    // Extract ID from URL path for PATCH/DELETE: /api/crypto/projection-lines/{id}
+    const urlParts = req.url?.split('/') || [];
+    const lastPart = urlParts[urlParts.length - 1]?.split('?')[0];
+    const idFromUrl = lastPart !== 'projection-lines' ? lastPart : null;
+
+    // GET - List all projection lines
     if (req.method === 'GET') {
       const { symbol } = req.query;
       
@@ -94,6 +100,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(camelCased);
     }
 
+    // POST - Create new projection line
     if (req.method === 'POST') {
       const { symbol, timeframe, structureId, levelLabel, price, color, waveType, alertEnabled } = req.body;
       
@@ -128,6 +135,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       await pool.end();
       return res.status(200).json(camelCased);
+    }
+
+    // PATCH - Update alert status (requires ID in URL)
+    if (req.method === 'PATCH' && idFromUrl) {
+      const { alertEnabled } = req.body;
+      
+      const result = await pool.query(
+        'UPDATE saved_projection_lines SET alert_enabled = $1 WHERE id = $2 AND user_id = $3 RETURNING *',
+        [alertEnabled, idFromUrl, userId]
+      );
+      
+      if (result.rows.length === 0) {
+        await pool.end();
+        return res.status(404).json({ error: 'Projection line not found' });
+      }
+      
+      const l = result.rows[0];
+      const camelCased = {
+        id: l.id,
+        userId: l.user_id,
+        symbol: l.symbol,
+        timeframe: l.timeframe,
+        structureId: l.structure_id,
+        levelLabel: l.level_label,
+        price: l.price,
+        color: l.color,
+        waveType: l.wave_type,
+        alertEnabled: l.alert_enabled,
+        createdAt: l.created_at,
+      };
+      
+      await pool.end();
+      return res.status(200).json(camelCased);
+    }
+
+    // DELETE - Remove projection line (requires ID in URL)
+    if (req.method === 'DELETE' && idFromUrl) {
+      const result = await pool.query(
+        'DELETE FROM saved_projection_lines WHERE id = $1 AND user_id = $2 RETURNING *',
+        [idFromUrl, userId]
+      );
+      
+      if (result.rows.length === 0) {
+        await pool.end();
+        return res.status(404).json({ error: 'Projection line not found' });
+      }
+      
+      await pool.end();
+      return res.status(200).json({ success: true });
     }
 
     await pool.end();
