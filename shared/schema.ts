@@ -658,6 +658,7 @@ export const savedProjectionLines = pgTable("saved_projection_lines", {
   waveType: varchar("wave_type").notNull(), // 'impulse' or 'correction'
   alertEnabled: boolean("alert_enabled").notNull().default(false),
   alertTriggered: boolean("alert_triggered").notNull().default(false),
+  lastCheckedPrice: doublePrecision("last_checked_price"), // For detecting price crossings
   createdAt: timestamp("created_at").defaultNow(),
 });
 

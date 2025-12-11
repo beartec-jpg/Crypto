@@ -132,9 +132,87 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // ========== ELLIOTT WAVE PROJECTION LINE ALERTS ==========
+    const projectionAlerts = await sql`
+      SELECT * FROM saved_projection_lines 
+      WHERE alert_enabled = true 
+      AND alert_triggered = false
+    `;
+
+    console.log(`Checking ${projectionAlerts.length} Elliott Wave projection alerts...`);
+
+    // Get unique symbols from projection alerts
+    const projSymbolSet = new Set(projectionAlerts.map((p: any) => p.symbol));
+    const projSymbols = Array.from(projSymbolSet) as string[];
+    
+    // Fetch prices for projection alert symbols (if not already fetched)
+    const additionalSymbols = projSymbols.filter(s => !symbols.includes(s));
+    if (additionalSymbols.length > 0) {
+      const additionalPrices = await fetchPrices(additionalSymbols);
+      prices.push(...additionalPrices);
+    }
+
+    for (const projection of projectionAlerts) {
+      const currentPrice = prices.find(p => p.symbol === projection.symbol)?.price;
+      if (!currentPrice) {
+        console.log(`No price found for projection ${projection.symbol}`);
+        continue;
+      }
+
+      const targetPrice = projection.price;
+      const levelLabel = projection.level_label || 'Target';
+
+      console.log(`🔍 Elliott: ${projection.symbol} | Target: ${targetPrice} | Current: ${currentPrice}`);
+
+      // Check if price hit the target (within 0.1% tolerance for precision)
+      const tolerance = targetPrice * 0.001; // 0.1%
+      const priceHit = Math.abs(currentPrice - targetPrice) <= tolerance ||
+                       (currentPrice >= targetPrice && projection.wave_type === 'impulse') ||
+                       (currentPrice <= targetPrice && projection.wave_type === 'correction');
+
+      // For Elliott waves, also detect crossing through the level
+      let crossed = false;
+      if (projection.last_checked_price !== null && projection.last_checked_price !== undefined) {
+        if (projection.last_checked_price < targetPrice && currentPrice >= targetPrice) {
+          crossed = true;
+        }
+        if (projection.last_checked_price > targetPrice && currentPrice <= targetPrice) {
+          crossed = true;
+        }
+      }
+
+      if (crossed || priceHit) {
+        console.log(`✅ Elliott Wave alert triggered: ${levelLabel} at ${targetPrice}`);
+
+        await sendPushNotification(sql, projection.user_id, {
+          title: `🌊 Elliott Wave Target: ${projection.symbol}`,
+          body: `Price reached ${levelLabel} at $${targetPrice.toFixed(4)}. Current: $${currentPrice.toFixed(4)}`,
+          tag: `elliott-${projection.id}`,
+        });
+
+        alertsSent++;
+
+        // Mark as triggered and store last checked price
+        await sql`
+          UPDATE saved_projection_lines 
+          SET alert_triggered = true,
+              last_checked_price = ${currentPrice}
+          WHERE id = ${projection.id}
+        `;
+      } else {
+        // Update last checked price
+        await sql`
+          UPDATE saved_projection_lines 
+          SET last_checked_price = ${currentPrice}
+          WHERE id = ${projection.id}
+        `;
+      }
+    }
+
     return res.status(200).json({ 
       message: 'Alerts checked', 
-      checked: activeAlerts.length,
+      hLineChecked: activeAlerts.length,
+      elliottChecked: projectionAlerts.length,
       alertsSent 
     });
   } catch (error: any) {
