@@ -75,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
     
     const result = await pool.query(
-      'SELECT * FROM crypto_push_subscriptions WHERE user_id = $1',
+      'SELECT * FROM push_subscriptions WHERE user_id = $1',
       [userId]
     );
     
