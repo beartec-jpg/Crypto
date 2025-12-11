@@ -6728,11 +6728,54 @@ const aiAnalyze = useMutation({
                                             >
                                               🔄 {correctionLabel} (Correction)
                                             </button>
-                                            {/* Test Push Notification Button */}
+                                            {/* Test Push Notification Button - enables notifications if needed, then sends test */}
                                             <button
                                               onClick={async (e) => {
                                                 e.stopPropagation();
                                                 try {
+                                                  // Check if notifications are supported
+                                                  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+                                                    toast({ title: 'Not Supported', description: 'Push notifications not supported on this device', variant: 'destructive' });
+                                                    return;
+                                                  }
+                                                  
+                                                  // Request permission if not granted
+                                                  if (Notification.permission !== 'granted') {
+                                                    const permission = await Notification.requestPermission();
+                                                    if (permission !== 'granted') {
+                                                      toast({ title: 'Permission Denied', description: 'Please allow notifications in browser settings', variant: 'destructive' });
+                                                      return;
+                                                    }
+                                                  }
+                                                  
+                                                  // Register service worker if needed
+                                                  let registration = await navigator.serviceWorker.getRegistration();
+                                                  if (!registration) {
+                                                    registration = await navigator.serviceWorker.register('/sw.js');
+                                                    await navigator.serviceWorker.ready;
+                                                  }
+                                                  
+                                                  // Check for existing subscription or create new one
+                                                  let subscription = await registration.pushManager.getSubscription();
+                                                  if (!subscription) {
+                                                    // Get VAPID key from env
+                                                    const vapidKey = import.meta.env.VITE_PUBLIC_VAPID_KEY || 'BIvKNAbXbD5crSXFie5H2yEXWT4tBhZGYqc9u8ADjJuQm8h7xz8VLuQcr7SdHQqAeXsZfCVr5rMz2cQrxGPPSCU';
+                                                    subscription = await registration.pushManager.subscribe({
+                                                      userVisibleOnly: true,
+                                                      applicationServerKey: vapidKey
+                                                    });
+                                                    
+                                                    // Save subscription to server
+                                                    const subJson = subscription.toJSON();
+                                                    await authenticatedApiRequest('POST', '/api/crypto/push-subscribe', {
+                                                      endpoint: subJson.endpoint,
+                                                      p256dh: subJson.keys?.p256dh,
+                                                      auth: subJson.keys?.auth
+                                                    });
+                                                    toast({ title: '✅ Notifications Enabled', description: 'Sending test...' });
+                                                  }
+                                                  
+                                                  // Now send test push
                                                   const response = await authenticatedApiRequest('POST', '/api/crypto/test-push');
                                                   const result = await response.json();
                                                   if (result.success) {
