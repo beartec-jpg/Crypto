@@ -9116,6 +9116,46 @@ export default function CryptoIndicators() {
                       );
                     }
                     
+                    // Horizontal line - render SVG clickable overlay
+                    if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
+                      const y = candleSeriesRef.current?.priceToCoordinate(drawing.points[0].price) ?? 0;
+                      const label = drawing.style?.label || '';
+                      const labelRight = drawing.style?.labelPosition === 'right';
+                      const chartWidth = chartContainerRef.current?.clientWidth || 800;
+                      
+                      return (
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          {/* Invisible thicker line for easier clicking */}
+                          <line 
+                            x1={0} y1={y} x2={chartWidth} y2={y}
+                            stroke="transparent"
+                            strokeWidth={12}
+                          />
+                          {/* Visible line (rendered by createPriceLine, but we add a thin SVG overlay for selection highlight) */}
+                          {isSelected && (
+                            <line 
+                              x1={0} y1={y} x2={chartWidth} y2={y}
+                              stroke="#22c55e"
+                              strokeWidth={3}
+                              strokeDasharray="0"
+                            />
+                          )}
+                          {label && (
+                            <text 
+                              x={labelRight ? chartWidth - 10 : 10}
+                              y={y - 5}
+                              fill={isSelected ? '#22c55e' : color}
+                              fontSize="11"
+                              fontWeight="500"
+                              textAnchor={labelRight ? 'end' : 'start'}
+                            >
+                              {label}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    }
+                    
                     return null;
                   })}
                   
