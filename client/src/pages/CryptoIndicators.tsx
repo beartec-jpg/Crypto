@@ -309,6 +309,7 @@ export default function CryptoIndicators() {
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [viewportVersion, setViewportVersion] = useState(0); // Force re-render on pan/zoom
   
   // Fetch saved drawings from database
   const { data: savedDrawings = [], refetch: refetchDrawings } = useQuery<any[]>({
@@ -6147,7 +6148,7 @@ export default function CryptoIndicators() {
         if (!prev) return { points: [{ time, price }] };
         
         const newPoints = [...prev.points, { time, price }];
-        const requiredPoints = activeTool === 'horizontal' ? 1 : 2;
+        const requiredPoints = activeTool === 'horizontal' ? 1 : activeTool === 'trend_fib' ? 3 : 2;
         
         // If we have enough points, save the drawing
         if (newPoints.length >= requiredPoints) {
@@ -7576,6 +7577,7 @@ export default function CryptoIndicators() {
     // Subscribe to time range changes (zoom/pan)
     const handleVisibleTimeRangeChange = () => {
       updateLabelPositions();
+      setViewportVersion(v => v + 1); // Trigger SVG overlay re-render
     };
     
     chart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
@@ -8838,6 +8840,168 @@ export default function CryptoIndicators() {
                   className="w-full h-[600px] relative bg-[#0f172a] overflow-hidden" 
                   style={{ minHeight: '600px', background: '#0f172a' }}
                 />
+                
+                {/* SVG Overlay for Drawings */}
+                <svg 
+                  className="absolute top-0 left-0 pointer-events-none" 
+                  style={{ width: '100%', height: '600px', zIndex: 10 }}
+                  data-testid="drawing-overlay"
+                >
+                  {drawings.map(drawing => {
+                    if (!chartRef.current || !chartReady) return null;
+                    
+                    const chart = chartRef.current;
+                    const timeScale = chart.timeScale();
+                    const priceScale = candleSeriesRef.current?.priceScale();
+                    
+                    // Convert time/price to pixel coordinates
+                    const toPixel = (point: { time: number; price: number }) => {
+                      const x = timeScale.timeToCoordinate(point.time as any);
+                      const y = candleSeriesRef.current?.priceToCoordinate(point.price);
+                      return { x: x ?? 0, y: y ?? 0 };
+                    };
+                    
+                    const color = drawing.style?.color || '#3b82f6';
+                    const isSelected = drawing.id === selectedDrawingId;
+                    
+                    if (drawing.type === 'trendline' && drawing.points.length >= 2) {
+                      const p1 = toPixel(drawing.points[0]);
+                      const p2 = toPixel(drawing.points[1]);
+                      if (p1.x === null || p2.x === null) return null;
+                      return (
+                        <g key={drawing.id}>
+                          <line 
+                            x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                            stroke={isSelected ? '#22c55e' : color}
+                            strokeWidth={isSelected ? 3 : 2}
+                          />
+                          {isSelected && (
+                            <>
+                              <circle cx={p1.x} cy={p1.y} r={5} fill="#22c55e" />
+                              <circle cx={p2.x} cy={p2.y} r={5} fill="#22c55e" />
+                            </>
+                          )}
+                        </g>
+                      );
+                    }
+                    
+                    if (drawing.type === 'rectangle' && drawing.points.length >= 2) {
+                      const p1 = toPixel(drawing.points[0]);
+                      const p2 = toPixel(drawing.points[1]);
+                      if (p1.x === null || p2.x === null) return null;
+                      const x = Math.min(p1.x, p2.x);
+                      const y = Math.min(p1.y, p2.y);
+                      const w = Math.abs(p2.x - p1.x);
+                      const h = Math.abs(p2.y - p1.y);
+                      return (
+                        <rect 
+                          key={drawing.id}
+                          x={x} y={y} width={w} height={h}
+                          fill={`${color}20`}
+                          stroke={isSelected ? '#22c55e' : color}
+                          strokeWidth={isSelected ? 3 : 2}
+                        />
+                      );
+                    }
+                    
+                    if (drawing.type === 'fib_retracement' && drawing.points.length >= 2) {
+                      const p1 = toPixel(drawing.points[0]);
+                      const p2 = toPixel(drawing.points[1]);
+                      if (p1.x === null || p2.x === null) return null;
+                      const fibLevels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+                      const priceDiff = drawing.points[1].price - drawing.points[0].price;
+                      const width = Math.abs(p2.x - p1.x) + 100;
+                      const startX = Math.min(p1.x, p2.x);
+                      
+                      return (
+                        <g key={drawing.id}>
+                          {fibLevels.map(level => {
+                            const levelPrice = drawing.points[0].price + priceDiff * (1 - level);
+                            const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
+                            const levelColor = level === 0.618 ? '#fbbf24' : level === 0.5 ? '#22c55e' : color;
+                            return (
+                              <g key={level}>
+                                <line 
+                                  x1={startX} y1={y} x2={startX + width} y2={y}
+                                  stroke={levelColor}
+                                  strokeWidth={1}
+                                  strokeDasharray={level === 0 || level === 1 ? '0' : '4,2'}
+                                />
+                                <text x={startX + 5} y={y - 3} fill={levelColor} fontSize="10">
+                                  {(level * 100).toFixed(1)}%
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </g>
+                      );
+                    }
+                    
+                    if (drawing.type === 'trend_fib' && drawing.points.length >= 3) {
+                      const p1 = toPixel(drawing.points[0]);
+                      const p2 = toPixel(drawing.points[1]);
+                      const p3 = toPixel(drawing.points[2]);
+                      if (p1.x === null || p2.x === null || p3.x === null) return null;
+                      
+                      const waveDiff = drawing.points[1].price - drawing.points[0].price;
+                      const fibLevels = [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
+                      const width = 200;
+                      
+                      return (
+                        <g key={drawing.id}>
+                          {/* Wave measurement line */}
+                          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#888" strokeWidth={1} strokeDasharray="4,2" />
+                          {/* Projection from point 3 */}
+                          {fibLevels.map(level => {
+                            const levelPrice = drawing.points[2].price + waveDiff * level;
+                            const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
+                            const levelColor = level === 1.618 ? '#fbbf24' : level === 1.0 ? '#22c55e' : '#06b6d4';
+                            return (
+                              <g key={level}>
+                                <line 
+                                  x1={p3.x} y1={y} x2={p3.x + width} y2={y}
+                                  stroke={levelColor}
+                                  strokeWidth={1}
+                                />
+                                <text x={p3.x + 5} y={y - 3} fill={levelColor} fontSize="10">
+                                  {(level * 100).toFixed(1)}%
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </g>
+                      );
+                    }
+                    
+                    return null;
+                  })}
+                  
+                  {/* Temp drawing preview */}
+                  {tempDrawing && tempDrawing.points.length > 0 && chartReady && (
+                    (() => {
+                      const toPixel = (point: { time: number; price: number }) => {
+                        const x = chartRef.current?.timeScale().timeToCoordinate(point.time as any);
+                        const y = candleSeriesRef.current?.priceToCoordinate(point.price);
+                        return { x: x ?? 0, y: y ?? 0 };
+                      };
+                      
+                      return tempDrawing.points.map((point, i) => {
+                        const p = toPixel(point);
+                        return (
+                          <circle 
+                            key={i} 
+                            cx={p.x} 
+                            cy={p.y} 
+                            r={6} 
+                            fill="#3b82f6" 
+                            stroke="#fff" 
+                            strokeWidth={2}
+                          />
+                        );
+                      });
+                    })()
+                  )}
+                </svg>
                 
                 {/* Drawing Tools Overlay */}
                 <div className="absolute top-2 left-2 z-20 flex gap-1">
