@@ -132,6 +132,98 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // ========== AI TRACKED TRADE ALERTS ==========
+    const activeTrades = await sql`
+      SELECT * FROM tracked_trades 
+      WHERE status IN ('pending', 'entry_hit')
+    `;
+
+    console.log(`Checking ${activeTrades.length} AI tracked trades...`);
+
+    // Get unique symbols from trades
+    const tradeSymbolSet = new Set(activeTrades.map((t: any) => t.symbol));
+    const tradeSymbols = Array.from(tradeSymbolSet) as string[];
+
+    // Fetch prices for trade symbols
+    const tradePrices = await fetchPrices(tradeSymbols);
+
+    for (const trade of activeTrades) {
+      const currentPrice = tradePrices.find(p => p.symbol === trade.symbol)?.price;
+      if (!currentPrice) continue;
+
+      const entry = parseFloat(trade.entry);
+      const stopLoss = parseFloat(trade.stop_loss);
+      const targets = trade.targets?.map((t: string) => parseFloat(t)) || [];
+
+      if (!entry || !stopLoss || targets.length === 0) continue;
+
+      const isLong = trade.direction === 'LONG';
+
+      // Check entry hit (for pending trades)
+      if (trade.status === 'pending') {
+        const entryHit = isLong ? currentPrice <= entry : currentPrice >= entry;
+
+        if (entryHit) {
+          await sql`
+            UPDATE tracked_trades 
+            SET status = 'entry_hit', entry_hit_at = NOW()
+            WHERE id = ${trade.id}
+          `;
+          await sendPushNotification(sql, trade.user_id, {
+            title: `🎯 Entry Hit: ${trade.symbol}`,
+            body: `${trade.direction} entry at $${entry.toFixed(4)} hit! Current: $${currentPrice.toFixed(4)}`,
+            tag: `entry-${trade.id}`,
+          });
+          alertsSent++;
+          console.log(`✅ Entry hit for trade ${trade.id}`);
+          continue;
+        }
+      }
+
+      // Check SL/TP for entry_hit trades
+      if (trade.status === 'entry_hit') {
+        const slHit = isLong ? currentPrice <= stopLoss : currentPrice >= stopLoss;
+
+        if (slHit) {
+          await sql`
+            UPDATE tracked_trades 
+            SET status = 'sl_hit', sl_hit_at = NOW()
+            WHERE id = ${trade.id}
+          `;
+          await sendPushNotification(sql, trade.user_id, {
+            title: `🛑 Stop Loss Hit: ${trade.symbol}`,
+            body: `${trade.direction} SL at $${stopLoss.toFixed(4)} hit. Current: $${currentPrice.toFixed(4)}`,
+            tag: `sl-${trade.id}`,
+          });
+          alertsSent++;
+          console.log(`❌ SL hit for trade ${trade.id}`);
+          continue;
+        }
+
+        // Check targets
+        for (let i = 0; i < targets.length; i++) {
+          const target = targets[i];
+          const tpHit = isLong ? currentPrice >= target : currentPrice <= target;
+
+          if (tpHit) {
+            await sql`
+              UPDATE tracked_trades 
+              SET status = 'tp_hit', tp_hit_at = NOW(), tp_hit_level = ${i + 1}
+              WHERE id = ${trade.id}
+            `;
+            await sendPushNotification(sql, trade.user_id, {
+              title: `🎉 Target ${i + 1} Hit: ${trade.symbol}`,
+              body: `${trade.direction} TP${i + 1} at $${target.toFixed(4)} hit! Current: $${currentPrice.toFixed(4)}`,
+              tag: `tp-${trade.id}`,
+            });
+            alertsSent++;
+            console.log(`✅ TP${i + 1} hit for trade ${trade.id}`);
+            break;
+          }
+        }
+      }
+    }
+
     // ========== INDICATOR ALERTS (CCI/ADX) ==========
     const usersWithIndicatorAlerts = await sql`
       SELECT * FROM crypto_subscriptions 
@@ -253,6 +345,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ 
       message: 'Alerts checked', 
       hLineChecked: activeAlerts.length,
+      aiTradesChecked: activeTrades.length,
       indicatorUsersChecked: usersWithIndicatorAlerts.length,
       elliottChecked: projectionAlerts.length,
       alertsSent 
