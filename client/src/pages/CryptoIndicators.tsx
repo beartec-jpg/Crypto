@@ -50,6 +50,59 @@ interface CandleData {
   volume: number;
 }
 
+// Utility to generate future whitespace bars for the chart
+// This allows drawing on future dates by providing timestamps beyond the last candle
+const generateFutureWhitespace = (lastCandleTime: number, interval: string, count: number = 50): { time: number }[] => {
+  const intervalSeconds: Record<string, number> = {
+    '1m': 60,
+    '3m': 180,
+    '5m': 300,
+    '15m': 900,
+    '30m': 1800,
+    '1h': 3600,
+    '2h': 7200,
+    '4h': 14400,
+    '6h': 21600,
+    '8h': 28800,
+    '12h': 43200,
+    '1d': 86400,
+    '3d': 259200,
+    '1w': 604800,
+    '1M': 2592000,
+  };
+  
+  const seconds = intervalSeconds[interval] || 3600;
+  const futureBars: { time: number }[] = [];
+  
+  for (let i = 1; i <= count; i++) {
+    futureBars.push({ time: lastCandleTime + (seconds * i) });
+  }
+  
+  return futureBars;
+};
+
+// Get recommended future bar count based on timeframe
+const getFutureBarCount = (interval: string): number => {
+  const counts: Record<string, number> = {
+    '1m': 120,   // 2 hours of future
+    '3m': 100,
+    '5m': 80,
+    '15m': 60,
+    '30m': 50,
+    '1h': 48,    // 2 days of future
+    '2h': 36,
+    '4h': 24,    // 4 days of future
+    '6h': 20,
+    '8h': 18,
+    '12h': 14,
+    '1d': 14,    // 2 weeks of future
+    '3d': 10,
+    '1w': 8,     // 2 months of future
+    '1M': 6,
+  };
+  return counts[interval] || 50;
+};
+
 interface VWAPData {
   time: number;
   value: number;
@@ -6094,7 +6147,13 @@ export default function CryptoIndicators() {
         wickDownColor: '#ef4444',
       });
 
-      candleSeries.setData(candles as any);
+      // Append future whitespace bars to allow drawing on future dates
+      const lastCandle = candles[candles.length - 1];
+      const futureCount = getFutureBarCount(interval);
+      const futureBars = lastCandle ? generateFutureWhitespace(lastCandle.time, interval, futureCount) : [];
+      const chartData = [...candles, ...futureBars];
+      
+      candleSeries.setData(chartData as any);
       chartRef.current = chart;
       candleSeriesRef.current = candleSeries;
 
