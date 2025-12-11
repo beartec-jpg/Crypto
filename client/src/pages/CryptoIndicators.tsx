@@ -6268,13 +6268,16 @@ export default function CryptoIndicators() {
     // Render each drawing
     drawings.forEach(drawing => {
       if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
+        // Use custom label if set, otherwise default to "H-Line"
+        const customLabel = drawing.style?.label || 'H-Line';
+        const displayLabel = drawing.id === selectedDrawingId ? `✎ ${customLabel}` : customLabel;
         const line = candleSeries.createPriceLine({
           price: drawing.points[0].price,
           color: drawing.style?.color || '#3b82f6',
           lineWidth: 2,
           lineStyle: 0,
           axisLabelVisible: true,
-          title: drawing.id === selectedDrawingId ? '✎ H-Line' : 'H-Line',
+          title: displayLabel,
         });
         if (line) drawingLinesRef.current.push(line);
       }
@@ -9121,11 +9124,9 @@ export default function CryptoIndicators() {
                       );
                     }
                     
-                    // Horizontal line - render SVG clickable overlay
+                    // Horizontal line - render SVG clickable overlay (label is shown on price axis via createPriceLine)
                     if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
                       const y = candleSeriesRef.current?.priceToCoordinate(drawing.points[0].price) ?? 0;
-                      const label = drawing.style?.label || '';
-                      const labelRight = drawing.style?.labelPosition === 'right';
                       const chartWidth = chartContainerRef.current?.clientWidth || 800;
                       
                       return (
@@ -9136,7 +9137,7 @@ export default function CryptoIndicators() {
                             stroke="transparent"
                             strokeWidth={12}
                           />
-                          {/* Visible line (rendered by createPriceLine, but we add a thin SVG overlay for selection highlight) */}
+                          {/* Selection highlight overlay */}
                           {isSelected && (
                             <line 
                               x1={0} y1={y} x2={chartWidth} y2={y}
@@ -9144,18 +9145,6 @@ export default function CryptoIndicators() {
                               strokeWidth={3}
                               strokeDasharray="0"
                             />
-                          )}
-                          {label && (
-                            <text 
-                              x={labelRight ? chartWidth - 10 : 10}
-                              y={y - 5}
-                              fill={isSelected ? '#22c55e' : color}
-                              fontSize="11"
-                              fontWeight="500"
-                              textAnchor={labelRight ? 'end' : 'start'}
-                            >
-                              {label}
-                            </text>
                           )}
                         </g>
                       );
