@@ -6755,25 +6755,33 @@ const aiAnalyze = useMutation({
                                                     await navigator.serviceWorker.ready;
                                                   }
                                                   
-                                                  // Check for existing subscription or create new one
-                                                  let subscription = await registration.pushManager.getSubscription();
-                                                  if (!subscription) {
-                                                    // Get VAPID key from env
-                                                    const vapidKey = import.meta.env.VITE_PUBLIC_VAPID_KEY || 'BIvKNAbXbD5crSXFie5H2yEXWT4tBhZGYqc9u8ADjJuQm8h7xz8VLuQcr7SdHQqAeXsZfCVr5rMz2cQrxGPPSCU';
-                                                    subscription = await registration.pushManager.subscribe({
-                                                      userVisibleOnly: true,
-                                                      applicationServerKey: vapidKey
-                                                    });
-                                                    
-                                                    // Save subscription to server
-                                                    const subJson = subscription.toJSON();
-                                                    await authenticatedApiRequest('POST', '/api/crypto/push-subscribe', {
-                                                      endpoint: subJson.endpoint,
-                                                      p256dh: subJson.keys?.p256dh,
-                                                      auth: subJson.keys?.auth
-                                                    });
-                                                    toast({ title: '✅ Notifications Enabled', description: 'Sending test...' });
+                                                  // Get VAPID key from env
+                                                  const vapidKey = import.meta.env.VITE_PUBLIC_VAPID_KEY;
+                                                  if (!vapidKey) {
+                                                    toast({ title: 'Config Error', description: 'VAPID key not configured', variant: 'destructive' });
+                                                    return;
                                                   }
+                                                  
+                                                  // Unsubscribe from old subscription (may have wrong VAPID key)
+                                                  const oldSubscription = await registration.pushManager.getSubscription();
+                                                  if (oldSubscription) {
+                                                    await oldSubscription.unsubscribe();
+                                                  }
+                                                  
+                                                  // Create new subscription with correct VAPID key
+                                                  const subscription = await registration.pushManager.subscribe({
+                                                    userVisibleOnly: true,
+                                                    applicationServerKey: vapidKey
+                                                  });
+                                                  
+                                                  // Save subscription to server
+                                                  const subJson = subscription.toJSON();
+                                                  await authenticatedApiRequest('POST', '/api/crypto/push-subscribe', {
+                                                    endpoint: subJson.endpoint,
+                                                    p256dh: subJson.keys?.p256dh,
+                                                    auth: subJson.keys?.auth
+                                                  });
+                                                  toast({ title: '✅ Notifications Enabled', description: 'Sending test...' });
                                                   
                                                   // Now send test push
                                                   const response = await authenticatedApiRequest('POST', '/api/crypto/test-push');
