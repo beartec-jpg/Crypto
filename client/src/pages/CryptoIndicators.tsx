@@ -6157,8 +6157,13 @@ export default function CryptoIndicators() {
       chartRef.current = chart;
       candleSeriesRef.current = candleSeries;
 
+      // Fit content then add right-side bar spacing for future drawing area
       chart.timeScale().fitContent();
-      console.log('Chart created successfully!');
+      // Add some whitespace on the right to show future timestamps are available
+      chart.timeScale().applyOptions({
+        rightOffset: Math.min(20, futureCount), // Show some future bars on screen
+      });
+      console.log('Chart created successfully with', futureCount, 'future bars');
       setChartReady(true);
       
       // Add click handler for drawing tools
