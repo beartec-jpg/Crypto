@@ -3548,19 +3548,62 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
   app.post("/api/crypto/test-push", requireCryptoAuth, async (req, res) => {
     try {
       const userId = (req as any).cryptoUser.id;
-      console.log(`🧪 Sending test push notification for user: ${userId}`);
+      console.log(`🧪 Sending test push notification for crypto user: ${userId}`);
       
-      await sendPushNotification({
+      // Get crypto user's push subscriptions
+      const subscriptions = await storage.getCryptoPushSubscriptionsByUserId(userId);
+      
+      if (subscriptions.length === 0) {
+        console.log(`❌ No push subscriptions found for crypto user ${userId}`);
+        return res.status(400).json({ 
+          error: 'No push subscription found', 
+          message: 'Please enable push notifications first by clicking the bell icon in the notification settings.' 
+        });
+      }
+      
+      const publicKey = process.env.PUBLIC_VAPID_KEY;
+      const privateKey = process.env.PRIVATE_VAPID_KEY;
+      
+      if (!publicKey || !privateKey) {
+        console.log("❌ VAPID keys not configured");
+        return res.status(500).json({ error: 'Push notifications not configured on server' });
+      }
+      
+      webpush.default.setVapidDetails('mailto:support@beartec.uk', publicKey, privateKey);
+      
+      const payload = JSON.stringify({
         title: '🔔 Test Notification',
         body: 'Push notifications are working! Your price alerts are active.',
-        data: {
-          type: 'test',
-          userId: userId,
-          timestamp: new Date().toISOString()
-        }
+        tag: 'test-push',
+        icon: '/icon.png',
+        badge: '/badge.png',
       });
       
-      res.json({ success: true, message: 'Test notification sent' });
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const sub of subscriptions) {
+        try {
+          const parsedSub = typeof sub.subscription === 'string' 
+            ? JSON.parse(sub.subscription) 
+            : sub.subscription;
+          
+          await webpush.default.sendNotification(parsedSub, payload);
+          successCount++;
+          console.log(`✅ Test push sent to subscription ${sub.id}`);
+        } catch (error: any) {
+          failCount++;
+          console.error(`❌ Failed to send test push to subscription ${sub.id}:`, error.message);
+        }
+      }
+      
+      res.json({ 
+        success: successCount > 0, 
+        message: `Test notification sent to ${successCount} device(s)${failCount > 0 ? `, ${failCount} failed` : ''}`,
+        subscriptionsFound: subscriptions.length,
+        successCount,
+        failCount
+      });
     } catch (error: any) {
       console.error('❌ Error sending test notification:', error);
       res.status(500).json({ error: error.message });

@@ -9519,6 +9519,37 @@ export default function CryptoIndicators() {
                                   ✓ Alert was triggered
                                 </div>
                               )}
+                              {/* Test Push Button */}
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const response = await authenticatedApiRequest('POST', '/api/crypto/test-push');
+                                    const data = await response.json();
+                                    if (data.success) {
+                                      toast({
+                                        title: '✅ Test Push Sent',
+                                        description: data.message,
+                                      });
+                                    } else {
+                                      toast({
+                                        title: '❌ Push Failed',
+                                        description: data.message || data.error,
+                                        variant: 'destructive',
+                                      });
+                                    }
+                                  } catch (error: any) {
+                                    toast({
+                                      title: '❌ Error',
+                                      description: error.message || 'Failed to send test push',
+                                      variant: 'destructive',
+                                    });
+                                  }
+                                }}
+                                className="w-full mt-2 px-3 py-2 rounded text-sm font-medium bg-slate-600 text-gray-200 hover:bg-slate-500 transition-all flex items-center justify-center gap-2"
+                                data-testid="btn-test-push"
+                              >
+                                📲 Test Push Notification
+                              </button>
                             </div>
                           )}
                         </>
