@@ -272,6 +272,25 @@ interface AutoBacktestTestParams {
   testProjectionMultipliers: number[];
 }
 
+// Dynamic Moving Average configuration
+interface MAConfig {
+  id: string;
+  period: number;
+  timeframe: string; // 'current' or specific timeframe like '1h', '4h', '1d'
+  color: string;
+}
+
+const MA_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
+const MA_TIMEFRAMES = [
+  { value: 'current', label: 'Current' },
+  { value: '5m', label: '5m' },
+  { value: '15m', label: '15m' },
+  { value: '1h', label: '1H' },
+  { value: '4h', label: '4H' },
+  { value: '1d', label: '1D' },
+  { value: '1w', label: '1W' },
+];
+
 export default function CryptoIndicators() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -457,12 +476,20 @@ export default function CryptoIndicators() {
   const [trendlinePivotLength, setTrendlinePivotLength] = useState(10);
   const [trendlinePivotLengthInput, setTrendlinePivotLengthInput] = useState('10');
   
-  // EMA settings
+  // EMA settings - dynamic list with multi-timeframe support
   const [showEMA, setShowEMA] = useState(false);
-  const [emaFastPeriod, setEmaFastPeriod] = useState(10);
-  const [emaSlowPeriod, setEmaSlowPeriod] = useState(40);
+  const [emaConfigs, setEmaConfigs] = useState<MAConfig[]>([
+    { id: 'ema1', period: 21, timeframe: 'current', color: '#3b82f6' }
+  ]);
+  const emaSeriesRefs = useRef<Record<string, LineSeries | null>>({});
+  const emaHTFDataCache = useRef<Record<string, CandleData[]>>({});
+  // Legacy state for backwards compatibility with trading strategies
+  const emaFastPeriod = emaConfigs[0]?.period || 21;
+  const emaSlowPeriod = emaConfigs[1]?.period || 50;
   const [emaFastInput, setEmaFastInput] = useState('10');
   const [emaSlowInput, setEmaSlowInput] = useState('40');
+  const setEmaFastPeriod = (_: number) => {}; // Stub for legacy code
+  const setEmaSlowPeriod = (_: number) => {}; // Stub for legacy code
   
   // Oscillator indicators
   const rsiRef = useRef<HTMLDivElement>(null);
@@ -520,12 +547,20 @@ export default function CryptoIndicators() {
   const [pdLookback, setPdLookback] = useState(50);
   const [pdLookbackInput, setPdLookbackInput] = useState('50');
   
-  // Trend Tools
+  // Trend Tools - SMA with dynamic list and multi-timeframe support
   const [showSMA, setShowSMA] = useState(false);
-  const [smaFastPeriod, setSmaFastPeriod] = useState(20);
+  const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
+    { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
+  ]);
+  const smaSeriesRefs = useRef<Record<string, LineSeries | null>>({});
+  const smaHTFDataCache = useRef<Record<string, CandleData[]>>({});
+  // Legacy state for backwards compatibility
+  const smaFastPeriod = smaConfigs[0]?.period || 20;
+  const smaSlowPeriod = smaConfigs[1]?.period || 50;
   const [smaFastInput, setSmaFastInput] = useState('20');
-  const [smaSlowPeriod, setSmaSlowPeriod] = useState(50);
   const [smaSlowInput, setSmaSlowInput] = useState('50');
+  const setSmaFastPeriod = (_: number) => {}; // Stub for legacy code
+  const setSmaSlowPeriod = (_: number) => {}; // Stub for legacy code
   const [showSupertrend, setShowSupertrend] = useState(false);
   const [supertrendPeriod, setSupertrendPeriod] = useState(10);
   const [supertrendPeriodInput, setSupertrendPeriodInput] = useState('10');
@@ -939,12 +974,6 @@ export default function CryptoIndicators() {
     rolling10?: ISeriesApi<'Line'>;
     rolling20?: ISeriesApi<'Line'>;
     rolling50?: ISeriesApi<'Line'>;
-  }>({});
-
-  // EMA series refs
-  const emaSeriesRefs = useRef<{
-    fast?: ISeriesApi<'Line'>;
-    slow?: ISeriesApi<'Line'>;
   }>({});
 
   // Bollinger Bands series refs
@@ -6527,54 +6556,56 @@ export default function CryptoIndicators() {
     const chart = chartRef.current;
     const refs = emaSeriesRefs.current;
 
-    // Helper to manage EMA series
-    const manageEMA = (
-      key: 'fast' | 'slow',
-      show: boolean,
-      period: number,
-      color: string,
-      title: string
-    ) => {
-      if (show) {
-        const closes = candles.map(c => c.close);
-        const emaValues = calculateEMA(closes, period);
-        const emaData = candles.map((c, i) => ({
-          time: c.time as any,
-          value: emaValues[i]
-        }));
-
-        if (!refs[key]) {
-          try {
-            refs[key] = chart.addSeries(LineSeries, {
-              color,
-              lineWidth: 2,
-              priceLineVisible: false,
-              lastValueVisible: true,
-              title,
-            });
-          } catch (e) {
-            // Chart might be disposed
-            return;
-          }
-        }
-        try {
-          refs[key]!.setData(emaData);
-        } catch (e) {
-          // Series might be disposed
-        }
-      } else if (!show && refs[key]) {
-        try {
-          chart.removeSeries(refs[key]!);
-        } catch (e) {
-          // Series might already be disposed
-        }
-        refs[key] = undefined;
+    // Remove old EMA series that are no longer in configs
+    const currentIds = new Set(emaConfigs.map(c => c.id));
+    Object.keys(refs).forEach(key => {
+      if (!currentIds.has(key) && refs[key]) {
+        try { chart.removeSeries(refs[key]!); } catch (e) {}
+        delete refs[key];
       }
-    };
+    });
 
-    manageEMA('fast', showEMA, emaFastPeriod, '#3b82f6', `EMA ${emaFastPeriod}`);
-    manageEMA('slow', showEMA, emaSlowPeriod, '#f59e0b', `EMA ${emaSlowPeriod}`);
-  }, [chartReady, candles, showEMA, emaFastPeriod, emaSlowPeriod, calculateEMA]);
+    if (!showEMA) {
+      // Remove all EMA series when disabled
+      Object.keys(refs).forEach(key => {
+        if (refs[key]) {
+          try { chart.removeSeries(refs[key]!); } catch (e) {}
+          delete refs[key];
+        }
+      });
+      return;
+    }
+
+    // Render each EMA config
+    for (const config of emaConfigs) {
+      const closes = candles.map(c => c.close);
+      const emaValues = calculateEMA(closes, config.period);
+      const emaData = candles.map((c, i) => ({
+        time: c.time as any,
+        value: emaValues[i]
+      })).filter(d => d.value !== undefined);
+
+      // Label: just period number, add timeframe if not current
+      const label = config.timeframe === 'current' 
+        ? `${config.period}` 
+        : `${config.period} ${config.timeframe.toUpperCase()}`;
+
+      if (!refs[config.id]) {
+        try {
+          refs[config.id] = chart.addSeries(LineSeries, {
+            color: config.color,
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: true,
+            title: label,
+          });
+        } catch (e) { continue; }
+      }
+      try {
+        refs[config.id]!.setData(emaData);
+      } catch (e) {}
+    }
+  }, [chartReady, candles, showEMA, emaConfigs, calculateEMA]);
 
   // Manage Bollinger Bands on main chart
   useEffect(() => {
@@ -6981,68 +7012,65 @@ export default function CryptoIndicators() {
   
   // ========== BATCH 3 INDICATORS ==========
   
-  // SMA (Simple Moving Average)
+  // SMA (Simple Moving Average) - Dynamic config list
   useEffect(() => {
     if (!chartReady || !chartRef.current || candles.length === 0) return;
     
     const chart = chartRef.current;
-    
-    if (showSMA) {
-      const closes = candles.map(c => c.close);
-      
-      // Fast SMA
-      const fastSMA = calculateSMA(closes, smaFastPeriod);
-      if (fastSMA.length > 0 && !smaFastRef.current) {
-        try {
-          smaFastRef.current = chart.addSeries(LineSeries, {
-            color: '#3b82f6',
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: true,
-            title: `SMA ${smaFastPeriod}`,
-          });
-          const data = fastSMA.map((value, i) => ({ 
-            time: candles[i + smaFastPeriod - 1].time as any, 
-            value 
-          }));
-          smaFastRef.current.setData(data);
-        } catch (e) {}
+    const refs = smaSeriesRefs.current;
+
+    // Remove old SMA series that are no longer in configs
+    const currentIds = new Set(smaConfigs.map(c => c.id));
+    Object.keys(refs).forEach(key => {
+      if (!currentIds.has(key) && refs[key]) {
+        try { chart.removeSeries(refs[key]!); } catch (e) {}
+        delete refs[key];
       }
-      
-      // Slow SMA
-      const slowSMA = calculateSMA(closes, smaSlowPeriod);
-      if (slowSMA.length > 0 && !smaSlowRef.current) {
-        try {
-          smaSlowRef.current = chart.addSeries(LineSeries, {
-            color: '#f59e0b',
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: true,
-            title: `SMA ${smaSlowPeriod}`,
-          });
-          const data = slowSMA.map((value, i) => ({ 
-            time: candles[i + smaSlowPeriod - 1].time as any, 
-            value 
-          }));
-          smaSlowRef.current.setData(data);
-        } catch (e) {}
-      }
-    } else {
-      // Remove series when disabled
-      if (smaFastRef.current) {
-        try {
-          chart.removeSeries(smaFastRef.current);
-        } catch (e) {}
-        smaFastRef.current = null;
-      }
-      if (smaSlowRef.current) {
-        try {
-          chart.removeSeries(smaSlowRef.current);
-        } catch (e) {}
-        smaSlowRef.current = null;
-      }
+    });
+
+    if (!showSMA) {
+      // Remove all SMA series when disabled
+      Object.keys(refs).forEach(key => {
+        if (refs[key]) {
+          try { chart.removeSeries(refs[key]!); } catch (e) {}
+          delete refs[key];
+        }
+      });
+      return;
     }
-  }, [chartReady, candles, showSMA, smaFastPeriod, smaSlowPeriod]);
+
+    // Render each SMA config
+    const closes = candles.map(c => c.close);
+    for (const config of smaConfigs) {
+      const smaValues = calculateSMA(closes, config.period);
+      if (smaValues.length === 0) continue;
+      
+      const smaData = smaValues.map((value, i) => ({
+        time: candles[i + config.period - 1].time as any,
+        value
+      }));
+
+      // Label: just period number, add timeframe if not current
+      const label = config.timeframe === 'current' 
+        ? `${config.period}` 
+        : `${config.period} ${config.timeframe.toUpperCase()}`;
+
+      if (!refs[config.id]) {
+        try {
+          refs[config.id] = chart.addSeries(LineSeries, {
+            color: config.color,
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: true,
+            title: label,
+          });
+        } catch (e) { continue; }
+      }
+      try {
+        refs[config.id]!.setData(smaData);
+      } catch (e) {}
+    }
+  }, [chartReady, candles, showSMA, smaConfigs]);
   
   // Parabolic SAR
   useEffect(() => {
@@ -9957,43 +9985,64 @@ export default function CryptoIndicators() {
                         </div>
                       </div>
                       
-                      {/* EMA Settings */}
+                      {/* EMA Settings - Dynamic List */}
                       {showEMA && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
-                          <div className="text-xs font-semibold text-blue-400 mb-2">EMA Settings</div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="flex items-center justify-between">
-                              <Label className="text-xs text-gray-300">Fast Period</Label>
-                              <input
-                                type="number"
-                                min="5"
-                                max="100"
-                                value={emaFastInput}
-                                onChange={(e) => {
-                                  setEmaFastInput(e.target.value);
-                                  const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setEmaFastPeriod(val);
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="text-xs font-semibold text-blue-400">EMA Lines</div>
+                            {emaConfigs.length < 6 && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-xs text-green-400 hover:text-green-300"
+                                onClick={() => {
+                                  const newId = `ema${Date.now()}`;
+                                  const colorIdx = emaConfigs.length % MA_COLORS.length;
+                                  setEmaConfigs([...emaConfigs, { id: newId, period: 50, timeframe: 'current', color: MA_COLORS[colorIdx] }]);
                                 }}
-                                className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
-                                data-testid="input-ema-fast"
-                              />
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <Label className="text-xs text-gray-300">Slow Period</Label>
-                              <input
-                                type="number"
-                                min="5"
-                                max="200"
-                                value={emaSlowInput}
-                                onChange={(e) => {
-                                  setEmaSlowInput(e.target.value);
-                                  const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setEmaSlowPeriod(val);
-                                }}
-                                className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
-                                data-testid="input-ema-slow"
-                              />
-                            </div>
+                              >
+                                + Add EMA
+                              </Button>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            {emaConfigs.map((config, idx) => (
+                              <div key={config.id} className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: config.color }} />
+                                <input
+                                  type="number"
+                                  min="5"
+                                  max="500"
+                                  value={config.period}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (!isNaN(val) && val >= 5) {
+                                      setEmaConfigs(emaConfigs.map(c => c.id === config.id ? { ...c, period: val } : c));
+                                    }
+                                  }}
+                                  className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
+                                />
+                                <select
+                                  value={config.timeframe}
+                                  onChange={(e) => setEmaConfigs(emaConfigs.map(c => c.id === config.id ? { ...c, timeframe: e.target.value } : c))}
+                                  className="bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
+                                >
+                                  {MA_TIMEFRAMES.map(tf => (
+                                    <option key={tf.value} value={tf.value}>{tf.label}</option>
+                                  ))}
+                                </select>
+                                {emaConfigs.length > 1 && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                                    onClick={() => setEmaConfigs(emaConfigs.filter(c => c.id !== config.id))}
+                                  >
+                                    ×
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}
@@ -10095,43 +10144,64 @@ export default function CryptoIndicators() {
                         </div>
                       )}
                       
-                      {/* SMA Settings */}
+                      {/* SMA Settings - Dynamic List */}
                       {showSMA && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
-                          <div className="text-xs font-semibold text-blue-400 mb-2">SMA Settings</div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="flex items-center justify-between">
-                              <Label className="text-xs text-gray-300">Fast Period</Label>
-                              <input
-                                type="number"
-                                min="5"
-                                max="100"
-                                value={smaFastInput}
-                                onChange={(e) => {
-                                  setSmaFastInput(e.target.value);
-                                  const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setSmaFastPeriod(val);
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="text-xs font-semibold text-amber-400">SMA Lines</div>
+                            {smaConfigs.length < 6 && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-xs text-green-400 hover:text-green-300"
+                                onClick={() => {
+                                  const newId = `sma${Date.now()}`;
+                                  const colorIdx = smaConfigs.length % MA_COLORS.length;
+                                  setSmaConfigs([...smaConfigs, { id: newId, period: 50, timeframe: 'current', color: MA_COLORS[colorIdx] }]);
                                 }}
-                                className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
-                                data-testid="input-sma-fast"
-                              />
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <Label className="text-xs text-gray-300">Slow Period</Label>
-                              <input
-                                type="number"
-                                min="5"
-                                max="200"
-                                value={smaSlowInput}
-                                onChange={(e) => {
-                                  setSmaSlowInput(e.target.value);
-                                  const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setSmaSlowPeriod(val);
-                                }}
-                                className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
-                                data-testid="input-sma-slow"
-                              />
-                            </div>
+                              >
+                                + Add SMA
+                              </Button>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            {smaConfigs.map((config, idx) => (
+                              <div key={config.id} className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: config.color }} />
+                                <input
+                                  type="number"
+                                  min="5"
+                                  max="500"
+                                  value={config.period}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (!isNaN(val) && val >= 5) {
+                                      setSmaConfigs(smaConfigs.map(c => c.id === config.id ? { ...c, period: val } : c));
+                                    }
+                                  }}
+                                  className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
+                                />
+                                <select
+                                  value={config.timeframe}
+                                  onChange={(e) => setSmaConfigs(smaConfigs.map(c => c.id === config.id ? { ...c, timeframe: e.target.value } : c))}
+                                  className="bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
+                                >
+                                  {MA_TIMEFRAMES.map(tf => (
+                                    <option key={tf.value} value={tf.value}>{tf.label}</option>
+                                  ))}
+                                </select>
+                                {smaConfigs.length > 1 && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                                    onClick={() => setSmaConfigs(smaConfigs.filter(c => c.id !== config.id))}
+                                  >
+                                    ×
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}
