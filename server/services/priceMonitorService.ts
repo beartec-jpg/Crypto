@@ -20,11 +20,13 @@ class PriceMonitorService {
     this.monitorInterval = setInterval(() => {
       this.checkAllTrackedTrades();
       this.checkAllIndicatorAlerts();
+      this.checkAllHorizontalLineAlerts();
     }, this.CHECK_INTERVAL);
 
     // Run initial checks
     await this.checkAllTrackedTrades();
     await this.checkAllIndicatorAlerts();
+    await this.checkAllHorizontalLineAlerts();
   }
 
   stop() {
@@ -484,6 +486,98 @@ class PriceMonitorService {
         body: `${timeframe} -DI crossed above +DI. Bearish directional change.`,
         tag: `adx-di-bear-${symbol}-${timeframe}`,
       });
+    }
+  }
+
+  // ============ HORIZONTAL LINE PRICE ALERTS ============
+  
+  private async checkAllHorizontalLineAlerts() {
+    try {
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      // Get all horizontal line drawings with active alerts
+      const activeAlerts = await db
+        .select()
+        .from(chartDrawings)
+        .where(sql`${chartDrawings.drawingType} = 'horizontal' AND (${chartDrawings.style}->>'alertActive')::boolean = true AND ((${chartDrawings.style}->>'alertTriggered')::boolean IS NULL OR (${chartDrawings.style}->>'alertTriggered')::boolean = false)`);
+
+      if (activeAlerts.length === 0) {
+        return;
+      }
+
+      console.log(`Checking ${activeAlerts.length} horizontal line alerts...`);
+
+      // Get unique symbols
+      const symbolSet = new Set(activeAlerts.map(d => d.symbol));
+      const symbols = Array.from(symbolSet);
+
+      // Fetch current prices for all symbols
+      const prices = await this.fetchPrices(symbols);
+
+      for (const drawing of activeAlerts) {
+        const currentPrice = prices.find(p => p.symbol === drawing.symbol)?.price;
+        if (!currentPrice) continue;
+
+        const linePrice = drawing.coordinates?.points?.[0]?.price;
+        if (!linePrice) continue;
+
+        // Safely get style properties, defaulting to empty object if undefined
+        const currentStyle = drawing.style || {};
+        const lastCheckedPrice = (currentStyle as any).lastCheckedPrice;
+        const lineName = (currentStyle as any).label || 'H-Line';
+
+        // Check if price crossed the line (only if we have a previous price to compare)
+        let crossed = false;
+        if (lastCheckedPrice !== null && lastCheckedPrice !== undefined && Number.isFinite(lastCheckedPrice)) {
+          // Price crossed from below to above
+          if (lastCheckedPrice < linePrice && currentPrice >= linePrice) {
+            crossed = true;
+          }
+          // Price crossed from above to below
+          if (lastCheckedPrice > linePrice && currentPrice <= linePrice) {
+            crossed = true;
+          }
+        }
+
+        if (crossed) {
+          console.log(`Price crossed ${lineName} for ${drawing.symbol} at ${linePrice}`);
+          
+          // Send notification
+          await this.sendCryptoNotification(drawing.userId, {
+            title: `📈 Price Crossing: ${drawing.symbol}`,
+            body: `Price crossing '${lineName}' at $${linePrice.toFixed(4)}. Current: $${currentPrice.toFixed(4)}`,
+            tag: `hline-${drawing.id}`,
+          });
+
+          // Mark as triggered - safely merge existing style properties
+          await db
+            .update(chartDrawings)
+            .set({
+              style: {
+                ...currentStyle,
+                alertTriggered: true,
+                lastCheckedPrice: currentPrice,
+              },
+              updatedAt: new Date(),
+            })
+            .where(sql`${chartDrawings.id} = ${drawing.id}`);
+        } else {
+          // Just update last checked price - safely merge existing style properties
+          await db
+            .update(chartDrawings)
+            .set({
+              style: {
+                ...currentStyle,
+                lastCheckedPrice: currentPrice,
+              },
+            })
+            .where(sql`${chartDrawings.id} = ${drawing.id}`);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking horizontal line alerts:", error);
     }
   }
 
