@@ -58,12 +58,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pool = await getDb();
 
   try {
-    // Upsert subscription - update if endpoint exists, otherwise insert
+    // Delete any existing subscriptions for this user first (in case endpoint changed)
+    await pool.query(`DELETE FROM push_subscriptions WHERE user_id = $1`, [userId]);
+    
+    // Insert new subscription
     await pool.query(`
       INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_id)
       VALUES ($1, $2, $3, $4)
-      ON CONFLICT (endpoint) 
-      DO UPDATE SET p256dh = $2, auth = $3, user_id = $4, last_used_at = NOW()
     `, [endpoint, p256dh, auth, userId]);
     
     await pool.end();
