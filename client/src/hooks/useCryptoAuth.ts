@@ -59,9 +59,7 @@ const devSubscription: CryptoSubscription = {
 };
 
 function useClerkHooks() {
-  const auth = useAuth();
-  const { user } = useUser();
-  
+  // In development, skip Clerk hooks entirely to avoid ClerkProvider requirement
   if (isDevelopment) {
     return {
       isSignedIn: true,
@@ -70,6 +68,12 @@ function useClerkHooks() {
       user: devUser,
     };
   }
+  
+  // In production, use real Clerk hooks
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const auth = useAuth();
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { user } = useUser();
   
   return { ...auth, user };
 }
