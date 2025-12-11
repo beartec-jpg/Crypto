@@ -101,12 +101,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tag: 'test-notification',
     });
     
-    await webpush.sendNotification(pushSubscription, payload);
+    try {
+      await webpush.sendNotification(pushSubscription, payload);
+    } catch (pushError: any) {
+      console.error('Web push error:', pushError);
+      // Return more detailed error info
+      await pool.end();
+      return res.status(500).json({ 
+        error: pushError.message,
+        statusCode: pushError.statusCode,
+        body: pushError.body,
+        endpoint: pushSubscription.endpoint?.substring(0, 50) + '...'
+      });
+    }
     
     await pool.end();
     return res.status(200).json({ success: true });
   } catch (error: any) {
-    console.error('Error sending test push:', error);
+    console.error('Error in test-push:', error);
     await pool.end();
     return res.status(500).json({ error: error.message });
   }
