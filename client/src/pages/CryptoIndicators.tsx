@@ -8843,9 +8843,17 @@ export default function CryptoIndicators() {
                 
                 {/* SVG Overlay for Drawings */}
                 <svg 
-                  className="absolute top-0 left-0 pointer-events-none" 
+                  className={`absolute top-0 left-0 ${drawingMode === 'select' ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
                   style={{ width: '100%', height: '600px', zIndex: 10 }}
                   data-testid="drawing-overlay"
+                  onClick={(e) => {
+                    if (drawingMode === 'select') {
+                      // If clicking on empty space, deselect
+                      if ((e.target as Element).tagName === 'svg') {
+                        setSelectedDrawingId(null);
+                      }
+                    }
+                  }}
                 >
                   {drawings.map(drawing => {
                     if (!chartRef.current || !chartReady) return null;
@@ -8864,12 +8872,25 @@ export default function CryptoIndicators() {
                     const color = drawing.style?.color || '#3b82f6';
                     const isSelected = drawing.id === selectedDrawingId;
                     
+                    const handleClick = (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      if (drawingMode === 'select') {
+                        setSelectedDrawingId(drawing.id === selectedDrawingId ? null : drawing.id);
+                      }
+                    };
+                    
                     if (drawing.type === 'trendline' && drawing.points.length >= 2) {
                       const p1 = toPixel(drawing.points[0]);
                       const p2 = toPixel(drawing.points[1]);
                       if (p1.x === null || p2.x === null) return null;
                       return (
-                        <g key={drawing.id}>
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          {/* Invisible thicker line for easier clicking */}
+                          <line 
+                            x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                            stroke="transparent"
+                            strokeWidth={12}
+                          />
                           <line 
                             x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                             stroke={isSelected ? '#22c55e' : color}
@@ -8894,13 +8915,14 @@ export default function CryptoIndicators() {
                       const w = Math.abs(p2.x - p1.x);
                       const h = Math.abs(p2.y - p1.y);
                       return (
-                        <rect 
-                          key={drawing.id}
-                          x={x} y={y} width={w} height={h}
-                          fill={`${color}20`}
-                          stroke={isSelected ? '#22c55e' : color}
-                          strokeWidth={isSelected ? 3 : 2}
-                        />
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          <rect 
+                            x={x} y={y} width={w} height={h}
+                            fill={`${color}20`}
+                            stroke={isSelected ? '#22c55e' : color}
+                            strokeWidth={isSelected ? 3 : 2}
+                          />
+                        </g>
                       );
                     }
                     
@@ -8914,17 +8936,19 @@ export default function CryptoIndicators() {
                       const startX = Math.min(p1.x, p2.x);
                       
                       return (
-                        <g key={drawing.id}>
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          {/* Click target area */}
+                          <rect x={startX} y={p1.y < p2.y ? p1.y : p2.y} width={width} height={Math.abs(p2.y - p1.y)} fill="transparent" />
                           {fibLevels.map(level => {
                             const levelPrice = drawing.points[0].price + priceDiff * (1 - level);
                             const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
-                            const levelColor = level === 0.618 ? '#fbbf24' : level === 0.5 ? '#22c55e' : color;
+                            const levelColor = isSelected ? '#22c55e' : level === 0.618 ? '#fbbf24' : level === 0.5 ? '#22c55e' : color;
                             return (
                               <g key={level}>
                                 <line 
                                   x1={startX} y1={y} x2={startX + width} y2={y}
                                   stroke={levelColor}
-                                  strokeWidth={1}
+                                  strokeWidth={isSelected ? 2 : 1}
                                   strokeDasharray={level === 0 || level === 1 ? '0' : '4,2'}
                                 />
                                 <text x={startX + 5} y={y - 3} fill={levelColor} fontSize="10">
@@ -8948,14 +8972,14 @@ export default function CryptoIndicators() {
                       const width = 200;
                       
                       return (
-                        <g key={drawing.id}>
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
                           {/* Wave measurement line */}
-                          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#888" strokeWidth={1} strokeDasharray="4,2" />
+                          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={isSelected ? '#22c55e' : '#888'} strokeWidth={isSelected ? 2 : 1} strokeDasharray="4,2" />
                           {/* Projection from point 3 */}
                           {fibLevels.map(level => {
                             const levelPrice = drawing.points[2].price + waveDiff * level;
                             const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
-                            const levelColor = level === 1.618 ? '#fbbf24' : level === 1.0 ? '#22c55e' : '#06b6d4';
+                            const levelColor = isSelected ? '#22c55e' : level === 1.618 ? '#fbbf24' : level === 1.0 ? '#22c55e' : '#06b6d4';
                             return (
                               <g key={level}>
                                 <line 
@@ -9058,6 +9082,24 @@ export default function CryptoIndicators() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
+                  
+                  {/* Delete Selected Button - only show when a drawing is selected */}
+                  {selectedDrawingId && (
+                    <button
+                      onClick={() => {
+                        deleteDrawingMutation.mutate(selectedDrawingId);
+                        setSelectedDrawingId(null);
+                        toast({ title: 'Drawing Deleted', description: 'Selected drawing removed from chart' });
+                      }}
+                      className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all animate-pulse"
+                      title="Delete Selected Drawing"
+                      data-testid="btn-delete-selected"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  )}
                   
                   {/* Clear All Button */}
                   <button
