@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
+import { authenticatedApiRequest, isDevelopmentMode } from '@/lib/apiAuth';
 import { useLocation } from 'wouter';
 import bearTecLogo from '@assets/1_20251120_023939_0000_1763606422703.png';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
@@ -298,6 +299,85 @@ export default function CryptoIndicators() {
   // Chart controls tab state - null means no tab selected (collapsed)
   const [chartControlsTab, setChartControlsTab] = useState<'smc' | 'trend' | 'vwap' | 'oscillators' | null>(null);
   const chartControlsRef = useRef<HTMLDivElement>(null);
+  
+  // Drawing tools state
+  type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | null;
+  const [drawingMode, setDrawingMode] = useState<'off' | 'draw' | 'select'>('off');
+  const [activeTool, setActiveTool] = useState<DrawingTool>(null);
+  const [showToolPicker, setShowToolPicker] = useState(false);
+  const [drawings, setDrawings] = useState<any[]>([]);
+  const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number}[]} | null>(null);
+  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
+  
+  // Fetch saved drawings from database
+  const { data: savedDrawings = [], refetch: refetchDrawings } = useQuery<any[]>({
+    queryKey: ['/api/crypto/chart-drawings', symbol, interval],
+    queryFn: async () => {
+      const response = await authenticatedApiRequest('GET', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${interval}`);
+      return response.json();
+    },
+    enabled: isAuthenticated && !authLoading && !!symbol && !!interval,
+  });
+  
+  // Load saved drawings into state when data changes
+  useEffect(() => {
+    // Always sync state with database, even for empty arrays
+    if (savedDrawings) {
+      setDrawings(savedDrawings.map(d => ({
+        id: d.id,
+        type: d.drawing_type || d.drawingType,
+        points: d.coordinates?.points || [],
+        style: d.style || { color: '#3b82f6', lineWidth: 2 },
+      })).filter(d => d.points.length > 0)); // Only keep drawings with valid points
+    }
+  }, [savedDrawings]);
+  
+  // Save drawing mutation
+  const saveDrawingMutation = useMutation({
+    mutationFn: async (drawing: any) => {
+      const response = await authenticatedApiRequest('POST', '/api/crypto/chart-drawings', {
+        symbol,
+        timeframe: interval,
+        drawingType: drawing.type,
+        coordinates: { points: drawing.points },
+        style: drawing.style,
+      });
+      return { ...(await response.json()), localId: drawing.id };
+    },
+    onSuccess: (serverDrawing) => {
+      // Update local state with server ID before refetch
+      setDrawings(prev => prev.map(d => 
+        d.id === serverDrawing.localId 
+          ? { ...d, id: serverDrawing.id }
+          : d
+      ));
+      refetchDrawings();
+    },
+  });
+  
+  // Delete drawing mutation  
+  const deleteDrawingMutation = useMutation({
+    mutationFn: async (drawingId: string) => {
+      const response = await authenticatedApiRequest('DELETE', `/api/crypto/chart-drawings/${drawingId}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      refetchDrawings();
+    },
+  });
+  
+  // Clear all drawings mutation
+  const clearDrawingsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await authenticatedApiRequest('DELETE', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${interval}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      setDrawings([]);
+      refetchDrawings();
+    },
+  });
 
   // VWAP toggles
   const [showVWAPSession, setShowVWAPSession] = useState(false);
@@ -6008,6 +6088,19 @@ export default function CryptoIndicators() {
       chart.timeScale().fitContent();
       console.log('Chart created successfully!');
       setChartReady(true);
+      
+      // Add click handler for drawing tools
+      chart.subscribeClick((param) => {
+        if (param.time && param.point) {
+          const event = new CustomEvent('chartClick', { 
+            detail: { 
+              time: param.time as number, 
+              price: candleSeries.coordinateToPrice(param.point.y) 
+            } 
+          });
+          container.dispatchEvent(event);
+        }
+      });
     }, 100);
 
     const handleResize = () => {
@@ -6039,6 +6132,78 @@ export default function CryptoIndicators() {
       }
     };
   }, [candles.length, loading, symbol, interval]);
+  
+  // Handle chart clicks for drawing tools
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !chartReady || drawingMode !== 'draw' || !activeTool) return;
+    
+    const handleChartClick = (e: Event) => {
+      const customEvent = e as CustomEvent<{time: number; price: number}>;
+      const { time, price } = customEvent.detail;
+      if (!time || !price) return;
+      
+      setTempDrawing(prev => {
+        if (!prev) return { points: [{ time, price }] };
+        
+        const newPoints = [...prev.points, { time, price }];
+        const requiredPoints = activeTool === 'horizontal' ? 1 : 2;
+        
+        // If we have enough points, save the drawing
+        if (newPoints.length >= requiredPoints) {
+          const newDrawing = {
+            id: `drawing-${Date.now()}`,
+            type: activeTool,
+            points: newPoints,
+            style: { color: '#3b82f6', lineWidth: 2 }
+          };
+          setDrawings(d => [...d, newDrawing]);
+          
+          // Save to database
+          saveDrawingMutation.mutate(newDrawing);
+          toast({ title: 'Drawing Saved', description: `${activeTool.replace('_', ' ')} added to chart` });
+          
+          // Reset for next drawing
+          return { points: [] };
+        }
+        
+        return { points: newPoints };
+      });
+    };
+    
+    container.addEventListener('chartClick', handleChartClick);
+    return () => container.removeEventListener('chartClick', handleChartClick);
+  }, [chartReady, drawingMode, activeTool, toast]);
+  
+  // Render drawings on chart using price lines
+  const drawingLinesRef = useRef<any[]>([]);
+  
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    if (!candleSeries || !chartReady) return;
+    
+    // Clear existing drawing lines
+    drawingLinesRef.current.forEach(line => {
+      try { candleSeries.removePriceLine(line); } catch (e) { /* ignore */ }
+    });
+    drawingLinesRef.current = [];
+    
+    // Render each drawing
+    drawings.forEach(drawing => {
+      if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
+        const line = candleSeries.createPriceLine({
+          price: drawing.points[0].price,
+          color: drawing.style?.color || '#3b82f6',
+          lineWidth: 2,
+          lineStyle: 0,
+          axisLabelVisible: true,
+          title: drawing.id === selectedDrawingId ? '✎ H-Line' : 'H-Line',
+        });
+        if (line) drawingLinesRef.current.push(line);
+      }
+      // For trendlines and other drawings, we'll use the overlay canvas later
+    });
+  }, [drawings, chartReady, selectedDrawingId]);
 
   // Update VWAPs
   useEffect(() => {
@@ -8667,11 +8832,128 @@ export default function CryptoIndicators() {
                 <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
               </div>
             ) : (
-              <div 
-                ref={chartContainerRef} 
-                className="w-full h-[600px] relative bg-[#0f172a] overflow-hidden" 
-                style={{ minHeight: '600px', background: '#0f172a' }}
-              />
+              <div className="relative">
+                <div 
+                  ref={chartContainerRef} 
+                  className="w-full h-[600px] relative bg-[#0f172a] overflow-hidden" 
+                  style={{ minHeight: '600px', background: '#0f172a' }}
+                />
+                
+                {/* Drawing Tools Overlay */}
+                <div className="absolute top-2 left-2 z-20 flex gap-1">
+                  {/* Pencil/Draw Button */}
+                  <button
+                    onClick={() => setShowToolPicker(prev => !prev)}
+                    className={`p-2 rounded-lg transition-all ${
+                      drawingMode === 'draw' 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                    }`}
+                    title="Drawing Tools"
+                    data-testid="btn-drawing-tools"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                  
+                  {/* Select/Cursor Button */}
+                  <button
+                    onClick={() => {
+                      setDrawingMode(prev => prev === 'select' ? 'off' : 'select');
+                      setActiveTool(null);
+                      setShowToolPicker(false);
+                    }}
+                    className={`p-2 rounded-lg transition-all ${
+                      drawingMode === 'select' 
+                        ? 'bg-green-500 text-white' 
+                        : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                    }`}
+                    title="Select/Edit Drawings"
+                    data-testid="btn-select-drawings"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                  </button>
+                  
+                  {/* Deselect/Cancel Button */}
+                  <button
+                    onClick={() => {
+                      setDrawingMode('off');
+                      setActiveTool(null);
+                      setShowToolPicker(false);
+                      setSelectedDrawingId(null);
+                      setTempDrawing(null);
+                    }}
+                    className="p-2 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-slate-700 transition-all"
+                    title="Exit Drawing Mode"
+                    data-testid="btn-deselect-drawing"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  
+                  {/* Clear All Button */}
+                  <button
+                    onClick={() => {
+                      if (drawings.length > 0 && confirm('Clear all drawings?')) {
+                        clearDrawingsMutation.mutate();
+                        setSelectedDrawingId(null);
+                        toast({ title: 'Drawings Cleared', description: 'All drawings removed from chart' });
+                      }
+                    }}
+                    className="p-2 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-red-600 hover:text-white transition-all"
+                    title="Clear All Drawings"
+                    data-testid="btn-clear-drawings"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+                
+                {/* Tool Picker Popup */}
+                {showToolPicker && (
+                  <div className="absolute top-14 left-2 z-30 bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl min-w-[180px]">
+                    <div className="text-xs text-gray-400 mb-2 px-2">Select Drawing Tool</div>
+                    {[
+                      { id: 'trendline', name: 'Trend Line', icon: '📈' },
+                      { id: 'horizontal', name: 'Horizontal Line', icon: '➖' },
+                      { id: 'rectangle', name: 'Rectangle', icon: '⬜' },
+                      { id: 'fib_retracement', name: 'Fib Retracement', icon: '📊' },
+                      { id: 'trend_fib', name: 'Trend-Based Fib', icon: '📉' },
+                    ].map(tool => (
+                      <button
+                        key={tool.id}
+                        onClick={() => {
+                          setActiveTool(tool.id as DrawingTool);
+                          setDrawingMode('draw');
+                          setShowToolPicker(false);
+                          setTempDrawing({ points: [] });
+                          toast({ title: `${tool.name} Selected`, description: 'Click on chart to place points' });
+                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-slate-700 transition-all text-left ${
+                          activeTool === tool.id ? 'bg-blue-500/30 text-blue-300' : 'text-gray-300'
+                        }`}
+                        data-testid={`tool-${tool.id}`}
+                      >
+                        <span>{tool.icon}</span>
+                        <span className="text-sm">{tool.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Active Tool Indicator */}
+                {activeTool && drawingMode === 'draw' && (
+                  <div className="absolute top-2 left-44 z-20 bg-blue-500/90 text-white px-3 py-1 rounded-lg text-xs font-medium">
+                    Drawing: {activeTool.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    {tempDrawing && ` (${tempDrawing.points.length}/${activeTool === 'horizontal' ? 1 : 2} points)`}
+                  </div>
+                )}
+              </div>
             )}
             
             {/* Chart Controls - Tabbed Interface */}

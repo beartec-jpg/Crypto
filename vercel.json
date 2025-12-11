@@ -6,6 +6,7 @@
   "rewrites": [
     { "source": "/api/crypto/elliott-wave/labels/:id", "destination": "/api/crypto/elliott-wave/labels/[id]" },
     { "source": "/api/crypto/projection-lines/:id", "destination": "/api/crypto/projection-lines/[id]" },
+    { "source": "/api/crypto/chart-drawings/:id", "destination": "/api/crypto/chart-drawings/[id]" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
