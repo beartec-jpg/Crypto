@@ -6735,8 +6735,8 @@ const aiAnalyze = useMutation({
                                         </div>
                                       )}
                                       
-                                      {/* Show targets (filtered if selection made, or all if not dual interpretation) */}
-                                      {(!isDualInterpretation || selectedType) && (
+                                      {/* Show targets only after selection (for dual interpretation) or always for single options */}
+                                      {(isDualInterpretation ? selectedType : true) && (
                                         <>
                                           <div className="flex items-center gap-2 mb-2">
                                             <span className="text-xs text-cyan-400 font-semibold">
@@ -6760,7 +6760,8 @@ const aiAnalyze = useMutation({
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      const lineTitle = `${structure.degree} ${structure.expectedNextWave} ${level.label}`;
+                                                      // Use level.label directly as it already contains wave type (e.g., "W3 162%", "C 100%")
+                                                      const lineTitle = `${structure.degree} ${level.label}`;
                                                       
                                                       if (isSaved) {
                                                         // Delete from DB
