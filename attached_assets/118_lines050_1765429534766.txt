@@ -1,0 +1,153 @@
+118 lines
+
+05:01:29
+
+ 
+
+Using TypeScript 5.6.3 (local user-provided)
+
+05:01:29
+
+ 
+
+api/crypto/my-subscription.ts(72,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+05:01:29
+
+ 
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+05:01:29
+
+ 
+
+05:01:30
+
+ 
+
+Using TypeScript 5.6.3 (local user-provided)
+
+05:01:31
+
+ 
+
+Using TypeScript 5.6.3 (local user-provided)
+
+05:01:31
+
+ 
+
+Using TypeScript 5.6.3 (local user-provided)
+
+05:01:31
+
+ 
+
+api/crypto/projection-lines.ts(2,10): error TS6133: 'createClerkClient' is declared but its value is never read.
+
+05:01:31
+
+ 
+
+api/crypto/projection-lines.ts(3,16): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+05:01:31
+
+ 
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+05:01:31
+
+ 
+
+05:01:32
+
+ 
+
+Using TypeScript 5.6.3 (local user-provided)
+
+05:01:32
+
+ 
+
+api/crypto/test-push.ts(3,16): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+05:01:32
+
+ 
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+05:01:32
+
+ 
+
+05:01:33
+
+ 
+
+Using TypeScript 5.6.3 (local user-provided)
+
+05:01:33
+
+ 
+
+api/crypto/tracked-trades.ts(39,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+05:01:33
+
+ 
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+05:01:33
+
+ 
+
+05:01:33
+
+ 
+
+Using TypeScript 5.6.3 (local user-provided)
+
+05:01:34
+
+ 
+
+api/stripe/webhook.ts(40,27): error TS7016: Could not find a declaration file for module 'pg'. '/vercel/path0/node_modules/pg/esm/index.mjs' implicitly has an 'any' type.
+
+05:01:34
+
+ 
+
+Try `npm i --save-dev @types/pg` if it exists or add a new declaration (.d.ts) file containing `declare module 'pg';`
+
+05:01:34
+
+ 
+
+05:01:34
+
+ 
+
+Using TypeScript 5.6.3 (local user-provided)
+
+05:01:35
+
+ 
+
+Build Completed in /vercel/output [34s]
+
+05:01:35
+
+ 
+
+Deploying outputs...
+
+05:01:42
+
+ 
+
+Deployment completed
