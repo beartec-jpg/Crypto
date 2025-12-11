@@ -6269,7 +6269,11 @@ export default function CryptoIndicators() {
       if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
         // Use custom label if set, otherwise default to "H-Line"
         const customLabel = drawing.style?.label || 'H-Line';
-        const displayLabel = drawing.id === selectedDrawingId ? `✎ ${customLabel}` : customLabel;
+        // Add alarm icon if alert is active
+        const alertPrefix = drawing.style?.alertActive ? '🔔 ' : '';
+        const triggeredPrefix = drawing.style?.alertTriggered ? '✅ ' : '';
+        const editPrefix = drawing.id === selectedDrawingId ? '✎ ' : '';
+        const displayLabel = `${alertPrefix}${triggeredPrefix}${editPrefix}${customLabel}`;
         const line = candleSeries.createPriceLine({
           price: drawing.points[0].price,
           color: drawing.style?.color || '#3b82f6',
