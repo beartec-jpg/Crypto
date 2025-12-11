@@ -518,15 +518,23 @@ class PriceMonitorService {
 
       for (const drawing of activeAlerts) {
         const currentPrice = prices.find(p => p.symbol === drawing.symbol)?.price;
-        if (!currentPrice) continue;
+        if (!currentPrice) {
+          console.log(`⚠️ No price found for ${drawing.symbol} (drawing ${drawing.id})`);
+          continue;
+        }
 
         const linePrice = drawing.coordinates?.points?.[0]?.price;
-        if (!linePrice) continue;
+        if (!linePrice) {
+          console.log(`⚠️ No line price found for drawing ${drawing.id}`);
+          continue;
+        }
 
         // Safely get style properties, defaulting to empty object if undefined
         const currentStyle = drawing.style || {};
         const lastCheckedPrice = (currentStyle as any).lastCheckedPrice;
         const lineName = (currentStyle as any).label || 'H-Line';
+
+        console.log(`🔍 Checking H-Line alert: ${drawing.symbol} | Line: ${linePrice} | Current: ${currentPrice} | Last: ${lastCheckedPrice}`);
 
         // Check if price crossed the line (only if we have a previous price to compare)
         let crossed = false;
@@ -534,15 +542,20 @@ class PriceMonitorService {
           // Price crossed from below to above
           if (lastCheckedPrice < linePrice && currentPrice >= linePrice) {
             crossed = true;
+            console.log(`📈 Cross detected: below→above (${lastCheckedPrice} → ${currentPrice})`);
           }
           // Price crossed from above to below
           if (lastCheckedPrice > linePrice && currentPrice <= linePrice) {
             crossed = true;
+            console.log(`📉 Cross detected: above→below (${lastCheckedPrice} → ${currentPrice})`);
           }
+        } else {
+          // First check - initialize lastCheckedPrice and check if price is already at/past line
+          console.log(`🆕 First check for H-Line ${drawing.id}, initializing lastCheckedPrice`);
         }
 
         if (crossed) {
-          console.log(`Price crossed ${lineName} for ${drawing.symbol} at ${linePrice}`);
+          console.log(`✅ Price crossed ${lineName} for ${drawing.symbol} at ${linePrice}`);
           
           // Send notification
           await this.sendCryptoNotification(drawing.userId, {

@@ -8152,14 +8152,16 @@ export default function CryptoIndicators() {
     fetchInitialData();
   }, [fetchInitialData]);
 
-  // WebSocket connection for real-time updates
+  // WebSocket connection for real-time updates (like TradingView live candles)
   useEffect(() => {
     if (!symbol || !interval || candles.length === 0) return;
 
-    const ws = new WebSocket('wss://stream.binance.us:9443/ws');
+    // Use global Binance endpoint (works worldwide, not just USA)
+    const ws = new WebSocket('wss://stream.binance.com:9443/ws');
     wsRef.current = ws;
 
     ws.onopen = () => {
+      console.log('📡 WebSocket connected for real-time updates');
       ws.send(JSON.stringify({
         method: 'SUBSCRIBE',
         params: [
@@ -8168,6 +8170,14 @@ export default function CryptoIndicators() {
         ],
         id: 1,
       }));
+    };
+
+    ws.onerror = (error) => {
+      console.error('📡 WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+      console.log('📡 WebSocket closed');
     };
 
     ws.onmessage = (event) => {
@@ -8183,6 +8193,11 @@ export default function CryptoIndicators() {
           close: parseFloat(k.c),
           volume: parseFloat(k.v),
         };
+
+        // Always update the chart immediately for live candle simulation
+        if (candleSeriesRef.current) {
+          candleSeriesRef.current.update(bar as any);
+        }
 
         setCandles(prev => {
           const newCandles = [...prev];
@@ -8206,7 +8221,7 @@ export default function CryptoIndicators() {
               newCandles[newCandles.length - 1] = bar;
             }
           } else {
-            // Update last candle
+            // Update last candle in real-time (live candle movement)
             if (bar.time === newCandles[newCandles.length - 1].time) {
               newCandles[newCandles.length - 1] = bar;
             } else {
@@ -8215,10 +8230,6 @@ export default function CryptoIndicators() {
           }
           return newCandles;
         });
-
-        if (candleSeriesRef.current) {
-          candleSeriesRef.current.update(bar as any);
-        }
       } else if (msg.e === 'trade') {
         const qty = parseFloat(msg.q);
         const isBuy = !msg.m; // Buyer is maker = sell, not maker = buy
