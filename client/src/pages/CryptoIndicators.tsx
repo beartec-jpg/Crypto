@@ -82,25 +82,10 @@ const generateFutureWhitespace = (lastCandleTime: number, interval: string, coun
 };
 
 // Get recommended future bar count based on timeframe
+// User wants "half a chart worth at full zoom out" - approximately 300 bars for all timeframes
 const getFutureBarCount = (interval: string): number => {
-  const counts: Record<string, number> = {
-    '1m': 120,   // 2 hours of future
-    '3m': 100,
-    '5m': 80,
-    '15m': 60,
-    '30m': 50,
-    '1h': 48,    // 2 days of future
-    '2h': 36,
-    '4h': 24,    // 4 days of future
-    '6h': 20,
-    '8h': 18,
-    '12h': 14,
-    '1d': 14,    // 2 weeks of future
-    '3d': 10,
-    '1w': 8,     // 2 months of future
-    '1M': 6,
-  };
-  return counts[interval] || 50;
+  // Use consistent large count for all timeframes to ensure half chart of future space
+  return 300;
 };
 
 interface VWAPData {
@@ -348,6 +333,7 @@ export default function CryptoIndicators() {
 
   const [loading, setLoading] = useState(true);
   const [chartReady, setChartReady] = useState(false);
+  const [crosshairInfo, setCrosshairInfo] = useState<{time: number; x: number; y: number} | null>(null);
   
   // Chart controls tab state - null means no tab selected (collapsed)
   const [chartControlsTab, setChartControlsTab] = useState<'smc' | 'trend' | 'vwap' | 'oscillators' | null>(null);
@@ -6159,9 +6145,9 @@ export default function CryptoIndicators() {
 
       // Fit content then add right-side bar spacing for future drawing area
       chart.timeScale().fitContent();
-      // Add some whitespace on the right to show future timestamps are available
+      // Add significant whitespace on the right to show future area (half chart at zoom out)
       chart.timeScale().applyOptions({
-        rightOffset: Math.min(20, futureCount), // Show some future bars on screen
+        rightOffset: 150, // Show ~half the chart as future whitespace
       });
       console.log('Chart created successfully with', futureCount, 'future bars');
       setChartReady(true);
@@ -6176,6 +6162,19 @@ export default function CryptoIndicators() {
             } 
           });
           container.dispatchEvent(event);
+        }
+      });
+      
+      // Add crosshair move handler to track time in future whitespace area
+      chart.subscribeCrosshairMove((param) => {
+        if (param.time && param.point) {
+          setCrosshairInfo({
+            time: param.time as number,
+            x: param.point.x,
+            y: param.point.y
+          });
+        } else {
+          setCrosshairInfo(null);
         }
       });
     }, 100);
@@ -8919,6 +8918,25 @@ export default function CryptoIndicators() {
                   className="w-full h-[600px] relative bg-[#0f172a] overflow-hidden" 
                   style={{ minHeight: '600px', background: '#0f172a' }}
                 />
+                
+                {/* Custom Crosshair Time Tooltip for Future Whitespace Area */}
+                {crosshairInfo && crosshairInfo.time > 0 && (
+                  <div 
+                    className="absolute pointer-events-none z-20 bg-slate-900/90 text-white text-xs px-2 py-1 rounded border border-slate-600"
+                    style={{ 
+                      left: Math.min(crosshairInfo.x, (chartContainerRef.current?.clientWidth || 800) - 120), 
+                      bottom: 10
+                    }}
+                  >
+                    {new Date(crosshairInfo.time * 1000).toLocaleString('en-GB', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </div>
+                )}
                 
                 {/* SVG Overlay for Drawings */}
                 <svg 
