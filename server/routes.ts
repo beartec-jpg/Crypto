@@ -4539,6 +4539,122 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
+  // ============ Chart Drawings API ============
+  
+  // Get chart drawings for a user/symbol/timeframe
+  app.get("/api/crypto/chart-drawings", requireCryptoAuth, async (req, res) => {
+    try {
+      const { symbol, timeframe } = req.query;
+      const userId = (req as any).cryptoUser.id;
+      
+      if (!symbol || !timeframe) {
+        return res.status(400).json({ error: 'symbol and timeframe required' });
+      }
+      
+      const { db } = await import("./db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      const drawings = await db.select()
+        .from(chartDrawings)
+        .where(and(
+          eq(chartDrawings.userId, userId),
+          eq(chartDrawings.symbol, symbol as string),
+          eq(chartDrawings.timeframe, timeframe as string)
+        ));
+      
+      res.json(drawings);
+    } catch (error: any) {
+      console.error('Error fetching chart drawings:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Save a chart drawing
+  app.post("/api/crypto/chart-drawings", requireCryptoAuth, async (req, res) => {
+    try {
+      const { symbol, timeframe, drawingType, coordinates, style, isLocked } = req.body;
+      const userId = (req as any).cryptoUser.id;
+      
+      if (!symbol || !timeframe || !drawingType || !coordinates) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+      
+      const { db } = await import("./db");
+      const { chartDrawings } = await import("@shared/schema");
+      
+      const [drawing] = await db.insert(chartDrawings)
+        .values({
+          userId,
+          symbol,
+          timeframe,
+          drawingType,
+          coordinates,
+          style: style || { color: '#3b82f6', lineWidth: 2 },
+          isLocked: isLocked || false,
+        })
+        .returning();
+      
+      res.status(201).json(drawing);
+    } catch (error: any) {
+      console.error('Error saving chart drawing:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Delete a single chart drawing
+  app.delete("/api/crypto/chart-drawings/:id", requireCryptoAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = (req as any).cryptoUser.id;
+      
+      const { db } = await import("./db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      const [deleted] = await db.delete(chartDrawings)
+        .where(and(eq(chartDrawings.id, id), eq(chartDrawings.userId, userId)))
+        .returning();
+      
+      if (!deleted) {
+        return res.status(404).json({ error: 'Drawing not found' });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error deleting chart drawing:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Clear all drawings for a user/symbol/timeframe
+  app.delete("/api/crypto/chart-drawings", requireCryptoAuth, async (req, res) => {
+    try {
+      const { symbol, timeframe } = req.query;
+      const userId = (req as any).cryptoUser.id;
+      
+      if (!symbol || !timeframe) {
+        return res.status(400).json({ error: 'symbol and timeframe required' });
+      }
+      
+      const { db } = await import("./db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      await db.delete(chartDrawings)
+        .where(and(
+          eq(chartDrawings.userId, userId),
+          eq(chartDrawings.symbol, symbol as string),
+          eq(chartDrawings.timeframe, timeframe as string)
+        ));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error clearing chart drawings:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Auto-analyze for Elliott Wave patterns
   app.post("/api/crypto/elliott-wave/analyze", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {
