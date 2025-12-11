@@ -308,6 +308,7 @@ export default function CryptoIndicators() {
   const [drawings, setDrawings] = useState<any[]>([]);
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [showDrawingSettings, setShowDrawingSettings] = useState(false);
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const [viewportVersion, setViewportVersion] = useState(0); // Force re-render on pan/zoom
   
@@ -376,6 +377,17 @@ export default function CryptoIndicators() {
     },
     onSuccess: () => {
       setDrawings([]);
+      refetchDrawings();
+    },
+  });
+  
+  // Update drawing mutation (for settings changes)
+  const updateDrawingMutation = useMutation({
+    mutationFn: async ({ id, style }: { id: string; style: any }) => {
+      const response = await authenticatedApiRequest('PATCH', `/api/crypto/chart-drawings/${id}`, { style });
+      return response.json();
+    },
+    onSuccess: () => {
       refetchDrawings();
     },
   });
@@ -8883,6 +8895,10 @@ export default function CryptoIndicators() {
                       const p1 = toPixel(drawing.points[0]);
                       const p2 = toPixel(drawing.points[1]);
                       if (p1.x === null || p2.x === null) return null;
+                      const label = drawing.style?.label || '';
+                      const labelRight = drawing.style?.labelPosition === 'right';
+                      const midX = (p1.x + p2.x) / 2;
+                      const midY = (p1.y + p2.y) / 2;
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
                           {/* Invisible thicker line for easier clicking */}
@@ -8896,6 +8912,18 @@ export default function CryptoIndicators() {
                             stroke={isSelected ? '#22c55e' : color}
                             strokeWidth={isSelected ? 3 : 2}
                           />
+                          {label && (
+                            <text 
+                              x={labelRight ? p2.x + 5 : p1.x - 5}
+                              y={labelRight ? p2.y : p1.y}
+                              fill={isSelected ? '#22c55e' : color}
+                              fontSize="11"
+                              fontWeight="500"
+                              textAnchor={labelRight ? 'start' : 'end'}
+                            >
+                              {label}
+                            </text>
+                          )}
                           {isSelected && (
                             <>
                               <circle cx={p1.x} cy={p1.y} r={5} fill="#22c55e" />
@@ -8914,6 +8942,8 @@ export default function CryptoIndicators() {
                       const y = Math.min(p1.y, p2.y);
                       const w = Math.abs(p2.x - p1.x);
                       const h = Math.abs(p2.y - p1.y);
+                      const label = drawing.style?.label || '';
+                      const labelRight = drawing.style?.labelPosition === 'right';
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
                           <rect 
@@ -8922,6 +8952,18 @@ export default function CryptoIndicators() {
                             stroke={isSelected ? '#22c55e' : color}
                             strokeWidth={isSelected ? 3 : 2}
                           />
+                          {label && (
+                            <text 
+                              x={labelRight ? x + w - 5 : x + 5}
+                              y={y + 14}
+                              fill={isSelected ? '#22c55e' : color}
+                              fontSize="11"
+                              fontWeight="500"
+                              textAnchor={labelRight ? 'end' : 'start'}
+                            >
+                              {label}
+                            </text>
+                          )}
                         </g>
                       );
                     }
@@ -8930,10 +8972,13 @@ export default function CryptoIndicators() {
                       const p1 = toPixel(drawing.points[0]);
                       const p2 = toPixel(drawing.points[1]);
                       if (p1.x === null || p2.x === null) return null;
-                      const fibLevels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+                      const allFibLevels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+                      const hiddenLevels = drawing.style?.hiddenLevels || [];
+                      const fibLevels = allFibLevels.filter(l => !hiddenLevels.includes(l));
                       const priceDiff = drawing.points[1].price - drawing.points[0].price;
                       const width = Math.abs(p2.x - p1.x) + 100;
                       const startX = Math.min(p1.x, p2.x);
+                      const labelRight = drawing.style?.labelPosition === 'right';
                       
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
@@ -8951,7 +8996,13 @@ export default function CryptoIndicators() {
                                   strokeWidth={isSelected ? 2 : 1}
                                   strokeDasharray={level === 0 || level === 1 ? '0' : '4,2'}
                                 />
-                                <text x={startX + 5} y={y - 3} fill={levelColor} fontSize="10">
+                                <text 
+                                  x={labelRight ? startX + width - 40 : startX + 5} 
+                                  y={y - 3} 
+                                  fill={levelColor} 
+                                  fontSize="10"
+                                  textAnchor={labelRight ? 'end' : 'start'}
+                                >
                                   {(level * 100).toFixed(1)}%
                                 </text>
                               </g>
@@ -8968,8 +9019,11 @@ export default function CryptoIndicators() {
                       if (p1.x === null || p2.x === null || p3.x === null) return null;
                       
                       const waveDiff = drawing.points[1].price - drawing.points[0].price;
-                      const fibLevels = [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
+                      const allFibLevels = [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
+                      const hiddenLevels = drawing.style?.hiddenLevels || [];
+                      const fibLevels = allFibLevels.filter(l => !hiddenLevels.includes(l));
                       const width = 200;
+                      const labelRight = drawing.style?.labelPosition === 'right';
                       
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
@@ -8987,7 +9041,13 @@ export default function CryptoIndicators() {
                                   stroke={levelColor}
                                   strokeWidth={1}
                                 />
-                                <text x={p3.x + 5} y={y - 3} fill={levelColor} fontSize="10">
+                                <text 
+                                  x={labelRight ? p3.x + width - 5 : p3.x + 5} 
+                                  y={y - 3} 
+                                  fill={levelColor} 
+                                  fontSize="10"
+                                  textAnchor={labelRight ? 'end' : 'start'}
+                                >
                                   {(level * 100).toFixed(1)}%
                                 </text>
                               </g>
@@ -9083,12 +9143,28 @@ export default function CryptoIndicators() {
                     </svg>
                   </button>
                   
+                  {/* Settings Button - only show when a drawing is selected */}
+                  {selectedDrawingId && (
+                    <button
+                      onClick={() => setShowDrawingSettings(!showDrawingSettings)}
+                      className={`p-2 rounded-lg transition-all ${showDrawingSettings ? 'bg-blue-500 text-white' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`}
+                      title="Drawing Settings"
+                      data-testid="btn-drawing-settings"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </button>
+                  )}
+                  
                   {/* Delete Selected Button - only show when a drawing is selected */}
                   {selectedDrawingId && (
                     <button
                       onClick={() => {
                         deleteDrawingMutation.mutate(selectedDrawingId);
                         setSelectedDrawingId(null);
+                        setShowDrawingSettings(false);
                         toast({ title: 'Drawing Deleted', description: 'Selected drawing removed from chart' });
                       }}
                       className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all animate-pulse"
@@ -9151,6 +9227,142 @@ export default function CryptoIndicators() {
                     ))}
                   </div>
                 )}
+                
+                {/* Drawing Settings Panel */}
+                {showDrawingSettings && selectedDrawingId && (() => {
+                  const selectedDrawing = drawings.find(d => d.id === selectedDrawingId);
+                  if (!selectedDrawing) return null;
+                  
+                  const isFibTool = selectedDrawing.type === 'fib_retracement' || selectedDrawing.type === 'trend_fib';
+                  const fibLevels = selectedDrawing.type === 'fib_retracement' 
+                    ? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+                    : [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
+                  
+                  const updateDrawingSettings = (newStyle: any) => {
+                    setDrawings(prev => prev.map(d => 
+                      d.id === selectedDrawingId 
+                        ? { ...d, style: { ...d.style, ...newStyle } }
+                        : d
+                    ));
+                    // Save to database
+                    updateDrawingMutation.mutate({ id: selectedDrawingId, style: { ...selectedDrawing.style, ...newStyle } });
+                  };
+                  
+                  return (
+                    <div className="absolute top-14 left-2 z-30 bg-slate-900 border border-slate-600 rounded-lg p-3 shadow-xl min-w-[220px] max-h-[400px] overflow-y-auto">
+                      <div className="text-xs text-gray-400 mb-3 flex justify-between items-center">
+                        <span>Drawing Settings</span>
+                        <button onClick={() => setShowDrawingSettings(false)} className="text-gray-500 hover:text-white">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      
+                      {isFibTool ? (
+                        <>
+                          {/* Fib Level Toggles */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Visible Levels</div>
+                            <div className="grid grid-cols-2 gap-1">
+                              {fibLevels.map(level => {
+                                const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
+                                const isVisible = !hiddenLevels.includes(level);
+                                return (
+                                  <label key={level} className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:bg-slate-800 p-1 rounded">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={isVisible}
+                                      onChange={() => {
+                                        const newHidden = isVisible 
+                                          ? [...hiddenLevels, level]
+                                          : hiddenLevels.filter((l: number) => l !== level);
+                                        updateDrawingSettings({ hiddenLevels: newHidden });
+                                      }}
+                                      className="rounded border-slate-600"
+                                    />
+                                    {(level * 100).toFixed(1)}%
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          
+                          {/* Label Position */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Label Position</div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => updateDrawingSettings({ labelPosition: 'left' })}
+                                className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.labelPosition !== 'right' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+                              >
+                                Left
+                              </button>
+                              <button
+                                onClick={() => updateDrawingSettings({ labelPosition: 'right' })}
+                                className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.labelPosition === 'right' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+                              >
+                                Right
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* Label Text */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Label (optional)</div>
+                            <input 
+                              type="text"
+                              value={selectedDrawing.style?.label || ''}
+                              onChange={(e) => updateDrawingSettings({ label: e.target.value })}
+                              placeholder="Enter label..."
+                              className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-white placeholder-gray-500"
+                              data-testid="input-drawing-label"
+                            />
+                          </div>
+                          
+                          {/* Label Position - only show if there's a label */}
+                          {selectedDrawing.style?.label && (
+                            <div className="mb-3">
+                              <div className="text-xs text-gray-300 mb-2">Label Position</div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => updateDrawingSettings({ labelPosition: 'left' })}
+                                  className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.labelPosition !== 'right' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+                                >
+                                  Left
+                                </button>
+                                <button
+                                  onClick={() => updateDrawingSettings({ labelPosition: 'right' })}
+                                  className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.labelPosition === 'right' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+                                >
+                                  Right
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Color Picker */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Color</div>
+                            <div className="flex flex-wrap gap-2">
+                              {['#3b82f6', '#22c55e', '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#ffffff'].map(color => (
+                                <button
+                                  key={color}
+                                  onClick={() => updateDrawingSettings({ color })}
+                                  className={`w-6 h-6 rounded-full border-2 ${selectedDrawing.style?.color === color ? 'border-white' : 'border-transparent'}`}
+                                  style={{ backgroundColor: color }}
+                                  data-testid={`color-${color.replace('#', '')}`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
                 
                 {/* Active Tool Indicator */}
                 {activeTool && drawingMode === 'draw' && (

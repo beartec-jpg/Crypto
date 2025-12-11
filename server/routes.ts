@@ -4627,6 +4627,41 @@ Return ONLY valid JSON in this exact format:
     }
   });
   
+  // Update a chart drawing (for settings changes)
+  app.patch("/api/crypto/chart-drawings/:id", requireCryptoAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { style } = req.body;
+      const userId = (req as any).cryptoUser.id;
+      
+      const { db } = await import("./db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      // First get the existing drawing to merge styles
+      const [existing] = await db.select()
+        .from(chartDrawings)
+        .where(and(eq(chartDrawings.id, id), eq(chartDrawings.userId, userId)));
+      
+      if (!existing) {
+        return res.status(404).json({ error: 'Drawing not found' });
+      }
+      
+      // Merge the new style with existing style
+      const mergedStyle = { ...(existing.style as object || {}), ...style };
+      
+      const [updated] = await db.update(chartDrawings)
+        .set({ style: mergedStyle })
+        .where(and(eq(chartDrawings.id, id), eq(chartDrawings.userId, userId)))
+        .returning();
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error('Error updating chart drawing:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
   // Clear all drawings for a user/symbol/timeframe
   app.delete("/api/crypto/chart-drawings", requireCryptoAuth, async (req, res) => {
     try {
