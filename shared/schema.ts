@@ -464,6 +464,13 @@ export const indicatorAlertState = pgTable("indicator_alert_state", {
   lastAdx: decimal("last_adx", { precision: 10, scale: 2 }), // Last ADX value
   lastPlusDi: decimal("last_plus_di", { precision: 10, scale: 2 }), // Last +DI value
   lastMinusDi: decimal("last_minus_di", { precision: 10, scale: 2 }), // Last -DI value
+  lastRsi: decimal("last_rsi", { precision: 10, scale: 2 }), // Last RSI value
+  lastMacd: decimal("last_macd", { precision: 18, scale: 8 }), // Last MACD line value
+  lastMacdSignal: decimal("last_macd_signal", { precision: 18, scale: 8 }), // Last MACD signal value
+  lastStochK: decimal("last_stoch_k", { precision: 10, scale: 2 }), // Last Stochastic K value
+  lastStochD: decimal("last_stoch_d", { precision: 10, scale: 2 }), // Last Stochastic D value
+  lastEma9: decimal("last_ema9", { precision: 18, scale: 8 }), // Last EMA 9 value
+  lastEma21: decimal("last_ema21", { precision: 18, scale: 8 }), // Last EMA 21 value
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -475,6 +482,13 @@ export const insertIndicatorAlertStateSchema = z.object({
   lastAdx: z.union([z.string(), z.number()]).optional().nullable(),
   lastPlusDi: z.union([z.string(), z.number()]).optional().nullable(),
   lastMinusDi: z.union([z.string(), z.number()]).optional().nullable(),
+  lastRsi: z.union([z.string(), z.number()]).optional().nullable(),
+  lastMacd: z.union([z.string(), z.number()]).optional().nullable(),
+  lastMacdSignal: z.union([z.string(), z.number()]).optional().nullable(),
+  lastStochK: z.union([z.string(), z.number()]).optional().nullable(),
+  lastStochD: z.union([z.string(), z.number()]).optional().nullable(),
+  lastEma9: z.union([z.string(), z.number()]).optional().nullable(),
+  lastEma21: z.union([z.string(), z.number()]).optional().nullable(),
 });
 
 export type InsertIndicatorAlertState = z.infer<typeof insertIndicatorAlertStateSchema>;
