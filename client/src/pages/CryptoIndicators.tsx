@@ -6813,14 +6813,22 @@ export default function CryptoIndicators() {
     orderBlocksRefs.current = [];
     
     if (showOrderBlocks) {
-      const orderBlocks = calculateOrderBlocks(candles, 1.5, orderBlockLength);
+      const orderBlocks = calculateOrderBlocks(candles, 1.0, orderBlockLength);
       const lastTime = candles[candles.length - 1].time;
       
       // Render each order block as a shaded box like FVG
-      for (const ob of orderBlocks.slice(-15)) { // Show last 15 blocks
+      // Show fresh blocks with full opacity, mitigated with reduced opacity
+      for (const ob of orderBlocks.slice(-20)) { // Show last 20 blocks
         try {
-          const color = ob.type === 'bullish' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
-          const borderColor = ob.type === 'bullish' ? '#10b981' : '#ef4444';
+          // Fresh blocks have higher opacity, mitigated blocks have lower
+          const opacity = ob.mitigated ? 0.1 : 0.25;
+          const borderOpacity = ob.mitigated ? 0.4 : 1;
+          const color = ob.type === 'bullish' 
+            ? `rgba(16, 185, 129, ${opacity})` 
+            : `rgba(239, 68, 68, ${opacity})`;
+          const borderColor = ob.type === 'bullish' 
+            ? `rgba(16, 185, 129, ${borderOpacity})` 
+            : `rgba(239, 68, 68, ${borderOpacity})`;
           
           // Find candles from OB time to current time
           const obIdx = candles.findIndex(c => c.time === ob.time);

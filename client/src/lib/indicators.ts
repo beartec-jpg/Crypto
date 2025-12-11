@@ -366,16 +366,17 @@ export interface OrderBlock {
   low: number;
   type: 'bullish' | 'bearish';
   strength: number; // 1-3 (based on volume and price movement)
+  mitigated: boolean; // Whether the block has been touched/invalidated
 }
 
 /**
- * Detect Order Blocks (SMC) with mitigation logic
+ * Detect Order Blocks (SMC)
  * Order blocks are the last opposite-colored candle before a strong move
- * Mitigated blocks (where price has crossed through) are filtered out
+ * Shows both fresh and mitigated blocks (mitigated blocks shown with lower opacity)
  */
 export function calculateOrderBlocks(
   candles: CandleData[],
-  minStrength: number = 1.5, // Minimum price move ratio to qualify as strong move
+  _minStrength: number = 1.0, // Not used anymore, kept for API compatibility
   lookback: number = 100 // How many candles back to look for order blocks
 ): OrderBlock[] {
   if (candles.length < 5) return [];
@@ -387,63 +388,66 @@ export function calculateOrderBlocks(
   
   for (let i = startIndex; i < candles.length - 1; i++) {
     const current = candles[i];
-    const _prev = candles[i - 1];
     const next = candles[i + 1];
     
-    // Check for bullish order block (bearish candle before strong bullish move)
+    // Calculate body size and move size
+    const currentBodySize = Math.abs(current.close - current.open);
+    const nextBodySize = Math.abs(next.close - next.open);
+    
+    // Check for bullish order block (bearish candle before bullish move)
     const isBearishCandle = current.close < current.open;
     const nextIsBullish = next.close > next.open;
-    const strongBullishMove = (next.high - next.low) > (current.high - current.low) * minStrength;
+    // Strong move: next candle body is larger than current, or next candle closes above current high
+    const isStrongBullishMove = nextBodySize > currentBodySize * 0.8 || next.close > current.high;
     
-    if (isBearishCandle && nextIsBullish && strongBullishMove) {
-      const volumeStrength = current.volume > (candles[i - 1].volume + candles[i - 2].volume) / 2 ? 3 : 2;
+    if (isBearishCandle && nextIsBullish && isStrongBullishMove) {
+      const volumeStrength = i >= 2 && current.volume > (candles[i - 1].volume + candles[i - 2].volume) / 2 ? 3 : 2;
       
-      // Check for mitigation: bullish block is mitigated if any subsequent candle drops below the block's low
+      // Check for mitigation: bullish block is mitigated if price dropped below the block's low
       let isMitigated = false;
-      for (let j = i + 1; j < candles.length; j++) {
+      for (let j = i + 2; j < candles.length; j++) {
         if (candles[j].low < current.low) {
           isMitigated = true;
           break;
         }
       }
       
-      if (!isMitigated) {
-        orderBlocks.push({
-          time: current.time,
-          high: current.high,
-          low: current.low,
-          type: 'bullish',
-          strength: volumeStrength
-        });
-      }
+      orderBlocks.push({
+        time: current.time,
+        high: current.high,
+        low: current.low,
+        type: 'bullish',
+        strength: volumeStrength,
+        mitigated: isMitigated
+      });
     }
     
-    // Check for bearish order block (bullish candle before strong bearish move)
+    // Check for bearish order block (bullish candle before bearish move)
     const isBullishCandle = current.close > current.open;
     const nextIsBearish = next.close < next.open;
-    const strongBearishMove = (next.high - next.low) > (current.high - current.low) * minStrength;
+    // Strong move: next candle body is larger than current, or next candle closes below current low
+    const isStrongBearishMove = nextBodySize > currentBodySize * 0.8 || next.close < current.low;
     
-    if (isBullishCandle && nextIsBearish && strongBearishMove) {
-      const volumeStrength = current.volume > (candles[i - 1].volume + candles[i - 2].volume) / 2 ? 3 : 2;
+    if (isBullishCandle && nextIsBearish && isStrongBearishMove) {
+      const volumeStrength = i >= 2 && current.volume > (candles[i - 1].volume + candles[i - 2].volume) / 2 ? 3 : 2;
       
-      // Check for mitigation: bearish block is mitigated if any subsequent candle rises above the block's high
+      // Check for mitigation: bearish block is mitigated if price rose above the block's high
       let isMitigated = false;
-      for (let j = i + 1; j < candles.length; j++) {
+      for (let j = i + 2; j < candles.length; j++) {
         if (candles[j].high > current.high) {
           isMitigated = true;
           break;
         }
       }
       
-      if (!isMitigated) {
-        orderBlocks.push({
-          time: current.time,
-          high: current.high,
-          low: current.low,
-          type: 'bearish',
-          strength: volumeStrength
-        });
-      }
+      orderBlocks.push({
+        time: current.time,
+        high: current.high,
+        low: current.low,
+        type: 'bearish',
+        strength: volumeStrength,
+        mitigated: isMitigated
+      });
     }
   }
   
