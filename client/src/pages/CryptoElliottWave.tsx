@@ -6666,13 +6666,18 @@ const aiAnalyze = useMutation({
                                         if (selectedType === 'impulse') {
                                           return l.label.startsWith('W2') || l.label.startsWith('W3') || l.label.startsWith('W5');
                                         }
-                                        // For correction, check B wave type if applicable
-                                        if (l.label.startsWith('B') && bWaveType) {
-                                          // Flat: 38.2%, 50% | Zigzag: 50%, 61.8%, 78.6%
-                                          if (bWaveType === 'flat') {
-                                            return l.label.includes('38%') || l.label.includes('50%');
-                                          } else if (bWaveType === 'zigzag') {
-                                            return l.label.includes('50%') || l.label.includes('62%') || l.label.includes('79%');
+                                        // For correction with B wave type selected, filter by ratio
+                                        if (l.label.startsWith('B ') && bWaveType) {
+                                          // Extract ratio from label (e.g., "B 38%" -> 38)
+                                          const ratioMatch = l.label.match(/(\d+)%/);
+                                          if (ratioMatch) {
+                                            const ratio = parseInt(ratioMatch[1]);
+                                            // Flat: 38%, 50% | Zigzag: 50%, 62%, 79%
+                                            if (bWaveType === 'flat') {
+                                              return ratio <= 50;
+                                            } else if (bWaveType === 'zigzag') {
+                                              return ratio >= 50;
+                                            }
                                           }
                                         }
                                         return l.label.startsWith('B') || l.label.startsWith('C') || l.label.startsWith('Y');
