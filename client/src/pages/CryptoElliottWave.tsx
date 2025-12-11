@@ -6823,7 +6823,7 @@ const aiAnalyze = useMutation({
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      const lineTitle = `${structure.degree} ${structure.expectedNextWave} ${level.label}`;
+                                                      const lineTitle = `${level.label}`;
                                                       
                                                       if (isSaved) {
                                                         // Delete from DB
