@@ -266,9 +266,9 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
         
         interval_ms = interval_map.get(interval, 900000)
         
-        # Calculate time range for last 20 candles (19 completed + 1 LIVE)
-        # This provides full historical data for the orderflow table
-        num_candles = 20
+        # Calculate time range for last 50 candles to provide deeper history
+        # This gives more rows in the orderflow table for analysis
+        num_candles = 50
         lookback_ms = interval_ms * num_candles
         
         now = datetime.now()
