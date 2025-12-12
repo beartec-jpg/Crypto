@@ -4,136 +4,197 @@ interface ExchangeConfig {
   id: string;
   name: string;
   priority: number;
-  fetchTrades: (symbol: string) => Promise<{ timestamp: number; side: string; amount: number; price: number }[]>;
+  fetchOHLCV: (symbol: string, interval: string, since: number, limit: number) => Promise<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number; buyVolume: number; sellVolume: number; delta: number }[]>;
 }
 
-// Direct REST API calls to each exchange
-async function fetchBinanceUSTrades(symbol: string): Promise<{ timestamp: number; side: string; amount: number; price: number }[]> {
+// Fetch OHLCV from Binance with taker buy/sell volume breakdown
+async function fetchBinanceOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const formattedSymbol = symbol.replace('/', '');
-  const url = `https://api.binance.us/api/v3/trades?symbol=${formattedSymbol}&limit=500`;
+  const url = `https://api.binance.us/api/v3/klines?symbol=${formattedSymbol}&interval=${interval}&startTime=${since}&limit=${limit}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Binance US error: ${response.status}`);
-  const trades = await response.json();
-  return trades.map((t: any) => ({
-    timestamp: t.time,
-    side: t.isBuyerMaker ? 'sell' : 'buy',
-    amount: parseFloat(t.qty),
-    price: parseFloat(t.price),
-  }));
+  const klines = await response.json();
+  
+  return klines.map((k: any) => {
+    const volume = parseFloat(k[5]);
+    const buyVolume = parseFloat(k[9]); // Taker buy base volume
+    const sellVolume = volume - buyVolume;
+    return {
+      timestamp: k[0],
+      open: parseFloat(k[1]),
+      high: parseFloat(k[2]),
+      low: parseFloat(k[3]),
+      close: parseFloat(k[4]),
+      volume,
+      buyVolume,
+      sellVolume,
+      delta: buyVolume - sellVolume,
+    };
+  });
 }
 
-async function fetchOKXTrades(symbol: string): Promise<{ timestamp: number; side: string; amount: number; price: number }[]> {
+// Fetch OHLCV from OKX
+async function fetchOKXOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const instId = `${base}-USDT`;
-  const url = `https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`;
+  const barMap: Record<string, string> = { '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '4h': '4H', '1d': '1D' };
+  const bar = barMap[interval] || '15m';
+  const url = `https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${bar}&limit=${limit}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`OKX error: ${response.status}`);
   const data = await response.json();
   if (!data.data) throw new Error('OKX: No data');
-  return data.data.map((t: any) => ({
-    timestamp: parseInt(t.ts),
-    side: t.side,
-    amount: parseFloat(t.sz),
-    price: parseFloat(t.px),
-  }));
+  
+  // OKX returns [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+  return data.data.map((k: any) => {
+    const volume = parseFloat(k[5]);
+    // OKX doesn't provide taker volume, estimate 50/50
+    return {
+      timestamp: parseInt(k[0]),
+      open: parseFloat(k[1]),
+      high: parseFloat(k[2]),
+      low: parseFloat(k[3]),
+      close: parseFloat(k[4]),
+      volume,
+      buyVolume: volume * 0.5,
+      sellVolume: volume * 0.5,
+      delta: 0, // Unknown without taker data
+    };
+  }).reverse(); // OKX returns newest first
 }
 
-async function fetchGateIOTrades(symbol: string): Promise<{ timestamp: number; side: string; amount: number; price: number }[]> {
+// Fetch OHLCV from Gate.io
+async function fetchGateIOOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const currencyPair = `${base}_USDT`;
-  const url = `https://api.gateio.ws/api/v4/spot/trades?currency_pair=${currencyPair}&limit=100`;
+  const intervalMap: Record<string, string> = { '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '4h': '4h', '1d': '1d' };
+  const gateInterval = intervalMap[interval] || '15m';
+  const url = `https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=${currencyPair}&interval=${gateInterval}&limit=${limit}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Gate.io error: ${response.status}`);
-  const trades = await response.json();
-  return trades.map((t: any) => ({
-    timestamp: parseInt(t.create_time_ms),
-    side: t.side,
-    amount: parseFloat(t.amount),
-    price: parseFloat(t.price),
-  }));
+  const candles = await response.json();
+  
+  // Gate.io returns [timestamp, volume, close, high, low, open, amount]
+  return candles.map((k: any) => {
+    const volume = parseFloat(k[1]);
+    return {
+      timestamp: parseInt(k[0]) * 1000, // Gate.io uses seconds
+      open: parseFloat(k[5]),
+      high: parseFloat(k[3]),
+      low: parseFloat(k[4]),
+      close: parseFloat(k[2]),
+      volume,
+      buyVolume: volume * 0.5,
+      sellVolume: volume * 0.5,
+      delta: 0,
+    };
+  });
 }
 
-async function fetchKrakenTrades(symbol: string): Promise<{ timestamp: number; side: string; amount: number; price: number }[]> {
+// Fetch OHLCV from Kraken
+async function fetchKrakenOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const pair = `${base}USD`;
-  const url = `https://api.kraken.com/0/public/Trades?pair=${pair}&count=100`;
+  const intervalMap: Record<string, number> = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, '1d': 1440 };
+  const krakenInterval = intervalMap[interval] || 15;
+  const url = `https://api.kraken.com/0/public/OHLC?pair=${pair}&interval=${krakenInterval}&since=${Math.floor(since / 1000)}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Kraken error: ${response.status}`);
   const data = await response.json();
   if (data.error?.length) throw new Error(`Kraken: ${data.error[0]}`);
   const pairKey = Object.keys(data.result).find(k => k !== 'last');
   if (!pairKey) throw new Error('Kraken: No pair data');
-  return data.result[pairKey].map((t: any) => ({
-    timestamp: Math.floor(parseFloat(t[2]) * 1000),
-    side: t[3] === 'b' ? 'buy' : 'sell',
-    amount: parseFloat(t[1]),
-    price: parseFloat(t[0]),
-  }));
+  
+  // Kraken returns [time, open, high, low, close, vwap, volume, count]
+  return data.result[pairKey].slice(-limit).map((k: any) => {
+    const volume = parseFloat(k[6]);
+    return {
+      timestamp: k[0] * 1000,
+      open: parseFloat(k[1]),
+      high: parseFloat(k[2]),
+      low: parseFloat(k[3]),
+      close: parseFloat(k[4]),
+      volume,
+      buyVolume: volume * 0.5,
+      sellVolume: volume * 0.5,
+      delta: 0,
+    };
+  });
 }
 
-async function fetchKuCoinTrades(symbol: string): Promise<{ timestamp: number; side: string; amount: number; price: number }[]> {
+// Fetch OHLCV from KuCoin
+async function fetchKuCoinOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const kcSymbol = `${base}-USDT`;
-  const url = `https://api.kucoin.com/api/v1/market/histories?symbol=${kcSymbol}`;
+  const intervalMap: Record<string, string> = { '1m': '1min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '1hour', '4h': '4hour', '1d': '1day' };
+  const kcInterval = intervalMap[interval] || '15min';
+  const url = `https://api.kucoin.com/api/v1/market/candles?type=${kcInterval}&symbol=${kcSymbol}&startAt=${Math.floor(since / 1000)}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`KuCoin error: ${response.status}`);
   const data = await response.json();
   if (!data.data) throw new Error('KuCoin: No data');
-  return data.data.slice(0, 100).map((t: any) => ({
-    timestamp: parseInt(t.time) / 1000000, // KuCoin uses nanoseconds - convert to ms
-    side: t.side,
-    amount: parseFloat(t.size),
-    price: parseFloat(t.price),
-  }));
+  
+  // KuCoin returns [time, open, close, high, low, volume, turnover]
+  return data.data.slice(0, limit).map((k: any) => {
+    const volume = parseFloat(k[5]);
+    return {
+      timestamp: parseInt(k[0]) * 1000,
+      open: parseFloat(k[1]),
+      high: parseFloat(k[3]),
+      low: parseFloat(k[4]),
+      close: parseFloat(k[2]),
+      volume,
+      buyVolume: volume * 0.5,
+      sellVolume: volume * 0.5,
+      delta: 0,
+    };
+  }).reverse(); // KuCoin returns newest first
 }
 
-async function fetchCoinbaseTrades(symbol: string): Promise<{ timestamp: number; side: string; amount: number; price: number }[]> {
+// Fetch OHLCV from Coinbase
+async function fetchCoinbaseOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const productId = `${base}-USD`;
-  const url = `https://api.exchange.coinbase.com/products/${productId}/trades?limit=100`;
+  const granularityMap: Record<string, number> = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400 };
+  const granularity = granularityMap[interval] || 900;
+  const start = new Date(since).toISOString();
+  const end = new Date(since + granularity * 1000 * limit).toISOString();
+  const url = `https://api.exchange.coinbase.com/products/${productId}/candles?granularity=${granularity}&start=${start}&end=${end}`;
   const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   if (!response.ok) throw new Error(`Coinbase error: ${response.status}`);
-  const trades = await response.json();
-  return trades.map((t: any) => ({
-    timestamp: new Date(t.time).getTime(),
-    side: t.side,
-    amount: parseFloat(t.size),
-    price: parseFloat(t.price),
-  }));
+  const candles = await response.json();
+  
+  // Coinbase returns [time, low, high, open, close, volume]
+  return candles.slice(-limit).map((k: any) => {
+    const volume = parseFloat(k[5]);
+    return {
+      timestamp: k[0] * 1000,
+      open: parseFloat(k[3]),
+      high: parseFloat(k[2]),
+      low: parseFloat(k[1]),
+      close: parseFloat(k[4]),
+      volume,
+      buyVolume: volume * 0.5,
+      sellVolume: volume * 0.5,
+      delta: 0,
+    };
+  }).reverse(); // Coinbase returns newest first
 }
 
 const EXCHANGES: ExchangeConfig[] = [
-  { id: 'binanceus', name: 'Binance US', priority: 1.0, fetchTrades: fetchBinanceUSTrades },
-  { id: 'okx', name: 'OKX', priority: 0.9, fetchTrades: fetchOKXTrades },
-  { id: 'gateio', name: 'Gate.io', priority: 0.85, fetchTrades: fetchGateIOTrades },
-  { id: 'kraken', name: 'Kraken', priority: 0.8, fetchTrades: fetchKrakenTrades },
-  { id: 'kucoin', name: 'KuCoin', priority: 0.75, fetchTrades: fetchKuCoinTrades },
-  { id: 'coinbase', name: 'Coinbase', priority: 0.7, fetchTrades: fetchCoinbaseTrades },
+  { id: 'binanceus', name: 'Binance US', priority: 1.0, fetchOHLCV: fetchBinanceOHLCV },
+  { id: 'okx', name: 'OKX', priority: 0.9, fetchOHLCV: fetchOKXOHLCV },
+  { id: 'gateio', name: 'Gate.io', priority: 0.85, fetchOHLCV: fetchGateIOOHLCV },
+  { id: 'kraken', name: 'Kraken', priority: 0.8, fetchOHLCV: fetchKrakenOHLCV },
+  { id: 'kucoin', name: 'KuCoin', priority: 0.75, fetchOHLCV: fetchKuCoinOHLCV },
+  { id: 'coinbase', name: 'Coinbase', priority: 0.7, fetchOHLCV: fetchCoinbaseOHLCV },
 ];
 
-function calculateDelta(trades: any[], intervalMs: number): Map<number, { buyVol: number; sellVol: number; delta: number; totalVol: number; tradeCount: number }> {
-  const candles = new Map<number, { buyVol: number; sellVol: number; delta: number; totalVol: number; tradeCount: number }>();
-  
-  for (const trade of trades) {
-    const candleTs = Math.floor(trade.timestamp / intervalMs) * intervalMs;
-    
-    if (!candles.has(candleTs)) {
-      candles.set(candleTs, { buyVol: 0, sellVol: 0, delta: 0, totalVol: 0, tradeCount: 0 });
-    }
-    
-    const candle = candles.get(candleTs)!;
-    if (trade.side === 'buy') {
-      candle.buyVol += trade.amount;
-    } else {
-      candle.sellVol += trade.amount;
-    }
-    candle.totalVol += trade.amount;
-    candle.tradeCount += 1;
-    candle.delta = candle.buyVol - candle.sellVol;
-  }
-  
-  return candles;
-}
+const INTERVAL_MS: Record<string, number> = {
+  '1m': 60000, '3m': 180000, '5m': 300000, '15m': 900000,
+  '30m': 1800000, '1h': 3600000, '2h': 7200000, '4h': 14400000,
+  '6h': 21600000, '12h': 43200000, '1d': 86400000
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -150,11 +211,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const ALLOWED_SYMBOLS = ['XRPUSDT', 'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT'];
-    const INTERVAL_MS: Record<string, number> = {
-      '1m': 60000, '3m': 180000, '5m': 300000, '15m': 900000,
-      '30m': 1800000, '1h': 3600000, '2h': 7200000, '4h': 14400000,
-      '6h': 21600000, '12h': 43200000, '1d': 86400000
-    };
 
     const symbol = (req.query.symbol as string)?.toUpperCase() || 'XRPUSDT';
     const interval = (req.query.interval as string) || '15m';
@@ -167,20 +223,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const intervalMs = INTERVAL_MS[interval] || 900000;
+    const since = Date.now() - intervalMs * 100; // Fetch last 100 candles
+    const limit = 100;
 
-    // Fetch from all exchanges in parallel with timeout
+    // Fetch OHLCV from all exchanges in parallel with timeout
     const exchangeResults = await Promise.allSettled(
       EXCHANGES.map(async (exchange) => {
         const startTime = Date.now();
         try {
-          const trades = await Promise.race([
-            exchange.fetchTrades(symbol),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
+          const candles = await Promise.race([
+            exchange.fetchOHLCV(symbol, interval, since, limit),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
           ]);
           return {
             exchange,
             success: true,
-            trades,
+            candles,
             responseTime: Date.now() - startTime,
             error: undefined,
           };
@@ -188,7 +246,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return {
             exchange,
             success: false,
-            trades: [],
+            candles: [],
             responseTime: Date.now() - startTime,
             error: error.message?.substring(0, 100),
           };
@@ -196,104 +254,88 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     );
 
-    // Collect successful results
-    const exchangeDeltas: { exchange: ExchangeConfig; deltas: Map<number, any> }[] = [];
+    // Collect successful results and aggregate by timestamp
+    const candlesByTimestamp = new Map<number, { exchanges: string[]; totalDelta: number; totalVolume: number; weightedDelta: number; totalWeight: number }>();
     const metadata: any[] = [];
 
     for (const result of exchangeResults) {
       if (result.status === 'fulfilled') {
-        const { exchange, success, trades, responseTime, error } = result.value;
+        const { exchange, success, candles, responseTime, error } = result.value;
         metadata.push({
           exchange_id: exchange.id,
           exchange: exchange.name,
           success,
-          trades_count: trades.length,
+          candles_count: candles.length,
           response_time_ms: responseTime,
           error,
-          retries: 0,
         });
 
-        if (success && trades.length > 0) {
-          const deltas = calculateDelta(trades, intervalMs);
-          if (deltas.size > 0) {
-            exchangeDeltas.push({ exchange, deltas });
+        if (success && candles.length > 0) {
+          for (const candle of candles) {
+            // Normalize timestamp to interval boundary
+            const normalizedTs = Math.floor(candle.timestamp / intervalMs) * intervalMs;
+            
+            if (!candlesByTimestamp.has(normalizedTs)) {
+              candlesByTimestamp.set(normalizedTs, {
+                exchanges: [],
+                totalDelta: 0,
+                totalVolume: 0,
+                weightedDelta: 0,
+                totalWeight: 0,
+              });
+            }
+            
+            const agg = candlesByTimestamp.get(normalizedTs)!;
+            agg.exchanges.push(exchange.name);
+            agg.totalDelta += candle.delta;
+            agg.totalVolume += candle.volume;
+            agg.weightedDelta += candle.delta * candle.volume * exchange.priority;
+            agg.totalWeight += candle.volume * exchange.priority;
           }
         }
       }
     }
 
-    // Calculate volume-weighted average across exchanges
-    const allTimestamps = new Set<number>();
-    for (const { deltas } of exchangeDeltas) {
-      for (const ts of deltas.keys()) {
-        allTimestamps.add(ts);
-      }
-    }
-
+    // Build output arrays
     const footprint: any[] = [];
     const cvdData: any[] = [];
     const orderflowTable: any[] = [];
     let cumulativeDelta = 0;
 
-    const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+    const sortedTimestamps = Array.from(candlesByTimestamp.keys()).sort((a, b) => a - b);
 
     for (const timestamp of sortedTimestamps) {
-      let totalWeightedDelta = 0;
-      let totalWeight = 0;
-      let totalVolume = 0;
-      const exchangeParticipation: { name: string; delta: number; volume: number }[] = [];
+      const agg = candlesByTimestamp.get(timestamp)!;
+      const exchangeCount = new Set(agg.exchanges).size;
+      const avgDelta = agg.totalWeight > 0 ? agg.weightedDelta / agg.totalWeight : 0;
+      cumulativeDelta += avgDelta;
 
-      for (const { exchange, deltas } of exchangeDeltas) {
-        const candle = deltas.get(timestamp);
-        if (candle) {
-          const weight = candle.totalVol * exchange.priority;
-          totalWeightedDelta += candle.delta * weight;
-          totalWeight += weight;
-          totalVolume += candle.totalVol;
-          exchangeParticipation.push({
-            name: exchange.name,
-            delta: candle.delta,
-            volume: candle.totalVol,
-          });
-        }
-      }
+      footprint.push({
+        time: Math.floor(timestamp / 1000),
+        delta: avgDelta,
+        volume: agg.totalVolume,
+        exchanges: exchangeCount,
+        confidence: Math.min(1.0, exchangeCount / EXCHANGES.length),
+        divergence: false,
+      });
 
-      if (totalWeight > 0) {
-        const avgDelta = totalWeightedDelta / totalWeight;
-        cumulativeDelta += avgDelta;
-        const exchangeCount = exchangeParticipation.length;
+      cvdData.push({
+        time: Math.floor(timestamp / 1000),
+        value: cumulativeDelta,
+        delta: avgDelta,
+        color: avgDelta >= 0 ? 'green' : 'red',
+        confidence: Math.min(1.0, exchangeCount / EXCHANGES.length),
+      });
 
-        footprint.push({
-          time: Math.floor(timestamp / 1000),
-          delta: avgDelta,
-          volume: totalVolume,
-          exchanges: exchangeCount,
-          confidence: Math.min(1.0, exchangeCount / EXCHANGES.length),
-          divergence: false,
-        });
-
-        cvdData.push({
-          time: Math.floor(timestamp / 1000),
-          value: cumulativeDelta,
-          delta: avgDelta,
-          color: avgDelta >= 0 ? 'green' : 'red',
-          confidence: Math.min(1.0, exchangeCount / EXCHANGES.length),
-        });
-
-        // Add to orderflow table (for display)
-        const buyVol = exchangeParticipation.reduce((sum, e) => sum + (e.delta > 0 ? e.volume : 0), 0);
-        const sellVol = exchangeParticipation.reduce((sum, e) => sum + (e.delta < 0 ? e.volume : 0), 0);
-        
-        orderflowTable.push({
-          time: Math.floor(timestamp / 1000),
-          buyVol,
-          sellVol,
-          delta: avgDelta,
-          volume: totalVolume,
-          exchanges: exchangeCount,
-          confidence: Math.min(1.0, exchangeCount / EXCHANGES.length),
-        });
-      }
+      orderflowTable.push({
+        time: Math.floor(timestamp / 1000),
+        buyVol: agg.totalVolume * 0.5 + avgDelta * 0.5,
+        sellVol: agg.totalVolume * 0.5 - avgDelta * 0.5,
+        delta: avgDelta,
+        volume: agg.totalVolume,
+        exchanges: exchangeCount,
+        confidence: Math.min(1.0, exchangeCount / EXCHANGES.length),
+      });
     }
 
     // Calculate divergences
