@@ -1,4 +1,4 @@
-import { type Project, type PipeConfiguration, type MeterConfiguration, type Calculation, type InsertProject, type InsertPipeConfiguration, type InsertMeterConfiguration, type InsertCalculation, type User, type UpsertUser, type CompanyBranding, type InsertCompanyBranding, type Feedback, type InsertFeedback, type ElliottWaveLabel, type InsertElliottWaveLabel, type CachedCandles, type InsertCachedCandles } from "@shared/schema";
+import { type Project, type PipeConfiguration, type MeterConfiguration, type Calculation, type InsertProject, type InsertPipeConfiguration, type InsertMeterConfiguration, type InsertCalculation, type User, type UpsertUser, type CompanyBranding, type InsertCompanyBranding, type Feedback, type InsertFeedback, type FeedbackBoard, type InsertFeedbackBoard, type FeedbackBoardReply, type InsertFeedbackBoardReply, type ElliottWaveLabel, type InsertElliottWaveLabel, type CachedCandles, type InsertCachedCandles } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -38,6 +38,14 @@ export interface IStorage {
   createFeedback(feedback: InsertFeedback): Promise<Feedback>;
   listFeedback(): Promise<Feedback[]>;
 
+  // Feedback Board (rolling suggestions board)
+  createFeedbackBoard(post: InsertFeedbackBoard): Promise<FeedbackBoard>;
+  listFeedbackBoard(): Promise<FeedbackBoard[]>;
+  deleteFeedbackBoard(id: string): Promise<boolean>;
+  createFeedbackBoardReply(reply: InsertFeedbackBoardReply): Promise<FeedbackBoardReply>;
+  getFeedbackBoardReplies(feedbackId: string): Promise<FeedbackBoardReply[]>;
+  deleteFeedbackBoardReply(id: string): Promise<boolean>;
+
   // Elliott Wave Labels (elite tier only)
   createElliottWaveLabel(label: InsertElliottWaveLabel): Promise<ElliottWaveLabel>;
   getElliottWaveLabels(userId: string, symbol: string, timeframe: string): Promise<ElliottWaveLabel[]>;
@@ -59,6 +67,8 @@ export class MemStorage implements IStorage {
   private calculations: Map<string, Calculation>;
   private companyBrandings: Map<string, CompanyBranding>;
   private feedback: Map<string, Feedback>;
+  private feedbackBoardPosts: Map<string, FeedbackBoard>;
+  private feedbackBoardReplies: Map<string, FeedbackBoardReply>;
 
   constructor() {
     this.users = new Map();
@@ -68,6 +78,8 @@ export class MemStorage implements IStorage {
     this.calculations = new Map();
     this.companyBrandings = new Map();
     this.feedback = new Map();
+    this.feedbackBoardPosts = new Map();
+    this.feedbackBoardReplies = new Map();
   }
 
   // Users
@@ -349,6 +361,63 @@ export class MemStorage implements IStorage {
     return Array.from(this.feedback.values()).sort((a, b) => 
       (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
     );
+  }
+
+  // Feedback Board
+  async createFeedbackBoard(post: InsertFeedbackBoard): Promise<FeedbackBoard> {
+    const id = randomUUID();
+    const now = new Date();
+    const feedbackPost: FeedbackBoard = {
+      id,
+      userEmail: post.userEmail || null,
+      userName: post.userName || null,
+      content: post.content,
+      createdAt: now,
+    };
+    this.feedbackBoardPosts.set(id, feedbackPost);
+    return feedbackPost;
+  }
+
+  async listFeedbackBoard(): Promise<FeedbackBoard[]> {
+    return Array.from(this.feedbackBoardPosts.values()).sort((a, b) => 
+      (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
+    );
+  }
+
+  async deleteFeedbackBoard(id: string): Promise<boolean> {
+    const deleted = this.feedbackBoardPosts.delete(id);
+    if (deleted) {
+      Array.from(this.feedbackBoardReplies.entries())
+        .filter(([_, reply]) => reply.feedbackId === id)
+        .forEach(([replyId]) => this.feedbackBoardReplies.delete(replyId));
+    }
+    return deleted;
+  }
+
+  async createFeedbackBoardReply(reply: InsertFeedbackBoardReply): Promise<FeedbackBoardReply> {
+    const id = randomUUID();
+    const now = new Date();
+    const replyData: FeedbackBoardReply = {
+      id,
+      feedbackId: reply.feedbackId,
+      responderEmail: reply.responderEmail || null,
+      responderName: reply.responderName || null,
+      content: reply.content,
+      isAdminReply: reply.isAdminReply || false,
+      createdAt: now,
+    };
+    this.feedbackBoardReplies.set(id, replyData);
+    return replyData;
+  }
+
+  async getFeedbackBoardReplies(feedbackId: string): Promise<FeedbackBoardReply[]> {
+    return Array.from(this.feedbackBoardReplies.values())
+      .filter(reply => reply.feedbackId === feedbackId)
+      .sort((a, b) => (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0));
+  }
+
+  async deleteFeedbackBoardReply(id: string): Promise<boolean> {
+    return this.feedbackBoardReplies.delete(id);
   }
 
   // Elliott Wave Labels (stub - uses database storage in production)

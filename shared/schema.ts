@@ -314,6 +314,44 @@ export const insertFeedbackSchema = z.object({
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 export type Feedback = typeof feedback.$inferSelect;
 
+// Feedback Board - public rolling message board for suggestions/feedback
+export const feedbackBoard = pgTable("feedback_board", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userEmail: varchar("user_email"), // Email of poster (null for anonymous)
+  userName: varchar("user_name"), // Display name
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const feedbackBoardReplies = pgTable("feedback_board_replies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  feedbackId: varchar("feedback_id").notNull().references(() => feedbackBoard.id, { onDelete: "cascade" }),
+  responderEmail: varchar("responder_email"), // Email of responder
+  responderName: varchar("responder_name"), // Display name
+  content: text("content").notNull(),
+  isAdminReply: boolean("is_admin_reply").default(false), // True if from beartec@beartec.uk
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFeedbackBoardSchema = z.object({
+  userEmail: z.string().optional().nullable(),
+  userName: z.string().optional().nullable(),
+  content: z.string().min(1),
+});
+
+export const insertFeedbackBoardReplySchema = z.object({
+  feedbackId: z.string(),
+  responderEmail: z.string().optional().nullable(),
+  responderName: z.string().optional().nullable(),
+  content: z.string().min(1),
+  isAdminReply: z.boolean().optional().default(false),
+});
+
+export type InsertFeedbackBoard = z.infer<typeof insertFeedbackBoardSchema>;
+export type FeedbackBoard = typeof feedbackBoard.$inferSelect;
+export type InsertFeedbackBoardReply = z.infer<typeof insertFeedbackBoardReplySchema>;
+export type FeedbackBoardReply = typeof feedbackBoardReplies.$inferSelect;
+
 // Crypto users table - completely separate from gas calculator users
 export const cryptoUsers = pgTable("crypto_users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

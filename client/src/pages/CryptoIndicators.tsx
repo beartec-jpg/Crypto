@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { TrendingUp, TrendingDown, Activity, DollarSign, Loader2, Bell, ChevronDown, ChevronUp, Zap, Save, Settings } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, Loader2, Bell, ChevronDown, ChevronUp, Zap, Save, Settings, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -8969,6 +8969,16 @@ export default function CryptoIndicators() {
               <Bell className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">Alert Settings</span>
             </Button>
+            <a href="/crypto/feedback">
+              <Button
+                variant="outline"
+                className="border-[#00c4b4] text-[#00c4b4] hover:bg-[#00c4b4]/10 px-3 md:px-4"
+                data-testid="link-feedback"
+              >
+                <MessageSquare className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Feedback</span>
+              </Button>
+            </a>
           </div>
         </div>
 

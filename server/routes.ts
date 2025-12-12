@@ -5040,6 +5040,119 @@ Return JSON:
 
   // ==================== END ELLIOTT WAVE ROUTES ====================
 
+  // ==================== FEEDBACK BOARD ROUTES ====================
+  const ADMIN_EMAIL = 'beartec@beartec.uk';
+
+  // Get all feedback posts (public)
+  app.get("/api/crypto/feedback-board", async (req, res) => {
+    try {
+      const posts = await storage.listFeedbackBoard();
+      
+      // For each post, get its replies
+      const postsWithReplies = await Promise.all(
+        posts.map(async (post) => {
+          const replies = await storage.getFeedbackBoardReplies(post.id);
+          return { ...post, replies };
+        })
+      );
+      
+      res.json(postsWithReplies);
+    } catch (error: any) {
+      console.error('Error fetching feedback board:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create a new feedback post (anyone can post)
+  app.post("/api/crypto/feedback-board", async (req, res) => {
+    try {
+      const { content, userEmail, userName } = req.body;
+      
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({ error: 'Content is required' });
+      }
+      
+      const post = await storage.createFeedbackBoard({
+        content: content.trim(),
+        userEmail: userEmail || null,
+        userName: userName || null,
+      });
+      
+      res.json(post);
+    } catch (error: any) {
+      console.error('Error creating feedback post:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a feedback post (admin only)
+  app.delete("/api/crypto/feedback-board/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { email } = req.body;
+      
+      if (email !== ADMIN_EMAIL) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      
+      const success = await storage.deleteFeedbackBoard(id);
+      res.json({ success });
+    } catch (error: any) {
+      console.error('Error deleting feedback post:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Reply to a feedback post (admin only)
+  app.post("/api/crypto/feedback-board/:id/replies", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { content, responderEmail, responderName } = req.body;
+      
+      // Only admin can reply
+      if (responderEmail !== ADMIN_EMAIL) {
+        return res.status(403).json({ error: 'Only admin can reply to feedback' });
+      }
+      
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({ error: 'Content is required' });
+      }
+      
+      const reply = await storage.createFeedbackBoardReply({
+        feedbackId: id,
+        content: content.trim(),
+        responderEmail: responderEmail,
+        responderName: responderName || 'BearTec',
+        isAdminReply: true,
+      });
+      
+      res.json(reply);
+    } catch (error: any) {
+      console.error('Error creating reply:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a reply (admin only)
+  app.delete("/api/crypto/feedback-board/replies/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { email } = req.body;
+      
+      if (email !== ADMIN_EMAIL) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      
+      const success = await storage.deleteFeedbackBoardReply(id);
+      res.json({ success });
+    } catch (error: any) {
+      console.error('Error deleting reply:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== END FEEDBACK BOARD ROUTES ====================
+
   // Start price monitoring service for tracked trades
   const { priceMonitorService } = await import("./services/priceMonitorService");
   priceMonitorService.start();

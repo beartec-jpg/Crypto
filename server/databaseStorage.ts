@@ -1,6 +1,7 @@
-import type { User, UpsertUser, Project, PipeConfiguration, MeterConfiguration, Calculation, InsertProject, InsertPipeConfiguration, InsertMeterConfiguration, InsertCalculation, CompanyBranding, InsertCompanyBranding, Feedback, InsertFeedback, ElliottWaveLabel, InsertElliottWaveLabel, CachedCandles, InsertCachedCandles } from "@shared/schema";
+import type { User, UpsertUser, Project, PipeConfiguration, MeterConfiguration, Calculation, InsertProject, InsertPipeConfiguration, InsertMeterConfiguration, InsertCalculation, CompanyBranding, InsertCompanyBranding, Feedback, InsertFeedback, FeedbackBoard, InsertFeedbackBoard, FeedbackBoardReply, InsertFeedbackBoardReply, ElliottWaveLabel, InsertElliottWaveLabel, CachedCandles, InsertCachedCandles } from "@shared/schema";
 import { db } from "./db";
-import { users, projects, pipeConfigurations, meterConfigurations, calculations, companyBranding, feedback } from "@shared/schema";
+import { users, projects, pipeConfigurations, meterConfigurations, calculations, companyBranding, feedback, feedbackBoard, feedbackBoardReplies } from "@shared/schema";
+import { desc } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { IStorage } from "./storage";
 
@@ -269,6 +270,60 @@ export class DatabaseStorage implements IStorage {
       .from(feedback)
       .orderBy(feedback.createdAt);
     return feedbackList.reverse(); // Most recent first
+  }
+
+  // Feedback Board operations
+  async createFeedbackBoard(post: InsertFeedbackBoard): Promise<FeedbackBoard> {
+    const [created] = await db
+      .insert(feedbackBoard)
+      .values({
+        userEmail: post.userEmail || null,
+        userName: post.userName || null,
+        content: post.content,
+      })
+      .returning();
+    return created;
+  }
+
+  async listFeedbackBoard(): Promise<FeedbackBoard[]> {
+    const posts = await db
+      .select()
+      .from(feedbackBoard)
+      .orderBy(desc(feedbackBoard.createdAt));
+    return posts;
+  }
+
+  async deleteFeedbackBoard(id: string): Promise<boolean> {
+    const result = await db.delete(feedbackBoard).where(eq(feedbackBoard.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async createFeedbackBoardReply(reply: InsertFeedbackBoardReply): Promise<FeedbackBoardReply> {
+    const [created] = await db
+      .insert(feedbackBoardReplies)
+      .values({
+        feedbackId: reply.feedbackId,
+        responderEmail: reply.responderEmail || null,
+        responderName: reply.responderName || null,
+        content: reply.content,
+        isAdminReply: reply.isAdminReply || false,
+      })
+      .returning();
+    return created;
+  }
+
+  async getFeedbackBoardReplies(feedbackId: string): Promise<FeedbackBoardReply[]> {
+    const replies = await db
+      .select()
+      .from(feedbackBoardReplies)
+      .where(eq(feedbackBoardReplies.feedbackId, feedbackId))
+      .orderBy(feedbackBoardReplies.createdAt);
+    return replies;
+  }
+
+  async deleteFeedbackBoardReply(id: string): Promise<boolean> {
+    const result = await db.delete(feedbackBoardReplies).where(eq(feedbackBoardReplies.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Tracked Trades operations for price monitoring

@@ -16,6 +16,7 @@ import CryptoSubscribe from '@/pages/CryptoSubscribe';
 import CryptoPrivacy from '@/pages/CryptoPrivacy';
 import CryptoTerms from '@/pages/CryptoTerms';
 import CryptoAccount from '@/pages/CryptoAccount';
+import CryptoFeedbackBoard from '@/pages/CryptoFeedbackBoard';
 import NotFound from '@/pages/not-found';
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -60,6 +61,9 @@ function App() {
             </Route>
             <Route path="/crypto/account">
               <ProtectedRoute component={CryptoAccount} />
+            </Route>
+            <Route path="/crypto/feedback">
+              <ProtectedRoute component={CryptoFeedbackBoard} />
             </Route>
             
             <Route component={NotFound} />
