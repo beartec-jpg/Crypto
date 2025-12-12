@@ -7,7 +7,7 @@ import { ArrowLeft, Send, MessageSquare, Reply, Trash2, Loader2 } from "lucide-r
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useCryptoAuth } from "@/hooks/use-crypto-auth";
+import { useCryptoAuth } from "@/hooks/useCryptoAuth";
 import bearAvatar from "@assets/1rck2t_1765524724082.jpg";
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
