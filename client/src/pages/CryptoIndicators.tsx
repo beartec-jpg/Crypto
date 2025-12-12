@@ -7,25 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { TrendingUp, TrendingDown, Activity, DollarSign, Loader2, Bell, ChevronDown, ChevronUp, Zap, Save, Settings, GripVertical, Layers } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, Loader2, Bell, ChevronDown, ChevronUp, Zap, Save, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
@@ -309,102 +292,6 @@ const MA_TIMEFRAMES = [
   { value: '1w', label: '1W' },
 ];
 
-// Indicator ordering types and configuration
-interface IndicatorItem {
-  id: string;
-  name: string;
-  category: 'smc' | 'trend' | 'vwap' | 'oscillator';
-  color: string;
-}
-
-const DEFAULT_INDICATOR_ORDER: IndicatorItem[] = [
-  { id: 'orderBlocks', name: 'Order Blocks', category: 'smc', color: '#22c55e' },
-  { id: 'premiumDiscount', name: 'Premium/Discount', category: 'smc', color: '#f59e0b' },
-  { id: 'fvg', name: 'Fair Value Gaps', category: 'smc', color: '#3b82f6' },
-  { id: 'bos', name: 'Break of Structure', category: 'smc', color: '#ef4444' },
-  { id: 'choch', name: 'Change of Character', category: 'smc', color: '#8b5cf6' },
-  { id: 'swingPivots', name: 'Swing Pivots', category: 'smc', color: '#ec4899' },
-  { id: 'liquiditySweeps', name: 'Liquidity Sweeps', category: 'smc', color: '#06b6d4' },
-  { id: 'ema', name: 'EMA Lines', category: 'trend', color: '#3b82f6' },
-  { id: 'sma', name: 'SMA Lines', category: 'trend', color: '#8b5cf6' },
-  { id: 'supertrend', name: 'Supertrend', category: 'trend', color: '#10b981' },
-  { id: 'parabolicSar', name: 'Parabolic SAR', category: 'trend', color: '#f59e0b' },
-  { id: 'ichimoku', name: 'Ichimoku Cloud', category: 'trend', color: '#6366f1' },
-  { id: 'autoTrendlines', name: 'Auto Trendlines', category: 'trend', color: '#14b8a6' },
-  { id: 'vwapBands', name: 'VWAP Bands', category: 'vwap', color: '#8b5cf6' },
-  { id: 'sessionVwap', name: 'Session VWAP', category: 'vwap', color: '#a78bfa' },
-  { id: 'dailyVwap', name: 'Daily VWAP', category: 'vwap', color: '#fb923c' },
-  { id: 'weeklyVwap', name: 'Weekly VWAP', category: 'vwap', color: '#10b981' },
-  { id: 'monthlyVwap', name: 'Monthly VWAP', category: 'vwap', color: '#3b82f6' },
-  { id: 'rollingVwap', name: 'Rolling VWAP', category: 'vwap', color: '#ec4899' },
-  { id: 'bollingerBands', name: 'Bollinger Bands', category: 'oscillator', color: '#f59e0b' },
-  { id: 'rsi', name: 'RSI', category: 'oscillator', color: '#22c55e' },
-  { id: 'macd', name: 'MACD', category: 'oscillator', color: '#ef4444' },
-  { id: 'obv', name: 'OBV', category: 'oscillator', color: '#06b6d4' },
-  { id: 'mfi', name: 'MFI', category: 'oscillator', color: '#a855f7' },
-  { id: 'cci', name: 'CCI', category: 'oscillator', color: '#eab308' },
-  { id: 'adx', name: 'ADX', category: 'oscillator', color: '#f97316' },
-  { id: 'stochRsi', name: 'Stochastic RSI', category: 'oscillator', color: '#14b8a6' },
-  { id: 'williamsR', name: 'Williams %R', category: 'oscillator', color: '#84cc16' },
-];
-
-// Sortable indicator item component
-function SortableIndicatorItem({ indicator, isActive }: { indicator: IndicatorItem; isActive: boolean }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: indicator.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  const categoryColors = {
-    smc: 'bg-blue-500/20 text-blue-400',
-    trend: 'bg-green-500/20 text-green-400',
-    vwap: 'bg-purple-500/20 text-purple-400',
-    oscillator: 'bg-amber-500/20 text-amber-400',
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex items-center gap-3 p-2 rounded-lg border ${
-        isActive 
-          ? 'bg-slate-700/50 border-slate-600' 
-          : 'bg-slate-800/30 border-slate-700/50 opacity-50'
-      } ${isDragging ? 'shadow-lg ring-2 ring-blue-500' : ''}`}
-    >
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing p-1 hover:bg-slate-600/50 rounded"
-        data-testid={`drag-handle-${indicator.id}`}
-      >
-        <GripVertical className="w-4 h-4 text-gray-400" />
-      </button>
-      <div
-        className="w-3 h-3 rounded-full flex-shrink-0"
-        style={{ backgroundColor: indicator.color }}
-      />
-      <span className="text-sm text-white flex-1">{indicator.name}</span>
-      <span className={`text-xs px-2 py-0.5 rounded ${categoryColors[indicator.category]}`}>
-        {indicator.category.toUpperCase()}
-      </span>
-      {isActive && (
-        <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" title="Active" />
-      )}
-    </div>
-  );
-}
-
 export default function CryptoIndicators() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -427,60 +314,6 @@ export default function CryptoIndicators() {
   const [interval, setTimeframeInterval] = useState('15m');
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
-  
-  // Indicator reordering state
-  const [indicatorOrderOpen, setIndicatorOrderOpen] = useState(false);
-  const [indicatorOrder, setIndicatorOrder] = useState<IndicatorItem[]>(() => {
-    // Guard for SSR/non-browser contexts
-    if (typeof window === 'undefined') return DEFAULT_INDICATOR_ORDER;
-    
-    try {
-      const saved = localStorage.getItem('crypto_indicator_order');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Merge with defaults to handle new indicators added later
-        const savedIds = new Set(parsed.map((i: IndicatorItem) => i.id));
-        const mergedOrder = [...parsed];
-        DEFAULT_INDICATOR_ORDER.forEach(ind => {
-          if (!savedIds.has(ind.id)) {
-            mergedOrder.push(ind);
-          }
-        });
-        return mergedOrder;
-      }
-    } catch {
-      // If localStorage access fails, use defaults
-    }
-    return DEFAULT_INDICATOR_ORDER;
-  });
-  
-  // DnD sensors for keyboard and pointer
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  // Handle drag end for indicator reordering
-  const handleIndicatorDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    if (over && active.id !== over.id) {
-      setIndicatorOrder((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-        const newOrder = arrayMove(items, oldIndex, newIndex);
-        // Persist to localStorage
-        localStorage.setItem('crypto_indicator_order', JSON.stringify(newOrder));
-        return newOrder;
-      });
-    }
-  }, []);
   
   // Video sequence state
   const [videoPhase, setVideoPhase] = useState<'initial_bear' | 'transition' | 'final'>('initial_bear');
@@ -933,44 +766,6 @@ export default function CryptoIndicators() {
   const [liqGrabSLSwingLength, setLiqGrabSLSwingLength] = useState(5);
   const [liqGrabSLSwingLengthInput, setLiqGrabSLSwingLengthInput] = useState('5');
 
-  // Compute active indicators map for the reorder dialog (must be after all indicator states are defined)
-  const indicatorActiveStates = useMemo(() => {
-    const activeMap: Record<string, boolean> = {
-      orderBlocks: showOrderBlocks,
-      premiumDiscount: showPremiumDiscount,
-      fvg: showFVG,
-      bos: showBOS,
-      choch: showCHoCH,
-      swingPivots: showSwingPivots,
-      liquiditySweeps: stratLiquidityGrab,
-      ema: showEMA,
-      sma: showSMA,
-      supertrend: showSupertrend,
-      parabolicSar: showParabolicSAR,
-      ichimoku: false,
-      autoTrendlines: showAutoTrendlines,
-      vwapBands: showVWAPBands,
-      sessionVwap: showSessionVWAP,
-      dailyVwap: showVWAPDaily,
-      weeklyVwap: showVWAPWeekly,
-      monthlyVwap: showVWAPMonthly,
-      rollingVwap: showVWAPRolling,
-      bollingerBands: showBB,
-      rsi: showRSI,
-      macd: showMACD,
-      obv: showOBV,
-      mfi: showMFI,
-      cci: showCCI,
-      adx: showADX,
-      stochRsi: showStochRSI,
-      williamsR: showWilliamsR,
-    };
-    return activeMap;
-  }, [showOrderBlocks, showPremiumDiscount, showFVG, showBOS, showCHoCH, showSwingPivots, 
-      stratLiquidityGrab, showEMA, showSMA, showSupertrend, showParabolicSAR, showAutoTrendlines,
-      showVWAPBands, showSessionVWAP, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling,
-      showBB, showRSI, showMACD, showOBV, showMFI, showCCI, showADX, showStochRSI, showWilliamsR]);
-  
   // ========== BOS STRUCTURE STRATEGY SETTINGS ==========
   const [stratBOSTrend, setStratBOSTrend] = useState(false);
   const [bosTrendFilter, setBosTrendFilter] = useState<'ema' | 'structure' | 'both' | 'none'>('none');
@@ -8984,14 +8779,6 @@ export default function CryptoIndicators() {
               <Bell className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">Alert Settings</span>
             </Button>
-            <Button
-              onClick={() => setIndicatorOrderOpen(true)}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-3 md:px-4"
-              data-testid="button-indicator-order"
-            >
-              <Layers className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Layers</span>
-            </Button>
           </div>
         </div>
 
@@ -11508,64 +11295,6 @@ export default function CryptoIndicators() {
           onOpenChange={setAlertSettingsOpen} 
         />
 
-        {/* Indicator Order Dialog */}
-        <Dialog open={indicatorOrderOpen} onOpenChange={setIndicatorOrderOpen}>
-          <DialogContent className="max-w-md max-h-[80vh] bg-slate-900 border-slate-700 text-white overflow-hidden flex flex-col">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-white">
-                <Layers className="h-5 w-5 text-purple-400" />
-                Indicator Layer Order
-              </DialogTitle>
-              <DialogDescription className="text-gray-400">
-                Drag to reorder indicators. Items higher in the list appear on top of the chart.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto pr-2 space-y-2">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleIndicatorDragEnd}
-              >
-                <SortableContext
-                  items={indicatorOrder.map(i => i.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {indicatorOrder.map((indicator) => (
-                    <SortableIndicatorItem
-                      key={indicator.id}
-                      indicator={indicator}
-                      isActive={indicatorActiveStates[indicator.id] || false}
-                    />
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </div>
-            <div className="pt-4 border-t border-slate-700 flex gap-2">
-              <Button
-                onClick={() => {
-                  setIndicatorOrder(DEFAULT_INDICATOR_ORDER);
-                  localStorage.setItem('crypto_indicator_order', JSON.stringify(DEFAULT_INDICATOR_ORDER));
-                  toast({
-                    title: 'Reset Complete',
-                    description: 'Indicator order has been reset to default.',
-                  });
-                }}
-                variant="outline"
-                className="flex-1 border-slate-600 text-gray-300 hover:text-white hover:bg-slate-700"
-                data-testid="button-reset-indicator-order"
-              >
-                Reset to Default
-              </Button>
-              <Button
-                onClick={() => setIndicatorOrderOpen(false)}
-                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
-                data-testid="button-close-indicator-order"
-              >
-                Done
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
       
       {/* Bottom Navigation */}
