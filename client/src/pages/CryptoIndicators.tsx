@@ -292,6 +292,21 @@ const MA_TIMEFRAMES = [
   { value: '1w', label: '1W' },
 ];
 
+// Helper to format MA label with timeframe suffix
+// Examples: 21 (current), 100D (daily), 21W (weekly), 100h4 (4-hour), 50h1 (hourly), 21m5 (5-min)
+const formatMALabel = (period: number, timeframe: string): string => {
+  if (timeframe === 'current') return `${period}`;
+  if (timeframe === '1d') return `${period}D`;
+  if (timeframe === '1w') return `${period}W`;
+  if (timeframe === '1M') return `${period}M`;
+  if (timeframe === '4h') return `${period}h4`;
+  if (timeframe === '1h') return `${period}h1`;
+  if (timeframe === '15m') return `${period}m15`;
+  if (timeframe === '5m') return `${period}m5`;
+  if (timeframe === '1m') return `${period}m1`;
+  return `${period}${timeframe}`;
+};
+
 export default function CryptoIndicators() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -314,6 +329,9 @@ export default function CryptoIndicators() {
   const [interval, setTimeframeInterval] = useState('15m');
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
+  
+  // Track previous symbol to clear HTF caches on symbol change
+  const prevSymbolRef = useRef(symbol);
   
   // Video sequence state
   const [videoPhase, setVideoPhase] = useState<'initial_bear' | 'transition' | 'final'>('initial_bear');
@@ -6550,6 +6568,52 @@ export default function CryptoIndicators() {
     });
   }, [chartReady, candles, showFVG, showHighValueOnly, calculateFVGs, isActiveFVG, getFVGFillTime, tradeSignals, backtestResults]);
 
+  // Clear HTF caches when symbol changes
+  useEffect(() => {
+    if (prevSymbolRef.current !== symbol) {
+      emaHTFDataCache.current = {};
+      smaHTFDataCache.current = {};
+      prevSymbolRef.current = symbol;
+    }
+  }, [symbol]);
+
+  // Fetch higher timeframe data for EMA calculations
+  useEffect(() => {
+    const fetchHTFData = async () => {
+      const htfTimeframes = emaConfigs
+        .filter(c => c.timeframe !== 'current' && c.timeframe !== interval)
+        .map(c => c.timeframe);
+      
+      const uniqueTimeframes = [...new Set(htfTimeframes)];
+      
+      for (const tf of uniqueTimeframes) {
+        const cacheKey = `${symbol}_${tf}`;
+        if (emaHTFDataCache.current[cacheKey]) continue; // Already cached
+        
+        try {
+          const response = await fetch(`/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=500`);
+          if (response.ok) {
+            const data = await response.json();
+            emaHTFDataCache.current[cacheKey] = data.map((k: any) => ({
+              time: Math.floor(k[0] / 1000),
+              open: parseFloat(k[1]),
+              high: parseFloat(k[2]),
+              low: parseFloat(k[3]),
+              close: parseFloat(k[4]),
+              volume: parseFloat(k[5])
+            }));
+          }
+        } catch (e) {
+          console.error(`Failed to fetch ${tf} data for EMA:`, e);
+        }
+      }
+    };
+    
+    if (showEMA && symbol) {
+      fetchHTFData();
+    }
+  }, [showEMA, emaConfigs, symbol, interval]);
+
   // Update EMAs on chart
   useEffect(() => {
     if (!chartReady || !chartRef.current || candles.length === 0) return;
@@ -6579,17 +6643,55 @@ export default function CryptoIndicators() {
 
     // Render each EMA config
     for (const config of emaConfigs) {
-      const closes = candles.map(c => c.close);
-      const emaValues = calculateEMA(closes, config.period);
-      const emaData = candles.map((c, i) => ({
-        time: c.time as any,
-        value: emaValues[i]
-      })).filter(d => d.value !== undefined);
+      let emaData: { time: any; value: number }[] = [];
+      
+      // Determine which data source to use
+      const isCurrentTimeframe = config.timeframe === 'current' || config.timeframe === interval;
+      
+      if (isCurrentTimeframe) {
+        // Use current chart candles
+        const closes = candles.map(c => c.close);
+        const emaValues = calculateEMA(closes, config.period);
+        emaData = candles.map((c, i) => ({
+          time: c.time as any,
+          value: emaValues[i]
+        })).filter(d => d.value !== undefined);
+      } else {
+        // Use higher timeframe data and map to current chart
+        const cacheKey = `${symbol}_${config.timeframe}`;
+        const htfCandles = emaHTFDataCache.current[cacheKey];
+        
+        if (htfCandles && htfCandles.length > 0) {
+          const htfCloses = htfCandles.map(c => c.close);
+          const htfEmaValues = calculateEMA(htfCloses, config.period);
+          
+          // Map higher TF EMA values to current chart timeframe
+          // Each HTF candle's EMA value applies to all current TF candles within its time range
+          const htfEmaMap: { time: number; value: number }[] = htfCandles.map((c, i) => ({
+            time: c.time,
+            value: htfEmaValues[i]
+          })).filter(d => d.value !== undefined);
+          
+          // For each current candle, find the corresponding HTF EMA value
+          emaData = candles.map(c => {
+            // Find the most recent HTF EMA value that's <= current candle time
+            let htfValue: number | undefined;
+            for (let i = htfEmaMap.length - 1; i >= 0; i--) {
+              if (htfEmaMap[i].time <= c.time) {
+                htfValue = htfEmaMap[i].value;
+                break;
+              }
+            }
+            return {
+              time: c.time as any,
+              value: htfValue!
+            };
+          }).filter(d => d.value !== undefined);
+        }
+      }
 
-      // Label: just period number, add timeframe if not current
-      const label = config.timeframe === 'current' 
-        ? `${config.period}` 
-        : `${config.period} ${config.timeframe.toUpperCase()}`;
+      // Format label: 21, 100D, 21W, 100h4, etc.
+      const label = formatMALabel(config.period, config.timeframe);
 
       if (!refs[config.id]) {
         try {
@@ -6601,12 +6703,20 @@ export default function CryptoIndicators() {
             title: label,
           });
         } catch (e) { continue; }
+      } else {
+        // Update title if config changed
+        try {
+          refs[config.id]!.applyOptions({ title: label });
+        } catch (e) {}
       }
-      try {
-        refs[config.id]!.setData(emaData);
-      } catch (e) {}
+      
+      if (emaData.length > 0) {
+        try {
+          refs[config.id]!.setData(emaData);
+        } catch (e) {}
+      }
     }
-  }, [chartReady, candles, showEMA, emaConfigs, calculateEMA]);
+  }, [chartReady, candles, showEMA, emaConfigs, calculateEMA, symbol, interval]);
 
   // Manage Bollinger Bands on main chart
   useEffect(() => {
@@ -7013,6 +7123,43 @@ export default function CryptoIndicators() {
   
   // ========== BATCH 3 INDICATORS ==========
   
+  // Fetch higher timeframe data for SMA calculations
+  useEffect(() => {
+    const fetchHTFData = async () => {
+      const htfTimeframes = smaConfigs
+        .filter(c => c.timeframe !== 'current' && c.timeframe !== interval)
+        .map(c => c.timeframe);
+      
+      const uniqueTimeframes = [...new Set(htfTimeframes)];
+      
+      for (const tf of uniqueTimeframes) {
+        const cacheKey = `${symbol}_${tf}`;
+        if (smaHTFDataCache.current[cacheKey]) continue;
+        
+        try {
+          const response = await fetch(`/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=500`);
+          if (response.ok) {
+            const data = await response.json();
+            smaHTFDataCache.current[cacheKey] = data.map((k: any) => ({
+              time: Math.floor(k[0] / 1000),
+              open: parseFloat(k[1]),
+              high: parseFloat(k[2]),
+              low: parseFloat(k[3]),
+              close: parseFloat(k[4]),
+              volume: parseFloat(k[5])
+            }));
+          }
+        } catch (e) {
+          console.error(`Failed to fetch ${tf} data for SMA:`, e);
+        }
+      }
+    };
+    
+    if (showSMA && symbol) {
+      fetchHTFData();
+    }
+  }, [showSMA, smaConfigs, symbol, interval]);
+
   // SMA (Simple Moving Average) - Dynamic config list
   useEffect(() => {
     if (!chartReady || !chartRef.current || candles.length === 0) return;
@@ -7041,20 +7188,56 @@ export default function CryptoIndicators() {
     }
 
     // Render each SMA config
-    const closes = candles.map(c => c.close);
     for (const config of smaConfigs) {
-      const smaValues = calculateSMA(closes, config.period);
-      if (smaValues.length === 0) continue;
+      let smaData: { time: any; value: number }[] = [];
       
-      const smaData = smaValues.map((value, i) => ({
-        time: candles[i + config.period - 1].time as any,
-        value
-      }));
+      const isCurrentTimeframe = config.timeframe === 'current' || config.timeframe === interval;
+      
+      if (isCurrentTimeframe) {
+        const closes = candles.map(c => c.close);
+        const smaValues = calculateSMA(closes, config.period);
+        if (smaValues.length === 0) continue;
+        
+        smaData = smaValues.map((value, i) => ({
+          time: candles[i + config.period - 1].time as any,
+          value
+        }));
+      } else {
+        // Use higher timeframe data
+        const cacheKey = `${symbol}_${config.timeframe}`;
+        const htfCandles = smaHTFDataCache.current[cacheKey];
+        
+        if (htfCandles && htfCandles.length > 0) {
+          const htfCloses = htfCandles.map(c => c.close);
+          const htfSmaValues = calculateSMA(htfCloses, config.period);
+          
+          // Map higher TF SMA values to current chart
+          const htfSmaMap: { time: number; value: number }[] = htfSmaValues.map((value, i) => ({
+            time: htfCandles[i + config.period - 1].time,
+            value
+          }));
+          
+          // For each current candle, find the corresponding HTF SMA value
+          smaData = candles.map(c => {
+            let htfValue: number | undefined;
+            for (let i = htfSmaMap.length - 1; i >= 0; i--) {
+              if (htfSmaMap[i].time <= c.time) {
+                htfValue = htfSmaMap[i].value;
+                break;
+              }
+            }
+            return {
+              time: c.time as any,
+              value: htfValue!
+            };
+          }).filter(d => d.value !== undefined);
+        }
+      }
 
-      // Label: just period number, add timeframe if not current
-      const label = config.timeframe === 'current' 
-        ? `${config.period}` 
-        : `${config.period} ${config.timeframe.toUpperCase()}`;
+      if (smaData.length === 0) continue;
+
+      // Format label: 21, 100D, 21W, 100h4, etc.
+      const label = formatMALabel(config.period, config.timeframe);
 
       if (!refs[config.id]) {
         try {
@@ -7066,12 +7249,17 @@ export default function CryptoIndicators() {
             title: label,
           });
         } catch (e) { continue; }
+      } else {
+        try {
+          refs[config.id]!.applyOptions({ title: label });
+        } catch (e) {}
       }
+      
       try {
         refs[config.id]!.setData(smaData);
       } catch (e) {}
     }
-  }, [chartReady, candles, showSMA, smaConfigs]);
+  }, [chartReady, candles, showSMA, smaConfigs, symbol, interval]);
   
   // Parabolic SAR
   useEffect(() => {
