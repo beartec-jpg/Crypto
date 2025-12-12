@@ -5066,21 +5066,25 @@ Return JSON:
   // Create a new feedback post (anyone can post)
   app.post("/api/crypto/feedback-board", async (req, res) => {
     try {
+      console.log('[Feedback] POST request received:', JSON.stringify(req.body));
       const { content, userEmail, userName } = req.body;
       
       if (!content || content.trim().length === 0) {
+        console.log('[Feedback] Validation failed: content is empty');
         return res.status(400).json({ error: 'Content is required' });
       }
       
+      console.log('[Feedback] Creating post for user:', userEmail);
       const post = await storage.createFeedbackBoard({
         content: content.trim(),
         userEmail: userEmail || null,
         userName: userName || null,
       });
       
+      console.log('[Feedback] Post created successfully:', post.id);
       res.json(post);
     } catch (error: any) {
-      console.error('Error creating feedback post:', error);
+      console.error('[Feedback] Error creating feedback post:', error);
       res.status(500).json({ error: error.message });
     }
   });
