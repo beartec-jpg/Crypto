@@ -396,8 +396,11 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
           ratios = [0.618, 0.786, 1.0, 1.618];
         } else if (wave === 'W4') {
           ratios = [0.236, 0.382, 0.5];
-        } else if (wave === 'W2' || wave === 'B') {
-          ratios = [0.382, 0.5, 0.618, 0.786]; // W2/B retracement ratios
+        } else if (wave === 'W2') {
+          ratios = [0.382, 0.5, 0.618, 0.786]; // W2 retracement ratios
+        } else if (wave === 'B') {
+          // B wave: include BOTH zigzag (38-79%) AND flat (88-138%) targets
+          ratios = [0.382, 0.5, 0.618, 0.786, 0.886, 1.0, 1.236, 1.382];
         } else if (wave === 'Y') {
           ratios = [0.618, 1.0, 1.272, 1.618];
         } else {
@@ -6726,11 +6729,12 @@ const aiAnalyze = useMutation({
                                           const ratioMatch = l.label.match(/(\d+)%/);
                                           if (ratioMatch) {
                                             const ratio = parseInt(ratioMatch[1]);
-                                            // Flat: 38%, 50% | Zigzag: 50%, 62%, 79%
+                                            // Flat: 88-138% (deep retracement to beyond origin)
+                                            // Zigzag: 38-79% (shallow retracement)
                                             if (bWaveType === 'flat') {
-                                              return ratio <= 50;
+                                              return ratio >= 88;
                                             } else if (bWaveType === 'zigzag') {
-                                              return ratio >= 50;
+                                              return ratio <= 79;
                                             }
                                           }
                                         }
@@ -6880,7 +6884,7 @@ const aiAnalyze = useMutation({
                                               }`}
                                               data-testid={`select-flat-${structure.id}`}
                                             >
-                                              📊 Flat (38-50%)
+                                              📊 Flat (88-138%)
                                             </button>
                                             <button
                                               onClick={(e) => {
