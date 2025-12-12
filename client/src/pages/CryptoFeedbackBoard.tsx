@@ -8,7 +8,7 @@ import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useCryptoAuth } from "@/hooks/useCryptoAuth";
-import bearAvatar from "@assets/1rck2t_1765524724082.jpg";
+import bearAvatar from "@assets/1rck2t_1765527899995.jpg";
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
