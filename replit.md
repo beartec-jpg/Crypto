@@ -43,6 +43,7 @@ This project is a React-based web application designed for calculating gas purgi
 - **Custom Indicator Portal**: Secure execution of Python-based technical indicators for learning.
 - **Push & SMS Notifications**: Comprehensive alert preferences for crypto (Trade, CCI, ADX alerts), tier-based access, Twilio integration for SMS fallback, Vercel Cron for alert checks.
 - **Dynamic Moving Averages**: Add/remove up to 6 customizable EMA/SMA lines with configurable periods and timeframes.
+- **Indicator Layer Ordering**: Drag-and-drop reordering of chart indicators via "Layers" button, with localStorage persistence and category organization (UI/persistence phase - chart rendering integration pending).
 - **Mobile Responsiveness**: Optimized header controls.
 - **Elliott Wave Analysis**:
     - Diagonal Patterns: Auto-classification (contracting/expanding), Fibonacci rules, prediction Fibs, future candle attachment.
