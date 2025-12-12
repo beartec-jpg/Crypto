@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff } from 'lucide-react';
+import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
@@ -2843,11 +2843,18 @@ export default function CryptoElliottWave() {
     },
   });
   
-  // Helper to check if a projection line is saved (match by levelLabel and symbol only, structureId may change on reload)
-  const isProjectionSaved = (structureId: string, levelLabel: string): SavedProjectionLine | undefined => {
-    return savedProjectionLinesFromDB.find(line => 
-      line.levelLabel === levelLabel && line.symbol === symbol
-    );
+  // Helper to check if a projection line is saved (match by levelLabel, symbol, AND price to prevent duplicates)
+  const isProjectionSaved = (structureId: string, levelLabel: string, price?: number): SavedProjectionLine | undefined => {
+    return savedProjectionLinesFromDB.find(line => {
+      // Match by symbol and label
+      if (line.levelLabel !== levelLabel || line.symbol !== symbol) return false;
+      // If price provided, also check price is within 0.1% tolerance (same target)
+      if (price !== undefined) {
+        const priceDiff = Math.abs(line.price - price) / price;
+        return priceDiff < 0.001; // 0.1% tolerance
+      }
+      return true;
+    });
   };
   
   // Load saved projection lines onto chart when data loads
@@ -6548,6 +6555,51 @@ const aiAnalyze = useMutation({
           </TabsContent>
 
           <TabsContent value="stack" className="mt-4">
+            {/* Saved Projection Lines Manager */}
+            {savedProjectionLinesFromDB.filter(l => l.symbol === symbol).length > 0 && (
+              <div className="mb-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-cyan-400">📍 Saved Target Lines ({savedProjectionLinesFromDB.filter(l => l.symbol === symbol).length})</span>
+                  <button
+                    onClick={() => {
+                      // Delete all saved lines for this symbol
+                      savedProjectionLinesFromDB
+                        .filter(l => l.symbol === symbol)
+                        .forEach(line => deleteProjectionLine.mutate(line.id));
+                      setStackProjectionLines([]);
+                    }}
+                    className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                    data-testid="delete-all-projection-lines"
+                  >
+                    Clear All
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {savedProjectionLinesFromDB
+                    .filter(l => l.symbol === symbol)
+                    .map(line => (
+                      <div key={line.id} className="flex items-center gap-1 bg-slate-700/50 rounded px-2 py-1">
+                        <span className="text-xs font-mono" style={{ color: line.color }}>
+                          {line.levelLabel}: ${line.price.toFixed(4)}
+                        </span>
+                        {line.alertEnabled && <Bell className="w-3 h-3 text-green-400" />}
+                        <button
+                          onClick={() => {
+                            deleteProjectionLine.mutate(line.id);
+                            setStackProjectionLines(prev => prev.filter(l => l.title !== line.levelLabel && l.title !== `🔔 ${line.levelLabel}`));
+                          }}
+                          className="ml-1 text-red-400 hover:text-red-300"
+                          title="Delete this line"
+                          data-testid={`delete-line-${line.id}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+            
             {waveStackEntries.length > 0 ? (
               <div className="space-y-4">
                 {/* Grouped Wave Structures - PURE HIERARCHICAL TREE */}
@@ -6864,7 +6916,7 @@ const aiAnalyze = useMutation({
                                           </div>
                                           <div className="flex flex-wrap gap-1">
                                             {filteredLevels.map((level, levelIdx) => {
-                                              const savedLine = isProjectionSaved(structure.id, level.label);
+                                              const savedLine = isProjectionSaved(structure.id, level.label, level.price);
                                               const isSaved = !!savedLine;
                                               const isAlertEnabled = savedLine?.alertEnabled || false;
                                               const isImpulse = level.label.startsWith('W');
