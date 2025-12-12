@@ -438,9 +438,12 @@ async function sendSMSNotification(
       return;
     }
 
-    const client = twilio(twilioCredentials.apiKey, twilioCredentials.apiKeySecret, {
-      accountSid: twilioCredentials.accountSid
-    });
+    // Use auth token authentication for direct env vars, API key auth for Replit connector
+    const client = process.env.TWILIO_AUTH_TOKEN 
+      ? twilio(twilioCredentials.accountSid, twilioCredentials.apiKeySecret)
+      : twilio(twilioCredentials.apiKey, twilioCredentials.apiKeySecret, {
+          accountSid: twilioCredentials.accountSid
+        });
 
     const smsBody = `${notification.title}\n${notification.body}`;
 
@@ -462,6 +465,18 @@ async function getTwilioCredentials(): Promise<{
   apiKeySecret: string;
   phoneNumber: string;
 } | null> {
+  // First, try direct environment variables (for Vercel deployment)
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
+    console.log('Using direct Twilio environment variables');
+    return {
+      accountSid: process.env.TWILIO_ACCOUNT_SID,
+      apiKey: process.env.TWILIO_ACCOUNT_SID, // Use account SID as "apiKey" for auth token auth
+      apiKeySecret: process.env.TWILIO_AUTH_TOKEN,
+      phoneNumber: process.env.TWILIO_PHONE_NUMBER
+    };
+  }
+
+  // Fallback: Try Replit connector (for development)
   try {
     const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
     const xReplitToken = process.env.REPL_IDENTITY 
@@ -471,7 +486,7 @@ async function getTwilioCredentials(): Promise<{
       : null;
 
     if (!xReplitToken || !hostname) {
-      console.log('Replit connector environment not available');
+      console.log('Replit connector environment not available and no direct Twilio env vars');
       return null;
     }
 
