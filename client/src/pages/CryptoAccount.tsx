@@ -8,9 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/clerk-react';
 
 function useClerkHooks() {
-  const auth = useAuth();
-  const { user } = useUser();
-  
+  // In development, skip Clerk hooks entirely to avoid ClerkProvider requirement
   if (isDevelopment) {
     return {
       isSignedIn: true,
@@ -18,6 +16,13 @@ function useClerkHooks() {
       user: { firstName: 'Dev', lastName: 'User', primaryEmailAddress: { emailAddress: 'dev@open.access' }, imageUrl: null }
     };
   }
+  
+  // In production, use real Clerk hooks
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const auth = useAuth();
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { user } = useUser();
+  
   return { ...auth, user };
 }
 
@@ -46,15 +51,17 @@ interface SubscriptionData {
 }
 
 export default function CryptoAccount() {
-  const { tier: localTier } = useCryptoAuth();
+  const { tier: localTier, subscription: authSubscription, isAdmin } = useCryptoAuth();
   const { isSignedIn, isLoaded, user } = useClerkHooks();
   
-  const { data: subscription, isLoading } = useQuery<SubscriptionData>({
+  const { data: apiSubscription, isLoading } = useQuery<SubscriptionData>({
     queryKey: ['/api/crypto/my-subscription'],
     enabled: isDevelopment || isSignedIn === true,
   });
 
-  const tier = subscription?.tier || localTier || 'free';
+  // Admin users get the overridden subscription from useCryptoAuth
+  const subscription = isAdmin ? authSubscription as SubscriptionData : apiSubscription;
+  const tier = isAdmin ? 'elite' : (subscription?.tier || localTier || 'free');
   
   const getTierColor = (t: string) => {
     switch (t.toLowerCase()) {
@@ -121,7 +128,7 @@ export default function CryptoAccount() {
                 )}
                 <div>
                   <h2 className="text-xl font-bold">
-                    {user?.firstName} {user?.lastName}
+                    {isAdmin ? 'BearTec' : `${user?.firstName} ${user?.lastName}`}
                   </h2>
                   <p className="text-gray-400">{user?.primaryEmailAddress?.emailAddress}</p>
                 </div>

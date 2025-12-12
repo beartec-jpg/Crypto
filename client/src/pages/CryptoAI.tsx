@@ -94,7 +94,8 @@ export default function CryptoAI() {
   const volumeChartRef = useRef<HTMLDivElement>(null);
   const cvdChartRef = useRef<HTMLDivElement>(null);
 
-  const { isAuthenticated, isLoading: authLoading, tier, getToken } = useCryptoAuth();
+  const { isAuthenticated, isLoading: authLoading, tier: rawTier, getToken, isAdmin } = useCryptoAuth();
+  const tier = isAdmin ? 'elite' : rawTier; // Admin gets unrestricted elite access
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 

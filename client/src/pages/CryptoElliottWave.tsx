@@ -2269,7 +2269,8 @@ const FIBONACCI_MODES = [
 
 export default function CryptoElliottWave() {
   const [, setLocation] = useLocation();
-  const { user, isLoading: authLoading, isAuthenticated, tier: localTier, getToken } = useCryptoAuth();
+  const { user, isLoading: authLoading, isAuthenticated, tier: rawTier, getToken, isAdmin } = useCryptoAuth();
+  const localTier = isAdmin ? 'elite' : rawTier; // Admin gets unrestricted elite access
   const authReady = useEnsureAuthReady();
   const { toast } = useToast();
   
@@ -2347,9 +2348,9 @@ export default function CryptoElliottWave() {
     queryKey: ['/api/crypto/my-subscription'],
   });
 
-  // User can use Elliott features if they have the addon OR elite tier
-  const canUseElliottFeatures = subscription?.canUseElliott || subscription?.hasElliottAddon || subscription?.tier === 'elite' || localTier === 'elite';
-  const isElite = subscription?.tier === 'elite' || localTier === 'elite';
+  // User can use Elliott features if they have the addon OR elite tier OR are admin
+  const canUseElliottFeatures = isAdmin || subscription?.canUseElliott || subscription?.hasElliottAddon || subscription?.tier === 'elite' || localTier === 'elite';
+  const isElite = isAdmin || subscription?.tier === 'elite' || localTier === 'elite';
   
   // Computed access flag: In development = always allowed; In production = need auth + subscription + ready
   // Also requires auth and subscription loading to be complete to prevent premature mutations

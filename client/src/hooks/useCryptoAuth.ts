@@ -58,6 +58,9 @@ const devSubscription: CryptoSubscription = {
   hasUnlimitedAI: true,
 };
 
+// Admin email gets unrestricted access everywhere
+const ADMIN_EMAIL = 'beartec@beartec.uk';
+
 function useClerkHooks() {
   // In development, skip Clerk hooks entirely to avoid ClerkProvider requirement
   if (isDevelopment) {
@@ -141,6 +144,7 @@ export function useCryptoAuth() {
       canUseElliottFeatures: true,
       canUseAI: true,
       hasUnlimitedAI: true,
+      isAdmin: true,
       refetchSubscription,
       getToken,
     };
@@ -154,6 +158,30 @@ export function useCryptoAuth() {
     profileImageUrl: (user as any).imageUrl || (user as any).profileImageUrl || undefined,
   } : null;
 
+  // Admin email gets unrestricted elite access
+  const isAdmin = cryptoUser?.email === ADMIN_EMAIL;
+  
+  if (isAdmin) {
+    return {
+      user: cryptoUser,
+      subscription: {
+        ...devSubscription,
+        userId: cryptoUser?.id || 'admin',
+        id: subscription?.id || 'admin-sub',
+      },
+      tier: 'elite' as const,
+      isAuthenticated: true,
+      isLoading: false,
+      error: null,
+      canUseElliottFeatures: true,
+      canUseAI: true,
+      hasUnlimitedAI: true,
+      isAdmin: true,
+      refetchSubscription,
+      getToken,
+    };
+  }
+
   return {
     user: cryptoUser,
     subscription: subscription || null,
@@ -164,6 +192,7 @@ export function useCryptoAuth() {
     canUseElliottFeatures: subscription?.canUseElliott || false,
     canUseAI: subscription?.canUseAI || false,
     hasUnlimitedAI: subscription?.hasUnlimitedAI || false,
+    isAdmin: false,
     refetchSubscription,
     getToken,
   };
