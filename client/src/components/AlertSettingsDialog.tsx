@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Bell, Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Bell, Loader2, MessageSquare, Phone, Send } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -82,12 +83,92 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
   const [pushSubscription, setPushSubscription] = useState<any>(null);
   const [notificationsSupported, setNotificationsSupported] = useState(true);
   const [userTier, setUserTier] = useState<string>('free');
+  
+  // SMS Settings
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [smsAlertsEnabled, setSmsAlertsEnabled] = useState(false);
+  const [isSendingTestSms, setIsSendingTestSms] = useState(false);
 
   // Fetch user preferences
   const { data: preferences, isLoading} = useQuery<CryptoPreferences>({
     queryKey: ['/api/crypto/preferences'],
     enabled: open,
   });
+  
+  // Fetch SMS settings
+  const { data: smsSettings } = useQuery<{ phoneNumber: string | null; smsAlertsEnabled: boolean }>({
+    queryKey: ['/api/crypto/sms-settings'],
+    enabled: open,
+  });
+  
+  // Initialize SMS state from fetched settings
+  useEffect(() => {
+    if (smsSettings) {
+      setPhoneNumber(smsSettings.phoneNumber || '');
+      setSmsAlertsEnabled(smsSettings.smsAlertsEnabled || false);
+    }
+  }, [smsSettings]);
+  
+  // SMS settings mutation
+  const smsMutation = useMutation({
+    mutationFn: async (data: { phoneNumber?: string; smsAlertsEnabled?: boolean }) => {
+      const response = await apiRequest('POST', '/api/crypto/sms-settings', data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/sms-settings'] });
+      toast({
+        title: '✅ SMS Settings Saved',
+        description: 'Your SMS notification settings have been updated.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: '❌ Error',
+        description: error.message || 'Failed to save SMS settings',
+        variant: 'destructive',
+      });
+    },
+  });
+  
+  // Test SMS
+  const handleTestSms = async () => {
+    if (!phoneNumber) {
+      toast({
+        title: '❌ No Phone Number',
+        description: 'Please enter your phone number first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setIsSendingTestSms(true);
+    try {
+      // First save the phone number
+      await smsMutation.mutateAsync({ phoneNumber, smsAlertsEnabled: true });
+      
+      // Then send test SMS
+      const response = await apiRequest('POST', '/api/crypto/sms-test', {});
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: '✅ Test SMS Sent',
+          description: 'Check your phone for the test message!',
+        });
+      } else {
+        throw new Error(result.error || 'Failed to send test SMS');
+      }
+    } catch (error: any) {
+      toast({
+        title: '❌ SMS Test Failed',
+        description: error.message || 'Could not send test SMS. Please check your phone number.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSendingTestSms(false);
+    }
+  };
 
   // Initialize state from fetched preferences
   useEffect(() => {
@@ -671,6 +752,70 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                 {userTier === 'free' && 'Upgrade to Beginner for grades C, D, E'}
                 {userTier === 'beginner' && 'Upgrade to Intermediate for grade E'}
               </p>
+            </div>
+
+            {/* SMS Notifications Section */}
+            <div className="p-4 bg-gradient-to-r from-green-900/30 to-slate-800 rounded-lg border border-green-700/50">
+              <div className="flex items-center gap-2 mb-3">
+                <MessageSquare className="h-5 w-5 text-green-400" />
+                <Label className="text-white font-semibold">SMS Notifications (Backup)</Label>
+              </div>
+              <p className="text-sm text-gray-400 mb-4">
+                Get alerts via SMS even when your browser is closed. More reliable than push notifications.
+                <span className="text-yellow-400 block mt-1">~$0.01 per message (Twilio pricing)</span>
+              </p>
+              
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-gray-400" />
+                  <Input
+                    type="tel"
+                    placeholder="+447712345678"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-500 flex-1"
+                    data-testid="input-phone-number"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">Enter phone in international format (e.g., +44 for UK)</p>
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={smsAlertsEnabled}
+                      onCheckedChange={(enabled) => {
+                        setSmsAlertsEnabled(enabled);
+                        if (phoneNumber) {
+                          smsMutation.mutate({ smsAlertsEnabled: enabled });
+                        }
+                      }}
+                      disabled={!phoneNumber}
+                      data-testid="toggle-sms-alerts"
+                    />
+                    <Label className="text-gray-300 text-sm">
+                      {smsAlertsEnabled ? 'SMS Alerts Enabled' : 'Enable SMS Alerts'}
+                    </Label>
+                  </div>
+                  
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleTestSms}
+                    disabled={!phoneNumber || isSendingTestSms}
+                    className="border-green-600 text-green-400 hover:bg-green-900/30"
+                    data-testid="button-test-sms"
+                  >
+                    {isSendingTestSms ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-1" />
+                        Test SMS
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
             </div>
 
             {/* Validation Message */}

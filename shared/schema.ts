@@ -321,6 +321,8 @@ export const cryptoUsers = pgTable("crypto_users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  phoneNumber: varchar("phone_number"), // For SMS alerts via Twilio
+  smsAlertsEnabled: boolean("sms_alerts_enabled").default(false), // Master toggle for SMS
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
   createdAt: timestamp("created_at").defaultNow(),

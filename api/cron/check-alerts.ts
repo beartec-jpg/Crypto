@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { neon } from '@neondatabase/serverless';
 import webpush from 'web-push';
+import twilio from 'twilio';
 
 interface PriceData {
   symbol: string;
@@ -362,48 +363,146 @@ async function sendPushNotification(
 
     if (!publicKey || !privateKey) {
       console.log('VAPID keys not configured');
-      return;
-    }
+    } else {
+      webpush.setVapidDetails('mailto:support@beartec.uk', publicKey, privateKey);
 
-    webpush.setVapidDetails('mailto:support@beartec.uk', publicKey, privateKey);
+      // Get user's push subscriptions
+      const subscriptions = await sql`
+        SELECT * FROM push_subscriptions WHERE user_id = ${userId}
+      `;
 
-    // Get user's push subscriptions
-    const subscriptions = await sql`
-      SELECT * FROM push_subscriptions WHERE user_id = ${userId}
-    `;
+      if (subscriptions.length === 0) {
+        console.log(`No push subscriptions for user ${userId}`);
+      } else {
+        const payload = JSON.stringify({
+          title: notification.title,
+          body: notification.body,
+          tag: notification.tag,
+          icon: '/icon.png',
+          badge: '/badge.png',
+        });
 
-    if (subscriptions.length === 0) {
-      console.log(`No push subscriptions for user ${userId}`);
-      return;
-    }
+        for (const sub of subscriptions) {
+          try {
+            const parsedSub = typeof sub.subscription === 'string' 
+              ? JSON.parse(sub.subscription) 
+              : sub.subscription;
 
-    const payload = JSON.stringify({
-      title: notification.title,
-      body: notification.body,
-      tag: notification.tag,
-      icon: '/icon.png',
-      badge: '/badge.png',
-    });
-
-    for (const sub of subscriptions) {
-      try {
-        const parsedSub = typeof sub.subscription === 'string' 
-          ? JSON.parse(sub.subscription) 
-          : sub.subscription;
-
-        await webpush.sendNotification(parsedSub, payload);
-        console.log(`✅ Push sent to subscription ${sub.id}`);
-      } catch (error: any) {
-        console.error(`Failed to send push to ${sub.id}:`, error.message);
-        // If subscription is invalid, we could delete it here
-        if (error.statusCode === 404 || error.statusCode === 410) {
-          console.log(`Deleting invalid subscription ${sub.id}`);
-          await sql`DELETE FROM push_subscriptions WHERE id = ${sub.id}`;
+            await webpush.sendNotification(parsedSub, payload);
+            console.log(`✅ Push sent to subscription ${sub.id}`);
+          } catch (error: any) {
+            console.error(`Failed to send push to ${sub.id}:`, error.message);
+            if (error.statusCode === 404 || error.statusCode === 410) {
+              console.log(`Deleting invalid subscription ${sub.id}`);
+              await sql`DELETE FROM push_subscriptions WHERE id = ${sub.id}`;
+            }
+          }
         }
       }
     }
+
+    // ========== ALSO SEND SMS ALERT ==========
+    await sendSMSNotification(sql, userId, notification);
   } catch (error) {
     console.error('Error sending push notification:', error);
+  }
+}
+
+async function sendSMSNotification(
+  sql: any,
+  userId: string,
+  notification: { title: string; body: string; tag: string }
+) {
+  try {
+    // Check if user has SMS enabled
+    const users = await sql`
+      SELECT phone_number, sms_alerts_enabled FROM crypto_users 
+      WHERE id = ${userId}
+    `;
+
+    if (users.length === 0) {
+      console.log(`No user found for ${userId}`);
+      return;
+    }
+
+    const user = users[0];
+    if (!user.sms_alerts_enabled || !user.phone_number) {
+      console.log(`SMS not enabled for user ${userId}`);
+      return;
+    }
+
+    // Get Twilio credentials from Replit connector
+    const twilioCredentials = await getTwilioCredentials();
+    if (!twilioCredentials) {
+      console.log('Twilio not configured');
+      return;
+    }
+
+    const client = twilio(twilioCredentials.apiKey, twilioCredentials.apiKeySecret, {
+      accountSid: twilioCredentials.accountSid
+    });
+
+    const smsBody = `${notification.title}\n${notification.body}`;
+
+    const message = await client.messages.create({
+      body: smsBody,
+      from: twilioCredentials.phoneNumber,
+      to: user.phone_number
+    });
+
+    console.log(`✅ SMS sent to ${user.phone_number}: ${message.sid}`);
+  } catch (error: any) {
+    console.error('Failed to send SMS:', error.message);
+  }
+}
+
+async function getTwilioCredentials(): Promise<{
+  accountSid: string;
+  apiKey: string;
+  apiKeySecret: string;
+  phoneNumber: string;
+} | null> {
+  try {
+    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+    const xReplitToken = process.env.REPL_IDENTITY 
+      ? 'repl ' + process.env.REPL_IDENTITY 
+      : process.env.WEB_REPL_RENEWAL 
+      ? 'depl ' + process.env.WEB_REPL_RENEWAL 
+      : null;
+
+    if (!xReplitToken || !hostname) {
+      console.log('Replit connector environment not available');
+      return null;
+    }
+
+    const response = await fetch(
+      'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=twilio',
+      {
+        headers: {
+          'Accept': 'application/json',
+          'X_REPLIT_TOKEN': xReplitToken
+        }
+      }
+    );
+    
+    const data = await response.json();
+    const connectionSettings = data.items?.[0];
+
+    if (!connectionSettings || !connectionSettings.settings.account_sid || 
+        !connectionSettings.settings.api_key || !connectionSettings.settings.api_key_secret) {
+      console.log('Twilio not connected in Replit');
+      return null;
+    }
+
+    return {
+      accountSid: connectionSettings.settings.account_sid,
+      apiKey: connectionSettings.settings.api_key,
+      apiKeySecret: connectionSettings.settings.api_key_secret,
+      phoneNumber: connectionSettings.settings.phone_number
+    };
+  } catch (error: any) {
+    console.error('Error fetching Twilio credentials:', error.message);
+    return null;
   }
 }
 

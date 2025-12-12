@@ -4094,6 +4094,108 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
+  // Update SMS notification settings
+  app.post("/api/crypto/sms-settings", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { phoneNumber, smsAlertsEnabled } = req.body;
+
+      const { db } = await import("./db");
+      const { cryptoUsers } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const updateData: any = { updatedAt: new Date() };
+      
+      // Validate phone number format (basic validation)
+      if (phoneNumber !== undefined) {
+        if (phoneNumber && !phoneNumber.match(/^\+[1-9]\d{6,14}$/)) {
+          return res.status(400).json({ 
+            error: "Phone number must be in international format (e.g., +447712345678)" 
+          });
+        }
+        updateData.phoneNumber = phoneNumber || null;
+      }
+      
+      if (smsAlertsEnabled !== undefined) {
+        updateData.smsAlertsEnabled = smsAlertsEnabled;
+      }
+
+      const updated = await db.update(cryptoUsers)
+        .set(updateData)
+        .where(eq(cryptoUsers.id, userId))
+        .returning();
+
+      res.json({
+        phoneNumber: updated[0]?.phoneNumber,
+        smsAlertsEnabled: updated[0]?.smsAlertsEnabled
+      });
+    } catch (error: any) {
+      console.error('Error updating SMS settings:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get SMS notification settings
+  app.get("/api/crypto/sms-settings", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+
+      const { db } = await import("./db");
+      const { cryptoUsers } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const users = await db.select({
+        phoneNumber: cryptoUsers.phoneNumber,
+        smsAlertsEnabled: cryptoUsers.smsAlertsEnabled
+      })
+        .from(cryptoUsers)
+        .where(eq(cryptoUsers.id, userId))
+        .limit(1);
+
+      if (users.length === 0) {
+        return res.json({ phoneNumber: null, smsAlertsEnabled: false });
+      }
+
+      res.json(users[0]);
+    } catch (error: any) {
+      console.error('Error fetching SMS settings:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Test SMS notification
+  app.post("/api/crypto/sms-test", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+
+      const { db } = await import("./db");
+      const { cryptoUsers } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const users = await db.select()
+        .from(cryptoUsers)
+        .where(eq(cryptoUsers.id, userId))
+        .limit(1);
+
+      if (users.length === 0 || !users[0].phoneNumber) {
+        return res.status(400).json({ error: "No phone number configured" });
+      }
+
+      // Import and use SMS service
+      const { testSMSConnection } = await import("./services/smsService");
+      const success = await testSMSConnection(users[0].phoneNumber);
+
+      if (success) {
+        res.json({ success: true, message: "Test SMS sent successfully" });
+      } else {
+        res.status(500).json({ error: "Failed to send test SMS" });
+      }
+    } catch (error: any) {
+      console.error('Error sending test SMS:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Tracked Trades API - Create/Track a trade
   app.post("/api/crypto/tracked-trades", requireCryptoAuth, async (req, res) => {
     try {
