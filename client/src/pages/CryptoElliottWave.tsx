@@ -4390,9 +4390,18 @@ const aiAnalyze = useMutation({
         (window as any).__touchMoved = false;
       }
     };
-    const handleTouchMove = () => {
-      // Mark that touch has moved (not a tap)
-      (window as any).__touchMoved = true;
+    const handleTouchMove = (e: TouchEvent) => {
+      // Only mark as moved if finger moved more than 15px from start (tolerance for trembling)
+      if (e.touches.length === 1) {
+        const startX = (window as any).__touchStartX ?? 0;
+        const startY = (window as any).__touchStartY ?? 0;
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance > 15) {
+          (window as any).__touchMoved = true;
+        }
+      }
     };
     const handleMouseDown = () => {
       touchStartTimeRef.current = Date.now();
