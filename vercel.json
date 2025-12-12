@@ -13,6 +13,9 @@
     { "source": "/api/crypto/elliott-wave/labels/:id", "destination": "/api/crypto/elliott-wave/labels/[id]" },
     { "source": "/api/crypto/projection-lines/:id", "destination": "/api/crypto/projection-lines/[id]" },
     { "source": "/api/crypto/chart-drawings/:id", "destination": "/api/crypto/chart-drawings/[id]" },
+    { "source": "/api/crypto/feedback-board/replies/:id", "destination": "/api/crypto/feedback-board/replies/[id]" },
+    { "source": "/api/crypto/feedback-board/:id/replies", "destination": "/api/crypto/feedback-board/[id]/replies" },
+    { "source": "/api/crypto/feedback-board/:id", "destination": "/api/crypto/feedback-board/[id]" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
