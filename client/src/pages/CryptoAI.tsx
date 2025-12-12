@@ -5,7 +5,7 @@ import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickData, Histogr
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, TrendingUp, Zap, Loader2, ArrowLeft, Settings, Activity, Info, AlertCircle } from 'lucide-react';
+import { RefreshCw, TrendingUp, Zap, Loader2, ArrowLeft, Settings, Activity, Info, AlertCircle, Target } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -2526,40 +2526,48 @@ export default function CryptoAI() {
                         {/* Profit/Loss Display - Show for active and completed trades */}
                         {(() => {
                           const matchedTrade = trackedTradesData?.find(
-                            (t) => t.symbol === symbol && 
+                            (t: any) => t.symbol === symbol && 
                             t.direction === alert.direction && 
                             parseFloat(t.entry) === parseFloat(alert.entry)
                           );
                           
                           if (matchedTrade) {
                             const entryPrice = parseFloat(matchedTrade.entry);
+                            const slPrice = parseFloat(matchedTrade.stopLoss);
+                            const tp1Price = parseFloat(matchedTrade.targets[0]);
                             const currentPrice = data.length > 0 ? data[data.length - 1].close : entryPrice;
                             
                             let profitPercent = 0;
-                            let exitPrice = currentPrice;
                             let isCompleted = false;
-                            let statusLabel = 'Active';
+                            let statusLabel = 'Waiting for entry';
+                            let showPL = false;
                             
-                            // Check if trade is completed
-                            if (matchedTrade.status === 'sl_hit' || matchedTrade.status === 'tp_hit') {
+                            if (matchedTrade.status === 'sl_hit') {
                               isCompleted = true;
-                              exitPrice = matchedTrade.status === 'sl_hit' 
-                                ? parseFloat(matchedTrade.stopLoss)
-                                : parseFloat(matchedTrade.targets[0]);
-                              statusLabel = matchedTrade.status === 'sl_hit' ? 'SL Hit' : 'TP Hit';
-                            }
-                            
-                            // Calculate profit/loss
-                            if (matchedTrade.direction === 'LONG') {
-                              profitPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
-                            } else {
-                              profitPercent = ((entryPrice - exitPrice) / entryPrice) * 100;
+                              showPL = true;
+                              statusLabel = 'SL Hit';
+                              profitPercent = matchedTrade.direction === 'LONG'
+                                ? ((slPrice - entryPrice) / entryPrice) * 100
+                                : ((entryPrice - slPrice) / entryPrice) * 100;
+                            } else if (matchedTrade.status === 'tp_hit') {
+                              isCompleted = true;
+                              showPL = true;
+                              statusLabel = 'TP Hit';
+                              profitPercent = matchedTrade.direction === 'LONG'
+                                ? ((tp1Price - entryPrice) / entryPrice) * 100
+                                : ((entryPrice - tp1Price) / entryPrice) * 100;
+                            } else if (matchedTrade.status === 'entry_hit') {
+                              showPL = true;
+                              statusLabel = 'In Trade';
+                              profitPercent = matchedTrade.direction === 'LONG'
+                                ? ((currentPrice - entryPrice) / entryPrice) * 100
+                                : ((entryPrice - currentPrice) / entryPrice) * 100;
                             }
                             
                             const isProfit = profitPercent > 0;
-                            const colorClass = isProfit ? 'text-green-400' : 'text-red-400';
-                            const bgClass = isProfit ? 'bg-green-500/10' : 'bg-red-500/10';
-                            const borderClass = isProfit ? 'border-green-500/30' : 'border-red-500/30';
+                            const colorClass = showPL ? (isProfit ? 'text-green-400' : 'text-red-400') : 'text-yellow-400';
+                            const bgClass = showPL ? (isProfit ? 'bg-green-500/10' : 'bg-red-500/10') : 'bg-yellow-500/10';
+                            const borderClass = showPL ? (isProfit ? 'border-green-500/30' : 'border-red-500/30') : 'border-yellow-500/30';
                             
                             return (
                               <div 
@@ -2568,9 +2576,13 @@ export default function CryptoAI() {
                               >
                                 <div className="flex items-center gap-2">
                                   {isCompleted && <span className="text-xl">✓</span>}
-                                  <span className={`font-semibold ${colorClass}`}>
-                                    {isProfit ? '+' : ''}{profitPercent.toFixed(2)}%
-                                  </span>
+                                  {showPL ? (
+                                    <span className={`font-semibold ${colorClass}`}>
+                                      {isProfit ? '+' : ''}{profitPercent.toFixed(2)}%
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">--</span>
+                                  )}
                                   <span className="text-xs text-gray-400">
                                     ({statusLabel})
                                   </span>
@@ -2638,6 +2650,122 @@ export default function CryptoAI() {
                     <p className="text-sm mt-2">Grades A-E based on order flow confluence</p>
                   </div>
                 )}
+              </Card>
+            )}
+
+            {/* Tracked Trades Summary Panel */}
+            {trackedTradesData && trackedTradesData.length > 0 && (
+              <Card className="bg-[#1a1a1a] border-[#2a2e39] mt-6" data-testid="tracked-trades-panel">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Target className="w-5 h-5 text-[#00c4b4]" />
+                      <h3 className="font-semibold text-white">Tracked Trades</h3>
+                      <span className="text-xs bg-[#2a2e39] px-2 py-1 rounded text-gray-400">
+                        {trackedTradesData.length} total
+                      </span>
+                    </div>
+                    {/* Win/Loss Stats */}
+                    {(() => {
+                      const completed = trackedTradesData.filter(t => t.status === 'sl_hit' || t.status === 'tp_hit');
+                      const wins = completed.filter(t => t.status === 'tp_hit').length;
+                      const losses = completed.filter(t => t.status === 'sl_hit').length;
+                      const winRate = completed.length > 0 ? ((wins / completed.length) * 100).toFixed(0) : '0';
+                      return completed.length > 0 ? (
+                        <div className="flex items-center gap-3 text-sm">
+                          <span className="text-green-400 font-semibold">{wins}W</span>
+                          <span className="text-red-400 font-semibold">{losses}L</span>
+                          <div className={`px-2 py-1 rounded text-xs font-bold ${Number(winRate) >= 50 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                            {winRate}% Win Rate
+                          </div>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                  
+                  {/* Individual Tracked Trades */}
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {trackedTradesData.map((trade: any, idx: number) => {
+                      const entryPrice = parseFloat(trade.entry);
+                      const slPrice = parseFloat(trade.stopLoss);
+                      const tp1Price = parseFloat(trade.targets[0]);
+                      const currentPrice = data.length > 0 ? data[data.length - 1].close : entryPrice;
+                      
+                      let profitPercent = 0;
+                      let statusLabel = 'Waiting';
+                      let statusColor = 'text-yellow-400';
+                      let statusBg = 'bg-yellow-500/20';
+                      let showPL = false;
+                      
+                      if (trade.status === 'sl_hit') {
+                        const exitPrice = slPrice;
+                        statusLabel = 'SL Hit';
+                        statusColor = 'text-red-400';
+                        statusBg = 'bg-red-500/20';
+                        showPL = true;
+                        profitPercent = trade.direction === 'LONG' 
+                          ? ((exitPrice - entryPrice) / entryPrice) * 100
+                          : ((entryPrice - exitPrice) / entryPrice) * 100;
+                      } else if (trade.status === 'tp_hit') {
+                        const exitPrice = tp1Price;
+                        statusLabel = 'TP Hit';
+                        statusColor = 'text-green-400';
+                        statusBg = 'bg-green-500/20';
+                        showPL = true;
+                        profitPercent = trade.direction === 'LONG' 
+                          ? ((exitPrice - entryPrice) / entryPrice) * 100
+                          : ((entryPrice - exitPrice) / entryPrice) * 100;
+                      } else if (trade.status === 'entry_hit') {
+                        statusLabel = 'In Trade';
+                        statusColor = 'text-cyan-400';
+                        statusBg = 'bg-cyan-500/20';
+                        showPL = true;
+                        profitPercent = trade.direction === 'LONG' 
+                          ? ((currentPrice - entryPrice) / entryPrice) * 100
+                          : ((entryPrice - currentPrice) / entryPrice) * 100;
+                      } else if (trade.status === 'pending') {
+                        statusLabel = 'Waiting';
+                        statusColor = 'text-yellow-400';
+                        statusBg = 'bg-yellow-500/20';
+                        showPL = false;
+                      }
+                      
+                      const isProfit = profitPercent > 0;
+                      
+                      return (
+                        <div 
+                          key={trade.id || idx}
+                          className="flex items-center justify-between p-3 bg-[#0e0e0e] rounded-lg border border-[#2a2e39]"
+                          data-testid={`tracked-trade-${idx}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`px-2 py-1 rounded text-xs font-bold ${trade.direction === 'LONG' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                              {trade.direction}
+                            </div>
+                            <div>
+                              <div className="text-sm text-white font-medium">{trade.symbol}</div>
+                              <div className="text-xs text-gray-500">
+                                Entry: {entryPrice.toFixed(4)} | SL: {slPrice.toFixed(4)} | TP: {tp1Price.toFixed(4)}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className={`px-2 py-1 rounded text-xs font-semibold ${statusBg} ${statusColor}`}>
+                              {statusLabel}
+                            </div>
+                            {showPL ? (
+                              <div className={`text-sm font-bold ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
+                                {isProfit ? '+' : ''}{profitPercent.toFixed(2)}%
+                              </div>
+                            ) : (
+                              <div className="text-sm text-gray-500">--</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
               </Card>
             )}
 
