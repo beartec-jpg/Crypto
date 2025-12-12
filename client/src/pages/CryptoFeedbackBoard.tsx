@@ -92,6 +92,8 @@ export default function CryptoFeedbackBoard() {
   const [newPost, setNewPost] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyContent, setReplyContent] = useState("");
+  const [confirmDeletePost, setConfirmDeletePost] = useState<string | null>(null);
+  const [confirmDeleteReply, setConfirmDeleteReply] = useState<string | null>(null);
   
   const isAdmin = user?.email === ADMIN_EMAIL;
   const userEmail = user?.email || null;
@@ -268,11 +270,25 @@ export default function CryptoFeedbackBoard() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => deletePostMutation.mutate(post.id)}
-                            className="text-gray-500 hover:text-red-400 h-8 w-8 p-0"
+                            onClick={() => {
+                              if (confirmDeletePost === post.id) {
+                                deletePostMutation.mutate(post.id);
+                                setConfirmDeletePost(null);
+                              } else {
+                                setConfirmDeletePost(post.id);
+                                setConfirmDeleteReply(null);
+                              }
+                            }}
+                            onBlur={() => setTimeout(() => setConfirmDeletePost(null), 200)}
+                            className={`h-8 p-0 transition-all ${
+                              confirmDeletePost === post.id 
+                                ? 'bg-red-500/20 text-red-400 w-auto px-2' 
+                                : 'text-gray-500 hover:text-red-400 w-8'
+                            }`}
                             data-testid={`button-delete-post-${post.id}`}
                           >
                             <Trash2 className="w-4 h-4" />
+                            {confirmDeletePost === post.id && <span className="ml-1 text-xs">Confirm?</span>}
                           </Button>
                         )}
                       </div>
@@ -342,11 +358,25 @@ export default function CryptoFeedbackBoard() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() => deleteReplyMutation.mutate(reply.id)}
-                                      className="text-gray-500 hover:text-red-400 h-6 w-6 p-0"
+                                      onClick={() => {
+                                        if (confirmDeleteReply === reply.id) {
+                                          deleteReplyMutation.mutate(reply.id);
+                                          setConfirmDeleteReply(null);
+                                        } else {
+                                          setConfirmDeleteReply(reply.id);
+                                          setConfirmDeletePost(null);
+                                        }
+                                      }}
+                                      onBlur={() => setTimeout(() => setConfirmDeleteReply(null), 200)}
+                                      className={`h-6 p-0 transition-all ${
+                                        confirmDeleteReply === reply.id 
+                                          ? 'bg-red-500/20 text-red-400 w-auto px-1' 
+                                          : 'text-gray-500 hover:text-red-400 w-6'
+                                      }`}
                                       data-testid={`button-delete-reply-${reply.id}`}
                                     >
                                       <Trash2 className="w-3 h-3" />
+                                      {confirmDeleteReply === reply.id && <span className="ml-1 text-xs">?</span>}
                                     </Button>
                                   )}
                                 </div>
