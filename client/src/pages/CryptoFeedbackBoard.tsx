@@ -279,7 +279,6 @@ export default function CryptoFeedbackBoard() {
                                 setConfirmDeleteReply(null);
                               }
                             }}
-                            onBlur={() => setTimeout(() => setConfirmDeletePost(null), 200)}
                             className={`h-8 p-0 transition-all ${
                               confirmDeletePost === post.id 
                                 ? 'bg-red-500/20 text-red-400 w-auto px-2' 
@@ -367,7 +366,6 @@ export default function CryptoFeedbackBoard() {
                                           setConfirmDeletePost(null);
                                         }
                                       }}
-                                      onBlur={() => setTimeout(() => setConfirmDeleteReply(null), 200)}
                                       className={`h-6 p-0 transition-all ${
                                         confirmDeleteReply === reply.id 
                                           ? 'bg-red-500/20 text-red-400 w-auto px-1' 
