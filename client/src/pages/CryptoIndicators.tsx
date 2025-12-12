@@ -11394,7 +11394,7 @@ export default function CryptoIndicators() {
           <div className="max-w-2xl mx-auto space-y-2">
             <h2 className="text-xl font-bold text-white">Unlock AI-Powered Trade Analysis</h2>
             <p className="text-gray-300 text-sm">
-              Upgrade to Tier 2 for instant trade alerts powered by Grok AI. Get real-time confluence analysis, 
+              Upgrade to Intermediate for instant trade alerts powered by Grok AI. Get real-time confluence analysis, 
               push notifications, and custom alert preferences.
             </p>
             <div className="flex items-center justify-center gap-4 text-xs text-gray-400">
