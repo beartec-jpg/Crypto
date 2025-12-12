@@ -149,11 +149,18 @@ export default function CryptoFeedbackBoard() {
       const response = await apiRequest("DELETE", `/api/crypto/feedback-board/${id}`, {
         email: userEmail,
       });
-      return response.json();
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Delete failed');
+      }
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/crypto/feedback-board'] });
       toast({ title: "Deleted" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     }
   });
 
@@ -162,11 +169,18 @@ export default function CryptoFeedbackBoard() {
       const response = await apiRequest("DELETE", `/api/crypto/feedback-board/replies/${id}`, {
         email: userEmail,
       });
-      return response.json();
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Delete failed');
+      }
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/crypto/feedback-board'] });
       toast({ title: "Reply deleted" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     }
   });
 
