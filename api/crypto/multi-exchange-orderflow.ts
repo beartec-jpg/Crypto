@@ -33,7 +33,7 @@ async function fetchBinanceOHLCV(symbol: string, interval: string, since: number
   });
 }
 
-// Fetch OHLCV from OKX
+// Fetch OHLCV from OKX - uses price movement to estimate buy/sell ratio
 async function fetchOKXOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const instId = `${base}-USDT`;
@@ -48,22 +48,27 @@ async function fetchOKXOHLCV(symbol: string, interval: string, since: number, li
   // OKX returns [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
   return data.data.map((k: any) => {
     const volume = parseFloat(k[5]);
-    // OKX doesn't provide taker volume, estimate 50/50
+    const open = parseFloat(k[1]);
+    const close = parseFloat(k[4]);
+    // Use price movement to estimate buy/sell ratio (like Python script)
+    const buyRatio = close >= open ? 0.55 : 0.45;
+    const buyVolume = volume * buyRatio;
+    const sellVolume = volume * (1 - buyRatio);
     return {
       timestamp: parseInt(k[0]),
-      open: parseFloat(k[1]),
+      open,
       high: parseFloat(k[2]),
       low: parseFloat(k[3]),
-      close: parseFloat(k[4]),
+      close,
       volume,
-      buyVolume: volume * 0.5,
-      sellVolume: volume * 0.5,
-      delta: 0, // Unknown without taker data
+      buyVolume,
+      sellVolume,
+      delta: buyVolume - sellVolume,
     };
   }).reverse(); // OKX returns newest first
 }
 
-// Fetch OHLCV from Gate.io
+// Fetch OHLCV from Gate.io - uses price movement to estimate buy/sell ratio
 async function fetchGateIOOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const currencyPair = `${base}_USDT`;
@@ -77,21 +82,26 @@ async function fetchGateIOOHLCV(symbol: string, interval: string, since: number,
   // Gate.io returns [timestamp, volume, close, high, low, open, amount]
   return candles.map((k: any) => {
     const volume = parseFloat(k[1]);
+    const open = parseFloat(k[5]);
+    const close = parseFloat(k[2]);
+    const buyRatio = close >= open ? 0.55 : 0.45;
+    const buyVolume = volume * buyRatio;
+    const sellVolume = volume * (1 - buyRatio);
     return {
       timestamp: parseInt(k[0]) * 1000, // Gate.io uses seconds
-      open: parseFloat(k[5]),
+      open,
       high: parseFloat(k[3]),
       low: parseFloat(k[4]),
-      close: parseFloat(k[2]),
+      close,
       volume,
-      buyVolume: volume * 0.5,
-      sellVolume: volume * 0.5,
-      delta: 0,
+      buyVolume,
+      sellVolume,
+      delta: buyVolume - sellVolume,
     };
   });
 }
 
-// Fetch OHLCV from Kraken
+// Fetch OHLCV from Kraken - uses price movement to estimate buy/sell ratio
 async function fetchKrakenOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const pair = `${base}USD`;
@@ -108,21 +118,26 @@ async function fetchKrakenOHLCV(symbol: string, interval: string, since: number,
   // Kraken returns [time, open, high, low, close, vwap, volume, count]
   return data.result[pairKey].slice(-limit).map((k: any) => {
     const volume = parseFloat(k[6]);
+    const open = parseFloat(k[1]);
+    const close = parseFloat(k[4]);
+    const buyRatio = close >= open ? 0.55 : 0.45;
+    const buyVolume = volume * buyRatio;
+    const sellVolume = volume * (1 - buyRatio);
     return {
       timestamp: k[0] * 1000,
-      open: parseFloat(k[1]),
+      open,
       high: parseFloat(k[2]),
       low: parseFloat(k[3]),
-      close: parseFloat(k[4]),
+      close,
       volume,
-      buyVolume: volume * 0.5,
-      sellVolume: volume * 0.5,
-      delta: 0,
+      buyVolume,
+      sellVolume,
+      delta: buyVolume - sellVolume,
     };
   });
 }
 
-// Fetch OHLCV from KuCoin
+// Fetch OHLCV from KuCoin - uses price movement to estimate buy/sell ratio
 async function fetchKuCoinOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const kcSymbol = `${base}-USDT`;
@@ -137,21 +152,26 @@ async function fetchKuCoinOHLCV(symbol: string, interval: string, since: number,
   // KuCoin returns [time, open, close, high, low, volume, turnover]
   return data.data.slice(0, limit).map((k: any) => {
     const volume = parseFloat(k[5]);
+    const open = parseFloat(k[1]);
+    const close = parseFloat(k[2]);
+    const buyRatio = close >= open ? 0.55 : 0.45;
+    const buyVolume = volume * buyRatio;
+    const sellVolume = volume * (1 - buyRatio);
     return {
       timestamp: parseInt(k[0]) * 1000,
-      open: parseFloat(k[1]),
+      open,
       high: parseFloat(k[3]),
       low: parseFloat(k[4]),
-      close: parseFloat(k[2]),
+      close,
       volume,
-      buyVolume: volume * 0.5,
-      sellVolume: volume * 0.5,
-      delta: 0,
+      buyVolume,
+      sellVolume,
+      delta: buyVolume - sellVolume,
     };
   }).reverse(); // KuCoin returns newest first
 }
 
-// Fetch OHLCV from Coinbase
+// Fetch OHLCV from Coinbase - uses price movement to estimate buy/sell ratio
 async function fetchCoinbaseOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const productId = `${base}-USD`;
@@ -167,16 +187,21 @@ async function fetchCoinbaseOHLCV(symbol: string, interval: string, since: numbe
   // Coinbase returns [time, low, high, open, close, volume]
   return candles.slice(-limit).map((k: any) => {
     const volume = parseFloat(k[5]);
+    const open = parseFloat(k[3]);
+    const close = parseFloat(k[4]);
+    const buyRatio = close >= open ? 0.55 : 0.45;
+    const buyVolume = volume * buyRatio;
+    const sellVolume = volume * (1 - buyRatio);
     return {
       timestamp: k[0] * 1000,
-      open: parseFloat(k[3]),
+      open,
       high: parseFloat(k[2]),
       low: parseFloat(k[1]),
-      close: parseFloat(k[4]),
+      close,
       volume,
-      buyVolume: volume * 0.5,
-      sellVolume: volume * 0.5,
-      delta: 0,
+      buyVolume,
+      sellVolume,
+      delta: buyVolume - sellVolume,
     };
   }).reverse(); // Coinbase returns newest first
 }
