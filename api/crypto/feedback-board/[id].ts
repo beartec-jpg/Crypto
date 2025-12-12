@@ -9,10 +9,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { id } = req.query;
     
     if (req.method === 'DELETE') {
-      const { email } = req.body;
+      // Parse body - Vercel may not auto-parse for DELETE
+      let body = req.body;
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch {
+          body = {};
+        }
+      }
+      
+      const email = body?.email;
       
       if (email !== ADMIN_EMAIL) {
-        return res.status(403).json({ error: 'Admin access required' });
+        return res.status(403).json({ error: 'Admin access required', receivedEmail: email });
       }
       
       await sql`DELETE FROM feedback_board WHERE id = ${id as string}`;
