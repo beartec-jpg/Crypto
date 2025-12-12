@@ -764,44 +764,6 @@ export default function CryptoIndicators() {
   const [adxPeriod, setAdxPeriod] = useState(14);
   const [adxPeriodInput, setAdxPeriodInput] = useState('14');
   
-  // Compute active indicators map for the reorder dialog
-  const indicatorActiveStates = useMemo(() => {
-    const activeMap: Record<string, boolean> = {
-      orderBlocks: showOrderBlocks,
-      premiumDiscount: showPremiumDiscount,
-      fvg: showFVG,
-      bos: showBOS,
-      choch: showCHoCH,
-      swingPivots: showSwingPivots,
-      liquiditySweeps: stratLiquidityGrab,
-      ema: showEMA,
-      sma: showSMA,
-      supertrend: showSupertrend,
-      parabolicSar: showParabolicSAR,
-      ichimoku: false, // Not implemented yet
-      autoTrendlines: showAutoTrendlines,
-      vwapBands: showVWAPBands,
-      sessionVwap: showSessionVWAP,
-      dailyVwap: showVWAPDaily,
-      weeklyVwap: showVWAPWeekly,
-      monthlyVwap: showVWAPMonthly,
-      rollingVwap: showVWAPRolling,
-      bollingerBands: showBB,
-      rsi: showRSI,
-      macd: showMACD,
-      obv: showOBV,
-      mfi: showMFI,
-      cci: showCCI,
-      adx: showADX,
-      stochRsi: showStochRSI,
-      williamsR: showWilliamsR,
-    };
-    return activeMap;
-  }, [showOrderBlocks, showPremiumDiscount, showFVG, showBOS, showCHoCH, showSwingPivots, 
-      stratLiquidityGrab, showEMA, showSMA, showSupertrend, showParabolicSAR, showAutoTrendlines,
-      showVWAPBands, showSessionVWAP, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling,
-      showBB, showRSI, showMACD, showOBV, showMFI, showCCI, showADX, showStochRSI, showWilliamsR]);
-  
   // ========== CHART DISPLAY SETTINGS (independent from strategy settings) ==========
   // BOS swing length: 5 for tighter swing detection, CHoCH swing length: 20 for broader trend changes
   const [chartBosSwingLength, setChartBosSwingLength] = useState(5);
@@ -970,6 +932,44 @@ export default function CryptoIndicators() {
   const [liqGrabTPSwingLengthInput, setLiqGrabTPSwingLengthInput] = useState('15');
   const [liqGrabSLSwingLength, setLiqGrabSLSwingLength] = useState(5);
   const [liqGrabSLSwingLengthInput, setLiqGrabSLSwingLengthInput] = useState('5');
+
+  // Compute active indicators map for the reorder dialog (must be after all indicator states are defined)
+  const indicatorActiveStates = useMemo(() => {
+    const activeMap: Record<string, boolean> = {
+      orderBlocks: showOrderBlocks,
+      premiumDiscount: showPremiumDiscount,
+      fvg: showFVG,
+      bos: showBOS,
+      choch: showCHoCH,
+      swingPivots: showSwingPivots,
+      liquiditySweeps: stratLiquidityGrab,
+      ema: showEMA,
+      sma: showSMA,
+      supertrend: showSupertrend,
+      parabolicSar: showParabolicSAR,
+      ichimoku: false,
+      autoTrendlines: showAutoTrendlines,
+      vwapBands: showVWAPBands,
+      sessionVwap: showSessionVWAP,
+      dailyVwap: showVWAPDaily,
+      weeklyVwap: showVWAPWeekly,
+      monthlyVwap: showVWAPMonthly,
+      rollingVwap: showVWAPRolling,
+      bollingerBands: showBB,
+      rsi: showRSI,
+      macd: showMACD,
+      obv: showOBV,
+      mfi: showMFI,
+      cci: showCCI,
+      adx: showADX,
+      stochRsi: showStochRSI,
+      williamsR: showWilliamsR,
+    };
+    return activeMap;
+  }, [showOrderBlocks, showPremiumDiscount, showFVG, showBOS, showCHoCH, showSwingPivots, 
+      stratLiquidityGrab, showEMA, showSMA, showSupertrend, showParabolicSAR, showAutoTrendlines,
+      showVWAPBands, showSessionVWAP, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling,
+      showBB, showRSI, showMACD, showOBV, showMFI, showCCI, showADX, showStochRSI, showWilliamsR]);
   
   // ========== BOS STRUCTURE STRATEGY SETTINGS ==========
   const [stratBOSTrend, setStratBOSTrend] = useState(false);
