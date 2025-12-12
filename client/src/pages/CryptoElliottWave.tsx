@@ -2846,11 +2846,13 @@ export default function CryptoElliottWave() {
     },
   });
   
-  // Helper to check if a projection line is saved (match by levelLabel, symbol, AND price to prevent duplicates)
+  // Helper to check if a projection line is saved (match by structureId, levelLabel, symbol, AND price)
+  // Allows same label+price from DIFFERENT structures (e.g., Minor W2 62% and Minute W2 62%)
+  // Prevents duplicates within the SAME structure
   const isProjectionSaved = (structureId: string, levelLabel: string, price?: number): SavedProjectionLine | undefined => {
     return savedProjectionLinesFromDB.find(line => {
-      // Match by symbol and label
-      if (line.levelLabel !== levelLabel || line.symbol !== symbol) return false;
+      // Must match symbol, label, AND structureId (allows same target from different degrees)
+      if (line.levelLabel !== levelLabel || line.symbol !== symbol || line.structureId !== structureId) return false;
       // If price provided, also check price is within 0.1% tolerance (same target)
       if (price !== undefined) {
         const priceDiff = Math.abs(line.price - price) / price;
