@@ -31,10 +31,26 @@ async function getDb() {
   return pool;
 }
 
-async function checkEliteTier(pool: any, userId: string): Promise<boolean> {
-  const result = await pool.query('SELECT subscription_tier FROM crypto_users WHERE id = $1', [userId]);
-  if (result.rows.length === 0) return false;
-  return result.rows[0].subscription_tier === 'elite';
+async function checkEliteTier(pool: any, clerkUserId: string): Promise<boolean> {
+  // First get the user's email from crypto_users using the Clerk ID
+  const userResult = await pool.query('SELECT id, email FROM crypto_users WHERE id = $1', [clerkUserId]);
+  if (userResult.rows.length === 0) return false;
+  
+  const dbUserId = userResult.rows[0].id;
+  const email = userResult.rows[0].email;
+  
+  // Admin bypass for beartec@beartec.uk
+  if (email === 'beartec@beartec.uk') return true;
+  
+  // Check subscription tier from crypto_subscriptions table
+  const subResult = await pool.query('SELECT tier, has_elliott_addon FROM crypto_subscriptions WHERE user_id = $1', [dbUserId]);
+  if (subResult.rows.length === 0) return false;
+  
+  const tier = subResult.rows[0].tier;
+  const hasElliott = subResult.rows[0].has_elliott_addon;
+  
+  // Elite tier OR Elliott Wave addon grants access
+  return tier === 'elite' || hasElliott === true;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
