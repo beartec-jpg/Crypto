@@ -87,7 +87,7 @@ def validate_trade_data(trades: List[Dict], exchange_id: str) -> Tuple[bool, str
     return True, "Valid"
 
 def fetch_trades_from_exchange(exchange_id: str, symbol: str, since_ms: int = None, until_ms: int = None, limit: int = 1000, retry_count: int = 0) -> Tuple[List[Dict], Dict[str, Any]]:
-    """Fetch trades from a single exchange with error handling and retry logic"""
+    """Fetch trades from a single exchange with pagination to cover full time range"""
     metadata = {
         'exchange': EXCHANGES[exchange_id]['name'],
         'exchange_id': exchange_id,
@@ -96,10 +96,12 @@ def fetch_trades_from_exchange(exchange_id: str, symbol: str, since_ms: int = No
         'error': None,
         'response_time_ms': 0,
         'data_quality': 'unknown',
-        'retries': retry_count
+        'retries': retry_count,
+        'pages_fetched': 0
     }
     
     start_time = time.time()
+    all_trades = []
     
     try:
         normalized_symbol = normalize_symbol(symbol, exchange_id)
@@ -109,28 +111,62 @@ def fetch_trades_from_exchange(exchange_id: str, symbol: str, since_ms: int = No
             'timeout': TIMEOUT_MS,
         })
         
-        # Fetch trades with time range if provided
-        # Coinbase requires 'until' parameter when using 'since'
-        if since_ms:
-            if exchange_id == 'coinbase' and until_ms:
-                trades = exchange.fetch_trades(normalized_symbol, since=since_ms, limit=limit, params={'until': until_ms})
-            else:
-                trades = exchange.fetch_trades(normalized_symbol, since=since_ms, limit=limit)
-        else:
-            trades = exchange.fetch_trades(normalized_symbol, limit=limit)
+        # Paginate through trades to cover the full time range
+        current_since = since_ms
+        max_pages = 5  # Limit to 5 pages to prevent infinite loops
+        page = 0
         
+        while page < max_pages:
+            page += 1
+            
+            try:
+                if current_since:
+                    if exchange_id == 'coinbase' and until_ms:
+                        trades = exchange.fetch_trades(normalized_symbol, since=current_since, limit=limit, params={'until': until_ms})
+                    else:
+                        trades = exchange.fetch_trades(normalized_symbol, since=current_since, limit=limit)
+                else:
+                    trades = exchange.fetch_trades(normalized_symbol, limit=limit)
+                    break  # No pagination without since_ms
+                
+                if not trades:
+                    break
+                    
+                all_trades.extend(trades)
+                
+                # Check if we've covered the time range
+                last_trade_time = trades[-1]['timestamp'] if trades else 0
+                if until_ms and last_trade_time >= until_ms:
+                    break
+                    
+                # Move to next page - use last trade timestamp + 1ms
+                if len(trades) < limit:
+                    break  # No more trades available
+                    
+                current_since = last_trade_time + 1
+                
+            except Exception as page_error:
+                print(f"⚠️ {EXCHANGES[exchange_id]['name']} page {page}: {str(page_error)}", file=sys.stderr)
+                break
+        
+        metadata['pages_fetched'] = page
         metadata['response_time_ms'] = int((time.time() - start_time) * 1000)
-        metadata['trades_count'] = len(trades)
+        metadata['trades_count'] = len(all_trades)
         
-        is_valid, validation_msg = validate_trade_data(trades, exchange_id)
+        # Filter trades to only include those within time range
+        if since_ms and until_ms:
+            all_trades = [t for t in all_trades if since_ms <= t['timestamp'] <= until_ms]
+            metadata['trades_count'] = len(all_trades)
+        
+        is_valid, validation_msg = validate_trade_data(all_trades, exchange_id)
         metadata['data_quality'] = 'valid' if is_valid else 'invalid'
         metadata['validation_message'] = validation_msg
         
         if is_valid:
             metadata['success'] = True
             retry_info = f" (after {retry_count} retries)" if retry_count > 0 else ""
-            print(f"✅ {EXCHANGES[exchange_id]['name']}: {len(trades)} trades in {metadata['response_time_ms']}ms{retry_info}", file=sys.stderr)
-            return trades, metadata
+            print(f"✅ {EXCHANGES[exchange_id]['name']}: {len(all_trades)} trades in {metadata['response_time_ms']}ms ({page} pages){retry_info}", file=sys.stderr)
+            return all_trades, metadata
         else:
             metadata['error'] = f"Validation failed: {validation_msg}"
             print(f"⚠️ {EXCHANGES[exchange_id]['name']}: {validation_msg}", file=sys.stderr)
