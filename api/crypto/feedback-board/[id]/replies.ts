@@ -22,7 +22,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const [reply] = await sql`
         INSERT INTO feedback_board_replies (feedback_id, responder_email, responder_name, content, is_admin_reply)
         VALUES (${id as string}, ${responderEmail}, ${responderName || 'BearTec'}, ${content.trim()}, true)
-        RETURNING *
+        RETURNING 
+          id,
+          feedback_id as "feedbackId",
+          responder_email as "responderEmail",
+          responder_name as "responderName",
+          content,
+          is_admin_reply as "isAdminReply",
+          created_at as "createdAt"
       `;
       
       return res.status(200).json(reply);
