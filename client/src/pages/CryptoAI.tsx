@@ -1833,11 +1833,9 @@ export default function CryptoAI() {
               <div className="text-sm">
                 <span className="text-gray-400">Auto-Refresh: </span>
                 <span className="font-semibold text-white" data-testid="text-refresh-rate">
-                  {tier === 'free' ? 'Manual Only' :
-                   tier === 'beginner' ? 'Every 5 min' :
-                   tier === 'intermediate' ? 'Every 3 min' :
+                  {tier === 'intermediate' ? 'Every 3 min' :
                    tier === 'pro' ? 'Every 1 min' :
-                   tier === 'elite' ? 'Every 30 sec' : 'Manual'}
+                   tier === 'elite' ? 'Every 30 sec' : 'Manual Only'}
                 </span>
               </div>
             </div>

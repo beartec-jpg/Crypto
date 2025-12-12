@@ -273,7 +273,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
     return 'free';
   };
 
-  // Tier-based limits (must match backend exactly)
+  // Tier-based limits (must match backend exactly) - Minimum tier is Intermediate
   const getTierLimits = (tier: string) => {
     const normalizedTier = normalizeTier(tier);
     const tierLimits: Record<string, {
@@ -282,18 +282,6 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
       allowedGrades: string[];
       allowedTimeframes: string[];
     }> = {
-      free: {
-        maxTickers: 1,
-        allowedAlertTypes: ['bos', 'choch'],
-        allowedGrades: ['A+', 'A', 'B'],
-        allowedTimeframes: ['15m', '1h', '4h', '1d']
-      },
-      beginner: {
-        maxTickers: 3,
-        allowedAlertTypes: ['bos', 'choch', 'fvg', 'liquidation'],
-        allowedGrades: ['A+', 'A', 'B', 'C', 'D'],
-        allowedTimeframes: ['5m', '15m', '1h', '4h', '1d']
-      },
       intermediate: {
         maxTickers: 3,
         allowedAlertTypes: ['bos', 'choch', 'fvg', 'liquidation', 'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx'],
@@ -323,7 +311,14 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
         allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
       },
     };
-    return tierLimits[normalizedTier];
+    // Return intermediate limits for any tier below intermediate (free, beginner)
+    return tierLimits[normalizedTier] || tierLimits['intermediate'];
+  };
+  
+  // Check if user has minimum required tier for alerts
+  const hasMinimumTier = () => {
+    const normalizedTier = normalizeTier(userTier);
+    return ['intermediate', 'pro', 'elite'].includes(normalizedTier);
   };
 
   // Validate current selections against tier limits
@@ -563,26 +558,104 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Master Toggle */}
+            {/* Tier Requirement Notice */}
+            {!hasMinimumTier() && (
+              <div className="p-4 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+                <p className="text-yellow-300 font-semibold mb-1">🔒 Intermediate Tier Required</p>
+                <p className="text-sm text-yellow-200/80">
+                  Alert notifications require Intermediate tier or higher. Upgrade to unlock all alert features.
+                </p>
+              </div>
+            )}
+            
+            {/* SMS Notifications Section - PRIMARY */}
+            <div className="p-4 bg-gradient-to-r from-green-900/30 to-slate-800 rounded-lg border border-green-700/50">
+              <div className="flex items-center gap-2 mb-3">
+                <MessageSquare className="h-5 w-5 text-green-400" />
+                <Label className="text-white font-semibold">SMS Notifications (Primary)</Label>
+                <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded">Recommended</span>
+              </div>
+              <p className="text-sm text-gray-400 mb-4">
+                Get alerts via SMS even when your browser is closed. Most reliable notification method.
+                <span className="text-yellow-400 block mt-1">~$0.01 per message (Twilio pricing)</span>
+              </p>
+              
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-gray-400" />
+                  <Input
+                    type="tel"
+                    placeholder="+447712345678"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-500 flex-1"
+                    disabled={!hasMinimumTier()}
+                    data-testid="input-phone-number"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">Enter phone in international format (e.g., +44 for UK)</p>
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={smsAlertsEnabled}
+                      onCheckedChange={(enabled) => {
+                        setSmsAlertsEnabled(enabled);
+                        if (phoneNumber) {
+                          smsMutation.mutate({ smsAlertsEnabled: enabled });
+                        }
+                      }}
+                      disabled={!phoneNumber || !hasMinimumTier()}
+                      data-testid="toggle-sms-alerts"
+                    />
+                    <Label className="text-gray-300 text-sm">
+                      {smsAlertsEnabled ? 'SMS Alerts Enabled' : 'Enable SMS Alerts'}
+                    </Label>
+                  </div>
+                  
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleTestSms}
+                    disabled={!phoneNumber || isSendingTestSms || !hasMinimumTier()}
+                    className="border-green-600 text-green-400 hover:bg-green-900/30"
+                    data-testid="button-test-sms"
+                  >
+                    {isSendingTestSms ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-1" />
+                        Test SMS
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Push Notifications - Secondary/Backup */}
             <div className="flex items-center justify-between p-4 bg-slate-800 rounded-lg border border-slate-700">
               <div>
-                <Label className="text-white font-semibold">Enable Push Notifications</Label>
+                <Label className="text-white font-semibold">Push Notifications (Backup)</Label>
                 <p className="text-sm text-gray-400 mt-1">
                   {pushSubscription
-                    ? 'You will receive alerts based on your preferences below'
-                    : 'Click to enable browser notifications for trading alerts'}
+                    ? 'Browser notifications enabled as backup'
+                    : 'Enable browser notifications as a backup method'}
                 </p>
               </div>
               {pushSubscription ? (
                 <Switch
                   checked={alertsEnabled}
                   onCheckedChange={handleToggleAlerts}
+                  disabled={!hasMinimumTier()}
                   data-testid="toggle-alerts-enabled"
                 />
               ) : (
                 <Button
                   onClick={handleEnableNotifications}
                   className="bg-blue-600 hover:bg-blue-700"
+                  disabled={!hasMinimumTier()}
                   data-testid="button-enable-notifications"
                 >
                   Enable
@@ -593,7 +666,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
             {/* Tickers */}
             <div>
               <Label className="text-white font-semibold mb-3 block">
-                Select Tickers {userTier === 'free' ? '(Free: 1 max)' : '(Max 3)'}
+                Select Tickers (Max 3)
               </Label>
               <div className="grid grid-cols-2 gap-3">
                 {TICKERS.map(ticker => (
@@ -606,7 +679,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                       checked={selectedTickers.includes(ticker.value)}
                       onCheckedChange={() => handleTickerToggle(ticker.value)}
                       disabled={
-                        (!selectedTickers.includes(ticker.value) && selectedTickers.length >= (userTier === 'free' ? 1 : 3))
+                        !hasMinimumTier() || (!selectedTickers.includes(ticker.value) && selectedTickers.length >= 3)
                       }
                       data-testid={`checkbox-ticker-${ticker.value.toLowerCase()}`}
                     />
@@ -620,15 +693,14 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                 ))}
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                {selectedTickers.length}/{userTier === 'free' ? 1 : 3} tickers selected
-                {userTier === 'free' && ' • Upgrade to Beginner for 3 tickers'}
+                {selectedTickers.length}/3 tickers selected
               </p>
             </div>
 
             {/* Timeframes */}
             <div>
               <Label className="text-white font-semibold mb-3 block">
-                Monitor Timeframes {userTier === 'free' && '(5m requires Beginner)'}
+                Monitor Timeframes
               </Label>
               <div className="grid grid-cols-3 gap-3">
                 {TIMEFRAMES.map(tf => {
@@ -663,7 +735,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
             {/* Alert Types */}
             <div>
               <Label className="text-white font-semibold mb-3 block">
-                Alert Types {userTier === 'free' && '(Free: BOS & CHoCH only)'}
+                Alert Types
               </Label>
               <div className="space-y-4">
                 {['Smart Money', 'Oscillators', 'Indicators', 'Volume', 'Price Action'].map(category => {
@@ -715,7 +787,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
             {/* Alert Grades */}
             <div>
               <Label className="text-white font-semibold mb-3 block">
-                Alert Quality Grades {userTier === 'free' && '(Free: A+, A, B)'}
+                Alert Quality Grades
               </Label>
               <p className="text-sm text-gray-400 mb-3">
                 Only receive alerts for setups with selected quality grades
@@ -747,74 +819,6 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                     </div>
                   );
                 })}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                {userTier === 'free' && 'Upgrade to Beginner for grades C, D, E'}
-                {userTier === 'beginner' && 'Upgrade to Intermediate for grade E'}
-              </p>
-            </div>
-
-            {/* SMS Notifications Section */}
-            <div className="p-4 bg-gradient-to-r from-green-900/30 to-slate-800 rounded-lg border border-green-700/50">
-              <div className="flex items-center gap-2 mb-3">
-                <MessageSquare className="h-5 w-5 text-green-400" />
-                <Label className="text-white font-semibold">SMS Notifications (Backup)</Label>
-              </div>
-              <p className="text-sm text-gray-400 mb-4">
-                Get alerts via SMS even when your browser is closed. More reliable than push notifications.
-                <span className="text-yellow-400 block mt-1">~$0.01 per message (Twilio pricing)</span>
-              </p>
-              
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-gray-400" />
-                  <Input
-                    type="tel"
-                    placeholder="+447712345678"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="bg-slate-700 border-slate-600 text-white placeholder:text-gray-500 flex-1"
-                    data-testid="input-phone-number"
-                  />
-                </div>
-                <p className="text-xs text-gray-500">Enter phone in international format (e.g., +44 for UK)</p>
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={smsAlertsEnabled}
-                      onCheckedChange={(enabled) => {
-                        setSmsAlertsEnabled(enabled);
-                        if (phoneNumber) {
-                          smsMutation.mutate({ smsAlertsEnabled: enabled });
-                        }
-                      }}
-                      disabled={!phoneNumber}
-                      data-testid="toggle-sms-alerts"
-                    />
-                    <Label className="text-gray-300 text-sm">
-                      {smsAlertsEnabled ? 'SMS Alerts Enabled' : 'Enable SMS Alerts'}
-                    </Label>
-                  </div>
-                  
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleTestSms}
-                    disabled={!phoneNumber || isSendingTestSms}
-                    className="border-green-600 text-green-400 hover:bg-green-900/30"
-                    data-testid="button-test-sms"
-                  >
-                    {isSendingTestSms ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Send className="h-4 w-4 mr-1" />
-                        Test SMS
-                      </>
-                    )}
-                  </Button>
-                </div>
               </div>
             </div>
 
