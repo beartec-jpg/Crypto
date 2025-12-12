@@ -577,7 +577,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
               </div>
               <p className="text-sm text-gray-400 mb-4">
                 Get alerts via SMS even when your browser is closed. Most reliable notification method.
-                <span className="text-yellow-400 block mt-1">~$0.01 per message (Twilio pricing)</span>
+                <span className="text-green-400 block mt-1">Included with your subscription</span>
               </p>
               
               <div className="space-y-3">
