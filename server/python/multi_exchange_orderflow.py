@@ -436,10 +436,27 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
         prev_cvd = 0
         divergence_alerts = []
         
+        # Calculate average volume for high-value divergence detection
+        all_volumes = [aggregated_data[ts]['volume'] for ts in aggregated_data.keys()]
+        avg_volume = statistics.mean(all_volumes) if all_volumes else 0
+        
         for timestamp in sorted(aggregated_data.keys()):
             data = aggregated_data[timestamp]
             delta = data['delta']
             cumulative_delta += delta
+            
+            # CVD vs Delta divergence detection:
+            # Divergence = CVD rising + delta negative, OR CVD dropping + delta positive
+            cvd_rising = cumulative_delta > prev_cvd
+            cvd_dropping = cumulative_delta < prev_cvd
+            delta_positive = delta > 0
+            delta_negative = delta < 0
+            
+            has_divergence = (cvd_rising and delta_negative) or (cvd_dropping and delta_positive)
+            
+            # High-value divergence: volume is 1.5x+ average (flame symbol)
+            volume_multiple = data['volume'] / avg_volume if avg_volume > 0 else 0
+            is_high_value = has_divergence and volume_multiple >= 1.5
             
             footprint.append({
                 'time': timestamp,
@@ -447,7 +464,9 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
                 'volume': data['volume'],
                 'exchanges': data['exchange_count'],
                 'confidence': data['confidence'],
-                'divergence': data['divergence']['has_divergence']
+                'divergence': has_divergence,
+                'highValueDivergence': is_high_value,
+                'volumeMultiple': round(volume_multiple, 2)
             })
             
             is_increasing = cumulative_delta > prev_cvd
@@ -466,15 +485,19 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
                 'delta': delta,
                 'volume': data['volume'],
                 'exchanges': data['exchange_count'],
-                'confidence': data['confidence']
+                'confidence': data['confidence'],
+                'divergence': has_divergence,
+                'highValueDivergence': is_high_value,
+                'volumeMultiple': round(volume_multiple, 2)
             })
             
-            if data['divergence']['has_divergence']:
+            if has_divergence:
                 divergence_alerts.append({
                     'time': timestamp,
-                    'variance': data['divergence']['variance'],
-                    'exchanges': list(data['divergence']['deltas'].keys()),
-                    'deltas': data['divergence']['deltas']
+                    'type': 'high_value' if is_high_value else 'normal',
+                    'volumeMultiple': round(volume_multiple, 2),
+                    'cvdDirection': 'rising' if cvd_rising else 'dropping',
+                    'deltaSign': 'positive' if delta_positive else 'negative'
                 })
             
             prev_cvd = cumulative_delta

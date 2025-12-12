@@ -644,7 +644,7 @@ export default function CryptoIndicators() {
   const [backtesting, setBacktesting] = useState(false);
   const [currentDelta, setCurrentDelta] = useState(0);
   const [cumDelta, setCumDelta] = useState(0);
-  const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; confidence?: number; divergence?: boolean }>>([]);
+  const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; confidence?: number; divergence?: boolean; highValueDivergence?: boolean; volumeMultiple?: number }>>([]);
   const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(false);
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
@@ -1476,7 +1476,9 @@ export default function CryptoIndicators() {
               volume: row.volume,
               exchanges: row.exchanges,
               confidence: row.confidence,
-              divergence: false // Will be set from divergences array if needed
+              divergence: row.divergence || false,
+              highValueDivergence: row.highValueDivergence || false,
+              volumeMultiple: row.volumeMultiple || 0
             };
           });
           
@@ -11186,9 +11188,10 @@ export default function CryptoIndicators() {
                                   </>
                                 )}
                                 <td className="text-center py-1 px-1">
-                                  {hasDivergence && <span className="text-yellow-400 text-xs" title="Exchange divergence">⚠️</span>}
-                                  {isBullishSpike && !hasDivergence && <span className="text-green-400 text-xs" title="Bullish delta spike (2x avg)">🔥</span>}
-                                  {isBearishSpike && !hasDivergence && !isBullishSpike && <span className="text-red-400 text-xs" title="Bearish delta spike (2x avg)">🔥</span>}
+                                  {currentBar.highValueDivergence && <span className="text-orange-400 text-xs" title={`High-value CVD divergence (${currentBar.volumeMultiple?.toFixed(1)}x volume)`}>🔥</span>}
+                                  {hasDivergence && !currentBar.highValueDivergence && <span className="text-yellow-400 text-xs" title="CVD/Delta divergence">⚠️</span>}
+                                  {isBullishSpike && !hasDivergence && <span className="text-green-400 text-xs" title="Bullish delta spike (2x avg)">📈</span>}
+                                  {isBearishSpike && !hasDivergence && !isBullishSpike && <span className="text-red-400 text-xs" title="Bearish delta spike (2x avg)">📉</span>}
                                 </td>
                               </tr>
                             );
@@ -11239,9 +11242,10 @@ export default function CryptoIndicators() {
                                 </>
                               )}
                               <td className="text-center py-1 px-1">
-                                {hasDivergence && <span className="text-yellow-400 text-xs" title="Exchange divergence">⚠️</span>}
-                                {isBullishSpike && !hasDivergence && <span className="text-green-400 text-xs" title="Bullish delta spike (2x avg)">🔥</span>}
-                                {isBearishSpike && !hasDivergence && !isBullishSpike && <span className="text-red-400 text-xs" title="Bearish delta spike (2x avg)">🔥</span>}
+                                {item.highValueDivergence && <span className="text-orange-400 text-xs" title={`High-value CVD divergence (${item.volumeMultiple?.toFixed(1)}x volume)`}>🔥</span>}
+                                {hasDivergence && !item.highValueDivergence && <span className="text-yellow-400 text-xs" title="CVD/Delta divergence">⚠️</span>}
+                                {isBullishSpike && !hasDivergence && <span className="text-green-400 text-xs" title="Bullish delta spike (2x avg)">📈</span>}
+                                {isBearishSpike && !hasDivergence && !isBullishSpike && <span className="text-red-400 text-xs" title="Bearish delta spike (2x avg)">📉</span>}
                               </td>
                             </tr>
                           );
