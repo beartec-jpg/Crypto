@@ -5,6 +5,14 @@ const sql = neon(process.env.DATABASE_URL!);
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(200).end();
+  }
+
   try {
     const { id } = req.query;
     
@@ -29,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true });
     }
     
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: `Method ${req.method} not allowed` });
   } catch (error: any) {
     console.error('Feedback board error:', error);
     return res.status(500).json({ error: error.message });
