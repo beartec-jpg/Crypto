@@ -3974,6 +3974,11 @@ const aiAnalyze = useMutation({
             setSavedLabels(updatedLabels);
             savedLabelsRef.current = updatedLabels;
             
+            // HAPTIC FEEDBACK: Vibrate on drop (if supported)
+            if (navigator.vibrate) {
+              navigator.vibrate([30, 30, 30]); // Double-pulse pattern for drop
+            }
+            
             // CRITICAL: Clear drag state, DESELECT pattern, and force marker refresh
             // Deselecting prevents accidental consecutive drags after a drop
             console.log('✅ Point dropped - clearing all state and re-validating');
@@ -4050,8 +4055,30 @@ const aiAnalyze = useMutation({
             });
             
             if (clickedPointIndex !== -1) {
+              // LONG-PRESS REQUIREMENT: Only allow drag if held for 300ms+ on touch devices
+              // This prevents accidental grabs when trying to tap
+              const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+              const holdDuration = Date.now() - (touchStartTimeRef.current || Date.now());
+              const touchMoved = (window as any).__touchMoved === true;
+              
+              if (isTouchDevice && (holdDuration < 300 || touchMoved)) {
+                console.log('🚫 Drag rejected - need 300ms hold (got', holdDuration, 'ms), moved:', touchMoved);
+                toast({
+                  title: 'Hold to Move',
+                  description: 'Hold finger on point for 0.3s to drag it',
+                  duration: 2000,
+                });
+                return;
+              }
+              
               // Start dragging this point - marker will disappear to show it's picked up
-              console.log('🎯 STARTING DRAG of point index:', clickedPointIndex);
+              console.log('🎯 STARTING DRAG of point index:', clickedPointIndex, 'after', holdDuration, 'ms hold');
+              
+              // HAPTIC FEEDBACK: Vibrate on grab (if supported)
+              if (navigator.vibrate) {
+                navigator.vibrate(50); // Short vibration
+              }
+              
               setDraggedPointIndex(clickedPointIndex);
               setIsDragging(true);
               isDraggingRef.current = true;
@@ -4162,12 +4189,15 @@ const aiAnalyze = useMutation({
       // - If point 0 clicked above candle mid → DOWNTREND (0=high, 1=low, 2=high, 3=low, 4=high, 5=low)
       // - If point 0 clicked below candle mid → UPTREND (0=low, 1=high, 2=low, 3=high, 4=low, 5=high)
       
-      // CANDLE WINDOW: Find best candle within range for easier placement
-      // 15m timeframe uses 7-candle window (3+1+3), others use 5-candle window (2+1+2)
-      const windowSize = timeframeRef.current === '15m' ? 3 : 2;
+      // MAGNETIC SNAP: Find best candle within range and snap to nearest wick
+      // Uses larger window on touch devices and when zoomed out
+      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const baseWindowSize = timeframeRef.current === '15m' ? 3 : 2;
+      const windowSize = isTouchDevice ? baseWindowSize + 2 : baseWindowSize; // Larger window on touch
       const startIdx = Math.max(0, candleIndex - windowSize);
       const endIdx = Math.min(candlesRef.current.length - 1, candleIndex + windowSize);
       
+      // Find the candle with the most extreme price in the window
       const findBestCandle = (snapToHigh: boolean) => {
         let bestIdx = candleIndex;
         let bestPrice = snapToHigh ? candle.high : candle.low;
@@ -4179,6 +4209,26 @@ const aiAnalyze = useMutation({
             bestIdx = i;
           } else if (!snapToHigh && c.low < bestPrice) {
             bestPrice = c.low;
+            bestIdx = i;
+          }
+        }
+        return { index: bestIdx, price: bestPrice, candle: candlesRef.current[bestIdx] };
+      };
+      
+      // SMART SNAP: Also check if click is closer to a specific candle's wick
+      // Find candle whose high/low is closest to clicked price
+      const findNearestWick = (snapToHigh: boolean) => {
+        let bestIdx = candleIndex;
+        let bestPrice = snapToHigh ? candle.high : candle.low;
+        let minDistance = Math.abs(clickedPrice - bestPrice);
+        
+        for (let i = startIdx; i <= endIdx; i++) {
+          const c = candlesRef.current[i];
+          const wickPrice = snapToHigh ? c.high : c.low;
+          const distance = Math.abs(clickedPrice - wickPrice);
+          if (distance < minDistance) {
+            minDistance = distance;
+            bestPrice = wickPrice;
             bestIdx = i;
           }
         }
@@ -4199,8 +4249,8 @@ const aiAnalyze = useMutation({
         trendDirectionRef.current = isDowntrend ? 'down' : 'up';
         snappedToHigh = isDowntrend; // Point 0 in downtrend = high, uptrend = low
         
-        // Use 5-candle window to find best snap point
-        const best = findBestCandle(snappedToHigh);
+        // Use nearest wick for point 0 (most intuitive - clicks where user intended)
+        const best = findNearestWick(snappedToHigh);
         finalCandleIndex = best.index;
         finalCandle = best.candle;
         snappedPrice = best.price;
@@ -4329,15 +4379,27 @@ const aiAnalyze = useMutation({
     
     // LONG-PRESS DETECTION: Track touch/mouse start time to distinguish taps from pans
     // If held for > 500ms, it's a pan gesture - don't place markers
+    // For point selection: require 300ms hold before allowing drag (prevents accidental grabs)
     const container = chartContainerRef.current;
-    const handleTouchStart = () => {
+    const handleTouchStart = (e: TouchEvent) => {
       touchStartTimeRef.current = Date.now();
+      // Store touch position for move detection
+      if (e.touches.length === 1) {
+        (window as any).__touchStartX = e.touches[0].clientX;
+        (window as any).__touchStartY = e.touches[0].clientY;
+        (window as any).__touchMoved = false;
+      }
+    };
+    const handleTouchMove = () => {
+      // Mark that touch has moved (not a tap)
+      (window as any).__touchMoved = true;
     };
     const handleMouseDown = () => {
       touchStartTimeRef.current = Date.now();
     };
     
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: true });
     container.addEventListener('mousedown', handleMouseDown, { passive: true });
     
     console.log('📊 Chart created successfully');
@@ -4345,6 +4407,7 @@ const aiAnalyze = useMutation({
     return () => {
       resizeObserver.disconnect();
       container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('mousedown', handleMouseDown);
     };
   }, [candles]); // Only recreate chart when candles data changes
