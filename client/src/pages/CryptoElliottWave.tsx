@@ -4059,10 +4059,11 @@ const aiAnalyze = useMutation({
               // This prevents accidental grabs when trying to tap
               const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
               const holdDuration = Date.now() - (touchStartTimeRef.current || Date.now());
-              const touchMoved = (window as any).__touchMoved === true;
               
-              if (isTouchDevice && (holdDuration < 300 || touchMoved)) {
-                console.log('🚫 Drag rejected - need 300ms hold (got', holdDuration, 'ms), moved:', touchMoved);
+              // On touch devices, require 300ms hold to start drag (allows tap-to-select without accidental drag)
+              // We removed the touchMoved check because it was too strict - 300ms hold is sufficient
+              if (isTouchDevice && holdDuration < 300) {
+                console.log('🚫 Drag rejected - need 300ms hold (got', holdDuration, 'ms)');
                 toast({
                   title: 'Hold to Move',
                   description: 'Hold finger on point for 0.3s to drag it',
@@ -6530,7 +6531,7 @@ const aiAnalyze = useMutation({
                     )}
                     
                     {/* ABC correction rules */}
-                    {(patternType === 'abc' || patternType === 'zigzag') && (
+                    {(patternType === 'abc' || patternType === 'zigzag' || patternType === 'correction') && (
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center gap-2 text-emerald-400">
                           <CheckCircle2 className="w-4 h-4" />
