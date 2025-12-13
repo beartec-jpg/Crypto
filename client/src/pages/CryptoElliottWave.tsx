@@ -3190,9 +3190,9 @@ const aiAnalyze = useMutation({
       const isCrosshairMode = crosshairModeActiveRef.current && isDrawingRef.current;
       
       // If crosshair mode is active but user is panning (finger moved OR long touch), don't place
-      // Only quick taps (< 250ms) should place points in crosshair mode
+      // Only quick taps (< 400ms) should place points in crosshair mode
       const touchDuration = Date.now() - touchStartTimeRef.current;
-      const TAP_THRESHOLD = 250; // ms - quick tap threshold
+      const TAP_THRESHOLD = 400; // ms - quick tap threshold (increased for easier use)
       
       if (isCrosshairMode) {
         if ((window as any).__touchMoved) {
