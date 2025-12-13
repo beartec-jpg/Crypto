@@ -1420,7 +1420,10 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
     // Case 1: Higher degree has complete impulse (5 waves), lower degree building correction
     if (lastHigher.waveCount === 5 && lastHigher.patternType === 'impulse') {
       // Find lower degree patterns that come AFTER the higher degree impulse
-      const lowerAfterHigher = lowerSorted.filter(l => l.startTime >= lastHigher.endTime);
+      // Use tolerance to handle patterns that start at/near where the impulse ends
+      const impulseDuration = lastHigher.endTime - lastHigher.startTime;
+      const timeTolerance = impulseDuration * 0.1; // 10% tolerance
+      const lowerAfterHigher = lowerSorted.filter(l => l.startTime >= (lastHigher.endTime - timeTolerance));
       
       if (lowerAfterHigher.length > 0) {
         // Triangle as wave B - need C wave to complete W2/B/4
