@@ -2996,6 +2996,7 @@ const aiAnalyze = useMutation({
   const waveDegreesRef = useRef(waveDegrees);
   const candlesRef = useRef(candles);
   const selectionModeRef = useRef(selectionMode);
+  const visibleCandleCountRef = useRef(visibleCandleCount);
   const savedLabelsRef = useRef(savedLabels);
   const selectedLabelIdRef = useRef(selectedLabelId);
   const draggedPointIndexRef = useRef(draggedPointIndex);
@@ -3014,6 +3015,7 @@ const aiAnalyze = useMutation({
     waveDegreesRef.current = waveDegrees;
     candlesRef.current = candles;
     selectionModeRef.current = selectionMode;
+    visibleCandleCountRef.current = visibleCandleCount;
     savedLabelsRef.current = savedLabels;
     selectedLabelIdRef.current = selectedLabelId;
     draggedPointIndexRef.current = draggedPointIndex;
@@ -3021,7 +3023,7 @@ const aiAnalyze = useMutation({
     updateLabelRef.current = updateLabel;
     fibonacciModeRef.current = fibonacciMode;
     timeframeRef.current = timeframe;
-  }, [isDrawing, selectedDegree, patternType, currentPoints, waveDegrees, candles, selectionMode, savedLabels, selectedLabelId, draggedPointIndex, isDragging, updateLabel, fibonacciMode, timeframe]);
+  }, [isDrawing, selectedDegree, patternType, currentPoints, waveDegrees, candles, selectionMode, visibleCandleCount, savedLabels, selectedLabelId, draggedPointIndex, isDragging, updateLabel, fibonacciMode, timeframe]);
   
   // Clear correction context when switching away from correction pattern type
   useEffect(() => {
@@ -3928,8 +3930,20 @@ const aiAnalyze = useMutation({
                 return p;
               });
             } else {
-              // EXISTING CANDLE DROP: Use larger window for 15m timeframe (7 candles vs 5)
-              const windowSize = timeframeRef.current === '15m' ? 3 : 2;
+              // EXISTING CANDLE DROP: Dynamic window size based on visible candles
+              const visibleCandles = visibleCandleCountRef.current || 100;
+              let windowSize: number;
+              if (visibleCandles <= 50) {
+                windowSize = 1;
+              } else if (visibleCandles <= 150) {
+                windowSize = 3;
+              } else if (visibleCandles <= 300) {
+                windowSize = 5;
+              } else if (visibleCandles <= 500) {
+                windowSize = 7;
+              } else {
+                windowSize = 9;
+              }
               const dropCandle = candlesRef.current[candleIndex];
               const startIdx = Math.max(0, candleIndex - windowSize);
               const endIdx = Math.min(candlesRef.current.length - 1, candleIndex + windowSize);
@@ -4100,24 +4114,27 @@ const aiAnalyze = useMutation({
                     console.log('🔍 Future point logical check:', { pointIndex: p.index, clickLogical, diff: Math.abs(p.index - clickLogical), xMatch });
                   }
                 }
-              } else if (candleIndex === -1) {
-                // FALLBACK: param.time was null (common on touch devices)
-                // Use X coordinate comparison instead
+              } else {
+                // Regular points: ALWAYS use coordinate/time-based comparison
+                // This is more reliable than index comparison since indices can become stale
                 const pointX = timeScale.timeToCoordinate(p.time as any);
                 if (pointX !== null) {
-                  xMatch = Math.abs(clickX - pointX) <= 30; // 30px tolerance for drag
-                  console.log('🔍 Point check (coord fallback):', { pointX, clickX, diff: Math.abs(clickX - pointX), xMatch });
+                  // Calculate pixel tolerance based on bar tolerance and chart width
+                  const chartWidth = chartContainerRef.current?.clientWidth || 800;
+                  const visibleRange = chart.timeScale().getVisibleLogicalRange();
+                  const visibleBars = visibleRange ? Math.abs(visibleRange.to - visibleRange.from) : 100;
+                  const pixelsPerBar = chartWidth / visibleBars;
+                  const pixelTolerance = Math.max(20, dragThreshold * pixelsPerBar);
+                  xMatch = Math.abs(clickX - pointX) <= pixelTolerance;
+                  console.log('🔍 Point check (coord):', { pointX, clickX, diff: Math.abs(clickX - pointX), pixelTolerance, xMatch });
                 } else {
-                  // Try logical index comparison
+                  // Fallback to logical position comparison
                   const clickLogical = timeScale.coordinateToLogical(clickX);
                   if (clickLogical !== null) {
                     xMatch = Math.abs(p.index - clickLogical) <= dragThreshold;
                     console.log('🔍 Point check (logical fallback):', { pointIndex: p.index, clickLogical, xMatch });
                   }
                 }
-              } else {
-                // Regular points: use index comparison
-                xMatch = Math.abs(p.index - candleIndex) <= dragThreshold;
               }
               
               if (!xMatch || clickPrice === null) return false;
@@ -4186,21 +4203,25 @@ const aiAnalyze = useMutation({
                   xMatch = Math.abs(p.index - clickLogical) <= 2;
                 }
               }
-            } else if (candleIndex === -1) {
-              // FALLBACK: param.time was null (common on touch devices)
-              // Use X coordinate comparison instead
+            } else {
+              // Regular points: ALWAYS use coordinate/time-based comparison
+              // This is more reliable than index comparison since indices can become stale
               const pointX = timeScale.timeToCoordinate(p.time as any);
               if (pointX !== null) {
-                xMatch = Math.abs(clickX - pointX) <= 30; // 30px tolerance
+                // Calculate pixel tolerance based on bar tolerance and chart width
+                const chartWidth = chartContainerRef.current?.clientWidth || 800;
+                const visibleRange = chart.timeScale().getVisibleLogicalRange();
+                const visibleBars = visibleRange ? Math.abs(visibleRange.to - visibleRange.from) : 100;
+                const pixelsPerBar = chartWidth / visibleBars;
+                const pixelTolerance = Math.max(20, clickThreshold * pixelsPerBar);
+                xMatch = Math.abs(clickX - pointX) <= pixelTolerance;
               } else {
+                // Fallback to logical position comparison
                 const clickLogical = timeScale.coordinateToLogical(clickX);
                 if (clickLogical !== null) {
                   xMatch = Math.abs(p.index - clickLogical) <= clickThreshold;
                 }
               }
-            } else {
-              // Regular points: use index comparison
-              xMatch = Math.abs(p.index - candleIndex) <= clickThreshold;
             }
             
             if (!xMatch || selectClickPrice === null) return false;
@@ -4271,10 +4292,25 @@ const aiAnalyze = useMutation({
       // - If point 0 clicked below candle mid → UPTREND (0=low, 1=high, 2=low, 3=high, 4=low, 5=high)
       
       // MAGNETIC SNAP: Find best candle within range and snap to nearest wick
-      // Uses larger window on touch devices and when zoomed out
-      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const baseWindowSize = timeframeRef.current === '15m' ? 3 : 2;
-      const windowSize = isTouchDevice ? baseWindowSize + 2 : baseWindowSize; // Larger window on touch
+      // Dynamic window size based on visible candles (scales with zoom level):
+      // - 50 candles or fewer: 1 candle window (precise)
+      // - 51-150 candles: 3 candle window
+      // - 151-300 candles: 5 candle window
+      // - 301-500 candles: 7 candle window
+      // - 500+ candles: 9 candle window
+      const visibleCandles = visibleCandleCountRef.current || 100; // Default to medium zoom
+      let windowSize: number;
+      if (visibleCandles <= 50) {
+        windowSize = 1;
+      } else if (visibleCandles <= 150) {
+        windowSize = 3;
+      } else if (visibleCandles <= 300) {
+        windowSize = 5;
+      } else if (visibleCandles <= 500) {
+        windowSize = 7;
+      } else {
+        windowSize = 9;
+      }
       const startIdx = Math.max(0, candleIndex - windowSize);
       const endIdx = Math.min(candlesRef.current.length - 1, candleIndex + windowSize);
       
