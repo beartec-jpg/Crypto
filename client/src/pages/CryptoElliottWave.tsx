@@ -2313,9 +2313,6 @@ export default function CryptoElliottWave() {
     barTolerance: 3,      // Default: 3 candles
     priceTolerance: 0.08, // Default: 8% of price
   });
-  // Ref to access debug settings in chart effect
-  const debugSettingsRef = useRef(debugSettings);
-  debugSettingsRef.current = debugSettings;
 
   const [symbol, setSymbol] = useState('XRPUSDT');
   const [timeframe, setTimeframe] = useState('15m');
@@ -2362,6 +2359,9 @@ export default function CryptoElliottWave() {
     zoomThreshold5: 200,        // Candles visible for 5-candle snap
     zoomThreshold7: 300,        // Candles visible for 7-candle snap
   });
+  // Ref to access debug settings in chart effect (must be after debugSettings declaration)
+  const debugSettingsRef = useRef(debugSettings);
+  debugSettingsRef.current = debugSettings;
 
   // Check subscription tier and Elliott Wave access
   const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; canUseElliott?: boolean; hasElliottAddon?: boolean }>({
