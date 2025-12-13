@@ -2374,8 +2374,9 @@ export default function CryptoElliottWave() {
   
   // Computed access flag: In development = always allowed; In production = need auth + subscription + ready
   // Also requires auth and subscription loading to be complete to prevent premature mutations
+  // CRITICAL: Admin users (beartec@beartec.uk) bypass all access checks immediately
   const authAndSubReady = authReady.ready && !authLoading && !subLoading;
-  const hasElliottAccess = isDevelopment || (authAndSubReady && isAuthenticated && canUseElliottFeatures);
+  const hasElliottAccess = isDevelopment || isAdmin || (authAndSubReady && isAuthenticated && canUseElliottFeatures);
 
   // Reset chart when symbol or timeframe changes
   useEffect(() => {
