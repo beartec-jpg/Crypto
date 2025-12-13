@@ -3195,13 +3195,22 @@ const aiAnalyze = useMutation({
       const TAP_THRESHOLD = 400; // ms - quick tap threshold (increased for easier use)
       
       if (isCrosshairMode) {
-        if ((window as any).__touchMoved) {
-          console.log('📍 Crosshair mode: panning (moved) - waiting for tap to place');
+        // Calculate actual movement distance for this gesture
+        const startX = (window as any).__touchStartX ?? 0;
+        const startY = (window as any).__touchStartY ?? 0;
+        const endX = param.point.x;
+        const endY = param.point.y;
+        const moveDistance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+        const TAP_MOVE_TOLERANCE = 25; // px - allow small movement during tap
+        
+        // Only block if significant movement AND long duration (panning)
+        if ((window as any).__touchMoved && moveDistance > TAP_MOVE_TOLERANCE) {
+          console.log('📍 Crosshair mode: panning (moved', moveDistance.toFixed(0), 'px) - waiting for tap');
           (window as any).__touchMoved = false;
           return;
         }
-        if (touchDuration > TAP_THRESHOLD) {
-          console.log('📍 Crosshair mode: panning (slow touch', touchDuration, 'ms) - waiting for tap to place');
+        if (touchDuration > TAP_THRESHOLD && moveDistance > TAP_MOVE_TOLERANCE) {
+          console.log('📍 Crosshair mode: panning (slow touch', touchDuration, 'ms) - waiting for tap');
           return;
         }
       }
