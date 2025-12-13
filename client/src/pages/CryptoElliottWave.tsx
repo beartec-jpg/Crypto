@@ -1531,6 +1531,55 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
             };
           }
         }
+        
+        // COMPLETE lower-degree correction = higher-degree W2
+        // 3-3-3 (WXY), 3-3-5 (Flat), 5-3-5 (Zigzag) after impulse = W2 complete
+        // IMPORTANT: Must verify the correction actually RETRACED the impulse
+        const completeCorrections = ['3-3-3', '3-3-5', '5-3-5'];
+        if (completeCorrections.includes(lowerSeqStr)) {
+          const higherDir = lastHigher.direction;
+          const impulseRange = Math.abs(lastHigher.endPrice - lastHigher.startPrice);
+          const correctionEnd = lastLower.endPrice;
+          
+          // Check if correction actually retraced (moved opposite to impulse direction)
+          const isValidRetracement = higherDir === 'up' 
+            ? correctionEnd < lastHigher.endPrice  // Must be below impulse high
+            : correctionEnd > lastHigher.endPrice; // Must be above impulse low
+          
+          // Calculate retracement percentage
+          const retraceAmount = higherDir === 'up'
+            ? lastHigher.endPrice - correctionEnd
+            : correctionEnd - lastHigher.endPrice;
+          const retracePercent = retraceAmount / impulseRange;
+          
+          // Only consider it W2 if it retraced at least 23.6% but not more than 100%
+          if (isValidRetracement && retracePercent >= 0.236 && retracePercent <= 1.0) {
+            const correctionType = lowerSeqStr === '3-3-3' ? 'WXY' : 
+                                    lowerSeqStr === '3-3-5' ? 'Flat' : 'Zigzag';
+            
+            // W3 projection from W2 end using W1 length
+            const w3Projection = calculateFibLevels(
+              'W3',
+              lastHigher.startPrice,
+              lastHigher.endPrice,
+              higherDir,
+              lastLower.endPrice, // Launch from W2 end
+              `${higherDegree} W1`
+            );
+            w3Projection.sourcePatternInfo = `${higherDegree} W3`;
+            
+            const retraceLabel = `${(retracePercent * 100).toFixed(0)}%`;
+            
+            return {
+              sequence: `${higherDegree}:5 → ${lowerDegree}:${lowerSeqStr}`,
+              suggestion: `✅ ${lowerDegree} ${correctionType} complete (${retraceLabel} retrace) = ${higherDegree} W2 - Draw ${higherDegree} W2, then W3`,
+              confidence: 'high',
+              startPrice: lastHigher.startPrice,
+              endPrice: lastLower.endPrice,
+              projections: [w3Projection],
+            };
+          }
+        }
       }
     }
     
