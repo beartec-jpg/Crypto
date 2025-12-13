@@ -2313,6 +2313,9 @@ export default function CryptoElliottWave() {
     barTolerance: 3,      // Default: 3 candles
     priceTolerance: 0.08, // Default: 8% of price
   });
+  // Ref to access debug settings in chart effect
+  const debugSettingsRef = useRef(debugSettings);
+  debugSettingsRef.current = debugSettings;
 
   const [symbol, setSymbol] = useState('XRPUSDT');
   const [timeframe, setTimeframe] = useState('15m');
@@ -2345,6 +2348,20 @@ export default function CryptoElliottWave() {
   const [visibleCandleCount, setVisibleCandleCount] = useState(0); // Track visible candles for counter display
   const [stackProjectionLines, setStackProjectionLines] = useState<{ price: number; color: string; lineWidth: number; lineStyle: number; axisLabelVisible: boolean; title: string }[]>([]); // Wave Stack projection lines
   const [waveProjectionMode, setWaveProjectionMode] = useState<'abc' | 'impulse'>('abc'); // ABC (WXY) vs 12345 (impulse) mode
+
+  // DEBUG MODE: Touch sensitivity testing panel (admin only)
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [debugSettings, setDebugSettings] = useState({
+    baseBarTolerance: 3,        // Base candle tolerance when zoomed in
+    maxBarTolerance: 30,        // Max candle tolerance when zoomed out
+    basePriceTolerance: 0.08,   // Base price % tolerance (8%)
+    maxPriceTolerance: 0.25,    // Max price % tolerance (25%)
+    targetPixelRadius: 44,      // Mobile touch target size in pixels
+    zoomThreshold1: 50,         // Candles visible for 1-candle precision
+    zoomThreshold3: 100,        // Candles visible for 3-candle snap
+    zoomThreshold5: 200,        // Candles visible for 5-candle snap
+    zoomThreshold7: 300,        // Candles visible for 7-candle snap
+  });
 
   // Check subscription tier and Elliott Wave access
   const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; canUseElliott?: boolean; hasElliottAddon?: boolean }>({
@@ -4070,30 +4087,19 @@ const aiAnalyze = useMutation({
             });
             
             if (clickedPointIndex !== -1) {
-              // LONG-PRESS REQUIREMENT: Only allow drag if held for 300ms+ on touch devices
-              // This prevents accidental grabs when trying to tap
-              const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-              const holdDuration = Date.now() - (touchStartTimeRef.current || Date.now());
-              
-              // On touch devices, require 300ms hold to start drag (allows tap-to-select without accidental drag)
-              // We removed the touchMoved check because it was too strict - 300ms hold is sufficient
-              if (isTouchDevice && holdDuration < 300) {
-                console.log('🚫 Drag rejected - need 300ms hold (got', holdDuration, 'ms)');
-                toast({
-                  title: 'Hold to Move',
-                  description: 'Hold finger on point for 0.3s to drag it',
-                  duration: 2000,
-                });
-                return;
-              }
-              
-              // Start dragging this point - marker will disappear to show it's picked up
-              console.log('🎯 STARTING DRAG of point index:', clickedPointIndex, 'after', holdDuration, 'ms hold');
+              // SIMPLIFIED: Click on point to pick it up (no long-press required)
+              console.log('🎯 PICKING UP point index:', clickedPointIndex);
               
               // HAPTIC FEEDBACK: Vibrate on grab (if supported)
               if (navigator.vibrate) {
                 navigator.vibrate(50); // Short vibration
               }
+              
+              toast({
+                title: 'Point Picked Up',
+                description: 'Tap new location to drop the point',
+                duration: 2000,
+              });
               
               setDraggedPointIndex(clickedPointIndex);
               setIsDragging(true);
@@ -4341,6 +4347,7 @@ const aiAnalyze = useMutation({
 
     // DYNAMIC CLICK TOLERANCE: Update tolerances based on zoom level
     // When zoomed out (more visible bars), increase tap area so points remain clickable
+    // Uses debugSettings for adjustable parameters (admin debug mode)
     const updateTolerances = () => {
       if (!chartContainerRef.current || !chart) return;
       
@@ -4353,22 +4360,44 @@ const aiAnalyze = useMutation({
       // Calculate pixels per bar
       const pixelsPerBar = chartWidth / visibleBars;
       
-      // Mobile touch target = ~44px, desktop = ~24px
+      // Mobile touch target from debug settings (default ~44px)
       const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const targetPixelRadius = isMobile ? 44 : 24;
+      const targetPixelRadius = isMobile ? debugSettingsRef.current.targetPixelRadius : 24;
       
-      // Bar tolerance: how many candles equals our target pixel radius
-      // Clamp between 3 and 30 for reasonable bounds
-      const calculatedBarTolerance = Math.ceil(targetPixelRadius / pixelsPerBar);
-      const barTolerance = Math.max(3, Math.min(30, calculatedBarTolerance));
+      // Bar tolerance: scales based on zoom level using debug thresholds
+      // Zoomed in = precise (1 candle), zoomed out = wider snap area
+      let barTolerance: number;
+      const { zoomThreshold1, zoomThreshold3, zoomThreshold5, zoomThreshold7, baseBarTolerance, maxBarTolerance } = debugSettingsRef.current;
+      
+      if (visibleBars <= zoomThreshold1) {
+        // Very zoomed in: precise 1-candle targeting
+        barTolerance = 1;
+      } else if (visibleBars <= zoomThreshold3) {
+        // Moderately zoomed: 3-candle snap area
+        barTolerance = 3;
+      } else if (visibleBars <= zoomThreshold5) {
+        // Zoomed out: 5-candle snap area
+        barTolerance = 5;
+      } else if (visibleBars <= zoomThreshold7) {
+        // Very zoomed out: 7-candle snap area
+        barTolerance = 7;
+      } else {
+        // Extremely zoomed out: use pixel-based calculation
+        const calculatedBarTolerance = Math.ceil(targetPixelRadius / pixelsPerBar);
+        barTolerance = Math.max(baseBarTolerance, Math.min(maxBarTolerance, calculatedBarTolerance));
+      }
       
       // Price tolerance: scale based on visible price range
-      // More zoomed out = larger price tolerance needed
-      // Base 8% at normal zoom, up to 20% when very zoomed out
-      const zoomFactor = visibleBars / 50; // Normalize: 50 bars = normal zoom
-      const priceTolerance = Math.max(0.08, Math.min(0.25, 0.08 * Math.sqrt(zoomFactor)));
+      const { basePriceTolerance, maxPriceTolerance } = debugSettingsRef.current;
+      const zoomFactor = visibleBars / zoomThreshold1; // Normalize to first threshold
+      const priceTolerance = Math.max(basePriceTolerance, Math.min(maxPriceTolerance, basePriceTolerance * Math.sqrt(zoomFactor)));
       
       dynamicTolerancesRef.current = { barTolerance, priceTolerance };
+      
+      // Log for debugging when panel is open
+      if ((window as any).__debugTolerances) {
+        console.log('📐 Tolerances updated:', { visibleBars, barTolerance, priceTolerance: (priceTolerance * 100).toFixed(1) + '%' });
+      }
     };
     
     // Update tolerances on visible range change
@@ -8310,6 +8339,152 @@ const aiAnalyze = useMutation({
       </div>
 
       <CryptoNavigation />
+      
+      {/* DEBUG PANEL: Touch sensitivity testing (admin only) */}
+      {isAdmin && (
+        <>
+          {/* Toggle button */}
+          <button
+            onClick={() => {
+              setShowDebugPanel(v => !v);
+              (window as any).__debugTolerances = !showDebugPanel;
+            }}
+            className="fixed bottom-20 right-4 z-50 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-xs shadow-lg"
+            data-testid="button-toggle-debug"
+          >
+            {showDebugPanel ? 'Hide Debug' : '🔧 Debug'}
+          </button>
+          
+          {/* Debug panel */}
+          {showDebugPanel && (
+            <div className="fixed bottom-32 right-4 z-50 bg-slate-900/95 border border-purple-500 rounded-lg p-4 w-80 max-h-[60vh] overflow-y-auto shadow-xl" data-testid="panel-debug">
+              <h3 className="text-purple-400 font-bold mb-3 text-sm">Touch Sensitivity Debug</h3>
+              
+              {/* Current status */}
+              <div className="bg-slate-800 rounded p-2 mb-3 text-xs">
+                <div className="text-gray-400">Visible Candles: <span className="text-white font-mono">{visibleCandleCount}</span></div>
+                <div className="text-gray-400">Current Bar Tolerance: <span className="text-emerald-400 font-mono">{dynamicTolerancesRef.current.barTolerance}</span></div>
+                <div className="text-gray-400">Current Price Tolerance: <span className="text-emerald-400 font-mono">{(dynamicTolerancesRef.current.priceTolerance * 100).toFixed(1)}%</span></div>
+                <div className="text-gray-400">Selected Pattern: <span className="text-yellow-400 font-mono">{selectedLabelId ? 'Yes' : 'No'}</span></div>
+                <div className="text-gray-400">Dragging: <span className="text-yellow-400 font-mono">{isDragging ? `Point ${draggedPointIndex}` : 'No'}</span></div>
+              </div>
+              
+              {/* Adjustable settings */}
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="text-gray-400 block mb-1">Zoom Threshold 1 (1-candle): {debugSettings.zoomThreshold1}</label>
+                  <input
+                    type="range"
+                    min="20"
+                    max="100"
+                    value={debugSettings.zoomThreshold1}
+                    onChange={(e) => setDebugSettings(s => ({ ...s, zoomThreshold1: Number(e.target.value) }))}
+                    className="w-full"
+                    data-testid="slider-zoom1"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-gray-400 block mb-1">Zoom Threshold 3 (3-candle): {debugSettings.zoomThreshold3}</label>
+                  <input
+                    type="range"
+                    min="50"
+                    max="200"
+                    value={debugSettings.zoomThreshold3}
+                    onChange={(e) => setDebugSettings(s => ({ ...s, zoomThreshold3: Number(e.target.value) }))}
+                    className="w-full"
+                    data-testid="slider-zoom3"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-gray-400 block mb-1">Zoom Threshold 5 (5-candle): {debugSettings.zoomThreshold5}</label>
+                  <input
+                    type="range"
+                    min="100"
+                    max="400"
+                    value={debugSettings.zoomThreshold5}
+                    onChange={(e) => setDebugSettings(s => ({ ...s, zoomThreshold5: Number(e.target.value) }))}
+                    className="w-full"
+                    data-testid="slider-zoom5"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-gray-400 block mb-1">Zoom Threshold 7 (7-candle): {debugSettings.zoomThreshold7}</label>
+                  <input
+                    type="range"
+                    min="200"
+                    max="600"
+                    value={debugSettings.zoomThreshold7}
+                    onChange={(e) => setDebugSettings(s => ({ ...s, zoomThreshold7: Number(e.target.value) }))}
+                    className="w-full"
+                    data-testid="slider-zoom7"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-gray-400 block mb-1">Touch Target Radius (px): {debugSettings.targetPixelRadius}</label>
+                  <input
+                    type="range"
+                    min="20"
+                    max="80"
+                    value={debugSettings.targetPixelRadius}
+                    onChange={(e) => setDebugSettings(s => ({ ...s, targetPixelRadius: Number(e.target.value) }))}
+                    className="w-full"
+                    data-testid="slider-touchradius"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-gray-400 block mb-1">Base Price Tolerance: {(debugSettings.basePriceTolerance * 100).toFixed(0)}%</label>
+                  <input
+                    type="range"
+                    min="2"
+                    max="20"
+                    value={debugSettings.basePriceTolerance * 100}
+                    onChange={(e) => setDebugSettings(s => ({ ...s, basePriceTolerance: Number(e.target.value) / 100 }))}
+                    className="w-full"
+                    data-testid="slider-baseprice"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-gray-400 block mb-1">Max Price Tolerance: {(debugSettings.maxPriceTolerance * 100).toFixed(0)}%</label>
+                  <input
+                    type="range"
+                    min="15"
+                    max="50"
+                    value={debugSettings.maxPriceTolerance * 100}
+                    onChange={(e) => setDebugSettings(s => ({ ...s, maxPriceTolerance: Number(e.target.value) / 100 }))}
+                    className="w-full"
+                    data-testid="slider-maxprice"
+                  />
+                </div>
+              </div>
+              
+              {/* Reset button */}
+              <button
+                onClick={() => setDebugSettings({
+                  baseBarTolerance: 3,
+                  maxBarTolerance: 30,
+                  basePriceTolerance: 0.08,
+                  maxPriceTolerance: 0.25,
+                  targetPixelRadius: 44,
+                  zoomThreshold1: 50,
+                  zoomThreshold3: 100,
+                  zoomThreshold5: 200,
+                  zoomThreshold7: 300,
+                })}
+                className="mt-3 w-full bg-slate-700 hover:bg-slate-600 text-white py-1 rounded text-xs"
+                data-testid="button-reset-debug"
+              >
+                Reset to Defaults
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
