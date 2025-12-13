@@ -4385,7 +4385,10 @@ const aiAnalyze = useMutation({
         return;
       }
       if (!param.point || !param.time) {
-        lastCrosshairParamRef.current = null;
+        // Don't clear stored crosshair position if in crosshair mode - we need it for the next tap!
+        if (!crosshairModeActiveRef.current) {
+          lastCrosshairParamRef.current = null;
+        }
         if (isDrawingRef.current) {
           setPreviewPoint(null);
         }
