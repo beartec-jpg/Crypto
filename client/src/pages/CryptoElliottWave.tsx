@@ -2293,6 +2293,8 @@ export default function CryptoElliottWave() {
   const touchStartTimeRef = useRef<number>(0); // Track when touch/click started for long-press detection
   const timeframeRef = useRef<string>('1d'); // Track timeframe for click handler window sizing
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null); // Store last crosshair position for crosshair-mode clicks
+  const crosshairModeActiveRef = useRef<boolean>(false); // Persistent crosshair mode - stays on until tap places point
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null); // Timer for long-press activation
   
   // Correction context: stores parent impulse data when starting ABC from predicted W5
   // Used to calculate Wave A retracement targets or C wave extension targets
@@ -3175,15 +3177,14 @@ const aiAnalyze = useMutation({
         return;
       }
       
-      // CROSSHAIR MODE: If held for > 500ms while drawing, use CROSSHAIR position instead of touch point
-      // This allows precise placement on mobile by holding to see crosshair, then releasing at exact position
-      const holdDuration = Date.now() - touchStartTimeRef.current;
-      const LONG_PRESS_THRESHOLD = 500; // milliseconds
-      const isCrosshairMode = holdDuration > LONG_PRESS_THRESHOLD && isDrawingRef.current;
+      // CROSSHAIR MODE: Check if persistent crosshair mode is active
+      // When active, use stored crosshair position for placement, then deactivate
+      const isCrosshairMode = crosshairModeActiveRef.current && isDrawingRef.current;
       
-      // If crosshair mode is active but user dragged significantly (panning), skip placement
+      // If crosshair mode is active but user is panning (finger moved), just update crosshair position - don't place
       if (isCrosshairMode && (window as any).__touchMoved) {
-        console.log('📍 Click ignored - crosshair mode but finger moved (panning)');
+        console.log('📍 Crosshair mode: panning - waiting for tap to place');
+        (window as any).__touchMoved = false; // Reset for next gesture
         return;
       }
 
@@ -4350,6 +4351,12 @@ const aiAnalyze = useMutation({
       const updatedPoints = [...currentPointsRef.current, newPoint];
       setCurrentPoints(updatedPoints);
       setPreviewPoint(null); // Clear preview after placing
+      
+      // Deactivate crosshair mode after placement
+      if (crosshairModeActiveRef.current) {
+        crosshairModeActiveRef.current = false;
+        console.log('🎯 Crosshair mode DEACTIVATED after placement');
+      }
     });
 
     // Handle crosshair move for preview (works on both desktop and mobile)
@@ -4472,38 +4479,69 @@ const aiAnalyze = useMutation({
 
     resizeObserver.observe(chartContainerRef.current);
     
-    // LONG-PRESS DETECTION: Track touch/mouse start time to distinguish taps from pans
-    // If held for > 500ms, it's a pan gesture - don't place markers
-    // For point selection: require 300ms hold before allowing drag (prevents accidental grabs)
+    // CROSSHAIR MODE: Long-press activates persistent crosshair mode
+    // While active, user can pan/swipe freely, then TAP to place at crosshair position
+    // After placement, mode deactivates and returns to normal drawing
     const container = chartContainerRef.current;
+    const LONG_PRESS_THRESHOLD = 500; // ms to activate crosshair mode
+    const MOVE_THRESHOLD = 15; // px movement tolerance
+    
     const handleTouchStart = (e: TouchEvent) => {
       touchStartTimeRef.current = Date.now();
-      // Store touch position for move detection
+      
       if (e.touches.length === 1) {
         (window as any).__touchStartX = e.touches[0].clientX;
         (window as any).__touchStartY = e.touches[0].clientY;
         (window as any).__touchMoved = false;
+        
+        // Start long-press timer to activate crosshair mode (only in drawing mode)
+        if (isDrawingRef.current && !crosshairModeActiveRef.current) {
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+          }
+          longPressTimerRef.current = setTimeout(() => {
+            // Activate crosshair mode
+            crosshairModeActiveRef.current = true;
+            console.log('🎯 Crosshair mode ACTIVATED - swipe to position, tap to place');
+          }, LONG_PRESS_THRESHOLD);
+        }
       }
     };
+    
     const handleTouchMove = (e: TouchEvent) => {
-      // Only mark as moved if finger moved more than 15px from start (tolerance for trembling)
       if (e.touches.length === 1) {
         const startX = (window as any).__touchStartX ?? 0;
         const startY = (window as any).__touchStartY ?? 0;
         const dx = e.touches[0].clientX - startX;
         const dy = e.touches[0].clientY - startY;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance > 15) {
+        
+        if (distance > MOVE_THRESHOLD) {
           (window as any).__touchMoved = true;
+          // Cancel long-press timer if user is panning before activation
+          if (longPressTimerRef.current && !crosshairModeActiveRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
         }
       }
     };
+    
+    const handleTouchEnd = () => {
+      // Cancel any pending long-press timer
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    };
+    
     const handleMouseDown = () => {
       touchStartTimeRef.current = Date.now();
     };
     
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
     container.addEventListener('touchmove', handleTouchMove, { passive: true });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
     container.addEventListener('mousedown', handleMouseDown, { passive: true });
     
     console.log('📊 Chart created successfully');
@@ -4512,7 +4550,12 @@ const aiAnalyze = useMutation({
       resizeObserver.disconnect();
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
       container.removeEventListener('mousedown', handleMouseDown);
+      // Clear any pending timers
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
     };
   }, [candles]); // Only recreate chart when candles data changes
 
