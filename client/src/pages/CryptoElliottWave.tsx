@@ -1143,10 +1143,52 @@ function WaveEntryRow({
   const isExpanded = expandedEntries.has(entry.id);
   
   // Determine wave label based on parent archetype
-  const waveLabels = ['A', 'B', 'C', 'D', 'E'];
-  const waveLabel = parentStructure.archetype.includes('WXY') || parentStructure.archetype === 'W-X' 
-    ? (entryIndex === 0 ? 'W' : entryIndex === 1 ? 'X' : entryIndex === 2 ? 'Y' : String(entryIndex + 1))
-    : waveLabels[entryIndex] || String(entryIndex + 1);
+  // For ambiguous patterns (single impulse/correction), show dual labels like "1/A"
+  const getWaveLabelForArchetype = (archetype: string, idx: number): string => {
+    // WXY patterns
+    if (archetype.includes('WXY') || archetype === 'W-X' || archetype === '3-3-3' || archetype === '3-3') {
+      const wxyLabels = ['W', 'X', 'Y', 'X2', 'Z'];
+      return wxyLabels[idx] || String(idx + 1);
+    }
+    // Impulse (complete 5-wave)
+    if (archetype === 'Impulse' || archetype.startsWith('Impulse')) {
+      const impulseLabels = ['1', '2', '3', '4', '5'];
+      return impulseLabels[idx] || String(idx + 1);
+    }
+    // Zigzag (5-3-5)
+    if (archetype === 'Zigzag' || archetype === '5-3-5') {
+      const abcLabels = ['A', 'B', 'C'];
+      return abcLabels[idx] || String(idx + 1);
+    }
+    // Flat (3-3-5)
+    if (archetype === 'Flat' || archetype === '3-3-5') {
+      const abcLabels = ['A', 'B', 'C'];
+      return abcLabels[idx] || String(idx + 1);
+    }
+    // Triangle or Diagonal (5 waves)
+    if (archetype.includes('Triangle') || archetype.includes('Diagonal')) {
+      const fiveLabels = archetype.includes('Triangle') ? ['A', 'B', 'C', 'D', 'E'] : ['1', '2', '3', '4', '5'];
+      return fiveLabels[idx] || String(idx + 1);
+    }
+    // AMBIGUOUS: Single impulse could be W1 or A
+    if (archetype === 'W1/A' || archetype === '5') {
+      return idx === 0 ? '1/A' : String(idx + 1);
+    }
+    // AMBIGUOUS: 5-3 could be W1-W2 (impulse building) or A-B (zigzag building)
+    if (archetype.includes('W1-W2') || archetype.includes('A-B') || archetype === '5-3') {
+      const ambiguousLabels = ['1/A', '2/B', '3/C', '4', '5'];
+      return ambiguousLabels[idx] || String(idx + 1);
+    }
+    // AMBIGUOUS: Single correction could be A or W
+    if (archetype === 'Correction' || archetype === '3') {
+      return idx === 0 ? 'A/W' : String(idx + 1);
+    }
+    // Default: ABC labels
+    const defaultLabels = ['A', 'B', 'C', 'D', 'E'];
+    return defaultLabels[idx] || String(idx + 1);
+  };
+  
+  const waveLabel = getWaveLabelForArchetype(parentStructure.archetype, entryIndex);
   
   const degreeColor = waveDegrees.find((d: WaveDegree) => d.name === parentStructure.degree)?.color || '#74C0FC';
   const indentPx = depth * 16;
