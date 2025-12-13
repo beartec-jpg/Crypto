@@ -653,45 +653,88 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       let existingCount = structures.filter(s => s.degree === currentDegree).length;
       let currentGroup: WaveStackEntry[] = [];
       
-      // Helper to check if current group is a COMPLETE high-level structure
-      // that warrants starting fresh for the next pattern
-      const isHighLevelComplete = (group: WaveStackEntry[]): boolean => {
-        if (group.length === 0) return false;
-        const seq = group.map(e => e.waveCount).join('-');
-        const patternTypes = group.map(e => e.patternType);
-        const archetype = identifyArchetype(seq, patternTypes);
+      // Helper to validate if entries can form a valid triangle
+      // Triangle rules: B cannot break A's origin, C cannot break A's end
+      const isValidTriangle = (group: WaveStackEntry[]): boolean => {
+        if (group.length < 3) return true; // Not enough waves to validate
         
-        // Only split after truly complete archetypes
-        return ['Impulse', 'Zigzag', 'Flat', 'WXY', 'Triangle'].includes(archetype);
+        const waveA = group[0];
+        const waveB = group[1];
+        const waveC = group.length > 2 ? group[2] : null;
+        
+        // Determine if bullish or bearish triangle
+        const isBullish = waveA.direction === 'down'; // A goes down in bullish triangle
+        
+        if (isBullish) {
+          // Bullish triangle: A goes down, B goes up
+          // B cannot break A's origin (A's start/high)
+          if (waveB.endPrice > waveA.startPrice) return false;
+          // C cannot break A's end (A's end/low)
+          if (waveC && waveC.endPrice < waveA.endPrice) return false;
+        } else {
+          // Bearish triangle: A goes up, B goes down
+          // B cannot break A's origin (A's start/low)
+          if (waveB.endPrice < waveA.startPrice) return false;
+          // C cannot break A's end (A's end/high)
+          if (waveC && waveC.endPrice > waveA.endPrice) return false;
+        }
+        
+        return true;
+      };
+      
+      // Helper to check if adding next entry would extend past a complete pattern
+      // Returns true if current group should be split before adding next entry
+      const shouldSplitBeforeNext = (group: WaveStackEntry[], nextEntry: WaveStackEntry): boolean => {
+        if (group.length === 0) return false;
+        
+        const currentSeq = group.map(e => e.waveCount).join('-');
+        
+        // Check if current sequence is a complete pattern
+        // Flat (3-3-5), Zigzag (5-3-5), WXY (3-3-3), Impulse (5-3-5-3-5), Triangle (3-3-3-3-3)
+        const completePatterns = ['3-3-5', '5-3-5', '3-3-3', '5-3-5-3-5', '3-3-3-3-3'];
+        
+        if (completePatterns.includes(currentSeq)) {
+          // Current group is complete - check if next would break the pattern
+          // Exception: 3-3-3 could continue towards 3-3-3-3-3 (triangle) if valid
+          if (currentSeq === '3-3-3') {
+            // Only continue grouping if heading towards valid triangle
+            const potentialGroup = [...group, nextEntry];
+            if (nextEntry.waveCount === 3 && isValidTriangle(potentialGroup)) {
+              return false; // Allow continuing towards triangle
+            }
+          }
+          return true; // Split before adding next entry
+        }
+        
+        // Check if we're at 3-3-3-3 and next is a 3 (potential triangle completion)
+        if (currentSeq === '3-3-3-3' && nextEntry.waveCount === 3) {
+          const potentialGroup = [...group, nextEntry];
+          if (!isValidTriangle(potentialGroup)) {
+            return true; // Invalid triangle - split here
+          }
+        }
+        
+        return false;
       };
       
       for (let i = 0; i < sortedCurrent.length; i++) {
         const entry = sortedCurrent[i];
         
-        // Check if we should start a new structure
-        // Only split if: (1) current group is complete archetype AND (2) new entry starts AFTER with significant time gap
-        if (currentGroup.length > 0 && isHighLevelComplete(currentGroup)) {
-          const lastEntry = currentGroup[currentGroup.length - 1];
-          const timeGap = entry.startTime - lastEntry.endTime;
-          const avgDuration = currentGroup.reduce((sum, e) => sum + (e.endTime - e.startTime), 0) / currentGroup.length;
-          
-          // Only split if there's a significant time gap (> 50% of avg pattern duration)
-          // This prevents splitting ABC that are close in time
-          if (entry.startTime >= lastEntry.endTime && timeGap > avgDuration * 0.5) {
-            // Emit current structure
-            existingCount++;
-            const structure = createStructure(currentDegree, currentGroup);
-            if (structure) {
-              structure.displayIndex = existingCount;
-              structures.push(structure);
-              structure.entries.forEach(e => {
-                const entryKey = `${currentDegree}-${e.startTime}`;
-                waveEntryToStructureIndex[entryKey] = existingCount;
-              });
-            }
-            // Start new group
-            currentGroup = [];
+        // Check if adding this entry would extend past a complete pattern
+        if (shouldSplitBeforeNext(currentGroup, entry)) {
+          // Emit current structure before adding new entry
+          existingCount++;
+          const structure = createStructure(currentDegree, currentGroup);
+          if (structure) {
+            structure.displayIndex = existingCount;
+            structures.push(structure);
+            structure.entries.forEach(e => {
+              const entryKey = `${currentDegree}-${e.startTime}`;
+              waveEntryToStructureIndex[entryKey] = existingCount;
+            });
           }
+          // Start new group
+          currentGroup = [];
         }
         
         // Add entry to current group
