@@ -3189,11 +3189,21 @@ const aiAnalyze = useMutation({
       // When active, use stored crosshair position for placement, then deactivate
       const isCrosshairMode = crosshairModeActiveRef.current && isDrawingRef.current;
       
-      // If crosshair mode is active but user is panning (finger moved), just update crosshair position - don't place
-      if (isCrosshairMode && (window as any).__touchMoved) {
-        console.log('📍 Crosshair mode: panning - waiting for tap to place');
-        (window as any).__touchMoved = false; // Reset for next gesture
-        return;
+      // If crosshair mode is active but user is panning (finger moved OR long touch), don't place
+      // Only quick taps (< 250ms) should place points in crosshair mode
+      const touchDuration = Date.now() - touchStartTimeRef.current;
+      const TAP_THRESHOLD = 250; // ms - quick tap threshold
+      
+      if (isCrosshairMode) {
+        if ((window as any).__touchMoved) {
+          console.log('📍 Crosshair mode: panning (moved) - waiting for tap to place');
+          (window as any).__touchMoved = false;
+          return;
+        }
+        if (touchDuration > TAP_THRESHOLD) {
+          console.log('📍 Crosshair mode: panning (slow touch', touchDuration, 'ms) - waiting for tap to place');
+          return;
+        }
       }
 
       // Determine effective position: use crosshair position in crosshair mode, touch position otherwise
