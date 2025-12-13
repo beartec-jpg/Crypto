@@ -6475,7 +6475,10 @@ const aiAnalyze = useMutation({
                 )}
 
                 {/* Show pattern-specific rules that passed */}
-                {validation.errors.length === 0 && validation.warnings.length === 0 && (
+                {validation.errors.length === 0 && validation.warnings.length === 0 && (() => {
+                  // Use the selected label's pattern type, or detected type, or fallback to drawing mode
+                  const displayPatternType = selectedLabel?.patternType || validation.detectedType || patternType;
+                  return (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-emerald-400 mb-3">
                       <CheckCircle2 className="w-5 h-5" />
@@ -6483,7 +6486,7 @@ const aiAnalyze = useMutation({
                     </div>
                     
                     {/* Impulse rules */}
-                    {patternType === 'impulse' && (
+                    {displayPatternType === 'impulse' && (
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center gap-2 text-emerald-400">
                           <CheckCircle2 className="w-4 h-4" />
@@ -6505,7 +6508,7 @@ const aiAnalyze = useMutation({
                     )}
                     
                     {/* Diagonal rules */}
-                    {patternType === 'diagonal' && (
+                    {displayPatternType === 'diagonal' && (
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center gap-2 text-emerald-400">
                           <CheckCircle2 className="w-4 h-4" />
@@ -6531,7 +6534,7 @@ const aiAnalyze = useMutation({
                     )}
                     
                     {/* ABC correction rules */}
-                    {(patternType === 'abc' || patternType === 'zigzag' || patternType === 'correction') && (
+                    {(displayPatternType === 'abc' || displayPatternType === 'zigzag' || displayPatternType === 'correction') && (
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center gap-2 text-emerald-400">
                           <CheckCircle2 className="w-4 h-4" />
@@ -6549,7 +6552,7 @@ const aiAnalyze = useMutation({
                     )}
                     
                     {/* Flat correction rules */}
-                    {patternType === 'flat' && (
+                    {displayPatternType === 'flat' && (
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center gap-2 text-emerald-400">
                           <CheckCircle2 className="w-4 h-4" />
@@ -6567,7 +6570,7 @@ const aiAnalyze = useMutation({
                     )}
                     
                     {/* Triangle rules */}
-                    {patternType === 'triangle' && (
+                    {displayPatternType === 'triangle' && (
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center gap-2 text-emerald-400">
                           <CheckCircle2 className="w-4 h-4" />
@@ -6584,7 +6587,8 @@ const aiAnalyze = useMutation({
                       </div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
