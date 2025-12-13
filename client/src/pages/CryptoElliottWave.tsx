@@ -7010,6 +7010,35 @@ const aiAnalyze = useMutation({
             
             {waveStackEntries.length > 0 ? (
               <div className="space-y-4">
+                {/* Cross-Degree Suggestion Banner */}
+                {waveStackSuggestion && (
+                  <div className={`rounded-lg p-3 border ${
+                    waveStackSuggestion.confidence === 'high' 
+                      ? 'bg-emerald-900/30 border-emerald-600' 
+                      : waveStackSuggestion.confidence === 'medium'
+                      ? 'bg-amber-900/30 border-amber-600'
+                      : 'bg-slate-800/50 border-slate-600'
+                  }`} data-testid="wave-stack-suggestion">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
+                        waveStackSuggestion.confidence === 'high' 
+                          ? 'text-emerald-400' 
+                          : waveStackSuggestion.confidence === 'medium'
+                          ? 'text-amber-400'
+                          : 'text-slate-400'
+                      }`} />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-200">
+                          {waveStackSuggestion.suggestion}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Sequence: {waveStackSuggestion.sequence} | Confidence: {waveStackSuggestion.confidence}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {/* Grouped Wave Structures - PURE HIERARCHICAL TREE */}
                 {/* Only render ROOT structures (no parentId), children appear ONLY when parent entry is expanded */}
                 <div className="space-y-3">
