@@ -2295,6 +2295,7 @@ export default function CryptoElliottWave() {
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null); // Store last crosshair position for crosshair-mode clicks
   const crosshairModeActiveRef = useRef<boolean>(false); // Persistent crosshair mode - stays on until tap places point
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null); // Timer for long-press activation
+  const ignoreNextClickRef = useRef<boolean>(false); // Ignore the click from lifting the crosshair activation touch
   
   // Correction context: stores parent impulse data when starting ABC from predicted W5
   // Used to calculate Wave A retracement targets or C wave extension targets
@@ -3174,6 +3175,13 @@ const aiAnalyze = useMutation({
     chart.subscribeClick((param) => {
       if (!param.point) {
         console.log('📍 Click rejected - no param.point');
+        return;
+      }
+      
+      // Skip click if it's the one from lifting the crosshair activation touch
+      if (ignoreNextClickRef.current) {
+        ignoreNextClickRef.current = false;
+        console.log('📍 Click ignored - crosshair activation gesture');
         return;
       }
       
@@ -4502,6 +4510,7 @@ const aiAnalyze = useMutation({
           longPressTimerRef.current = setTimeout(() => {
             // Activate crosshair mode
             crosshairModeActiveRef.current = true;
+            ignoreNextClickRef.current = true; // Ignore the click from lifting this activation touch
             console.log('🎯 Crosshair mode ACTIVATED - swipe to position, tap to place');
           }, LONG_PRESS_THRESHOLD);
         }
