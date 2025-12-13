@@ -10,8 +10,8 @@ interface AuthReadyState {
 }
 
 function useClerkAuth() {
-  const auth = useAuth();
-  
+  // In development, skip Clerk hooks entirely to avoid ClerkProvider requirement
+  // Must check BEFORE calling any hooks
   if (isDevelopment) {
     return {
       isLoaded: true,
@@ -20,6 +20,9 @@ function useClerkAuth() {
     };
   }
   
+  // Only call useAuth in production where ClerkProvider is available
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const auth = useAuth();
   return auth;
 }
 
