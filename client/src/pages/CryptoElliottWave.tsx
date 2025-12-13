@@ -4449,6 +4449,29 @@ const aiAnalyze = useMutation({
     };
   }, [candles]); // Only recreate chart when candles data changes
 
+  // Disable crosshair when a pattern is selected (prevents crosshair from interfering with point drag)
+  useEffect(() => {
+    if (!chartRef.current) return;
+    
+    if (selectedLabelId !== null) {
+      // Pattern selected - disable crosshair to allow point pickup
+      chartRef.current.applyOptions({
+        crosshair: {
+          mode: CrosshairMode.Hidden,
+        },
+      });
+      console.log('🎯 Crosshair disabled - pattern selected for editing');
+    } else {
+      // No pattern selected - restore normal crosshair
+      chartRef.current.applyOptions({
+        crosshair: {
+          mode: CrosshairMode.Normal,
+        },
+      });
+      console.log('🎯 Crosshair enabled - no pattern selected');
+    }
+  }, [selectedLabelId]);
+
   // Calculate Fibonacci ratios for wave points (used by markers for measured mode text)
   // Returns a Map keyed by point label (e.g., "2", "3", "A", "B") for lookup
   // For diagonals: Wave 5 is measured against Wave 3 only (not W1+W3)
