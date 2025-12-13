@@ -2292,6 +2292,7 @@ export default function CryptoElliottWave() {
   const blueCandleMarkersRef = useRef<any>(null); // Markers on blue candle series
   const touchStartTimeRef = useRef<number>(0); // Track when touch/click started for long-press detection
   const timeframeRef = useRef<string>('1d'); // Track timeframe for click handler window sizing
+  const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null); // Store last crosshair position for crosshair-mode clicks
   
   // Correction context: stores parent impulse data when starting ABC from predicted W5
   // Used to calculate Wave A retracement targets or C wave extension targets
@@ -3174,59 +3175,73 @@ const aiAnalyze = useMutation({
         return;
       }
       
-      // LONG-PRESS DETECTION: If held for > 500ms, treat as pan gesture (skip marker placement)
-      // This allows users to pan the chart while in draw mode without accidentally placing markers
+      // CROSSHAIR MODE: If held for > 500ms while drawing, use CROSSHAIR position instead of touch point
+      // This allows precise placement on mobile by holding to see crosshair, then releasing at exact position
       const holdDuration = Date.now() - touchStartTimeRef.current;
       const LONG_PRESS_THRESHOLD = 500; // milliseconds
+      const isCrosshairMode = holdDuration > LONG_PRESS_THRESHOLD && isDrawingRef.current;
       
-      if (holdDuration > LONG_PRESS_THRESHOLD && isDrawingRef.current) {
-        console.log('📍 Click ignored - long press detected (', holdDuration, 'ms) - treating as pan');
+      // If crosshair mode is active but user dragged significantly (panning), skip placement
+      if (isCrosshairMode && (window as any).__touchMoved) {
+        console.log('📍 Click ignored - crosshair mode but finger moved (panning)');
         return;
       }
 
-      // Try primary candle series first, then fallback to blue simulation series or price scale
-      let clickedPrice = candleSeries.coordinateToPrice(param.point.y);
+      // Determine effective position: use crosshair position in crosshair mode, touch position otherwise
+      let effectiveTime: number | null = param.time as number | null;
+      let clickedPrice: number | null = candleSeries.coordinateToPrice(param.point.y);
       
-      // FALLBACK: If main series returns null (click on future blue candles at different price range),
-      // try the blue simulation series or the chart's price scale directly
-      if (clickedPrice === null && blueCandelSeriesRef.current) {
-        clickedPrice = blueCandelSeriesRef.current.coordinateToPrice(param.point.y);
-        console.log('📍 Fallback to blue series, price:', clickedPrice);
-      }
-      if (clickedPrice === null) {
-        // Final fallback: estimate price from visible price range and Y coordinate
-        try {
-          const visibleRange = candleSeries.priceScale().getVisibleRange();
-          if (visibleRange) {
-            // Get chart container height for calculation
-            const container = chartContainerRef.current;
-            if (container) {
-              const chartHeight = container.clientHeight - 30; // Approximate header/margin
-              const priceRange = visibleRange.to - visibleRange.from;
-              const pricePerPixel = priceRange / chartHeight;
-              clickedPrice = (visibleRange.to - (param.point.y * pricePerPixel)) as any;
-              console.log('📍 Fallback to price scale calc, price:', clickedPrice);
+      if (isCrosshairMode && lastCrosshairParamRef.current) {
+        // Use stored crosshair position instead of touch point
+        effectiveTime = lastCrosshairParamRef.current.time;
+        clickedPrice = lastCrosshairParamRef.current.price;
+        console.log('📍 CROSSHAIR MODE: Using crosshair position at time:', effectiveTime, 'price:', clickedPrice);
+      } else {
+        // Normal click: use param position
+        // Try primary candle series first, then fallback to blue simulation series or price scale
+        if (clickedPrice === null && blueCandelSeriesRef.current) {
+          clickedPrice = blueCandelSeriesRef.current.coordinateToPrice(param.point.y);
+          console.log('📍 Fallback to blue series, price:', clickedPrice);
+        }
+        if (clickedPrice === null) {
+          // Final fallback: estimate price from visible price range and Y coordinate
+          try {
+            const visibleRange = candleSeries.priceScale().getVisibleRange();
+            if (visibleRange) {
+              // Get chart container height for calculation
+              const container = chartContainerRef.current;
+              if (container) {
+                const chartHeight = container.clientHeight - 30; // Approximate header/margin
+                const priceRange = visibleRange.to - visibleRange.from;
+                const pricePerPixel = priceRange / chartHeight;
+                clickedPrice = (visibleRange.to - (param.point.y * pricePerPixel)) as any;
+                console.log('📍 Fallback to price scale calc, price:', clickedPrice);
+              }
             }
+          } catch (e) {
+            console.log('📍 Fallback price calc failed:', e);
           }
-        } catch (e) {
-          console.log('📍 Fallback price calc failed:', e);
         }
       }
       
-      console.log('📍 Click at Y:', param.point.y, 'converted to price:', clickedPrice);
+      console.log('📍 Click at Y:', param.point.y, 'converted to price:', clickedPrice, 'crosshairMode:', isCrosshairMode);
       if (clickedPrice === null) {
         console.log('📍 Click rejected - all price conversion methods returned null');
         return;
       }
 
       // Check if clicking on existing candle or in future area (projected mode)
-      const candleIndex = param.time ? candlesRef.current.findIndex(c => c.time === param.time) : -1;
+      const candleIndex = effectiveTime ? candlesRef.current.findIndex(c => c.time === effectiveTime) : -1;
       
       // ALSO check if click X position is beyond the last candle (chart may snap time to last candle)
+      // In crosshair mode, use the crosshair X position instead of touch position
       const lastCandle = candlesRef.current[candlesRef.current.length - 1];
       const timeScale = chart.timeScale();
       const lastCandleX = timeScale.timeToCoordinate(lastCandle.time as any);
-      const isClickBeyondLastCandle = lastCandleX !== null && param.point.x > lastCandleX + 10; // 10px buffer
+      const effectivePointX = isCrosshairMode && lastCrosshairParamRef.current?.pointX !== undefined
+        ? lastCrosshairParamRef.current.pointX
+        : param.point.x;
+      const isClickBeyondLastCandle = lastCandleX !== null && effectivePointX > lastCandleX + 10; // 10px buffer
       
       // DEBUG: Log click detection details
       console.log('📍 Click debug:', {
@@ -3321,7 +3336,10 @@ const aiAnalyze = useMutation({
             const candleInterval = lastCandle.time - secondLastCandle.time;
             const lastCandleIndex = candlesRef.current.length - 1;
             
-            const clickLogical = timeScale.coordinateToLogical(param.point.x);
+            // Use crosshair's logical X when in crosshair mode, otherwise use click position
+            const clickLogical = isCrosshairMode && lastCrosshairParamRef.current?.logicalX !== undefined
+              ? lastCrosshairParamRef.current.logicalX
+              : timeScale.coordinateToLogical(param.point.x);
             const barsAhead = clickLogical !== null 
               ? Math.max(1, Math.ceil(clickLogical - lastCandleIndex))
               : 5;
@@ -4335,14 +4353,33 @@ const aiAnalyze = useMutation({
     });
 
     // Handle crosshair move for preview (works on both desktop and mobile)
+    // Also store crosshair position for crosshair-mode clicks (long press)
     chart.subscribeCrosshairMove((param) => {
-      if (!isDrawingRef.current || !param.point || !param.time) {
-        setPreviewPoint(null);
+      // Guard against chart being unmounted during teardown
+      if (!chartRef.current || !candleSeriesRef.current) {
+        return;
+      }
+      if (!param.point || !param.time) {
+        lastCrosshairParamRef.current = null;
+        if (isDrawingRef.current) {
+          setPreviewPoint(null);
+        }
         return;
       }
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (price !== null) {
-        setPreviewPoint({ time: param.time as number, price });
+        // Always store crosshair position for potential use by click handler
+        // Also store the logical X coordinate for future projection calculations
+        const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
+        (lastCrosshairParamRef.current as any) = { 
+          time: param.time as number, 
+          price, 
+          logicalX: logicalX ?? undefined,
+          pointX: param.point.x 
+        };
+        if (isDrawingRef.current) {
+          setPreviewPoint({ time: param.time as number, price });
+        }
       }
     });
 
@@ -4773,19 +4810,23 @@ const aiAnalyze = useMutation({
                      ['0', '1', '2', '3', '4', '5'];
       const nextLabel = labels[currentPoints.length] || '?';
       
-      // Determine preview position based on trend direction and wave
-      let previewSnappedToHigh = true; // Default for point 0
-      if (nextLabel !== '0' && currentPoints.length > 0) {
-        const isDowntrend = currentPoints[0]?.snappedToHigh ?? false;
-        const isOddWave = ['1', '3', '5'].includes(nextLabel);
-        if (patternType === 'impulse' || patternType === 'diagonal') {
-          // In downtrend: odd=low, even=high. In uptrend: odd=high, even=low
-          previewSnappedToHigh = isDowntrend ? !isOddWave : isOddWave;
-        }
-      }
-      
       // SNAP time to nearest candle for preview marker too
+      // For future times, snapToNearestCandleTime returns the last candle's time, which is valid
       const snappedPreviewTime = snapToNearestCandleTime(previewPoint.time);
+      
+      // Determine preview position based on cursor position relative to candle price
+      // If cursor is ABOVE the candle midpoint, show label above; if below, show label below
+      let previewSnappedToHigh = true; // Default above
+      const previewCandle = candles.find(c => c.time === snappedPreviewTime);
+      if (previewCandle) {
+        const candleMid = (previewCandle.high + previewCandle.low) / 2;
+        previewSnappedToHigh = previewPoint.price > candleMid;
+      } else if (candles.length > 0) {
+        // Fallback for future times: use last candle's midpoint
+        const lastCandle = candles[candles.length - 1];
+        const candleMid = (lastCandle.high + lastCandle.low) / 2;
+        previewSnappedToHigh = previewPoint.price > candleMid;
+      }
       
       previewMarkers.push({
         time: snappedPreviewTime as any,
