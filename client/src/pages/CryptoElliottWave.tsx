@@ -4036,6 +4036,21 @@ const aiAnalyze = useMutation({
                     console.log('🔍 Future point logical check:', { pointIndex: p.index, clickLogical, diff: Math.abs(p.index - clickLogical), xMatch });
                   }
                 }
+              } else if (candleIndex === -1) {
+                // FALLBACK: param.time was null (common on touch devices)
+                // Use X coordinate comparison instead
+                const pointX = timeScale.timeToCoordinate(p.time as any);
+                if (pointX !== null) {
+                  xMatch = Math.abs(clickX - pointX) <= 30; // 30px tolerance for drag
+                  console.log('🔍 Point check (coord fallback):', { pointX, clickX, diff: Math.abs(clickX - pointX), xMatch });
+                } else {
+                  // Try logical index comparison
+                  const clickLogical = timeScale.coordinateToLogical(clickX);
+                  if (clickLogical !== null) {
+                    xMatch = Math.abs(p.index - clickLogical) <= dragThreshold;
+                    console.log('🔍 Point check (logical fallback):', { pointIndex: p.index, clickLogical, xMatch });
+                  }
+                }
               } else {
                 // Regular points: use index comparison
                 xMatch = Math.abs(p.index - candleIndex) <= dragThreshold;
@@ -4116,6 +4131,18 @@ const aiAnalyze = useMutation({
                 const clickLogical = timeScale.coordinateToLogical(clickX);
                 if (clickLogical !== null) {
                   xMatch = Math.abs(p.index - clickLogical) <= 2;
+                }
+              }
+            } else if (candleIndex === -1) {
+              // FALLBACK: param.time was null (common on touch devices)
+              // Use X coordinate comparison instead
+              const pointX = timeScale.timeToCoordinate(p.time as any);
+              if (pointX !== null) {
+                xMatch = Math.abs(clickX - pointX) <= 30; // 30px tolerance
+              } else {
+                const clickLogical = timeScale.coordinateToLogical(clickX);
+                if (clickLogical !== null) {
+                  xMatch = Math.abs(p.index - clickLogical) <= clickThreshold;
                 }
               }
             } else {
