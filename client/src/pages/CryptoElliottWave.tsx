@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff, X } from 'lucide-react';
+import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff, X, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
@@ -6957,11 +6957,15 @@ const aiAnalyze = useMutation({
                     if (!chartRef.current || !chartReady) return null;
                     const chart = chartRef.current;
                     const timeScale = chart.timeScale();
-                    const toPixel = (point: { time: number; price: number }) => {
+                    const chartWidth = timeScale.width() ?? 800;
+                    
+                    // Convert point to pixel coordinates, returning null if out of visible range
+                    const toPixelRaw = (point: { time: number; price: number }) => {
                       const x = timeScale.timeToCoordinate(point.time as any);
                       const y = candleSeriesRef.current?.priceToCoordinate(point.price);
-                      return { x: x ?? 0, y: y ?? 0 };
+                      return { x, y };
                     };
+                    
                     const color = drawing.style?.color || '#3b82f6';
                     const isSelected = drawing.id === selectedDrawingId;
                     const handleClick = (e: React.MouseEvent) => {
@@ -6972,23 +6976,39 @@ const aiAnalyze = useMutation({
                     };
                     
                     if (drawing.type === 'trendline' && drawing.points.length >= 2) {
-                      const p1 = toPixel(drawing.points[0]);
-                      const p2 = toPixel(drawing.points[1]);
+                      const p1 = toPixelRaw(drawing.points[0]);
+                      const p2 = toPixelRaw(drawing.points[1]);
+                      // Skip if both points are out of view (null x)
+                      if (p1.x === null && p2.x === null) return null;
+                      // Clamp coordinates to chart bounds for partial visibility
+                      const x1 = p1.x !== null ? p1.x : (drawing.points[0].time < drawing.points[1].time ? 0 : chartWidth);
+                      const x2 = p2.x !== null ? p2.x : (drawing.points[1].time < drawing.points[0].time ? 0 : chartWidth);
+                      const y1 = p1.y ?? 0;
+                      const y2 = p2.y ?? 0;
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
-                          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="transparent" strokeWidth={12} />
-                          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={isSelected ? '#22c55e' : color} strokeWidth={isSelected ? 3 : 2} />
-                          {isSelected && (<><circle cx={p1.x} cy={p1.y} r={5} fill="#22c55e" /><circle cx={p2.x} cy={p2.y} r={5} fill="#22c55e" /></>)}
+                          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={12} />
+                          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSelected ? '#22c55e' : color} strokeWidth={isSelected ? 3 : 2} />
+                          {isSelected && (<><circle cx={x1} cy={y1} r={5} fill="#22c55e" /><circle cx={x2} cy={y2} r={5} fill="#22c55e" /></>)}
                         </g>
                       );
                     }
                     if (drawing.type === 'rectangle' && drawing.points.length >= 2) {
-                      const p1 = toPixel(drawing.points[0]);
-                      const p2 = toPixel(drawing.points[1]);
-                      const x = Math.min(p1.x, p2.x);
-                      const y = Math.min(p1.y, p2.y);
-                      const w = Math.abs(p2.x - p1.x);
-                      const h = Math.abs(p2.y - p1.y);
+                      const p1 = toPixelRaw(drawing.points[0]);
+                      const p2 = toPixelRaw(drawing.points[1]);
+                      // Skip if both points are completely out of view
+                      if (p1.x === null && p2.x === null) return null;
+                      // Clamp x coordinates to visible chart area
+                      const x1 = p1.x !== null ? Math.max(0, Math.min(chartWidth, p1.x)) : (drawing.points[0].time < drawing.points[1].time ? 0 : chartWidth);
+                      const x2 = p2.x !== null ? Math.max(0, Math.min(chartWidth, p2.x)) : (drawing.points[1].time < drawing.points[0].time ? 0 : chartWidth);
+                      const y1 = p1.y ?? 0;
+                      const y2 = p2.y ?? 0;
+                      const x = Math.min(x1, x2);
+                      const y = Math.min(y1, y2);
+                      const w = Math.abs(x2 - x1);
+                      const h = Math.abs(y2 - y1);
+                      // Skip rendering if width or height is 0 (would be invisible)
+                      if (w === 0 && h === 0) return null;
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
                           <rect x={x} y={y} width={w} height={h} fill={`${color}20`} stroke={isSelected ? '#22c55e' : color} strokeWidth={isSelected ? 3 : 2} />
