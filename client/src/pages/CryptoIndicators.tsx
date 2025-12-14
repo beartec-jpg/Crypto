@@ -389,6 +389,17 @@ export default function CryptoIndicators() {
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const [viewportVersion, setViewportVersion] = useState(0); // Force re-render on pan/zoom
   
+  // Crosshair mode refs for precise drawing tool placement
+  const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null);
+  const crosshairModeActiveRef = useRef<boolean>(false);
+  const drawingModeRef = useRef(drawingMode);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Sync drawingModeRef with state
+  useEffect(() => {
+    drawingModeRef.current = drawingMode;
+  }, [drawingMode]);
+  
   // Fetch saved drawings from database
   const { data: savedDrawings = [], refetch: refetchDrawings } = useQuery<any[]>({
     queryKey: ['/api/crypto/chart-drawings', symbol, interval],
@@ -6205,12 +6216,23 @@ export default function CryptoIndicators() {
       
       // Add click handler for drawing tools
       chart.subscribeClick((param) => {
-        if (param.time && param.point) {
+        // Use crosshair mode coordinates if active (for precise mobile/touch placement)
+        let time: number | undefined;
+        let price: number | null = null;
+        
+        if (crosshairModeActiveRef.current && lastCrosshairParamRef.current) {
+          time = lastCrosshairParamRef.current.time;
+          price = lastCrosshairParamRef.current.price;
+          // Deactivate crosshair mode after using it
+          crosshairModeActiveRef.current = false;
+        } else if (param.time && param.point) {
+          time = param.time as number;
+          price = candleSeries.coordinateToPrice(param.point.y);
+        }
+        
+        if (time && price !== null) {
           const event = new CustomEvent('chartClick', { 
-            detail: { 
-              time: param.time as number, 
-              price: candleSeries.coordinateToPrice(param.point.y) 
-            } 
+            detail: { time, price } 
           });
           container.dispatchEvent(event);
         }
@@ -6219,15 +6241,60 @@ export default function CryptoIndicators() {
       // Add crosshair move handler to track time in future whitespace area
       chart.subscribeCrosshairMove((param) => {
         if (param.time && param.point) {
+          const time = param.time as number;
+          const price = candleSeries.coordinateToPrice(param.point.y);
+          
           setCrosshairInfo({
-            time: param.time as number,
+            time,
             x: param.point.x,
             y: param.point.y
           });
+          
+          // Store crosshair position for crosshair mode (used by drawing tools on touch devices)
+          lastCrosshairParamRef.current = {
+            time,
+            price: price !== null ? price : 0,
+            pointX: param.point.x,
+            logicalX: undefined
+          };
         } else {
           setCrosshairInfo(null);
+          // Clear crosshair ref when moving away (but not if crosshair mode is active)
+          if (!crosshairModeActiveRef.current) {
+            lastCrosshairParamRef.current = null;
+          }
         }
       });
+      
+      // Add long-press handlers for touch devices to activate crosshair mode
+      const handleTouchStart = () => {
+        // Only activate for drawing mode
+        if (drawingModeRef.current === 'draw' && !crosshairModeActiveRef.current) {
+          longPressTimerRef.current = setTimeout(() => {
+            crosshairModeActiveRef.current = true;
+            // Visual feedback - the drawing will be placed at crosshair position on next tap
+          }, 500);
+        }
+      };
+      
+      const handleTouchEnd = () => {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      };
+      
+      const handleTouchMove = () => {
+        // Cancel long press if user moves (they're panning)
+        if (longPressTimerRef.current && !crosshairModeActiveRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      };
+      
+      container.addEventListener('touchstart', handleTouchStart);
+      container.addEventListener('touchend', handleTouchEnd);
+      container.addEventListener('touchmove', handleTouchMove);
     }, 100);
 
     const handleResize = () => {

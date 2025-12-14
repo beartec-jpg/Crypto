@@ -2608,14 +2608,24 @@ export default function CryptoElliottWave() {
     },
   });
   
-  // Handle chart clicks for drawing tools
+  // Handle chart clicks for drawing tools (with crosshair mode support)
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || !chartReady || drawingMode !== 'draw' || !activeTool) return;
     
     const handleChartClick = (e: Event) => {
       const customEvent = e as CustomEvent<{time: number; price: number}>;
-      const { time, price } = customEvent.detail;
+      let { time, price } = customEvent.detail;
+      
+      // Use crosshair position if crosshair mode is active (from long-press)
+      if (crosshairModeActiveRef.current && lastCrosshairParamRef.current) {
+        time = lastCrosshairParamRef.current.time;
+        price = lastCrosshairParamRef.current.price;
+        console.log('🎯 Drawing tool using crosshair position:', time, price);
+        // Deactivate crosshair mode after use
+        crosshairModeActiveRef.current = false;
+      }
+      
       if (!time || !price) return;
       
       setTempDrawing(prev => {
@@ -3291,6 +3301,7 @@ const aiAnalyze = useMutation({
   const draggedPointIndexRef = useRef(draggedPointIndex);
   const isDraggingRef = useRef(isDragging);
   const updateLabelRef = useRef(updateLabel);
+  const drawingModeRef = useRef(drawingMode); // For drawing tools crosshair mode
   
   // CRITICAL: Cache trend direction when point 0 is placed - used for all subsequent snaps
   const trendDirectionRef = useRef<'up' | 'down' | null>(null);
@@ -3312,7 +3323,8 @@ const aiAnalyze = useMutation({
     updateLabelRef.current = updateLabel;
     fibonacciModeRef.current = fibonacciMode;
     timeframeRef.current = timeframe;
-  }, [isDrawing, selectedDegree, patternType, currentPoints, waveDegrees, candles, selectionMode, visibleCandleCount, savedLabels, selectedLabelId, draggedPointIndex, isDragging, updateLabel, fibonacciMode, timeframe]);
+    drawingModeRef.current = drawingMode;
+  }, [isDrawing, selectedDegree, patternType, currentPoints, waveDegrees, candles, selectionMode, visibleCandleCount, savedLabels, selectedLabelId, draggedPointIndex, isDragging, updateLabel, fibonacciMode, timeframe, drawingMode]);
   
   // Clear correction context when switching away from correction pattern type
   useEffect(() => {
@@ -4862,8 +4874,9 @@ const aiAnalyze = useMutation({
         (window as any).__touchStartY = e.touches[0].clientY;
         (window as any).__touchMoved = false;
         
-        // Start long-press timer to activate crosshair mode (only in drawing mode)
-        if (isDrawingRef.current && !crosshairModeActiveRef.current) {
+        // Start long-press timer to activate crosshair mode (in Elliott wave drawing OR drawing tools mode)
+        const inDrawingMode = isDrawingRef.current || drawingModeRef.current === 'draw';
+        if (inDrawingMode && !crosshairModeActiveRef.current) {
           if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
           }
