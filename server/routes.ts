@@ -1482,10 +1482,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fallback to CoinGlass if Coinalyze failed or returned no data
       if (normalizedHistory.length === 0 && coinglassApiKey) {
         try {
-          // CoinGlass global long/short account ratio history endpoint
+          // CoinGlass top traders long/short position ratio endpoint
           // Hobbyist plan requires interval >= 4h
           const baseSymbol = symbol.replace('USDT', '');
-          const cgUrl = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?symbol=${baseSymbol}&interval=4h&limit=42`;
+          const cgUrl = `https://open-api-v4.coinglass.com/api/futures/top-long-short-position-ratio/history?symbol=${baseSymbol}&interval=4h&limit=42`;
           
           console.log(`📊 Fetching CoinGlass L/S Ratio for ${baseSymbol}...`);
           
@@ -1500,11 +1500,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const cgData = await cgResponse.json();
             console.log(`📊 CoinGlass L/S Ratio response: code=${cgData.code}, data count=${cgData.data?.length || 0}`);
             if (cgData.code === '0' && cgData.data && cgData.data.length > 0) {
+              // top-long-short-position-ratio returns: top_position_long_short_ratio, top_position_long_percent, top_position_short_percent
               normalizedHistory = cgData.data.map((item: any) => ({
                 timestamp: item.time,
-                ratio: item.global_account_long_short_ratio,
-                longPercent: item.global_account_long_percent,
-                shortPercent: item.global_account_short_percent
+                ratio: item.top_position_long_short_ratio || item.top_account_long_short_ratio || item.global_account_long_short_ratio || 1.0,
+                longPercent: item.top_position_long_percent || item.top_account_long_percent || item.global_account_long_percent || 50,
+                shortPercent: item.top_position_short_percent || item.top_account_short_percent || item.global_account_short_percent || 50
               }));
               dataSource = 'coinglass-ls-ratio';
               console.log(`✅ CoinGlass L/S Ratio fallback: ${normalizedHistory.length} points, latest ratio: ${normalizedHistory[normalizedHistory.length - 1]?.ratio}`);
