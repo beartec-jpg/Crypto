@@ -2141,8 +2141,7 @@ export default function CryptoAI() {
             <Card className="bg-[#1a1a1a] border-[#2a2e39] p-4">
               <div 
                 ref={chartContainerRef} 
-                className="w-full"
-                style={{ height: '800px' }}
+                className="w-full h-[350px] sm:h-[450px] lg:h-[600px]"
               />
             </Card>
 
