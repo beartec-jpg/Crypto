@@ -2487,6 +2487,17 @@ export default function CryptoElliottWave() {
   const [stackProjectionLines, setStackProjectionLines] = useState<{ price: number; color: string; lineWidth: number; lineStyle: number; axisLabelVisible: boolean; title: string }[]>([]); // Wave Stack projection lines
   const [waveProjectionMode, setWaveProjectionMode] = useState<'abc' | 'impulse'>('abc'); // ABC (WXY) vs 12345 (impulse) mode
 
+  // Drawing tools state (for trendlines, horizontal lines, rectangles, fibs)
+  type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | null;
+  const [drawingMode, setDrawingMode] = useState<'off' | 'draw' | 'select'>('off');
+  const [activeTool, setActiveTool] = useState<DrawingTool>(null);
+  const [showToolPicker, setShowToolPicker] = useState(false);
+  const [drawings, setDrawings] = useState<any[]>([]);
+  const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number}[]} | null>(null);
+  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [showDrawingSettings, setShowDrawingSettings] = useState(false);
+  const [chartReady, setChartReady] = useState(false);
+
   // DEBUG MODE: Touch sensitivity testing panel (admin only)
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [debugSettings, setDebugSettings] = useState({
@@ -2518,6 +2529,84 @@ export default function CryptoElliottWave() {
   // CRITICAL: Admin users (beartec@beartec.uk) bypass all access checks immediately
   const authAndSubReady = authReady.ready && !authLoading && !subLoading;
   const hasElliottAccess = isDevelopment || isAdmin || (authAndSubReady && isAuthenticated && canUseElliottFeatures);
+
+  // Fetch saved drawings from database
+  const { data: savedDrawings = [], refetch: refetchDrawings } = useQuery<any[]>({
+    queryKey: ['/api/crypto/chart-drawings', symbol, timeframe],
+    queryFn: async () => {
+      const response = await authenticatedApiRequest('GET', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${timeframe}`);
+      return response.json();
+    },
+    enabled: isAuthenticated && !authLoading && !!symbol && !!timeframe,
+  });
+  
+  // Load saved drawings into state when data changes
+  useEffect(() => {
+    if (savedDrawings) {
+      setDrawings(savedDrawings.map(d => ({
+        id: d.id,
+        type: d.drawing_type || d.drawingType,
+        points: d.coordinates?.points || [],
+        style: d.style || { color: '#3b82f6', lineWidth: 2 },
+      })).filter(d => d.points.length > 0));
+    }
+  }, [savedDrawings]);
+  
+  // Save drawing mutation
+  const saveDrawingMutation = useMutation({
+    mutationFn: async (drawing: any) => {
+      const response = await authenticatedApiRequest('POST', '/api/crypto/chart-drawings', {
+        symbol,
+        timeframe,
+        drawingType: drawing.type,
+        coordinates: { points: drawing.points },
+        style: drawing.style,
+      });
+      return { ...(await response.json()), localId: drawing.id };
+    },
+    onSuccess: (serverDrawing) => {
+      setDrawings(prev => prev.map(d => 
+        d.id === serverDrawing.localId 
+          ? { ...d, id: serverDrawing.id }
+          : d
+      ));
+      refetchDrawings();
+    },
+  });
+  
+  // Delete drawing mutation  
+  const deleteDrawingMutation = useMutation({
+    mutationFn: async (drawingId: string) => {
+      const response = await authenticatedApiRequest('DELETE', `/api/crypto/chart-drawings/${drawingId}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      refetchDrawings();
+    },
+  });
+  
+  // Clear all drawings mutation
+  const clearDrawingsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await authenticatedApiRequest('DELETE', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${timeframe}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      setDrawings([]);
+      refetchDrawings();
+    },
+  });
+  
+  // Update drawing mutation (for settings changes)
+  const updateDrawingMutation = useMutation({
+    mutationFn: async ({ id, style }: { id: string; style: any }) => {
+      const response = await authenticatedApiRequest('PATCH', `/api/crypto/chart-drawings/${id}`, { style });
+      return response.json();
+    },
+    onSuccess: () => {
+      refetchDrawings();
+    },
+  });
 
   // Reset chart when symbol or timeframe changes
   useEffect(() => {
