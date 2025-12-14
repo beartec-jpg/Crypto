@@ -185,7 +185,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
         
-        // Also check for Elliott if not found yet
+        // Also check for Elliott if not found yet in this subscription
         if (!elliottItem) {
           elliottItem = items.find((item: any) => {
             const productName = item.price?.product?.name || item.plan?.product?.name || '';
@@ -193,23 +193,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
+        // CRITICAL: Check ALL customer subscriptions for Elliott addon (it may be separate)
+        let hasElliottOnAnySubscription = !!elliottItem;
+        let elliottItemId = elliottItem?.id || null;
+        
+        if (!hasElliottOnAnySubscription && customerId) {
+          try {
+            const allSubs = await stripe.subscriptions.list({
+              customer: customerId as string,
+              status: 'active',
+              expand: ['data.items.data.price.product'],
+            });
+            
+            for (const sub of allSubs.data) {
+              for (const item of sub.items.data) {
+                const productName = (item.price?.product as any)?.name || '';
+                if (productName.toLowerCase().includes('elliot') || productName.toLowerCase().includes('elliott')) {
+                  hasElliottOnAnySubscription = true;
+                  elliottItemId = item.id;
+                  break;
+                }
+              }
+              if (hasElliottOnAnySubscription) break;
+            }
+          } catch (err) {
+            console.log('⚠️ Could not check other subscriptions for Elliott:', err);
+          }
+        }
+
         await pool.query(
           `UPDATE crypto_subscriptions 
            SET tier = COALESCE($1, tier), 
                has_elliott_addon = $2,
-               elliott_stripe_item_id = $3,
+               elliott_stripe_item_id = COALESCE($3, elliott_stripe_item_id),
                subscription_status = $4,
                updated_at = NOW()
            WHERE user_id = $5`,
           [
             tier || null,
-            !!elliottItem,
-            elliottItem?.id || null,
+            hasElliottOnAnySubscription,
+            elliottItemId,
             subscription.status,
             userId
           ]
         );
-        console.log(`✅ Updated subscription for user ${userId}, status: ${subscription.status}`);
+        console.log(`✅ Updated subscription for user ${userId}, status: ${subscription.status}, elliott: ${hasElliottOnAnySubscription}`);
         break;
       }
 
