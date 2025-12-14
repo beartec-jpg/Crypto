@@ -2602,6 +2602,7 @@ export default function CryptoElliottWave() {
   const [drawingTypesGuideOpen, setDrawingTypesGuideOpen] = useState(false);
   const [pointPlacementGuideOpen, setPointPlacementGuideOpen] = useState(false);
   const [waveStackGuideOpen, setWaveStackGuideOpen] = useState(false);
+  const [trainingManualOpen, setTrainingManualOpen] = useState(false);
 
   // DEBUG MODE: Touch sensitivity testing panel (admin only)
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -8211,15 +8212,19 @@ const aiAnalyze = useMutation({
       {/* Elliott Wave Training Manual Section */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <Card className="bg-slate-900/90 border-slate-700">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-cyan-400">
-              <TrendingUp className="w-5 h-5" />
-              Elliott Wave Training Manual
+          <CardHeader className="pb-3 cursor-pointer" onClick={() => setTrainingManualOpen(!trainingManualOpen)}>
+            <CardTitle className="flex items-center justify-between text-lg">
+              <span className="flex items-center gap-2 text-cyan-400">
+                <TrendingUp className="w-5 h-5" />
+                Elliott Wave Training Manual
+              </span>
+              <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${trainingManualOpen ? '' : '-rotate-90'}`} />
             </CardTitle>
             <p className="text-sm text-gray-400">
               Learn to identify and label Elliott Wave patterns with visual examples
             </p>
           </CardHeader>
+          {trainingManualOpen && (
           <CardContent className="space-y-8">
             
             {/* Impulse Pattern */}
@@ -9288,6 +9293,7 @@ const aiAnalyze = useMutation({
             </div>
 
           </CardContent>
+          )}
         </Card>
       </div>
 
