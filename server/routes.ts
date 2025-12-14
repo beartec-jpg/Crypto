@@ -3358,6 +3358,16 @@ Be concise and direct.`;
         });
       }
 
+      // Use monthly AI credit (decrements the counter for intermediate tier)
+      const creditUsed = await cryptoSubscriptionService.useAICredit(userId);
+      if (!creditUsed) {
+        return res.status(403).json({ 
+          error: 'No AI credits remaining',
+          message: 'You have used all your monthly AI credits. Credits reset monthly.',
+          alerts: []
+        });
+      }
+
       const { 
         symbol, interval, currentPrice, cvd, cvdTrend, poc, vah, val, 
         bullishOBCount, bearishOBCount, bullFVGCount, bearFVGCount,
