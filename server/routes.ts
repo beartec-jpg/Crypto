@@ -1482,10 +1482,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fallback to CoinGlass if Coinalyze failed or returned no data
       if (normalizedHistory.length === 0 && coinglassApiKey) {
         try {
-          // CoinGlass global long/short account ratio endpoint
+          // CoinGlass global long/short account ratio history endpoint
           // Hobbyist plan requires interval >= 4h
           const baseSymbol = symbol.replace('USDT', '');
-          const cgUrl = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio?symbol=${baseSymbol}&interval=4h&limit=42`;
+          const cgUrl = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?symbol=${baseSymbol}&interval=4h&limit=42`;
           
           console.log(`📊 Fetching CoinGlass L/S Ratio for ${baseSymbol}...`);
           
