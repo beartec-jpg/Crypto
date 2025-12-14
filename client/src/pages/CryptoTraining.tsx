@@ -1,6 +1,7 @@
 import { Helmet } from 'react-helmet-async';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Link } from 'wouter';
 import { ArrowLeft, GraduationCap, TrendingUp, Activity, BarChart3, Zap, Pencil } from 'lucide-react';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
@@ -49,14 +50,17 @@ export default function CryptoTraining() {
           Comprehensive guide to understanding and using technical indicators, oscillators, and order flow analysis tools
         </p>
 
-        <div className="space-y-8">
+        <Accordion type="multiple" defaultValue={[]} className="space-y-4">
           {/* OSCILLATORS SECTION */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 border-b border-[#2a2e39] pb-3">
-              <Activity className="w-6 h-6 text-purple-500" />
-              <h2 className="text-2xl font-bold">Oscillators</h2>
-            </div>
-
+          <AccordionItem value="oscillators" className="border border-[#2a2e39] rounded-lg bg-[#1a1a1a] overflow-hidden">
+            <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-[#252525] [&[data-state=open]>svg]:rotate-180" data-testid="accordion-oscillators">
+              <div className="flex items-center gap-3">
+                <Activity className="w-6 h-6 text-purple-500" />
+                <h2 className="text-2xl font-bold text-white">Oscillators</h2>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="space-y-6 pt-4">
             {/* RSI */}
             <Card className="bg-[#1a1a1a] border-[#2a2e39]">
               <CardHeader>
@@ -661,14 +665,26 @@ export default function CryptoTraining() {
                 </div>
               </CardContent>
             </Card>
-          </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
 
-          {/* SMART MONEY CONCEPTS SECTION */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 border-b border-[#2a2e39] pb-3">
-              <TrendingUp className="w-6 h-6 text-green-500" />
-              <h2 className="text-2xl font-bold">Smart Money Concepts</h2>
-            </div>
+          {/* INDICATORS SECTION (SMC + Order Flow + Replay) */}
+          <AccordionItem value="indicators" className="border border-[#2a2e39] rounded-lg bg-[#1a1a1a] overflow-hidden">
+            <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-[#252525] [&[data-state=open]>svg]:rotate-180" data-testid="accordion-indicators">
+              <div className="flex items-center gap-3">
+                <TrendingUp className="w-6 h-6 text-green-500" />
+                <h2 className="text-2xl font-bold text-white">Indicators & Analysis</h2>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="space-y-8 pt-4">
+                {/* SMART MONEY CONCEPTS */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 border-b border-[#2a2e39] pb-3">
+                    <TrendingUp className="w-5 h-5 text-green-500" />
+                    <h3 className="text-xl font-bold text-white">Smart Money Concepts</h3>
+                  </div>
 
             {/* Order Blocks */}
             <Card className="bg-[#1a1a1a] border-[#2a2e39]">
@@ -1384,13 +1400,20 @@ export default function CryptoTraining() {
               </CardContent>
             </Card>
           </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
 
           {/* DRAWING TOOLS SECTION */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 border-b border-[#2a2e39] pb-3">
-              <Pencil className="w-6 h-6 text-cyan-500" />
-              <h2 className="text-2xl font-bold">Drawing Tools</h2>
-            </div>
+          <AccordionItem value="drawing-tools" className="border border-[#2a2e39] rounded-lg bg-[#1a1a1a] overflow-hidden">
+            <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-[#252525] [&[data-state=open]>svg]:rotate-180" data-testid="accordion-drawing-tools">
+              <div className="flex items-center gap-3">
+                <Pencil className="w-6 h-6 text-cyan-500" />
+                <h2 className="text-2xl font-bold text-white">Drawing Tools</h2>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="space-y-6 pt-4">
 
             {/* Tool Selection Overview */}
             <Card className="bg-[#1a1a1a] border-[#2a2e39]">
@@ -1702,7 +1725,10 @@ export default function CryptoTraining() {
                 </div>
               </CardContent>
             </Card>
-          </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
           {/* CONCLUSION */}
           <Card className="bg-gradient-to-r from-[#00c4b4]/20 to-purple-600/20 border-[#00c4b4]/50">
@@ -1724,7 +1750,6 @@ export default function CryptoTraining() {
       
       {/* Spacer for fixed navigation */}
       <div className="h-32 md:h-40"></div>
-    </div>
     </>
   );
 }
