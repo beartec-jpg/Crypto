@@ -157,12 +157,19 @@ async function fetchLongShortRatio(symbol: string): Promise<any> {
       return { current: { ratio: 1.0 }, ratio: 1.0, history: [] };
     }
     
+    // Correct field names from CoinGlass v4 API:
+    // - global_account_long_short_ratio: the L/S ratio directly
+    // - global_account_long_percent: long percentage
+    // - global_account_short_percent: short percentage
     const history = data.data.map((item: any) => {
-      const longRate = parseFloat(item.longRate || item.longAccount || 0.5);
-      const shortRate = parseFloat(item.shortRate || item.shortAccount || 0.5);
+      // Use the ratio directly if available, otherwise calculate from percentages
+      const ratio = parseFloat(item.global_account_long_short_ratio || item.longShortRatio || 0) ||
+        (parseFloat(item.global_account_long_percent || 50) / parseFloat(item.global_account_short_percent || 50));
       return {
         timestamp: item.time,
-        ratio: shortRate > 0 ? longRate / shortRate : 1.0
+        ratio: ratio || 1.0,
+        longPercent: parseFloat(item.global_account_long_percent || 50),
+        shortPercent: parseFloat(item.global_account_short_percent || 50)
       };
     });
     
