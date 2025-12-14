@@ -2,9 +2,13 @@ import { Helmet } from 'react-helmet-async';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link } from 'wouter';
-import { ArrowLeft, GraduationCap, TrendingUp, Activity, BarChart3, Zap } from 'lucide-react';
+import { ArrowLeft, GraduationCap, TrendingUp, Activity, BarChart3, Zap, Pencil } from 'lucide-react';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
+import drawingToolsMenu from '@assets/Screenshot_20251214-070650_1765697416475.png';
+import fibSettings from '@assets/Screenshot_20251214-071143~2_1765696631268.png';
+import trendlinesExample from '@assets/Screenshot_20251214-071028~2_1765696699029.png';
+import lineSettings from '@assets/Screenshot_20251214-071023~2_1765696742637.png';
 
 export default function CryptoTraining() {
   return (
@@ -1375,6 +1379,325 @@ export default function CryptoTraining() {
                 <div className="bg-slate-900 p-3 rounded-lg border-l-4 border-yellow-500">
                   <p className="text-sm text-gray-100">
                     <strong className="text-yellow-400">💡 Best Practice:</strong> Focus on mastering 3-5 indicators rather than trying to track everything. Use "Active Only" mode to keep your alerts clean and focused on your playbook.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* DRAWING TOOLS SECTION */}
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 border-b border-[#2a2e39] pb-3">
+              <Pencil className="w-6 h-6 text-cyan-500" />
+              <h2 className="text-2xl font-bold">Drawing Tools</h2>
+            </div>
+
+            {/* Tool Selection Overview */}
+            <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+              <CardHeader>
+                <CardTitle className="text-xl text-white flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-cyan-500"></div>
+                  Available Drawing Tools
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-gray-300 text-sm">
+                  Access the drawing toolbar by clicking the pencil icon in the chart header. Select from 5 professional tools to annotate your charts.
+                </p>
+
+                <div className="flex justify-center">
+                  <img 
+                    src={drawingToolsMenu} 
+                    alt="Drawing Tools Menu" 
+                    className="rounded-lg border border-[#2a2e39] max-w-[400px] w-full"
+                    data-testid="img-drawing-tools-menu"
+                  />
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-900">
+                      <tr>
+                        <th className="text-left p-3 text-gray-400 font-semibold">Tool</th>
+                        <th className="text-left p-3 text-gray-400 font-semibold">Purpose</th>
+                        <th className="text-left p-3 text-gray-400 font-semibold">How to Draw</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      <tr>
+                        <td className="p-3 text-[#00c4b4] font-mono">Trend Line</td>
+                        <td className="p-3 text-gray-300">Mark diagonal support/resistance and trend channels</td>
+                        <td className="p-3 text-gray-300">Click start point, click end point</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-[#00c4b4] font-mono">Horizontal Line</td>
+                        <td className="p-3 text-gray-300">Mark key price levels, support/resistance zones</td>
+                        <td className="p-3 text-gray-300">Single click at desired price level</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-[#00c4b4] font-mono">Rectangle</td>
+                        <td className="p-3 text-gray-300">Highlight zones like order blocks, FVGs, or consolidation areas</td>
+                        <td className="p-3 text-gray-300">Click top-left corner, click bottom-right corner</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-[#00c4b4] font-mono">Fib Retracement</td>
+                        <td className="p-3 text-gray-300">Measure potential retracement levels after a move</td>
+                        <td className="p-3 text-gray-300">Click swing high, click swing low (or vice versa)</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-[#00c4b4] font-mono">Trend-Based Fib</td>
+                        <td className="p-3 text-gray-300">Project extension targets using 3-point Fibonacci</td>
+                        <td className="p-3 text-gray-300">Click point A, click point B, click point C</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Fibonacci Tool */}
+            <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+              <CardHeader>
+                <CardTitle className="text-xl text-white flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                  Fibonacci Retracement
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-gray-300 text-sm">
+                  The Fibonacci tool shows key retracement levels where price often reverses or consolidates. Click the settings gear to customize which levels are visible.
+                </p>
+
+                <div className="flex justify-center">
+                  <img 
+                    src={fibSettings} 
+                    alt="Fibonacci Settings" 
+                    className="rounded-lg border border-[#2a2e39] max-w-[400px] w-full"
+                    data-testid="img-fib-settings"
+                  />
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-900">
+                      <tr>
+                        <th className="text-left p-3 text-gray-400 font-semibold">Level</th>
+                        <th className="text-left p-3 text-gray-400 font-semibold">Significance</th>
+                        <th className="text-left p-3 text-gray-400 font-semibold">Trading Application</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      <tr>
+                        <td className="p-3 text-yellow-400 font-mono">23.6%</td>
+                        <td className="p-3 text-gray-300">Shallow retracement</td>
+                        <td className="p-3 text-gray-300">Strong trends often bounce here - aggressive entries</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-yellow-400 font-mono">38.2%</td>
+                        <td className="p-3 text-gray-300">Minor support/resistance</td>
+                        <td className="p-3 text-gray-300">Common pullback level in healthy trends</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-yellow-400 font-mono">50.0%</td>
+                        <td className="p-3 text-gray-300">Psychological midpoint</td>
+                        <td className="p-3 text-gray-300">Not a true Fib ratio but widely watched</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-yellow-400 font-mono">61.8%</td>
+                        <td className="p-3 text-gray-300">Golden ratio - strongest level</td>
+                        <td className="p-3 text-gray-300">Most important level - high probability reversals</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-yellow-400 font-mono">78.6%</td>
+                        <td className="p-3 text-gray-300">Deep retracement</td>
+                        <td className="p-3 text-gray-300">Last stand before trend failure - tight stops</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="bg-slate-900 p-4 rounded-lg space-y-2">
+                  <h4 className="font-semibold text-white">Settings Options:</h4>
+                  <ul className="list-disc list-inside text-gray-300 space-y-1 text-sm">
+                    <li><strong>Visible Levels:</strong> Toggle checkboxes to show/hide specific Fib levels</li>
+                    <li><strong>Label Position:</strong> Choose Left or Right side for level labels</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Trendlines and Horizontal Lines */}
+            <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+              <CardHeader>
+                <CardTitle className="text-xl text-white flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  Trendlines & Horizontal Lines
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-gray-300 text-sm">
+                  Mark key levels and trends with customizable colors and labels. Name your lines for easy identification.
+                </p>
+
+                <div className="flex justify-center">
+                  <img 
+                    src={trendlinesExample} 
+                    alt="Trendlines Example" 
+                    className="rounded-lg border border-[#2a2e39] max-w-[400px] w-full"
+                    data-testid="img-trendlines-example"
+                  />
+                </div>
+
+                <div className="bg-slate-900 p-4 rounded-lg space-y-3">
+                  <h4 className="font-semibold text-white">Color Coding Examples:</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-1 bg-red-500 rounded"></div>
+                      <span className="text-gray-300"><strong className="text-red-400">Red:</strong> Downtrend lines, resistance levels, bearish zones</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-1 bg-green-500 rounded"></div>
+                      <span className="text-gray-300"><strong className="text-green-400">Green:</strong> Support levels, uptrend lines, bullish zones</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-1 bg-blue-500 rounded"></div>
+                      <span className="text-gray-300"><strong className="text-blue-400">Blue:</strong> Key levels, entry/exit points</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-1 bg-yellow-500 rounded"></div>
+                      <span className="text-gray-300"><strong className="text-yellow-400">Yellow/Orange:</strong> Caution zones, potential breakout levels</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-blue-900/20 border border-blue-700/50 p-3 rounded-lg">
+                  <p className="text-blue-400 text-xs font-semibold">Pro Tip:</p>
+                  <p className="text-gray-300 text-xs mt-1">
+                    Use consistent color coding across all your charts. This builds muscle memory - you'll instantly recognize support (green) vs resistance (red) at a glance.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Line Settings and Alerts */}
+            <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+              <CardHeader>
+                <CardTitle className="text-xl text-white flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  Line Settings & Price Alerts
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-gray-300 text-sm">
+                  Click the settings gear icon after selecting a drawing to customize it. Horizontal lines have a special feature - you can set price alerts!
+                </p>
+
+                <div className="flex justify-center">
+                  <img 
+                    src={lineSettings} 
+                    alt="Line Settings Panel" 
+                    className="rounded-lg border border-[#2a2e39] max-w-[400px] w-full"
+                    data-testid="img-line-settings"
+                  />
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-900">
+                      <tr>
+                        <th className="text-left p-3 text-gray-400 font-semibold">Setting</th>
+                        <th className="text-left p-3 text-gray-400 font-semibold">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      <tr>
+                        <td className="p-3 text-[#00c4b4] font-mono">Label</td>
+                        <td className="p-3 text-gray-300">Add a custom name like "Support", "Resistance", "Entry", "Target"</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-[#00c4b4] font-mono">Label Position</td>
+                        <td className="p-3 text-gray-300">Choose Left or Right side of the line for the label</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-[#00c4b4] font-mono">Color</td>
+                        <td className="p-3 text-gray-300">Pick from 8 colors: blue, green, red, orange, purple, pink, cyan, white</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-green-400 font-mono">Activate Alert</td>
+                        <td className="p-3 text-gray-300">Turn on push notifications when price crosses this level</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-green-400 font-mono">Test Push Notification</td>
+                        <td className="p-3 text-gray-300">Send a test alert to verify your notifications are working</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="bg-green-900/20 border border-green-700/50 p-4 rounded-lg space-y-2">
+                  <h4 className="font-semibold text-green-400">Price Alert Feature</h4>
+                  <p className="text-gray-300 text-sm">
+                    Draw a horizontal line at a key price level, then click "Activate Alert". You'll receive a push notification on your device when price crosses that level - even if you're not watching the chart!
+                  </p>
+                  <ul className="list-disc list-inside text-gray-300 space-y-1 text-sm mt-2">
+                    <li>Set alerts at support/resistance levels</li>
+                    <li>Get notified at your entry or exit targets</li>
+                    <li>Never miss a breakout again</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Drawing Toolbar */}
+            <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+              <CardHeader>
+                <CardTitle className="text-xl text-white flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                  Toolbar Icons Guide
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-gray-300 text-sm">
+                  The drawing toolbar appears at the top of the chart when drawing mode is active. Here's what each button does:
+                </p>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="bg-slate-900 p-3 rounded-lg text-center">
+                    <div className="text-2xl mb-2">✏️</div>
+                    <div className="text-[#00c4b4] font-semibold text-sm">Pencil Icon</div>
+                    <div className="text-gray-400 text-xs mt-1">Open tool selection menu</div>
+                  </div>
+                  <div className="bg-slate-900 p-3 rounded-lg text-center">
+                    <div className="text-2xl mb-2">✴️</div>
+                    <div className="text-green-400 font-semibold text-sm">Crosshair (Green)</div>
+                    <div className="text-gray-400 text-xs mt-1">Active drawing mode indicator</div>
+                  </div>
+                  <div className="bg-slate-900 p-3 rounded-lg text-center">
+                    <div className="text-2xl mb-2">✕</div>
+                    <div className="text-gray-300 font-semibold text-sm">X Button</div>
+                    <div className="text-gray-400 text-xs mt-1">Cancel current drawing</div>
+                  </div>
+                  <div className="bg-slate-900 p-3 rounded-lg text-center">
+                    <div className="text-2xl mb-2">⚙️</div>
+                    <div className="text-blue-400 font-semibold text-sm">Settings Gear</div>
+                    <div className="text-gray-400 text-xs mt-1">Open settings for selected drawing</div>
+                  </div>
+                  <div className="bg-slate-900 p-3 rounded-lg text-center">
+                    <div className="text-2xl mb-2">🗑️</div>
+                    <div className="text-red-400 font-semibold text-sm">Red Trash</div>
+                    <div className="text-gray-400 text-xs mt-1">Delete selected drawing only</div>
+                  </div>
+                  <div className="bg-slate-900 p-3 rounded-lg text-center">
+                    <div className="text-2xl mb-2">🗑️</div>
+                    <div className="text-gray-300 font-semibold text-sm">Gray Trash</div>
+                    <div className="text-gray-400 text-xs mt-1">Delete ALL drawings</div>
+                  </div>
+                </div>
+
+                <div className="bg-yellow-900/20 border border-yellow-700/50 p-3 rounded-lg">
+                  <p className="text-yellow-400 text-xs font-semibold">Important:</p>
+                  <p className="text-gray-300 text-xs mt-1">
+                    Click on any drawing to select it (it will highlight). Then use the settings gear to edit or the red trash to delete just that drawing. The gray trash deletes everything!
                   </p>
                 </div>
               </CardContent>
