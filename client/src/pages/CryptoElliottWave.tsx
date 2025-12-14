@@ -6959,9 +6959,18 @@ const aiAnalyze = useMutation({
                     const timeScale = chart.timeScale();
                     const chartWidth = timeScale.width() ?? 800;
                     
-                    // Convert point to pixel coordinates, returning null if out of visible range
+                    // Get the last actual candle position to cap drawings at real data
+                    const lastCandleTime = candles.length > 0 ? candles[candles.length - 1].time : null;
+                    const lastCandleX = lastCandleTime ? timeScale.timeToCoordinate(lastCandleTime as any) : chartWidth;
+                    const maxDrawingX = lastCandleX !== null ? Math.min(lastCandleX + 20, chartWidth) : chartWidth; // +20px buffer
+                    
+                    // Convert point to pixel coordinates, capping future times to last candle
                     const toPixelRaw = (point: { time: number; price: number }) => {
-                      const x = timeScale.timeToCoordinate(point.time as any);
+                      let x = timeScale.timeToCoordinate(point.time as any);
+                      // Cap X coordinate to not extend beyond last candle
+                      if (x !== null && lastCandleTime && point.time > lastCandleTime) {
+                        x = Math.min(x, maxDrawingX);
+                      }
                       const y = candleSeriesRef.current?.priceToCoordinate(point.price);
                       return { x, y };
                     };
