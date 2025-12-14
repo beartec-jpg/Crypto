@@ -121,29 +121,9 @@ export default function CryptoAI() {
   });
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [tradeAlerts, setTradeAlerts] = useState<TradeAlert[]>(() => {
-    const cached = localStorage.getItem(`tradeAlerts_${symbol}_${interval}`);
-    if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
+  const [tradeAlerts, setTradeAlerts] = useState<TradeAlert[]>([]);
   
-  const [marketInsights, setMarketInsights] = useState<{ noTradesReason?: string; summary?: string; bias?: string; keyLevels?: string[] } | null>(() => {
-    const cached = localStorage.getItem(`marketInsights_${symbol}_${interval}`);
-    if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [marketInsights, setMarketInsights] = useState<{ noTradesReason?: string; summary?: string; bias?: string; keyLevels?: string[] } | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -155,18 +135,10 @@ export default function CryptoAI() {
   const [trackingTradeId, setTrackingTradeId] = useState<string | null>(null); // Currently tracking
   const [activeTab, setActiveTab] = useState('chart'); // Track active tab for chart resize
   
-  // Update tradeAlerts when symbol or interval changes
+  // Clear tradeAlerts when symbol or interval changes - require fresh analysis
   useEffect(() => {
-    const cached = localStorage.getItem(`tradeAlerts_${symbol}_${interval}`);
-    if (cached) {
-      try {
-        setTradeAlerts(JSON.parse(cached));
-      } catch {
-        setTradeAlerts([]);
-      }
-    } else {
-      setTradeAlerts([]);
-    }
+    setTradeAlerts([]);
+    setMarketInsights(null);
   }, [symbol, interval]);
   
   const [stats, setStats] = useState({
@@ -1048,7 +1020,6 @@ export default function CryptoAI() {
       const alerts = result.alerts || [];
       
       setTradeAlerts(alerts);
-      localStorage.setItem(`tradeAlerts_${symbol}_${interval}`, JSON.stringify(alerts));
       
       // Refresh subscription data to update the counter
       refetchSubscription();
@@ -1056,15 +1027,12 @@ export default function CryptoAI() {
       // Store market insights for display
       if (result.marketInsights && alerts.length === 0) {
         setMarketInsights(result.marketInsights);
-        localStorage.setItem(`marketInsights_${symbol}_${interval}`, JSON.stringify(result.marketInsights));
       } else {
         setMarketInsights(null);
-        localStorage.removeItem(`marketInsights_${symbol}_${interval}`);
       }
     } catch (error) {
       console.error('Failed to analyze trades:', error);
       setTradeAlerts([]);
-      localStorage.removeItem(`tradeAlerts_${symbol}_${interval}`);
     } finally {
       setAnalyzing(false);
     }
