@@ -1254,7 +1254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Coinalyze Funding Rate endpoint with rolling history buffer
+  // Funding Rate endpoint with CoinGlass fallback
   const fundingCache = new Map<string, { data: any; timestamp: number; history: Array<{timestamp: number, value: number}> }>();
   const FUNDING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
   const FUNDING_HISTORY_SIZE = 10; // Keep last 10 data points
@@ -1275,43 +1275,117 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Coinalyze API re-enabled
-      const apiKey = process.env.COINALYZE_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          error: 'Coinalyze API not configured',
-          message: 'COINALYZE_API_KEY environment variable required'
-        });
-      }
+      const coinalyzeApiKey = process.env.COINALYZE_API_KEY;
+      const coinglassApiKey = process.env.COINGLASS_API_KEY;
+      
+      let historyData: any[] = [];
+      let dataSource = 'none';
 
-      // Fetch historical data (last 7 days) for immediate deltas on page load
-      const to = Math.floor(Date.now() / 1000);
-      const from = to - (7 * 24 * 60 * 60); // Last 7 days
-      const historyUrl = `https://api.coinalyze.net/v1/funding-rate-history?symbols=${coinalyzeSymbol}&interval=4hour&from=${from}&to=${to}`;
+      // Try Coinalyze first
+      if (coinalyzeApiKey) {
+        try {
+          const to = Math.floor(Date.now() / 1000);
+          const from = to - (7 * 24 * 60 * 60); // Last 7 days
+          const historyUrl = `https://api.coinalyze.net/v1/funding-rate-history?symbols=${coinalyzeSymbol}&interval=4hour&from=${from}&to=${to}`;
 
-      console.log(`📊 Fetching Coinalyze Funding Rate History: ${coinalyzeSymbol}`);
+          console.log(`📊 Fetching Coinalyze Funding Rate History: ${coinalyzeSymbol}`);
 
-      const response = await fetch(historyUrl, {
-        headers: {
-          'Accept': 'application/json',
-          'api_key': apiKey
+          const response = await fetch(historyUrl, {
+            headers: {
+              'Accept': 'application/json',
+              'api_key': coinalyzeApiKey
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            historyData = data[0]?.history || [];
+            if (historyData.length > 0) {
+              dataSource = 'coinalyze-funding';
+              console.log(`✅ Coinalyze Funding data: ${historyData.length} points`);
+            }
+          } else {
+            console.log(`⚠️ Coinalyze Funding API failed: ${response.status}, trying CoinGlass...`);
+          }
+        } catch (err) {
+          console.log(`⚠️ Coinalyze Funding error, trying CoinGlass...`);
         }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Coinalyze Funding API error: ${response.status}`, errorText);
-        throw new Error(`Coinalyze API error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
-      const historyData = data[0]?.history || [];
+      // Fallback to CoinGlass if Coinalyze failed or returned no data
+      if (historyData.length === 0 && coinglassApiKey) {
+        try {
+          // CoinGlass exchange-list endpoint - symbol without USDT suffix
+          const baseSymbol = symbol.replace('USDT', '');
+          const cgUrl = `https://open-api-v4.coinglass.com/api/futures/funding-rate/exchange-list?symbol=${baseSymbol}`;
+          
+          console.log(`📊 Fetching CoinGlass Funding Rate for ${baseSymbol}...`);
+          
+          const cgResponse = await fetch(cgUrl, {
+            headers: {
+              'accept': 'application/json',
+              'CG-API-KEY': coinglassApiKey
+            }
+          });
+          
+          if (cgResponse.ok) {
+            const cgData = await cgResponse.json();
+            console.log(`📊 CoinGlass Funding response: code=${cgData.code}, symbols=${cgData.data?.length || 0}`);
+            if (cgData.code === '0' && cgData.data && cgData.data.length > 0) {
+              // Response structure: data[0].stablecoin_margin_list contains exchanges
+              const symbolData = cgData.data.find((s: any) => s.symbol === baseSymbol) || cgData.data[0];
+              const marginList = symbolData?.stablecoin_margin_list || [];
+              
+              // Find Binance funding rate from stablecoin margin list
+              const binanceData = marginList.find((ex: any) => ex.exchange === 'Binance');
+              const exchangeData = binanceData || marginList[0];
+              
+              if (exchangeData) {
+                const fundingRate = exchangeData.funding_rate || 0;
+                const fundingTime = exchangeData.next_funding_time || Date.now();
+                
+                // Create synthetic history with current value
+                historyData = [{
+                  t: fundingTime / 1000,
+                  c: fundingRate
+                }, {
+                  t: (fundingTime - 8 * 60 * 60 * 1000) / 1000, // 8 hours ago
+                  c: fundingRate
+                }];
+                dataSource = 'coinglass-funding';
+                console.log(`✅ CoinGlass Funding fallback: rate=${fundingRate}, source=${exchangeData.exchange}`);
+              }
+            } else if (cgData.code !== '0') {
+              console.log(`⚠️ CoinGlass Funding error code: ${cgData.code}, msg: ${cgData.msg}`);
+            }
+          } else {
+            const errText = await cgResponse.text();
+            console.log(`⚠️ CoinGlass Funding failed: ${cgResponse.status} - ${errText.substring(0, 200)}`);
+          }
+        } catch (err) {
+          console.log(`⚠️ CoinGlass Funding fallback failed`);
+        }
+      }
+
+      // If no data from either source, return placeholder with default funding rate
+      if (historyData.length === 0) {
+        console.log('⚠️ No Funding data available from any source, returning placeholder');
+        const placeholderResult = {
+          symbol,
+          source: 'unavailable',
+          timestamp: Date.now(),
+          current: { value: 0.01 }, // Default neutral funding rate
+          history: [{ timestamp: Date.now(), value: 0.01 }],
+          cached: false,
+          message: 'Funding Rate data temporarily unavailable'
+        };
+        return res.json(placeholderResult);
+      }
       
       // Convert history to normalized format {timestamp, value}
-      // Coinalyze returns OHLC format: {t, o, h, l, c}
       const newHistory = historyData.slice(-FUNDING_HISTORY_SIZE).map((point: any) => ({
         timestamp: (point.t || point.time || point.timestamp) * 1000, // Convert to ms
-        value: point.c || point.v || point.fr || point.fundingRate || point.value || 0 // Use 'c' (close) for OHLC data
+        value: point.c || point.v || point.fr || point.fundingRate || point.value || 0
       }));
       
       // Get current value (last point in history)
@@ -1320,7 +1394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result = {
         symbol,
-        source: 'coinalyze-funding',
+        source: dataSource,
         timestamp: Date.now(),
         current: currentRaw,
         history: newHistory,
@@ -1331,7 +1405,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
 
     } catch (error: any) {
-      console.error('❌ Error fetching Coinalyze Funding Rate:', error);
+      console.error('❌ Error fetching Funding Rate:', error);
       res.status(500).json({
         error: 'Failed to fetch Funding Rate data',
         details: error.message
