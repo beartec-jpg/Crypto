@@ -500,6 +500,7 @@ export default function CryptoIndicators() {
   const [emaConfigs, setEmaConfigs] = useState<MAConfig[]>([
     { id: 'ema1', period: 21, timeframe: 'current', color: '#3b82f6' }
   ]);
+  const [emaInputs, setEmaInputs] = useState<Record<string, string>>({ ema1: '21' });
   const emaSeriesRefs = useRef<Record<string, LineSeries | null>>({});
   const emaHTFDataCache = useRef<Record<string, CandleData[]>>({});
   // Legacy state for backwards compatibility with trading strategies
@@ -10200,6 +10201,7 @@ export default function CryptoIndicators() {
                                   const newId = `ema${Date.now()}`;
                                   const colorIdx = emaConfigs.length % MA_COLORS.length;
                                   setEmaConfigs([...emaConfigs, { id: newId, period: 50, timeframe: 'current', color: MA_COLORS[colorIdx] }]);
+                                  setEmaInputs(prev => ({ ...prev, [newId]: '50' }));
                                 }}
                               >
                                 + Add EMA
@@ -10211,14 +10213,22 @@ export default function CryptoIndicators() {
                               <div key={config.id} className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: config.color }} />
                                 <input
-                                  type="number"
-                                  min="5"
-                                  max="500"
-                                  value={config.period}
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  value={emaInputs[config.id] ?? String(config.period)}
                                   onChange={(e) => {
-                                    const val = parseInt(e.target.value);
-                                    if (!isNaN(val) && val >= 5) {
+                                    const inputVal = e.target.value;
+                                    setEmaInputs(prev => ({ ...prev, [config.id]: inputVal }));
+                                    const val = parseInt(inputVal);
+                                    if (!isNaN(val) && val >= 5 && val <= 500) {
                                       setEmaConfigs(emaConfigs.map(c => c.id === config.id ? { ...c, period: val } : c));
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (isNaN(val) || val < 5) {
+                                      setEmaInputs(prev => ({ ...prev, [config.id]: String(config.period) }));
                                     }
                                   }}
                                   className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
