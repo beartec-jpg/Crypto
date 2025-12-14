@@ -1479,17 +1479,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Fallback to CoinGlass if Coinalyze failed or returned no data
+      // Fallback to CoinGlass global L/S account ratio history (requires exchange parameter)
       if (normalizedHistory.length === 0 && coinglassApiKey) {
         try {
-          // CoinGlass top traders long/short position ratio endpoint
-          // Hobbyist plan requires interval >= 4h
-          const baseSymbol = symbol.replace('USDT', '');
-          const cgUrl = `https://open-api-v4.coinglass.com/api/futures/top-long-short-position-ratio/history?symbol=${baseSymbol}&interval=4h&limit=42`;
+          // CoinGlass global-long-short-account-ratio/history endpoint
+          // Hobbyist plan: interval >= 4h required
+          // Use full symbol format like OI endpoint (BTCUSDT not BTC)
+          const cgLsUrl = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol}&interval=4h&limit=42`;
           
-          console.log(`📊 Fetching CoinGlass L/S Ratio for ${baseSymbol}...`);
+          console.log(`📊 Fetching CoinGlass Global L/S Ratio: ${cgLsUrl}`);
           
-          const cgResponse = await fetch(cgUrl, {
+          const cgResponse = await fetch(cgLsUrl, {
             headers: {
               'accept': 'application/json',
               'CG-API-KEY': coinglassApiKey
@@ -1498,26 +1498,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           if (cgResponse.ok) {
             const cgData = await cgResponse.json();
-            console.log(`📊 CoinGlass L/S Ratio response: code=${cgData.code}, data count=${cgData.data?.length || 0}`);
+            console.log(`📊 CoinGlass Global L/S response: code=${cgData.code}, msg=${cgData.msg}, data count=${cgData.data?.length || 0}`);
+            if (cgData.data && cgData.data.length > 0) console.log(`📊 Sample L/S item:`, JSON.stringify(cgData.data[0]));
             if (cgData.code === '0' && cgData.data && cgData.data.length > 0) {
-              // top-long-short-position-ratio returns: top_position_long_short_ratio, top_position_long_percent, top_position_short_percent
+              // Response fields per docs: global_account_long_percent, global_account_short_percent, global_account_long_short_ratio
               normalizedHistory = cgData.data.map((item: any) => ({
                 timestamp: item.time,
-                ratio: item.top_position_long_short_ratio || item.top_account_long_short_ratio || item.global_account_long_short_ratio || 1.0,
-                longPercent: item.top_position_long_percent || item.top_account_long_percent || item.global_account_long_percent || 50,
-                shortPercent: item.top_position_short_percent || item.top_account_short_percent || item.global_account_short_percent || 50
+                ratio: parseFloat(item.global_account_long_short_ratio || item.longShortRatio || '1'),
+                longPercent: parseFloat(item.global_account_long_percent || item.longAccount || '50'),
+                shortPercent: parseFloat(item.global_account_short_percent || item.shortAccount || '50')
               }));
-              dataSource = 'coinglass-ls-ratio';
-              console.log(`✅ CoinGlass L/S Ratio fallback: ${normalizedHistory.length} points, latest ratio: ${normalizedHistory[normalizedHistory.length - 1]?.ratio}`);
+              dataSource = 'coinglass-global-ls-ratio';
+              console.log(`✅ CoinGlass Global L/S Ratio: ${normalizedHistory.length} points, latest ratio: ${normalizedHistory[normalizedHistory.length - 1]?.ratio}`);
             } else if (cgData.code !== '0') {
-              console.log(`⚠️ CoinGlass L/S Ratio error code: ${cgData.code}, msg: ${cgData.msg}`);
+              console.log(`⚠️ CoinGlass Global L/S Ratio error: code=${cgData.code}, msg=${cgData.msg}`);
             }
           } else {
             const errText = await cgResponse.text();
-            console.log(`⚠️ CoinGlass L/S Ratio failed: ${cgResponse.status} - ${errText.substring(0, 200)}`);
+            console.log(`⚠️ CoinGlass Global L/S Ratio HTTP failed: ${cgResponse.status} - ${errText.substring(0, 300)}`);
           }
-        } catch (err) {
-          console.log(`⚠️ CoinGlass L/S Ratio fallback failed`);
+        } catch (err: any) {
+          console.log(`⚠️ CoinGlass Global L/S Ratio exception: ${err.message}`);
         }
       }
 
