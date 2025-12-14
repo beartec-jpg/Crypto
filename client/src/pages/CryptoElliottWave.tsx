@@ -5376,6 +5376,10 @@ const aiAnalyze = useMutation({
     if (collisions.length > 0) {
       console.log('📍 Marker collisions detected:', collisions.map(([key, count]) => `${key}: ${count} markers`));
     }
+    
+    // CRITICAL: Sort markers by time in ascending order - lightweight-charts REQUIRES this
+    // Without sorting, some markers may not render correctly or disappear on zoom
+    allMarkers.sort((a, b) => a.time - b.time);
 
     try {
       // ALWAYS detach old primitive first to prevent duplicates, then create new one
