@@ -3401,8 +3401,8 @@ const aiAnalyze = useMutation({
     const secondLastCandle = candles.length >= 2 ? candles[candles.length - 2] : candles[0];
     const candleInterval = lastCandle.time - secondLastCandle.time || 60;
     
-    // Extend chart data with 20 virtual future candles (invisible - all values equal close)
-    for (let i = 1; i <= 20; i++) {
+    // Extend chart data with 300 virtual future candles to match Indicators page (for drawing tools)
+    for (let i = 1; i <= 300; i++) {
       const futureTime = lastCandle.time + (candleInterval * i);
       chartData.push({
         time: futureTime as any,
@@ -3436,6 +3436,7 @@ const aiAnalyze = useMutation({
       timeScale: {
         borderColor: '#374151',
         timeVisible: true,
+        rightOffset: 150, // Match Indicators page for consistent drawing tool behavior
       },
       rightPriceScale: {
         borderColor: '#374151',
@@ -6959,18 +6960,9 @@ const aiAnalyze = useMutation({
                     const timeScale = chart.timeScale();
                     const chartWidth = timeScale.width() ?? 800;
                     
-                    // Get the last actual candle position to cap drawings at real data
-                    const lastCandleTime = candles.length > 0 ? candles[candles.length - 1].time : null;
-                    const lastCandleX = lastCandleTime ? timeScale.timeToCoordinate(lastCandleTime as any) : chartWidth;
-                    const maxDrawingX = lastCandleX !== null ? Math.min(lastCandleX + 20, chartWidth) : chartWidth; // +20px buffer
-                    
-                    // Convert point to pixel coordinates, capping future times to last candle
+                    // Convert point to pixel coordinates, returning null if out of visible range
                     const toPixelRaw = (point: { time: number; price: number }) => {
-                      let x = timeScale.timeToCoordinate(point.time as any);
-                      // Cap X coordinate to not extend beyond last candle
-                      if (x !== null && lastCandleTime && point.time > lastCandleTime) {
-                        x = Math.min(x, maxDrawingX);
-                      }
+                      const x = timeScale.timeToCoordinate(point.time as any);
                       const y = candleSeriesRef.current?.priceToCoordinate(point.price);
                       return { x, y };
                     };
