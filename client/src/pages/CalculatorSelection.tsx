@@ -5,12 +5,16 @@ import { SiX } from "react-icons/si";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { UserHeader } from "@/components/UserHeader";
+import { Helmet } from 'react-helmet-async';
 
 export default function CalculatorSelection() {
   const { user: _user } = useAuth();
 
   return (
     <div className="min-h-screen bg-background">
+      <Helmet>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
       <UserHeader />
       
       <div className="container mx-auto px-4 py-12">

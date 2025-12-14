@@ -4,10 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Calculator, FileText, Clock, Zap, Crown, CheckCircle, Building } from "lucide-react";
 import { SiX } from "react-icons/si";
 import { Link } from "wouter";
+import { Helmet } from 'react-helmet-async';
 
 export default function Landing() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <Helmet>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
       <div className="container mx-auto px-4 py-12">
         {/* Header */}
         <div className="text-center mb-12">

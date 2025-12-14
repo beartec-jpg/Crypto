@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calculator, Shield, HelpCircle } from "lucide-react";
 import { Link } from "wouter";
+import { Helmet } from 'react-helmet-async';
 import beartecLogo from "@assets/Screenshot_20250823-074823_1755931718570.png";
 import beartecFooter from "@assets/Screenshot_20250823-075417_1755932088384.png";
 import { ProjectInfoForm } from "@/components/ProjectInfoForm";
@@ -178,6 +179,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Helmet>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
       {/* Header */}
       <header className="shadow-sm border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

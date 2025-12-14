@@ -10,6 +10,7 @@ import { SiX } from "react-icons/si";
 import { UserHeader } from "@/components/UserHeader";
 import { Stopwatch } from "@/components/Stopwatch";
 import { Link } from "wouter";
+import { Helmet } from 'react-helmet-async';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -1884,6 +1885,9 @@ export default function IndustrialCalculatorFlow() {
 
   return (
     <SubscriptionGate calculatorType="industrial">
+      <Helmet>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
       <div className="min-h-screen bg-background">
       <UserHeader />
       
