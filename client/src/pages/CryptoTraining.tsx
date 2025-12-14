@@ -1384,11 +1384,11 @@ export default function CryptoTraining() {
           {/* CONCLUSION */}
           <Card className="bg-gradient-to-r from-[#00c4b4]/20 to-purple-600/20 border-[#00c4b4]/50">
             <CardContent className="p-6">
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Remember</h3>
-              <p className="text-gray-900 text-base mb-4">
+              <h3 className="text-xl font-bold text-white mb-3">Remember</h3>
+              <p className="text-white text-base mb-4">
                 These tools are most powerful when combined. A single indicator can give false signals, but when RSI divergence, OBV divergence, a liquidity sweep, and an FVG all align - that's a high-probability setup.
               </p>
-              <p className="text-gray-900 text-base">
+              <p className="text-white text-base">
                 <strong>Start simple:</strong> Master one concept at a time. Once comfortable with Order Blocks, add FVGs. Then add CVD. Build your edge systematically.
               </p>
             </CardContent>
