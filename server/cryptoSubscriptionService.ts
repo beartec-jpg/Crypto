@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { cryptoSubscriptions, cryptoUsers } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { cryptoSubscriptions, cryptoUsers, cryptoAiAnalyses } from "@shared/schema";
+import { eq, sql, and } from "drizzle-orm";
 
 // Base tiers (Elliott Wave is a separate add-on, not a tier)
 type BaseTier = "free" | "beginner" | "intermediate" | "pro" | "elite";
@@ -26,8 +26,17 @@ const DAILY_AI_LIMITS: Record<BaseTier, number> = {
   free: 0,
   beginner: 0,
   intermediate: 3,
-  pro: 7,
-  elite: 11,
+  pro: 12, // Increased for auto-refresh support
+  elite: 24, // Increased for hourly auto-refresh
+};
+
+// Auto-refresh intervals in seconds (null = manual only)
+const AUTO_REFRESH_INTERVALS: Record<BaseTier, number | null> = {
+  free: null,
+  beginner: null,
+  intermediate: null, // Manual only - each click uses credit
+  pro: 14400, // 4 hours (3 refreshes per 12-hour active trading session)
+  elite: 3600, // 1 hour (frequent updates for active traders)
 };
 
 // Feature capability flags computed from base tier + add-ons
@@ -311,6 +320,82 @@ export class CryptoSubscriptionService {
     }
     
     return { used: currentUsage, limit, remainingToday: limit - currentUsage };
+  }
+
+  // Get auto-refresh interval for user's tier (in seconds)
+  getAutoRefreshInterval(tier: BaseTier): number | null {
+    return AUTO_REFRESH_INTERVALS[tier] || null;
+  }
+
+  // Save or update AI analysis for user/symbol/interval
+  async saveAiAnalysis(
+    userId: string,
+    symbol: string,
+    interval: string,
+    alerts: any[],
+    marketInsights: any,
+    orderflowData: any
+  ): Promise<void> {
+    const existing = await db
+      .select()
+      .from(cryptoAiAnalyses)
+      .where(
+        and(
+          eq(cryptoAiAnalyses.userId, userId),
+          eq(cryptoAiAnalyses.symbol, symbol),
+          eq(cryptoAiAnalyses.interval, interval)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      await db
+        .update(cryptoAiAnalyses)
+        .set({
+          alerts,
+          marketInsights,
+          orderflowData,
+          updatedAt: new Date(),
+        })
+        .where(eq(cryptoAiAnalyses.id, existing[0].id));
+    } else {
+      await db.insert(cryptoAiAnalyses).values({
+        userId,
+        symbol,
+        interval,
+        alerts,
+        marketInsights,
+        orderflowData,
+      });
+    }
+  }
+
+  // Get cached AI analysis for user/symbol/interval
+  async getCachedAnalysis(
+    userId: string,
+    symbol: string,
+    interval: string
+  ): Promise<{ alerts: any[]; marketInsights: any; orderflowData: any; updatedAt: Date | null } | null> {
+    const [analysis] = await db
+      .select()
+      .from(cryptoAiAnalyses)
+      .where(
+        and(
+          eq(cryptoAiAnalyses.userId, userId),
+          eq(cryptoAiAnalyses.symbol, symbol),
+          eq(cryptoAiAnalyses.interval, interval)
+        )
+      )
+      .limit(1);
+
+    if (!analysis) return null;
+
+    return {
+      alerts: analysis.alerts as any[] || [],
+      marketInsights: analysis.marketInsights,
+      orderflowData: analysis.orderflowData,
+      updatedAt: analysis.updatedAt,
+    };
   }
 }
 

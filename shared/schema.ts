@@ -419,6 +419,31 @@ export const insertCryptoSubscriptionSchema = z.object({
 export type InsertCryptoSubscription = z.infer<typeof insertCryptoSubscriptionSchema>;
 export type CryptoSubscription = typeof cryptoSubscriptions.$inferSelect;
 
+// Cached AI analyses table - stores last analysis per user/symbol/interval
+export const cryptoAiAnalyses = pgTable("crypto_ai_analyses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }),
+  symbol: varchar("symbol").notNull(), // e.g., "XRPUSDT"
+  interval: varchar("interval").notNull(), // e.g., "15m", "1h", "4h"
+  alerts: jsonb("alerts").default(sql`'[]'::jsonb`), // Array of trade alerts
+  marketInsights: jsonb("market_insights"), // Market summary, bias, key levels
+  orderflowData: jsonb("orderflow_data"), // OI, Funding, L/S ratio snapshot
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCryptoAiAnalysisSchema = z.object({
+  userId: z.string(),
+  symbol: z.string(),
+  interval: z.string(),
+  alerts: z.any().optional().default([]),
+  marketInsights: z.any().optional().nullable(),
+  orderflowData: z.any().optional().nullable(),
+});
+
+export type InsertCryptoAiAnalysis = z.infer<typeof insertCryptoAiAnalysisSchema>;
+export type CryptoAiAnalysis = typeof cryptoAiAnalyses.$inferSelect;
+
 // Dedicated Crypto Preferences types (subset of CryptoSubscription for alert settings)
 export const cryptoPreferencesSchema = z.object({
   selectedTickers: z.array(z.string()).max(3).default([]),
