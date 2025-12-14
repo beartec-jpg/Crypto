@@ -189,8 +189,8 @@ function identifyArchetype(seq: string, patternTypes: string[]): string {
     // Return ambiguous archetype - parent context will clarify if it's diagonal internals or triangle
     return allCorrections ? 'Triangle or Diagonal' : 'WXYXZ';
   }
-  if (seq === '5-3-3-3') return 'W1 + W2(WXY)'; // Complete W1 + W2 where W2 is WXY
-  if (seq === '5-3-3') return 'W1 + W2(WXY forming)'; // W1 complete, W2 building as WXY (need Y)
+  if (seq === '5-3-3-3') return '1/A + 2/B(WXY)'; // Complete 1/A + 2/B where 2/B is WXY
+  if (seq === '5-3-3') return '1/A + 2/B(W-X)'; // 1/A complete, 2/B building as WXY (need Y)
   if (seq === '5-3') return 'W1-W2 / A-B';
   if (seq === '3-3') return 'W-X';
   if (seq === '5') return 'W1/A';
@@ -358,7 +358,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     const formingSequences: Record<string, FormingConfig> = {
       '5': { expectedNextWaves: [{ wave: 'W2', label: 'W2' }, { wave: 'B', label: 'B' }], fibMode: 'retracement', anchorWaveIdx: 0 }, // W1/A only → W2/B
       '5-3': { expectedNextWaves: [{ wave: 'W3', label: 'W3' }, { wave: 'C', label: 'C' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2 OR A-B
-      '5-3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y (W2)' }], fibMode: 'extension', anchorWaveIdx: 1 }, // W1 + W2(W-X) → Y to complete W2
+      '5-3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y (2/B)' }], fibMode: 'extension', anchorWaveIdx: 1 }, // 1/A + 2/B(W-X) → Y to complete 2/B
       '5-3-3-3': { expectedNextWaves: [{ wave: 'W3', label: 'W3' }, { wave: 'C', label: 'C' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1 + W2(WXY complete) → W3/C
       '5-3-5-3': { expectedNextWaves: [{ wave: 'W5', label: 'W5' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2-W3-W4 → W5
       '3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W-X → Y
