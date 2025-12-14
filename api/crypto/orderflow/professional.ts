@@ -26,25 +26,36 @@ async function fetchBinanceOHLCV(symbol: string, interval: string, limit: number
   });
 }
 
-// Fetch Open Interest from CoinGlass
+// Fetch Open Interest from CoinGlass v4 API
 async function fetchOpenInterest(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.log('⚠️ No CoinGlass API key for OI');
+    return null;
+  }
   
   try {
-    const base = symbol.replace('USDT', '');
-    const url = `https://open-api-v3.coinglass.com/api/futures/openInterest/ohlc-history?exchange=Binance&symbol=${base}&interval=1h&limit=24`;
+    const url = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${symbol}&interval=1h&limit=24`;
+    console.log(`📊 Fetching CoinGlass OI: ${symbol}`);
+    
     const response = await fetch(url, {
       headers: { 'CG-API-KEY': apiKey, 'accept': 'application/json' }
     });
-    if (!response.ok) return null;
-    const data = await response.json();
-    if (data.code !== '0') return null;
     
-    const history = data.data?.map((item: any) => ({
-      timestamp: item.t || item.time,
-      value: parseFloat(item.o || item.openInterest || 0)
-    })) || [];
+    if (!response.ok) {
+      console.log(`⚠️ CoinGlass OI failed: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    console.log(`📊 CoinGlass OI response: code=${data.code}, data count=${data.data?.length || 0}`);
+    
+    if (data.code !== '0' || !data.data?.length) return null;
+    
+    const history = data.data.map((item: any) => ({
+      timestamp: (item.time || item.t) / 1000,
+      value: parseFloat(item.close || item.c || item.openInterest || 0)
+    }));
     
     return {
       history,
@@ -58,25 +69,36 @@ async function fetchOpenInterest(symbol: string): Promise<any> {
   }
 }
 
-// Fetch Funding Rate from CoinGlass
+// Fetch Funding Rate from CoinGlass v4 API
 async function fetchFundingRate(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.log('⚠️ No CoinGlass API key for Funding');
+    return null;
+  }
   
   try {
-    const base = symbol.replace('USDT', '');
-    const url = `https://open-api-v3.coinglass.com/api/futures/fundingRate/ohlc-history?exchange=Binance&symbol=${base}&interval=8h&limit=24`;
+    const url = `https://open-api-v4.coinglass.com/api/futures/funding-rate/history?exchange=Binance&symbol=${symbol}&interval=8h&limit=24`;
+    console.log(`📊 Fetching CoinGlass Funding: ${symbol}`);
+    
     const response = await fetch(url, {
       headers: { 'CG-API-KEY': apiKey, 'accept': 'application/json' }
     });
-    if (!response.ok) return null;
-    const data = await response.json();
-    if (data.code !== '0') return null;
     
-    const history = data.data?.map((item: any) => ({
-      timestamp: item.t || item.time,
-      value: parseFloat(item.o || item.fundingRate || 0)
-    })) || [];
+    if (!response.ok) {
+      console.log(`⚠️ CoinGlass Funding failed: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    console.log(`📊 CoinGlass Funding response: code=${data.code}, data count=${data.data?.length || 0}`);
+    
+    if (data.code !== '0' || !data.data?.length) return null;
+    
+    const history = data.data.map((item: any) => ({
+      timestamp: (item.time || item.t) / 1000,
+      value: parseFloat(item.close || item.c || item.fundingRate || 0)
+    }));
     
     const currentRate = history.length > 0 ? history[history.length - 1].value : 0;
     
@@ -92,25 +114,37 @@ async function fetchFundingRate(symbol: string): Promise<any> {
   }
 }
 
-// Fetch Long/Short Ratio from CoinGlass
+// Fetch Long/Short Ratio from CoinGlass v4 API
 async function fetchLongShortRatio(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
   if (!apiKey) return { current: { ratio: 1.0 }, ratio: 1.0 };
   
   try {
-    const base = symbol.replace('USDT', '');
-    const url = `https://open-api-v3.coinglass.com/api/futures/globalLongShortAccountRatio/history?exchange=Binance&symbol=${base}&interval=1h&limit=24`;
+    const url = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol}&interval=1h&limit=24`;
+    console.log(`📊 Fetching CoinGlass L/S Ratio: ${symbol}`);
+    
     const response = await fetch(url, {
       headers: { 'CG-API-KEY': apiKey, 'accept': 'application/json' }
     });
-    if (!response.ok) return { current: { ratio: 1.0 }, ratio: 1.0 };
-    const data = await response.json();
-    if (data.code !== '0') return { current: { ratio: 1.0 }, ratio: 1.0 };
     
-    const history = data.data?.map((item: any) => ({
-      timestamp: item.t || item.time,
-      ratio: parseFloat(item.longRate || 0.5) / parseFloat(item.shortRate || 0.5)
-    })) || [];
+    if (!response.ok) {
+      console.log(`⚠️ CoinGlass L/S failed: ${response.status}`);
+      return { current: { ratio: 1.0 }, ratio: 1.0 };
+    }
+    
+    const data = await response.json();
+    console.log(`📊 CoinGlass L/S response: code=${data.code}, data count=${data.data?.length || 0}`);
+    
+    if (data.code !== '0' || !data.data?.length) return { current: { ratio: 1.0 }, ratio: 1.0 };
+    
+    const history = data.data.map((item: any) => {
+      const longRate = parseFloat(item.longRate || item.longAccount || 0.5);
+      const shortRate = parseFloat(item.shortRate || item.shortAccount || 0.5);
+      return {
+        timestamp: (item.time || item.t) / 1000,
+        ratio: shortRate > 0 ? longRate / shortRate : 1.0
+      };
+    });
     
     const currentRatio = history.length > 0 ? history[history.length - 1].ratio : 1.0;
     
@@ -138,9 +172,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const symbol = (req.query.symbol as string)?.toUpperCase() || 'BTCUSDT';
     const interval = (req.query.interval as string) || '15m';
     
+    console.log(`📊 Professional Orderflow request: ${symbol} @ ${interval}`);
+    
     // Fetch all data directly from external APIs in parallel
     const [binanceData, openInterest, fundingRate, longShortRatio] = await Promise.all([
-      fetchBinanceOHLCV(symbol, interval, 100).catch(() => []),
+      fetchBinanceOHLCV(symbol, interval, 100).catch((err) => {
+        console.log(`⚠️ Binance OHLCV failed: ${err.message}`);
+        return [];
+      }),
       fetchOpenInterest(symbol),
       fetchFundingRate(symbol),
       fetchLongShortRatio(symbol)
@@ -157,7 +196,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     });
     
-    res.json({
+    const result = {
       cvd: { 
         history: cvdHistory,
         current: cvdHistory.length > 0 ? cvdHistory[cvdHistory.length - 1].value : 0
@@ -168,7 +207,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       symbol,
       interval,
       timestamp: Date.now()
-    });
+    };
+    
+    console.log(`✅ Professional Orderflow result: OI=${result.openInterest.history?.length || 0} points, Funding=${result.fundingRate.history?.length || 0} points`);
+    
+    res.json(result);
 
   } catch (error: any) {
     console.error('❌ Error fetching professional orderflow:', error);
