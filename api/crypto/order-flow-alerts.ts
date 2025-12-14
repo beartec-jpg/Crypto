@@ -102,7 +102,7 @@ Identify 1-3 high-probability trade setups. Return JSON:
     const startTime = Date.now();
 
     const completion = await openai.chat.completions.create({
-      model: 'grok-2-1212',
+      model: 'grok-3-fast',
       messages: [
         { role: 'system', content: 'You are an expert SMC/Order Flow trader. Return ONLY valid JSON.' },
         { role: 'user', content: prompt }

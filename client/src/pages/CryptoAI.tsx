@@ -133,7 +133,7 @@ export default function CryptoAI() {
     return [];
   });
   
-  const [marketInsights, setMarketInsights] = useState<{ noTradesReason?: string; summary?: string; bias?: string } | null>(() => {
+  const [marketInsights, setMarketInsights] = useState<{ noTradesReason?: string; summary?: string; bias?: string; keyLevels?: string[] } | null>(() => {
     const cached = localStorage.getItem(`marketInsights_${symbol}_${interval}`);
     if (cached) {
       try {
@@ -205,6 +205,7 @@ export default function CryptoAI() {
   const [tradeIdeasOpen, setTradeIdeasOpen] = useState(false);
   const [liquidationInfoOpen, setLiquidationInfoOpen] = useState(false);
   const [oiInfoOpen, setOiInfoOpen] = useState(false);
+  const [indicatorStatusOpen, setIndicatorStatusOpen] = useState(false);
   const [mfiPeriod, setMfiPeriod] = useState(14);
   const [cciPeriod, setCciPeriod] = useState(20);
   const [adxPeriod, setAdxPeriod] = useState(14);
@@ -2467,7 +2468,61 @@ export default function CryptoAI() {
                   </Collapsible>
                 </Card>
 
-                {/* 2. Trade Ideas - Collapsible */}
+                {/* 2. Indicator Statuses - Oscillator Events */}
+                <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+                  <Collapsible open={indicatorStatusOpen} onOpenChange={setIndicatorStatusOpen}>
+                    <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-[#00c4b4]" />
+                        <h3 className="text-lg font-semibold text-white">Indicator Statuses</h3>
+                        <span className="text-xs text-gray-500 ml-2">Oscillator Events</span>
+                      </div>
+                      {indicatorStatusOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="px-4 pb-4 space-y-3">
+                        {(() => {
+                          const cciValues = data.length > 0 ? calculateCCI(data, cciPeriod) : [];
+                          const adxValues = data.length > 0 ? calculateADX(data, adxPeriod) : [];
+                          const latestCCI = cciValues.length > 0 ? cciValues[cciValues.length - 1] : 0;
+                          const latestADX = adxValues.length > 0 ? adxValues[adxValues.length - 1] : { adx: 0, plusDI: 0, minusDI: 0 };
+                          
+                          const cciStatus = latestCCI > 100 ? 'Overbought' : latestCCI < -100 ? 'Oversold' : 'Neutral';
+                          const cciColor = latestCCI > 100 ? 'text-red-400' : latestCCI < -100 ? 'text-green-400' : 'text-gray-400';
+                          const adxTrendStrength = latestADX.adx > 25 ? 'Strong Trend' : 'Weak/No Trend';
+                          const adxColor = latestADX.adx > 25 ? 'text-yellow-400' : 'text-gray-400';
+                          const diDirection = latestADX.plusDI > latestADX.minusDI ? 'Bullish' : 'Bearish';
+                          const diColor = latestADX.plusDI > latestADX.minusDI ? 'text-green-400' : 'text-red-400';
+                          
+                          return (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                                <div className="text-xs text-gray-500 mb-1">CCI ({cciPeriod})</div>
+                                <div className={`font-bold ${cciColor}`}>{cciStatus}</div>
+                                <div className="text-xs text-gray-500 mt-1">Value: {latestCCI.toFixed(2)}</div>
+                                {latestCCI > 100 && <div className="text-xs text-red-400 mt-1">Potential reversal zone</div>}
+                                {latestCCI < -100 && <div className="text-xs text-green-400 mt-1">Potential reversal zone</div>}
+                              </div>
+                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                                <div className="text-xs text-gray-500 mb-1">ADX ({adxPeriod})</div>
+                                <div className={`font-bold ${adxColor}`}>{adxTrendStrength}</div>
+                                <div className="text-xs text-gray-500 mt-1">Value: {latestADX.adx.toFixed(2)}</div>
+                                {latestADX.adx > 40 && <div className="text-xs text-yellow-400 mt-1">Very strong momentum</div>}
+                              </div>
+                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                                <div className="text-xs text-gray-500 mb-1">Momentum Direction</div>
+                                <div className={`font-bold ${diColor}`}>{diDirection}</div>
+                                <div className="text-xs text-gray-500 mt-1">+DI: {latestADX.plusDI.toFixed(2)} / -DI: {latestADX.minusDI.toFixed(2)}</div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </Card>
+
+                {/* 3. Trade Ideas - Collapsible */}
                 <Card className="bg-[#1a1a1a] border-[#2a2e39]">
                   <Collapsible open={tradeIdeasOpen} onOpenChange={setTradeIdeasOpen}>
                     <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
