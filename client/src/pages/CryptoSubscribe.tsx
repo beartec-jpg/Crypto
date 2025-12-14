@@ -2,7 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Check, Waves, AlertCircle, Loader2 } from 'lucide-react';
-import { Link, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { useToast } from '@/hooks/use-toast';
@@ -11,9 +10,7 @@ import { isDevelopment } from '@/hooks/useCryptoAuth';
 import { useAuth, useUser, SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react';
 
 function useClerkHooks() {
-  const auth = useAuth();
-  const { user } = useUser();
-  
+  // In development, return mock values without calling Clerk hooks
   if (isDevelopment) {
     return {
       isSignedIn: true,
@@ -21,6 +18,10 @@ function useClerkHooks() {
       user: { firstName: 'Dev', lastName: 'User' }
     };
   }
+  
+  // Only call Clerk hooks in production
+  const auth = useAuth();
+  const { user } = useUser();
   return { ...auth, user };
 }
 
@@ -56,18 +57,10 @@ interface SubscriptionData {
   stripeSubscriptionId: string | null;
 }
 
-const TIER_PRICES: Record<string, { price: string; description: string }> = {
-  free: { price: 'Free', description: 'Basic access' },
-  intermediate: { price: '$15/mo', description: '50 AI credits/month' },
-  pro: { price: '$30/mo', description: 'Unlimited AI + notifications' },
-  elite: { price: '$50/mo', description: 'Everything included' },
-};
-
 export default function CryptoSubscribe() {
-  const { isSignedIn, getToken, user } = useClerkHooks();
+  const { isSignedIn, getToken } = useClerkHooks();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [location, setLocation] = useLocation();
   
   const { data: subscription, isLoading } = useQuery<SubscriptionData>({
     queryKey: ['/api/crypto/my-subscription'],
@@ -160,11 +153,13 @@ export default function CryptoSubscribe() {
       name: 'Free',
       tier: 'free',
       price: 'Free',
-      description: 'Get started with basic features',
+      description: 'Basic charting access',
       features: [
-        'Basic chart indicators',
-        'Standard timeframes',
-        'Price alerts (limited)',
+        'View all chart pages',
+        'All indicators & oscillators',
+        'Market AI review (Indicator page)',
+        'No AI trade analysis',
+        'No Elliott Wave access',
       ],
       current: currentTier === 'free',
     },
@@ -172,11 +167,12 @@ export default function CryptoSubscribe() {
       name: 'Intermediate',
       tier: 'intermediate',
       price: '£15/mo',
-      description: 'Enhanced trading tools',
+      description: 'AI-powered trading insights',
       features: [
-        'All Free features',
-        '50 AI credits/month',
-        'Advanced indicators',
+        'Everything in Free',
+        'Market AI review (Indicator page)',
+        '50 AI credits/month for trade analysis',
+        'Manual AI analysis button',
         'CCI & ADX alerts',
       ],
       current: currentTier === 'intermediate',
@@ -188,10 +184,11 @@ export default function CryptoSubscribe() {
       price: '£30/mo',
       description: 'Professional trading suite',
       features: [
-        'All Intermediate features',
-        'Unlimited AI analysis',
+        'Everything in Intermediate',
+        '12 daily AI trade analyses',
+        'Auto-refresh every 4 hours',
+        'Manual analysis + auto-refresh',
         'Priority notifications',
-        'Multi-timeframe analysis',
       ],
       current: currentTier === 'pro',
     },
@@ -201,10 +198,11 @@ export default function CryptoSubscribe() {
       price: '£50/mo',
       description: 'Complete trading arsenal',
       features: [
-        'All Pro features',
-        'Elliott Wave analysis',
-        'Wave Stack system',
-        'Predictive projections',
+        'Everything in Pro',
+        '24 daily AI trade analyses',
+        'Auto-refresh every 1 hour',
+        'Full Elliott Wave analysis',
+        'Custom indicator requests',
         'Priority support',
       ],
       current: currentTier === 'elite',
@@ -321,7 +319,7 @@ export default function CryptoSubscribe() {
                 ))}
               </div>
 
-              {currentTier !== 'elite' && (
+              {currentTier !== 'elite' && !hasElliottAddon && (
                 <Card className="max-w-2xl mx-auto bg-gradient-to-r from-purple-900/50 to-pink-900/50 border-purple-500">
                   <CardHeader>
                     <div className="flex items-center gap-3">
@@ -329,7 +327,7 @@ export default function CryptoSubscribe() {
                       <div>
                         <CardTitle>Elliott Wave Add-on</CardTitle>
                         <CardDescription className="text-purple-300">
-                          Advanced wave analysis for any subscription tier
+                          Add Elliott Wave analysis to any tier
                         </CardDescription>
                       </div>
                     </div>
@@ -339,24 +337,57 @@ export default function CryptoSubscribe() {
                       <div>
                         <p className="text-2xl font-bold text-white">£10/mo</p>
                         <p className="text-sm text-purple-300">
-                          Add Elliott Wave analysis to your current plan
+                          Access all Elliott Wave tools while keeping your current tier features
                         </p>
                       </div>
-                      {hasElliottAddon ? (
-                        <Badge className="bg-green-600 text-white">Active</Badge>
-                      ) : (
-                        <Button
-                          onClick={handleAddon}
-                          disabled={checkoutMutation.isPending}
-                          className="bg-purple-600 hover:bg-purple-700"
-                        >
-                          {checkoutMutation.isPending ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            'Add Elliott Wave'
-                          )}
-                        </Button>
-                      )}
+                      <Button
+                        onClick={handleAddon}
+                        disabled={checkoutMutation.isPending}
+                        className="bg-purple-600 hover:bg-purple-700"
+                      >
+                        {checkoutMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          'Add Elliott Wave'
+                        )}
+                      </Button>
+                    </div>
+                    <ul className="mt-4 space-y-1 text-sm text-purple-200">
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-purple-400" />
+                        Full Elliott Wave pattern detection
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-purple-400" />
+                        Wave Stack degree analysis
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-purple-400" />
+                        Fibonacci projections & targets
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-purple-400" />
+                        Simulated wave overlays
+                      </li>
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {hasElliottAddon && currentTier !== 'elite' && (
+                <Card className="max-w-2xl mx-auto bg-gradient-to-r from-green-900/50 to-emerald-900/50 border-green-500">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Waves className="w-8 h-8 text-green-400" />
+                        <div>
+                          <p className="font-bold text-white">Elliott Wave Add-on Active</p>
+                          <p className="text-sm text-green-300">
+                            You have full access to Elliott Wave analysis
+                          </p>
+                        </div>
+                      </div>
+                      <Badge className="bg-green-600 text-white">Active</Badge>
                     </div>
                   </CardContent>
                 </Card>
