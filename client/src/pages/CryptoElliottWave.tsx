@@ -6996,6 +6996,18 @@ const aiAnalyze = useMutation({
                         </g>
                       );
                     }
+                    if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
+                      const y = candleSeriesRef.current?.priceToCoordinate(drawing.points[0].price) ?? 0;
+                      const chartWidth = chartRef.current?.timeScale().width() ?? 800;
+                      return (
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          <line x1={0} y1={y} x2={chartWidth} y2={y} stroke="transparent" strokeWidth={12} />
+                          <line x1={0} y1={y} x2={chartWidth} y2={y} stroke={isSelected ? '#22c55e' : color} strokeWidth={isSelected ? 3 : 2} />
+                          <text x={5} y={y - 5} fill={isSelected ? '#22c55e' : color} fontSize="11">${drawing.points[0].price.toFixed(4)}</text>
+                          {isSelected && (<><circle cx={50} cy={y} r={5} fill="#22c55e" /><circle cx={chartWidth - 50} cy={y} r={5} fill="#22c55e" /></>)}
+                        </g>
+                      );
+                    }
                     return null;
                   })}
                   
