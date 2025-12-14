@@ -865,19 +865,6 @@ export default function CryptoAI() {
     }
   }, [symbol, interval]);
 
-  // Load cached trade alerts when symbol/interval changes
-  useEffect(() => {
-    const cached = localStorage.getItem(`tradeAlerts_${symbol}_${interval}`);
-    if (cached) {
-      try {
-        setTradeAlerts(JSON.parse(cached));
-      } catch {
-        setTradeAlerts([]);
-      }
-    } else {
-      setTradeAlerts([]);
-    }
-  }, [symbol, interval]);
 
   // Initial fetch (removed auto-refresh for cost control)
   useEffect(() => {
@@ -913,30 +900,73 @@ export default function CryptoAI() {
       const currentPlusDI = adxData.length > 0 ? adxData[adxData.length - 1].plusDI : 0;
       const currentMinusDI = adxData.length > 0 ? adxData[adxData.length - 1].minusDI : 0;
 
-      // Fetch professional orderflow data (OI, Funding, L/S Ratio) - only for Intermediate+ tiers
-      let orderflowData = null;
-      if (tier === 'intermediate' || tier === 'pro' || tier === 'elite') {
-        // Fetch each independently to prevent one failure from breaking all
-        const safeFetch = async (url: string) => {
-          try {
-            const res = await fetch(url);
-            if (!res.ok) return null;
-            return await res.json();
-          } catch {
-            return null;
-          }
-        };
+      // Calculate RSI, MACD, OBV, MFI for comprehensive analysis
+      const rsiData = calculateRSI(data, rsiPeriod);
+      const currentRSI = rsiData.length > 0 ? rsiData[rsiData.length - 1].value : 50;
+      
+      const macdData = calculateMACD(data, macdFast, macdSlow, macdSignal);
+      const currentMACD = macdData.macd.length > 0 ? macdData.macd[macdData.macd.length - 1].value : 0;
+      const currentMACDSignal = macdData.signal.length > 0 ? macdData.signal[macdData.signal.length - 1].value : 0;
+      const currentMACDHistogram = macdData.histogram.length > 0 ? macdData.histogram[macdData.histogram.length - 1].value : 0;
+      
+      const obvData = calculateOBV(data);
+      const currentOBV = obvData.length > 0 ? obvData[obvData.length - 1].value : 0;
+      const obv20BarsAgo = obvData.length > 20 ? obvData[obvData.length - 20].value : currentOBV;
+      const obvTrend = currentOBV > obv20BarsAgo ? 'rising' : 'falling';
+      
+      const mfiData = calculateMFI(data, mfiPeriod);
+      const currentMFI = mfiData.length > 0 ? mfiData[mfiData.length - 1].value : 50;
 
+      // Fetch professional orderflow data (OI, Funding, L/S Ratio) and liquidation data
+      let orderflowData = null;
+      let liquidationData = null;
+      
+      // Safe fetch helper
+      const safeFetch = async (url: string) => {
         try {
-          const [openInterest, fundingRate, longShortRatio] = await Promise.all([
+          const res = await fetch(url);
+          if (!res.ok) return null;
+          return await res.json();
+        } catch {
+          return null;
+        }
+      };
+
+      if (tier === 'intermediate' || tier === 'pro' || tier === 'elite') {
+        try {
+          const [openInterest, fundingRate, longShortRatio, liquidations] = await Promise.all([
             safeFetch(`/api/crypto/orderflow/open-interest?symbol=${symbol}&interval=${alertTimeframe}`),
             safeFetch(`/api/crypto/orderflow/funding-rate?symbol=${symbol}`),
-            safeFetch(`/api/crypto/orderflow/long-short-ratio?symbol=${symbol}&interval=${alertTimeframe}`)
+            safeFetch(`/api/crypto/orderflow/long-short-ratio?symbol=${symbol}&interval=${alertTimeframe}`),
+            safeFetch(`/api/crypto/liquidations/grid?symbol=${symbol}`)
           ]);
 
           orderflowData = { openInterest, fundingRate, longShortRatio };
+          
+          // Extract key liquidation levels from grid data
+          if (liquidations?.predictedColumn && liquidations?.minPrice && liquidations?.maxPrice) {
+            const priceRange = liquidations.maxPrice - liquidations.minPrice;
+            const numBands = liquidations.predictedColumn.length;
+            const bandSize = priceRange / numBands;
+            
+            // Find top 5 liquidation clusters
+            const clusters = liquidations.predictedColumn
+              .map((vol: number, idx: number) => ({
+                price: liquidations.minPrice + (idx * bandSize) + (bandSize / 2),
+                volume: vol
+              }))
+              .filter((c: any) => c.volume > 0)
+              .sort((a: any, b: any) => b.volume - a.volume)
+              .slice(0, 5);
+            
+            liquidationData = {
+              highestCluster: clusters[0] || null,
+              topClusters: clusters,
+              currentPricePosition: currentPrice > liquidations.minPrice + (priceRange / 2) ? 'upper_half' : 'lower_half'
+            };
+          }
         } catch (error) {
-          console.warn('Failed to fetch orderflow data:', error);
+          console.warn('Failed to fetch orderflow/liquidation data:', error);
           orderflowData = { openInterest: null, fundingRate: null, longShortRatio: null };
         }
       }
@@ -986,10 +1016,18 @@ export default function CryptoAI() {
           hiddenDivergences: hiddenDivergences.slice(-5),
           liquidityGrabs: liquidityGrabs.slice(-5),
           orderflowData,
+          liquidationData,
           cci: currentCCI,
           adx: currentADX,
           plusDI: currentPlusDI,
           minusDI: currentMinusDI,
+          rsi: currentRSI,
+          macd: currentMACD,
+          macdSignal: currentMACDSignal,
+          macdHistogram: currentMACDHistogram,
+          obv: currentOBV,
+          obvTrend,
+          mfi: currentMFI,
         }),
       });
       
@@ -1036,7 +1074,7 @@ export default function CryptoAI() {
     } finally {
       setAnalyzing(false);
     }
-  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, refetchSubscription, toast]);
+  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, toast, getToken]);
 
   // === Track Trade ===
   const trackTrade = async (alert: TradeAlert) => {
