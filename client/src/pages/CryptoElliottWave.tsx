@@ -359,7 +359,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       '5': { expectedNextWaves: [{ wave: 'W2', label: 'W2' }, { wave: 'B', label: 'B' }], fibMode: 'retracement', anchorWaveIdx: 0 }, // W1/A only → W2/B
       '5-3': { expectedNextWaves: [{ wave: 'W3', label: 'W3' }, { wave: 'C', label: 'C' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2 OR A-B
       '5-3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y (W2)' }], fibMode: 'extension', anchorWaveIdx: 1 }, // W1 + W2(W-X) → Y to complete W2
-      '5-3-3-3': { expectedNextWaves: [{ wave: 'W3', label: 'W3' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1 + W2(WXY complete) → W3
+      '5-3-3-3': { expectedNextWaves: [{ wave: 'W3', label: 'W3' }, { wave: 'C', label: 'C' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1 + W2(WXY complete) → W3/C
       '5-3-5-3': { expectedNextWaves: [{ wave: 'W5', label: 'W5' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2-W3-W4 → W5
       '3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W-X → Y
       '5-3-5': { expectedNextWaves: [{ wave: 'W4', label: 'W4' }], fibMode: 'retracement', anchorWaveIdx: 2 }, // W1-W2-W3 → W4
