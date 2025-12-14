@@ -2503,6 +2503,7 @@ export default function CryptoElliottWave() {
   const crosshairModeActiveRef = useRef<boolean>(false); // Persistent crosshair mode - stays on until tap places point
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null); // Timer for long-press activation
   const ignoreNextClickRef = useRef<boolean>(false); // Ignore the click from lifting the crosshair activation touch
+  const markersDebounceRef = useRef<NodeJS.Timeout | null>(null); // Debounce marker updates during zoom
   
   // Correction context: stores parent impulse data when starting ABC from predicted W5
   // Used to calculate Wave A retracement targets or C wave extension targets
@@ -4907,12 +4908,22 @@ const aiAnalyze = useMutation({
     chart.timeScale().subscribeVisibleLogicalRangeChange(updateTolerances);
     
     // Also update overlay positions and visible candle count when chart view changes (pan/zoom)
+    // DEBOUNCED: Rapid zoom/pan was causing markers to disappear due to detach/recreate race condition
     chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-      setMarkersVersion(v => v + 1);
+      // Immediately update visible candle count (this doesn't cause issues)
       if (range) {
         const visibleCount = Math.round(Math.abs(range.to - range.from));
         setVisibleCandleCount(visibleCount);
       }
+      
+      // DEBOUNCE marker refresh to prevent rapid detach/create cycles during zoom
+      // This fixes the issue where patterns disappear during zooming
+      if (markersDebounceRef.current) {
+        clearTimeout(markersDebounceRef.current);
+      }
+      markersDebounceRef.current = setTimeout(() => {
+        setMarkersVersion(v => v + 1);
+      }, 150); // 150ms debounce - enough to batch rapid zoom events
     });
     
     // Initial tolerance calculation and visible candle count
@@ -5015,6 +5026,9 @@ const aiAnalyze = useMutation({
       // Clear any pending timers
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
+      }
+      if (markersDebounceRef.current) {
+        clearTimeout(markersDebounceRef.current);
       }
     };
   }, [candles]); // Only recreate chart when candles data changes
