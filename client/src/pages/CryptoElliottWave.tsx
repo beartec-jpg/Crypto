@@ -194,7 +194,7 @@ function identifyArchetype(seq: string, patternTypes: string[]): string {
   if (seq === '5-3') return 'W1-W2 / A-B';
   if (seq === '3-3') return 'W-X';
   if (seq === '5') return 'W1/A';
-  if (seq === '3') return 'Correction';
+  if (seq === '3') return 'Correction (W2, B, or 4)';
   if (hasTriangle && patternTypes.length === 1 && patternTypes[0] === 'triangle') return 'Triangle';
   if (hasDiagonal && patternTypes.length === 1 && patternTypes[0] === 'diagonal') return 'Diagonal';
   return seq;
@@ -363,7 +363,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
       '5-3-5-3': { expectedNextWaves: [{ wave: 'W5', label: 'W5' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2-W3-W4 → W5
       '3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W-X → Y
       '5-3-5': { expectedNextWaves: [{ wave: 'W4', label: 'W4' }], fibMode: 'retracement', anchorWaveIdx: 2 }, // W1-W2-W3 → W4
-      '3': { expectedNextWaves: [{ wave: 'C', label: 'C' }, { wave: 'W3', label: 'W3' }], fibMode: 'extension', anchorWaveIdx: 0 }, // Just W/A - could be many things
+      // Note: Single '3' correction excluded - needs prior wave structure for measurement calculations
     };
     
     const formingInfo = formingSequences[seq];
