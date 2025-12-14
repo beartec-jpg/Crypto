@@ -3709,6 +3709,21 @@ CRITICAL RULES:
       console.log(`📊 Tokens: ${inputTokens} in, ${outputTokens} out`);
       console.log(`🎯 Alerts generated: ${result.alerts?.length || 0}`);
 
+      // Save analysis to cache for later retrieval
+      try {
+        await cryptoSubscriptionService.saveAiAnalysis(
+          userId,
+          symbol,
+          interval,
+          result.alerts || [],
+          result.marketInsights || null,
+          orderflowData || null
+        );
+        console.log(`💾 AI analysis cached for ${symbol}/${interval}`);
+      } catch (cacheError) {
+        console.error('Failed to cache AI analysis:', cacheError);
+      }
+
       // Send push notifications for A+, A, B, C grade setups (filtered by user preferences)
       if (result.alerts && Array.isArray(result.alerts)) {
         for (const alert of result.alerts) {
@@ -4036,10 +4051,34 @@ CRITICAL RULES:
       const stats = await cryptoSubscriptionService.getSubscriptionStats(userId);
       const capabilities = await cryptoSubscriptionService.getCapabilities(userId);
       const dailyUsage = await cryptoSubscriptionService.getDailyUsageStatus(userId);
+      const autoRefreshInterval = cryptoSubscriptionService.getAutoRefreshInterval(stats.tier as any);
       
-      res.json({ ...stats, ...capabilities, dailyUsage });
+      res.json({ ...stats, ...capabilities, dailyUsage, autoRefreshInterval });
     } catch (error: any) {
       console.error('❌ Error fetching crypto subscription stats:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get cached AI analysis (without using credits)
+  app.get("/api/crypto/ai-analysis/cached", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { symbol, interval } = req.query;
+
+      if (!symbol || !interval) {
+        return res.status(400).json({ error: 'Missing required query params: symbol, interval' });
+      }
+
+      const cached = await cryptoSubscriptionService.getCachedAnalysis(
+        userId,
+        symbol as string,
+        interval as string
+      );
+
+      res.json({ cached });
+    } catch (error: any) {
+      console.error('Error fetching cached AI analysis:', error);
       res.status(500).json({ error: error.message });
     }
   });
