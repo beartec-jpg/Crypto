@@ -18,6 +18,12 @@ import { useLocation } from 'wouter';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { AuthButtons } from '@/components/AuthButtons';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
+import trainingChartImpulse from '@assets/Screenshot_2025-12-14_14.49.33_1765724048911.png';
+import trainingStackPrediction from '@assets/Screenshot_2025-12-14_14.50.07_1765724048821.png';
+import trainingStack1Deep from '@assets/Screenshot_2025-12-14_14.53.25_1765724358714.png';
+import trainingChart1Deep from '@assets/Screenshot_2025-12-14_14.57.39_1765724358648.png';
+import trainingChart2Deep from '@assets/Screenshot_2025-12-14_15.01.03_1765724548776.png';
+import trainingStack2Deep from '@assets/Screenshot_2025-12-14_15.01.49_1765724548714.png';
 
 interface CandleData {
   time: number;
@@ -7624,7 +7630,16 @@ const aiAnalyze = useMutation({
                             {structure.archetype}
                           </Badge>
                           
-                          {/* Forming Badge - shows when pattern is partial and expecting next wave */}
+                          {/* Completeness Status Badge */}
+                          <Badge variant="outline" className={`text-xs ${
+                            structure.isForming 
+                              ? 'border-amber-500 text-amber-400 bg-amber-500/10' 
+                              : 'border-emerald-500 text-emerald-400 bg-emerald-500/10'
+                          }`}>
+                            {structure.isForming ? 'Forming' : 'Complete'}
+                          </Badge>
+                          
+                          {/* Forming Next Wave Badge - shows expected next wave when pattern is partial */}
                           {structure.isForming && structure.predictiveContext?.sourcePatternInfo && (
                             <Badge variant="outline" className="text-xs border-cyan-500 text-cyan-400 animate-pulse">
                               → {structure.predictiveContext.sourcePatternInfo.split(' ').slice(1).join(' ')}
@@ -8200,6 +8215,55 @@ const aiAnalyze = useMutation({
                     <strong className="text-cyan-400">Prediction Buttons:</strong>
                     <div className="mt-1">"What are you predicting?" suggests what wave comes next (Wave 2/Impulse or Wave B/Correction)</div>
                     <div>"Test Push" sends a test notification to verify alerts work</div>
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-700 mt-4 space-y-6">
+                    <h4 className="text-cyan-400 font-semibold text-base">Training Examples</h4>
+
+                    <div className="space-y-3">
+                      <h5 className="text-emerald-400 font-medium">1. Higher Degree Suggestion</h5>
+                      <p className="text-gray-400 text-xs">When you complete a 5-wave impulse at one degree, the Wave Stack suggests the higher degree wave it belongs to (e.g., Intermediate 1/A).</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <p className="text-gray-500 text-xs">Chart: Intermediate impulse 12345</p>
+                          <img src={trainingChartImpulse} alt="Chart showing Intermediate 12345 impulse pattern" className="rounded-lg border border-slate-600 w-full" />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-gray-500 text-xs">Stack: Shows "1/A + 2/B" with predictions</p>
+                          <img src={trainingStackPrediction} alt="Wave Stack showing W1-W2 or A-B structure with predictions" className="rounded-lg border border-slate-600 w-full" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h5 className="text-emerald-400 font-medium">2. Lower Degree Breakdown (1 Deep)</h5>
+                      <p className="text-gray-400 text-xs">The Wave Stack shows how lower degree patterns fit inside higher degree waves. Here Minor WXY correction forms inside Intermediate 2/B.</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <p className="text-gray-500 text-xs">Chart: Minor ABC inside Intermediate 2/B</p>
+                          <img src={trainingChart1Deep} alt="Chart showing Minor ABC correction inside Intermediate wave 2/B" className="rounded-lg border border-slate-600 w-full" />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-gray-500 text-xs">Stack: 1-deep hierarchy (Minor inside Intermediate)</p>
+                          <img src={trainingStack1Deep} alt="Wave Stack showing 1-deep hierarchy with Minor inside Intermediate 2/B" className="rounded-lg border border-slate-600 w-full" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h5 className="text-emerald-400 font-medium">3. Full Hierarchy Tree (2 Deep)</h5>
+                      <p className="text-gray-400 text-xs">Three degrees of waves visible: Intermediate → Minor WXY → Minute Zigzag with diagonal C wave. The Stack shows the complete nested structure.</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <p className="text-gray-500 text-xs">Chart: 3 degrees visible on chart</p>
+                          <img src={trainingChart2Deep} alt="Chart showing 3 degrees of Elliott Wave patterns" className="rounded-lg border border-slate-600 w-full" />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-gray-500 text-xs">Stack: 2-deep hierarchy tree</p>
+                          <img src={trainingStack2Deep} alt="Wave Stack showing 2-deep hierarchy with Minute Zigzag inside Minor Y" className="rounded-lg border border-slate-600 w-full" />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
