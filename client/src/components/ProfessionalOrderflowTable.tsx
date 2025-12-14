@@ -34,7 +34,12 @@ interface OrderflowData {
 
 export function ProfessionalOrderflowTable({ symbol, interval, className }: ProfessionalOrderflowTableProps) {
   const { data, isLoading, error } = useQuery<OrderflowData>({
-    queryKey: [`/api/crypto/orderflow/professional/${symbol}/${interval}`],
+    queryKey: ['/api/crypto/orderflow/professional', symbol, interval],
+    queryFn: async () => {
+      const res = await fetch(`/api/crypto/orderflow/professional?symbol=${symbol}&interval=${interval}`);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      return res.json();
+    },
     refetchInterval: 60000, // Refresh every minute
   });
 
