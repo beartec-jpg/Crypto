@@ -3501,6 +3501,13 @@ const aiAnalyze = useMutation({
         return;
       }
       
+      // Skip Elliott Wave processing when drawing tools are active - they have their own handler
+      const inDrawingToolsMode = drawingModeRef.current === 'draw';
+      if (inDrawingToolsMode) {
+        console.log('📍 Click skipped - drawing tools mode active');
+        return;
+      }
+      
       // CROSSHAIR MODE: Check if persistent crosshair mode is active
       // When active, use stored crosshair position for placement, then deactivate
       const isCrosshairMode = crosshairModeActiveRef.current && isDrawingRef.current;
