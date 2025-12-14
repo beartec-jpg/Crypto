@@ -2487,8 +2487,8 @@ export default function CryptoElliottWave() {
   const [stackProjectionLines, setStackProjectionLines] = useState<{ price: number; color: string; lineWidth: number; lineStyle: number; axisLabelVisible: boolean; title: string }[]>([]); // Wave Stack projection lines
   const [waveProjectionMode, setWaveProjectionMode] = useState<'abc' | 'impulse'>('abc'); // ABC (WXY) vs 12345 (impulse) mode
 
-  // Drawing tools state (for trendlines, horizontal lines, rectangles, fibs)
-  type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | null;
+  // Drawing tools state (for trendlines, horizontal lines, rectangles)
+  type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | null;
   const [drawingMode, setDrawingMode] = useState<'off' | 'draw' | 'select'>('off');
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   const [showToolPicker, setShowToolPicker] = useState(false);
@@ -6988,27 +6988,6 @@ const aiAnalyze = useMutation({
                         </g>
                       );
                     }
-                    if (drawing.type === 'fib_retracement' && drawing.points.length >= 2) {
-                      const p1 = toPixel(drawing.points[0]);
-                      const p2 = toPixel(drawing.points[1]);
-                      const allFibLevels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-                      const hiddenLevels = drawing.style?.hiddenLevels || [];
-                      const fibLevels = allFibLevels.filter(l => !hiddenLevels.includes(l));
-                      const priceDiff = drawing.points[1].price - drawing.points[0].price;
-                      const width = Math.abs(p2.x - p1.x) + 100;
-                      const startX = Math.min(p1.x, p2.x);
-                      return (
-                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
-                          <rect x={startX} y={p1.y < p2.y ? p1.y : p2.y} width={width} height={Math.abs(p2.y - p1.y)} fill="transparent" />
-                          {fibLevels.map(level => {
-                            const levelPrice = drawing.points[0].price + priceDiff * (1 - level);
-                            const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
-                            const levelColor = isSelected ? '#22c55e' : level === 0.618 ? '#fbbf24' : level === 0.5 ? '#22c55e' : color;
-                            return (<g key={level}><line x1={startX} y1={y} x2={startX + width} y2={y} stroke={levelColor} strokeWidth={isSelected ? 2 : 1} strokeDasharray={level === 0 || level === 1 ? '0' : '4,4'} /><text x={startX + 5} y={y - 3} fill={levelColor} fontSize="10">{(level * 100).toFixed(1)}%</text></g>);
-                          })}
-                        </g>
-                      );
-                    }
                     if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
                       const y = candleSeriesRef.current?.priceToCoordinate(drawing.points[0].price) ?? 0;
                       const chartWidth = chartRef.current?.timeScale().width() ?? 800;
@@ -7046,9 +7025,14 @@ const aiAnalyze = useMutation({
                     <X className="w-4 h-4" />
                   </button>
                   {selectedDrawingId && (
-                    <button onClick={() => { deleteDrawingMutation.mutate(selectedDrawingId); setSelectedDrawingId(null); toast({ title: 'Drawing Deleted' }); }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all" title="Delete Selected" data-testid="btn-delete-selected">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <>
+                      <button onClick={() => setShowDrawingSettings(prev => !prev)} className={`p-2 rounded-lg transition-all ${showDrawingSettings ? 'bg-purple-500 text-white' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`} title="Drawing Settings" data-testid="btn-drawing-settings">
+                        <Settings className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => { deleteDrawingMutation.mutate(selectedDrawingId); setSelectedDrawingId(null); setShowDrawingSettings(false); toast({ title: 'Drawing Deleted' }); }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all" title="Delete Selected" data-testid="btn-delete-selected">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
                   )}
                   {drawings.length > 0 && (
                     <button onClick={() => { if (confirm('Clear all drawings?')) { clearDrawingsMutation.mutate(); setSelectedDrawingId(null); toast({ title: 'Drawings Cleared' }); } }} className="p-2 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-red-600 hover:text-white transition-all" title="Clear All" data-testid="btn-clear-drawings">
@@ -7065,7 +7049,6 @@ const aiAnalyze = useMutation({
                       { id: 'trendline', name: 'Trend Line', icon: '📈' },
                       { id: 'horizontal', name: 'Horizontal Line', icon: '➖' },
                       { id: 'rectangle', name: 'Rectangle', icon: '⬜' },
-                      { id: 'fib_retracement', name: 'Fib Retracement', icon: '📊' },
                     ].map(tool => (
                       <button key={tool.id} onClick={() => { setActiveTool(tool.id as DrawingTool); setDrawingMode('draw'); setShowToolPicker(false); setTempDrawing({ points: [] }); toast({ title: `${tool.name} Selected`, description: 'Click on chart to place points' }); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-slate-700 transition-all text-left ${activeTool === tool.id ? 'bg-blue-500/30 text-blue-300' : 'text-gray-300'}`} data-testid={`tool-${tool.id}`}>
                         <span>{tool.icon}</span>
@@ -7074,6 +7057,52 @@ const aiAnalyze = useMutation({
                     ))}
                   </div>
                 )}
+                
+                {/* Drawing Settings Popup */}
+                {showDrawingSettings && selectedDrawingId && (() => {
+                  const selectedDrawing = drawings.find(d => d.id === selectedDrawingId);
+                  if (!selectedDrawing) return null;
+                  return (
+                    <div className="absolute top-14 left-2 z-30 bg-slate-900 border border-slate-600 rounded-lg p-3 shadow-xl min-w-[220px]">
+                      <div className="text-xs text-gray-400 mb-3 flex justify-between items-center">
+                        <span>Drawing Settings</span>
+                        <button onClick={() => setShowDrawingSettings(false)} className="text-gray-400 hover:text-white"><X className="w-3 h-3" /></button>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs text-gray-400 block mb-1">Color</label>
+                          <div className="flex gap-1 flex-wrap">
+                            {['#3b82f6', '#22c55e', '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#ffffff'].map(c => (
+                              <button key={c} onClick={() => {
+                                const newStyle = { ...selectedDrawing.style, color: c };
+                                setDrawings(prev => prev.map(d => d.id === selectedDrawingId ? { ...d, style: newStyle } : d));
+                                updateDrawingMutation.mutate({ id: selectedDrawingId, style: newStyle });
+                              }} className={`w-6 h-6 rounded border-2 ${selectedDrawing.style?.color === c ? 'border-white' : 'border-transparent'}`} style={{ backgroundColor: c }} data-testid={`color-${c}`} />
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-400 block mb-1">Label</label>
+                          <input
+                            type="text"
+                            value={selectedDrawing.style?.label || ''}
+                            onChange={(e) => {
+                              const newStyle = { ...selectedDrawing.style, label: e.target.value };
+                              setDrawings(prev => prev.map(d => d.id === selectedDrawingId ? { ...d, style: newStyle } : d));
+                            }}
+                            onBlur={(e) => {
+                              const newStyle = { ...selectedDrawing.style, label: e.target.value };
+                              updateDrawingMutation.mutate({ id: selectedDrawingId, style: newStyle });
+                            }}
+                            placeholder="Enter label..."
+                            className="w-full px-2 py-1 text-sm bg-slate-800 border border-slate-600 rounded text-white placeholder-gray-500"
+                            data-testid="input-drawing-label"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
                 
                 {/* Drawing mode indicator */}
                 {activeTool && drawingMode === 'draw' && (
