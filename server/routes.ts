@@ -3337,9 +3337,15 @@ Be concise and direct.`;
       const userId = (req as any).cryptoUser.id;
       console.log('👤 User ID:', userId);
 
-      // Check tier access
-      const hasAccess = await cryptoSubscriptionService.checkTierAccess(userId, 'intermediate');
-      if (!hasAccess) {
+      // Check tier access and apply appropriate limits
+      const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
+      const tier = subscription.tier;
+      
+      // Track usage status for response
+      let usageStatus = { used: 0, limit: 0, remainingToday: 0, creditsRemaining: subscription.aiCredits || 0 };
+      
+      // Free/Beginner tiers cannot use AI
+      if (tier === 'free' || tier === 'beginner') {
         return res.status(403).json({ 
           error: 'Subscription required',
           message: 'Please upgrade to Intermediate tier or higher to access AI Trade Analysis',
@@ -3348,27 +3354,35 @@ Be concise and direct.`;
         });
       }
 
-      // Check daily limit
-      const dailyStatus = await cryptoSubscriptionService.checkAndUseDailyLimit(userId);
-      if (!dailyStatus.allowed) {
-        return res.status(403).json({ 
-          error: 'Daily limit reached',
-          message: 'You have used all your AI trade calls for today. Limit resets at midnight.',
-          dailyUsed: dailyStatus.used,
-          dailyLimit: dailyStatus.limit,
-          remainingToday: 0,
-          alerts: []
-        });
+      // Intermediate tier: Uses monthly credits (50/month)
+      if (tier === 'intermediate') {
+        const creditUsed = await cryptoSubscriptionService.useAICredit(userId);
+        if (!creditUsed) {
+          return res.status(403).json({ 
+            error: 'No AI credits remaining',
+            message: 'You have used all your monthly AI credits. Credits reset monthly.',
+            alerts: []
+          });
+        }
+        // Get updated credits after use
+        const updatedSub = await cryptoSubscriptionService.getUserSubscription(userId);
+        usageStatus.creditsRemaining = updatedSub.aiCredits || 0;
       }
-
-      // Use monthly AI credit (decrements the counter for intermediate tier)
-      const creditUsed = await cryptoSubscriptionService.useAICredit(userId);
-      if (!creditUsed) {
-        return res.status(403).json({ 
-          error: 'No AI credits remaining',
-          message: 'You have used all your monthly AI credits. Credits reset monthly.',
-          alerts: []
-        });
+      
+      // Pro/Elite tiers: Uses daily limits (12/24 per day)
+      if (tier === 'pro' || tier === 'elite') {
+        const dailyStatus = await cryptoSubscriptionService.checkAndUseDailyLimit(userId);
+        if (!dailyStatus.allowed) {
+          return res.status(403).json({ 
+            error: 'Daily limit reached',
+            message: 'You have used all your AI trade calls for today. Limit resets at midnight.',
+            dailyUsed: dailyStatus.used,
+            dailyLimit: dailyStatus.limit,
+            remainingToday: 0,
+            alerts: []
+          });
+        }
+        usageStatus = { ...usageStatus, used: dailyStatus.used, limit: dailyStatus.limit, remainingToday: dailyStatus.remainingToday };
       }
 
       const { 
@@ -3758,9 +3772,11 @@ CRITICAL RULES:
           input: inputTokens,
           output: outputTokens
         },
-        dailyUsed: dailyStatus.used,
-        dailyLimit: dailyStatus.limit,
-        remainingToday: dailyStatus.remainingToday
+        tier,
+        dailyUsed: usageStatus.used,
+        dailyLimit: usageStatus.limit,
+        remainingToday: usageStatus.remainingToday,
+        creditsRemaining: usageStatus.creditsRemaining
       });
     } catch (error: any) {
       console.error('❌ Error generating order flow alerts:', error);
@@ -4164,8 +4180,12 @@ Keep the analysis concise but informative (200-300 words).`;
 
       const userId = (req as any).cryptoUser.id;
 
-      const hasAccess = await cryptoSubscriptionService.checkTierAccess(userId, 'intermediate');
-      if (!hasAccess) {
+      // Check tier access and apply appropriate limits
+      const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
+      const tier = subscription.tier;
+      
+      // Free/Beginner tiers cannot use AI
+      if (tier === 'free' || tier === 'beginner') {
         return res.status(403).json({ 
           error: 'Subscription required',
           message: 'Please upgrade to Intermediate tier or higher to access AI Trade Ideas',
@@ -4173,16 +4193,29 @@ Keep the analysis concise but informative (200-300 words).`;
         });
       }
 
-      // Check daily limit
-      const dailyStatus = await cryptoSubscriptionService.checkAndUseDailyLimit(userId);
-      if (!dailyStatus.allowed) {
-        return res.status(403).json({ 
-          error: 'Daily limit reached',
-          message: 'You have used all your AI trade calls for today. Limit resets at midnight.',
-          dailyUsed: dailyStatus.used,
-          dailyLimit: dailyStatus.limit,
-          remainingToday: 0
-        });
+      // Intermediate tier: Uses monthly credits (50/month)
+      if (tier === 'intermediate') {
+        const creditUsed = await cryptoSubscriptionService.useAICredit(userId);
+        if (!creditUsed) {
+          return res.status(403).json({ 
+            error: 'No AI credits remaining',
+            message: 'You have used all your monthly AI credits. Credits reset monthly.'
+          });
+        }
+      }
+      
+      // Pro/Elite tiers: Uses daily limits (12/24 per day)
+      if (tier === 'pro' || tier === 'elite') {
+        const dailyStatus = await cryptoSubscriptionService.checkAndUseDailyLimit(userId);
+        if (!dailyStatus.allowed) {
+          return res.status(403).json({ 
+            error: 'Daily limit reached',
+            message: 'You have used all your AI trade calls for today. Limit resets at midnight.',
+            dailyUsed: dailyStatus.used,
+            dailyLimit: dailyStatus.limit,
+            remainingToday: 0
+          });
+        }
       }
 
       const { candles, indicators, ticker } = req.body;
