@@ -107,11 +107,30 @@ export default function CryptoAI() {
   const { data: subscription, refetch: refetchSubscription } = useQuery<{
     tier: string;
     dailyUsage?: { used: number; limit: number; remainingToday: number };
+    autoRefreshInterval?: number | null;
   }>({
     queryKey: ['/api/crypto/my-subscription'],
     enabled: isAuthenticated && !authLoading,
     staleTime: 0, // Force fresh data
     refetchOnMount: true
+  });
+
+  // Cached AI analysis query - allows viewing previous analysis without credits
+  const { data: cachedAnalysis, refetch: refetchCachedAnalysis } = useQuery<{
+    cached: { alerts: any[]; marketInsights: any; orderflowData: any; updatedAt: string } | null;
+  }>({
+    queryKey: ['/api/crypto/ai-analysis/cached', symbol, alertTimeframe],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) return { cached: null };
+      const res = await fetch(`/api/crypto/ai-analysis/cached?symbol=${symbol}&interval=${alertTimeframe}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return { cached: null };
+      return res.json();
+    },
+    enabled: isAuthenticated && !authLoading && (tier === 'intermediate' || tier === 'pro' || tier === 'elite'),
+    staleTime: 60000, // Cache for 1 minute
   });
 
   const { data: trackedTradesData, refetch: refetchTrackedTrades } = useQuery<any[]>({
@@ -871,6 +890,19 @@ export default function CryptoAI() {
     fetchData();
   }, [fetchData]);
 
+  // Load cached analysis (no credit used) - allows viewing previous analysis
+  const loadCachedAnalysis = useCallback(() => {
+    if (cachedAnalysis?.cached) {
+      setTradeAlerts(cachedAnalysis.cached.alerts || []);
+      setMarketInsights(cachedAnalysis.cached.marketInsights || null);
+      toast({
+        title: "Previous analysis loaded",
+        description: `Last updated: ${new Date(cachedAnalysis.cached.updatedAt).toLocaleString()}`,
+        duration: 3000,
+      });
+    }
+  }, [cachedAnalysis, toast]);
+
   // === Analyze Trades with Grok API ===
   const analyzeTrades = useCallback(async () => {
     if (data.length === 0) return;
@@ -1061,6 +1093,8 @@ export default function CryptoAI() {
       
       // Refresh subscription data to update the counter
       refetchSubscription();
+      // Refresh cached analysis to update timestamp
+      refetchCachedAnalysis();
       
       // Store market insights for display - always show when available
       if (result.marketInsights) {
@@ -1074,7 +1108,26 @@ export default function CryptoAI() {
     } finally {
       setAnalyzing(false);
     }
-  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, toast, getToken]);
+  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, refetchCachedAnalysis, toast, getToken]);
+
+  // Auto-refresh effect for Pro/Elite tiers
+  useEffect(() => {
+    // Only Pro and Elite get auto-refresh
+    if (!subscription?.autoRefreshInterval || tier === 'intermediate') return;
+    if (!isAuthenticated || authLoading) return;
+    
+    const intervalMs = subscription.autoRefreshInterval * 1000;
+    
+    const timer = setInterval(() => {
+      // Only auto-refresh if we have data and aren't already analyzing
+      if (!analyzing && data.length > 0) {
+        console.log(`🔄 Auto-refresh triggered for ${tier} tier (every ${subscription.autoRefreshInterval}s)`);
+        analyzeTrades();
+      }
+    }, intervalMs);
+    
+    return () => clearInterval(timer);
+  }, [subscription?.autoRefreshInterval, tier, analyzing, data.length, isAuthenticated, authLoading, analyzeTrades]);
 
   // === Track Trade ===
   const trackTrade = async (alert: TradeAlert) => {
@@ -2377,28 +2430,42 @@ export default function CryptoAI() {
             <Card className="bg-[#1a1a1a] border-[#2a2e39] p-4">
               <div className="flex items-center justify-between gap-4">
                 <img src={grokLogo} alt="Grok" className="h-8 brightness-110" />
-                <Button
-                  onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeTrades()}
-                  disabled={analyzing || data.length === 0}
-                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white disabled:opacity-50"
-                  data-testid="button-analyze-trades"
-                >
-                  {analyzing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4 mr-2" />
-                      Analyze
-                    </>
+                <div className="flex items-center gap-2">
+                  {/* View Last Analysis button - shows cached analysis without using credits */}
+                  {cachedAnalysis?.cached && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (
+                    <Button
+                      onClick={loadCachedAnalysis}
+                      variant="outline"
+                      className="border-[#2a2e39] text-gray-300 hover:bg-[#252525] hover:text-white"
+                      data-testid="button-view-last-analysis"
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      View Last
+                    </Button>
                   )}
-                </Button>
+                  <Button
+                    onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeTrades()}
+                    disabled={analyzing || data.length === 0}
+                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white disabled:opacity-50"
+                    data-testid="button-analyze-trades"
+                  >
+                    {analyzing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4 mr-2" />
+                        Analyze
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
               {/* Daily Usage Counter */}
               {subscription?.dailyUsage && subscription.dailyUsage.limit > 0 && (
-                <div className="mt-3 flex items-center justify-center gap-2">
+                <div className="mt-3 flex flex-col items-center gap-2">
                   <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700">
                     <Zap className="w-3.5 h-3.5 text-[#00c4b4]" />
                     <span className="text-xs text-gray-300">
@@ -2407,6 +2474,21 @@ export default function CryptoAI() {
                       <span className="ml-1 text-gray-400">remaining today</span>
                     </span>
                   </div>
+                  {/* Auto-refresh info for Pro/Elite */}
+                  {subscription?.autoRefreshInterval && (tier === 'pro' || tier === 'elite') && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-900/20 rounded-lg border border-green-700/30">
+                      <RefreshCw className="w-3.5 h-3.5 text-green-400" />
+                      <span className="text-xs text-green-300">
+                        Auto-refresh every {subscription.autoRefreshInterval === 3600 ? '1 hour' : '4 hours'}
+                      </span>
+                    </div>
+                  )}
+                  {/* Cached analysis timestamp */}
+                  {cachedAnalysis?.cached && (
+                    <div className="text-xs text-gray-500">
+                      Last analysis: {new Date(cachedAnalysis.cached.updatedAt).toLocaleString()}
+                    </div>
+                  )}
                 </div>
               )}
               {(tier === 'free' || tier === 'beginner') && (
