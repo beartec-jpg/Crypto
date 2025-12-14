@@ -2484,7 +2484,8 @@ export default function CryptoAI() {
                         {(() => {
                           const cciValues = data.length > 0 ? calculateCCI(data, cciPeriod) : [];
                           const adxValues = data.length > 0 ? calculateADX(data, adxPeriod) : [];
-                          const latestCCI = cciValues.length > 0 ? cciValues[cciValues.length - 1] : 0;
+                          const latestCCIObj = cciValues.length > 0 ? cciValues[cciValues.length - 1] : null;
+                          const latestCCI = latestCCIObj?.value ?? 0;
                           const latestADX = adxValues.length > 0 ? adxValues[adxValues.length - 1] : { adx: 0, plusDI: 0, minusDI: 0 };
                           
                           const cciStatus = latestCCI > 100 ? 'Overbought' : latestCCI < -100 ? 'Oversold' : 'Neutral';
@@ -2494,25 +2495,68 @@ export default function CryptoAI() {
                           const diDirection = latestADX.plusDI > latestADX.minusDI ? 'Bullish' : 'Bearish';
                           const diColor = latestADX.plusDI > latestADX.minusDI ? 'text-green-400' : 'text-red-400';
                           
+                          const rsiValue = data.length > rsiPeriod ? (() => {
+                            const closes = data.map(d => d.close);
+                            let gains = 0, losses = 0;
+                            for (let i = data.length - rsiPeriod; i < data.length; i++) {
+                              const change = closes[i] - closes[i - 1];
+                              if (change > 0) gains += change;
+                              else losses += Math.abs(change);
+                            }
+                            const avgGain = gains / rsiPeriod;
+                            const avgLoss = losses / rsiPeriod;
+                            return avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+                          })() : 50;
+                          const rsiStatus = rsiValue > 70 ? 'Overbought' : rsiValue < 30 ? 'Oversold' : 'Neutral';
+                          const rsiColor = rsiValue > 70 ? 'text-red-400' : rsiValue < 30 ? 'text-green-400' : 'text-gray-400';
+                          
+                          const mfiValue = data.length > mfiPeriod ? (() => {
+                            let positiveFlow = 0, negativeFlow = 0;
+                            for (let i = data.length - mfiPeriod; i < data.length; i++) {
+                              const tp = (data[i].high + data[i].low + data[i].close) / 3;
+                              const prevTp = (data[i - 1].high + data[i - 1].low + data[i - 1].close) / 3;
+                              const rawMF = tp * data[i].volume;
+                              if (tp > prevTp) positiveFlow += rawMF;
+                              else negativeFlow += rawMF;
+                            }
+                            return negativeFlow === 0 ? 100 : 100 - (100 / (1 + positiveFlow / negativeFlow));
+                          })() : 50;
+                          const mfiStatus = mfiValue > 80 ? 'Overbought' : mfiValue < 20 ? 'Oversold' : 'Neutral';
+                          const mfiColor = mfiValue > 80 ? 'text-red-400' : mfiValue < 20 ? 'text-green-400' : 'text-gray-400';
+                          
                           return (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                                <div className="text-xs text-gray-500 mb-1">RSI ({rsiPeriod})</div>
+                                <div className={`font-bold ${rsiColor}`}>{rsiStatus}</div>
+                                <div className="text-xs text-gray-500 mt-1">Value: {rsiValue.toFixed(1)}</div>
+                                {rsiValue > 70 && <div className="text-xs text-red-400 mt-1">Reversal zone</div>}
+                                {rsiValue < 30 && <div className="text-xs text-green-400 mt-1">Reversal zone</div>}
+                              </div>
                               <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
                                 <div className="text-xs text-gray-500 mb-1">CCI ({cciPeriod})</div>
                                 <div className={`font-bold ${cciColor}`}>{cciStatus}</div>
-                                <div className="text-xs text-gray-500 mt-1">Value: {latestCCI.toFixed(2)}</div>
-                                {latestCCI > 100 && <div className="text-xs text-red-400 mt-1">Potential reversal zone</div>}
-                                {latestCCI < -100 && <div className="text-xs text-green-400 mt-1">Potential reversal zone</div>}
+                                <div className="text-xs text-gray-500 mt-1">Value: {latestCCI.toFixed(1)}</div>
+                                {latestCCI > 100 && <div className="text-xs text-red-400 mt-1">Reversal zone</div>}
+                                {latestCCI < -100 && <div className="text-xs text-green-400 mt-1">Reversal zone</div>}
+                              </div>
+                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                                <div className="text-xs text-gray-500 mb-1">MFI ({mfiPeriod})</div>
+                                <div className={`font-bold ${mfiColor}`}>{mfiStatus}</div>
+                                <div className="text-xs text-gray-500 mt-1">Value: {mfiValue.toFixed(1)}</div>
+                                {mfiValue > 80 && <div className="text-xs text-red-400 mt-1">Reversal zone</div>}
+                                {mfiValue < 20 && <div className="text-xs text-green-400 mt-1">Reversal zone</div>}
                               </div>
                               <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
                                 <div className="text-xs text-gray-500 mb-1">ADX ({adxPeriod})</div>
                                 <div className={`font-bold ${adxColor}`}>{adxTrendStrength}</div>
-                                <div className="text-xs text-gray-500 mt-1">Value: {latestADX.adx.toFixed(2)}</div>
-                                {latestADX.adx > 40 && <div className="text-xs text-yellow-400 mt-1">Very strong momentum</div>}
+                                <div className="text-xs text-gray-500 mt-1">Value: {latestADX.adx.toFixed(1)}</div>
+                                {latestADX.adx > 40 && <div className="text-xs text-yellow-400 mt-1">Very strong</div>}
                               </div>
                               <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                                <div className="text-xs text-gray-500 mb-1">Momentum Direction</div>
+                                <div className="text-xs text-gray-500 mb-1">DI Direction</div>
                                 <div className={`font-bold ${diColor}`}>{diDirection}</div>
-                                <div className="text-xs text-gray-500 mt-1">+DI: {latestADX.plusDI.toFixed(2)} / -DI: {latestADX.minusDI.toFixed(2)}</div>
+                                <div className="text-xs text-gray-500 mt-1">+DI: {latestADX.plusDI.toFixed(1)} / -DI: {latestADX.minusDI.toFixed(1)}</div>
                               </div>
                             </div>
                           );
