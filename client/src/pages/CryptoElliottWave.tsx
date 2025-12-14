@@ -2618,12 +2618,11 @@ export default function CryptoElliottWave() {
       let { time, price } = customEvent.detail;
       
       // Use crosshair position if crosshair mode is active (from long-press)
-      if (crosshairModeActiveRef.current && lastCrosshairParamRef.current) {
-        time = lastCrosshairParamRef.current.time;
-        price = lastCrosshairParamRef.current.price;
+      const usingCrosshairMode = crosshairModeActiveRef.current && lastCrosshairParamRef.current;
+      if (usingCrosshairMode) {
+        time = lastCrosshairParamRef.current!.time;
+        price = lastCrosshairParamRef.current!.price;
         console.log('🎯 Drawing tool using crosshair position:', time, price);
-        // Deactivate crosshair mode after use
-        crosshairModeActiveRef.current = false;
       }
       
       if (!time || !price) return;
@@ -2644,6 +2643,10 @@ export default function CryptoElliottWave() {
           setDrawings(d => [...d, newDrawing]);
           saveDrawingMutation.mutate(newDrawing);
           toast({ title: 'Drawing Saved', description: `${activeTool.replace('_', ' ')} added to chart` });
+          // Only deactivate crosshair mode when drawing is complete
+          if (usingCrosshairMode) {
+            crosshairModeActiveRef.current = false;
+          }
           return { points: [] };
         }
         return { points: newPoints };
