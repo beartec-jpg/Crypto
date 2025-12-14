@@ -1413,7 +1413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Coinalyze Long/Short Ratio endpoint
+  // Long/Short Ratio endpoint with CoinGlass fallback
   const lsRatioCache = new Map<string, { data: any; timestamp: number }>();
   const LS_RATIO_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
@@ -1434,52 +1434,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Coinalyze API re-enabled
-      const apiKey = process.env.COINALYZE_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          error: 'Coinalyze API not configured',
-          message: 'COINALYZE_API_KEY environment variable required'
-        });
-      }
+      const coinalyzeApiKey = process.env.COINALYZE_API_KEY;
+      const coinglassApiKey = process.env.COINGLASS_API_KEY;
+      
+      let normalizedHistory: any[] = [];
+      let dataSource = 'none';
 
-      // Map our intervals to Coinalyze format
-      const coinalyzeInterval = interval === '15m' ? '15min' : interval === '1h' ? '1hour' : interval === '4h' ? '4hour' : interval;
-      const to = Math.floor(Date.now() / 1000);
-      const from = to - (7 * 24 * 60 * 60); // Last 7 days
+      // Try Coinalyze first
+      if (coinalyzeApiKey) {
+        try {
+          const coinalyzeInterval = interval === '15m' ? '15min' : interval === '1h' ? '1hour' : interval === '4h' ? '4hour' : interval;
+          const to = Math.floor(Date.now() / 1000);
+          const from = to - (7 * 24 * 60 * 60); // Last 7 days
 
-      const url = `https://api.coinalyze.net/v1/long-short-ratio-history?symbols=${coinalyzeSymbol}&interval=${coinalyzeInterval}&from=${from}&to=${to}`;
+          const url = `https://api.coinalyze.net/v1/long-short-ratio-history?symbols=${coinalyzeSymbol}&interval=${coinalyzeInterval}&from=${from}&to=${to}`;
 
-      console.log(`📊 Fetching Coinalyze Long/Short Ratio: ${coinalyzeSymbol}, interval: ${coinalyzeInterval}`);
+          console.log(`📊 Fetching Coinalyze Long/Short Ratio: ${coinalyzeSymbol}, interval: ${coinalyzeInterval}`);
 
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-          'api_key': apiKey
+          const response = await fetch(url, {
+            headers: {
+              'Accept': 'application/json',
+              'api_key': coinalyzeApiKey
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const rawHistory = data[0]?.history || [];
+            if (rawHistory.length > 0) {
+              normalizedHistory = rawHistory.map((item: any) => ({
+                timestamp: item.t * 1000,
+                ratio: item.r,
+                longPercent: item.l,
+                shortPercent: item.s
+              }));
+              dataSource = 'coinalyze-ls-ratio';
+              console.log(`✅ Coinalyze L/S Ratio data: ${normalizedHistory.length} points`);
+            }
+          } else {
+            console.log(`⚠️ Coinalyze L/S Ratio API failed: ${response.status}, trying CoinGlass...`);
+          }
+        } catch (err) {
+          console.log(`⚠️ Coinalyze L/S Ratio error, trying CoinGlass...`);
         }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Coinalyze L/S Ratio API error: ${response.status}`, errorText);
-        throw new Error(`Coinalyze API error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
-      const rawHistory = data[0]?.history || [];
+      // Fallback to CoinGlass if Coinalyze failed or returned no data
+      if (normalizedHistory.length === 0 && coinglassApiKey) {
+        try {
+          // CoinGlass global long/short account ratio endpoint
+          // Hobbyist plan requires interval >= 4h
+          const baseSymbol = symbol.replace('USDT', '');
+          const cgUrl = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio?symbol=${baseSymbol}&interval=4h&limit=42`;
+          
+          console.log(`📊 Fetching CoinGlass L/S Ratio for ${baseSymbol}...`);
+          
+          const cgResponse = await fetch(cgUrl, {
+            headers: {
+              'accept': 'application/json',
+              'CG-API-KEY': coinglassApiKey
+            }
+          });
+          
+          if (cgResponse.ok) {
+            const cgData = await cgResponse.json();
+            console.log(`📊 CoinGlass L/S Ratio response: code=${cgData.code}, data count=${cgData.data?.length || 0}`);
+            if (cgData.code === '0' && cgData.data && cgData.data.length > 0) {
+              normalizedHistory = cgData.data.map((item: any) => ({
+                timestamp: item.time,
+                ratio: item.global_account_long_short_ratio,
+                longPercent: item.global_account_long_percent,
+                shortPercent: item.global_account_short_percent
+              }));
+              dataSource = 'coinglass-ls-ratio';
+              console.log(`✅ CoinGlass L/S Ratio fallback: ${normalizedHistory.length} points, latest ratio: ${normalizedHistory[normalizedHistory.length - 1]?.ratio}`);
+            } else if (cgData.code !== '0') {
+              console.log(`⚠️ CoinGlass L/S Ratio error code: ${cgData.code}, msg: ${cgData.msg}`);
+            }
+          } else {
+            const errText = await cgResponse.text();
+            console.log(`⚠️ CoinGlass L/S Ratio failed: ${cgResponse.status} - ${errText.substring(0, 200)}`);
+          }
+        } catch (err) {
+          console.log(`⚠️ CoinGlass L/S Ratio fallback failed`);
+        }
+      }
 
-      // Coinalyze returns {t: timestamp, r: ratio, l: long%, s: short%}
-      const normalizedHistory = rawHistory.map((item: any) => ({
-        timestamp: item.t,
-        ratio: item.r,
-        longPercent: item.l,
-        shortPercent: item.s
-      }));
+      // If no data from either source, return placeholder
+      if (normalizedHistory.length === 0) {
+        console.log('⚠️ No L/S Ratio data available from any source, returning placeholder');
+        const placeholderResult = {
+          symbol,
+          interval,
+          source: 'unavailable',
+          timestamp: Date.now(),
+          history: [],
+          current: { ratio: 1.0, longPercent: 50, shortPercent: 50 },
+          cached: false,
+          message: 'Long/Short Ratio data temporarily unavailable'
+        };
+        return res.json(placeholderResult);
+      }
 
       const result = {
         symbol,
         interval,
-        source: 'coinalyze-ls-ratio',
+        source: dataSource,
         timestamp: Date.now(),
         history: normalizedHistory,
         current: normalizedHistory[normalizedHistory.length - 1] || null,
@@ -1490,7 +1550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
 
     } catch (error: any) {
-      console.error('❌ Error fetching Coinalyze Long/Short Ratio:', error);
+      console.error('❌ Error fetching Long/Short Ratio:', error);
       res.status(500).json({
         error: 'Failed to fetch Long/Short Ratio data',
         details: error.message

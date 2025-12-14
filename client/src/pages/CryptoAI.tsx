@@ -190,6 +190,7 @@ export default function CryptoAI() {
   const [macdSignal, setMacdSignal] = useState(9);
   
   // Collapsible state for oscillator sections
+  const [dataBoxesOpen, setDataBoxesOpen] = useState(false); // Minimized by default
   const [volumeOpen, setVolumeOpen] = useState(true);
   const [cvdOpen, setCvdOpen] = useState(true);
   const [rsiOpen, setRsiOpen] = useState(true);
@@ -2016,105 +2017,122 @@ export default function CryptoAI() {
           </Card>
         )}
 
-        {/* Row 1: Core Volume Metrics */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Real CVD</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#ffa726]">
-              {stats.cvd.toFixed(0)}
-            </div>
-          </Card>
-          
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">POC</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#ffd700]">
-              {stats.poc.toFixed(4)}
-            </div>
-          </Card>
+        {/* Collapsible Data Boxes Section */}
+        <Collapsible open={dataBoxesOpen} onOpenChange={setDataBoxesOpen}>
+          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-[#2a2e39]/50 transition-colors py-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-sm">Market Data Summary</CardTitle>
+                  {dataBoxesOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="space-y-3 pt-0">
+                {/* Row 1: Core Volume Metrics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Real CVD</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#ffa726]">
+                      {stats.cvd.toFixed(0)}
+                    </div>
+                  </Card>
+                  
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">POC</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#ffd700]">
+                      {stats.poc.toFixed(4)}
+                    </div>
+                  </Card>
 
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">VAH</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#4caf50]">
-              {stats.vah.toFixed(4)}
-            </div>
-          </Card>
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">VAH</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#4caf50]">
+                      {stats.vah.toFixed(4)}
+                    </div>
+                  </Card>
 
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">VAL</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#f44336]">
-              {stats.val.toFixed(4)}
-            </div>
-          </Card>
-        </div>
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">VAL</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#f44336]">
+                      {stats.val.toFixed(4)}
+                    </div>
+                  </Card>
+                </div>
 
-        {/* Row 2: Order Blocks & Fair Value Gaps */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Bullish Order Blocks</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#00ff9d]">
-              {stats.bullishOB}
-            </div>
-          </Card>
+                {/* Row 2: Order Blocks & Fair Value Gaps */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Bullish Order Blocks</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#00ff9d]">
+                      {stats.bullishOB}
+                    </div>
+                  </Card>
 
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Bearish Order Blocks</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#ff3b69]">
-              {stats.bearishOB}
-            </div>
-          </Card>
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Bearish Order Blocks</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#ff3b69]">
+                      {stats.bearishOB}
+                    </div>
+                  </Card>
 
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Bullish FVG</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#26a69a]">
-              {stats.bullFVG}
-            </div>
-          </Card>
-          
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Bearish FVG</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#ef5350]">
-              {stats.bearFVG}
-            </div>
-          </Card>
-        </div>
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Bullish FVG</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#26a69a]">
+                      {stats.bullFVG}
+                    </div>
+                  </Card>
+                  
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Bearish FVG</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#ef5350]">
+                      {stats.bearFVG}
+                    </div>
+                  </Card>
+                </div>
 
-        {/* Row 3: Advanced Confluence Signals */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-4">
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Buy Imbalances</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#00ff9d]">
-              {stats.buyImbalances}
-            </div>
-          </Card>
+                {/* Row 3: Advanced Confluence Signals */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-4">
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Buy Imbalances</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#00ff9d]">
+                      {stats.buyImbalances}
+                    </div>
+                  </Card>
 
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Sell Imbalances</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#ff3b69]">
-              {stats.sellImbalances}
-            </div>
-          </Card>
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Sell Imbalances</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#ff3b69]">
+                      {stats.sellImbalances}
+                    </div>
+                  </Card>
 
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Absorption Events</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#00c4b4]">
-              {stats.absorptionEvents}
-            </div>
-          </Card>
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Absorption Events</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#00c4b4]">
+                      {stats.absorptionEvents}
+                    </div>
+                  </Card>
 
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Hidden Divergences</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#9c27b0]">
-              {stats.hiddenDivergences}
-            </div>
-          </Card>
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Hidden Divergences</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#9c27b0]">
+                      {stats.hiddenDivergences}
+                    </div>
+                  </Card>
 
-          <Card className="bg-[#1a1a1a] border-[#2a2e39] p-2 sm:p-4 text-center">
-            <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Liquidity Grabs</div>
-            <div className="text-lg sm:text-2xl font-bold text-[#ff9800]">
-              {stats.liquidityGrabs}
-            </div>
+                  <Card className="bg-[#0d0d0d] border-[#2a2e39] p-2 sm:p-4 text-center">
+                    <div className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">Liquidity Grabs</div>
+                    <div className="text-lg sm:text-2xl font-bold text-[#ff9800]">
+                      {stats.liquidityGrabs}
+                    </div>
+                  </Card>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
           </Card>
-        </div>
+        </Collapsible>
 
         {/* Tabs for Chart and Alerts */}
         <div className="w-full">
