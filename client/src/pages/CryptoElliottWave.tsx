@@ -591,7 +591,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         // Track orphans that get their own structure (to avoid re-processing in "no parent" path)
         const orphanStructureIds = new Set<string>();
         
-        // Group orphans into separate structures based on time gaps (don't lump them all together)
+        // Group orphans into separate structures based on time gaps and pattern boundaries
         if (orphanPatterns.length > 0) {
           let currentOrphanGroup: WaveStackEntry[] = [];
           
@@ -603,8 +603,30 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
               const timeGap = entry.startTime - lastEntry.endTime;
               const avgDuration = currentOrphanGroup.reduce((sum, e) => sum + (e.endTime - e.startTime), 0) / currentOrphanGroup.length;
               
+              let shouldSplit = false;
+              
               // Split if significant time gap (new wave sequence starting)
               if (timeGap > avgDuration * 0.5) {
+                shouldSplit = true;
+              }
+              
+              // CRITICAL FIX: Split when 5-3 is followed by a 3-wave correction
+              // This prevents incorrect groupings like 5-3-3-3 instead of 5-3 + 3-3-3
+              const currentSeq = currentOrphanGroup.map(e => e.waveCount).join('-');
+              if (currentSeq === '5-3' && entry.waveCount === 3) {
+                // Only diagonals can have 5-3 followed by 3 (diagonals have 3-wave internals)
+                const isDiagonalContext = entry.patternType === 'diagonal' || 
+                                          currentOrphanGroup.some(e => e.patternType === 'diagonal');
+                
+                if (!isDiagonalContext) {
+                  // In impulse (5-3-5-3-5), W3 must be 5-wave, not 3-wave
+                  // In zigzag (5-3-5), C must be 5-wave, not 3-wave
+                  // Therefore: 5-3 followed by 3 is ALWAYS a new structure
+                  shouldSplit = true;
+                }
+              }
+              
+              if (shouldSplit) {
                 structureCount++;
                 const structure = createStructure(currentDegree, currentOrphanGroup);
                 if (structure) {
@@ -712,6 +734,26 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
           if (!isValidTriangle(potentialGroup)) {
             return true; // Invalid triangle - split here
           }
+        }
+        
+        // CRITICAL FIX: Handle 5-3 (W1-W2 / A-B) pattern
+        // 5-3 followed by 5 could continue to zigzag (5-3-5) or impulse (5-3-5-3-5)
+        // 5-3 followed by 3 should ALWAYS split - in impulse/zigzag, W3/C must be 5-wave
+        // Exception: diagonal patterns have 3-3-3-3-3 structure
+        if (currentSeq === '5-3' && nextEntry.waveCount === 3) {
+          // Check if this is explicitly a diagonal continuation
+          // Only diagonals can have 5-3 followed by 3 (diagonals have 3-wave internals)
+          const isDiagonalContext = nextEntry.patternType === 'diagonal' || 
+                                    group.some(e => e.patternType === 'diagonal');
+          
+          if (isDiagonalContext) {
+            return false; // Don't split diagonals
+          }
+          
+          // In standard impulse (5-3-5-3-5), W3 must be 5-wave, not 3-wave
+          // In zigzag (5-3-5), C must be 5-wave, not 3-wave
+          // Therefore: 5-3 followed by 3 is ALWAYS a new structure (not continuation)
+          return true;
         }
         
         return false;
