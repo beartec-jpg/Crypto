@@ -2569,6 +2569,14 @@ export default function CryptoElliottWave() {
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
   const [chartReady, setChartReady] = useState(false);
 
+  // Waves Usage Guide collapsible state
+  const [wavesTrainingOpen, setWavesTrainingOpen] = useState(false);
+  const [fibModeGuideOpen, setFibModeGuideOpen] = useState(false);
+  const [degreesGuideOpen, setDegreesGuideOpen] = useState(false);
+  const [drawingTypesGuideOpen, setDrawingTypesGuideOpen] = useState(false);
+  const [pointPlacementGuideOpen, setPointPlacementGuideOpen] = useState(false);
+  const [waveStackGuideOpen, setWaveStackGuideOpen] = useState(false);
+
   // DEBUG MODE: Touch sensitivity testing panel (admin only)
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [debugSettings, setDebugSettings] = useState({
@@ -6765,9 +6773,9 @@ const aiAnalyze = useMutation({
       </div>
     </div>
 
-    <div className="max-w-7xl mx-auto p-4 pt-32 lg:pt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* Chart Area */}
-      <div className="lg:col-span-2">
+    <div className="max-w-7xl mx-auto p-4 pt-32 lg:pt-4 flex flex-col gap-4">
+      {/* Chart Area - Full Width */}
+      <div className="w-full">
         {/* Mobile Toolbar */}
         <div className="flex flex-wrap items-center gap-2 mb-2 p-2 bg-slate-900/95 rounded-lg border border-slate-800 fixed top-0 left-0 right-0 z-40 mx-4 mt-1 lg:static lg:mx-0 lg:mt-0 backdrop-blur-sm">
           <div className="flex items-center gap-2 lg:hidden w-full pb-2 border-b border-slate-700 mb-2">
@@ -8043,6 +8051,135 @@ const aiAnalyze = useMutation({
         </Tabs>
       </CardContent>
     </Card>
+
+      {/* Waves Usage Training Section */}
+      <Card className="bg-slate-900/50 border-slate-800 w-full">
+        <CardHeader className="pb-3 cursor-pointer" onClick={() => setWavesTrainingOpen(!wavesTrainingOpen)}>
+          <CardTitle className="flex items-center justify-between text-lg">
+            <span className="flex items-center gap-2 text-cyan-400">
+              <Wand2 className="w-5 h-5" />
+              Waves Usage Guide
+            </span>
+            <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${wavesTrainingOpen ? '' : '-rotate-90'}`} />
+          </CardTitle>
+        </CardHeader>
+        {wavesTrainingOpen && (
+          <CardContent className="space-y-4">
+            {/* Fibonacci Mode */}
+            <div className="border border-slate-700 rounded-lg overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-3 bg-slate-800/50 cursor-pointer"
+                onClick={() => setFibModeGuideOpen(!fibModeGuideOpen)}
+              >
+                <span className="font-medium text-amber-400">Fibonacci Mode (M% / P%)</span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${fibModeGuideOpen ? '' : '-rotate-90'}`} />
+              </div>
+              {fibModeGuideOpen && (
+                <div className="p-3 space-y-2 text-sm text-gray-300">
+                  <div className="flex items-start gap-2">
+                    <Badge className="bg-slate-700 text-white shrink-0">M%</Badge>
+                    <span><strong>Measured Mode</strong> - Shows live Fibonacci % for each wave relative to Elliott Wave targets (e.g., W3 at 161.8% is ideal)</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Badge className="bg-purple-700 text-white shrink-0">P%</Badge>
+                    <span><strong>Projected Mode</strong> - Shows future target lines where waves typically complete. Snap your points to these Fib levels.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Badge className="bg-gray-600 text-white shrink-0">Off</Badge>
+                    <span>Hides all Fibonacci measurements and projections</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Wave Degrees */}
+            <div className="border border-slate-700 rounded-lg overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-3 bg-slate-800/50 cursor-pointer"
+                onClick={() => setDegreesGuideOpen(!degreesGuideOpen)}
+              >
+                <span className="font-medium text-amber-400">Wave Degrees</span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${degreesGuideOpen ? '' : '-rotate-90'}`} />
+              </div>
+              {degreesGuideOpen && (
+                <div className="p-3 text-sm text-gray-300">
+                  <p className="mb-2">Each degree has a unique color. Use higher degrees for longer timeframes:</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {waveDegrees.map(d => (
+                      <div key={d.name} className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                        <span className="text-xs">{d.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Drawing Types */}
+            <div className="border border-slate-700 rounded-lg overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-3 bg-slate-800/50 cursor-pointer"
+                onClick={() => setDrawingTypesGuideOpen(!drawingTypesGuideOpen)}
+              >
+                <span className="font-medium text-amber-400">Drawing Types</span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${drawingTypesGuideOpen ? '' : '-rotate-90'}`} />
+              </div>
+              {drawingTypesGuideOpen && (
+                <div className="p-3 space-y-2 text-sm text-gray-300">
+                  <div><strong className="text-emerald-400">Impulse (12345)</strong> - 5-wave motive pattern. W2: 50-61.8%, W3: 161.8%, W4: 38.2%, W5: 100%</div>
+                  <div><strong className="text-amber-400">Correction (ABC)</strong> - 3-wave corrective. B: 38-78% (zigzag) or 90-138% (flat), C: 100-161.8%</div>
+                  <div><strong className="text-purple-400">Triangle (ABCDE)</strong> - 5-wave sideways pattern with converging trendlines</div>
+                  <div><strong className="text-cyan-400">Diagonal (12345)</strong> - Wedge pattern with overlapping waves, 66-81% retracements</div>
+                </div>
+              )}
+            </div>
+
+            {/* Point Placement */}
+            <div className="border border-slate-700 rounded-lg overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-3 bg-slate-800/50 cursor-pointer"
+                onClick={() => setPointPlacementGuideOpen(!pointPlacementGuideOpen)}
+              >
+                <span className="font-medium text-amber-400">Point Placement</span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${pointPlacementGuideOpen ? '' : '-rotate-90'}`} />
+              </div>
+              {pointPlacementGuideOpen && (
+                <div className="p-3 space-y-2 text-sm text-gray-300">
+                  <div><strong>Crosshair Mode</strong> - Precise placement using the crosshair cursor</div>
+                  <div><strong>Tap/Touch Mode</strong> - Tap directly on candles to place wave points</div>
+                  <div><strong>Projected Mode</strong> - Future points snap to Fib projection lines (shown as colored horizontal lines)</div>
+                  <div className="text-cyan-400 mt-2">Price levels appear at bottom of screen showing each placed point's value</div>
+                </div>
+              )}
+            </div>
+
+            {/* Wave Stack */}
+            <div className="border border-slate-700 rounded-lg overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-3 bg-slate-800/50 cursor-pointer"
+                onClick={() => setWaveStackGuideOpen(!waveStackGuideOpen)}
+              >
+                <span className="font-medium text-amber-400">Wave Stack</span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${waveStackGuideOpen ? '' : '-rotate-90'}`} />
+              </div>
+              {waveStackGuideOpen && (
+                <div className="p-3 space-y-2 text-sm text-gray-300">
+                  <div><strong>Saved waves</strong> are organized into Stack folders grouped by degree</div>
+                  <div>Each structure shows: Degree, Pattern Type (W1/A), Expected Next Wave (→ W2/B), Wave Count, Direction</div>
+                  <div><strong>Validity Score</strong> - 0-100% based on how well the pattern matches Elliott Wave rules</div>
+                  <div><strong>Saved Target Lines</strong> - Quick access to saved Fibonacci levels with prices</div>
+                  <div className="pt-2 border-t border-slate-700 mt-2">
+                    <strong className="text-cyan-400">Prediction Buttons:</strong>
+                    <div className="mt-1">"What are you predicting?" suggests what wave comes next (Wave 2/Impulse or Wave B/Correction)</div>
+                    <div>"Test Push" sends a test notification to verify alerts work</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        )}
+      </Card>
     </div>
 
       {/* Elliott Wave Training Manual Section */}
