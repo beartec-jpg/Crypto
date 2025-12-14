@@ -189,16 +189,23 @@ export default function CryptoAI() {
   const [macdSlow, setMacdSlow] = useState(26);
   const [macdSignal, setMacdSignal] = useState(9);
   
-  // Collapsible state for oscillator sections
-  const [dataBoxesOpen, setDataBoxesOpen] = useState(false); // Minimized by default
-  const [volumeOpen, setVolumeOpen] = useState(true);
-  const [cvdOpen, setCvdOpen] = useState(true);
-  const [rsiOpen, setRsiOpen] = useState(true);
-  const [macdOpen, setMacdOpen] = useState(true);
-  const [obvOpen, setObvOpen] = useState(true);
-  const [mfiOpen, setMfiOpen] = useState(true);
-  const [cciOpen, setCciOpen] = useState(true);
-  const [adxOpen, setAdxOpen] = useState(true);
+  // Collapsible state for oscillator sections - all minimized by default
+  const [dataBoxesOpen, setDataBoxesOpen] = useState(false);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  const [cvdOpen, setCvdOpen] = useState(false);
+  const [rsiOpen, setRsiOpen] = useState(false);
+  const [macdOpen, setMacdOpen] = useState(false);
+  const [obvOpen, setObvOpen] = useState(false);
+  const [mfiOpen, setMfiOpen] = useState(false);
+  const [cciOpen, setCciOpen] = useState(false);
+  const [adxOpen, setAdxOpen] = useState(false);
+  
+  // Collapsible state for AI report sections - all minimized by default
+  const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
+  const [indicatorStatusOpen, setIndicatorStatusOpen] = useState(false);
+  const [tradeIdeasOpen, setTradeIdeasOpen] = useState(false);
+  const [liquidationInfoOpen, setLiquidationInfoOpen] = useState(false);
+  const [oiInfoOpen, setOiInfoOpen] = useState(false);
   const [mfiPeriod, setMfiPeriod] = useState(14);
   const [cciPeriod, setCciPeriod] = useState(20);
   const [adxPeriod, setAdxPeriod] = useState(14);
@@ -2405,353 +2412,195 @@ export default function CryptoAI() {
               )}
             </Card>
 
-            {/* Indicator Breakdown Report - Only shows when analysis is complete */}
-            {tradeAlerts.length > 0 && (
-              <Card className="bg-[#1a1a1a] border-[#2a2e39] p-6">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 border-b border-[#2a2e39] pb-3">
-                    <Activity className="w-5 h-5 text-[#00c4b4]" />
-                    <h3 className="text-lg font-semibold text-white">Indicator Breakdown Report</h3>
-                    <span className="ml-auto text-xs text-gray-400">Notable Signals Only</span>
-                  </div>
+            {/* AI Analysis Report - Shows when analysis is complete or market insights available */}
+            {(tradeAlerts.length > 0 || marketInsights) && (
+              <div className="space-y-3">
+                {/* 1. AI Summary Report - Grok's Combined Analysis */}
+                <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+                  <Collapsible open={aiSummaryOpen} onOpenChange={setAiSummaryOpen}>
+                    <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <img src={grokLogo} alt="Grok" className="h-5 brightness-110" />
+                        <h3 className="text-lg font-semibold text-white">AI Summary Report</h3>
+                        <span className="text-xs text-gray-500 ml-2">Grok Analysis</span>
+                      </div>
+                      {aiSummaryOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="px-4 pb-4 space-y-3">
+                        {marketInsights?.summary ? (
+                          <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
+                            <p className="text-sm text-gray-300 leading-relaxed">{marketInsights.summary}</p>
+                          </div>
+                        ) : tradeAlerts.length > 0 ? (
+                          <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
+                            <p className="text-sm text-gray-300 leading-relaxed">
+                              Analysis complete for {symbol} on {interval} timeframe. Found {tradeAlerts.length} trade setup{tradeAlerts.length !== 1 ? 's' : ''} with confluence signals.
+                              {tradeAlerts.some(a => a.grade === 'A+' || a.grade === 'A') && ' High-quality setups detected.'}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
+                            <p className="text-sm text-gray-400">Click "Analyze" to generate AI summary.</p>
+                          </div>
+                        )}
+                        {marketInsights?.keyLevels && marketInsights.keyLevels.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            <span className="text-xs text-gray-500">Key Levels:</span>
+                            {marketInsights.keyLevels.map((level, i) => (
+                              <span key={i} className="px-2 py-1 bg-[#2a2e39] text-xs text-[#00c4b4] rounded">{level}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </Card>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* RSI Analysis */}
-                    <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                        <span className="font-semibold text-sm text-white">RSI (14)</span>
-                        <span className="ml-auto text-xs text-orange-400">⚠️ Oversold</span>
+                {/* 2. Indicator Statuses & Notable Events */}
+                <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+                  <Collapsible open={indicatorStatusOpen} onOpenChange={setIndicatorStatusOpen}>
+                    <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-[#00c4b4]" />
+                        <h3 className="text-lg font-semibold text-white">Indicator Statuses</h3>
+                        <span className="text-xs text-gray-500 ml-2">Order Flow Signals</span>
                       </div>
-                      <div className="text-xs text-gray-400 space-y-1">
-                        <div>Current: <span className="text-white font-semibold">28.4</span></div>
-                        <div>Status: <span className="text-orange-400">Below 30 threshold</span></div>
-                        <div className="pt-2 text-[11px] text-gray-500">Watch for bullish reversal signals</div>
+                      {indicatorStatusOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="px-4 pb-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                            <div className="text-xs text-gray-500">Bullish Order Blocks</div>
+                            <div className="text-lg font-semibold text-[#00ff9d]">{stats.bullishOB}</div>
+                          </div>
+                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                            <div className="text-xs text-gray-500">Bearish Order Blocks</div>
+                            <div className="text-lg font-semibold text-[#ff3b69]">{stats.bearishOB}</div>
+                          </div>
+                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                            <div className="text-xs text-gray-500">Bullish FVGs</div>
+                            <div className="text-lg font-semibold text-[#00ff9d]">{stats.bullFVG}</div>
+                          </div>
+                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                            <div className="text-xs text-gray-500">Bearish FVGs</div>
+                            <div className="text-lg font-semibold text-[#ff3b69]">{stats.bearFVG}</div>
+                          </div>
+                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                            <div className="text-xs text-gray-500">CVD</div>
+                            <div className={`text-lg font-semibold ${stats.cvd >= 0 ? 'text-[#00ff9d]' : 'text-[#ff3b69]'}`}>
+                              {stats.cvd >= 0 ? '+' : ''}{(stats.cvd / 1000).toFixed(1)}K
+                            </div>
+                          </div>
+                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                            <div className="text-xs text-gray-500">Absorption Events</div>
+                            <div className="text-lg font-semibold text-yellow-400">{stats.absorptionEvents}</div>
+                          </div>
+                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                            <div className="text-xs text-gray-500">Hidden Divergences</div>
+                            <div className="text-lg font-semibold text-purple-400">{stats.hiddenDivergences}</div>
+                          </div>
+                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                            <div className="text-xs text-gray-500">Liquidity Grabs</div>
+                            <div className="text-lg font-semibold text-orange-400">{stats.liquidityGrabs}</div>
+                          </div>
+                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                            <div className="text-xs text-gray-500">POC Level</div>
+                            <div className="text-lg font-semibold text-cyan-400">${stats.poc.toFixed(4)}</div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </Card>
 
-                    {/* MACD Divergence */}
-                    <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                        <span className="font-semibold text-sm text-white">MACD</span>
-                        <span className="ml-auto text-xs text-green-400">✓ Bullish Cross</span>
+                {/* 3. Trade Ideas - Collapsible */}
+                <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+                  <Collapsible open={tradeIdeasOpen} onOpenChange={setTradeIdeasOpen}>
+                    <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Target className="w-5 h-5 text-[#00c4b4]" />
+                        <h3 className="text-lg font-semibold text-white">Trade Ideas</h3>
+                        <span className="text-xs bg-[#00c4b4]/20 text-[#00c4b4] px-2 py-0.5 rounded ml-2">{tradeAlerts.length} setup{tradeAlerts.length !== 1 ? 's' : ''}</span>
                       </div>
-                      <div className="text-xs text-gray-400 space-y-1">
-                        <div>Signal: <span className="text-green-400">Positive crossover detected</span></div>
-                        <div>Histogram: <span className="text-white">+0.0024</span></div>
-                        <div className="pt-2 text-[11px] text-gray-500">Momentum shifting bullish</div>
+                      {tradeIdeasOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="px-4 pb-4">
+                        {tradeAlerts.length > 0 ? (
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {tradeAlerts.map((alert, idx) => {
+                              const entry = parseFloat(alert.entry);
+                              const stopLoss = parseFloat(alert.stopLoss);
+                              const firstTarget = parseFloat(alert.targets[0]);
+                              const risk = alert.direction === 'LONG' ? entry - stopLoss : stopLoss - entry;
+                              const reward = alert.direction === 'LONG' ? firstTarget - entry : entry - firstTarget;
+                              const rrRatio = risk > 0 ? (reward / risk).toFixed(2) : '0';
+                              const rrRatioNum = parseFloat(rrRatio);
+                              const rrColors = getRRColor(rrRatioNum);
+                              
+                              return (
+                                <div key={idx} className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39] space-y-3">
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`px-3 py-1 rounded-lg font-bold ${getGradeColor(alert.grade)}`}>{alert.grade}</div>
+                                      <div className={`text-lg font-bold ${alert.direction === 'LONG' ? 'text-[#00ff9d]' : 'text-[#ff3b69]'}`}>{alert.direction}</div>
+                                    </div>
+                                    <div className={`px-2 py-1 rounded text-xs ${rrColors.bg} ${rrColors.border}`} style={rrColors.style}>
+                                      <span className={rrColors.text} style={rrColors.style ? { color: rrColors.style.color } : undefined}>{rrRatio}:1 R/R</span>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2 text-xs">
+                                    <div><span className="text-gray-500">Entry:</span> <span className="text-[#00c4b4] font-semibold">{alert.entry}</span></div>
+                                    <div><span className="text-gray-500">SL:</span> <span className="text-[#ff5252] font-semibold">{alert.stopLoss}</span></div>
+                                    <div><span className="text-gray-500">TP:</span> <span className="text-[#4caf50] font-semibold">{alert.targets[0]}</span></div>
+                                  </div>
+                                  <div className="text-xs text-gray-400">{alert.reasoning}</div>
+                                  <Button
+                                    onClick={() => trackTrade(alert)}
+                                    disabled={trackingTradeId === `${symbol}-${alert.direction}-${alert.entry}` || trackedTrades.includes(`${symbol}-${alert.direction}-${alert.entry}`)}
+                                    className={`w-full text-sm ${trackedTrades.includes(`${symbol}-${alert.direction}-${alert.entry}`) ? 'bg-emerald-600' : 'bg-[#00c4b4]'}`}
+                                    size="sm"
+                                    data-testid={`track-trade-${idx}`}
+                                  >
+                                    {trackingTradeId === `${symbol}-${alert.direction}-${alert.entry}` ? 'Tracking...' : 
+                                     trackedTrades.includes(`${symbol}-${alert.direction}-${alert.entry}`) ? '✓ Tracked' : 'Track Trade'}
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-center text-gray-500 py-4">
+                            <p>No trade setups found. Try a different timeframe or wait for better market conditions.</p>
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </Card>
+              </div>
+            )}
 
-                    {/* OBV Volume Analysis */}
-                    <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 rounded-full bg-cyan-500"></div>
-                        <span className="font-semibold text-sm text-white">OBV</span>
-                        <span className="ml-auto text-xs text-yellow-400">⚠️ Divergence</span>
-                      </div>
-                      <div className="text-xs text-gray-400 space-y-1">
-                        <div>Trend: <span className="text-green-400">Rising (+2.4M)</span></div>
-                        <div>Price: <span className="text-red-400">Making lower lows</span></div>
-                        <div className="pt-2 text-[11px] text-gray-500">Bullish hidden divergence forming</div>
-                      </div>
-                    </div>
-
-                    {/* EMA Structure */}
-                    <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                        <span className="font-semibold text-sm text-white">EMA (21/55)</span>
-                        <span className="ml-auto text-xs text-red-400">✗ Below MAs</span>
-                      </div>
-                      <div className="text-xs text-gray-400 space-y-1">
-                        <div>Price: <span className="text-white">$2.0845</span></div>
-                        <div>EMA21: <span className="text-gray-300">$2.1120</span> | EMA55: <span className="text-gray-300">$2.1450</span></div>
-                        <div className="pt-2 text-[11px] text-gray-500">Key resistance overhead at EMAs</div>
-                      </div>
-                    </div>
-
-                    {/* VWAP Levels */}
-                    <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 rounded-full bg-pink-500"></div>
-                        <span className="font-semibold text-sm text-white">VWAP</span>
-                        <span className="ml-auto text-xs text-cyan-400">→ Near Level</span>
-                      </div>
-                      <div className="text-xs text-gray-400 space-y-1">
-                        <div>Daily VWAP: <span className="text-white">$2.0880</span></div>
-                        <div>Distance: <span className="text-cyan-400">+0.35% above</span></div>
-                        <div className="pt-2 text-[11px] text-gray-500">Testing daily VWAP as support</div>
-                      </div>
-                    </div>
-
-                    {/* Structure Trend */}
-                    <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                        <span className="font-semibold text-sm text-white">Market Structure</span>
-                        <span className="ml-auto text-xs text-orange-400">⚠️ Ranging</span>
-                      </div>
-                      <div className="text-xs text-gray-400 space-y-1">
-                        <div>Pattern: <span className="text-yellow-400">Consolidation</span></div>
-                        <div>Range: <span className="text-white">$2.06 - $2.12</span></div>
-                        <div className="pt-2 text-[11px] text-gray-500">Watch for breakout direction</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-[#2a2e39]">
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <Info className="w-3 h-3" />
-                      <span>This report highlights only notable indicator signals. Indicators in normal ranges are not shown.</span>
-                    </div>
-                  </div>
+            {/* Placeholder when no analysis yet */}
+            {tradeAlerts.length === 0 && !marketInsights && !analyzing && (
+              <Card className="bg-[#1a1a1a] border-[#2a2e39] p-6 sm:p-12">
+                <div className="text-center text-gray-400">
+                  <Zap className="w-12 h-12 mx-auto mb-4 text-gray-600" />
+                  <p className="text-lg">Click "Analyze" to get AI-powered trade alerts</p>
+                  <p className="text-sm mt-2">Grades A-E based on order flow confluence</p>
                 </div>
               </Card>
             )}
-
-            {/* Trade Alerts Display */}
-            {tradeAlerts.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {tradeAlerts.map((alert, idx) => {
-                  const entry = parseFloat(alert.entry);
-                  const stopLoss = parseFloat(alert.stopLoss);
-                  const firstTarget = parseFloat(alert.targets[0]);
-                  
-                  const risk = alert.direction === 'LONG' 
-                    ? entry - stopLoss 
-                    : stopLoss - entry;
-                  const reward = alert.direction === 'LONG'
-                    ? firstTarget - entry
-                    : entry - firstTarget;
-                  const rrRatio = risk > 0 ? (reward / risk).toFixed(2) : '0';
-                  const rrRatioNum = parseFloat(rrRatio);
-                  const rrColors = getRRColor(rrRatioNum);
-                  
-                  return (
-                  <Card key={idx} className="bg-[#1a1a1a] border-[#2a2e39] p-6">
-                    <div className="space-y-4">
-                      {/* Header with Grade */}
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`px-4 py-2 rounded-lg font-bold text-xl ${getGradeColor(alert.grade)}`}>
-                            {alert.grade}
-                          </div>
-                          <div>
-                            <div className={`text-xl font-bold ${alert.direction === 'LONG' ? 'text-[#00ff9d]' : 'text-[#ff3b69]'}`}>
-                              {alert.direction}
-                            </div>
-                            <div className="text-gray-400 text-sm">
-                              {alert.confluenceCount} confluence signals
-                            </div>
-                          </div>
-                        </div>
-                        <div 
-                          className={`px-3 py-1 rounded-lg border ${rrColors.bg} ${rrColors.border}`}
-                          style={rrColors.style}
-                        >
-                          <div className="text-xs text-gray-400">R/R Ratio</div>
-                          <div className={`text-lg font-bold ${rrColors.text}`} style={rrColors.style ? { color: rrColors.style.color } : undefined}>
-                            {rrRatio}:1
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Entry, SL, Targets */}
-                      <div className="grid grid-cols-3 gap-3 text-sm">
-                        <div className="bg-[#0e0e0e] p-3 rounded">
-                          <div className="text-gray-400">Entry</div>
-                          <div className="font-semibold text-[#00c4b4]">{alert.entry}</div>
-                        </div>
-                        <div className="bg-[#0e0e0e] p-3 rounded">
-                          <div className="text-gray-400">Stop Loss</div>
-                          <div className="font-semibold text-[#ff5252]">{alert.stopLoss}</div>
-                        </div>
-                        <div className="bg-[#0e0e0e] p-3 rounded">
-                          <div className="text-gray-400">Targets</div>
-                          <div className="font-semibold text-[#4caf50]">
-                            {alert.targets.join(' / ')}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Confluence Signals */}
-                      <div className="space-y-2">
-                        <div className="text-sm font-semibold text-gray-300">Confluence Signals:</div>
-                        <div className="space-y-1">
-                          {alert.confluenceSignals.map((signal, i) => (
-                            <div key={i} className="flex items-start gap-2 text-sm">
-                              <div className="w-1.5 h-1.5 rounded-full bg-[#00c4b4] mt-1.5 flex-shrink-0"></div>
-                              <span className="text-gray-300">{signal}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Reasoning */}
-                      <div className="space-y-2">
-                        <div className="text-sm font-semibold text-gray-300">Analysis:</div>
-                        <div className="text-sm text-gray-400 leading-relaxed">
-                          {alert.reasoning}
-                        </div>
-                      </div>
-
-                      {/* Track Button */}
-                      <div className="pt-2 border-t border-[#2a2e39]">
-                        <Button
-                          onClick={() => trackTrade(alert)}
-                          disabled={trackingTradeId === `${symbol}-${alert.direction}-${alert.entry}` || trackedTrades.includes(`${symbol}-${alert.direction}-${alert.entry}`)}
-                          className={`w-full ${
-                            trackedTrades.includes(`${symbol}-${alert.direction}-${alert.entry}`)
-                              ? 'bg-emerald-600 hover:bg-emerald-700' 
-                              : 'bg-[#00c4b4] hover:bg-[#00a89d]'
-                          } text-white font-semibold`}
-                          data-testid={`track-trade-${idx}`}
-                        >
-                          {trackingTradeId === `${symbol}-${alert.direction}-${alert.entry}` ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Tracking...
-                            </>
-                          ) : trackedTrades.includes(`${symbol}-${alert.direction}-${alert.entry}`) ? (
-                            <>
-                              ✓ Tracked
-                            </>
-                          ) : (
-                            <>
-                              🎯 Track This Trade
-                            </>
-                          )}
-                        </Button>
-                        
-                        {/* Profit/Loss Display - Show for active and completed trades */}
-                        {(() => {
-                          const matchedTrade = trackedTradesData?.find(
-                            (t: any) => t.symbol === symbol && 
-                            t.direction === alert.direction && 
-                            parseFloat(t.entry) === parseFloat(alert.entry)
-                          );
-                          
-                          if (matchedTrade) {
-                            const entryPrice = parseFloat(matchedTrade.entry);
-                            const slPrice = parseFloat(matchedTrade.stopLoss);
-                            const tp1Price = parseFloat(matchedTrade.targets[0]);
-                            const currentPrice = data.length > 0 ? data[data.length - 1].close : entryPrice;
-                            
-                            let profitPercent = 0;
-                            let isCompleted = false;
-                            let statusLabel = 'Waiting for entry';
-                            let showPL = false;
-                            
-                            if (matchedTrade.status === 'sl_hit') {
-                              isCompleted = true;
-                              showPL = true;
-                              statusLabel = 'SL Hit';
-                              profitPercent = matchedTrade.direction === 'LONG'
-                                ? ((slPrice - entryPrice) / entryPrice) * 100
-                                : ((entryPrice - slPrice) / entryPrice) * 100;
-                            } else if (matchedTrade.status === 'tp_hit') {
-                              isCompleted = true;
-                              showPL = true;
-                              statusLabel = 'TP Hit';
-                              profitPercent = matchedTrade.direction === 'LONG'
-                                ? ((tp1Price - entryPrice) / entryPrice) * 100
-                                : ((entryPrice - tp1Price) / entryPrice) * 100;
-                            } else if (matchedTrade.status === 'entry_hit') {
-                              showPL = true;
-                              statusLabel = 'In Trade';
-                              profitPercent = matchedTrade.direction === 'LONG'
-                                ? ((currentPrice - entryPrice) / entryPrice) * 100
-                                : ((entryPrice - currentPrice) / entryPrice) * 100;
-                            }
-                            
-                            const isProfit = profitPercent > 0;
-                            const colorClass = showPL ? (isProfit ? 'text-green-400' : 'text-red-400') : 'text-yellow-400';
-                            const bgClass = showPL ? (isProfit ? 'bg-green-500/10' : 'bg-red-500/10') : 'bg-yellow-500/10';
-                            const borderClass = showPL ? (isProfit ? 'border-green-500/30' : 'border-red-500/30') : 'border-yellow-500/30';
-                            
-                            return (
-                              <div 
-                                className={`mt-3 p-3 rounded-lg border ${bgClass} ${borderClass} flex items-center justify-center gap-2`}
-                                data-testid="trade-result"
-                              >
-                                <div className="flex items-center gap-2">
-                                  {isCompleted && <span className="text-xl">✓</span>}
-                                  {showPL ? (
-                                    <span className={`font-semibold ${colorClass}`}>
-                                      {isProfit ? '+' : ''}{profitPercent.toFixed(2)}%
-                                    </span>
-                                  ) : (
-                                    <span className="text-gray-400">--</span>
-                                  )}
-                                  <span className="text-xs text-gray-400">
-                                    ({statusLabel})
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
-                      </div>
-                    </div>
-                  </Card>
-                  );
-                })}
-              </div>
-            ) : (
+            
+            {/* Analyzing State */}
+            {analyzing && (
               <Card className="bg-[#1a1a1a] border-[#2a2e39] p-6 sm:p-12">
-                {analyzing ? (
-                  <div className="flex items-center justify-center gap-3 text-gray-400">
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                    <span>Analyzing market structure and order flow...</span>
-                  </div>
-                ) : marketInsights ? (
-                  <div className="space-y-4">
-                    <div className="text-center">
-                      <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500/10 border border-orange-500/30 rounded-lg mb-4">
-                        <AlertCircle className="w-5 h-5 text-orange-400" />
-                        <span className="font-semibold text-orange-400">No C+ Grade Setups Available</span>
-                      </div>
-                      {marketInsights.noTradesReason && (
-                        <p className="text-gray-300 text-sm mb-4">{marketInsights.noTradesReason}</p>
-                      )}
-                    </div>
-                    
-                    {marketInsights.summary && (
-                      <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                        <div className="flex items-center gap-2 mb-2">
-                          <TrendingUp className="w-4 h-4 text-[#00c4b4]" />
-                          <span className="font-semibold text-white">Market Analysis</span>
-                        </div>
-                        <p className="text-sm text-gray-300 leading-relaxed">{marketInsights.summary}</p>
-                      </div>
-                    )}
-                    
-                    {marketInsights.bias && (
-                      <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Activity className="w-4 h-4 text-[#00c4b4]" />
-                          <span className="font-semibold text-white">Market Bias</span>
-                        </div>
-                        <p className="text-sm text-gray-300">{marketInsights.bias}</p>
-                      </div>
-                    )}
-                    
-                    <div className="text-center pt-2">
-                      <p className="text-xs text-gray-500">
-                        Click "Analyze Trades" again to refresh analysis or change timeframe/symbol for different opportunities
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center text-gray-400">
-                    <Zap className="w-12 h-12 mx-auto mb-4 text-gray-600" />
-                    <p className="text-lg">Click "Analyze Trades" to get AI-powered trade alerts</p>
-                    <p className="text-sm mt-2">Grades A-E based on order flow confluence</p>
-                  </div>
-                )}
+                <div className="flex items-center justify-center gap-3 text-gray-400">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <span>Analyzing market structure and order flow...</span>
+                </div>
               </Card>
             )}
 
@@ -2872,73 +2721,101 @@ export default function CryptoAI() {
             )}
 
             {/* Liquidation Heatmap - Show in Alerts tab for easy reference */}
-            <div className="w-full max-w-none mt-6">
-              <LiquidationHeatmapChart 
-                symbol={symbol} 
-                currentPrice={data.length > 0 ? data[data.length - 1].close : undefined}
-              />
-            </div>
+            <Card className="bg-[#1a1a1a] border-[#2a2e39] mt-6">
+              <Collapsible open={liquidationInfoOpen} onOpenChange={setLiquidationInfoOpen}>
+                <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-5 h-5 text-[#ff3b69]" />
+                    <h3 className="text-lg font-semibold text-white">Liquidation Information</h3>
+                  </div>
+                  {liquidationInfoOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="px-4 pb-4">
+                    <LiquidationHeatmapChart 
+                      symbol={symbol} 
+                      currentPrice={data.length > 0 ? data[data.length - 1].close : undefined}
+                    />
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </Card>
 
             {/* Professional Orderflow Table - Intermediate+ Tier */}
-            {tier !== 'free' && tier !== 'beginner' ? (
-              <ProfessionalOrderflowTable 
-                symbol={symbol} 
-                interval={interval}
-                className="mt-6"
-              />
-            ) : (
-              <Card className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/50 mt-6" data-testid="card-orderflow-locked">
-                <CardContent className="p-8">
-                  <div className="text-center space-y-4">
-                    <div className="flex justify-center">
-                      <div className="w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center">
-                        <Activity className="w-8 h-8 text-purple-400" />
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white mb-2">
-                        Professional Orderflow Analysis
-                      </h3>
-                      <p className="text-gray-300 max-w-2xl mx-auto">
-                        Access real-time CVD, Open Interest, Funding Rates, and Long/Short Ratios from 
-                        Coinalyze & Coinglass APIs. Get institutional-grade market structure signals.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-gray-400">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span>Cumulative Volume Delta (CVD)</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        <span>Open Interest Deltas</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                        <span>Funding Rate Analysis</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                        <span>Long/Short Ratios</span>
-                      </div>
-                    </div>
-                    <div className="pt-4">
-                      <Link href="/cryptosubscribe">
-                        <Button 
-                          className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8 py-6 text-lg font-semibold"
-                          data-testid="button-upgrade-intermediate"
-                        >
-                          Upgrade to Intermediate ($15/month)
-                        </Button>
-                      </Link>
-                      <p className="text-xs text-gray-500 mt-3">
-                        Requires Intermediate tier or higher
-                      </p>
-                    </div>
+            <Card className="bg-[#1a1a1a] border-[#2a2e39] mt-6">
+              <Collapsible open={oiInfoOpen} onOpenChange={setOiInfoOpen}>
+                <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-[#00c4b4]" />
+                    <h3 className="text-lg font-semibold text-white">Open Interest Info</h3>
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                  {oiInfoOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="px-4 pb-4">
+                    {tier !== 'free' && tier !== 'beginner' ? (
+                      <ProfessionalOrderflowTable 
+                        symbol={symbol} 
+                        interval={interval}
+                        className=""
+                      />
+                    ) : (
+                      <Card className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/50" data-testid="card-orderflow-locked">
+                        <CardContent className="p-8">
+                          <div className="text-center space-y-4">
+                            <div className="flex justify-center">
+                              <div className="w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center">
+                                <Activity className="w-8 h-8 text-purple-400" />
+                              </div>
+                            </div>
+                            <div>
+                              <h3 className="text-xl font-bold text-white mb-2">
+                                Professional Orderflow Analysis
+                              </h3>
+                              <p className="text-gray-300 max-w-2xl mx-auto">
+                                Access real-time CVD, Open Interest, Funding Rates, and Long/Short Ratios from 
+                                Coinalyze & Coinglass APIs. Get institutional-grade market structure signals.
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-gray-400">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span>Cumulative Volume Delta (CVD)</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <span>Open Interest Deltas</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                <span>Funding Rate Analysis</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                <span>Long/Short Ratios</span>
+                              </div>
+                            </div>
+                            <div className="pt-4">
+                              <Link href="/cryptosubscribe">
+                                <Button 
+                                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8 py-6 text-lg font-semibold"
+                                  data-testid="button-upgrade-intermediate"
+                                >
+                                  Upgrade to Intermediate ($15/month)
+                                </Button>
+                              </Link>
+                              <p className="text-xs text-gray-500 mt-3">
+                                Requires Intermediate tier or higher
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </Card>
 
             {/* Trading Rules Reference */}
             <Card className="bg-[#1a1a1a] border-[#2a2e39] p-4">
