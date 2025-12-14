@@ -5677,7 +5677,7 @@ const aiAnalyze = useMutation({
     const currentPattern = isDraggingSelectedPattern
       ? savedLabels.find(l => l.id === selectedLabelId)?.patternType 
       : patternType; // Always use current patternType when drawing new points
-    const isCorrection = currentPattern === 'correction' || currentPattern === 'zigzag' || currentPattern === 'flat';
+    const isCorrection = currentPattern === 'correction' || currentPattern === 'abc' || currentPattern === 'zigzag' || currentPattern === 'flat';
     const isDiagonal = currentPattern === 'diagonal';
     
     const newLines: any[] = [];
