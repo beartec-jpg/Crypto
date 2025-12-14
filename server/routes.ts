@@ -3321,9 +3321,11 @@ Be concise and direct.`;
 
   // Order Flow Alerts endpoint using xAI Grok (publicly accessible)
   app.post("/api/crypto/order-flow-alerts", requireCryptoAuth, async (req, res) => {
+    console.log('📥 Order flow alerts endpoint called');
     try {
       // Check if XAI API key is configured
       const apiKeyCheck = checkXaiApiKey();
+      console.log('🔑 XAI API key check:', apiKeyCheck);
       if (!apiKeyCheck.configured) {
         return res.status(503).json({ 
           error: apiKeyCheck.error,
@@ -3333,6 +3335,7 @@ Be concise and direct.`;
       }
 
       const userId = (req as any).cryptoUser.id;
+      console.log('👤 User ID:', userId);
 
       // Check tier access
       const hasAccess = await cryptoSubscriptionService.checkTierAccess(userId, 'intermediate');

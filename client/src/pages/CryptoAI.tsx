@@ -202,7 +202,6 @@ export default function CryptoAI() {
   
   // Collapsible state for AI report sections - all minimized by default
   const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
-  const [indicatorStatusOpen, setIndicatorStatusOpen] = useState(false);
   const [tradeIdeasOpen, setTradeIdeasOpen] = useState(false);
   const [liquidationInfoOpen, setLiquidationInfoOpen] = useState(false);
   const [oiInfoOpen, setOiInfoOpen] = useState(false);
@@ -2468,65 +2467,7 @@ export default function CryptoAI() {
                   </Collapsible>
                 </Card>
 
-                {/* 2. Indicator Statuses & Notable Events */}
-                <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-                  <Collapsible open={indicatorStatusOpen} onOpenChange={setIndicatorStatusOpen}>
-                    <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-[#00c4b4]" />
-                        <h3 className="text-lg font-semibold text-white">Indicator Statuses</h3>
-                        <span className="text-xs text-gray-500 ml-2">Order Flow Signals</span>
-                      </div>
-                      {indicatorStatusOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="px-4 pb-4">
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                            <div className="text-xs text-gray-500">Bullish Order Blocks</div>
-                            <div className="text-lg font-semibold text-[#00ff9d]">{stats.bullishOB}</div>
-                          </div>
-                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                            <div className="text-xs text-gray-500">Bearish Order Blocks</div>
-                            <div className="text-lg font-semibold text-[#ff3b69]">{stats.bearishOB}</div>
-                          </div>
-                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                            <div className="text-xs text-gray-500">Bullish FVGs</div>
-                            <div className="text-lg font-semibold text-[#00ff9d]">{stats.bullFVG}</div>
-                          </div>
-                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                            <div className="text-xs text-gray-500">Bearish FVGs</div>
-                            <div className="text-lg font-semibold text-[#ff3b69]">{stats.bearFVG}</div>
-                          </div>
-                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                            <div className="text-xs text-gray-500">CVD</div>
-                            <div className={`text-lg font-semibold ${stats.cvd >= 0 ? 'text-[#00ff9d]' : 'text-[#ff3b69]'}`}>
-                              {stats.cvd >= 0 ? '+' : ''}{(stats.cvd / 1000).toFixed(1)}K
-                            </div>
-                          </div>
-                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                            <div className="text-xs text-gray-500">Absorption Events</div>
-                            <div className="text-lg font-semibold text-yellow-400">{stats.absorptionEvents}</div>
-                          </div>
-                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                            <div className="text-xs text-gray-500">Hidden Divergences</div>
-                            <div className="text-lg font-semibold text-purple-400">{stats.hiddenDivergences}</div>
-                          </div>
-                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                            <div className="text-xs text-gray-500">Liquidity Grabs</div>
-                            <div className="text-lg font-semibold text-orange-400">{stats.liquidityGrabs}</div>
-                          </div>
-                          <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                            <div className="text-xs text-gray-500">POC Level</div>
-                            <div className="text-lg font-semibold text-cyan-400">${stats.poc.toFixed(4)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </Card>
-
-                {/* 3. Trade Ideas - Collapsible */}
+                {/* 2. Trade Ideas - Collapsible */}
                 <Card className="bg-[#1a1a1a] border-[#2a2e39]">
                   <Collapsible open={tradeIdeasOpen} onOpenChange={setTradeIdeasOpen}>
                     <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">

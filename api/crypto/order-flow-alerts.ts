@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -14,8 +14,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  console.log('📥 Order flow alerts API called');
+
   try {
     const apiKey = process.env.XAI_API_KEY;
+    console.log('🔑 XAI API key configured:', !!apiKey);
     if (!apiKey) {
       return res.status(503).json({ 
         error: 'AI service not configured',
@@ -95,17 +98,24 @@ Identify 1-3 high-probability trade setups. Return JSON:
       apiKey: apiKey,
     });
 
+    console.log('🤖 Calling xAI Grok for order flow analysis...');
+    const startTime = Date.now();
+
     const completion = await openai.chat.completions.create({
-      model: 'grok-3-fast',
+      model: 'grok-2-1212',
       messages: [
         { role: 'system', content: 'You are an expert SMC/Order Flow trader. Return ONLY valid JSON.' },
         { role: 'user', content: prompt }
       ],
-      max_tokens: 1000,
-      temperature: 0.7
+      max_tokens: 2000,
+      temperature: 0.3
     });
 
+    const duration = Date.now() - startTime;
+    console.log(`✅ Grok response received in ${duration}ms`);
+
     const content = completion.choices[0]?.message?.content || '';
+    console.log('📝 Grok response length:', content.length);
     
     let result: { alerts: any[]; marketInsights: { summary?: string; keyLevels?: string[]; noTradesReason?: string } } = { 
       alerts: [], 
@@ -133,14 +143,17 @@ Identify 1-3 high-probability trade setups. Return JSON:
             noTradesReason: parsed.marketInsights?.noTradesReason || ''
           }
         };
+        console.log(`📊 Parsed ${result.alerts.length} alerts, summary length: ${result.marketInsights.summary?.length || 0}`);
       }
-    } catch {
+    } catch (parseError: any) {
+      console.error('❌ Failed to parse Grok response:', parseError.message);
       result = { 
         alerts: [], 
         marketInsights: { summary: content.substring(0, 500) } 
       };
     }
 
+    console.log('📤 Sending response with', result.alerts.length, 'alerts');
     res.json(result);
 
   } catch (error: any) {
