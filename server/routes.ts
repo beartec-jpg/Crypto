@@ -3267,7 +3267,7 @@ Be concise and direct.`;
       const startTime = Date.now();
       
       const response = await xai.chat.completions.create({
-        model: "grok-2-1212",
+        model: "grok-3",
         messages: [
           {
             role: "system",
@@ -3587,7 +3587,7 @@ CRITICAL RULES:
       const startTime = Date.now();
       
       const response = await xai.chat.completions.create({
-        model: "grok-2-1212",
+        model: "grok-3",
         messages: [
           {
             role: "system",
@@ -4129,7 +4129,7 @@ Provide a clear, actionable market review covering:
 Keep the analysis concise but informative (200-300 words).`;
 
       const completion = await xai.chat.completions.create({
-        model: "grok-2-1212",
+        model: "grok-3",
         messages: [
           { role: "system", content: "You are a professional crypto market analyst providing clear, actionable insights." },
           { role: "user", content: prompt }
@@ -4224,7 +4224,7 @@ Return ONLY valid JSON in this exact format:
 }`;
 
       const completion = await xai.chat.completions.create({
-        model: "grok-2-1212",
+        model: "grok-3",
         messages: [
           { role: "system", content: "You are a professional crypto trader. Return only valid JSON, no markdown." },
           { role: "user", content: prompt }

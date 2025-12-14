@@ -94,6 +94,7 @@ export default function CryptoAI() {
   const adxRef = useRef<HTMLDivElement>(null);
   const volumeChartRef = useRef<HTMLDivElement>(null);
   const cvdChartRef = useRef<HTMLDivElement>(null);
+  const analyzeTradesRef = useRef<() => void>(() => {});
 
   const { isAuthenticated, isLoading: authLoading, tier: rawTier, getToken, isAdmin } = useCryptoAuth();
   const tier = isAdmin ? 'elite' : rawTier; // Admin gets unrestricted elite access
@@ -113,24 +114,6 @@ export default function CryptoAI() {
     enabled: isAuthenticated && !authLoading,
     staleTime: 0, // Force fresh data
     refetchOnMount: true
-  });
-
-  // Cached AI analysis query - allows viewing previous analysis without credits
-  const { data: cachedAnalysis, refetch: refetchCachedAnalysis } = useQuery<{
-    cached: { alerts: any[]; marketInsights: any; orderflowData: any; updatedAt: string } | null;
-  }>({
-    queryKey: ['/api/crypto/ai-analysis/cached', symbol, alertTimeframe],
-    queryFn: async () => {
-      const token = await getToken();
-      if (!token) return { cached: null };
-      const res = await fetch(`/api/crypto/ai-analysis/cached?symbol=${symbol}&interval=${alertTimeframe}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!res.ok) return { cached: null };
-      return res.json();
-    },
-    enabled: isAuthenticated && !authLoading && (tier === 'intermediate' || tier === 'pro' || tier === 'elite'),
-    staleTime: 60000, // Cache for 1 minute
   });
 
   const { data: trackedTradesData, refetch: refetchTrackedTrades } = useQuery<any[]>({
@@ -200,6 +183,24 @@ export default function CryptoAI() {
   const [mfiPeriod, setMfiPeriod] = useState(14);
   const [cciPeriod, setCciPeriod] = useState(20);
   const [adxPeriod, setAdxPeriod] = useState(14);
+
+  // Cached AI analysis query - allows viewing previous analysis without credits
+  const { data: cachedAnalysis, refetch: refetchCachedAnalysis } = useQuery<{
+    cached: { alerts: any[]; marketInsights: any; orderflowData: any; updatedAt: string } | null;
+  }>({
+    queryKey: ['/api/crypto/ai-analysis/cached', symbol, alertTimeframe],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) return { cached: null };
+      const res = await fetch(`/api/crypto/ai-analysis/cached?symbol=${symbol}&interval=${alertTimeframe}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return { cached: null };
+      return res.json();
+    },
+    enabled: isAuthenticated && !authLoading && (tier === 'intermediate' || tier === 'pro' || tier === 'elite'),
+    staleTime: 60000, // Cache for 1 minute
+  });
 
   // === Helper: Calculate ATR (Average True Range) - Returns Array ===
   const calculateATR = useCallback((bars: Bar[], period = 14): number[] => {
@@ -1110,6 +1111,11 @@ export default function CryptoAI() {
     }
   }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, refetchCachedAnalysis, toast, getToken]);
 
+  // Keep ref in sync with latest analyzeTrades callback
+  useEffect(() => {
+    analyzeTradesRef.current = analyzeTrades;
+  }, [analyzeTrades]);
+
   // Auto-refresh effect for Pro/Elite tiers
   useEffect(() => {
     // Only Pro and Elite get auto-refresh
@@ -1122,12 +1128,12 @@ export default function CryptoAI() {
       // Only auto-refresh if we have data and aren't already analyzing
       if (!analyzing && data.length > 0) {
         console.log(`🔄 Auto-refresh triggered for ${tier} tier (every ${subscription.autoRefreshInterval}s)`);
-        analyzeTrades();
+        analyzeTradesRef.current();
       }
     }, intervalMs);
     
     return () => clearInterval(timer);
-  }, [subscription?.autoRefreshInterval, tier, analyzing, data.length, isAuthenticated, authLoading, analyzeTrades]);
+  }, [subscription?.autoRefreshInterval, tier, analyzing, data.length, isAuthenticated, authLoading]);
 
   // === Track Trade ===
   const trackTrade = async (alert: TradeAlert) => {
