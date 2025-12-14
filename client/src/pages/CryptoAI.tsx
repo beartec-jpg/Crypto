@@ -1140,7 +1140,7 @@ export default function CryptoAI() {
 
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 800,
+      height: chartContainerRef.current.clientHeight,
       layout: { 
         background: { type: ColorType.Solid, color: '#0e0e0e' }, 
         textColor: '#d1d4dc' 
@@ -1306,7 +1306,8 @@ export default function CryptoAI() {
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
         chartRef.current.applyOptions({ 
-          width: chartContainerRef.current.clientWidth 
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight
         });
       }
     };
@@ -1330,7 +1331,8 @@ export default function CryptoAI() {
       setTimeout(() => {
         if (chartContainerRef.current && chartRef.current) {
           chartRef.current.applyOptions({ 
-            width: chartContainerRef.current.clientWidth 
+            width: chartContainerRef.current.clientWidth,
+            height: chartContainerRef.current.clientHeight
           });
           chartRef.current.timeScale().fitContent();
         }
