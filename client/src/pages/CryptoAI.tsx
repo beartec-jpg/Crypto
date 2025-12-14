@@ -1024,8 +1024,8 @@ export default function CryptoAI() {
       // Refresh subscription data to update the counter
       refetchSubscription();
       
-      // Store market insights for display
-      if (result.marketInsights && alerts.length === 0) {
+      // Store market insights for display - always show when available
+      if (result.marketInsights) {
         setMarketInsights(result.marketInsights);
       } else {
         setMarketInsights(null);

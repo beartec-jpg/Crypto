@@ -148,18 +148,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Calculate CVD from Binance delta data
     let cumulativeDelta = 0;
-    const cvdData = binanceData.map((candle: any) => {
+    const cvdHistory = binanceData.map((candle: any) => {
       cumulativeDelta += candle.delta;
       return {
-        time: Math.floor(candle.timestamp / 1000),
+        timestamp: candle.timestamp,
         value: cumulativeDelta,
-        delta: candle.delta,
-        color: candle.delta >= 0 ? 'green' : 'red'
+        delta: candle.delta
       };
     });
     
     res.json({
-      cvd: cvdData,
+      cvd: { 
+        history: cvdHistory,
+        current: cvdHistory.length > 0 ? cvdHistory[cvdHistory.length - 1].value : 0
+      },
       openInterest: openInterest || { history: [], current: null, delta: 0, trend: 'neutral' },
       fundingRate: fundingRate || { history: [], current: null, rate: 0, bias: 'neutral' },
       longShortRatio: longShortRatio || { current: { ratio: 1.0 }, ratio: 1.0 },
