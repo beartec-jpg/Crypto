@@ -2607,6 +2607,69 @@ export default function CryptoElliottWave() {
       refetchDrawings();
     },
   });
+  
+  // Handle chart clicks for drawing tools
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !chartReady || drawingMode !== 'draw' || !activeTool) return;
+    
+    const handleChartClick = (e: Event) => {
+      const customEvent = e as CustomEvent<{time: number; price: number}>;
+      const { time, price } = customEvent.detail;
+      if (!time || !price) return;
+      
+      setTempDrawing(prev => {
+        if (!prev) return { points: [{ time, price }] };
+        
+        const newPoints = [...prev.points, { time, price }];
+        const requiredPoints = activeTool === 'horizontal' ? 1 : 2;
+        
+        if (newPoints.length >= requiredPoints) {
+          const newDrawing = {
+            id: `drawing-${Date.now()}`,
+            type: activeTool,
+            points: newPoints,
+            style: { color: '#3b82f6', lineWidth: 2 }
+          };
+          setDrawings(d => [...d, newDrawing]);
+          saveDrawingMutation.mutate(newDrawing);
+          toast({ title: 'Drawing Saved', description: `${activeTool.replace('_', ' ')} added to chart` });
+          return { points: [] };
+        }
+        return { points: newPoints };
+      });
+    };
+    
+    container.addEventListener('chartClick', handleChartClick);
+    return () => container.removeEventListener('chartClick', handleChartClick);
+  }, [chartReady, drawingMode, activeTool, toast]);
+  
+  // Render horizontal lines using price lines
+  const drawingLinesRef = useRef<any[]>([]);
+  
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    if (!candleSeries || !chartReady) return;
+    
+    drawingLinesRef.current.forEach(line => {
+      try { candleSeries.removePriceLine(line); } catch (e) { /* ignore */ }
+    });
+    drawingLinesRef.current = [];
+    
+    drawings.forEach(drawing => {
+      if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
+        const line = candleSeries.createPriceLine({
+          price: drawing.points[0].price,
+          color: drawing.style?.color || '#3b82f6',
+          lineWidth: 2,
+          lineStyle: 0,
+          axisLabelVisible: true,
+          title: drawing.style?.label || 'H-Line',
+        });
+        if (line) drawingLinesRef.current.push(line);
+      }
+    });
+  }, [drawings, chartReady, selectedDrawingId]);
 
   // Reset chart when symbol or timeframe changes
   useEffect(() => {
@@ -3385,6 +3448,19 @@ const aiAnalyze = useMutation({
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
+    setChartReady(true);
+    
+    // Emit custom event for drawing tools click handler
+    chart.subscribeClick((param) => {
+      if (!param.point || !param.time) return;
+      const price = candleSeries.coordinateToPrice(param.point.y);
+      if (price !== null) {
+        const event = new CustomEvent('chartClick', { 
+          detail: { time: param.time as number, price }
+        });
+        chartContainerRef.current?.dispatchEvent(event);
+      }
+    });
     
     // Create a secondary blue candlestick series for future projection candles
     // This allows markers to anchor at correct prices in the future area
@@ -6843,7 +6919,144 @@ const aiAnalyze = useMutation({
                 </div>
               </div>
             ) : (
-              <div ref={chartContainerRef} className={`w-full h-[500px] ${isDrawing ? 'cursor-crosshair ring-2 ring-[#00c4b4]/50 rounded' : ''}`} style={{ touchAction: isDrawing ? 'none' : 'pan-x pan-y pinch-zoom' }} />
+              <div className="relative">
+                <div ref={chartContainerRef} className={`w-full h-[500px] ${isDrawing ? 'cursor-crosshair ring-2 ring-[#00c4b4]/50 rounded' : ''}`} style={{ touchAction: isDrawing ? 'none' : 'pan-x pan-y pinch-zoom' }} />
+                
+                {/* SVG Overlay for Drawings */}
+                <svg 
+                  className={`absolute top-0 left-0 ${drawingMode === 'select' ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
+                  style={{ width: '100%', height: '500px', zIndex: 10 }}
+                  data-testid="drawing-overlay"
+                  onClick={(e) => {
+                    if (drawingMode === 'select' && (e.target as Element).tagName === 'svg') {
+                      setSelectedDrawingId(null);
+                    }
+                  }}
+                >
+                  {drawings.map(drawing => {
+                    if (!chartRef.current || !chartReady) return null;
+                    const chart = chartRef.current;
+                    const timeScale = chart.timeScale();
+                    const toPixel = (point: { time: number; price: number }) => {
+                      const x = timeScale.timeToCoordinate(point.time as any);
+                      const y = candleSeriesRef.current?.priceToCoordinate(point.price);
+                      return { x: x ?? 0, y: y ?? 0 };
+                    };
+                    const color = drawing.style?.color || '#3b82f6';
+                    const isSelected = drawing.id === selectedDrawingId;
+                    const handleClick = (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      if (drawingMode === 'select') {
+                        setSelectedDrawingId(drawing.id === selectedDrawingId ? null : drawing.id);
+                      }
+                    };
+                    
+                    if (drawing.type === 'trendline' && drawing.points.length >= 2) {
+                      const p1 = toPixel(drawing.points[0]);
+                      const p2 = toPixel(drawing.points[1]);
+                      return (
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="transparent" strokeWidth={12} />
+                          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={isSelected ? '#22c55e' : color} strokeWidth={isSelected ? 3 : 2} />
+                          {isSelected && (<><circle cx={p1.x} cy={p1.y} r={5} fill="#22c55e" /><circle cx={p2.x} cy={p2.y} r={5} fill="#22c55e" /></>)}
+                        </g>
+                      );
+                    }
+                    if (drawing.type === 'rectangle' && drawing.points.length >= 2) {
+                      const p1 = toPixel(drawing.points[0]);
+                      const p2 = toPixel(drawing.points[1]);
+                      const x = Math.min(p1.x, p2.x);
+                      const y = Math.min(p1.y, p2.y);
+                      const w = Math.abs(p2.x - p1.x);
+                      const h = Math.abs(p2.y - p1.y);
+                      return (
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          <rect x={x} y={y} width={w} height={h} fill={`${color}20`} stroke={isSelected ? '#22c55e' : color} strokeWidth={isSelected ? 3 : 2} />
+                        </g>
+                      );
+                    }
+                    if (drawing.type === 'fib_retracement' && drawing.points.length >= 2) {
+                      const p1 = toPixel(drawing.points[0]);
+                      const p2 = toPixel(drawing.points[1]);
+                      const allFibLevels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+                      const hiddenLevels = drawing.style?.hiddenLevels || [];
+                      const fibLevels = allFibLevels.filter(l => !hiddenLevels.includes(l));
+                      const priceDiff = drawing.points[1].price - drawing.points[0].price;
+                      const width = Math.abs(p2.x - p1.x) + 100;
+                      const startX = Math.min(p1.x, p2.x);
+                      return (
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          <rect x={startX} y={p1.y < p2.y ? p1.y : p2.y} width={width} height={Math.abs(p2.y - p1.y)} fill="transparent" />
+                          {fibLevels.map(level => {
+                            const levelPrice = drawing.points[0].price + priceDiff * (1 - level);
+                            const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
+                            const levelColor = isSelected ? '#22c55e' : level === 0.618 ? '#fbbf24' : level === 0.5 ? '#22c55e' : color;
+                            return (<g key={level}><line x1={startX} y1={y} x2={startX + width} y2={y} stroke={levelColor} strokeWidth={isSelected ? 2 : 1} strokeDasharray={level === 0 || level === 1 ? '0' : '4,4'} /><text x={startX + 5} y={y - 3} fill={levelColor} fontSize="10">{(level * 100).toFixed(1)}%</text></g>);
+                          })}
+                        </g>
+                      );
+                    }
+                    return null;
+                  })}
+                  
+                  {/* Temp drawing preview */}
+                  {tempDrawing && tempDrawing.points.length > 0 && chartReady && (
+                    tempDrawing.points.map((point, i) => {
+                      const x = chartRef.current?.timeScale().timeToCoordinate(point.time as any) ?? 0;
+                      const y = candleSeriesRef.current?.priceToCoordinate(point.price) ?? 0;
+                      return <circle key={i} cx={x} cy={y} r={6} fill="#3b82f6" stroke="#fff" strokeWidth={2} />;
+                    })
+                  )}
+                </svg>
+                
+                {/* Drawing Tools Toolbar */}
+                <div className="absolute top-2 left-2 z-20 flex gap-1">
+                  <button onClick={() => setShowToolPicker(prev => !prev)} className={`p-2 rounded-lg transition-all ${drawingMode === 'draw' ? 'bg-blue-500 text-white' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`} title="Drawing Tools" data-testid="btn-drawing-tools">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => { setDrawingMode(prev => prev === 'select' ? 'off' : 'select'); setActiveTool(null); setShowToolPicker(false); }} className={`p-2 rounded-lg transition-all ${drawingMode === 'select' ? 'bg-green-500 text-white' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`} title="Select Drawings" data-testid="btn-select-drawings">
+                    <MousePointer2 className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => { setDrawingMode('off'); setActiveTool(null); setShowToolPicker(false); setSelectedDrawingId(null); setTempDrawing(null); }} className="p-2 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-slate-700 transition-all" title="Exit Drawing Mode" data-testid="btn-deselect-drawing">
+                    <X className="w-4 h-4" />
+                  </button>
+                  {selectedDrawingId && (
+                    <button onClick={() => { deleteDrawingMutation.mutate(selectedDrawingId); setSelectedDrawingId(null); toast({ title: 'Drawing Deleted' }); }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all" title="Delete Selected" data-testid="btn-delete-selected">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {drawings.length > 0 && (
+                    <button onClick={() => { if (confirm('Clear all drawings?')) { clearDrawingsMutation.mutate(); setSelectedDrawingId(null); toast({ title: 'Drawings Cleared' }); } }} className="p-2 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-red-600 hover:text-white transition-all" title="Clear All" data-testid="btn-clear-drawings">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                
+                {/* Tool Picker Popup */}
+                {showToolPicker && (
+                  <div className="absolute top-14 left-2 z-30 bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl min-w-[180px]">
+                    <div className="text-xs text-gray-400 mb-2 px-2">Select Drawing Tool</div>
+                    {[
+                      { id: 'trendline', name: 'Trend Line', icon: '📈' },
+                      { id: 'horizontal', name: 'Horizontal Line', icon: '➖' },
+                      { id: 'rectangle', name: 'Rectangle', icon: '⬜' },
+                      { id: 'fib_retracement', name: 'Fib Retracement', icon: '📊' },
+                    ].map(tool => (
+                      <button key={tool.id} onClick={() => { setActiveTool(tool.id as DrawingTool); setDrawingMode('draw'); setShowToolPicker(false); setTempDrawing({ points: [] }); toast({ title: `${tool.name} Selected`, description: 'Click on chart to place points' }); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-slate-700 transition-all text-left ${activeTool === tool.id ? 'bg-blue-500/30 text-blue-300' : 'text-gray-300'}`} data-testid={`tool-${tool.id}`}>
+                        <span>{tool.icon}</span>
+                        <span className="text-sm">{tool.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Drawing mode indicator */}
+                {activeTool && drawingMode === 'draw' && (
+                  <div className="absolute bottom-2 left-2 z-20 bg-blue-600/90 text-white text-xs px-3 py-1 rounded-lg">
+                    Drawing: {activeTool.replace('_', ' ')} {tempDrawing && `(${tempDrawing.points.length}/${activeTool === 'horizontal' ? 1 : 2} points)`}
+                  </div>
+                )}
+              </div>
             )}
 
             {currentPoints.length > 0 && (
