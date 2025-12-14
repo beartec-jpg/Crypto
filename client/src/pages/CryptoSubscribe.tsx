@@ -141,15 +141,15 @@ export default function CryptoSubscribe() {
   });
 
   const handleSubscribe = (tier: string) => {
-    checkoutMutation.mutate({ tier, type: 'subscription' });
+    checkoutMutation.mutate({ tier, type: 'base_tier' });
   };
 
   const handleAddon = () => {
-    checkoutMutation.mutate({ type: 'addon' });
+    checkoutMutation.mutate({ type: 'elliott_addon' });
   };
 
   const handleManage = () => {
-    checkoutMutation.mutate({ type: 'manage', action: 'portal' });
+    checkoutMutation.mutate({ type: 'portal' });
   };
 
   const currentTier = subscription?.tier || 'free';
