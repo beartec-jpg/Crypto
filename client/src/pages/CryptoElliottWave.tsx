@@ -1523,9 +1523,54 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
           };
         }
         
-        // 5-3 at lower degree after higher impulse = potential C wave needed
+        // Build sequence string from lower-degree patterns after higher impulse
         const lowerSeqStr = lowerAfterHigher.map(e => e.waveCount).join('-');
         
+        // SINGLE CORRECTION (3) at lower degree after higher impulse = potential W2/B completion
+        // A simple abc correction can complete W2, or be wave A/W of a more complex pattern
+        if (lowerSeqStr === '3' && lowerAfterHigher.length === 1) {
+          const correction = lowerAfterHigher[0];
+          const higherDir = lastHigher.direction;
+          const impulseRange = Math.abs(lastHigher.endPrice - lastHigher.startPrice);
+          
+          // Check if correction actually retraced (moved opposite to impulse direction)
+          const isValidRetracement = higherDir === 'up' 
+            ? correction.endPrice < lastHigher.endPrice
+            : correction.endPrice > lastHigher.endPrice;
+          
+          // Calculate retracement percentage
+          const retraceAmount = higherDir === 'up'
+            ? lastHigher.endPrice - correction.endPrice
+            : correction.endPrice - lastHigher.endPrice;
+          const retracePercent = retraceAmount / impulseRange;
+          
+          // Only consider if retraced at least 23.6% but not more than 100%
+          if (isValidRetracement && retracePercent >= 0.236 && retracePercent <= 1.0) {
+            const retraceLabel = `${(retracePercent * 100).toFixed(0)}%`;
+            
+            // W3 projection if this is W2 complete
+            const w3Projection = calculateFibLevels(
+              'W3',
+              lastHigher.startPrice,
+              lastHigher.endPrice,
+              higherDir,
+              correction.endPrice, // Launch from W2 end
+              `${higherDegree} W1`
+            );
+            w3Projection.sourcePatternInfo = `${higherDegree} W3`;
+            
+            return {
+              sequence: `${higherDegree}:5 → ${lowerDegree}:3`,
+              suggestion: `✅ ${lowerDegree} abc (${retraceLabel} retrace) = possible ${higherDegree} W2/B complete - Draw W2, predict W3 OR add another abc for W-X continuation`,
+              confidence: 'medium',
+              startPrice: lastHigher.startPrice,
+              endPrice: correction.endPrice,
+              projections: [w3Projection],
+            };
+          }
+        }
+        
+        // 5-3 at lower degree after higher impulse = potential C wave needed
         if (lowerSeqStr === '5-3' || lowerSeqStr === '3-3') {
           // Check if last pattern is correction (could be wave B)
           if (lastLower.waveCount === 3) {
