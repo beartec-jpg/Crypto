@@ -189,6 +189,8 @@ function identifyArchetype(seq: string, patternTypes: string[]): string {
     // Return ambiguous archetype - parent context will clarify if it's diagonal internals or triangle
     return allCorrections ? 'Triangle or Diagonal' : 'WXYXZ';
   }
+  if (seq === '5-3-3-3') return 'W1 + W2(WXY)'; // Complete W1 + W2 where W2 is WXY
+  if (seq === '5-3-3') return 'W1 + W2(WXY forming)'; // W1 complete, W2 building as WXY (need Y)
   if (seq === '5-3') return 'W1-W2 / A-B';
   if (seq === '3-3') return 'W-X';
   if (seq === '5') return 'W1/A';
@@ -356,6 +358,8 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     const formingSequences: Record<string, FormingConfig> = {
       '5': { expectedNextWaves: [{ wave: 'W2', label: 'W2' }, { wave: 'B', label: 'B' }], fibMode: 'retracement', anchorWaveIdx: 0 }, // W1/A only → W2/B
       '5-3': { expectedNextWaves: [{ wave: 'W3', label: 'W3' }, { wave: 'C', label: 'C' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2 OR A-B
+      '5-3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y (W2)' }], fibMode: 'extension', anchorWaveIdx: 1 }, // W1 + W2(W-X) → Y to complete W2
+      '5-3-3-3': { expectedNextWaves: [{ wave: 'W3', label: 'W3' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1 + W2(WXY complete) → W3
       '5-3-5-3': { expectedNextWaves: [{ wave: 'W5', label: 'W5' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W1-W2-W3-W4 → W5
       '3-3': { expectedNextWaves: [{ wave: 'Y', label: 'Y' }], fibMode: 'extension', anchorWaveIdx: 0 }, // W-X → Y
       '5-3-5': { expectedNextWaves: [{ wave: 'W4', label: 'W4' }], fibMode: 'retracement', anchorWaveIdx: 2 }, // W1-W2-W3 → W4
@@ -610,20 +614,12 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
                 shouldSplit = true;
               }
               
-              // CRITICAL FIX: Split when 5-3 is followed by a 3-wave correction
-              // This prevents incorrect groupings like 5-3-3-3 instead of 5-3 + 3-3-3
+              // NOTE: 5-3 followed by 3 can build towards 5-3-3-3 (W1 + WXY as W2)
+              // Only split if a NEW 5-wave starts (indicating new impulse/zigzag)
               const currentSeq = currentOrphanGroup.map(e => e.waveCount).join('-');
-              if (currentSeq === '5-3' && entry.waveCount === 3) {
-                // Only diagonals can have 5-3 followed by 3 (diagonals have 3-wave internals)
-                const isDiagonalContext = entry.patternType === 'diagonal' || 
-                                          currentOrphanGroup.some(e => e.patternType === 'diagonal');
-                
-                if (!isDiagonalContext) {
-                  // In impulse (5-3-5-3-5), W3 must be 5-wave, not 3-wave
-                  // In zigzag (5-3-5), C must be 5-wave, not 3-wave
-                  // Therefore: 5-3 followed by 3 is ALWAYS a new structure
-                  shouldSplit = true;
-                }
+              if ((currentSeq === '5-3-3-3' || currentSeq === '3-3-3') && entry.waveCount === 5) {
+                // After complete WXY (3-3-3) or W1+W2(WXY), a new 5-wave starts a new structure
+                shouldSplit = true;
               }
               
               if (shouldSplit) {
@@ -736,23 +732,11 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
           }
         }
         
-        // CRITICAL FIX: Handle 5-3 (W1-W2 / A-B) pattern
-        // 5-3 followed by 5 could continue to zigzag (5-3-5) or impulse (5-3-5-3-5)
-        // 5-3 followed by 3 should ALWAYS split - in impulse/zigzag, W3/C must be 5-wave
-        // Exception: diagonal patterns have 3-3-3-3-3 structure
-        if (currentSeq === '5-3' && nextEntry.waveCount === 3) {
-          // Check if this is explicitly a diagonal continuation
-          // Only diagonals can have 5-3 followed by 3 (diagonals have 3-wave internals)
-          const isDiagonalContext = nextEntry.patternType === 'diagonal' || 
-                                    group.some(e => e.patternType === 'diagonal');
-          
-          if (isDiagonalContext) {
-            return false; // Don't split diagonals
-          }
-          
-          // In standard impulse (5-3-5-3-5), W3 must be 5-wave, not 3-wave
-          // In zigzag (5-3-5), C must be 5-wave, not 3-wave
-          // Therefore: 5-3 followed by 3 is ALWAYS a new structure (not continuation)
+        // Handle W1+W2(WXY) pattern: 5-3 can continue to 5-3-3-3 
+        // 5-3 followed by 3 builds towards W1 + W2(WXY) - don't split
+        // 5-3-3-3 followed by 5 starts a new impulse (W3) - split after complete W2
+        if ((currentSeq === '5-3-3-3' || currentSeq === '3-3-3') && nextEntry.waveCount === 5) {
+          // After complete WXY or W1+W2(WXY), a new 5-wave starts a new structure
           return true;
         }
         
