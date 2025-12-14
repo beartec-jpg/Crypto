@@ -560,22 +560,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const NUM_TIME_BUCKETS = 30;
       const candlesPerBucket = Math.floor(priceCandles.length / NUM_TIME_BUCKETS);
       
-      // Fetch Coinalyze liquidation data - re-enabled
+      // Fetch liquidation data - try Coinalyze first, fallback to CoinGlass
       const coinalyzeSymbol = `${binanceSymbol}_PERP.A`;
       const to = Math.floor(Date.now() / 1000);
       const from = to - (30 * 24 * 60 * 60);
-      const apiKey = process.env.COINALYZE_API_KEY;
+      const coinalyzeApiKey = process.env.COINALYZE_API_KEY;
+      const coinglassApiKeyLiq = process.env.COINGLASS_API_KEY;
       
       let liquidations: any[] = [];
-      if (apiKey) {
-        const liqUrl = `https://api.coinalyze.net/v1/liquidation-history?symbols=${coinalyzeSymbol}&interval=4hour&from=${from}&to=${to}`;
-        const liqResponse = await fetch(liqUrl, {
-          headers: { 'Accept': 'application/json', 'api_key': apiKey }
-        });
-        
-        if (liqResponse.ok) {
-          const liqData = await liqResponse.json();
-          liquidations = liqData[0]?.history || [];
+      let liquidationSource = 'none';
+      
+      // Try Coinalyze first
+      if (coinalyzeApiKey) {
+        try {
+          const liqUrl = `https://api.coinalyze.net/v1/liquidation-history?symbols=${coinalyzeSymbol}&interval=4hour&from=${from}&to=${to}`;
+          const liqResponse = await fetch(liqUrl, {
+            headers: { 'Accept': 'application/json', 'api_key': coinalyzeApiKey }
+          });
+          
+          if (liqResponse.ok) {
+            const liqData = await liqResponse.json();
+            liquidations = liqData[0]?.history || [];
+            if (liquidations.length > 0) {
+              liquidationSource = 'coinalyze';
+              console.log(`✅ Coinalyze liquidation data: ${liquidations.length} points`);
+            }
+          } else {
+            console.log(`⚠️ Coinalyze API failed: ${liqResponse.status}, trying CoinGlass...`);
+          }
+        } catch (err) {
+          console.log(`⚠️ Coinalyze error, trying CoinGlass...`);
+        }
+      }
+      
+      // Fallback to CoinGlass if Coinalyze failed or returned no data
+      if (liquidations.length === 0 && coinglassApiKeyLiq) {
+        try {
+          const cgLiqUrl = `https://open-api-v4.coinglass.com/api/futures/liquidation/history?exchange=Binance&symbol=${binanceSymbol}&interval=4h&limit=180`;
+          
+          console.log(`📊 Fetching CoinGlass liquidation history for ${binanceSymbol}...`);
+          
+          const cgResponse = await fetch(cgLiqUrl, {
+            headers: {
+              'accept': 'application/json',
+              'CG-API-KEY': coinglassApiKeyLiq
+            }
+          });
+          
+          if (cgResponse.ok) {
+            const cgData = await cgResponse.json();
+            if (cgData.code === '0' && cgData.data && cgData.data.length > 0) {
+              liquidations = cgData.data.map((item: any) => ({
+                t: item.time / 1000, // CoinGlass returns ms, convert to seconds
+                l: parseFloat(item.long_liquidation_usd) || 0,
+                s: parseFloat(item.short_liquidation_usd) || 0
+              }));
+              liquidationSource = 'coinglass';
+              console.log(`✅ CoinGlass liquidation fallback: ${liquidations.length} points`);
+            }
+          }
+        } catch (err) {
+          console.log(`⚠️ CoinGlass liquidation fallback failed`);
         }
       }
       
@@ -1086,52 +1131,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Coinalyze API re-enabled
-      const apiKey = process.env.COINALYZE_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          error: 'Coinalyze API not configured',
-          message: 'COINALYZE_API_KEY environment variable required'
-        });
-      }
+      const coinalyzeApiKey = process.env.COINALYZE_API_KEY;
+      const coinglassApiKey = process.env.COINGLASS_API_KEY;
+      
+      let historyData: any[] = [];
+      let dataSource = 'none';
 
-      // Fetch historical data (last 7 days) for immediate deltas on page load
-      const to = Math.floor(Date.now() / 1000);
-      const from = to - (7 * 24 * 60 * 60); // Last 7 days
-      const historyUrl = `https://api.coinalyze.net/v1/open-interest-history?symbols=${coinalyzeSymbol}&interval=4hour&from=${from}&to=${to}`;
+      // Try Coinalyze first
+      if (coinalyzeApiKey) {
+        try {
+          const to = Math.floor(Date.now() / 1000);
+          const from = to - (7 * 24 * 60 * 60); // Last 7 days
+          const historyUrl = `https://api.coinalyze.net/v1/open-interest-history?symbols=${coinalyzeSymbol}&interval=4hour&from=${from}&to=${to}`;
 
-      console.log(`📊 Fetching Coinalyze Open Interest History: ${coinalyzeSymbol}`);
+          console.log(`📊 Fetching Coinalyze Open Interest History: ${coinalyzeSymbol}`);
 
-      const response = await fetch(historyUrl, {
-        headers: {
-          'Accept': 'application/json',
-          'api_key': apiKey
+          const response = await fetch(historyUrl, {
+            headers: {
+              'Accept': 'application/json',
+              'api_key': coinalyzeApiKey
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            historyData = data[0]?.history || [];
+            if (historyData.length > 0) {
+              dataSource = 'coinalyze-oi';
+              console.log(`✅ Coinalyze OI data: ${historyData.length} points`);
+            }
+          } else {
+            console.log(`⚠️ Coinalyze OI API failed: ${response.status}, trying CoinGlass...`);
+          }
+        } catch (err) {
+          console.log(`⚠️ Coinalyze OI error, trying CoinGlass...`);
         }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Coinalyze OI API error: ${response.status}`, errorText);
-        throw new Error(`Coinalyze API error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
-      const historyData = data[0]?.history || [];
+      // Fallback to CoinGlass if Coinalyze failed or returned no data
+      if (historyData.length === 0 && coinglassApiKey) {
+        try {
+          // Hobbyist plan requires interval >= 4h, use 4h format (not h4)
+          const cgInterval = '4h';
+          const cgUrl = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${symbol}&interval=${cgInterval}&limit=42`;
+          
+          console.log(`📊 Fetching CoinGlass OI history for ${symbol}...`);
+          
+          const cgResponse = await fetch(cgUrl, {
+            headers: {
+              'accept': 'application/json',
+              'CG-API-KEY': coinglassApiKey
+            }
+          });
+          
+          if (cgResponse.ok) {
+            const cgData = await cgResponse.json();
+            console.log(`📊 CoinGlass OI response: code=${cgData.code}, data count=${cgData.data?.length || 0}`);
+            if (cgData.code === '0' && cgData.data && cgData.data.length > 0) {
+              historyData = cgData.data.map((item: any) => ({
+                t: (item.time || item.t) / 1000, // Convert ms to seconds
+                o: parseFloat(item.open) || 0,
+                h: parseFloat(item.high) || 0,
+                l: parseFloat(item.low) || 0,
+                c: parseFloat(item.close) || 0
+              }));
+              dataSource = 'coinglass-oi';
+              console.log(`✅ CoinGlass OI fallback: ${historyData.length} points`);
+            } else if (cgData.code !== '0') {
+              console.log(`⚠️ CoinGlass OI error code: ${cgData.code}, msg: ${cgData.msg}`);
+            }
+          } else {
+            const errText = await cgResponse.text();
+            console.log(`⚠️ CoinGlass OI failed: ${cgResponse.status} - ${errText.substring(0, 200)}`);
+          }
+        } catch (err) {
+          console.log(`⚠️ CoinGlass OI fallback failed`);
+        }
+      }
+
+      // If no data from either source, return empty placeholder data
+      if (historyData.length === 0) {
+        console.log('⚠️ No OI data available from any source, returning placeholder');
+        const placeholderResult = {
+          symbol,
+          source: 'unavailable',
+          timestamp: Date.now(),
+          current: { value: 0 },
+          history: [],
+          cached: false,
+          message: 'Open Interest data temporarily unavailable'
+        };
+        return res.json(placeholderResult);
+      }
       
       // Convert history to normalized format {timestamp, value}
-      // Coinalyze returns OHLC format: {t, o, h, l, c}
       const newHistory = historyData.slice(-OI_HISTORY_SIZE).map((point: any) => ({
-        timestamp: (point.t || point.time || point.timestamp) * 1000, // Convert to ms
-        value: point.c || point.v || point.oi || point.value || 0 // Use 'c' (close) for OHLC data
+        timestamp: (point.t || point.time || point.timestamp) * 1000,
+        value: point.c || point.v || point.oi || point.value || 0
       }));
       
-      // Get current value (last point in history)
       const currentValue = newHistory.length > 0 ? newHistory[newHistory.length - 1].value : 0;
       const currentRaw = historyData.length > 0 ? historyData[historyData.length - 1] : { value: currentValue };
 
       const result = {
         symbol,
-        source: 'coinalyze-oi',
+        source: dataSource,
         timestamp: Date.now(),
         current: currentRaw,
         history: newHistory,
@@ -1142,7 +1246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
 
     } catch (error: any) {
-      console.error('❌ Error fetching Coinalyze Open Interest:', error);
+      console.error('❌ Error fetching Open Interest:', error);
       res.status(500).json({
         error: 'Failed to fetch Open Interest data',
         details: error.message
