@@ -1570,11 +1570,10 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
           }
         }
         
-        // 5-3 at lower degree after higher impulse = potential C wave needed
-        if (lowerSeqStr === '5-3' || lowerSeqStr === '3-3') {
-          // Check if last pattern is correction (could be wave B)
+        // 5-3 at lower degree after higher impulse = Zigzag A-B forming, need C wave
+        if (lowerSeqStr === '5-3') {
           if (lastLower.waveCount === 3) {
-            const firstLower = lowerAfterHigher[0]; // A wave
+            const firstLower = lowerAfterHigher[0]; // A wave (5-wave)
             const bEndpoint = lastLower.endPrice; // B endpoint = launch point for C
             // C wave projection: use A wave length, project from B endpoint
             const cProjection = calculateFibLevels(
@@ -1586,12 +1585,38 @@ function analyzeWaveStack(entries: WaveStackEntry[]): WaveStackSuggestion | null
               `A leg: ${firstLower.startPrice.toFixed(4)} → ${firstLower.endPrice.toFixed(4)}`
             );
             return {
-              sequence: `${higherDegree}:5 → ${lowerDegree}:${lowerSeqStr}`,
-              suggestion: `${lowerDegree}: ${lowerSeqStr === '5-3' ? 'Zigzag A-B' : 'Flat A-B'} - need C wave to complete ${higherDegree} W2`,
+              sequence: `${higherDegree}:5 → ${lowerDegree}:5-3`,
+              suggestion: `${lowerDegree}: Zigzag A-B forming - add C wave (5-wave) to complete ${higherDegree} W2`,
               confidence: 'medium',
               startPrice: lastHigher.startPrice,
               endPrice: lastLower.endPrice,
               projections: [cProjection],
+            };
+          }
+        }
+        
+        // 3-3 at lower degree after higher impulse = W-X pattern, W2 still forming
+        // This is NOT yet complete - need Y wave to complete WXY and thus W2
+        if (lowerSeqStr === '3-3') {
+          if (lastLower.waveCount === 3) {
+            const firstLower = lowerAfterHigher[0]; // W wave (first abc)
+            const xEndpoint = lastLower.endPrice; // X endpoint = launch point for Y
+            // Y wave projection: use W wave length, project from X endpoint
+            const yProjection = calculateFibLevels(
+              'Y',
+              firstLower.startPrice,
+              firstLower.endPrice,
+              firstLower.direction, // Y continues same direction as W
+              xEndpoint, // Launch from X endpoint
+              `W leg: ${firstLower.startPrice.toFixed(4)} → ${firstLower.endPrice.toFixed(4)}`
+            );
+            return {
+              sequence: `${higherDegree}:5 → ${lowerDegree}:3-3`,
+              suggestion: `⏳ ${lowerDegree}: W-X forming (${higherDegree} W2 still building) - add Y wave (abc) to complete WXY = ${higherDegree} W2`,
+              confidence: 'medium',
+              startPrice: lastHigher.startPrice,
+              endPrice: lastLower.endPrice,
+              projections: [yProjection],
             };
           }
         }
