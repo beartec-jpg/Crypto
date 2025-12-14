@@ -3515,11 +3515,27 @@ ${orderflowAnalysis}
 **IMPORTANT:** Institutional orderflow signals (#10-13) are CRITICAL for professional-grade setups. Oscillator signals (#14-15 CCI/ADX) add technical confirmation. When OI+Funding+CVD+Oscillators align in the same direction AND 4+ other signals confirm, this is an A+ grade institutional trade - you're trading WITH the smart money using both institutional flow AND momentum/trend confirmation.
 
 **YOUR TASK:**
-Analyze the current order flow data INCLUDING professional orderflow metrics (OI, Funding, L/S Ratio) AND oscillator signals (CCI, ADX) and identify 1-3 high-probability trade setups ONLY IF there's genuine confluence worth trading. For each setup, count how many confluence signals align (including institutional orderflow and oscillators if applicable) and assign the appropriate grade. Return a JSON object with:
+FIRST, provide a comprehensive market evaluation analyzing ALL the data above. Evaluate:
+- Overall market structure and trend direction
+- CVD behavior and what it reveals about buyer/seller control
+- Volume profile positioning (POC/VAH/VAL) and price location
+- Order flow signals detected (Order Blocks, FVGs, Imbalances, etc.)
+- Institutional metrics if available (OI changes, Funding, L/S Ratio)
+- Key support/resistance levels and what they mean
+- Oscillator readings (CCI overbought/oversold, ADX trend strength)
+
+THEN, based on your market evaluation, identify 1-3 high-probability trade setups ONLY IF there's genuine confluence worth trading. For each setup:
+- Count how many confluence signals align (including institutional orderflow and oscillators if applicable)
+- Assign the appropriate grade based on confluence count
+- Ensure the Risk/Reward ratio is at least 1:1 (reject trades with R/R below 0.75:1)
+- If two trades are essentially the same direction with similar entries (within 1%), only keep the higher quality one
+- If no trades meet quality standards, explicitly state why
+
+For each valid trade setup, include:
 - grade: A+, A, B, C, D, or E
 - direction: LONG or SHORT
-- entry: specific entry price zone (e.g., "2.35-2.37")
-- stopLoss: stop loss price (e.g., "2.30")
+- entry: specific entry price (single number, e.g., "2.35")
+- stopLoss: stop loss price (single number, e.g., "2.30")
 - targets: array of 2-3 take profit targets (e.g., ["2.42", "2.48", "2.55"])
 - confluenceSignals: array of specific signals detected from the lists above (including institutional orderflow if detected)
 - confluenceCount: exact number of confluence signals (1-15, with institutional orderflow and oscillator signals counting as critical signals)
@@ -3531,22 +3547,28 @@ Return ONLY a JSON object in this exact format:
     {
       "grade": "A+",
       "direction": "LONG",
-      "entry": "price range",
-      "stopLoss": "price",
-      "targets": ["TP1", "TP2", "TP3"],
-      "confluenceSignals": ["signal1", "signal2", "signal3", ...],
+      "entry": "2.35",
+      "stopLoss": "2.30",
+      "targets": ["2.42", "2.48", "2.55"],
+      "confluenceSignals": ["signal1", "signal2", "signal3"],
       "confluenceCount": 7,
       "reasoning": "explanation"
     }
   ],
   "marketInsights": {
-    "noTradesReason": "Why no C+ grade setups exist (if applicable)",
-    "summary": "Brief market summary with key observations about current structure, CVD trend, orderflow signals, and what to watch for",
-    "bias": "BULLISH/BEARISH/NEUTRAL with brief reasoning"
+    "summary": "DETAILED 3-5 sentence market evaluation covering: 1) Current market structure and trend, 2) CVD and volume analysis, 3) Key orderflow signals detected, 4) Important price levels, 5) Overall bias with reasoning. This should read as a professional analyst's market review.",
+    "bias": "BULLISH/BEARISH/NEUTRAL",
+    "keyLevels": ["level1", "level2", "level3"],
+    "noTradesReason": "If no valid trades, explain specifically why (e.g., 'Conflicting signals between CVD and price action', 'No clear structure with R/R above 0.75:1', 'Range-bound market with no clear edge')"
   }
 }
 
-If no trade setups meet at least C grade (3+ confluence), still provide marketInsights. Always include a market summary analyzing the current order flow, CVD, POC/VAH/VAL positioning, institutional orderflow metrics, and key price levels to watch. Focus on quality over quantity - only return setups with genuine confluence, not forced signals.`;
+CRITICAL RULES:
+1. The summary MUST be a detailed market review, NOT just "found X trades". Evaluate the data like a professional analyst.
+2. Only include trades with R/R ratio >= 0.75:1 (Risk must be smaller than or equal to Reward * 0.75)
+3. If two trades are nearly identical (same direction, entries within 1%), keep only the better one
+4. If no quality trades exist, return empty alerts array with detailed noTradesReason explaining why
+5. Focus on quality over quantity - better to return 0 trades with good reasoning than forced setups`;
 
       console.log('🤖 Calling xAI Grok for order flow analysis...');
       const startTime = Date.now();
@@ -3579,6 +3601,90 @@ If no trade setups meet at least C grade (3+ confluence), still provide marketIn
       } catch (parseError) {
         console.error('Failed to parse Grok response:', content);
         result = { alerts: [] };
+      }
+
+      // Post-processing: Filter and deduplicate trades
+      if (result.alerts && Array.isArray(result.alerts) && result.alerts.length > 0) {
+        const originalCount = result.alerts.length;
+        
+        // 1. Calculate R/R and filter out trades with R/R <= 0.75
+        result.alerts = result.alerts.filter((alert: any) => {
+          // Parse entry - handle range format (e.g., "1.9875-1.9901")
+          const entryStr = String(alert.entry || '0');
+          const entryParts = entryStr.split('-').map((s: string) => parseFloat(s.trim()));
+          const entry = entryParts.length > 1 ? (entryParts[0] + entryParts[1]) / 2 : entryParts[0];
+          
+          const stopLoss = parseFloat(String(alert.stopLoss || '0'));
+          const firstTarget = parseFloat(String(alert.targets?.[0] || '0'));
+          
+          if (!entry || !stopLoss || !firstTarget || isNaN(entry) || isNaN(stopLoss) || isNaN(firstTarget)) {
+            console.log(`⚠️ Filtering trade: invalid prices (entry=${entry}, sl=${stopLoss}, tp=${firstTarget})`);
+            return false;
+          }
+          
+          const risk = alert.direction === 'LONG' ? entry - stopLoss : stopLoss - entry;
+          const reward = alert.direction === 'LONG' ? firstTarget - entry : entry - firstTarget;
+          const rrRatio = risk > 0 ? reward / risk : 0;
+          
+          // Attach calculated R/R to the alert for frontend display
+          alert.calculatedRR = rrRatio;
+          
+          if (rrRatio < 0.75) {
+            console.log(`⚠️ Filtering trade: R/R too low (${rrRatio.toFixed(2)}:1)`);
+            return false;
+          }
+          return true;
+        });
+        
+        // 2. Deduplicate similar trades (same direction, entries within 1%)
+        if (result.alerts.length > 1) {
+          const dedupedAlerts: any[] = [];
+          for (const alert of result.alerts) {
+            const entryStr = String(alert.entry || '0');
+            const entryParts = entryStr.split('-').map((s: string) => parseFloat(s.trim()));
+            const entry = entryParts.length > 1 ? (entryParts[0] + entryParts[1]) / 2 : entryParts[0];
+            
+            // Check if similar trade already exists
+            const similar = dedupedAlerts.find((existing: any) => {
+              if (existing.direction !== alert.direction) return false;
+              const existingEntryStr = String(existing.entry || '0');
+              const existingEntryParts = existingEntryStr.split('-').map((s: string) => parseFloat(s.trim()));
+              const existingEntry = existingEntryParts.length > 1 ? (existingEntryParts[0] + existingEntryParts[1]) / 2 : existingEntryParts[0];
+              const priceDiff = Math.abs(entry - existingEntry) / existingEntry;
+              return priceDiff < 0.01; // Within 1%
+            });
+            
+            if (similar) {
+              // Keep the higher grade / higher R/R trade
+              const gradeOrder = ['A+', 'A', 'B', 'C', 'D', 'E'];
+              const alertGradeIdx = gradeOrder.indexOf(alert.grade);
+              const similarGradeIdx = gradeOrder.indexOf(similar.grade);
+              if (alertGradeIdx < similarGradeIdx || (alertGradeIdx === similarGradeIdx && (alert.calculatedRR || 0) > (similar.calculatedRR || 0))) {
+                // Replace with better trade
+                const idx = dedupedAlerts.indexOf(similar);
+                dedupedAlerts[idx] = alert;
+                console.log(`🔄 Replacing duplicate trade with higher quality version`);
+              } else {
+                console.log(`⚠️ Filtering duplicate trade (same direction, similar entry)`);
+              }
+            } else {
+              dedupedAlerts.push(alert);
+            }
+          }
+          result.alerts = dedupedAlerts;
+        }
+        
+        const filteredCount = originalCount - result.alerts.length;
+        if (filteredCount > 0) {
+          console.log(`🔍 Filtered ${filteredCount} trades (low R/R or duplicates)`);
+        }
+        
+        // 3. If all trades were filtered, set noTradesReason
+        if (result.alerts.length === 0 && originalCount > 0) {
+          result.marketInsights = result.marketInsights || {};
+          result.marketInsights.noTradesReason = result.marketInsights.noTradesReason || 
+            `${originalCount} potential setup(s) were identified but filtered out due to insufficient Risk/Reward ratio (below 0.75:1) or being duplicate entries. Wait for better market conditions with clearer structure.`;
+        }
       }
 
       // Estimate cost

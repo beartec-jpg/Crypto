@@ -2429,27 +2429,38 @@ export default function CryptoAI() {
                     <CollapsibleContent>
                       <div className="px-4 pb-4 space-y-3">
                         {marketInsights?.summary ? (
-                          <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
+                          <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39] space-y-3">
                             <p className="text-sm text-gray-300 leading-relaxed">{marketInsights.summary}</p>
-                          </div>
-                        ) : tradeAlerts.length > 0 ? (
-                          <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                            <p className="text-sm text-gray-300 leading-relaxed">
-                              Analysis complete for {symbol} on {interval} timeframe. Found {tradeAlerts.length} trade setup{tradeAlerts.length !== 1 ? 's' : ''} with confluence signals.
-                              {tradeAlerts.some(a => a.grade === 'A+' || a.grade === 'A') && ' High-quality setups detected.'}
-                            </p>
+                            {marketInsights.bias && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">Market Bias:</span>
+                                <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                  marketInsights.bias === 'BULLISH' ? 'bg-green-500/20 text-green-400' :
+                                  marketInsights.bias === 'BEARISH' ? 'bg-red-500/20 text-red-400' :
+                                  'bg-gray-500/20 text-gray-400'
+                                }`}>{marketInsights.bias}</span>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="bg-[#0e0e0e] p-4 rounded-lg border border-[#2a2e39]">
-                            <p className="text-sm text-gray-400">Click "Analyze" to generate AI summary.</p>
+                            <p className="text-sm text-gray-400">Click "Analyze" to generate AI market evaluation.</p>
                           </div>
                         )}
                         {marketInsights?.keyLevels && marketInsights.keyLevels.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-2 items-center">
                             <span className="text-xs text-gray-500">Key Levels:</span>
-                            {marketInsights.keyLevels.map((level, i) => (
+                            {marketInsights.keyLevels.map((level: string, i: number) => (
                               <span key={i} className="px-2 py-1 bg-[#2a2e39] text-xs text-[#00c4b4] rounded">{level}</span>
                             ))}
+                          </div>
+                        )}
+                        {marketInsights?.noTradesReason && tradeAlerts.length === 0 && (
+                          <div className="bg-yellow-500/10 border border-yellow-500/30 p-3 rounded-lg">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
+                              <p className="text-xs text-yellow-400">{marketInsights.noTradesReason}</p>
+                            </div>
                           </div>
                         )}
                       </div>
