@@ -5,7 +5,8 @@ import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickData, Histogr
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, TrendingUp, Zap, Loader2, ArrowLeft, Settings, Activity, Info, AlertCircle, Target } from 'lucide-react';
+import { RefreshCw, TrendingUp, Zap, Loader2, ArrowLeft, Settings, Activity, Info, AlertCircle, Target, ChevronDown, ChevronUp } from 'lucide-react';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -187,6 +188,16 @@ export default function CryptoAI() {
   const [macdFast, setMacdFast] = useState(12);
   const [macdSlow, setMacdSlow] = useState(26);
   const [macdSignal, setMacdSignal] = useState(9);
+  
+  // Collapsible state for oscillator sections
+  const [volumeOpen, setVolumeOpen] = useState(true);
+  const [cvdOpen, setCvdOpen] = useState(true);
+  const [rsiOpen, setRsiOpen] = useState(true);
+  const [macdOpen, setMacdOpen] = useState(true);
+  const [obvOpen, setObvOpen] = useState(true);
+  const [mfiOpen, setMfiOpen] = useState(true);
+  const [cciOpen, setCciOpen] = useState(true);
+  const [adxOpen, setAdxOpen] = useState(true);
   const [mfiPeriod, setMfiPeriod] = useState(14);
   const [cciPeriod, setCciPeriod] = useState(20);
   const [adxPeriod, setAdxPeriod] = useState(14);
@@ -2148,80 +2159,152 @@ export default function CryptoAI() {
             </Card>
 
             {/* Volume Chart */}
-            <Card className="bg-slate-800 border-slate-700">
-              <CardHeader>
-                <CardTitle className="text-white text-sm">Volume</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div ref={volumeChartRef} className="w-full" />
-              </CardContent>
-            </Card>
+            <Collapsible open={volumeOpen} onOpenChange={setVolumeOpen}>
+              <Card className="bg-slate-800 border-slate-700">
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-white text-sm">Volume</CardTitle>
+                      {volumeOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                    </div>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent>
+                    <div ref={volumeChartRef} className="w-full" />
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
 
             {/* CVD Chart */}
-            <Card className="bg-slate-800 border-slate-700">
-              <CardHeader>
-                <CardTitle className="text-white text-sm">Cumulative Delta (CVD)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div ref={cvdChartRef} className="w-full" />
-              </CardContent>
-            </Card>
+            <Collapsible open={cvdOpen} onOpenChange={setCvdOpen}>
+              <Card className="bg-slate-800 border-slate-700">
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-white text-sm">Cumulative Delta (CVD)</CardTitle>
+                      {cvdOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                    </div>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent>
+                    <div ref={cvdChartRef} className="w-full" />
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
 
             {/* Oscillators Section */}
             <div className="grid grid-cols-1 gap-4">
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">RSI ({rsiPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={rsiRef} className="w-full" />
-                </CardContent>
-              </Card>
+              <Collapsible open={rsiOpen} onOpenChange={setRsiOpen}>
+                <Card className="bg-slate-800 border-slate-700">
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">RSI ({rsiPeriod})</CardTitle>
+                        {rsiOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      <div ref={rsiRef} className="w-full" />
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
               
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">MACD ({macdFast},{macdSlow},{macdSignal})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={macdRef} className="w-full" />
-                </CardContent>
-              </Card>
+              <Collapsible open={macdOpen} onOpenChange={setMacdOpen}>
+                <Card className="bg-slate-800 border-slate-700">
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">MACD ({macdFast},{macdSlow},{macdSignal})</CardTitle>
+                        {macdOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      <div ref={macdRef} className="w-full" />
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
               
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={obvRef} className="w-full" />
-                </CardContent>
-              </Card>
+              <Collapsible open={obvOpen} onOpenChange={setObvOpen}>
+                <Card className="bg-slate-800 border-slate-700">
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
+                        {obvOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      <div ref={obvRef} className="w-full" />
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
               
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">Money Flow Index ({mfiPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={mfiRef} className="w-full" />
-                </CardContent>
-              </Card>
+              <Collapsible open={mfiOpen} onOpenChange={setMfiOpen}>
+                <Card className="bg-slate-800 border-slate-700">
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">Money Flow Index ({mfiPeriod})</CardTitle>
+                        {mfiOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      <div ref={mfiRef} className="w-full" />
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
               
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">CCI ({cciPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={cciRef} className="w-full" />
-                </CardContent>
-              </Card>
+              <Collapsible open={cciOpen} onOpenChange={setCciOpen}>
+                <Card className="bg-slate-800 border-slate-700">
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">CCI ({cciPeriod})</CardTitle>
+                        {cciOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      <div ref={cciRef} className="w-full" />
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
               
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">ADX ({adxPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={adxRef} className="w-full" />
-                </CardContent>
-              </Card>
+              <Collapsible open={adxOpen} onOpenChange={setAdxOpen}>
+                <Card className="bg-slate-800 border-slate-700">
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">ADX ({adxPeriod})</CardTitle>
+                        {adxOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      <div ref={adxRef} className="w-full" />
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
             </div>
 
             {/* Legend */}
