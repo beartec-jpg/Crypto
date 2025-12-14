@@ -27,6 +27,7 @@ async function fetchBinanceOHLCV(symbol: string, interval: string, limit: number
 }
 
 // Fetch Open Interest from CoinGlass v4 API
+// Using 4h interval to work with Hobbyist plan (>=4h limit)
 async function fetchOpenInterest(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
   if (!apiKey) {
@@ -35,7 +36,8 @@ async function fetchOpenInterest(symbol: string): Promise<any> {
   }
   
   try {
-    const url = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${symbol}&interval=1h&limit=24`;
+    // Use 4h interval (Hobbyist plan only allows >=4h)
+    const url = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${symbol}&interval=4h&limit=24`;
     console.log(`📊 Fetching CoinGlass OI: ${symbol}`);
     
     const response = await fetch(url, {
@@ -48,14 +50,20 @@ async function fetchOpenInterest(symbol: string): Promise<any> {
     }
     
     const data = await response.json();
-    console.log(`📊 CoinGlass OI response: code=${data.code}, data count=${data.data?.length || 0}`);
+    console.log(`📊 CoinGlass OI response: code=${data.code}, msg=${data.msg}, data count=${data.data?.length || 0}`);
     
-    if (data.code !== '0' || !data.data?.length) return null;
+    if (data.code !== '0' || !data.data?.length) {
+      console.log(`⚠️ CoinGlass OI invalid response: ${JSON.stringify(data).substring(0, 200)}`);
+      return null;
+    }
     
+    // Response format: { time, open, high, low, close }
     const history = data.data.map((item: any) => ({
-      timestamp: (item.time || item.t) / 1000,
-      value: parseFloat(item.close || item.c || item.openInterest || 0)
+      timestamp: item.time,
+      value: parseFloat(item.close || item.open || 0)
     }));
+    
+    console.log(`✅ CoinGlass OI parsed: ${history.length} points, latest value: ${history[history.length - 1]?.value}`);
     
     return {
       history,
@@ -70,6 +78,7 @@ async function fetchOpenInterest(symbol: string): Promise<any> {
 }
 
 // Fetch Funding Rate from CoinGlass v4 API
+// Using 8h interval (standard funding interval)
 async function fetchFundingRate(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
   if (!apiKey) {
@@ -78,6 +87,7 @@ async function fetchFundingRate(symbol: string): Promise<any> {
   }
   
   try {
+    // Use 8h interval (standard funding rate interval, works with Hobbyist plan)
     const url = `https://open-api-v4.coinglass.com/api/futures/funding-rate/history?exchange=Binance&symbol=${symbol}&interval=8h&limit=24`;
     console.log(`📊 Fetching CoinGlass Funding: ${symbol}`);
     
@@ -91,22 +101,27 @@ async function fetchFundingRate(symbol: string): Promise<any> {
     }
     
     const data = await response.json();
-    console.log(`📊 CoinGlass Funding response: code=${data.code}, data count=${data.data?.length || 0}`);
+    console.log(`📊 CoinGlass Funding response: code=${data.code}, msg=${data.msg}, data count=${data.data?.length || 0}`);
     
-    if (data.code !== '0' || !data.data?.length) return null;
+    if (data.code !== '0' || !data.data?.length) {
+      console.log(`⚠️ CoinGlass Funding invalid response: ${JSON.stringify(data).substring(0, 200)}`);
+      return null;
+    }
     
+    // Response format: { time, open, high, low, close }
     const history = data.data.map((item: any) => ({
-      timestamp: (item.time || item.t) / 1000,
-      value: parseFloat(item.close || item.c || item.fundingRate || 0)
+      timestamp: item.time,
+      value: parseFloat(item.close || item.open || 0)
     }));
     
     const currentRate = history.length > 0 ? history[history.length - 1].value : 0;
+    console.log(`✅ CoinGlass Funding parsed: ${history.length} points, current rate: ${currentRate}`);
     
     return {
       history,
       current: currentRate,
       rate: currentRate,
-      bias: currentRate > 0.01 ? 'bullish' : currentRate < -0.01 ? 'bearish' : 'neutral'
+      bias: currentRate > 0.0001 ? 'bullish' : currentRate < -0.0001 ? 'bearish' : 'neutral'
     };
   } catch (error) {
     console.warn('Failed to fetch funding rate:', error);
@@ -115,12 +130,14 @@ async function fetchFundingRate(symbol: string): Promise<any> {
 }
 
 // Fetch Long/Short Ratio from CoinGlass v4 API
+// Using 4h interval to work with Hobbyist plan
 async function fetchLongShortRatio(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
-  if (!apiKey) return { current: { ratio: 1.0 }, ratio: 1.0 };
+  if (!apiKey) return { current: { ratio: 1.0 }, ratio: 1.0, history: [] };
   
   try {
-    const url = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol}&interval=1h&limit=24`;
+    // Use 4h interval (Hobbyist plan only allows >=4h)
+    const url = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol}&interval=4h&limit=24`;
     console.log(`📊 Fetching CoinGlass L/S Ratio: ${symbol}`);
     
     const response = await fetch(url, {
@@ -129,24 +146,28 @@ async function fetchLongShortRatio(symbol: string): Promise<any> {
     
     if (!response.ok) {
       console.log(`⚠️ CoinGlass L/S failed: ${response.status}`);
-      return { current: { ratio: 1.0 }, ratio: 1.0 };
+      return { current: { ratio: 1.0 }, ratio: 1.0, history: [] };
     }
     
     const data = await response.json();
-    console.log(`📊 CoinGlass L/S response: code=${data.code}, data count=${data.data?.length || 0}`);
+    console.log(`📊 CoinGlass L/S response: code=${data.code}, msg=${data.msg}, data count=${data.data?.length || 0}`);
     
-    if (data.code !== '0' || !data.data?.length) return { current: { ratio: 1.0 }, ratio: 1.0 };
+    if (data.code !== '0' || !data.data?.length) {
+      console.log(`⚠️ CoinGlass L/S invalid response: ${JSON.stringify(data).substring(0, 200)}`);
+      return { current: { ratio: 1.0 }, ratio: 1.0, history: [] };
+    }
     
     const history = data.data.map((item: any) => {
       const longRate = parseFloat(item.longRate || item.longAccount || 0.5);
       const shortRate = parseFloat(item.shortRate || item.shortAccount || 0.5);
       return {
-        timestamp: (item.time || item.t) / 1000,
+        timestamp: item.time,
         ratio: shortRate > 0 ? longRate / shortRate : 1.0
       };
     });
     
     const currentRatio = history.length > 0 ? history[history.length - 1].ratio : 1.0;
+    console.log(`✅ CoinGlass L/S parsed: ${history.length} points, current ratio: ${currentRatio}`);
     
     return {
       history,
@@ -155,7 +176,7 @@ async function fetchLongShortRatio(symbol: string): Promise<any> {
     };
   } catch (error) {
     console.warn('Failed to fetch L/S ratio:', error);
-    return { current: { ratio: 1.0 }, ratio: 1.0 };
+    return { current: { ratio: 1.0 }, ratio: 1.0, history: [] };
   }
 }
 
@@ -203,13 +224,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       openInterest: openInterest || { history: [], current: null, delta: 0, trend: 'neutral' },
       fundingRate: fundingRate || { history: [], current: null, rate: 0, bias: 'neutral' },
-      longShortRatio: longShortRatio || { current: { ratio: 1.0 }, ratio: 1.0 },
+      longShortRatio: longShortRatio || { current: { ratio: 1.0 }, ratio: 1.0, history: [] },
       symbol,
       interval,
       timestamp: Date.now()
     };
     
-    console.log(`✅ Professional Orderflow result: OI=${result.openInterest.history?.length || 0} points, Funding=${result.fundingRate.history?.length || 0} points`);
+    console.log(`✅ Professional Orderflow result: OI=${result.openInterest.history?.length || 0} points, Funding=${result.fundingRate.history?.length || 0} points, CVD=${result.cvd.history?.length || 0} points`);
     
     res.json(result);
 
