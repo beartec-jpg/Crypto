@@ -4901,15 +4901,18 @@ const aiAnalyze = useMutation({
       }
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (price !== null) {
-        // Always update crosshair position while finger is on screen
-        // The position will be preserved when user lifts finger (param becomes null above)
-        const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
-        lastCrosshairParamRef.current = { 
-          time: param.time as number, 
-          price, 
-          logicalX: logicalX ?? undefined,
-          pointX: param.point.x 
-        };
+        // CRITICAL FIX: When crosshair mode is active, DON'T update the saved position!
+        // The saved position should stay frozen at where the crosshair was when user
+        // finished positioning. Otherwise, the TAP position overwrites it.
+        if (!crosshairModeActiveRef.current) {
+          const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
+          lastCrosshairParamRef.current = { 
+            time: param.time as number, 
+            price, 
+            logicalX: logicalX ?? undefined,
+            pointX: param.point.x 
+          };
+        }
         
         if (isDrawingRef.current) {
           setPreviewPoint({ time: param.time as number, price });
