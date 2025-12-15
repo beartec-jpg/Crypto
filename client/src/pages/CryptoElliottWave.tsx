@@ -5033,7 +5033,36 @@ const aiAnalyze = useMutation({
             // Activate crosshair mode
             crosshairModeActiveRef.current = true;
             ignoreNextClickRef.current = true; // Ignore the click from lifting this activation touch
-            console.log('🎯 Crosshair mode ACTIVATED - swipe to position, tap to place');
+            
+            // CRITICAL FIX: Capture current crosshair position at activation time
+            // This ensures lastCrosshairParamRef has a valid position for the first attempt
+            // Convert touch coordinates to chart time/price
+            const touchX = (window as any).__touchStartX;
+            const touchY = (window as any).__touchStartY;
+            if (touchX !== undefined && touchY !== undefined && chartContainerRef.current) {
+              const containerRect = chartContainerRef.current.getBoundingClientRect();
+              const chartX = touchX - containerRect.left;
+              const chartY = touchY - containerRect.top;
+              
+              // Convert to time/price using chart APIs
+              const timeCoord = chart.timeScale().coordinateToTime(chartX);
+              const priceCoord = candleSeries.coordinateToPrice(chartY);
+              const logicalX = chart.timeScale().coordinateToLogical(chartX);
+              
+              if (timeCoord !== null && priceCoord !== null) {
+                lastCrosshairParamRef.current = {
+                  time: timeCoord as number,
+                  price: priceCoord,
+                  logicalX: logicalX ?? undefined,
+                  pointX: chartX
+                };
+                console.log('🎯 Crosshair mode ACTIVATED with position:', lastCrosshairParamRef.current);
+              } else {
+                console.log('🎯 Crosshair mode ACTIVATED - swipe to position, tap to place');
+              }
+            } else {
+              console.log('🎯 Crosshair mode ACTIVATED - swipe to position, tap to place');
+            }
           }, LONG_PRESS_THRESHOLD);
         }
       }
