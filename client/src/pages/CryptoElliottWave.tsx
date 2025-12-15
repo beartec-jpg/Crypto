@@ -3579,12 +3579,24 @@ const aiAnalyze = useMutation({
     setChartReady(true);
     
     // Emit custom event for drawing tools click handler
+    // IMPORTANT: Check crosshair mode first (matches Indicators page pattern)
     chart.subscribeClick((param) => {
-      if (!param.point || !param.time) return;
-      const price = candleSeries.coordinateToPrice(param.point.y);
-      if (price !== null) {
+      let time: number | undefined;
+      let price: number | null = null;
+      
+      // Use crosshair mode coordinates if active (for precise mobile/touch placement)
+      if (crosshairModeActiveRef.current && lastCrosshairParamRef.current) {
+        time = lastCrosshairParamRef.current.time;
+        price = lastCrosshairParamRef.current.price;
+        // Note: Don't deactivate here - let the wave placement handler do it
+      } else if (param.time && param.point) {
+        time = param.time as number;
+        price = candleSeries.coordinateToPrice(param.point.y);
+      }
+      
+      if (time && price !== null) {
         const event = new CustomEvent('chartClick', { 
-          detail: { time: param.time as number, price }
+          detail: { time, price }
         });
         chartContainerRef.current?.dispatchEvent(event);
       }
