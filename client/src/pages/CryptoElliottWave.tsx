@@ -2533,6 +2533,7 @@ export default function CryptoElliottWave() {
   const timeframeRef = useRef<string>('1d'); // Track timeframe for click handler window sizing
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null); // Store last crosshair position for crosshair-mode clicks
   const crosshairModeActiveRef = useRef<boolean>(false); // Persistent crosshair mode - stays on until tap places point
+  const crosshairPositionLockedRef = useRef<boolean>(false); // Position is locked after user lifts finger (ready for confirming tap)
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null); // Timer for long-press activation
   const ignoreNextClickRef = useRef<boolean>(false); // Ignore the click from lifting the crosshair activation touch
   const markersDebounceRef = useRef<NodeJS.Timeout | null>(null); // Debounce marker updates during zoom
@@ -2734,8 +2735,9 @@ export default function CryptoElliottWave() {
         time = lastCrosshairParamRef.current.time;
         price = lastCrosshairParamRef.current.price;
         console.log('🎯 Drawing tool using crosshair position:', time, price);
-        // Deactivate after use - user can long-press again for next point
+        // Deactivate after use and clear position lock - user can long-press again for next point
         crosshairModeActiveRef.current = false;
+        crosshairPositionLockedRef.current = false;
       }
       
       if (!time || !price) return;
@@ -4851,9 +4853,10 @@ const aiAnalyze = useMutation({
       setCurrentPoints(updatedPoints);
       setPreviewPoint(null); // Clear preview after placing
       
-      // Deactivate crosshair mode after placement
+      // Deactivate crosshair mode and clear position lock after placement
       if (crosshairModeActiveRef.current) {
         crosshairModeActiveRef.current = false;
+        crosshairPositionLockedRef.current = false;
         console.log('🎯 Crosshair mode DEACTIVATED after placement');
       }
     });
@@ -4869,6 +4872,10 @@ const aiAnalyze = useMutation({
         // Don't clear stored crosshair position if in crosshair mode - we need it for the next tap!
         if (!crosshairModeActiveRef.current) {
           lastCrosshairParamRef.current = null;
+        } else if (lastCrosshairParamRef.current) {
+          // User lifted finger while in crosshair mode - LOCK the position for confirming tap
+          crosshairPositionLockedRef.current = true;
+          console.log('🎯 Crosshair position LOCKED for confirming tap');
         }
         if (isDrawingRef.current) {
           setPreviewPoint(null);
@@ -4877,20 +4884,13 @@ const aiAnalyze = useMutation({
       }
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (price !== null) {
-        // CROSSHAIR MODE FIX: When crosshair mode is active, only update position during swipes
-        // (when finger has moved), NOT during quick taps that would overwrite the intended position.
-        // This allows: long-press → swipe to position → tap to confirm placement
-        const touchMoved = (window as any).__touchMoved === true;
-        const touchDuration = Date.now() - touchStartTimeRef.current;
-        const isQuickTap = touchDuration < 400 && !touchMoved;
-        
-        // Skip position update if crosshair mode is active and this is a quick tap
-        // (The tap is for confirming placement, not for repositioning)
-        if (crosshairModeActiveRef.current && isQuickTap && lastCrosshairParamRef.current) {
-          // Keep the existing position - user is tapping to confirm, not to reposition
-          console.log('🎯 Crosshair mode: preserving position during tap');
+        // CROSSHAIR MODE FIX: When position is locked (after user lifted finger), don't update
+        // This prevents the confirming tap from overwriting the intended swipe position
+        if (crosshairModeActiveRef.current && crosshairPositionLockedRef.current) {
+          // Position is locked - user is doing confirming tap, don't overwrite
+          console.log('🎯 Crosshair mode: position locked, ignoring update');
         } else {
-          // Update position (normal operation or swiping to reposition)
+          // Update position (normal operation or actively swiping to reposition)
           const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
           (lastCrosshairParamRef.current as any) = { 
             time: param.time as number, 
@@ -4898,6 +4898,10 @@ const aiAnalyze = useMutation({
             logicalX: logicalX ?? undefined,
             pointX: param.point.x 
           };
+          // If finger is moving (swiping), unlock position so it tracks
+          if ((window as any).__touchMoved) {
+            crosshairPositionLockedRef.current = false;
+          }
         }
         if (isDrawingRef.current) {
           setPreviewPoint({ time: param.time as number, price });
