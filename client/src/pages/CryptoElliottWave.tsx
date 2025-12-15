@@ -3623,7 +3623,9 @@ const aiAnalyze = useMutation({
       
       // CROSSHAIR MODE: Check if persistent crosshair mode is active
       // When active, use stored crosshair position for placement, then deactivate
-      const isCrosshairMode = crosshairModeActiveRef.current && isDrawingRef.current;
+      // Note: Only check crosshairModeActiveRef - the long-press timer already validates
+      // drawing mode before activating crosshair mode, so this is sufficient
+      const isCrosshairMode = crosshairModeActiveRef.current;
       
       // If crosshair mode is active but user is panning (finger moved OR long touch), don't place
       // Only quick taps (< 400ms) should place points in crosshair mode
