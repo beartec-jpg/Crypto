@@ -4893,16 +4893,18 @@ const aiAnalyze = useMutation({
       }
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (price !== null) {
-        // SIMPLIFIED CROSSHAIR MODE: Always update position when crosshair is moving
-        // The position will be used at the moment of the confirming tap
-        // No locking needed - just track the current crosshair position
-        const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
-        (lastCrosshairParamRef.current as any) = { 
-          time: param.time as number, 
-          price, 
-          logicalX: logicalX ?? undefined,
-          pointX: param.point.x 
-        };
+        // CROSSHAIR MODE: Only update position if NOT locked
+        // When position is locked (user lifted finger after long-press), preserve it for confirming tap
+        // This prevents the confirming tap from overwriting the carefully positioned crosshair
+        if (!crosshairPositionLockedRef.current) {
+          const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
+          (lastCrosshairParamRef.current as any) = { 
+            time: param.time as number, 
+            price, 
+            logicalX: logicalX ?? undefined,
+            pointX: param.point.x 
+          };
+        }
         
         if (isDrawingRef.current) {
           setPreviewPoint({ time: param.time as number, price });
