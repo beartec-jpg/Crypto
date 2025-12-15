@@ -264,7 +264,7 @@ export default function CryptoSubscribe() {
                       </div>
                     )}
                     <CardHeader>
-                      <CardTitle className="text-xl">{tier.name}</CardTitle>
+                      <CardTitle className="text-xl text-white">{tier.name}</CardTitle>
                       <CardDescription className="text-gray-400">
                         {tier.description}
                       </CardDescription>
@@ -325,7 +325,7 @@ export default function CryptoSubscribe() {
                     <div className="flex items-center gap-3">
                       <Waves className="w-8 h-8 text-purple-400" />
                       <div>
-                        <CardTitle>Elliott Wave Add-on</CardTitle>
+                        <CardTitle className="text-white">Elliott Wave Add-on</CardTitle>
                         <CardDescription className="text-purple-300">
                           Add Elliott Wave analysis to any tier
                         </CardDescription>
