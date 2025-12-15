@@ -4875,15 +4875,28 @@ const aiAnalyze = useMutation({
       }
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (price !== null) {
-        // Always store crosshair position for potential use by click handler
-        // Also store the logical X coordinate for future projection calculations
-        const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
-        (lastCrosshairParamRef.current as any) = { 
-          time: param.time as number, 
-          price, 
-          logicalX: logicalX ?? undefined,
-          pointX: param.point.x 
-        };
+        // CROSSHAIR MODE FIX: When crosshair mode is active, only update position during swipes
+        // (when finger has moved), NOT during quick taps that would overwrite the intended position.
+        // This allows: long-press → swipe to position → tap to confirm placement
+        const touchMoved = (window as any).__touchMoved === true;
+        const touchDuration = Date.now() - touchStartTimeRef.current;
+        const isQuickTap = touchDuration < 400 && !touchMoved;
+        
+        // Skip position update if crosshair mode is active and this is a quick tap
+        // (The tap is for confirming placement, not for repositioning)
+        if (crosshairModeActiveRef.current && isQuickTap && lastCrosshairParamRef.current) {
+          // Keep the existing position - user is tapping to confirm, not to reposition
+          console.log('🎯 Crosshair mode: preserving position during tap');
+        } else {
+          // Update position (normal operation or swiping to reposition)
+          const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
+          (lastCrosshairParamRef.current as any) = { 
+            time: param.time as number, 
+            price, 
+            logicalX: logicalX ?? undefined,
+            pointX: param.point.x 
+          };
+        }
         if (isDrawingRef.current) {
           setPreviewPoint({ time: param.time as number, price });
         }
