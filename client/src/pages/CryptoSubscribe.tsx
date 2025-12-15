@@ -157,8 +157,7 @@ export default function CryptoSubscribe() {
       features: [
         'View all chart pages',
         'All indicators & oscillators',
-        'Market AI review (Indicator page)',
-        'No AI trade analysis',
+        'No AI features',
         'No Elliott Wave access',
       ],
       current: currentTier === 'free',
