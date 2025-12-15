@@ -2534,6 +2534,7 @@ export default function CryptoElliottWave() {
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null); // Store last crosshair position for crosshair-mode clicks
   const crosshairModeActiveRef = useRef<boolean>(false); // Persistent crosshair mode - stays on until tap places point
   const crosshairPositionLockedRef = useRef<boolean>(false); // Position is locked after user lifts finger (ready for confirming tap)
+  const capturedCrosshairPositionRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null); // CAPTURED position when finger lifts - used for confirming tap
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null); // Timer for long-press activation
   const ignoreNextClickRef = useRef<boolean>(false); // Ignore the click from lifting the crosshair activation touch
   const markersDebounceRef = useRef<NodeJS.Timeout | null>(null); // Debounce marker updates during zoom
@@ -3660,12 +3661,18 @@ const aiAnalyze = useMutation({
       let clickedPrice: number | null = candleSeries.coordinateToPrice(param.point.y);
       
       if (isCrosshairMode) {
-        // Use stored crosshair position instead of touch point
-        // CRITICAL: Check if we have a stored position - if not, use the click position but still honor crosshair mode
-        if (lastCrosshairParamRef.current) {
+        // Use CAPTURED crosshair position instead of touch point
+        // The captured position was saved when user lifted their finger after positioning
+        // This ensures the confirming tap doesn't overwrite the carefully positioned crosshair
+        if (capturedCrosshairPositionRef.current) {
+          effectiveTime = capturedCrosshairPositionRef.current.time;
+          clickedPrice = capturedCrosshairPositionRef.current.price;
+          console.log('📍 CROSSHAIR MODE: Using CAPTURED position at time:', effectiveTime, 'price:', clickedPrice);
+        } else if (lastCrosshairParamRef.current) {
+          // Fallback to lastCrosshairParamRef if no captured position (e.g., first activation)
           effectiveTime = lastCrosshairParamRef.current.time;
           clickedPrice = lastCrosshairParamRef.current.price;
-          console.log('📍 CROSSHAIR MODE: Using stored crosshair position at time:', effectiveTime, 'price:', clickedPrice);
+          console.log('📍 CROSSHAIR MODE: Using lastCrosshairParam (no captured) at time:', effectiveTime, 'price:', clickedPrice);
         } else {
           // Crosshair mode active but no stored position yet - use click position as fallback
           console.log('📍 CROSSHAIR MODE: No stored position, using click position as fallback');
@@ -3712,8 +3719,9 @@ const aiAnalyze = useMutation({
       const lastCandle = candlesRef.current[candlesRef.current.length - 1];
       const timeScale = chart.timeScale();
       const lastCandleX = timeScale.timeToCoordinate(lastCandle.time as any);
-      const effectivePointX = isCrosshairMode && lastCrosshairParamRef.current?.pointX !== undefined
-        ? lastCrosshairParamRef.current.pointX
+      // Use captured position's pointX in crosshair mode (for detecting future clicks)
+      const effectivePointX = isCrosshairMode 
+        ? (capturedCrosshairPositionRef.current?.pointX ?? lastCrosshairParamRef.current?.pointX ?? param.point.x)
         : param.point.x;
       const isClickBeyondLastCandle = lastCandleX !== null && effectivePointX > lastCandleX + 10; // 10px buffer
       
@@ -4863,6 +4871,7 @@ const aiAnalyze = useMutation({
       if (crosshairModeActiveRef.current) {
         crosshairModeActiveRef.current = false;
         crosshairPositionLockedRef.current = false;
+        capturedCrosshairPositionRef.current = null; // Clear captured position
         console.log('🎯 Crosshair mode DEACTIVATED after placement');
       }
     });
@@ -5102,11 +5111,13 @@ const aiAnalyze = useMutation({
         longPressTimerRef.current = null;
       }
       
-      // CRITICAL: If crosshair mode is active and we have a position, ensure it's locked
-      // This handles the case where the long-press completes and the finger lifts
+      // CRITICAL: If crosshair mode is active and we have a position, CAPTURE it
+      // This saves the position at the moment the user lifts their finger
+      // The captured position won't be overwritten by the confirming tap's crosshair move
       if (crosshairModeActiveRef.current && lastCrosshairParamRef.current) {
+        capturedCrosshairPositionRef.current = { ...lastCrosshairParamRef.current };
         crosshairPositionLockedRef.current = true;
-        console.log('🎯 TouchEnd: Position locked for confirming tap');
+        console.log('🎯 TouchEnd: Position CAPTURED for confirming tap:', capturedCrosshairPositionRef.current);
       }
     };
     
