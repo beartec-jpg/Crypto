@@ -184,9 +184,9 @@ export default function CryptoSubscribe() {
       description: 'Professional trading suite',
       features: [
         'Everything in Intermediate',
-        '12 daily AI trade analyses',
-        'Auto-refresh every 4 hours',
-        'Manual analysis + auto-refresh',
+        'AI Trade Analysis: 4h auto-refresh',
+        '12 manual AI triggers per day',
+        'AI trade notifications',
         'Priority notifications',
       ],
       current: currentTier === 'pro',
@@ -198,8 +198,8 @@ export default function CryptoSubscribe() {
       description: 'Complete trading arsenal',
       features: [
         'Everything in Pro',
-        '24 daily AI trade analyses',
-        'Auto-refresh every 1 hour',
+        'AI Trade Analysis: 1h auto-refresh',
+        '24 manual AI triggers per day',
         'Full Elliott Wave analysis',
         'Custom indicator requests',
         'Priority support',
