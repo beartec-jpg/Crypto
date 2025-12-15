@@ -4893,10 +4893,13 @@ const aiAnalyze = useMutation({
       }
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (price !== null) {
-        // CROSSHAIR MODE: Only update position if NOT locked
-        // When position is locked (user lifted finger after long-press), preserve it for confirming tap
-        // This prevents the confirming tap from overwriting the carefully positioned crosshair
-        if (!crosshairPositionLockedRef.current) {
+        // CROSSHAIR MODE FIX: Don't update position if crosshair mode is active AND position is locked
+        // When user has positioned the crosshair and lifted finger (locked), preserve that position
+        // The confirming tap should NOT overwrite the carefully positioned crosshair
+        // This matches the Indicators page behavior where crosshair position is preserved
+        const shouldPreservePosition = crosshairModeActiveRef.current && crosshairPositionLockedRef.current;
+        
+        if (!shouldPreservePosition) {
           const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
           (lastCrosshairParamRef.current as any) = { 
             time: param.time as number, 
@@ -4904,6 +4907,8 @@ const aiAnalyze = useMutation({
             logicalX: logicalX ?? undefined,
             pointX: param.point.x 
           };
+        } else {
+          console.log('🎯 Crosshair position PRESERVED (locked) - ignoring tap movement');
         }
         
         if (isDrawingRef.current) {
