@@ -51,7 +51,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const crosshairPointRef = useRef<GesturePoint | null>(null);
   const savedSwipePointRef = useRef<GesturePoint | null>(null);
-  const suppressNextClickRef = useRef<boolean>(false); // Prevent chart click after touch commit
+  const suppressNextClickRef = useRef<boolean>(false);
   
   // Chart refs
   const chartRef = useRef<IChartApi | null>(null);
@@ -84,6 +84,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     gestureStateRef.current = 'idle';
     touchStateRef.current = null;
     savedSwipePointRef.current = null;
+    crosshairPointRef.current = null;
   }, [clearLongPressTimer]);
   
   // Get current crosshair point
@@ -100,7 +101,6 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const commitPoint = useCallback(() => {
     const point = getCrosshairPoint();
     if (point) {
-      // Set flag to suppress the chart click that will fire after this touch event
       suppressNextClickRef.current = true;
       onPointCommit(point);
     }
@@ -117,22 +117,25 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     candleSeriesRef.current = candleSeries;
     containerRef.current = container;
     
-    // Subscribe to crosshair move to track position
-    const crosshairHandler = (param: any) => {
-      if (param.time && param.point) {
-        const price = candleSeries.coordinateToPrice(param.point.y);
-        if (price !== null) {
-          crosshairPointRef.current = {
-            time: param.time as number,
-            price
-          };
-        }
-      }
+    // Helper to convert touch to chart point and store it
+    const updateCrosshairFromTouch = (clientX: number, clientY: number): GesturePoint | null => {
+      const rect = container.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      
+      const timeScale = chart.timeScale();
+      const time = timeScale.coordinateToTime(x);
+      const price = candleSeries.coordinateToPrice(y);
+      
+      if (time === null || price === null) return null;
+      
+      const point = { time: time as number, price };
+      crosshairPointRef.current = point;
+      return point;
     };
-    chart.subscribeCrosshairMove(crosshairHandler);
     
     // Handle chart click - this fires for both mouse and touch
-    const clickHandler = (param: any) => {
+    const clickHandler = (_param: any) => {
       if (!enabled) return;
       
       // Skip if this click should be suppressed (fired after touch commit)
@@ -142,18 +145,17 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       }
       
       // Only process clicks when in crosshair mode
-      // User must long-press to activate crosshair mode first, then tap to commit
       if (gestureStateRef.current === 'crosshairActive') {
         const point = getCrosshairPoint();
         if (point) {
-          suppressNextClickRef.current = true; // Prevent any follow-up clicks
+          suppressNextClickRef.current = true;
           onPointCommit(point);
         }
         resetState();
         return;
       }
       
-      // Regular clicks do nothing - user must activate crosshair mode first
+      // Regular clicks do nothing - user must activate crosshair mode first via long-press
     };
     chart.subscribeClick(clickHandler);
     
@@ -175,9 +177,16 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       // Start long press timer
       clearLongPressTimer();
       longPressTimerRef.current = setTimeout(() => {
-        if (gestureStateRef.current === 'touching') {
+        if (gestureStateRef.current === 'touching' && touchStateRef.current) {
+          // Activate crosshair mode and calculate initial point from touch position
+          const point = updateCrosshairFromTouch(
+            touchStateRef.current.currentX,
+            touchStateRef.current.currentY
+          );
+          if (point) {
+            savedSwipePointRef.current = point;
+          }
           setCrosshairMode(true);
-          savedSwipePointRef.current = null;
         }
       }, GESTURE_CONFIG.LONG_PRESS_MIN);
     };
@@ -202,7 +211,14 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
         clearLongPressTimer();
       }
       
-      // In crosshair mode, crosshair position is tracked by subscribeCrosshairMove
+      // In crosshair mode, actively update the crosshair position from touch
+      if (gestureStateRef.current === 'crosshairActive') {
+        const point = updateCrosshairFromTouch(touch.clientX, touch.clientY);
+        if (point && distance >= GESTURE_CONFIG.SWIPE_MIN_MOVEMENT) {
+          // Save the swiped position
+          savedSwipePointRef.current = point;
+        }
+      }
     };
     
     // Touch end handler
@@ -223,19 +239,14 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       // Determine gesture type
       const isTap = duration < GESTURE_CONFIG.TAP_MAX_DURATION && 
                     distance < GESTURE_CONFIG.TAP_MAX_MOVEMENT;
-      const isSwipe = distance >= GESTURE_CONFIG.SWIPE_MIN_MOVEMENT;
       
       if (gestureStateRef.current === 'crosshairActive') {
         if (isTap) {
           // Tap in crosshair mode commits the point
+          suppressNextClickRef.current = true;
           commitPoint();
-        } else if (isSwipe) {
-          // Swipe in crosshair mode saves the current position
-          if (crosshairPointRef.current) {
-            savedSwipePointRef.current = { ...crosshairPointRef.current };
-          }
         }
-        // Stay in crosshair mode until tap commits
+        // If not a tap, stay in crosshair mode - user can keep adjusting
       } else {
         // Not in crosshair mode - reset touch state
         touchStateRef.current = null;
@@ -263,7 +274,6 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     
     // Store cleanup functions
     cleanupFnsRef.current = [
-      () => chart.unsubscribeCrosshairMove(crosshairHandler),
       () => chart.unsubscribeClick(clickHandler),
       () => container.removeEventListener('touchstart', handleTouchStart),
       () => container.removeEventListener('touchmove', handleTouchMove),
