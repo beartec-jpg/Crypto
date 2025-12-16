@@ -41,23 +41,16 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const { enabled, data, onPointCommit, onPreviewPoint, onCrosshairModeChange } = options;
 
   const enabledRef = useRef(enabled);
-  const dataMapRef = useRef<Map<Time, BarData>>(new Map());
+  const dataRef = useRef<BarData[]>(data);
   const onPointCommitRef = useRef(onPointCommit);
   const onPreviewPointRef = useRef(onPreviewPoint);
   const onCrosshairModeChangeRef = useRef(onCrosshairModeChange);
 
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+  useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { onPointCommitRef.current = onPointCommit; }, [onPointCommit]);
   useEffect(() => { onPreviewPointRef.current = onPreviewPoint; }, [onPreviewPoint]);
   useEffect(() => { onCrosshairModeChangeRef.current = onCrosshairModeChange; }, [onCrosshairModeChange]);
-
-  useEffect(() => {
-    const map = new Map<Time, BarData>();
-    data.forEach((bar) => {
-      if (bar.time !== undefined) map.set(bar.time, bar);
-    });
-    dataMapRef.current = map;
-  }, [data]);
 
   const isPreciseModeRef = useRef<boolean>(false);
   const currentPreviewRef = useRef<GesturePoint | null>(null);
@@ -85,24 +78,28 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const getCrosshairPoint = useCallback(() => currentPreviewRef.current, []);
   const isCrosshairModeActive = useCallback(() => isPreciseModeRef.current, []);
 
+  const getLocalCoords = (clientX: number, clientY: number) => {
+    if (!chartElementRef.current) return null;
+    const rect = chartElementRef.current.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
+
+  const getBarAtLogical = (logical: number): BarData | null => {
+    const bars = dataRef.current;
+    const idx = Math.round(logical);
+    if (idx < 0 || idx >= bars.length) return null;
+    return bars[idx];
+  };
+
   const calculateMagnetPoint = useCallback((localX: number, localY: number): GesturePoint | null => {
     if (!chartRef.current || !candleSeriesRef.current) return null;
 
     const timeScale = chartRef.current.timeScale();
 
-    // Interpolated time for exact alignment under crosshair (smooth horizontal follow)
-    const interpolatedTime = timeScale.coordinateToTime(localX);
-    if (interpolatedTime === null) return null;
-
-    // Nearest bar for high/low price snap
     const logical = timeScale.coordinateToLogical(localX);
     if (logical === null) return null;
 
-    const snappedLogical = Math.round(logical);
-    const barTime = timeScale.logicalToTime(snappedLogical);
-    if (barTime === null) return null;
-
-    const bar = dataMapRef.current.get(barTime);
+    const bar = getBarAtLogical(logical);
     if (!bar) return null;
 
     const highCoord = candleSeriesRef.current.priceToCoordinate(bar.high);
@@ -114,14 +111,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
     const price = distH <= distL ? bar.high : bar.low;
 
-    return { time: interpolatedTime, price };
+    return { time: bar.time, price };
   }, []);
-
-  const getLocalCoords = (clientX: number, clientY: number) => {
-    if (!chartElementRef.current) return null;
-    const rect = chartElementRef.current.getBoundingClientRect();
-    return { x: clientX - rect.left, y: clientY - rect.top };
-  };
 
   const enterPreciseMode = useCallback(() => {
     if (!chartRef.current || !pointerStartRef.current || !chartElementRef.current) return;
@@ -129,14 +120,12 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     isPreciseModeRef.current = true;
     onCrosshairModeChangeRef.current?.(true);
 
-    // Capture pointer for reliable drag events
     try {
       chartElementRef.current.setPointerCapture(pointerStartRef.current.id);
     } catch (e) {
       console.warn('[Gesture] Pointer capture failed:', e);
     }
 
-    // Save and disable chart scrolling
     const currentOptions = chartRef.current.options();
     const currentHS = (currentOptions as any).handleScroll ?? {};
     savedHandleScrollRef.current = {
@@ -144,10 +133,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       vertTouchDrag: currentHS.vertTouchDrag,
     };
 
-    // Save current crosshair style
     savedCrosshairStyleRef.current = currentOptions.crosshair ?? {};
 
-    // Apply precise mode options: lock scroll + visual feedback
     chartRef.current.applyOptions({
       handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
       crosshair: {
@@ -157,7 +144,6 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       },
     });
 
-    // Set initial preview point immediately
     const rect = chartElementRef.current.getBoundingClientRect();
     const localX = pointerStartRef.current.x - rect.left;
     const localY = pointerStartRef.current.y - rect.top;
@@ -175,19 +161,16 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     currentPreviewRef.current = null;
     onPreviewPointRef.current?.(null);
 
-    // Restore scroll
     if (savedHandleScrollRef.current) {
       chartRef.current.applyOptions({ handleScroll: savedHandleScrollRef.current });
       savedHandleScrollRef.current = null;
     }
 
-    // Restore crosshair style
     if (savedCrosshairStyleRef.current) {
       chartRef.current.applyOptions({ crosshair: savedCrosshairStyleRef.current });
       savedCrosshairStyleRef.current = null;
     }
 
-    // Release pointer capture
     if (chartElementRef.current && pointerStartRef.current) {
       try {
         if (chartElementRef.current.hasPointerCapture(pointerStartRef.current.id)) {
@@ -232,14 +215,13 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     if (logical === null) return;
 
     const center = Math.round(logical);
+    const bars = dataRef.current;
 
     const windowBars: BarData[] = [];
     for (let i = -radius; i <= radius; i++) {
-      const logi = center + i;
-      const t = chartRef.current.timeScale().logicalToTime(logi);
-      if (t !== null) {
-        const b = dataMapRef.current.get(t);
-        if (b) windowBars.push(b);
+      const idx = center + i;
+      if (idx >= 0 && idx < bars.length) {
+        windowBars.push(bars[idx]);
       }
     }
 
@@ -272,6 +254,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       ? { time: maxHighTime, price: maxHigh }
       : { time: minLowTime, price: minLow };
 
+    console.log('[Gesture] Quick tap committed:', point);
     onPointCommitRef.current(point);
   };
 
@@ -286,6 +269,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       return;
     }
 
+    console.log('[Gesture] Attaching to chart element');
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     chartElementRef.current = chartElement;
@@ -295,8 +279,10 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     });
 
     const handlePointerDown = (e: PointerEvent) => {
+      console.log('[Gesture] PointerDown RAW - enabled:', enabledRef.current, 'isPrimary:', e.isPrimary);
       if (!enabledRef.current || !e.isPrimary) return;
 
+      console.log('[Gesture] PointerDown PASSED -');
       pointerStartRef.current = {
         x: e.clientX,
         y: e.clientY,
@@ -305,7 +291,10 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       };
 
       if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
-      longPressTimeoutRef.current = setTimeout(enterPreciseMode, GESTURE_CONFIG.LONG_PRESS_MS);
+      longPressTimeoutRef.current = setTimeout(() => {
+        console.log('[Gesture] Long press triggered');
+        enterPreciseMode();
+      }, GESTURE_CONFIG.LONG_PRESS_MS);
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -332,6 +321,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const handlePointerUp = (e: PointerEvent) => {
       if (!e.isPrimary) return;
 
+      console.log('[Gesture] PointerUp - isPreciseMode:', isPreciseModeRef.current);
+
       if (longPressTimeoutRef.current) {
         clearTimeout(longPressTimeoutRef.current);
         longPressTimeoutRef.current = null;
@@ -339,6 +330,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
       if (isPreciseModeRef.current) {
         if (currentPreviewRef.current) {
+          console.log('[Gesture] Precise mode commit:', currentPreviewRef.current);
           onPointCommitRef.current(currentPreviewRef.current);
         }
         exitPreciseMode();
@@ -346,6 +338,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
         const elapsed = Date.now() - pointerStartRef.current.time;
         const dist = Math.hypot(e.clientX - pointerStartRef.current.x, e.clientY - pointerStartRef.current.y);
 
+        console.log('[Gesture] Tap check - elapsed:', elapsed, 'dist:', dist);
         if (elapsed < GESTURE_CONFIG.TAP_MAX_MS && dist < GESTURE_CONFIG.MOVE_THRESHOLD_PX) {
           commitQuickTap(e.clientX, e.clientY);
         }
@@ -373,6 +366,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       () => chartElement.removeEventListener('pointercancel', handlePointerCancel),
       () => chartElement.removeEventListener('pointerleave', handlePointerCancel),
     ];
+
+    console.log('[Gesture] Attachment complete');
   }, [enterPreciseMode, exitPreciseMode]);
 
   const detachFromChart = useCallback(() => {
