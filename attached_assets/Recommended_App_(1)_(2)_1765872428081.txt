@@ -1,0 +1,156 @@
+Recommended Approach
+Use CrosshairMode.Magnet globally so points always snap to real data prices/times (more useful for trading charts).
+Use setMarkers on your main series to drop visible points (simple, built-in, no need for extra series or canvas overlay).
+Handle touch events directly on the chart container.
+Detect long press with a timer + move threshold.
+In precise mode, temporarily disable horizontal touch dragging so the chart doesn't pan while the user adjusts the crosshair.
+Place the marker only on touchend in precise mode (using the latest crosshair data).
+Let quick taps use the built-in subscribeClick handler (it receives the same snapped data).
+
+
+import { createChart, CrosshairMode, IChartApi, ISeriesApi, LineStyle } from 'lightweight-charts';
+
+const container = document.getElementById('chart-container'); // your div
+
+const chart: IChartApi = createChart(container, {
+  width: container.clientWidth,
+  height: 400,
+  crosshair: {
+    mode: CrosshairMode.Magnet, // always snap to real OHLC/close for precise trading points
+  },
+  // your other options...
+});
+
+const mainSeries: ISeriesApi<'Candlestick' | 'Line'> = chart.addCandlestickSeries(); // or addLineSeries()
+// load your data...
+
+// Marker storage
+let markers: any[] = [];
+mainSeries.setMarkers(markers);
+
+function addMarker(time: any) {
+  markers = [
+    ...markers,
+    {
+      time,
+      position: 'aboveBar' as const, // or 'belowBar' / 'inBar'
+      shape: 'circle' as const,
+      color: 'rgba(255, 0, 0, 0.8)',
+      size: 8,
+    },
+  ];
+  mainSeries.setMarkers(markers);
+}
+
+// Track current crosshair position for precise mode
+let currentCrosshair: { time: any; price: number } | null = null;
+
+chart.subscribeCrosshairMove((param) => {
+  if (param.time && param.seriesPrices?.has(mainSeries)) {
+    currentCrosshair = {
+      time: param.time,
+      price: param.seriesPrices.get(mainSeries) as number,
+    };
+  } else {
+    currentCrosshair = null;
+  }
+});
+
+// Quick tap → immediate drop (uses magnet snap)
+chart.subscribeClick((param) => {
+  if (param.time && param.seriesPrices?.has(mainSeries)) {
+    addMarker(param.time);
+  }
+});
+
+// Touch handling variables
+let touchTimeout: number | null = null;
+let startPos: { x: number; y: number } | null = null;
+let startTime: number = 0;
+let isPreciseMode = false;
+let savedHandleScroll: { horzTouchDrag?: boolean; vertTouchDrag?: boolean } | null = null;
+
+const LONG_PRESS_MS = 500;
+const MOVE_THRESHOLD_PX = 12;
+
+function enterPreciseMode() {
+  isPreciseMode = true;
+
+  // Save original settings and disable panning so crosshair can move freely
+  const currentHS = chart.options().handleScroll ?? {};
+  savedHandleScroll = {
+    horzTouchDrag: currentHS.horzTouchDrag,
+    vertTouchDrag: currentHS.vertTouchDrag,
+  };
+
+  chart.applyOptions({
+    handleScroll: {
+      horzTouchDrag: false,
+      vertTouchDrag: false,
+    },
+  });
+
+  // Optional visual feedback
+  // chart.applyOptions({ crosshair: { vertLine: { color: '#FF0000', width: 2 } } });
+}
+
+function exitPreciseMode() {
+  isPreciseMode = false;
+  if (savedHandleScroll) {
+    chart.applyOptions({ handleScroll: savedHandleScroll });
+    savedHandleScroll = null;
+  }
+}
+
+// Touch event listeners
+container.addEventListener('touchstart', (e) => {
+  if (e.touches.length !== 1) return;
+  const touch = e.touches[0];
+  startPos = { x: touch.clientX, y: touch.clientY };
+  startTime = Date.now();
+
+  if (touchTimeout) clearTimeout(touchTimeout);
+  touchTimeout = window.setTimeout(enterPreciseMode, LONG_PRESS_MS);
+}, { passive: true });
+
+container.addEventListener('touchmove', (e) => {
+  if (!startPos || e.touches.length !== 1) return;
+
+  const touch = e.touches[0];
+  const dist = Math.hypot(touch.clientX - startPos.x, touch.clientY - startPos.y);
+
+  // Cancel long-press if user starts dragging early (allow normal chart pan)
+  if (!isPreciseMode && dist > MOVE_THRESHOLD_PX) {
+    if (touchTimeout) clearTimeout(touchTimeout);
+  }
+
+  // In precise mode we already disabled panning, so no need to preventDefault
+}, { passive: true });
+
+container.addEventListener('touchend', (e) => {
+  if (touchTimeout) clearTimeout(touchTimeout);
+
+  if (isPreciseMode && currentCrosshair) {
+    addMarker(currentCrosshair.time);
+    exitPreciseMode();
+  }
+
+  // Reset for next touch
+  startPos = null;
+  isPreciseMode = false;
+}, { passive: true });
+
+// Optional: handle touchcancel (e.g. system interrupt)
+container.addEventListener('touchcancel', () => {
+  if (touchTimeout) clearTimeout(touchTimeout);
+  exitPreciseMode();
+  startPos = null;
+});
+
+
+Why This Fixes Your Issues
+Drops at initial position in crosshair mode → Fixed: precise mode only places on touchend using the final crosshair data.
+Deactivates without dropping → Fixed: mode only exits after successful drop or cancel.
+Random drops → Fixed: clear separation of gestures with timer + move threshold; quick taps use reliable built-in click handler.
+Crosshair drag without chart panning → Fixed: temporarily disables horzTouchDrag.
+Adjust LONG_PRESS_MS, MOVE_THRESHOLD_PX, marker style, or position as needed. If you want to support mouse (desktop) the same way, add similar mousedown/mousemove/mouseup logic. This pattern is widely used in trading apps for precise touch placement.
