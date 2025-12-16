@@ -379,21 +379,23 @@ export default function CryptoIndicators() {
   
   // Drawing tools state
   type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | null;
-  const [drawingMode, setDrawingMode] = useState<'off' | 'draw' | 'select'>('off');
+  const [drawingMode, setDrawingMode] = useState<'off' | 'draw' | 'select'>('draw'); // Draw mode active by default
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [drawings, setDrawings] = useState<any[]>([]);
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
-  const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [viewportVersion, setViewportVersion] = useState(0); // Force re-render on pan/zoom
   
   // Crosshair mode refs for precise drawing tool placement
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null);
   const crosshairModeActiveRef = useRef<boolean>(false);
   const drawingModeRef = useRef(drawingMode);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Touch gesture tracking for drawing tools
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const swipeSavedPointRef = useRef<{ time: number; price: number } | null>(null);
   
   // Sync drawingModeRef with state
   useEffect(() => {
@@ -6266,35 +6268,101 @@ export default function CryptoIndicators() {
         }
       });
       
-      // Add long-press handlers for touch devices to activate crosshair mode
-      const handleTouchStart = () => {
-        // Only activate for drawing mode
+      // Touch gesture handling for drawing tools:
+      // 1. Draw mode is active by default
+      // 2. Long press (>=500ms) activates crosshair mode
+      // 3. Swipe gestures move crosshair - landing point is saved
+      // 4. Each swipe replaces the previous saved point
+      // 5. Quick click (<500ms with small movement) commits the point
+      
+      const CLICK_DURATION_THRESHOLD = 500; // ms - clicks must be under this
+      const MOVEMENT_THRESHOLD = 15; // pixels - clicks must move less than this
+      
+      const handleTouchStart = (e: TouchEvent) => {
+        const touch = e.touches[0];
+        touchStartRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          time: Date.now()
+        };
+        
+        // Start long press timer for crosshair mode activation
         if (drawingModeRef.current === 'draw' && !crosshairModeActiveRef.current) {
           longPressTimerRef.current = setTimeout(() => {
             crosshairModeActiveRef.current = true;
-            // Visual feedback - the drawing will be placed at crosshair position on next tap
-          }, 500);
+            // Clear any previously saved swipe point when entering crosshair mode
+            swipeSavedPointRef.current = null;
+          }, CLICK_DURATION_THRESHOLD);
         }
       };
       
-      const handleTouchEnd = () => {
+      const handleTouchMove = (e: TouchEvent) => {
+        if (!touchStartRef.current) return;
+        
+        const touch = e.touches[0];
+        const dx = touch.clientX - touchStartRef.current.x;
+        const dy = touch.clientY - touchStartRef.current.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Cancel long press if user moves beyond threshold (they're swiping/panning)
+        if (distance > MOVEMENT_THRESHOLD && longPressTimerRef.current && !crosshairModeActiveRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+        
+        // If in crosshair mode, the chart's crosshair move handler updates lastCrosshairParamRef
+        // On swipe end, we'll save that position
+      };
+      
+      const handleTouchEnd = (e: TouchEvent) => {
+        // Clear long press timer
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
         }
-      };
-      
-      const handleTouchMove = () => {
-        // Cancel long press if user moves (they're panning)
-        if (longPressTimerRef.current && !crosshairModeActiveRef.current) {
-          clearTimeout(longPressTimerRef.current);
-          longPressTimerRef.current = null;
+        
+        if (!touchStartRef.current) return;
+        
+        const touchEnd = e.changedTouches[0];
+        const dx = touchEnd.clientX - touchStartRef.current.x;
+        const dy = touchEnd.clientY - touchStartRef.current.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const duration = Date.now() - touchStartRef.current.time;
+        
+        // Check if this is a click (short duration, small movement)
+        const isClick = duration < CLICK_DURATION_THRESHOLD && distance < MOVEMENT_THRESHOLD;
+        
+        if (crosshairModeActiveRef.current) {
+          if (isClick) {
+            // Quick click in crosshair mode - use the saved swipe point or current crosshair position
+            const pointToUse = swipeSavedPointRef.current || lastCrosshairParamRef.current;
+            if (pointToUse) {
+              // Dispatch chart click event to commit the point
+              const event = new CustomEvent('chartClick', { 
+                detail: { time: pointToUse.time, price: pointToUse.price } 
+              });
+              container.dispatchEvent(event);
+            }
+            // Exit crosshair mode after committing
+            crosshairModeActiveRef.current = false;
+            swipeSavedPointRef.current = null;
+          } else if (distance >= MOVEMENT_THRESHOLD) {
+            // This is a swipe in crosshair mode - save the landing point (replace previous)
+            if (lastCrosshairParamRef.current) {
+              swipeSavedPointRef.current = {
+                time: lastCrosshairParamRef.current.time,
+                price: lastCrosshairParamRef.current.price
+              };
+            }
+          }
         }
+        
+        touchStartRef.current = null;
       };
       
-      container.addEventListener('touchstart', handleTouchStart);
+      container.addEventListener('touchstart', handleTouchStart, { passive: true });
+      container.addEventListener('touchmove', handleTouchMove, { passive: true });
       container.addEventListener('touchend', handleTouchEnd);
-      container.addEventListener('touchmove', handleTouchMove);
     }, 100);
 
     const handleResize = () => {
