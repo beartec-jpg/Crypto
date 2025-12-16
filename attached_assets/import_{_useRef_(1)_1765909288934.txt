@@ -1,14 +1,15 @@
 import { useRef, useCallback, useEffect, useMemo } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
-import { CrosshairMode } from 'lightweight-charts';
+import { CrosshairMode } from 'lightweight-charts'; // Add this import
 
+// Industry-standard gesture tolerances
 const GESTURE_CONFIG = {
   LONG_PRESS_MS: 500,
   MOVE_THRESHOLD_PX: 12,
 };
 
 interface GesturePoint {
-  time: any;
+  time: any; // Keep as any to match Lightweight Charts Time type
   price: number;
 }
 
@@ -64,7 +65,6 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
   const enterPreciseMode = useCallback(() => {
     if (!chartRef.current) return;
-    console.log('[Gesture] Entering precise mode');
     isPreciseModeRef.current = true;
     onCrosshairModeChangeRef.current?.(true);
 
@@ -76,12 +76,13 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
     chartRef.current.applyOptions({
       handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
+      // Optional visual feedback
+      // crosshair: { vertLine: { color: '#FF0000', width: 2 }, horzLine: { color: '#FF0000', width: 2 } },
     });
   }, []);
 
   const exitPreciseMode = useCallback(() => {
     if (!chartRef.current || !savedHandleScrollRef.current) return;
-    console.log('[Gesture] Exiting precise mode');
     isPreciseModeRef.current = false;
     onCrosshairModeChangeRef.current?.(false);
 
@@ -100,54 +101,41 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       return;
     }
 
-    console.log('[Gesture] Attaching to chart element');
-    
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     chartElementRef.current = chartElement;
 
+    // Force Magnet mode for snapping
     chart.applyOptions({
       crosshair: { mode: CrosshairMode.Magnet },
     });
 
-    chart.subscribeCrosshairMove((param) => {
-      if (!enabledRef.current || param.point === undefined || !param.time) {
+    // Track live snapped crosshair position
+    const crosshairUnsub = chart.subscribeCrosshairMove((param) => {
+      if (!enabledRef.current || param.point === undefined || !param.time || !param.seriesPrices?.has(candleSeries)) {
         currentCrosshairRef.current = null;
         return;
       }
-      const seriesData = param.seriesData?.get(candleSeries) as { close?: number } | number | undefined;
-      const price = typeof seriesData === 'number' ? seriesData : seriesData?.close;
-      if (price !== undefined) {
-        currentCrosshairRef.current = { time: param.time, price };
-      } else {
-        currentCrosshairRef.current = null;
-      }
+      const price = param.seriesPrices.get(candleSeries) as number;
+      currentCrosshairRef.current = { time: param.time, price };
     });
 
-    chart.subscribeClick((param) => {
-      console.log('[Gesture] Click event:', { enabled: enabledRef.current, isPreciseMode: isPreciseModeRef.current, hasPoint: param.point !== undefined, hasTime: !!param.time });
+    // Quick tap → snapped drop via built-in click (only fires on stationary taps)
+    const clickUnsub = chart.subscribeClick((param) => {
       if (!enabledRef.current || isPreciseModeRef.current) return;
-      if (param.point === undefined || !param.time) return;
+      if (param.point === undefined || !param.time || !param.seriesPrices?.has(candleSeries)) return;
 
-      const seriesData = param.seriesData?.get(candleSeries) as { close?: number } | number | undefined;
-      const price = typeof seriesData === 'number' ? seriesData : seriesData?.close;
-      if (price === undefined) return;
-      
-      console.log('[Gesture] Committing click point:', { time: param.time, price });
+      const price = param.seriesPrices.get(candleSeries) as number;
       onPointCommitRef.current({ time: param.time, price });
     });
 
     const handlePointerDown = (e: PointerEvent) => {
-      console.log('[Gesture] PointerDown:', { enabled: enabledRef.current, isPrimary: e.isPrimary, x: e.clientX, y: e.clientY });
       if (!enabledRef.current || !e.isPrimary) return;
 
       pointerStartRef.current = { x: e.clientX, y: e.clientY };
 
       if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
-      longPressTimeoutRef.current = setTimeout(() => {
-        console.log('[Gesture] Long press triggered - entering precise mode');
-        enterPreciseMode();
-      }, GESTURE_CONFIG.LONG_PRESS_MS);
+      longPressTimeoutRef.current = setTimeout(enterPreciseMode, GESTURE_CONFIG.LONG_PRESS_MS);
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -163,12 +151,11 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       }
 
       if (isPreciseModeRef.current) {
-        e.preventDefault();
+        e.preventDefault(); // Prevent page scroll while dragging in precise mode
       }
     };
 
     const handlePointerUp = (e: PointerEvent) => {
-      console.log('[Gesture] PointerUp:', { isPrimary: e.isPrimary, isPreciseMode: isPreciseModeRef.current, hasCrosshair: !!currentCrosshairRef.current });
       if (!e.isPrimary) return;
 
       if (longPressTimeoutRef.current) {
@@ -177,7 +164,6 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       }
 
       if (isPreciseModeRef.current && currentCrosshairRef.current) {
-        console.log('[Gesture] Committing precise point:', currentCrosshairRef.current);
         onPointCommitRef.current(currentCrosshairRef.current);
         exitPreciseMode();
       }
@@ -204,13 +190,12 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       () => chartElement.removeEventListener('pointerup', handlePointerUp),
       () => chartElement.removeEventListener('pointercancel', handlePointerCancel),
       () => chartElement.removeEventListener('pointerleave', handlePointerCancel),
+      crosshairUnsub,
+      clickUnsub,
     ];
-    
-    console.log('[Gesture] Attachment complete - listeners registered');
   }, [enterPreciseMode, exitPreciseMode]);
 
   const detachFromChart = useCallback(() => {
-    console.log('[Gesture] Detaching from chart');
     cleanupFnsRef.current.forEach(fn => fn());
     cleanupFnsRef.current = [];
     chartRef.current = null;
