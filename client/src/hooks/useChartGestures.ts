@@ -1,10 +1,11 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 
 // Industry-standard gesture tolerances
 const GESTURE_CONFIG = {
   LONG_PRESS_MS: 500,       // Long press activates after 500ms
   MOVE_THRESHOLD_PX: 12,    // Cancel long press if moved more than 12px early
+  TAP_MAX_MS: 300,          // Quick tap must be under 300ms
 };
 
 interface GesturePoint {
@@ -50,23 +51,23 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   // State refs
   const isPreciseModeRef = useRef<boolean>(false);
   const currentCrosshairRef = useRef<GesturePoint | null>(null);
-  const touchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const startPosRef = useRef<{ x: number; y: number } | null>(null);
+  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const savedHandleScrollRef = useRef<{ horzTouchDrag?: boolean; vertTouchDrag?: boolean } | null>(null);
   
   // Chart refs
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const containerRef = useRef<HTMLElement | null>(null);
+  const chartElementRef = useRef<HTMLElement | null>(null);
   const cleanupFnsRef = useRef<(() => void)[]>([]);
   
   // Reset state
   const resetState = useCallback(() => {
-    if (touchTimeoutRef.current) {
-      clearTimeout(touchTimeoutRef.current);
-      touchTimeoutRef.current = null;
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
     }
-    startPosRef.current = null;
+    pointerStartRef.current = null;
     isPreciseModeRef.current = false;
   }, []);
   
@@ -80,18 +81,66 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     return isPreciseModeRef.current;
   }, []);
   
+  // Convert screen coordinates to chart time/price
+  const screenToChartPoint = useCallback((clientX: number, clientY: number): GesturePoint | null => {
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    const chartElement = chartElementRef.current;
+    
+    if (!chart || !series || !chartElement) return null;
+    
+    try {
+      const rect = chartElement.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      
+      // Convert X to time using timeScale
+      const timeScale = chart.timeScale();
+      const logicalX = timeScale.coordinateToLogical(x);
+      if (logicalX === null) return null;
+      
+      // For time, we need to get visible logical range and interpolate
+      // Use the logical coordinate directly as time index, then look up actual time
+      const visibleRange = timeScale.getVisibleLogicalRange();
+      if (!visibleRange) return null;
+      
+      // Get time from logical coordinate by converting back
+      const time = timeScale.coordinateToTime(x);
+      if (time === null) return null;
+      
+      // Convert Y to price
+      const price = series.coordinateToPrice(y);
+      if (price === null) return null;
+      
+      return { time: time as number, price };
+    } catch (e) {
+      console.error('[Gesture] screenToChartPoint error:', e);
+      return null;
+    }
+  }, []);
+  
   // Attach gesture handlers to chart
   const attachToChart = useCallback((
     chart: IChartApi,
     candleSeries: ISeriesApi<'Candlestick'>,
-    container: HTMLElement
+    _container: HTMLElement
   ) => {
+    // Get the actual chart canvas element (not the container)
+    const chartElement = chart.chartElement();
+    if (!chartElement) {
+      console.error('[Gesture] chart.chartElement() returned null');
+      return;
+    }
+    
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
-    containerRef.current = container;
+    chartElementRef.current = chartElement;
+    
+    console.log('[Gesture] Attaching to chart element:', chartElement);
     
     // Enter precise mode - disable chart panning so crosshair can move freely
     const enterPreciseMode = () => {
+      console.log('[Gesture] Entering precise mode');
       isPreciseModeRef.current = true;
       onCrosshairModeChangeRef.current?.(true);
       
@@ -112,6 +161,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     
     // Exit precise mode - restore chart panning
     const exitPreciseMode = () => {
+      console.log('[Gesture] Exiting precise mode');
       isPreciseModeRef.current = false;
       onCrosshairModeChangeRef.current?.(false);
       
@@ -121,140 +171,138 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       }
     };
     
-    // Track current crosshair position via subscribeCrosshairMove
-    // NOTE: lightweight-charts uses seriesPrices (not seriesData)
-    const crosshairHandler = (param: any) => {
-      console.log('[Gesture] CrosshairMove:', { time: param.time, hasSeriesPrices: !!param.seriesPrices, param });
-      if (param.time && param.seriesPrices) {
-        // Get price from seriesPrices map
-        const priceData = param.seriesPrices.get(candleSeries);
-        console.log('[Gesture] priceData from series:', priceData);
-        if (priceData !== undefined) {
-          // For candlestick series, priceData is an object with open/high/low/close
-          // For line series, it's just a number
-          const price = typeof priceData === 'object' 
-            ? (priceData.close ?? priceData.value) 
-            : priceData;
-          if (typeof price === 'number') {
-            currentCrosshairRef.current = {
-              time: param.time as number,
-              price,
-            };
-            console.log('[Gesture] Updated crosshair ref:', currentCrosshairRef.current);
-          }
-        }
-      } else {
-        currentCrosshairRef.current = null;
-      }
-    };
-    chart.subscribeCrosshairMove(crosshairHandler);
-    
-    // Quick tap → immediate drop (uses magnet snap via subscribeClick)
-    const clickHandler = (param: any) => {
+    // Pointer down - start tracking for tap vs long press
+    const handlePointerDown = (e: PointerEvent) => {
       const isEnabled = enabledRef.current;
-      console.log('[Gesture] Click:', { enabled: isEnabled, isPrecise: isPreciseModeRef.current, time: param.time, param });
+      console.log('[Gesture] PointerDown:', { enabled: isEnabled, isPrecise: isPreciseModeRef.current, x: e.clientX, y: e.clientY });
+      
       if (!isEnabled) return;
       
-      // Don't process clicks if in precise mode (handled by touchend)
-      if (isPreciseModeRef.current) return;
+      // Only handle primary pointer (ignore multi-touch secondary fingers)
+      if (!e.isPrimary) return;
       
-      if (param.time && param.seriesPrices) {
-        const priceData = param.seriesPrices.get(candleSeries);
-        console.log('[Gesture] Click priceData:', priceData);
-        if (priceData !== undefined) {
-          const price = typeof priceData === 'object' 
-            ? (priceData.close ?? priceData.value) 
-            : priceData;
-          if (typeof price === 'number') {
-            console.log('[Gesture] Click committing point:', { time: param.time, price });
-            onPointCommitRef.current({
-              time: param.time as number,
-              price,
-            });
-          }
-        }
+      pointerStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+      
+      // Update current crosshair position
+      const point = screenToChartPoint(e.clientX, e.clientY);
+      if (point) {
+        currentCrosshairRef.current = point;
+        console.log('[Gesture] Initial point:', point);
       }
-    };
-    chart.subscribeClick(clickHandler);
-    
-    // Touch start - begin long press detection
-    const handleTouchStart = (e: TouchEvent) => {
-      const isEnabled = enabledRef.current;
-      console.log('[Gesture] TouchStart:', { enabled: isEnabled, touches: e.touches.length });
-      if (!isEnabled || e.touches.length !== 1) return;
       
-      const touch = e.touches[0];
-      startPosRef.current = { x: touch.clientX, y: touch.clientY };
+      // Clear any existing timeout
+      if (longPressTimeoutRef.current) {
+        clearTimeout(longPressTimeoutRef.current);
+      }
       
-      if (touchTimeoutRef.current) clearTimeout(touchTimeoutRef.current);
-      touchTimeoutRef.current = setTimeout(() => {
-        console.log('[Gesture] Long press timer fired, entering precise mode');
-        enterPreciseMode();
+      // Start long press timer
+      longPressTimeoutRef.current = setTimeout(() => {
+        console.log('[Gesture] Long press timer fired');
+        if (pointerStartRef.current) {
+          enterPreciseMode();
+        }
       }, GESTURE_CONFIG.LONG_PRESS_MS);
     };
     
-    // Touch move - cancel long press if moved too much before timer fires
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!startPosRef.current || e.touches.length !== 1) return;
+    // Pointer move - update crosshair position, cancel long press if moved too much early
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!e.isPrimary) return;
+      if (!pointerStartRef.current) return;
       
-      const touch = e.touches[0];
-      const dist = Math.hypot(touch.clientX - startPosRef.current.x, touch.clientY - startPosRef.current.y);
+      const dist = Math.hypot(e.clientX - pointerStartRef.current.x, e.clientY - pointerStartRef.current.y);
       
-      // Cancel long-press if user starts dragging early (allow normal chart pan)
+      // Cancel long-press if user starts dragging early (before timer fires)
       if (!isPreciseModeRef.current && dist > GESTURE_CONFIG.MOVE_THRESHOLD_PX) {
-        console.log('[Gesture] TouchMove cancelled long press due to distance:', dist);
-        if (touchTimeoutRef.current) {
-          clearTimeout(touchTimeoutRef.current);
-          touchTimeoutRef.current = null;
+        console.log('[Gesture] Movement cancelled long press:', dist);
+        if (longPressTimeoutRef.current) {
+          clearTimeout(longPressTimeoutRef.current);
+          longPressTimeoutRef.current = null;
+        }
+        return;
+      }
+      
+      // In precise mode, update crosshair position
+      if (isPreciseModeRef.current) {
+        // Prevent default to stop page scrolling
+        e.preventDefault();
+        
+        const point = screenToChartPoint(e.clientX, e.clientY);
+        if (point) {
+          currentCrosshairRef.current = point;
+          console.log('[Gesture] Updated crosshair:', point);
         }
       }
-      // In precise mode, panning is already disabled so crosshair moves with finger
     };
     
-    // Touch end - commit point if in precise mode
-    const handleTouchEnd = (_e: TouchEvent) => {
-      console.log('[Gesture] TouchEnd:', { isPrecise: isPreciseModeRef.current, crosshair: currentCrosshairRef.current });
-      if (touchTimeoutRef.current) {
-        clearTimeout(touchTimeoutRef.current);
-        touchTimeoutRef.current = null;
+    // Pointer up - either quick tap commit or precise mode commit
+    const handlePointerUp = (e: PointerEvent) => {
+      const isEnabled = enabledRef.current;
+      console.log('[Gesture] PointerUp:', { enabled: isEnabled, isPrecise: isPreciseModeRef.current });
+      
+      if (!e.isPrimary) return;
+      
+      // Clear long press timer
+      if (longPressTimeoutRef.current) {
+        clearTimeout(longPressTimeoutRef.current);
+        longPressTimeoutRef.current = null;
       }
       
-      if (isPreciseModeRef.current && currentCrosshairRef.current) {
-        console.log('[Gesture] TouchEnd committing point:', currentCrosshairRef.current);
-        onPointCommitRef.current(currentCrosshairRef.current);
+      if (!isEnabled || !pointerStartRef.current) {
+        pointerStartRef.current = null;
+        return;
+      }
+      
+      const elapsed = Date.now() - pointerStartRef.current.time;
+      const dist = Math.hypot(e.clientX - pointerStartRef.current.x, e.clientY - pointerStartRef.current.y);
+      
+      if (isPreciseModeRef.current) {
+        // In precise mode - commit at current crosshair position
+        if (currentCrosshairRef.current) {
+          console.log('[Gesture] Precise mode commit:', currentCrosshairRef.current);
+          onPointCommitRef.current(currentCrosshairRef.current);
+        }
+        exitPreciseMode();
+      } else if (elapsed < GESTURE_CONFIG.TAP_MAX_MS && dist < GESTURE_CONFIG.MOVE_THRESHOLD_PX) {
+        // Quick tap - commit at tap location
+        const point = screenToChartPoint(e.clientX, e.clientY);
+        if (point) {
+          console.log('[Gesture] Quick tap commit:', point);
+          onPointCommitRef.current(point);
+        }
+      }
+      
+      pointerStartRef.current = null;
+    };
+    
+    // Pointer cancel
+    const handlePointerCancel = () => {
+      console.log('[Gesture] PointerCancel');
+      if (longPressTimeoutRef.current) {
+        clearTimeout(longPressTimeoutRef.current);
+        longPressTimeoutRef.current = null;
+      }
+      if (isPreciseModeRef.current) {
         exitPreciseMode();
       }
-      
-      // Reset for next touch
-      startPosRef.current = null;
+      pointerStartRef.current = null;
     };
     
-    // Touch cancel
-    const handleTouchCancel = () => {
-      if (touchTimeoutRef.current) {
-        clearTimeout(touchTimeoutRef.current);
-        touchTimeoutRef.current = null;
-      }
-      exitPreciseMode();
-      startPosRef.current = null;
-    };
-    
-    // Add event listeners
-    container.addEventListener('touchstart', handleTouchStart, { passive: true });
-    container.addEventListener('touchmove', handleTouchMove, { passive: true });
-    container.addEventListener('touchend', handleTouchEnd, { passive: true });
-    container.addEventListener('touchcancel', handleTouchCancel, { passive: true });
+    // Add event listeners - use passive: false for move to allow preventDefault
+    chartElement.addEventListener('pointerdown', handlePointerDown, { passive: true });
+    chartElement.addEventListener('pointermove', handlePointerMove, { passive: false });
+    chartElement.addEventListener('pointerup', handlePointerUp, { passive: true });
+    chartElement.addEventListener('pointercancel', handlePointerCancel, { passive: true });
+    chartElement.addEventListener('pointerleave', handlePointerCancel, { passive: true });
     
     // Store cleanup functions
     cleanupFnsRef.current = [
-      () => chart.unsubscribeCrosshairMove(crosshairHandler),
-      () => chart.unsubscribeClick(clickHandler),
-      () => container.removeEventListener('touchstart', handleTouchStart),
-      () => container.removeEventListener('touchmove', handleTouchMove),
-      () => container.removeEventListener('touchend', handleTouchEnd),
-      () => container.removeEventListener('touchcancel', handleTouchCancel),
+      () => chartElement.removeEventListener('pointerdown', handlePointerDown),
+      () => chartElement.removeEventListener('pointermove', handlePointerMove),
+      () => chartElement.removeEventListener('pointerup', handlePointerUp),
+      () => chartElement.removeEventListener('pointercancel', handlePointerCancel),
+      () => chartElement.removeEventListener('pointerleave', handlePointerCancel),
     ];
-  }, []); // No deps - refs handle dynamic values
+  }, [screenToChartPoint]);
   
   // Detach from chart
   const detachFromChart = useCallback(() => {
@@ -262,7 +310,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     cleanupFnsRef.current = [];
     chartRef.current = null;
     candleSeriesRef.current = null;
-    containerRef.current = null;
+    chartElementRef.current = null;
     resetState();
   }, [resetState]);
   
@@ -273,13 +321,14 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     };
   }, [detachFromChart]);
   
-  return {
+  // Memoize return value to prevent effect re-runs in consuming components
+  return useMemo(() => ({
     attachToChart,
     detachFromChart,
     isCrosshairModeActive,
     getCrosshairPoint,
     resetState,
-  };
+  }), [attachToChart, detachFromChart, isCrosshairModeActive, getCrosshairPoint, resetState]);
 }
 
 export { GESTURE_CONFIG };

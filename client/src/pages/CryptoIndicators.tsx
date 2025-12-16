@@ -6313,12 +6313,17 @@ export default function CryptoIndicators() {
     const candleSeries = candleSeriesRef.current;
     const container = chartContainerRef.current;
     
+    console.log('[GestureAttach] Effect running:', { chart: !!chart, candleSeries: !!candleSeries, container: !!container, chartReady });
+    
     if (!chart || !candleSeries || !container || !chartReady) return;
     
+    console.log('[GestureAttach] Calling attachToChart...');
     // Attach the gesture controller to handle touch/click for drawing tools
     gestureController.attachToChart(chart, candleSeries, container);
+    console.log('[GestureAttach] attachToChart complete');
     
     return () => {
+      console.log('[GestureAttach] Cleanup: detaching');
       gestureController.detachFromChart();
     };
   }, [chartReady, gestureController]);
