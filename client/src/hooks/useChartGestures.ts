@@ -157,13 +157,20 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     onPreviewPointRef.current?.(initialPoint);
     
     // Initialize crosshair tracking with the initial touch position
+    console.log('[Gesture] enterPreciseMode - initializing crosshair at localX:', localX, 'localY:', localY);
     if (candleSeriesRef.current) {
       const price = candleSeriesRef.current.coordinateToPrice(localY);
       const time = getTimeFromCoord(localX);
+      console.log('[Gesture] Initial coords - time:', time, 'price:', price);
       if (time !== null && price !== null) {
         crosshairCoordsRef.current = { time, price };
         updateCrosshairLabel(localX, localY, time, price);
+        console.log('[Gesture] Crosshair coords initialized:', crosshairCoordsRef.current);
+      } else {
+        console.warn('[Gesture] Failed to get initial time/price');
       }
+    } else {
+      console.warn('[Gesture] candleSeriesRef.current is null');
     }
   }, [calculateMagnetPoint]);
 
@@ -438,19 +445,24 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       if (isPreciseModeRef.current) {
         // Use the saved crosshair coordinates to determine the commit point
         const crosshairCoords = crosshairCoordsRef.current;
+        console.log('[Gesture] Precise mode release - crosshairCoords:', crosshairCoords);
+        
         if (crosshairCoords) {
           // Find the candle at the crosshair time
           const bars = dataRef.current;
           const targetTime = crosshairCoords.time;
           
-          // Find bar by time
+          // Find bar by time (compare as strings to handle object Time types)
           let bar: BarData | null = null;
+          const targetTimeStr = JSON.stringify(targetTime);
           for (let i = 0; i < bars.length; i++) {
-            if (bars[i].time === targetTime) {
+            if (JSON.stringify(bars[i].time) === targetTimeStr) {
               bar = bars[i];
               break;
             }
           }
+          
+          console.log('[Gesture] Bar lookup - targetTime:', targetTime, 'found bar:', bar ? 'yes' : 'no');
           
           if (bar) {
             // Determine if crosshair price is above or below candle midpoint
@@ -465,8 +477,12 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
             console.log('[Gesture] Precise mode commit - crosshair:', crosshairCoords, 'snapped to:', commitPoint);
             onPointCommitRef.current(commitPoint);
           } else {
-            console.warn('[Gesture] Could not find bar at time:', targetTime);
+            // Fallback: use crosshair coords directly without snapping
+            console.warn('[Gesture] Bar not found, using crosshair coords directly');
+            onPointCommitRef.current(crosshairCoords);
           }
+        } else {
+          console.warn('[Gesture] No crosshair coords saved - nothing to commit');
         }
         exitPreciseMode();
       } else if (pointerStartRef.current) {
