@@ -514,6 +514,7 @@ export default function CryptoIndicators() {
   // Gesture controller hook for touch/click handling
   const gestureController = useChartGestures({
     enabled: drawingMode === 'draw' && activeTool !== null,
+    data: candles,
     onPointCommit: handlePointCommit,
     onCrosshairModeChange: setCrosshairModeActive,
   });

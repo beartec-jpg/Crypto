@@ -41,7 +41,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const { enabled, data, onPointCommit, onPreviewPoint, onCrosshairModeChange } = options;
 
   const enabledRef = useRef(enabled);
-  const dataRef = useRef<BarData[]>(data);
+  const dataMapRef = useRef<Map<Time, BarData>>(new Map());
   const onPointCommitRef = useRef(onPointCommit);
   const onPreviewPointRef = useRef(onPreviewPoint);
   const onCrosshairModeChangeRef = useRef(onCrosshairModeChange);
@@ -50,7 +50,15 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   useEffect(() => { onPointCommitRef.current = onPointCommit; }, [onPointCommit]);
   useEffect(() => { onPreviewPointRef.current = onPreviewPoint; }, [onPreviewPoint]);
   useEffect(() => { onCrosshairModeChangeRef.current = onCrosshairModeChange; }, [onCrosshairModeChange]);
-  useEffect(() => { dataRef.current = data; }, [data]);
+
+  // Update data map when data changes (e.g. new bars loaded)
+  useEffect(() => {
+    const map = new Map<Time, BarData>();
+    data.forEach((bar) => {
+      if (bar.time !== undefined) map.set(bar.time, bar);
+    });
+    dataMapRef.current = map;
+  }, [data]);
 
   const isPreciseModeRef = useRef<boolean>(false);
   const currentPreviewRef = useRef<GesturePoint | null>(null);
@@ -115,7 +123,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   };
 
   const getVisibleBarCount = () => {
-    if (!chartRef.current) return 100;
+    if (!chartRef.current) return 100; // fallback
     const ts = chartRef.current.timeScale();
     const vr = ts.getVisibleLogicalRange();
     if (!vr) return 100;
@@ -141,14 +149,14 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     }
 
     const snappedLogical = Math.round(logical);
-    const bars = dataRef.current;
-    if (snappedLogical < 0 || snappedLogical >= bars.length) {
+    const time = chartRef.current.timeScale().logicalToTime(snappedLogical);
+    if (time === null) {
       currentPreviewRef.current = null;
       onPreviewPointRef.current?.(null);
       return;
     }
 
-    const bar = bars[snappedLogical];
+    const bar = dataMapRef.current.get(time);
     if (!bar) {
       currentPreviewRef.current = null;
       onPreviewPointRef.current?.(null);
@@ -168,7 +176,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
     const price = distH <= distL ? bar.high : bar.low;
 
-    const point = { time: bar.time, price };
+    const point = { time, price };
     currentPreviewRef.current = point;
     onPreviewPointRef.current?.(point);
   };
@@ -186,13 +194,14 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     if (logical === null) return;
 
     const center = Math.round(logical);
-    const bars = dataRef.current;
 
     const windowBars: BarData[] = [];
     for (let i = -radius; i <= radius; i++) {
-      const idx = center + i;
-      if (idx >= 0 && idx < bars.length) {
-        windowBars.push(bars[idx]);
+      const logi = center + i;
+      const t = chartRef.current.timeScale().logicalToTime(logi);
+      if (t !== null) {
+        const b = dataMapRef.current.get(t);
+        if (b) windowBars.push(b);
       }
     }
 
@@ -243,6 +252,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     candleSeriesRef.current = candleSeries;
     chartElementRef.current = chartElement;
 
+    // Free-moving crosshair (natural panning/scrolling)
     chart.applyOptions({
       crosshair: { mode: CrosshairMode.Normal },
     });
@@ -269,7 +279,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       }
 
       if (isPreciseModeRef.current) {
-        e.preventDefault();
+        e.preventDefault(); // Stop page scrolling
 
         const local = getLocalCoords(e.clientX, e.clientY);
         if (local) {
