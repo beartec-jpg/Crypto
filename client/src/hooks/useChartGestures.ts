@@ -29,6 +29,24 @@ interface UseChartGesturesReturn {
 export function useChartGestures(options: UseChartGesturesOptions): UseChartGesturesReturn {
   const { enabled, onPointCommit, onCrosshairModeChange } = options;
   
+  // CRITICAL: Use refs for values that change over time but need to be accessed in closures
+  const enabledRef = useRef(enabled);
+  const onPointCommitRef = useRef(onPointCommit);
+  const onCrosshairModeChangeRef = useRef(onCrosshairModeChange);
+  
+  // Keep refs in sync with props
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
+  
+  useEffect(() => {
+    onPointCommitRef.current = onPointCommit;
+  }, [onPointCommit]);
+  
+  useEffect(() => {
+    onCrosshairModeChangeRef.current = onCrosshairModeChange;
+  }, [onCrosshairModeChange]);
+  
   // State refs
   const isPreciseModeRef = useRef<boolean>(false);
   const currentCrosshairRef = useRef<GesturePoint | null>(null);
@@ -75,7 +93,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     // Enter precise mode - disable chart panning so crosshair can move freely
     const enterPreciseMode = () => {
       isPreciseModeRef.current = true;
-      onCrosshairModeChange?.(true);
+      onCrosshairModeChangeRef.current?.(true);
       
       // Save original settings and disable panning
       const currentHS = (chart.options() as any).handleScroll ?? {};
@@ -95,7 +113,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     // Exit precise mode - restore chart panning
     const exitPreciseMode = () => {
       isPreciseModeRef.current = false;
-      onCrosshairModeChange?.(false);
+      onCrosshairModeChangeRef.current?.(false);
       
       if (savedHandleScrollRef.current) {
         chart.applyOptions({ handleScroll: savedHandleScrollRef.current });
@@ -106,9 +124,11 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     // Track current crosshair position via subscribeCrosshairMove
     // NOTE: lightweight-charts uses seriesPrices (not seriesData)
     const crosshairHandler = (param: any) => {
+      console.log('[Gesture] CrosshairMove:', { time: param.time, hasSeriesPrices: !!param.seriesPrices, param });
       if (param.time && param.seriesPrices) {
         // Get price from seriesPrices map
         const priceData = param.seriesPrices.get(candleSeries);
+        console.log('[Gesture] priceData from series:', priceData);
         if (priceData !== undefined) {
           // For candlestick series, priceData is an object with open/high/low/close
           // For line series, it's just a number
@@ -120,6 +140,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
               time: param.time as number,
               price,
             };
+            console.log('[Gesture] Updated crosshair ref:', currentCrosshairRef.current);
           }
         }
       } else {
@@ -130,19 +151,23 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     
     // Quick tap → immediate drop (uses magnet snap via subscribeClick)
     const clickHandler = (param: any) => {
-      if (!enabled) return;
+      const isEnabled = enabledRef.current;
+      console.log('[Gesture] Click:', { enabled: isEnabled, isPrecise: isPreciseModeRef.current, time: param.time, param });
+      if (!isEnabled) return;
       
       // Don't process clicks if in precise mode (handled by touchend)
       if (isPreciseModeRef.current) return;
       
       if (param.time && param.seriesPrices) {
         const priceData = param.seriesPrices.get(candleSeries);
+        console.log('[Gesture] Click priceData:', priceData);
         if (priceData !== undefined) {
           const price = typeof priceData === 'object' 
             ? (priceData.close ?? priceData.value) 
             : priceData;
           if (typeof price === 'number') {
-            onPointCommit({
+            console.log('[Gesture] Click committing point:', { time: param.time, price });
+            onPointCommitRef.current({
               time: param.time as number,
               price,
             });
@@ -154,13 +179,18 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     
     // Touch start - begin long press detection
     const handleTouchStart = (e: TouchEvent) => {
-      if (!enabled || e.touches.length !== 1) return;
+      const isEnabled = enabledRef.current;
+      console.log('[Gesture] TouchStart:', { enabled: isEnabled, touches: e.touches.length });
+      if (!isEnabled || e.touches.length !== 1) return;
       
       const touch = e.touches[0];
       startPosRef.current = { x: touch.clientX, y: touch.clientY };
       
       if (touchTimeoutRef.current) clearTimeout(touchTimeoutRef.current);
-      touchTimeoutRef.current = setTimeout(enterPreciseMode, GESTURE_CONFIG.LONG_PRESS_MS);
+      touchTimeoutRef.current = setTimeout(() => {
+        console.log('[Gesture] Long press timer fired, entering precise mode');
+        enterPreciseMode();
+      }, GESTURE_CONFIG.LONG_PRESS_MS);
     };
     
     // Touch move - cancel long press if moved too much before timer fires
@@ -172,6 +202,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       
       // Cancel long-press if user starts dragging early (allow normal chart pan)
       if (!isPreciseModeRef.current && dist > GESTURE_CONFIG.MOVE_THRESHOLD_PX) {
+        console.log('[Gesture] TouchMove cancelled long press due to distance:', dist);
         if (touchTimeoutRef.current) {
           clearTimeout(touchTimeoutRef.current);
           touchTimeoutRef.current = null;
@@ -182,13 +213,15 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     
     // Touch end - commit point if in precise mode
     const handleTouchEnd = (_e: TouchEvent) => {
+      console.log('[Gesture] TouchEnd:', { isPrecise: isPreciseModeRef.current, crosshair: currentCrosshairRef.current });
       if (touchTimeoutRef.current) {
         clearTimeout(touchTimeoutRef.current);
         touchTimeoutRef.current = null;
       }
       
       if (isPreciseModeRef.current && currentCrosshairRef.current) {
-        onPointCommit(currentCrosshairRef.current);
+        console.log('[Gesture] TouchEnd committing point:', currentCrosshairRef.current);
+        onPointCommitRef.current(currentCrosshairRef.current);
         exitPreciseMode();
       }
       
@@ -221,7 +254,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       () => container.removeEventListener('touchend', handleTouchEnd),
       () => container.removeEventListener('touchcancel', handleTouchCancel),
     ];
-  }, [enabled, onPointCommit, onCrosshairModeChange]);
+  }, []); // No deps - refs handle dynamic values
   
   // Detach from chart
   const detachFromChart = useCallback(() => {
