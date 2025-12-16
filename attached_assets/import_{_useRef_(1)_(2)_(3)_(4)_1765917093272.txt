@@ -117,12 +117,6 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     return { time: interpolatedTime, price };
   }, []);
 
-  const getLocalCoords = (clientX: number, clientY: number) => {
-    if (!chartElementRef.current) return null;
-    const rect = chartElementRef.current.getBoundingClientRect();
-    return { x: clientX - rect.left, y: clientY - rect.top };
-  };
-
   const enterPreciseMode = useCallback(() => {
     if (!chartRef.current || !pointerStartRef.current || !chartElementRef.current) return;
 
@@ -196,6 +190,12 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       } catch (e) {}
     }
   }, []);
+
+  const getLocalCoords = (clientX: number, clientY: number) => {
+    if (!chartElementRef.current) return null;
+    const rect = chartElementRef.current.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
 
   const updatePreviewForPrecise = (localX: number, localY: number) => {
     const point = calculateMagnetPoint(localX, localY);
@@ -373,7 +373,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       () => chartElement.removeEventListener('pointercancel', handlePointerCancel),
       () => chartElement.removeEventListener('pointerleave', handlePointerCancel),
     ];
-  }, [enterPreciseMode, exitPreciseMode]);
+  }, [enterPreciseMode, exitPreciseMode, calculateMagnetPoint]);
 
   const detachFromChart = useCallback(() => {
     cleanupFnsRef.current.forEach(fn => fn());
