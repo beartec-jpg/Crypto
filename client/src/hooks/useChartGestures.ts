@@ -172,23 +172,29 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
         currentY: touch.clientY
       };
       
-      gestureStateRef.current = 'touching';
-      
-      // Start long press timer
-      clearLongPressTimer();
-      longPressTimerRef.current = setTimeout(() => {
-        if (gestureStateRef.current === 'touching' && touchStateRef.current) {
-          // Activate crosshair mode and calculate initial point from touch position
-          const point = updateCrosshairFromTouch(
-            touchStateRef.current.currentX,
-            touchStateRef.current.currentY
-          );
-          if (point) {
-            savedSwipePointRef.current = point;
+      // CRITICAL: Don't reset state if already in crosshair mode - this allows tap-to-commit
+      if (gestureStateRef.current !== 'crosshairActive') {
+        gestureStateRef.current = 'touching';
+        
+        // Start long press timer only when not already in crosshair mode
+        clearLongPressTimer();
+        longPressTimerRef.current = setTimeout(() => {
+          if (gestureStateRef.current === 'touching' && touchStateRef.current) {
+            // Activate crosshair mode and calculate initial point from touch position
+            const point = updateCrosshairFromTouch(
+              touchStateRef.current.currentX,
+              touchStateRef.current.currentY
+            );
+            if (point) {
+              savedSwipePointRef.current = point;
+            }
+            setCrosshairMode(true);
           }
-          setCrosshairMode(true);
-        }
-      }, GESTURE_CONFIG.LONG_PRESS_MIN);
+        }, GESTURE_CONFIG.LONG_PRESS_MIN);
+      } else {
+        // Already in crosshair mode - update position for potential tap commit
+        updateCrosshairFromTouch(touch.clientX, touch.clientY);
+      }
     };
     
     // Touch move handler
