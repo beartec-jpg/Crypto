@@ -3673,12 +3673,18 @@ const aiAnalyze = useMutation({
       let clickedPrice: number | null = candleSeries.coordinateToPrice(param.point.y);
       
       if (isCrosshairMode) {
-        // Use stored crosshair position instead of touch point
-        // This matches the Indicators page approach - simple and direct
-        if (lastCrosshairParamRef.current) {
+        // Use FROZEN crosshair position (captured when user lifted finger after positioning)
+        // This is critical because subscribeCrosshairMove fires BEFORE subscribeClick,
+        // so lastCrosshairParamRef would already have the TAP position by now
+        if (capturedCrosshairPositionRef.current) {
+          effectiveTime = capturedCrosshairPositionRef.current.time;
+          clickedPrice = capturedCrosshairPositionRef.current.price;
+          console.log('📍 CROSSHAIR MODE: Using FROZEN position at time:', effectiveTime, 'price:', clickedPrice);
+        } else if (lastCrosshairParamRef.current) {
+          // Fallback: use last known position (may be tap position, but better than nothing)
           effectiveTime = lastCrosshairParamRef.current.time;
           clickedPrice = lastCrosshairParamRef.current.price;
-          console.log('📍 CROSSHAIR MODE: Using crosshair position at time:', effectiveTime, 'price:', clickedPrice);
+          console.log('📍 CROSSHAIR MODE: No frozen position, using lastCrosshairParam as fallback');
         } else {
           // Crosshair mode active but no stored position yet - use click position as fallback
           console.log('📍 CROSSHAIR MODE: No stored position, using click position as fallback');
@@ -3725,10 +3731,12 @@ const aiAnalyze = useMutation({
       const lastCandle = candlesRef.current[candlesRef.current.length - 1];
       const timeScale = chart.timeScale();
       const lastCandleX = timeScale.timeToCoordinate(lastCandle.time as any);
-      // Use crosshair position's pointX in crosshair mode (for detecting future clicks)
-      const effectivePointX = isCrosshairMode && lastCrosshairParamRef.current?.pointX !== undefined
-        ? lastCrosshairParamRef.current.pointX
-        : param.point.x;
+      // Use frozen crosshair position's pointX in crosshair mode (for detecting future clicks)
+      const effectivePointX = isCrosshairMode && capturedCrosshairPositionRef.current?.pointX !== undefined
+        ? capturedCrosshairPositionRef.current.pointX
+        : (isCrosshairMode && lastCrosshairParamRef.current?.pointX !== undefined
+          ? lastCrosshairParamRef.current.pointX
+          : param.point.x);
       const isClickBeyondLastCandle = lastCandleX !== null && effectivePointX > lastCandleX + 10; // 10px buffer
       
       // DEBUG: Log click detection details
@@ -4873,10 +4881,11 @@ const aiAnalyze = useMutation({
       setCurrentPoints(updatedPoints);
       setPreviewPoint(null); // Clear preview after placing
       
-      // Deactivate crosshair mode after placement
+      // Deactivate crosshair mode after placement and clear frozen position
       if (crosshairModeActiveRef.current) {
         crosshairModeActiveRef.current = false;
-        console.log('🎯 Crosshair mode DEACTIVATED after placement');
+        capturedCrosshairPositionRef.current = null;
+        console.log('🎯 Crosshair mode DEACTIVATED after placement, frozen position cleared');
       }
     });
 
@@ -4901,18 +4910,14 @@ const aiAnalyze = useMutation({
       }
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (price !== null) {
-        // CRITICAL FIX: When crosshair mode is active, DON'T update the saved position!
-        // The saved position should stay frozen at where the crosshair was when user
-        // finished positioning. Otherwise, the TAP position overwrites it.
-        if (!crosshairModeActiveRef.current) {
-          const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
-          lastCrosshairParamRef.current = { 
-            time: param.time as number, 
-            price, 
-            logicalX: logicalX ?? undefined,
-            pointX: param.point.x 
-          };
-        }
+        // Store crosshair position for crosshair mode (matches Indicators page exactly)
+        const logicalX = chart.timeScale().coordinateToLogical(param.point.x);
+        lastCrosshairParamRef.current = { 
+          time: param.time as number, 
+          price, 
+          logicalX: logicalX ?? undefined,
+          pointX: param.point.x 
+        };
         
         if (isDrawingRef.current) {
           setPreviewPoint({ time: param.time as number, price });
@@ -5104,8 +5109,14 @@ const aiAnalyze = useMutation({
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
       }
-      // Note: No need for complex position capturing - the subscribeCrosshairMove handler
-      // will preserve lastCrosshairParamRef when crosshair mode is active (it won't clear it)
+      
+      // CRITICAL FIX: When crosshair mode is active and user lifts finger,
+      // FREEZE the current crosshair position so the subsequent tap can't overwrite it
+      // (subscribeCrosshairMove fires BEFORE subscribeClick, so we must freeze here)
+      if (crosshairModeActiveRef.current && lastCrosshairParamRef.current) {
+        capturedCrosshairPositionRef.current = { ...lastCrosshairParamRef.current };
+        console.log('🎯 Crosshair position FROZEN:', capturedCrosshairPositionRef.current);
+      }
     };
     
     const handleMouseDown = () => {
