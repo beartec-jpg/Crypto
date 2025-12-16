@@ -104,12 +104,17 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     };
     
     // Track current crosshair position via subscribeCrosshairMove
+    // NOTE: lightweight-charts uses seriesPrices (not seriesData)
     const crosshairHandler = (param: any) => {
-      if (param.time && param.seriesData) {
-        // Get price from series data
-        const seriesData = param.seriesData.get(candleSeries);
-        if (seriesData) {
-          const price = (seriesData as any).close ?? (seriesData as any).value ?? seriesData;
+      if (param.time && param.seriesPrices) {
+        // Get price from seriesPrices map
+        const priceData = param.seriesPrices.get(candleSeries);
+        if (priceData !== undefined) {
+          // For candlestick series, priceData is an object with open/high/low/close
+          // For line series, it's just a number
+          const price = typeof priceData === 'object' 
+            ? (priceData.close ?? priceData.value) 
+            : priceData;
           if (typeof price === 'number') {
             currentCrosshairRef.current = {
               time: param.time as number,
@@ -130,10 +135,12 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       // Don't process clicks if in precise mode (handled by touchend)
       if (isPreciseModeRef.current) return;
       
-      if (param.time && param.seriesData) {
-        const seriesData = param.seriesData.get(candleSeries);
-        if (seriesData) {
-          const price = (seriesData as any).close ?? (seriesData as any).value ?? seriesData;
+      if (param.time && param.seriesPrices) {
+        const priceData = param.seriesPrices.get(candleSeries);
+        if (priceData !== undefined) {
+          const price = typeof priceData === 'object' 
+            ? (priceData.close ?? priceData.value) 
+            : priceData;
           if (typeof price === 'number') {
             onPointCommit({
               time: param.time as number,
