@@ -58,6 +58,10 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const pointerStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null);
   const savedHandleScrollRef = useRef<{ horzTouchDrag?: boolean; vertTouchDrag?: boolean } | null>(null);
   const savedCrosshairStyleRef = useRef<any>(null);
+  
+  // Store the live crosshair coordinates (always updated during drag)
+  const crosshairCoordsRef = useRef<{ time: Time; price: number } | null>(null);
+  const crosshairLabelRef = useRef<HTMLDivElement | null>(null);
 
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -151,6 +155,16 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const initialPoint = calculateMagnetPoint(localX, localY);
     currentPreviewRef.current = initialPoint;
     onPreviewPointRef.current?.(initialPoint);
+    
+    // Initialize crosshair tracking with the initial touch position
+    if (candleSeriesRef.current) {
+      const price = candleSeriesRef.current.coordinateToPrice(localY);
+      const time = getTimeFromCoord(localX);
+      if (time !== null && price !== null) {
+        crosshairCoordsRef.current = { time, price };
+        updateCrosshairLabel(localX, localY, time, price);
+      }
+    }
   }, [calculateMagnetPoint]);
 
   const exitPreciseMode = useCallback(() => {
@@ -159,7 +173,11 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     isPreciseModeRef.current = false;
     onCrosshairModeChangeRef.current?.(false);
     currentPreviewRef.current = null;
+    crosshairCoordsRef.current = null;
     onPreviewPointRef.current?.(null);
+    
+    // Hide the crosshair label
+    hideCrosshairLabel();
 
     if (savedHandleScrollRef.current) {
       chartRef.current.applyOptions({ handleScroll: savedHandleScrollRef.current });
@@ -180,10 +198,99 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     }
   }, []);
 
+  // Get time from local X coordinate by finding nearest bar or interpolating
+  const getTimeFromCoord = (localX: number): Time | null => {
+    if (!chartRef.current) return null;
+    const timeScale = chartRef.current.timeScale();
+    const logical = timeScale.coordinateToLogical(localX);
+    if (logical === null) return null;
+    
+    const bars = dataRef.current;
+    if (bars.length === 0) return null;
+    
+    // Clamp to valid bar range
+    const idx = Math.max(0, Math.min(bars.length - 1, Math.round(logical)));
+    return bars[idx].time;
+  };
+
+  // Create or update the crosshair label element
+  const updateCrosshairLabel = (localX: number, localY: number, time: Time, price: number) => {
+    if (!chartElementRef.current) return;
+    
+    let label = crosshairLabelRef.current;
+    if (!label) {
+      label = document.createElement('div');
+      label.style.cssText = `
+        position: absolute;
+        background: rgba(255, 0, 0, 0.9);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        pointer-events: none;
+        z-index: 1000;
+        white-space: nowrap;
+        transform: translate(-50%, -100%);
+        margin-top: -10px;
+      `;
+      chartElementRef.current.style.position = 'relative';
+      chartElementRef.current.appendChild(label);
+      crosshairLabelRef.current = label;
+    }
+    
+    // Format time for display
+    let timeStr = '';
+    if (typeof time === 'number') {
+      const date = new Date(time * 1000);
+      timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else {
+      timeStr = String(time);
+    }
+    
+    label.textContent = `${timeStr} | $${price.toFixed(4)}`;
+    label.style.left = `${localX}px`;
+    label.style.top = `${localY}px`;
+    label.style.display = 'block';
+  };
+
+  const hideCrosshairLabel = () => {
+    if (crosshairLabelRef.current) {
+      crosshairLabelRef.current.style.display = 'none';
+    }
+  };
+
+  const removeCrosshairLabel = () => {
+    if (crosshairLabelRef.current && crosshairLabelRef.current.parentNode) {
+      crosshairLabelRef.current.parentNode.removeChild(crosshairLabelRef.current);
+      crosshairLabelRef.current = null;
+    }
+  };
+
+  // Update crosshair tracking during precise mode drag
   const updatePreviewForPrecise = (localX: number, localY: number) => {
+    if (!chartRef.current || !candleSeriesRef.current) return;
+    
+    // Get price directly from Y coordinate
+    const price = candleSeriesRef.current.coordinateToPrice(localY);
+    if (price === null) return;
+    
+    // Get time from X coordinate (clamps to valid bar range)
+    const time = getTimeFromCoord(localX);
+    if (time === null) return;
+    
+    // Always save the current crosshair position
+    crosshairCoordsRef.current = { time, price };
+    
+    // Update the visual label
+    updateCrosshairLabel(localX, localY, time, price);
+    
+    // Also update preview for any external listeners
     const point = calculateMagnetPoint(localX, localY);
     currentPreviewRef.current = point;
     onPreviewPointRef.current?.(point);
+    
+    console.log('[Gesture] Crosshair tracking:', { time, price: price.toFixed(4) });
   };
 
   const getVisibleBarCount = () => {
@@ -329,9 +436,37 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       }
 
       if (isPreciseModeRef.current) {
-        if (currentPreviewRef.current) {
-          console.log('[Gesture] Precise mode commit:', currentPreviewRef.current);
-          onPointCommitRef.current(currentPreviewRef.current);
+        // Use the saved crosshair coordinates to determine the commit point
+        const crosshairCoords = crosshairCoordsRef.current;
+        if (crosshairCoords) {
+          // Find the candle at the crosshair time
+          const bars = dataRef.current;
+          const targetTime = crosshairCoords.time;
+          
+          // Find bar by time
+          let bar: BarData | null = null;
+          for (let i = 0; i < bars.length; i++) {
+            if (bars[i].time === targetTime) {
+              bar = bars[i];
+              break;
+            }
+          }
+          
+          if (bar) {
+            // Determine if crosshair price is above or below candle midpoint
+            const mid = (bar.high + bar.low) / 2;
+            const snapPrice = crosshairCoords.price >= mid ? bar.high : bar.low;
+            
+            const commitPoint: GesturePoint = {
+              time: bar.time,
+              price: snapPrice,
+            };
+            
+            console.log('[Gesture] Precise mode commit - crosshair:', crosshairCoords, 'snapped to:', commitPoint);
+            onPointCommitRef.current(commitPoint);
+          } else {
+            console.warn('[Gesture] Could not find bar at time:', targetTime);
+          }
         }
         exitPreciseMode();
       } else if (pointerStartRef.current) {
@@ -373,6 +508,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const detachFromChart = useCallback(() => {
     cleanupFnsRef.current.forEach(fn => fn());
     cleanupFnsRef.current = [];
+    removeCrosshairLabel();
     chartRef.current = null;
     candleSeriesRef.current = null;
     chartElementRef.current = null;
