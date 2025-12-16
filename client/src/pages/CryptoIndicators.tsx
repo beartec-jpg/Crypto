@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { authenticatedApiRequest, isDevelopmentMode } from '@/lib/apiAuth';
 import { useLocation } from 'wouter';
+import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import bearTecLogo from '@assets/1_20251120_023939_0000_1763606422703.png';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import grokLogo from '@assets/Grok_Full_Logomark_Light_1763287603908.png';
@@ -386,21 +387,16 @@ export default function CryptoIndicators() {
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
+  const [crosshairModeActive, setCrosshairModeActive] = useState(false);
   
-  // Crosshair mode refs for precise drawing tool placement
-  const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null);
-  const crosshairModeActiveRef = useRef<boolean>(false);
-  const drawingModeRef = useRef(drawingMode);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Touch gesture tracking for drawing tools
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const swipeSavedPointRef = useRef<{ time: number; price: number } | null>(null);
-  
-  // Sync drawingModeRef with state
+  // Ref for tracking active tool in callbacks
+  const activeToolRef = useRef(activeTool);
   useEffect(() => {
-    drawingModeRef.current = drawingMode;
-  }, [drawingMode]);
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+  
+  // Ref for tracking crosshair info for UI display
+  const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null);
   
   // Fetch saved drawings from database
   const { data: savedDrawings = [], refetch: refetchDrawings } = useQuery<any[]>({
@@ -480,6 +476,46 @@ export default function CryptoIndicators() {
     onSuccess: () => {
       refetchDrawings();
     },
+  });
+  
+  // Handle point commit from gesture controller
+  const handlePointCommit = useCallback((point: GesturePoint) => {
+    const currentTool = activeToolRef.current;
+    if (drawingMode !== 'draw' || !currentTool) return;
+    
+    setTempDrawing(prev => {
+      if (!prev) return { points: [{ time: point.time, price: point.price }] };
+      
+      const newPoints = [...prev.points, { time: point.time, price: point.price }];
+      const requiredPoints = currentTool === 'horizontal' ? 1 : currentTool === 'trend_fib' ? 3 : 2;
+      
+      // If we have enough points, save the drawing
+      if (newPoints.length >= requiredPoints) {
+        const newDrawing = {
+          id: `drawing-${Date.now()}`,
+          type: currentTool,
+          points: newPoints,
+          style: { color: '#3b82f6', lineWidth: 2 }
+        };
+        setDrawings(d => [...d, newDrawing]);
+        
+        // Save to database
+        saveDrawingMutation.mutate(newDrawing);
+        toast({ title: 'Drawing Saved', description: `${currentTool.replace('_', ' ')} added to chart` });
+        
+        // Reset for next drawing
+        return { points: [] };
+      }
+      
+      return { points: newPoints };
+    });
+  }, [drawingMode, saveDrawingMutation, toast]);
+  
+  // Gesture controller hook for touch/click handling
+  const gestureController = useChartGestures({
+    enabled: drawingMode === 'draw' && activeTool !== null,
+    onPointCommit: handlePointCommit,
+    onCrosshairModeChange: setCrosshairModeActive,
   });
 
   // VWAP toggles
@@ -6216,31 +6252,7 @@ export default function CryptoIndicators() {
       console.log('Chart created successfully with', futureCount, 'future bars');
       setChartReady(true);
       
-      // Add click handler for drawing tools
-      chart.subscribeClick((param) => {
-        // Use crosshair mode coordinates if active (for precise mobile/touch placement)
-        let time: number | undefined;
-        let price: number | null = null;
-        
-        if (crosshairModeActiveRef.current && lastCrosshairParamRef.current) {
-          time = lastCrosshairParamRef.current.time;
-          price = lastCrosshairParamRef.current.price;
-          // Deactivate crosshair mode after using it
-          crosshairModeActiveRef.current = false;
-        } else if (param.time && param.point) {
-          time = param.time as number;
-          price = candleSeries.coordinateToPrice(param.point.y);
-        }
-        
-        if (time && price !== null) {
-          const event = new CustomEvent('chartClick', { 
-            detail: { time, price } 
-          });
-          container.dispatchEvent(event);
-        }
-      });
-      
-      // Add crosshair move handler to track time in future whitespace area
+      // Add crosshair move handler to track time in future whitespace area (for UI display)
       chart.subscribeCrosshairMove((param) => {
         if (param.time && param.point) {
           const time = param.time as number;
@@ -6252,7 +6264,7 @@ export default function CryptoIndicators() {
             y: param.point.y
           });
           
-          // Store crosshair position for crosshair mode (used by drawing tools on touch devices)
+          // Store crosshair position for UI display
           lastCrosshairParamRef.current = {
             time,
             price: price !== null ? price : 0,
@@ -6261,108 +6273,8 @@ export default function CryptoIndicators() {
           };
         } else {
           setCrosshairInfo(null);
-          // Clear crosshair ref when moving away (but not if crosshair mode is active)
-          if (!crosshairModeActiveRef.current) {
-            lastCrosshairParamRef.current = null;
-          }
         }
       });
-      
-      // Touch gesture handling for drawing tools:
-      // 1. Draw mode is active by default
-      // 2. Long press (>=500ms) activates crosshair mode
-      // 3. Swipe gestures move crosshair - landing point is saved
-      // 4. Each swipe replaces the previous saved point
-      // 5. Quick click (<500ms with small movement) commits the point
-      
-      const CLICK_DURATION_THRESHOLD = 500; // ms - clicks must be under this
-      const MOVEMENT_THRESHOLD = 15; // pixels - clicks must move less than this
-      
-      const handleTouchStart = (e: TouchEvent) => {
-        const touch = e.touches[0];
-        touchStartRef.current = {
-          x: touch.clientX,
-          y: touch.clientY,
-          time: Date.now()
-        };
-        
-        // Start long press timer for crosshair mode activation
-        if (drawingModeRef.current === 'draw' && !crosshairModeActiveRef.current) {
-          longPressTimerRef.current = setTimeout(() => {
-            crosshairModeActiveRef.current = true;
-            // Clear any previously saved swipe point when entering crosshair mode
-            swipeSavedPointRef.current = null;
-          }, CLICK_DURATION_THRESHOLD);
-        }
-      };
-      
-      const handleTouchMove = (e: TouchEvent) => {
-        if (!touchStartRef.current) return;
-        
-        const touch = e.touches[0];
-        const dx = touch.clientX - touchStartRef.current.x;
-        const dy = touch.clientY - touchStartRef.current.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Cancel long press if user moves beyond threshold (they're swiping/panning)
-        if (distance > MOVEMENT_THRESHOLD && longPressTimerRef.current && !crosshairModeActiveRef.current) {
-          clearTimeout(longPressTimerRef.current);
-          longPressTimerRef.current = null;
-        }
-        
-        // If in crosshair mode, the chart's crosshair move handler updates lastCrosshairParamRef
-        // On swipe end, we'll save that position
-      };
-      
-      const handleTouchEnd = (e: TouchEvent) => {
-        // Clear long press timer
-        if (longPressTimerRef.current) {
-          clearTimeout(longPressTimerRef.current);
-          longPressTimerRef.current = null;
-        }
-        
-        if (!touchStartRef.current) return;
-        
-        const touchEnd = e.changedTouches[0];
-        const dx = touchEnd.clientX - touchStartRef.current.x;
-        const dy = touchEnd.clientY - touchStartRef.current.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const duration = Date.now() - touchStartRef.current.time;
-        
-        // Check if this is a click (short duration, small movement)
-        const isClick = duration < CLICK_DURATION_THRESHOLD && distance < MOVEMENT_THRESHOLD;
-        
-        if (crosshairModeActiveRef.current) {
-          if (isClick) {
-            // Quick click in crosshair mode - use the saved swipe point or current crosshair position
-            const pointToUse = swipeSavedPointRef.current || lastCrosshairParamRef.current;
-            if (pointToUse) {
-              // Dispatch chart click event to commit the point
-              const event = new CustomEvent('chartClick', { 
-                detail: { time: pointToUse.time, price: pointToUse.price } 
-              });
-              container.dispatchEvent(event);
-            }
-            // Exit crosshair mode after committing
-            crosshairModeActiveRef.current = false;
-            swipeSavedPointRef.current = null;
-          } else if (distance >= MOVEMENT_THRESHOLD) {
-            // This is a swipe in crosshair mode - save the landing point (replace previous)
-            if (lastCrosshairParamRef.current) {
-              swipeSavedPointRef.current = {
-                time: lastCrosshairParamRef.current.time,
-                price: lastCrosshairParamRef.current.price
-              };
-            }
-          }
-        }
-        
-        touchStartRef.current = null;
-      };
-      
-      container.addEventListener('touchstart', handleTouchStart, { passive: true });
-      container.addEventListener('touchmove', handleTouchMove, { passive: true });
-      container.addEventListener('touchend', handleTouchEnd);
     }, 100);
 
     const handleResize = () => {
@@ -6395,47 +6307,21 @@ export default function CryptoIndicators() {
     };
   }, [candles.length, loading, symbol, interval]);
   
-  // Handle chart clicks for drawing tools
+  // Attach gesture controller to chart when ready
   useEffect(() => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
     const container = chartContainerRef.current;
-    if (!container || !chartReady || drawingMode !== 'draw' || !activeTool) return;
     
-    const handleChartClick = (e: Event) => {
-      const customEvent = e as CustomEvent<{time: number; price: number}>;
-      const { time, price } = customEvent.detail;
-      if (!time || !price) return;
-      
-      setTempDrawing(prev => {
-        if (!prev) return { points: [{ time, price }] };
-        
-        const newPoints = [...prev.points, { time, price }];
-        const requiredPoints = activeTool === 'horizontal' ? 1 : activeTool === 'trend_fib' ? 3 : 2;
-        
-        // If we have enough points, save the drawing
-        if (newPoints.length >= requiredPoints) {
-          const newDrawing = {
-            id: `drawing-${Date.now()}`,
-            type: activeTool,
-            points: newPoints,
-            style: { color: '#3b82f6', lineWidth: 2 }
-          };
-          setDrawings(d => [...d, newDrawing]);
-          
-          // Save to database
-          saveDrawingMutation.mutate(newDrawing);
-          toast({ title: 'Drawing Saved', description: `${activeTool.replace('_', ' ')} added to chart` });
-          
-          // Reset for next drawing
-          return { points: [] };
-        }
-        
-        return { points: newPoints };
-      });
+    if (!chart || !candleSeries || !container || !chartReady) return;
+    
+    // Attach the gesture controller to handle touch/click for drawing tools
+    gestureController.attachToChart(chart, candleSeries, container);
+    
+    return () => {
+      gestureController.detachFromChart();
     };
-    
-    container.addEventListener('chartClick', handleChartClick);
-    return () => container.removeEventListener('chartClick', handleChartClick);
-  }, [chartReady, drawingMode, activeTool, toast]);
+  }, [chartReady, gestureController]);
   
   // Render drawings on chart using price lines
   const drawingLinesRef = useRef<any[]>([]);
