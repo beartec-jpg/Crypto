@@ -51,6 +51,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const crosshairPointRef = useRef<GesturePoint | null>(null);
   const savedSwipePointRef = useRef<GesturePoint | null>(null);
+  const suppressNextClickRef = useRef<boolean>(false); // Prevent chart click after touch commit
   
   // Chart refs
   const chartRef = useRef<IChartApi | null>(null);
@@ -99,6 +100,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const commitPoint = useCallback(() => {
     const point = getCrosshairPoint();
     if (point) {
+      // Set flag to suppress the chart click that will fire after this touch event
+      suppressNextClickRef.current = true;
       onPointCommit(point);
     }
     resetState();
@@ -132,26 +135,25 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const clickHandler = (param: any) => {
       if (!enabled) return;
       
-      // If in crosshair mode, use the saved/current crosshair position
+      // Skip if this click should be suppressed (fired after touch commit)
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
+        return;
+      }
+      
+      // Only process clicks when in crosshair mode
+      // User must long-press to activate crosshair mode first, then tap to commit
       if (gestureStateRef.current === 'crosshairActive') {
         const point = getCrosshairPoint();
         if (point) {
+          suppressNextClickRef.current = true; // Prevent any follow-up clicks
           onPointCommit(point);
         }
         resetState();
         return;
       }
       
-      // For regular clicks (mouse), use the click position directly
-      if (param.time && param.point) {
-        const price = candleSeries.coordinateToPrice(param.point.y);
-        if (price !== null) {
-          onPointCommit({
-            time: param.time as number,
-            price
-          });
-        }
-      }
+      // Regular clicks do nothing - user must activate crosshair mode first
     };
     chart.subscribeClick(clickHandler);
     
