@@ -9359,25 +9359,117 @@ export default function CryptoIndicators() {
                       if (p1.x === null || p2.x === null) return null;
                       const label = drawing.style?.label || '';
                       const labelRight = drawing.style?.labelPosition === 'right';
-                      const midX = (p1.x + p2.x) / 2;
-                      const midY = (p1.y + p2.y) / 2;
+                      const extendLeft = drawing.style?.extendLeft || false;
+                      const extendRight = drawing.style?.extendRight || false;
+                      
+                      const chartContainer = chartContainerRef.current;
+                      const chartWidth = chartContainer?.clientWidth || 800;
+                      const chartHeight = chartContainer?.clientHeight || 400;
+                      
+                      // Normalize points so pLeft is always the leftmost point
+                      const pLeft = p1.x <= p2.x ? p1 : p2;
+                      const pRight = p1.x <= p2.x ? p2 : p1;
+                      
+                      let lineX1 = pLeft.x;
+                      let lineY1 = pLeft.y;
+                      let lineX2 = pRight.x;
+                      let lineY2 = pRight.y;
+                      
+                      if (extendLeft || extendRight) {
+                        const dx = pRight.x - pLeft.x;
+                        const dy = pRight.y - pLeft.y;
+                        
+                        const isVertical = Math.abs(dx) < 0.001;
+                        const isHorizontal = Math.abs(dy) < 0.001;
+                        
+                        if (isVertical) {
+                          // Vertical line: extend in Y direction only
+                          const avgX = (pLeft.x + pRight.x) / 2;
+                          lineX1 = avgX;
+                          lineX2 = avgX;
+                          if (extendLeft) lineY1 = 0;
+                          if (extendRight) lineY2 = chartHeight;
+                        } else if (isHorizontal) {
+                          // Horizontal line: extend in X direction only
+                          const avgY = (pLeft.y + pRight.y) / 2;
+                          lineY1 = avgY;
+                          lineY2 = avgY;
+                          if (extendLeft) lineX1 = 0;
+                          if (extendRight) lineX2 = chartWidth;
+                        } else {
+                          const slope = dy / dx;
+                          const intercept = pLeft.y - slope * pLeft.x;
+                          
+                          const getYAtX = (x: number) => slope * x + intercept;
+                          const getXAtY = (y: number) => (y - intercept) / slope;
+                          
+                          // Find intersection with left edge (toward smaller X)
+                          if (extendLeft) {
+                            // Extend beyond pLeft toward x=0
+                            const yAtLeft = getYAtX(0);
+                            if (yAtLeft >= 0 && yAtLeft <= chartHeight) {
+                              lineX1 = 0;
+                              lineY1 = yAtLeft;
+                            } else if (yAtLeft < 0) {
+                              // Line exits through top edge
+                              const xAtTop = getXAtY(0);
+                              lineX1 = Math.max(0, xAtTop);
+                              lineY1 = 0;
+                            } else {
+                              // Line exits through bottom edge
+                              const xAtBottom = getXAtY(chartHeight);
+                              lineX1 = Math.max(0, xAtBottom);
+                              lineY1 = chartHeight;
+                            }
+                          }
+                          
+                          // Find intersection with right edge (toward larger X)
+                          if (extendRight) {
+                            const yAtRight = getYAtX(chartWidth);
+                            if (yAtRight >= 0 && yAtRight <= chartHeight) {
+                              lineX2 = chartWidth;
+                              lineY2 = yAtRight;
+                            } else if (yAtRight < 0) {
+                              // Line exits through top edge
+                              const xAtTop = getXAtY(0);
+                              lineX2 = Math.min(chartWidth, xAtTop);
+                              lineY2 = 0;
+                            } else {
+                              // Line exits through bottom edge  
+                              const xAtBottom = getXAtY(chartHeight);
+                              lineX2 = Math.min(chartWidth, xAtBottom);
+                              lineY2 = chartHeight;
+                            }
+                          }
+                        }
+                      }
+                      
+                      // Label position: use extended endpoints, clamp within viewport
+                      const labelPadding = 10;
+                      let labelX = labelRight ? lineX2 + 5 : lineX1 - 5;
+                      let labelY = labelRight ? lineY2 : lineY1;
+                      
+                      // Clamp label X within chart bounds
+                      labelX = Math.max(labelPadding, Math.min(chartWidth - labelPadding, labelX));
+                      // Clamp label Y within chart bounds  
+                      labelY = Math.max(15, Math.min(chartHeight - 5, labelY));
+                      
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
-                          {/* Invisible thicker line for easier clicking */}
                           <line 
-                            x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                            x1={lineX1} y1={lineY1} x2={lineX2} y2={lineY2}
                             stroke="transparent"
                             strokeWidth={12}
                           />
                           <line 
-                            x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                            x1={lineX1} y1={lineY1} x2={lineX2} y2={lineY2}
                             stroke={isSelected ? '#22c55e' : color}
                             strokeWidth={isSelected ? 3 : 2}
                           />
                           {label && (
                             <text 
-                              x={labelRight ? p2.x + 5 : p1.x - 5}
-                              y={labelRight ? p2.y : p1.y}
+                              x={labelX}
+                              y={labelY}
                               fill={isSelected ? '#22c55e' : color}
                               fontSize="11"
                               fontWeight="500"
@@ -9877,6 +9969,43 @@ export default function CryptoIndicators() {
                                   className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.labelPosition === 'right' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
                                 >
                                   Right
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Extend Line Options - Only for trendlines */}
+                          {selectedDrawing.type === 'trendline' && (
+                            <div className="mb-3">
+                              <div className="text-xs text-gray-300 mb-2">Extend Line</div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => updateDrawingSettings({ extendLeft: !selectedDrawing.style?.extendLeft })}
+                                  className={`flex-1 px-3 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                    selectedDrawing.style?.extendLeft 
+                                      ? 'bg-blue-500 text-white' 
+                                      : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                                  }`}
+                                  data-testid="btn-extend-left"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                  </svg>
+                                  Left
+                                </button>
+                                <button
+                                  onClick={() => updateDrawingSettings({ extendRight: !selectedDrawing.style?.extendRight })}
+                                  className={`flex-1 px-3 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                    selectedDrawing.style?.extendRight 
+                                      ? 'bg-blue-500 text-white' 
+                                      : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                                  }`}
+                                  data-testid="btn-extend-right"
+                                >
+                                  Right
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                  </svg>
                                 </button>
                               </div>
                             </div>
