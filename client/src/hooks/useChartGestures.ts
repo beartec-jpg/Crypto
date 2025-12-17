@@ -482,7 +482,9 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       console.log('[Gesture] Quick tap committed (snapped):', snapPoint);
       onPointCommitRef.current(snapPoint);
     } else {
-      console.warn('[Gesture] No snap point found for tap');
+      // Fallback to raw coords if no snap found
+      console.log('[Gesture] Quick tap committed (no snap - fallback):', { time: tapTime, price: tapPrice });
+      onPointCommitRef.current({ time: tapTime, price: tapPrice, snapType: 'none' });
     }
   };
 
