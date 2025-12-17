@@ -373,6 +373,7 @@ export default function CryptoIndicators() {
   const [loading, setLoading] = useState(true);
   const [chartReady, setChartReady] = useState(false);
   const [crosshairInfo, setCrosshairInfo] = useState<{time: number; x: number; y: number} | null>(null);
+  const [visibleCandleCount, setVisibleCandleCount] = useState<number>(0);
   
   // Chart controls tab state - null means no tab selected (collapsed)
   const [chartControlsTab, setChartControlsTab] = useState<'smc' | 'trend' | 'vwap' | 'oscillators' | null>(null);
@@ -6253,6 +6254,20 @@ export default function CryptoIndicators() {
       console.log('Chart created successfully with', futureCount, 'future bars');
       setChartReady(true);
       
+      // Subscribe to visible range changes to update candle count
+      chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range) {
+          const count = Math.round(range.to - range.from) + 1;
+          setVisibleCandleCount(count);
+        }
+      });
+      
+      // Set initial visible candle count
+      const initialRange = chart.timeScale().getVisibleLogicalRange();
+      if (initialRange) {
+        setVisibleCandleCount(Math.round(initialRange.to - initialRange.from) + 1);
+      }
+
       // Add crosshair move handler to track time in future whitespace area (for UI display)
       chart.subscribeCrosshairMove((param) => {
         if (param.time && param.point) {
@@ -9833,6 +9848,11 @@ export default function CryptoIndicators() {
                     </div>
                   );
                 })()}
+                
+                {/* Visible Candle Counter */}
+                <div className="absolute top-2 right-16 z-20 bg-slate-700/90 text-gray-300 px-2 py-1 rounded text-xs font-medium">
+                  📊 {visibleCandleCount} candles
+                </div>
                 
                 {/* Active Tool Indicator */}
                 {activeTool && drawingMode === 'draw' && (
