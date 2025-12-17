@@ -392,6 +392,10 @@ export default function CryptoIndicators() {
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
   const [autoColorEnabled, setAutoColorEnabled] = useState(true);
   
+  // Point dragging state (for moving drawing anchor points)
+  const [draggingPoint, setDraggingPoint] = useState<{ drawingId: string; pointIndex: number } | null>(null);
+  const draggingPointRef = useRef<{ drawingId: string; pointIndex: number } | null>(null);
+  
   // Ref for tracking active tool in callbacks
   const activeToolRef = useRef(activeTool);
   useEffect(() => {
@@ -403,6 +407,147 @@ export default function CryptoIndicators() {
   useEffect(() => {
     autoColorEnabledRef.current = autoColorEnabled;
   }, [autoColorEnabled]);
+  
+  // Keep dragging ref in sync
+  useEffect(() => {
+    draggingPointRef.current = draggingPoint;
+  }, [draggingPoint]);
+  
+  // Handler to start point dragging
+  const handlePointDragStart = useCallback((drawingId: string, pointIndex: number, e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingPoint({ drawingId, pointIndex });
+  }, []);
+  
+  // Handler to complete point drag (called on document mouseup/touchend)
+  const handlePointDragEnd = useCallback((clientX: number, clientY: number) => {
+    const dp = draggingPointRef.current;
+    if (!dp || !chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) {
+      setDraggingPoint(null);
+      return;
+    }
+    
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+    const container = chartContainerRef.current;
+    const rect = container.getBoundingClientRect();
+    
+    // Convert screen coordinates to chart coordinates
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    
+    // Convert to time and price
+    const logicalX = chart.timeScale().coordinateToLogical(x);
+    if (logicalX === null) {
+      setDraggingPoint(null);
+      return;
+    }
+    
+    const candleIndex = Math.round(logicalX);
+    const allCandles = candlesRef.current;
+    
+    let price = candleSeries.coordinateToPrice(y);
+    if (price === null) {
+      setDraggingPoint(null);
+      return;
+    }
+    
+    let finalTime: number;
+    let snapType: 'high' | 'low' | 'none' = 'none';
+    
+    // Check if we're in future whitespace (beyond last candle)
+    if (candleIndex >= allCandles.length) {
+      // Future whitespace - calculate synthetic timestamp
+      const lastCandle = allCandles[allCandles.length - 1];
+      const secondLastCandle = allCandles.length > 1 ? allCandles[allCandles.length - 2] : null;
+      const timeInterval = secondLastCandle ? (lastCandle.time - secondLastCandle.time) : 3600;
+      const barsAhead = candleIndex - (allCandles.length - 1);
+      finalTime = (lastCandle.time as number) + (barsAhead * (timeInterval as number));
+      // No snap for future whitespace
+    } else if (candleIndex < 0) {
+      // Before first candle - clamp to first
+      const candle = allCandles[0];
+      finalTime = candle.time as number;
+      if (autoSnapEnabled) {
+        const candleMid = (candle.high + candle.low) / 2;
+        const snapToHigh = price > candleMid;
+        price = snapToHigh ? candle.high : candle.low;
+        snapType = snapToHigh ? 'high' : 'low';
+      }
+    } else {
+      // Normal range - use existing candle
+      const candle = allCandles[candleIndex];
+      finalTime = candle.time as number;
+      if (autoSnapEnabled) {
+        const candleMid = (candle.high + candle.low) / 2;
+        const snapToHigh = price > candleMid;
+        price = snapToHigh ? candle.high : candle.low;
+        snapType = snapToHigh ? 'high' : 'low';
+      }
+    }
+    
+    // Find the drawing and update it
+    const drawing = drawings.find(d => d.id === dp.drawingId);
+    if (!drawing) {
+      setDraggingPoint(null);
+      return;
+    }
+    
+    // Create updated points array
+    const newPoints = [...drawing.points];
+    newPoints[dp.pointIndex] = { time: finalTime, price, snapType };
+    
+    // Optimistically update local state first
+    setDrawings(prev => prev.map(d => 
+      d.id === dp.drawingId ? { ...d, points: newPoints } : d
+    ));
+    
+    // Update the drawing via mutation (will refetch on success)
+    updateDrawingMutation.mutate({
+      id: dp.drawingId,
+      coordinates: { points: newPoints },
+    });
+    
+    setDraggingPoint(null);
+  }, [drawings, autoSnapEnabled, updateDrawingMutation]);
+  
+  // Document-level event listeners for point dragging
+  useEffect(() => {
+    if (!draggingPoint) return;
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      // Could add live preview here in the future
+    };
+    
+    const handleMouseUp = (e: MouseEvent) => {
+      handlePointDragEnd(e.clientX, e.clientY);
+    };
+    
+    const handleTouchMove = (e: TouchEvent) => {
+      // Prevent scrolling while dragging
+      e.preventDefault();
+    };
+    
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.changedTouches.length > 0) {
+        const touch = e.changedTouches[0];
+        handlePointDragEnd(touch.clientX, touch.clientY);
+      }
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [draggingPoint, handlePointDragEnd]);
   
   // Ref for tracking crosshair info for UI display
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null);
@@ -486,8 +631,11 @@ export default function CryptoIndicators() {
   
   // Update drawing mutation (for settings changes)
   const updateDrawingMutation = useMutation({
-    mutationFn: async ({ id, style }: { id: string; style: any }) => {
-      const response = await authenticatedApiRequest('PATCH', `/api/crypto/chart-drawings/${id}`, { style });
+    mutationFn: async ({ id, style, coordinates }: { id: string; style?: any; coordinates?: any }) => {
+      const body: Record<string, any> = {};
+      if (style) body.style = style;
+      if (coordinates) body.coordinates = coordinates;
+      const response = await authenticatedApiRequest('PATCH', `/api/crypto/chart-drawings/${id}`, body);
       return response.json();
     },
     onSuccess: () => {
@@ -9480,8 +9628,24 @@ export default function CryptoIndicators() {
                           )}
                           {isSelected && (
                             <>
-                              <circle cx={p1.x} cy={p1.y} r={5} fill="#22c55e" />
-                              <circle cx={p2.x} cy={p2.y} r={5} fill="#22c55e" />
+                              <circle 
+                                cx={p1.x} cy={p1.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab' }}
+                                onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
+                              />
+                              <circle 
+                                cx={p2.x} cy={p2.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab' }}
+                                onMouseDown={(e) => handlePointDragStart(drawing.id, 1, e)}
+                                onTouchStart={(e) => handlePointDragStart(drawing.id, 1, e)}
+                              />
                             </>
                           )}
                         </g>
@@ -9532,6 +9696,28 @@ export default function CryptoIndicators() {
                             >
                               {label}
                             </text>
+                          )}
+                          {isSelected && (
+                            <>
+                              <circle 
+                                cx={p1.x} cy={p1.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab' }}
+                                onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
+                              />
+                              <circle 
+                                cx={p2.x} cy={p2.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab' }}
+                                onMouseDown={(e) => handlePointDragStart(drawing.id, 1, e)}
+                                onTouchStart={(e) => handlePointDragStart(drawing.id, 1, e)}
+                              />
+                            </>
                           )}
                         </g>
                       );
@@ -9641,12 +9827,33 @@ export default function CryptoIndicators() {
                           />
                           {/* Selection highlight overlay */}
                           {isSelected && (
-                            <line 
-                              x1={0} y1={y} x2={chartWidth} y2={y}
-                              stroke="#22c55e"
-                              strokeWidth={3}
-                              strokeDasharray="0"
-                            />
+                            <>
+                              <line 
+                                x1={0} y1={y} x2={chartWidth} y2={y}
+                                stroke="#22c55e"
+                                strokeWidth={3}
+                                strokeDasharray="0"
+                              />
+                              {/* Drag handle for horizontal line */}
+                              <circle 
+                                cx={50} cy={y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab' }}
+                                onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
+                              />
+                              <circle 
+                                cx={chartWidth - 50} cy={y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab' }}
+                                onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
+                              />
+                            </>
                           )}
                         </g>
                       );

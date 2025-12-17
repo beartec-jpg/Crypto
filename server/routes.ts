@@ -5203,11 +5203,11 @@ Return ONLY valid JSON in this exact format:
     }
   });
   
-  // Update a chart drawing (for settings changes)
+  // Update a chart drawing (for settings changes or point moves)
   app.patch("/api/crypto/chart-drawings/:id", requireCryptoAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const { style } = req.body;
+      const { style, coordinates } = req.body;
       const userId = (req as any).cryptoUser.id;
       
       const { db } = await import("./db");
@@ -5223,11 +5223,21 @@ Return ONLY valid JSON in this exact format:
         return res.status(404).json({ error: 'Drawing not found' });
       }
       
-      // Merge the new style with existing style
-      const mergedStyle = { ...(existing.style as object || {}), ...style };
+      // Build update object
+      const updates: Record<string, any> = {};
+      
+      // Merge the new style with existing style if provided
+      if (style) {
+        updates.style = { ...(existing.style as object || {}), ...style };
+      }
+      
+      // Update coordinates if provided (for moving points)
+      if (coordinates) {
+        updates.coordinates = coordinates;
+      }
       
       const [updated] = await db.update(chartDrawings)
-        .set({ style: mergedStyle })
+        .set(updates)
         .where(and(eq(chartDrawings.id, id), eq(chartDrawings.userId, userId)))
         .returning();
       
