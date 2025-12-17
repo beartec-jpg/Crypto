@@ -2539,6 +2539,8 @@ export default function CryptoElliottWave() {
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null); // Timer for long-press activation
   const ignoreNextClickRef = useRef<boolean>(false); // Ignore the click from lifting the crosshair activation touch
   const markersDebounceRef = useRef<NodeJS.Timeout | null>(null); // Debounce marker updates during zoom
+  const waveSnapCircleRef = useRef<HTMLDivElement | null>(null); // Visual feedback circle for wave snapping
+  const showWaveSnapCircleRef = useRef<((x: number, y: number, isSnapped: boolean) => void) | null>(null); // Ref to access snap circle function from chart callbacks
   
   // Correction context: stores parent impulse data when starting ABC from predicted W5
   // Used to calculate Wave A retracement targets or C wave extension targets
@@ -2790,6 +2792,46 @@ export default function CryptoElliottWave() {
     };
   }, [chartReady, gestureController]);
   
+  // Show visual snap feedback circle for wave drawing
+  const showWaveSnapCircle = useCallback((x: number, y: number, isSnapped: boolean) => {
+    const container = chartContainerRef.current;
+    if (!container) return;
+    
+    if (!waveSnapCircleRef.current) {
+      const circle = document.createElement('div');
+      circle.style.cssText = `
+        position: absolute;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 3px solid ${isSnapped ? '#22c55e' : '#ef4444'};
+        background: ${isSnapped ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)'};
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+        transition: opacity 0.3s ease-out;
+        z-index: 50;
+      `;
+      container.appendChild(circle);
+      waveSnapCircleRef.current = circle;
+    }
+    
+    const circle = waveSnapCircleRef.current;
+    circle.style.left = `${x}px`;
+    circle.style.top = `${y}px`;
+    circle.style.borderColor = isSnapped ? '#22c55e' : '#ef4444';
+    circle.style.background = isSnapped ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+    circle.style.opacity = '1';
+    
+    setTimeout(() => {
+      if (waveSnapCircleRef.current) {
+        waveSnapCircleRef.current.style.opacity = '0';
+      }
+    }, 400);
+  }, []);
+  
+  // Keep ref updated for chart callbacks
+  showWaveSnapCircleRef.current = showWaveSnapCircle;
+  
   // Render horizontal lines using price lines
   const drawingLinesRef = useRef<any[]>([]);
   
@@ -2830,6 +2872,11 @@ export default function CryptoElliottWave() {
       candleSeriesRef.current = null;
       blueCandelSeriesRef.current = null;
     }
+    // Clean up wave snap circle to prevent orphaned DOM elements
+    if (waveSnapCircleRef.current && waveSnapCircleRef.current.parentNode) {
+      waveSnapCircleRef.current.parentNode.removeChild(waveSnapCircleRef.current);
+    }
+    waveSnapCircleRef.current = null;
   }, [symbol, timeframe]);
 
   // Fetch wave degrees
@@ -4901,6 +4948,13 @@ const aiAnalyze = useMutation({
       const updatedPoints = [...currentPointsRef.current, newPoint];
       setCurrentPoints(updatedPoints);
       setPreviewPoint(null); // Clear preview after placing
+      
+      // Show visual snap feedback at the snap location
+      const snapX = timeScale.timeToCoordinate(finalCandle.time as any);
+      const snapY = candleSeries.priceToCoordinate(snappedPrice);
+      if (snapX !== null && snapY !== null && showWaveSnapCircleRef.current) {
+        showWaveSnapCircleRef.current(snapX, snapY, true); // Wave snapping is always successful
+      }
       
       // Deactivate crosshair mode after placement and clear frozen position
       if (crosshairModeActiveRef.current) {
