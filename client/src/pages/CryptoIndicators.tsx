@@ -389,6 +389,7 @@ export default function CryptoIndicators() {
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
   const [crosshairModeActive, setCrosshairModeActive] = useState(false);
+  const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
   
   // Ref for tracking active tool in callbacks
   const activeToolRef = useRef(activeTool);
@@ -526,6 +527,7 @@ export default function CryptoIndicators() {
     data: candles,
     onPointCommit: handlePointCommit,
     onCrosshairModeChange: setCrosshairModeActive,
+    autoSnapEnabled,
   });
   
   // Cancel crosshair when draw mode is turned off or tool is deselected
@@ -9605,6 +9607,28 @@ export default function CryptoIndicators() {
                       </svg>
                     </button>
                   )}
+                  
+                  {/* Auto-Snap Toggle Button */}
+                  <button
+                    onClick={() => {
+                      setAutoSnapEnabled(prev => !prev);
+                      toast({ 
+                        title: autoSnapEnabled ? 'Auto-Snap Disabled' : 'Auto-Snap Enabled',
+                        description: autoSnapEnabled ? 'Points will be placed exactly where you tap' : 'Points will snap to nearest high/low'
+                      });
+                    }}
+                    className={`p-2 rounded-lg transition-all ${
+                      autoSnapEnabled 
+                        ? 'bg-yellow-500 text-white' 
+                        : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                    }`}
+                    title={autoSnapEnabled ? 'Auto-Snap: ON (click to disable)' : 'Auto-Snap: OFF (click to enable)'}
+                    data-testid="btn-auto-snap"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </button>
                   
                   {/* Clear All Button */}
                   <button

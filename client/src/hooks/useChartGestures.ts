@@ -49,6 +49,7 @@ interface UseChartGesturesOptions {
   onPointCommit: (point: GesturePoint) => void;
   onPreviewPoint?: (point: GesturePoint | null) => void;
   onCrosshairModeChange?: (active: boolean) => void;
+  autoSnapEnabled?: boolean;
 }
 
 interface UseChartGesturesReturn {
@@ -61,19 +62,21 @@ interface UseChartGesturesReturn {
 }
 
 export function useChartGestures(options: UseChartGesturesOptions): UseChartGesturesReturn {
-  const { enabled, data, onPointCommit, onPreviewPoint, onCrosshairModeChange } = options;
+  const { enabled, data, onPointCommit, onPreviewPoint, onCrosshairModeChange, autoSnapEnabled = true } = options;
 
   const enabledRef = useRef(enabled);
   const dataRef = useRef<BarData[]>(data);
   const onPointCommitRef = useRef(onPointCommit);
   const onPreviewPointRef = useRef(onPreviewPoint);
   const onCrosshairModeChangeRef = useRef(onCrosshairModeChange);
+  const autoSnapEnabledRef = useRef(autoSnapEnabled);
 
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { onPointCommitRef.current = onPointCommit; }, [onPointCommit]);
   useEffect(() => { onPreviewPointRef.current = onPreviewPoint; }, [onPreviewPoint]);
   useEffect(() => { onCrosshairModeChangeRef.current = onCrosshairModeChange; }, [onCrosshairModeChange]);
+  useEffect(() => { autoSnapEnabledRef.current = autoSnapEnabled; }, [autoSnapEnabled]);
 
   const crosshairActiveRef = useRef<boolean>(false);
   const isDraggingRef = useRef<boolean>(false);
@@ -405,7 +408,15 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       return;
     }
 
-    console.log('[Gesture] Committing from crosshair:', coords);
+    console.log('[Gesture] Committing from crosshair:', coords, 'autoSnap:', autoSnapEnabledRef.current);
+
+    // If auto-snap is disabled, use raw coords
+    if (!autoSnapEnabledRef.current) {
+      console.log('[Gesture] COMMIT POINT (no snap - raw):', { time: coords.time, price: coords.price });
+      onPointCommitRef.current({ time: coords.time, price: coords.price });
+      deactivateCrosshairMode();
+      return;
+    }
 
     // Use the STORED logical index (not recalculated) to prevent drift
     const centerIdx = coords.logicalIdx;
@@ -443,6 +454,18 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
     const tapPrice = candleSeriesRef.current.coordinateToPrice(local.y);
     if (tapPrice === null) return;
+
+    const tapTime = getTimeFromLogical(centerIdx);
+    if (tapTime === null) return;
+
+    console.log('[Gesture] Quick tap - autoSnap:', autoSnapEnabledRef.current);
+
+    // If auto-snap is disabled, use raw coords
+    if (!autoSnapEnabledRef.current) {
+      console.log('[Gesture] Quick tap committed (no snap - raw):', { time: tapTime, price: tapPrice });
+      onPointCommitRef.current({ time: tapTime, price: tapPrice });
+      return;
+    }
 
     // Get snap radius based on visible candles (tap mode - more lenient)
     const visibleCount = getVisibleCandleCount();
