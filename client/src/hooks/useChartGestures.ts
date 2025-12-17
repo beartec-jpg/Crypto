@@ -153,79 +153,187 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     return bars[idx].time;
   };
 
-  // Find best high/low in a window of candles around a center index
-  // Step 1: X position determines which candles are in the window (time-based)
-  // Step 2: Within that window, find max high and min low
-  // Step 3: Snap to whichever (high or low) is closest to cursor PRICE
-  const findSnapPointInWindow = (
-    centerIdx: number, 
-    radius: number, 
-    priceAtCursor: number,
-    _tapX?: number,  // Unused - kept for API compatibility
-    _tapY?: number   // Unused - kept for API compatibility
+  // Fixed pixel radius for snap circle (2D mode)
+  const SNAP_CIRCLE_RADIUS = 60; // pixels
+  
+  // Reference for snap circle visual element
+  const snapCircleRef = useRef<HTMLDivElement | null>(null);
+  
+  // Show a visual circle at the tap point that fades out
+  const showSnapCircle = (tapX: number, tapY: number, foundSnap: boolean) => {
+    if (!chartElementRef.current) return;
+    
+    // Create circle if it doesn't exist
+    if (!snapCircleRef.current) {
+      const circle = document.createElement('div');
+      circle.style.cssText = `
+        position: absolute;
+        pointer-events: none;
+        border: 3px solid;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1000;
+        transition: opacity 0.5s ease-out;
+      `;
+      chartElementRef.current.style.position = 'relative';
+      chartElementRef.current.appendChild(circle);
+      snapCircleRef.current = circle;
+    }
+    
+    const circle = snapCircleRef.current;
+    const diameter = SNAP_CIRCLE_RADIUS * 2;
+    
+    // Color: green if snap found, red if no snap
+    const color = foundSnap ? '#00FF00' : '#FF0000';
+    
+    circle.style.width = `${diameter}px`;
+    circle.style.height = `${diameter}px`;
+    circle.style.left = `${tapX}px`;
+    circle.style.top = `${tapY}px`;
+    circle.style.borderColor = color;
+    circle.style.boxShadow = `0 0 10px ${color}`;
+    circle.style.opacity = '1';
+    circle.style.display = 'block';
+    
+    // Fade out after 500ms
+    setTimeout(() => {
+      if (snapCircleRef.current) {
+        snapCircleRef.current.style.opacity = '0';
+      }
+    }, 500);
+  };
+  
+  // Find best high/low within a fixed PIXEL CIRCLE around the tap point
+  // Uses 2D Euclidean distance to find the closest wick to where user tapped
+  const findSnapPointInCircle = (
+    tapX: number,
+    tapY: number
   ): GesturePoint | null => {
     const bars = dataRef.current;
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
     
-    console.log(`[Gesture] findSnapPointInWindow: centerIdx=${centerIdx}, radius=${radius}, cursorPrice=${priceAtCursor.toFixed(4)}`);
-    
-    // Validate center index
-    if (centerIdx < 0 || centerIdx >= bars.length) {
-      console.warn(`[Gesture] centerIdx ${centerIdx} out of bounds [0, ${bars.length - 1}]`);
+    if (!chart || !series || bars.length === 0) {
+      console.warn('[Gesture] Chart/series not available');
+      showSnapCircle(tapX, tapY, false);
       return null;
     }
     
-    // STEP 1: Collect candles in the window (based on X/time position only)
-    const windowBars: { bar: BarData; idx: number }[] = [];
-    for (let i = -radius; i <= radius; i++) {
-      const idx = centerIdx + i;
-      if (idx >= 0 && idx < bars.length) {
-        windowBars.push({ bar: bars[idx], idx });
+    const timeScale = chart.timeScale();
+    const visibleRange = timeScale.getVisibleLogicalRange();
+    if (!visibleRange) {
+      showSnapCircle(tapX, tapY, false);
+      return null;
+    }
+    
+    console.log(`[Gesture] 2D Circle Snap: tap=(${tapX.toFixed(0)}, ${tapY.toFixed(0)}), radius=${SNAP_CIRCLE_RADIUS}px`);
+    
+    // Collect all candidate points within the circle
+    type Candidate = {
+      time: Time;
+      price: number;
+      screenX: number;
+      screenY: number;
+      dist2D: number;
+      snapType: 'high' | 'low';
+      idx: number;
+    };
+    
+    const candidates: Candidate[] = [];
+    
+    // Only check visible candles (plus a buffer)
+    const startIdx = Math.max(0, Math.floor(visibleRange.from) - 10);
+    const endIdx = Math.min(bars.length - 1, Math.ceil(visibleRange.to) + 10);
+    
+    for (let idx = startIdx; idx <= endIdx; idx++) {
+      const bar = bars[idx];
+      
+      // Get screen X for this candle
+      const screenX = timeScale.logicalToCoordinate(idx as any);
+      if (screenX === null) continue;
+      
+      // Check the HIGH point
+      const highY = series.priceToCoordinate(bar.high);
+      if (highY !== null) {
+        const dx = screenX - tapX;
+        const dy = highY - tapY;
+        const dist2D = Math.sqrt(dx * dx + dy * dy);
+        
+        // Only include if within the circle
+        if (dist2D <= SNAP_CIRCLE_RADIUS) {
+          candidates.push({
+            time: bar.time,
+            price: bar.high,
+            screenX,
+            screenY: highY,
+            dist2D,
+            snapType: 'high',
+            idx
+          });
+        }
+      }
+      
+      // Check the LOW point
+      const lowY = series.priceToCoordinate(bar.low);
+      if (lowY !== null) {
+        const dx = screenX - tapX;
+        const dy = lowY - tapY;
+        const dist2D = Math.sqrt(dx * dx + dy * dy);
+        
+        // Only include if within the circle
+        if (dist2D <= SNAP_CIRCLE_RADIUS) {
+          candidates.push({
+            time: bar.time,
+            price: bar.low,
+            screenX,
+            screenY: lowY,
+            dist2D,
+            snapType: 'low',
+            idx
+          });
+        }
       }
     }
     
-    if (windowBars.length === 0) return null;
+    console.log(`[Gesture] Found ${candidates.length} candidates within ${SNAP_CIRCLE_RADIUS}px circle`);
     
-    console.log(`[Gesture] Window: ${windowBars.length} candles from idx ${windowBars[0].idx} to ${windowBars[windowBars.length - 1].idx}`);
-    
-    // STEP 2: Find the MAXIMUM high and MINIMUM low in the window
-    let maxHigh = -Infinity;
-    let maxHighTime: Time | null = null;
-    let maxHighIdx = -1;
-    
-    let minLow = Infinity;
-    let minLowTime: Time | null = null;
-    let minLowIdx = -1;
-    
-    for (const { bar, idx } of windowBars) {
-      if (bar.high > maxHigh) {
-        maxHigh = bar.high;
-        maxHighTime = bar.time;
-        maxHighIdx = idx;
-      }
-      if (bar.low < minLow) {
-        minLow = bar.low;
-        minLowTime = bar.time;
-        minLowIdx = idx;
-      }
+    if (candidates.length === 0) {
+      console.warn('[Gesture] No snap points within circle');
+      showSnapCircle(tapX, tapY, false);
+      return null;
     }
     
-    if (maxHighTime === null || minLowTime === null) return null;
+    // Sort by 2D distance and pick the closest
+    candidates.sort((a, b) => a.dist2D - b.dist2D);
+    const best = candidates[0];
     
-    // STEP 3: Decide based on PRICE distance - snap to whichever is closer
-    const distToHigh = Math.abs(priceAtCursor - maxHigh);
-    const distToLow = Math.abs(priceAtCursor - minLow);
+    // Log top 3 candidates
+    for (let i = 0; i < Math.min(3, candidates.length); i++) {
+      const c = candidates[i];
+      console.log(`[Gesture]   #${i + 1}: idx=${c.idx} ${c.snapType} @ ${c.price.toFixed(4)}, pos=(${c.screenX.toFixed(0)}, ${c.screenY.toFixed(0)}), dist=${c.dist2D.toFixed(1)}px`);
+    }
     
-    const snapToHigh = distToHigh < distToLow;
-    const resultTime = snapToHigh ? maxHighTime : minLowTime;
-    const resultPrice = snapToHigh ? maxHigh : minLow;
-    const resultIdx = snapToHigh ? maxHighIdx : minLowIdx;
-    const snapType: 'high' | 'low' = snapToHigh ? 'high' : 'low';
+    console.log(`[Gesture] → Snapped to ${best.snapType.toUpperCase()} at idx=${best.idx}, price=${best.price.toFixed(4)}`);
     
-    console.log(`[Gesture] Max HIGH: idx=${maxHighIdx}, price=${maxHigh.toFixed(4)}, dist=${distToHigh.toFixed(4)}`);
-    console.log(`[Gesture] Min LOW: idx=${minLowIdx}, price=${minLow.toFixed(4)}, dist=${distToLow.toFixed(4)}`);
-    console.log(`[Gesture] Cursor @ ${priceAtCursor.toFixed(4)} → snap to ${snapType.toUpperCase()} at idx=${resultIdx}, price=${resultPrice.toFixed(4)}`);
-    
-    return { time: resultTime, price: resultPrice, snapType };
+    showSnapCircle(tapX, tapY, true);
+    return { time: best.time, price: best.price, snapType: best.snapType };
+  };
+  
+  // Legacy function kept for API compatibility - now redirects to circle-based snap
+  const findSnapPointInWindow = (
+    _centerIdx: number, 
+    _radius: number, 
+    _priceAtCursor: number,
+    tapX?: number,
+    tapY?: number
+  ): GesturePoint | null => {
+    // If we have tap coordinates, use the new 2D circle method
+    if (tapX !== undefined && tapY !== undefined) {
+      return findSnapPointInCircle(tapX, tapY);
+    }
+    // Fallback: shouldn't happen but just in case
+    console.warn('[Gesture] findSnapPointInWindow called without tap coordinates');
+    return null;
   };
 
   // Create the custom crosshair elements
