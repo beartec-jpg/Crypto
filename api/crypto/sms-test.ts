@@ -1,7 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyToken } from '@clerk/backend';
-import pg from 'pg';
-import twilio from 'twilio';
 
 async function verifyAuth(req: VercelRequest): Promise<string | null> {
   try {
@@ -27,8 +25,9 @@ async function verifyAuth(req: VercelRequest): Promise<string | null> {
 }
 
 async function getDb() {
-  const Pool = pg.Pool;
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pg = await import('pg');
+  const Pool = pg.default?.Pool || pg.Pool;
+  const pool = new (Pool as any)({ connectionString: process.env.DATABASE_URL });
   return pool;
 }
 
@@ -53,7 +52,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pool = await getDb();
 
   try {
-    // Get user's phone number from database
     const userResult = await pool.query(
       'SELECT phone_number FROM crypto_users WHERE clerk_user_id = $1',
       [userId]
@@ -66,7 +64,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const phoneNumber = userResult.rows[0].phone_number;
 
-    // Get Twilio credentials from environment
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const fromNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -76,8 +73,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'SMS service not configured' });
     }
 
-    // Send test SMS via Twilio
-    const client = twilio(accountSid, authToken);
+    const twilioModule = await import('twilio');
+    const twilioClient = twilioModule.default || twilioModule;
+    const client = twilioClient(accountSid, authToken);
     
     await client.messages.create({
       body: '✅ BearTec SMS alerts are now connected! You will receive trading alerts via SMS.',
