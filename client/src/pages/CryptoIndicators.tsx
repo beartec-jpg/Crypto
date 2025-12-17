@@ -9492,23 +9492,38 @@ export default function CryptoIndicators() {
                       const p1 = toPixel(drawing.points[0]);
                       const p2 = toPixel(drawing.points[1]);
                       if (p1.x === null || p2.x === null) return null;
-                      const x = Math.min(p1.x, p2.x);
+                      
+                      const extendLeft = drawing.style?.extendLeft || false;
+                      const extendRight = drawing.style?.extendRight || false;
+                      
+                      let x = Math.min(p1.x, p2.x);
+                      let rectWidth = Math.abs(p2.x - p1.x);
                       const y = Math.min(p1.y, p2.y);
-                      const w = Math.abs(p2.x - p1.x);
                       const h = Math.abs(p2.y - p1.y);
+                      
+                      if (extendLeft) {
+                        rectWidth += x;
+                        x = 0;
+                      }
+                      if (extendRight) {
+                        rectWidth = chartWidth - x;
+                      }
+                      
                       const label = drawing.style?.label || '';
                       const labelRight = drawing.style?.labelPosition === 'right';
+                      const labelX = labelRight ? Math.min(p1.x, p2.x) + Math.abs(p2.x - p1.x) - 5 : Math.min(p1.x, p2.x) + 5;
+                      
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
                           <rect 
-                            x={x} y={y} width={w} height={h}
+                            x={x} y={y} width={rectWidth} height={h}
                             fill={`${color}20`}
                             stroke={isSelected ? '#22c55e' : color}
                             strokeWidth={isSelected ? 3 : 2}
                           />
                           {label && (
                             <text 
-                              x={labelRight ? x + w - 5 : x + 5}
+                              x={labelX}
                               y={y + 14}
                               fill={isSelected ? '#22c55e' : color}
                               fontSize="11"
@@ -9974,8 +9989,8 @@ export default function CryptoIndicators() {
                             </div>
                           )}
                           
-                          {/* Extend Line Options - Only for trendlines */}
-                          {selectedDrawing.type === 'trendline' && (
+                          {/* Extend Options - For trendlines and rectangles */}
+                          {(selectedDrawing.type === 'trendline' || selectedDrawing.type === 'rectangle') && (
                             <div className="mb-3">
                               <div className="text-xs text-gray-300 mb-2">Extend Line</div>
                               <div className="flex gap-2">
