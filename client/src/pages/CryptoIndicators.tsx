@@ -392,10 +392,13 @@ export default function CryptoIndicators() {
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
   const [autoColorEnabled, setAutoColorEnabled] = useState(true);
   
-  // Point picking state (click-to-pick, click-to-drop pattern)
-  const [pickedPoint, setPickedPoint] = useState<{ drawingId: string; pointIndex: number } | null>(null);
-  const pickedPointRef = useRef<{ drawingId: string; pointIndex: number } | null>(null);
-  const [pickedPointPreview, setPickedPointPreview] = useState<{ time: number; price: number; snapType?: 'high' | 'low' | 'none' } | null>(null);
+  // Point editing state - when a point is picked, it's visually removed and must be replaced
+  const [activeEdit, setActiveEdit] = useState<{
+    drawingId: string;
+    pointIndex: number;
+    originalDrawing: any;
+  } | null>(null);
+  const activeEditRef = useRef<typeof activeEdit>(null);
   const updateDrawingMutationRef = useRef<{ mutate: (data: { id: string; style?: any; coordinates?: any }) => void } | null>(null);
   const candlesRef = useRef<CandleData[]>([]);
   
@@ -411,19 +414,47 @@ export default function CryptoIndicators() {
     autoColorEnabledRef.current = autoColorEnabled;
   }, [autoColorEnabled]);
   
-  // Keep picked point ref in sync
+  // Keep activeEdit ref in sync
   useEffect(() => {
-    pickedPointRef.current = pickedPoint;
-  }, [pickedPoint]);
+    activeEditRef.current = activeEdit;
+  }, [activeEdit]);
   
   // Keep candles ref in sync for callbacks
   useEffect(() => {
     candlesRef.current = candles;
   }, [candles]);
   
-  // Helper to convert screen coordinates to chart time/price with optional snap
-  const screenToChartCoords = useCallback((clientX: number, clientY: number, applySnap: boolean): { time: number; price: number; snapType: 'high' | 'low' | 'none' } | null => {
-    if (!chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) return null;
+  // Handler to pick up a point (first click on green circle) - removes point visually
+  const handlePointPick = useCallback((drawingId: string, pointIndex: number, e: React.MouseEvent | React.TouchEvent) => {
+    console.log('🎯 Point picked up (will be removed until replaced):', { drawingId, pointIndex });
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Find the drawing
+    const drawing = drawings.find(d => d.id === drawingId);
+    if (!drawing) return;
+    
+    // Store the edit state with original drawing
+    setActiveEdit({
+      drawingId,
+      pointIndex,
+      originalDrawing: { ...drawing, points: [...drawing.points] }
+    });
+    
+    // Keep the drawing selected
+    setSelectedDrawingId(drawingId);
+  }, [drawings]);
+  
+  // Handler to place the edited point (next click on chart)
+  const handleEditPointPlace = useCallback((clientX: number, clientY: number) => {
+    console.log('🎯 Placing edited point:', { clientX, clientY, activeEdit: activeEditRef.current });
+    const edit = activeEditRef.current;
+    if (!edit) return;
+    
+    if (!chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) {
+      setActiveEdit(null);
+      return;
+    }
     
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
@@ -434,17 +465,24 @@ export default function CryptoIndicators() {
     const y = clientY - rect.top;
     
     const logicalX = chart.timeScale().coordinateToLogical(x);
-    if (logicalX === null) return null;
+    if (logicalX === null) {
+      setActiveEdit(null);
+      return;
+    }
     
     const candleIndex = Math.round(logicalX);
     const allCandles = candlesRef.current;
     
     let price = candleSeries.coordinateToPrice(y);
-    if (price === null) return null;
+    if (price === null) {
+      setActiveEdit(null);
+      return;
+    }
     
     let finalTime: number;
     let snapType: 'high' | 'low' | 'none' = 'none';
     
+    // Use same snap logic as initial drawing
     if (candleIndex >= allCandles.length) {
       const lastCandle = allCandles[allCandles.length - 1];
       const secondLastCandle = allCandles.length > 1 ? allCandles[allCandles.length - 2] : null;
@@ -454,7 +492,7 @@ export default function CryptoIndicators() {
     } else if (candleIndex < 0) {
       const candle = allCandles[0];
       finalTime = candle.time as number;
-      if (applySnap && autoSnapEnabled) {
+      if (autoSnapEnabled) {
         const candleMid = (candle.high + candle.low) / 2;
         const snapToHigh = price > candleMid;
         price = snapToHigh ? candle.high : candle.low;
@@ -463,7 +501,7 @@ export default function CryptoIndicators() {
     } else {
       const candle = allCandles[candleIndex];
       finalTime = candle.time as number;
-      if (applySnap && autoSnapEnabled) {
+      if (autoSnapEnabled) {
         const candleMid = (candle.high + candle.low) / 2;
         const snapToHigh = price > candleMid;
         price = snapToHigh ? candle.high : candle.low;
@@ -471,101 +509,25 @@ export default function CryptoIndicators() {
       }
     }
     
-    return { time: finalTime, price, snapType };
-  }, [autoSnapEnabled]);
-  
-  // Handler to pick up a point (first click on green circle)
-  const handlePointPick = useCallback((drawingId: string, pointIndex: number, e: React.MouseEvent | React.TouchEvent) => {
-    console.log('🎯 Point picked up:', { drawingId, pointIndex });
-    e.preventDefault();
-    e.stopPropagation();
-    setPickedPoint({ drawingId, pointIndex });
-    // Initialize preview at current cursor position
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const coords = screenToChartCoords(clientX, clientY, false);
-    if (coords) {
-      setPickedPointPreview(coords);
-    }
-  }, [screenToChartCoords]);
-  
-  // Handler to drop a picked point (next click on chart)
-  const handlePointDrop = useCallback((clientX: number, clientY: number) => {
-    console.log('🎯 Point drop:', { clientX, clientY, pickedPoint: pickedPointRef.current });
-    const pp = pickedPointRef.current;
-    if (!pp) return;
+    // Create updated points array from original
+    const newPoints = [...edit.originalDrawing.points];
+    newPoints[edit.pointIndex] = { time: finalTime, price, snapType };
     
-    // Get final coordinates with snap applied
-    const coords = screenToChartCoords(clientX, clientY, true);
-    if (!coords) {
-      setPickedPoint(null);
-      setPickedPointPreview(null);
-      return;
-    }
-    
-    // Find the drawing and update it
-    const drawing = drawings.find(d => d.id === pp.drawingId);
-    if (!drawing) {
-      setPickedPoint(null);
-      setPickedPointPreview(null);
-      return;
-    }
-    
-    // Create updated points array
-    const newPoints = [...drawing.points];
-    newPoints[pp.pointIndex] = { time: coords.time, price: coords.price, snapType: coords.snapType };
-    
-    // Optimistically update local state first
+    // Optimistically update local state
     setDrawings(prev => prev.map(d => 
-      d.id === pp.drawingId ? { ...d, points: newPoints } : d
+      d.id === edit.drawingId ? { ...d, points: newPoints } : d
     ));
     
     // Update via mutation
     if (updateDrawingMutationRef.current) {
       updateDrawingMutationRef.current.mutate({
-        id: pp.drawingId,
+        id: edit.drawingId,
         coordinates: { points: newPoints },
       });
     }
     
-    setPickedPoint(null);
-    setPickedPointPreview(null);
-  }, [drawings, screenToChartCoords]);
-  
-  // Update preview position while point is picked and cursor moves
-  const handlePickedPointMove = useCallback((clientX: number, clientY: number) => {
-    if (!pickedPointRef.current) return;
-    // Update preview position (no snap during preview, just show where it would go)
-    const coords = screenToChartCoords(clientX, clientY, false);
-    if (coords) {
-      setPickedPointPreview(coords);
-    }
-  }, [screenToChartCoords]);
-  
-  // Container-level pointer move listener for picked point preview
-  useEffect(() => {
-    if (!pickedPoint || !chartContainerRef.current) return;
-    
-    const container = chartContainerRef.current;
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      handlePickedPointMove(e.clientX, e.clientY);
-    };
-    
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 0) {
-        handlePickedPointMove(e.touches[0].clientX, e.touches[0].clientY);
-      }
-    };
-    
-    container.addEventListener('mousemove', handleMouseMove);
-    container.addEventListener('touchmove', handleTouchMove);
-    
-    return () => {
-      container.removeEventListener('mousemove', handleMouseMove);
-      container.removeEventListener('touchmove', handleTouchMove);
-    };
-  }, [pickedPoint, handlePickedPointMove]);
+    setActiveEdit(null);
+  }, [autoSnapEnabled]);
   
   // Ref for tracking crosshair info for UI display
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null);
@@ -9488,13 +9450,13 @@ export default function CryptoIndicators() {
                 
                 {/* SVG Overlay for Drawings */}
                 <svg 
-                  className={`absolute top-0 left-0 ${(drawingMode === 'select' || pickedPoint) ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
+                  className={`absolute top-0 left-0 ${(drawingMode === 'select' || activeEdit) ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
                   style={{ width: '100%', height: '600px', zIndex: 10 }}
                   data-testid="drawing-overlay"
                   onClick={(e) => {
-                    // If a point is picked, drop it here
-                    if (pickedPoint) {
-                      handlePointDrop(e.clientX, e.clientY);
+                    // If editing a point, place it here
+                    if (activeEdit) {
+                      handleEditPointPlace(e.clientX, e.clientY);
                       e.stopPropagation();
                       return;
                     }
@@ -9513,18 +9475,17 @@ export default function CryptoIndicators() {
                     const timeScale = chart.timeScale();
                     const priceScale = candleSeriesRef.current?.priceScale();
                     
+                    // Check if this drawing has a point being edited (should be hidden)
+                    const isPointBeingEdited = (pointIndex: number) => {
+                      return activeEdit && 
+                             activeEdit.drawingId === drawing.id && 
+                             activeEdit.pointIndex === pointIndex;
+                    };
+                    
                     // Convert time/price to pixel coordinates
-                    // If this is the picked point, use preview coordinates
                     const toPixel = (point: { time: number; price: number }, pointIndex?: number) => {
-                      let actualPoint = point;
-                      // If this point is being picked, use preview position
-                      if (pickedPoint && pickedPointPreview && 
-                          pickedPoint.drawingId === drawing.id && 
-                          pointIndex !== undefined && pickedPoint.pointIndex === pointIndex) {
-                        actualPoint = pickedPointPreview;
-                      }
-                      const x = timeScale.timeToCoordinate(actualPoint.time as any);
-                      const y = candleSeriesRef.current?.priceToCoordinate(actualPoint.price);
+                      const x = timeScale.timeToCoordinate(point.time as any);
+                      const y = candleSeriesRef.current?.priceToCoordinate(point.price);
                       return { x: x ?? 0, y: y ?? 0 };
                     };
                     
@@ -9539,6 +9500,18 @@ export default function CryptoIndicators() {
                     };
                     
                     if (drawing.type === 'trendline' && drawing.points.length >= 2) {
+                      // If either point is being edited, hide the entire trendline until replaced
+                      if (isPointBeingEdited(0) || isPointBeingEdited(1)) {
+                        // Show only the remaining point as a marker
+                        const remainingIndex = isPointBeingEdited(0) ? 1 : 0;
+                        const remainingPoint = toPixel(drawing.points[remainingIndex], remainingIndex);
+                        return (
+                          <g key={drawing.id}>
+                            <circle cx={remainingPoint.x} cy={remainingPoint.y} r={6} fill={color} stroke="#fff" strokeWidth={2} />
+                            <text x={remainingPoint.x + 10} y={remainingPoint.y - 10} fill="#fff" fontSize="12">Click to place point</text>
+                          </g>
+                        );
+                      }
                       const p1 = toPixel(drawing.points[0], 0);
                       const p2 = toPixel(drawing.points[1], 1);
                       if (p1.x === null || p2.x === null) return null;
@@ -9690,6 +9663,17 @@ export default function CryptoIndicators() {
                     }
                     
                     if (drawing.type === 'rectangle' && drawing.points.length >= 2) {
+                      // If either point is being edited, hide the entire rectangle until replaced
+                      if (isPointBeingEdited(0) || isPointBeingEdited(1)) {
+                        const remainingIndex = isPointBeingEdited(0) ? 1 : 0;
+                        const remainingPoint = toPixel(drawing.points[remainingIndex], remainingIndex);
+                        return (
+                          <g key={drawing.id}>
+                            <circle cx={remainingPoint.x} cy={remainingPoint.y} r={6} fill={color} stroke="#fff" strokeWidth={2} />
+                            <text x={remainingPoint.x + 10} y={remainingPoint.y - 10} fill="#fff" fontSize="12">Click to place point</text>
+                          </g>
+                        );
+                      }
                       const p1 = toPixel(drawing.points[0], 0);
                       const p2 = toPixel(drawing.points[1], 1);
                       if (p1.x === null || p2.x === null) return null;
@@ -9851,13 +9835,15 @@ export default function CryptoIndicators() {
                     
                     // Horizontal line - render SVG clickable overlay (label is shown on price axis via createPriceLine)
                     if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
-                      // Use preview price if this point is being picked
-                      let priceToUse = drawing.points[0].price;
-                      if (pickedPoint && pickedPointPreview && 
-                          pickedPoint.drawingId === drawing.id && pickedPoint.pointIndex === 0) {
-                        priceToUse = pickedPointPreview.price;
+                      // If point is being edited, hide until replaced
+                      if (isPointBeingEdited(0)) {
+                        return (
+                          <g key={drawing.id}>
+                            <text x={50} y={300} fill="#fff" fontSize="12">Click to place horizontal line</text>
+                          </g>
+                        );
                       }
-                      const y = candleSeriesRef.current?.priceToCoordinate(priceToUse) ?? 0;
+                      const y = candleSeriesRef.current?.priceToCoordinate(drawing.points[0].price) ?? 0;
                       const chartWidth = chartContainerRef.current?.clientWidth || 800;
                       
                       return (
