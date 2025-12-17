@@ -395,6 +395,7 @@ export default function CryptoIndicators() {
   // Point dragging state (for moving drawing anchor points)
   const [draggingPoint, setDraggingPoint] = useState<{ drawingId: string; pointIndex: number } | null>(null);
   const draggingPointRef = useRef<{ drawingId: string; pointIndex: number } | null>(null);
+  const updateDrawingMutationRef = useRef<{ mutate: (data: { id: string; style?: any; coordinates?: any }) => void } | null>(null);
   
   // Ref for tracking active tool in callbacks
   const activeToolRef = useRef(activeTool);
@@ -504,13 +505,15 @@ export default function CryptoIndicators() {
     ));
     
     // Update the drawing via mutation (will refetch on success)
-    updateDrawingMutation.mutate({
-      id: dp.drawingId,
-      coordinates: { points: newPoints },
-    });
+    if (updateDrawingMutationRef.current) {
+      updateDrawingMutationRef.current.mutate({
+        id: dp.drawingId,
+        coordinates: { points: newPoints },
+      });
+    }
     
     setDraggingPoint(null);
-  }, [drawings, autoSnapEnabled, updateDrawingMutation]);
+  }, [drawings, autoSnapEnabled]);
   
   // Document-level event listeners for point dragging
   useEffect(() => {
@@ -642,6 +645,11 @@ export default function CryptoIndicators() {
       refetchDrawings();
     },
   });
+  
+  // Keep mutation ref in sync for point dragging
+  useEffect(() => {
+    updateDrawingMutationRef.current = updateDrawingMutation;
+  }, [updateDrawingMutation]);
   
   // Determine color based on snap types for auto-color feature
   // For manual mode (magnet off), checks if line is above/below candles
