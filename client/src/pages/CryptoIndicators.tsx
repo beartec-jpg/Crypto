@@ -8464,9 +8464,16 @@ export default function CryptoIndicators() {
           volume: parseFloat(k.v),
         };
 
-        // Always update the chart immediately for live candle simulation
+        // Update chart only if bar time is >= last bar time (prevents "Cannot update oldest data" error)
         if (candleSeriesRef.current) {
-          candleSeriesRef.current.update(bar as any);
+          try {
+            const lastData = candleSeriesRef.current.data();
+            if (lastData.length === 0 || bar.time >= (lastData[lastData.length - 1] as any).time) {
+              candleSeriesRef.current.update(bar as any);
+            }
+          } catch (err) {
+            // Silently ignore update errors for out-of-order data
+          }
         }
 
         setCandles(prev => {

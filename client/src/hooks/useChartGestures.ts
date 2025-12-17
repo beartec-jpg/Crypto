@@ -12,19 +12,23 @@ const GESTURE_CONFIG = {
 // Snap window sizes based on visible candles - returns number of candles to search (radius from center)
 // Crosshair mode: less lenient (smaller windows)
 const getCrosshairSnapRadius = (visibleCandles: number): number => {
+  // User requested: 100→1, 300→3, 500→5, 700→7
   if (visibleCandles >= 700) return 3; // 7 candle window
-  if (visibleCandles >= 500) return 2; // 5 candle window
+  if (visibleCandles >= 500) return 2; // 5 candle window  
   if (visibleCandles >= 300) return 1; // 3 candle window
+  if (visibleCandles >= 100) return 0; // 1 candle (single)
   return 0; // Single candle
 };
 
-// Single tap mode: more lenient (larger windows)
+// Single tap mode: more lenient (larger windows) 
+// User requested: 50→1, 100→3, 200→5, 400→7, 700→9
 const getTapSnapRadius = (visibleCandles: number): number => {
   if (visibleCandles >= 700) return 4; // 9 candle window
   if (visibleCandles >= 400) return 3; // 7 candle window
   if (visibleCandles >= 200) return 2; // 5 candle window
   if (visibleCandles >= 100) return 1; // 3 candle window
-  return 0; // Single candle (under 50)
+  if (visibleCandles >= 50) return 0;  // 1 candle (single)
+  return 0; // Single candle
 };
 
 interface BarData {
@@ -138,6 +142,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     priceAtCursor: number
   ): GesturePoint | null => {
     const bars = dataRef.current;
+    const visibleCandles = getVisibleCandleCount();
     
     // Collect bars in window
     const windowBars: BarData[] = [];
@@ -171,11 +176,13 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     
     // Snap to high or low based on cursor price position
     const mid = (maxHigh + minLow) / 2;
-    if (priceAtCursor >= mid) {
-      return { time: maxHighTime, price: maxHigh };
-    } else {
-      return { time: minLowTime, price: minLow };
-    }
+    const isHigh = priceAtCursor >= mid;
+    const resultTime = isHigh ? maxHighTime : minLowTime;
+    const resultPrice = isHigh ? maxHigh : minLow;
+    
+    console.log(`[Gesture] Window snap: visible=${visibleCandles}, radius=${radius}, window=${windowBars.length} bars, snapping to ${isHigh ? 'HIGH' : 'LOW'} @ ${resultPrice.toFixed(4)}`);
+    
+    return { time: resultTime, price: resultPrice };
   };
 
   // Create the custom crosshair elements
