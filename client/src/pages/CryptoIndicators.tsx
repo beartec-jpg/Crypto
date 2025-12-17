@@ -10421,11 +10421,6 @@ export default function CryptoIndicators() {
                   );
                 })()}
                 
-                {/* Visible Candle Counter */}
-                <div className="absolute top-2 right-16 z-20 bg-slate-700/90 text-gray-300 px-2 py-1 rounded text-xs font-medium">
-                  📊 {visibleCandleCount} candles
-                </div>
-                
                 {/* Active Tool Indicator */}
                 {activeTool && drawingMode === 'draw' && (
                   <div className="absolute top-2 left-44 z-20 bg-blue-500/90 text-white px-3 py-1 rounded-lg text-xs font-medium">

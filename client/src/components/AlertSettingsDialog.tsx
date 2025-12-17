@@ -95,6 +95,12 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
     enabled: open,
   });
   
+  // Fetch subscription tier (more reliable source)
+  const { data: subscription } = useQuery<{ tier: string }>({
+    queryKey: ['/api/crypto/my-subscription'],
+    enabled: open,
+  });
+  
   // Fetch SMS settings
   const { data: smsSettings } = useQuery<{ phoneNumber: string | null; smsAlertsEnabled: boolean }>({
     queryKey: ['/api/crypto/sms-settings'],
@@ -173,7 +179,8 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
   // Initialize state from fetched preferences
   useEffect(() => {
     if (preferences) {
-      const tier = preferences.tier || 'free';
+      // Use subscription tier as primary source (more reliable), fall back to preferences.tier
+      const tier = subscription?.tier || preferences.tier || 'free';
       const limits = getTierLimits(tier);
       
       setAlertsEnabled(preferences.alertsEnabled || false);
@@ -185,7 +192,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
       setPushSubscription(preferences.pushSubscription || null);
       setUserTier(tier);
     }
-  }, [preferences]);
+  }, [preferences, subscription]);
 
   // Check notification support
   useEffect(() => {

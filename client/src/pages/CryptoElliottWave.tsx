@@ -7204,9 +7204,6 @@ const aiAnalyze = useMutation({
           ) : (
             <span>View mode</span>
           )}
-          <span className="ml-auto">
-            {visibleCandleCount > 0 ? `${visibleCandleCount}/` : ''}{candles.length} candles
-          </span>
         </div>
 
         {/* Permission prompt for non-authorized users in production */}
