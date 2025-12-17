@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { HelmetProvider } from 'react-helmet-async';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CryptoAuthGate } from '@/components/CryptoAuthGate';
+import { InstallPrompt } from '@/components/InstallPrompt';
 
 import CryptoLanding from '@/pages/CryptoLanding';
 import CryptoIndicators from '@/pages/CryptoIndicators';
@@ -69,6 +70,7 @@ function App() {
             <Route component={NotFound} />
           </Switch>
           <Toaster />
+          <InstallPrompt />
         </QueryClientProvider>
       </HelmetProvider>
     </ErrorBoundary>
