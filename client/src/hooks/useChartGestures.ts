@@ -154,13 +154,13 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   };
 
   // Find best high/low in a window of candles around a center index
+  // Uses CLOSEST extremum to cursor rather than just above/below midpoint
   const findSnapPointInWindow = (
     centerIdx: number, 
     radius: number, 
     priceAtCursor: number
   ): GesturePoint | null => {
     const bars = dataRef.current;
-    const visibleCandles = getVisibleCandleCount();
     
     console.log(`[Gesture] findSnapPointInWindow called: centerIdx=${centerIdx}, radius=${radius}, priceAtCursor=${priceAtCursor.toFixed(4)}, totalBars=${bars.length}`);
     
@@ -174,9 +174,13 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const centerBar = bars[centerIdx];
     console.log(`[Gesture] Center candle: idx=${centerIdx}, time=${centerBar.time}, H=${centerBar.high.toFixed(4)}, L=${centerBar.low.toFixed(4)}`);
     
+    // Use a larger search window to find significant highs/lows
+    // Minimum window of 11 candles, or user's radius, whichever is larger
+    const effectiveRadius = Math.max(radius, 5);
+    
     // Collect bars in window
     const windowBars: { bar: BarData; idx: number }[] = [];
-    for (let i = -radius; i <= radius; i++) {
+    for (let i = -effectiveRadius; i <= effectiveRadius; i++) {
       const idx = centerIdx + i;
       if (idx >= 0 && idx < bars.length) {
         windowBars.push({ bar: bars[idx], idx });
@@ -187,39 +191,57 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     
     console.log(`[Gesture] Window contains ${windowBars.length} bars from idx ${windowBars[0].idx} to ${windowBars[windowBars.length - 1].idx}`);
     
-    // Find highest high and lowest low in window
+    // Find the HIGH and LOW that are CLOSEST to cursor price
+    // This is smarter than just finding max/min - we want what user is actually pointing at
+    let closestHighDist = Infinity;
+    let closestHighPrice = 0;
+    let closestHighTime: Time | null = null;
+    let closestHighIdx = -1;
+    
+    let closestLowDist = Infinity;
+    let closestLowPrice = 0;
+    let closestLowTime: Time | null = null;
+    let closestLowIdx = -1;
+    
+    // Also track the global max high and min low for fallback
     let maxHigh = -Infinity;
-    let maxHighTime: Time | null = null;
-    let maxHighIdx = -1;
     let minLow = Infinity;
-    let minLowTime: Time | null = null;
-    let minLowIdx = -1;
     
     for (const { bar, idx } of windowBars) {
-      if (bar.high > maxHigh) {
-        maxHigh = bar.high;
-        maxHighTime = bar.time;
-        maxHighIdx = idx;
+      maxHigh = Math.max(maxHigh, bar.high);
+      minLow = Math.min(minLow, bar.low);
+      
+      // Distance from cursor to this candle's high
+      const highDist = Math.abs(bar.high - priceAtCursor);
+      if (highDist < closestHighDist) {
+        closestHighDist = highDist;
+        closestHighPrice = bar.high;
+        closestHighTime = bar.time;
+        closestHighIdx = idx;
       }
-      if (bar.low < minLow) {
-        minLow = bar.low;
-        minLowTime = bar.time;
-        minLowIdx = idx;
+      
+      // Distance from cursor to this candle's low
+      const lowDist = Math.abs(bar.low - priceAtCursor);
+      if (lowDist < closestLowDist) {
+        closestLowDist = lowDist;
+        closestLowPrice = bar.low;
+        closestLowTime = bar.time;
+        closestLowIdx = idx;
       }
     }
     
-    if (maxHighTime === null || minLowTime === null) return null;
+    if (closestHighTime === null || closestLowTime === null) return null;
     
-    // Snap to high or low based on cursor price position
-    const mid = (maxHigh + minLow) / 2;
-    const isHigh = priceAtCursor >= mid;
-    const resultTime = isHigh ? maxHighTime : minLowTime;
-    const resultPrice = isHigh ? maxHigh : minLow;
-    const resultIdx = isHigh ? maxHighIdx : minLowIdx;
-    const snapType: 'high' | 'low' = isHigh ? 'high' : 'low';
+    // Decide: snap to the closest high or closest low based on distance
+    const snapToHigh = closestHighDist < closestLowDist;
+    const resultTime = snapToHigh ? closestHighTime : closestLowTime;
+    const resultPrice = snapToHigh ? closestHighPrice : closestLowPrice;
+    const resultIdx = snapToHigh ? closestHighIdx : closestLowIdx;
+    const snapType: 'high' | 'low' = snapToHigh ? 'high' : 'low';
     
-    console.log(`[Gesture] Window HIGH: idx=${maxHighIdx}, price=${maxHigh.toFixed(4)} | LOW: idx=${minLowIdx}, price=${minLow.toFixed(4)}`);
-    console.log(`[Gesture] Cursor at ${priceAtCursor.toFixed(4)}, mid=${mid.toFixed(4)} → snapping to ${isHigh ? 'HIGH' : 'LOW'} at idx=${resultIdx}, price=${resultPrice.toFixed(4)}`);
+    console.log(`[Gesture] Closest HIGH: idx=${closestHighIdx}, price=${closestHighPrice.toFixed(4)}, dist=${closestHighDist.toFixed(4)}`);
+    console.log(`[Gesture] Closest LOW: idx=${closestLowIdx}, price=${closestLowPrice.toFixed(4)}, dist=${closestLowDist.toFixed(4)}`);
+    console.log(`[Gesture] Cursor at ${priceAtCursor.toFixed(4)} → snapping to ${snapType.toUpperCase()} at idx=${resultIdx}, price=${resultPrice.toFixed(4)}`);
     
     return { time: resultTime, price: resultPrice, snapType };
   };
