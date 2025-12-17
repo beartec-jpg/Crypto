@@ -140,6 +140,14 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     return logical !== null ? Math.round(logical) : null;
   };
 
+  // Get time from a logical index
+  const getTimeFromLogical = (logicalIdx: number): Time | null => {
+    const bars = dataRef.current;
+    if (bars.length === 0) return null;
+    const idx = Math.max(0, Math.min(bars.length - 1, logicalIdx));
+    return bars[idx].time;
+  };
+
   // Find best high/low in a window of candles around a center index
   const findSnapPointInWindow = (
     centerIdx: number, 
@@ -358,7 +366,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     createCrosshairElements();
     
     crosshairActiveRef.current = true;
-    isDraggingRef.current = true;
+    isDraggingRef.current = false; // Start as false - only set true when user actually drags
     
     // Disable chart scrolling
     if (chartRef.current) {
