@@ -145,31 +145,49 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const bars = dataRef.current;
     const visibleCandles = getVisibleCandleCount();
     
+    console.log(`[Gesture] findSnapPointInWindow called: centerIdx=${centerIdx}, radius=${radius}, priceAtCursor=${priceAtCursor.toFixed(4)}, totalBars=${bars.length}`);
+    
+    // Validate center index
+    if (centerIdx < 0 || centerIdx >= bars.length) {
+      console.warn(`[Gesture] centerIdx ${centerIdx} out of bounds [0, ${bars.length - 1}]`);
+      return null;
+    }
+    
+    // Log center candle details
+    const centerBar = bars[centerIdx];
+    console.log(`[Gesture] Center candle: idx=${centerIdx}, time=${centerBar.time}, H=${centerBar.high.toFixed(4)}, L=${centerBar.low.toFixed(4)}`);
+    
     // Collect bars in window
-    const windowBars: BarData[] = [];
+    const windowBars: { bar: BarData; idx: number }[] = [];
     for (let i = -radius; i <= radius; i++) {
       const idx = centerIdx + i;
       if (idx >= 0 && idx < bars.length) {
-        windowBars.push(bars[idx]);
+        windowBars.push({ bar: bars[idx], idx });
       }
     }
     
     if (windowBars.length === 0) return null;
     
+    console.log(`[Gesture] Window contains ${windowBars.length} bars from idx ${windowBars[0].idx} to ${windowBars[windowBars.length - 1].idx}`);
+    
     // Find highest high and lowest low in window
     let maxHigh = -Infinity;
     let maxHighTime: Time | null = null;
+    let maxHighIdx = -1;
     let minLow = Infinity;
     let minLowTime: Time | null = null;
+    let minLowIdx = -1;
     
-    for (const bar of windowBars) {
+    for (const { bar, idx } of windowBars) {
       if (bar.high > maxHigh) {
         maxHigh = bar.high;
         maxHighTime = bar.time;
+        maxHighIdx = idx;
       }
       if (bar.low < minLow) {
         minLow = bar.low;
         minLowTime = bar.time;
+        minLowIdx = idx;
       }
     }
     
@@ -180,8 +198,10 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const isHigh = priceAtCursor >= mid;
     const resultTime = isHigh ? maxHighTime : minLowTime;
     const resultPrice = isHigh ? maxHigh : minLow;
+    const resultIdx = isHigh ? maxHighIdx : minLowIdx;
     
-    console.log(`[Gesture] Window snap: visible=${visibleCandles}, radius=${radius}, window=${windowBars.length} bars, snapping to ${isHigh ? 'HIGH' : 'LOW'} @ ${resultPrice.toFixed(4)}`);
+    console.log(`[Gesture] Window HIGH: idx=${maxHighIdx}, price=${maxHigh.toFixed(4)} | LOW: idx=${minLowIdx}, price=${minLow.toFixed(4)}`);
+    console.log(`[Gesture] Cursor at ${priceAtCursor.toFixed(4)}, mid=${mid.toFixed(4)} → snapping to ${isHigh ? 'HIGH' : 'LOW'} at idx=${resultIdx}, price=${resultPrice.toFixed(4)}`);
     
     return { time: resultTime, price: resultPrice };
   };
