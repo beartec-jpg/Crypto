@@ -392,9 +392,10 @@ export default function CryptoIndicators() {
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
   const [autoColorEnabled, setAutoColorEnabled] = useState(true);
   
-  // Point dragging state (for moving drawing anchor points)
-  const [draggingPoint, setDraggingPoint] = useState<{ drawingId: string; pointIndex: number } | null>(null);
-  const draggingPointRef = useRef<{ drawingId: string; pointIndex: number } | null>(null);
+  // Point picking state (click-to-pick, click-to-drop pattern)
+  const [pickedPoint, setPickedPoint] = useState<{ drawingId: string; pointIndex: number } | null>(null);
+  const pickedPointRef = useRef<{ drawingId: string; pointIndex: number } | null>(null);
+  const [pickedPointPreview, setPickedPointPreview] = useState<{ time: number; price: number; snapType?: 'high' | 'low' | 'none' } | null>(null);
   const updateDrawingMutationRef = useRef<{ mutate: (data: { id: string; style?: any; coordinates?: any }) => void } | null>(null);
   const candlesRef = useRef<CandleData[]>([]);
   
@@ -410,86 +411,59 @@ export default function CryptoIndicators() {
     autoColorEnabledRef.current = autoColorEnabled;
   }, [autoColorEnabled]);
   
-  // Keep dragging ref in sync
+  // Keep picked point ref in sync
   useEffect(() => {
-    draggingPointRef.current = draggingPoint;
-  }, [draggingPoint]);
+    pickedPointRef.current = pickedPoint;
+  }, [pickedPoint]);
   
-  // Keep candles ref in sync for drag callbacks
+  // Keep candles ref in sync for callbacks
   useEffect(() => {
     candlesRef.current = candles;
   }, [candles]);
   
-  // Handler to start point dragging
-  const handlePointDragStart = useCallback((drawingId: string, pointIndex: number, e: React.MouseEvent | React.TouchEvent) => {
-    console.log('🎯 Point drag started:', { drawingId, pointIndex });
-    e.preventDefault();
-    e.stopPropagation();
-    setDraggingPoint({ drawingId, pointIndex });
-  }, []);
-  
-  // Handler to complete point drag (called on document mouseup/touchend)
-  const handlePointDragEnd = useCallback((clientX: number, clientY: number) => {
-    console.log('🎯 Point drag end:', { clientX, clientY, draggingPoint: draggingPointRef.current });
-    const dp = draggingPointRef.current;
-    if (!dp || !chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) {
-      console.log('🎯 Missing refs, aborting drag end');
-      setDraggingPoint(null);
-      return;
-    }
+  // Helper to convert screen coordinates to chart time/price with optional snap
+  const screenToChartCoords = useCallback((clientX: number, clientY: number, applySnap: boolean): { time: number; price: number; snapType: 'high' | 'low' | 'none' } | null => {
+    if (!chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) return null;
     
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
     const container = chartContainerRef.current;
     const rect = container.getBoundingClientRect();
     
-    // Convert screen coordinates to chart coordinates
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     
-    // Convert to time and price
     const logicalX = chart.timeScale().coordinateToLogical(x);
-    if (logicalX === null) {
-      setDraggingPoint(null);
-      return;
-    }
+    if (logicalX === null) return null;
     
     const candleIndex = Math.round(logicalX);
     const allCandles = candlesRef.current;
     
     let price = candleSeries.coordinateToPrice(y);
-    if (price === null) {
-      setDraggingPoint(null);
-      return;
-    }
+    if (price === null) return null;
     
     let finalTime: number;
     let snapType: 'high' | 'low' | 'none' = 'none';
     
-    // Check if we're in future whitespace (beyond last candle)
     if (candleIndex >= allCandles.length) {
-      // Future whitespace - calculate synthetic timestamp
       const lastCandle = allCandles[allCandles.length - 1];
       const secondLastCandle = allCandles.length > 1 ? allCandles[allCandles.length - 2] : null;
       const timeInterval = secondLastCandle ? (lastCandle.time - secondLastCandle.time) : 3600;
       const barsAhead = candleIndex - (allCandles.length - 1);
       finalTime = (lastCandle.time as number) + (barsAhead * (timeInterval as number));
-      // No snap for future whitespace
     } else if (candleIndex < 0) {
-      // Before first candle - clamp to first
       const candle = allCandles[0];
       finalTime = candle.time as number;
-      if (autoSnapEnabled) {
+      if (applySnap && autoSnapEnabled) {
         const candleMid = (candle.high + candle.low) / 2;
         const snapToHigh = price > candleMid;
         price = snapToHigh ? candle.high : candle.low;
         snapType = snapToHigh ? 'high' : 'low';
       }
     } else {
-      // Normal range - use existing candle
       const candle = allCandles[candleIndex];
       finalTime = candle.time as number;
-      if (autoSnapEnabled) {
+      if (applySnap && autoSnapEnabled) {
         const candleMid = (candle.high + candle.low) / 2;
         const snapToHigh = price > candleMid;
         price = snapToHigh ? candle.high : candle.low;
@@ -497,69 +471,101 @@ export default function CryptoIndicators() {
       }
     }
     
+    return { time: finalTime, price, snapType };
+  }, [autoSnapEnabled]);
+  
+  // Handler to pick up a point (first click on green circle)
+  const handlePointPick = useCallback((drawingId: string, pointIndex: number, e: React.MouseEvent | React.TouchEvent) => {
+    console.log('🎯 Point picked up:', { drawingId, pointIndex });
+    e.preventDefault();
+    e.stopPropagation();
+    setPickedPoint({ drawingId, pointIndex });
+    // Initialize preview at current cursor position
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const coords = screenToChartCoords(clientX, clientY, false);
+    if (coords) {
+      setPickedPointPreview(coords);
+    }
+  }, [screenToChartCoords]);
+  
+  // Handler to drop a picked point (next click on chart)
+  const handlePointDrop = useCallback((clientX: number, clientY: number) => {
+    console.log('🎯 Point drop:', { clientX, clientY, pickedPoint: pickedPointRef.current });
+    const pp = pickedPointRef.current;
+    if (!pp) return;
+    
+    // Get final coordinates with snap applied
+    const coords = screenToChartCoords(clientX, clientY, true);
+    if (!coords) {
+      setPickedPoint(null);
+      setPickedPointPreview(null);
+      return;
+    }
+    
     // Find the drawing and update it
-    const drawing = drawings.find(d => d.id === dp.drawingId);
+    const drawing = drawings.find(d => d.id === pp.drawingId);
     if (!drawing) {
-      setDraggingPoint(null);
+      setPickedPoint(null);
+      setPickedPointPreview(null);
       return;
     }
     
     // Create updated points array
     const newPoints = [...drawing.points];
-    newPoints[dp.pointIndex] = { time: finalTime, price, snapType };
+    newPoints[pp.pointIndex] = { time: coords.time, price: coords.price, snapType: coords.snapType };
     
     // Optimistically update local state first
     setDrawings(prev => prev.map(d => 
-      d.id === dp.drawingId ? { ...d, points: newPoints } : d
+      d.id === pp.drawingId ? { ...d, points: newPoints } : d
     ));
     
-    // Update the drawing via mutation (will refetch on success)
+    // Update via mutation
     if (updateDrawingMutationRef.current) {
       updateDrawingMutationRef.current.mutate({
-        id: dp.drawingId,
+        id: pp.drawingId,
         coordinates: { points: newPoints },
       });
     }
     
-    setDraggingPoint(null);
-  }, [drawings, autoSnapEnabled]);
+    setPickedPoint(null);
+    setPickedPointPreview(null);
+  }, [drawings, screenToChartCoords]);
   
-  // Document-level event listeners for point dragging
+  // Update preview position while point is picked and cursor moves
+  const handlePickedPointMove = useCallback((clientX: number, clientY: number) => {
+    if (!pickedPointRef.current) return;
+    // Update preview position (no snap during preview, just show where it would go)
+    const coords = screenToChartCoords(clientX, clientY, false);
+    if (coords) {
+      setPickedPointPreview(coords);
+    }
+  }, [screenToChartCoords]);
+  
+  // Container-level pointer move listener for picked point preview
   useEffect(() => {
-    if (!draggingPoint) return;
+    if (!pickedPoint || !chartContainerRef.current) return;
+    
+    const container = chartContainerRef.current;
     
     const handleMouseMove = (e: MouseEvent) => {
-      // Could add live preview here in the future
-    };
-    
-    const handleMouseUp = (e: MouseEvent) => {
-      handlePointDragEnd(e.clientX, e.clientY);
+      handlePickedPointMove(e.clientX, e.clientY);
     };
     
     const handleTouchMove = (e: TouchEvent) => {
-      // Prevent scrolling while dragging
-      e.preventDefault();
-    };
-    
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (e.changedTouches.length > 0) {
-        const touch = e.changedTouches[0];
-        handlePointDragEnd(touch.clientX, touch.clientY);
+      if (e.touches.length > 0) {
+        handlePickedPointMove(e.touches[0].clientX, e.touches[0].clientY);
       }
     };
     
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('mousemove', handleMouseMove);
+    container.addEventListener('touchmove', handleTouchMove);
     
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('mousemove', handleMouseMove);
+      container.removeEventListener('touchmove', handleTouchMove);
     };
-  }, [draggingPoint, handlePointDragEnd]);
+  }, [pickedPoint, handlePickedPointMove]);
   
   // Ref for tracking crosshair info for UI display
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null);
@@ -9482,10 +9488,16 @@ export default function CryptoIndicators() {
                 
                 {/* SVG Overlay for Drawings */}
                 <svg 
-                  className={`absolute top-0 left-0 ${drawingMode === 'select' ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
+                  className={`absolute top-0 left-0 ${(drawingMode === 'select' || pickedPoint) ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
                   style={{ width: '100%', height: '600px', zIndex: 10 }}
                   data-testid="drawing-overlay"
                   onClick={(e) => {
+                    // If a point is picked, drop it here
+                    if (pickedPoint) {
+                      handlePointDrop(e.clientX, e.clientY);
+                      e.stopPropagation();
+                      return;
+                    }
                     if (drawingMode === 'select') {
                       // If clicking on empty space, deselect
                       if ((e.target as Element).tagName === 'svg') {
@@ -9502,9 +9514,17 @@ export default function CryptoIndicators() {
                     const priceScale = candleSeriesRef.current?.priceScale();
                     
                     // Convert time/price to pixel coordinates
-                    const toPixel = (point: { time: number; price: number }) => {
-                      const x = timeScale.timeToCoordinate(point.time as any);
-                      const y = candleSeriesRef.current?.priceToCoordinate(point.price);
+                    // If this is the picked point, use preview coordinates
+                    const toPixel = (point: { time: number; price: number }, pointIndex?: number) => {
+                      let actualPoint = point;
+                      // If this point is being picked, use preview position
+                      if (pickedPoint && pickedPointPreview && 
+                          pickedPoint.drawingId === drawing.id && 
+                          pointIndex !== undefined && pickedPoint.pointIndex === pointIndex) {
+                        actualPoint = pickedPointPreview;
+                      }
+                      const x = timeScale.timeToCoordinate(actualPoint.time as any);
+                      const y = candleSeriesRef.current?.priceToCoordinate(actualPoint.price);
                       return { x: x ?? 0, y: y ?? 0 };
                     };
                     
@@ -9519,8 +9539,8 @@ export default function CryptoIndicators() {
                     };
                     
                     if (drawing.type === 'trendline' && drawing.points.length >= 2) {
-                      const p1 = toPixel(drawing.points[0]);
-                      const p2 = toPixel(drawing.points[1]);
+                      const p1 = toPixel(drawing.points[0], 0);
+                      const p2 = toPixel(drawing.points[1], 1);
                       if (p1.x === null || p2.x === null) return null;
                       const label = drawing.style?.label || '';
                       const labelRight = drawing.style?.labelPosition === 'right';
@@ -9651,8 +9671,8 @@ export default function CryptoIndicators() {
                                 stroke="#fff" 
                                 strokeWidth={2}
                                 style={{ cursor: 'grab', pointerEvents: 'auto' }}
-                                onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
-                                onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 0, e)}
                               />
                               <circle 
                                 cx={p2.x} cy={p2.y} r={8} 
@@ -9660,8 +9680,8 @@ export default function CryptoIndicators() {
                                 stroke="#fff" 
                                 strokeWidth={2}
                                 style={{ cursor: 'grab', pointerEvents: 'auto' }}
-                                onMouseDown={(e) => handlePointDragStart(drawing.id, 1, e)}
-                                onTouchStart={(e) => handlePointDragStart(drawing.id, 1, e)}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 1, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 1, e)}
                               />
                             </>
                           )}
@@ -9670,8 +9690,8 @@ export default function CryptoIndicators() {
                     }
                     
                     if (drawing.type === 'rectangle' && drawing.points.length >= 2) {
-                      const p1 = toPixel(drawing.points[0]);
-                      const p2 = toPixel(drawing.points[1]);
+                      const p1 = toPixel(drawing.points[0], 0);
+                      const p2 = toPixel(drawing.points[1], 1);
                       if (p1.x === null || p2.x === null) return null;
                       
                       const extendLeft = drawing.style?.extendLeft || false;
@@ -9722,8 +9742,8 @@ export default function CryptoIndicators() {
                                 stroke="#fff" 
                                 strokeWidth={2}
                                 style={{ cursor: 'grab', pointerEvents: 'auto' }}
-                                onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
-                                onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 0, e)}
                               />
                               <circle 
                                 cx={p2.x} cy={p2.y} r={8} 
@@ -9731,8 +9751,8 @@ export default function CryptoIndicators() {
                                 stroke="#fff" 
                                 strokeWidth={2}
                                 style={{ cursor: 'grab', pointerEvents: 'auto' }}
-                                onMouseDown={(e) => handlePointDragStart(drawing.id, 1, e)}
-                                onTouchStart={(e) => handlePointDragStart(drawing.id, 1, e)}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 1, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 1, e)}
                               />
                             </>
                           )}
@@ -9741,8 +9761,8 @@ export default function CryptoIndicators() {
                     }
                     
                     if (drawing.type === 'fib_retracement' && drawing.points.length >= 2) {
-                      const p1 = toPixel(drawing.points[0]);
-                      const p2 = toPixel(drawing.points[1]);
+                      const p1 = toPixel(drawing.points[0], 0);
+                      const p2 = toPixel(drawing.points[1], 1);
                       if (p1.x === null || p2.x === null) return null;
                       const allFibLevels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
                       const hiddenLevels = drawing.style?.hiddenLevels || [];
@@ -9785,9 +9805,9 @@ export default function CryptoIndicators() {
                     }
                     
                     if (drawing.type === 'trend_fib' && drawing.points.length >= 3) {
-                      const p1 = toPixel(drawing.points[0]);
-                      const p2 = toPixel(drawing.points[1]);
-                      const p3 = toPixel(drawing.points[2]);
+                      const p1 = toPixel(drawing.points[0], 0);
+                      const p2 = toPixel(drawing.points[1], 1);
+                      const p3 = toPixel(drawing.points[2], 2);
                       if (p1.x === null || p2.x === null || p3.x === null) return null;
                       
                       const waveDiff = drawing.points[1].price - drawing.points[0].price;
@@ -9831,7 +9851,13 @@ export default function CryptoIndicators() {
                     
                     // Horizontal line - render SVG clickable overlay (label is shown on price axis via createPriceLine)
                     if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
-                      const y = candleSeriesRef.current?.priceToCoordinate(drawing.points[0].price) ?? 0;
+                      // Use preview price if this point is being picked
+                      let priceToUse = drawing.points[0].price;
+                      if (pickedPoint && pickedPointPreview && 
+                          pickedPoint.drawingId === drawing.id && pickedPoint.pointIndex === 0) {
+                        priceToUse = pickedPointPreview.price;
+                      }
+                      const y = candleSeriesRef.current?.priceToCoordinate(priceToUse) ?? 0;
                       const chartWidth = chartContainerRef.current?.clientWidth || 800;
                       
                       return (
@@ -9858,8 +9884,8 @@ export default function CryptoIndicators() {
                                 stroke="#fff" 
                                 strokeWidth={2}
                                 style={{ cursor: 'grab', pointerEvents: 'auto' }}
-                                onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
-                                onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 0, e)}
                               />
                               <circle 
                                 cx={chartWidth - 50} cy={y} r={8} 
@@ -9867,8 +9893,8 @@ export default function CryptoIndicators() {
                                 stroke="#fff" 
                                 strokeWidth={2}
                                 style={{ cursor: 'grab', pointerEvents: 'auto' }}
-                                onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
-                                onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 0, e)}
                               />
                             </>
                           )}
