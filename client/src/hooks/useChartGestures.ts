@@ -10,25 +10,22 @@ const GESTURE_CONFIG = {
 };
 
 // Snap window sizes based on visible candles - returns number of candles to search (radius from center)
-// Crosshair mode: less lenient (smaller windows)
+// User requested thresholds: <50→1, <150→3, <300→5, <500→7, >=500→9
 const getCrosshairSnapRadius = (visibleCandles: number): number => {
-  // User requested: 100→1, 300→3, 500→5, 700→7
-  if (visibleCandles >= 700) return 3; // 7 candle window
-  if (visibleCandles >= 500) return 2; // 5 candle window  
-  if (visibleCandles >= 300) return 1; // 3 candle window
-  if (visibleCandles >= 100) return 0; // 1 candle (single)
-  return 0; // Single candle
+  if (visibleCandles >= 500) return 4; // 9 candle window
+  if (visibleCandles >= 300) return 3; // 7 candle window
+  if (visibleCandles >= 150) return 2; // 5 candle window  
+  if (visibleCandles >= 50) return 1;  // 3 candle window
+  return 0; // 1 candle (single) for <50 visible
 };
 
-// Single tap mode: more lenient (larger windows) 
-// User requested: 50→1, 100→3, 200→5, 400→7, 700→9
+// Tap mode uses same thresholds as crosshair for consistency
 const getTapSnapRadius = (visibleCandles: number): number => {
-  if (visibleCandles >= 700) return 4; // 9 candle window
-  if (visibleCandles >= 400) return 3; // 7 candle window
-  if (visibleCandles >= 200) return 2; // 5 candle window
-  if (visibleCandles >= 100) return 1; // 3 candle window
-  if (visibleCandles >= 50) return 0;  // 1 candle (single)
-  return 0; // Single candle
+  if (visibleCandles >= 500) return 4; // 9 candle window
+  if (visibleCandles >= 300) return 3; // 7 candle window
+  if (visibleCandles >= 150) return 2; // 5 candle window
+  if (visibleCandles >= 50) return 1;  // 3 candle window
+  return 0; // 1 candle (single) for <50 visible
 };
 
 interface BarData {
