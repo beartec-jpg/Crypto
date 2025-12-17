@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff, X, Settings } from 'lucide-react';
+import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff, X, Settings, Magnet } from 'lucide-react';
+import { useChartGestures, type GesturePoint, type BarData } from '@/hooks/useChartGestures';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
@@ -2602,6 +2603,56 @@ export default function CryptoElliottWave() {
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
   const [chartReady, setChartReady] = useState(false);
+  const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
+
+  // Handle drawing point commits from gesture controller
+  const handleDrawingPointCommit = useCallback((point: GesturePoint) => {
+    const time = point.time as number;
+    const price = point.price;
+    
+    if (!activeTool || drawingMode !== 'draw') return;
+    
+    console.log('[EW Drawing] Point commit:', { time, price, tool: activeTool, snapType: point.snapType });
+    
+    setTempDrawing(prev => {
+      if (!prev) return { points: [{ time, price }] };
+      
+      const newPoints = [...prev.points, { time, price }];
+      const requiredPoints = activeTool === 'horizontal' ? 1 : 2;
+      
+      if (newPoints.length >= requiredPoints) {
+        const newDrawing = {
+          id: `drawing-${Date.now()}`,
+          type: activeTool,
+          points: newPoints,
+          style: { color: '#3b82f6', lineWidth: 2 }
+        };
+        setDrawings(d => [...d, newDrawing]);
+        saveDrawingMutation.mutate(newDrawing);
+        toast({ title: 'Drawing Saved', description: `${activeTool.replace('_', ' ')} added to chart` });
+        return { points: [] };
+      }
+      return { points: newPoints };
+    });
+  }, [activeTool, drawingMode, toast]);
+
+  // Gesture controller for drawing tools with smart snap
+  const gestureController = useChartGestures({
+    enabled: drawingMode === 'draw' && activeTool !== null,
+    data: candles as BarData[],
+    onPointCommit: handleDrawingPointCommit,
+    onPreviewPoint: (point) => {
+      if (point) {
+        setPreviewPoint({ time: point.time as number, price: point.price });
+      } else {
+        setPreviewPoint(null);
+      }
+    },
+    onCrosshairModeChange: (active) => {
+      console.log('[EW Gesture] Crosshair mode:', active);
+    },
+    autoSnapEnabled,
+  });
 
   // Waves Usage Guide collapsible state
   const [wavesTrainingOpen, setWavesTrainingOpen] = useState(false);
@@ -2722,52 +2773,22 @@ export default function CryptoElliottWave() {
     },
   });
   
-  // Handle chart clicks for drawing tools (with crosshair mode support)
+  // Attach gesture controller to chart for drawing tools
   useEffect(() => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
     const container = chartContainerRef.current;
-    if (!container || !chartReady || drawingMode !== 'draw' || !activeTool) return;
     
-    const handleChartClick = (e: Event) => {
-      const customEvent = e as CustomEvent<{time: number; price: number}>;
-      let { time, price } = customEvent.detail;
-      
-      // Use crosshair position if crosshair mode is active (from long-press)
-      if (crosshairModeActiveRef.current && lastCrosshairParamRef.current) {
-        time = lastCrosshairParamRef.current.time;
-        price = lastCrosshairParamRef.current.price;
-        console.log('🎯 Drawing tool using crosshair position:', time, price);
-        // Deactivate after use and clear position lock - user can long-press again for next point
-        crosshairModeActiveRef.current = false;
-        crosshairPositionLockedRef.current = false;
-      }
-      
-      if (!time || !price) return;
-      
-      setTempDrawing(prev => {
-        if (!prev) return { points: [{ time, price }] };
-        
-        const newPoints = [...prev.points, { time, price }];
-        const requiredPoints = activeTool === 'horizontal' ? 1 : 2;
-        
-        if (newPoints.length >= requiredPoints) {
-          const newDrawing = {
-            id: `drawing-${Date.now()}`,
-            type: activeTool,
-            points: newPoints,
-            style: { color: '#3b82f6', lineWidth: 2 }
-          };
-          setDrawings(d => [...d, newDrawing]);
-          saveDrawingMutation.mutate(newDrawing);
-          toast({ title: 'Drawing Saved', description: `${activeTool.replace('_', ' ')} added to chart` });
-          return { points: [] };
-        }
-        return { points: newPoints };
-      });
+    if (!chart || !candleSeries || !container || !chartReady) return;
+    
+    console.log('[EW GestureAttach] Attaching gesture controller to chart');
+    gestureController.attachToChart(chart, candleSeries, container);
+    
+    return () => {
+      console.log('[EW GestureAttach] Detaching gesture controller');
+      gestureController.detachFromChart();
     };
-    
-    container.addEventListener('chartClick', handleChartClick);
-    return () => container.removeEventListener('chartClick', handleChartClick);
-  }, [chartReady, drawingMode, activeTool, toast]);
+  }, [chartReady, gestureController]);
   
   // Render horizontal lines using price lines
   const drawingLinesRef = useRef<any[]>([]);
@@ -7250,9 +7271,19 @@ const aiAnalyze = useMutation({
                   <button onClick={() => { setDrawingMode(prev => prev === 'select' ? 'off' : 'select'); setActiveTool(null); setShowToolPicker(false); }} className={`p-2 rounded-lg transition-all ${drawingMode === 'select' ? 'bg-green-500 text-white' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`} title="Select Drawings" data-testid="btn-select-drawings">
                     <MousePointer2 className="w-4 h-4" />
                   </button>
-                  <button onClick={() => { setDrawingMode('off'); setActiveTool(null); setShowToolPicker(false); setSelectedDrawingId(null); setTempDrawing(null); }} className="p-2 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-slate-700 transition-all" title="Exit Drawing Mode" data-testid="btn-deselect-drawing">
+                  <button onClick={() => { setDrawingMode('off'); setActiveTool(null); setShowToolPicker(false); setSelectedDrawingId(null); setTempDrawing(null); gestureController.cancelCrosshairMode(); }} className="p-2 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-slate-700 transition-all" title="Exit Drawing Mode" data-testid="btn-deselect-drawing">
                     <X className="w-4 h-4" />
                   </button>
+                  {drawingMode === 'draw' && (
+                    <button 
+                      onClick={() => setAutoSnapEnabled(prev => !prev)} 
+                      className={`p-2 rounded-lg transition-all ${autoSnapEnabled ? 'bg-yellow-500 text-black' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`} 
+                      title={autoSnapEnabled ? 'Auto-snap ON (snaps to highs/lows)' : 'Auto-snap OFF'} 
+                      data-testid="btn-auto-snap"
+                    >
+                      <Magnet className="w-4 h-4" />
+                    </button>
+                  )}
                   {selectedDrawingId && (
                     <>
                       <button onClick={() => setShowDrawingSettings(prev => !prev)} className={`p-2 rounded-lg transition-all ${showDrawingSettings ? 'bg-purple-500 text-white' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`} title="Drawing Settings" data-testid="btn-drawing-settings">
