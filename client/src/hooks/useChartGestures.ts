@@ -60,6 +60,7 @@ interface UseChartGesturesReturn {
   getCrosshairPoint: () => GesturePoint | null;
   resetState: () => void;
   cancelCrosshairMode: () => void;
+  findSnapPoint: (clientX: number, clientY: number) => GesturePoint | null;
 }
 
 export function useChartGestures(options: UseChartGesturesOptions): UseChartGesturesReturn {
@@ -841,6 +842,13 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     resetState();
   }, [resetState]);
 
+  // Exposed snap function for external use (e.g., editing points)
+  const findSnapPoint = useCallback((clientX: number, clientY: number): GesturePoint | null => {
+    const local = getLocalCoords(clientX, clientY);
+    if (!local) return null;
+    return findSnapPointInCircle(local.x, local.y);
+  }, []);
+
   useEffect(() => {
     return () => detachFromChart();
   }, [detachFromChart]);
@@ -852,7 +860,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     getCrosshairPoint,
     resetState,
     cancelCrosshairMode,
-  }), [attachToChart, detachFromChart, isCrosshairModeActive, getCrosshairPoint, resetState, cancelCrosshairMode]);
+    findSnapPoint,
+  }), [attachToChart, detachFromChart, isCrosshairModeActive, getCrosshairPoint, resetState, cancelCrosshairMode, findSnapPoint]);
 }
 
 export { GESTURE_CONFIG };

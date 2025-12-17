@@ -445,6 +445,9 @@ export default function CryptoIndicators() {
     setSelectedDrawingId(drawingId);
   }, [drawings]);
   
+  // Ref for gesture controller's findSnapPoint function
+  const findSnapPointRef = useRef<((clientX: number, clientY: number) => { time: any; price: number; snapType?: 'high' | 'low' | 'none' } | null) | null>(null);
+  
   // Handler to place the edited point (next click on chart)
   const handleEditPointPlace = useCallback((clientX: number, clientY: number) => {
     console.log('🎯 Placing edited point:', { clientX, clientY, activeEdit: activeEditRef.current });
@@ -456,6 +459,35 @@ export default function CryptoIndicators() {
       return;
     }
     
+    // Use gesture controller's findSnapPoint if available (same logic as drawing mode)
+    if (findSnapPointRef.current && autoSnapEnabled) {
+      const snapResult = findSnapPointRef.current(clientX, clientY);
+      if (snapResult) {
+        console.log('🎯 Using gesture controller snap:', snapResult);
+        const newPoints = [...edit.originalDrawing.points];
+        newPoints[edit.pointIndex] = { 
+          time: snapResult.time as number, 
+          price: snapResult.price, 
+          snapType: snapResult.snapType || 'none' 
+        };
+        
+        setDrawings(prev => prev.map(d => 
+          d.id === edit.drawingId ? { ...d, points: newPoints } : d
+        ));
+        
+        if (updateDrawingMutationRef.current) {
+          updateDrawingMutationRef.current.mutate({
+            id: edit.drawingId,
+            coordinates: { points: newPoints },
+          });
+        }
+        
+        setActiveEdit(null);
+        return;
+      }
+    }
+    
+    // Fallback: manual coordinate conversion if no snap found
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
     const container = chartContainerRef.current;
@@ -727,6 +759,11 @@ export default function CryptoIndicators() {
       setCrosshairModeActive(false);
     }
   }, [drawingMode, activeTool]);
+  
+  // Connect findSnapPoint function to the ref for edit mode
+  useEffect(() => {
+    findSnapPointRef.current = gestureController.findSnapPoint;
+  }, [gestureController.findSnapPoint]);
 
   // VWAP toggles
   const [showVWAPSession, setShowVWAPSession] = useState(false);
