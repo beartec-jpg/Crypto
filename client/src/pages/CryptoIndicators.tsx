@@ -416,6 +416,7 @@ export default function CryptoIndicators() {
   
   // Handler to start point dragging
   const handlePointDragStart = useCallback((drawingId: string, pointIndex: number, e: React.MouseEvent | React.TouchEvent) => {
+    console.log('🎯 Point drag started:', { drawingId, pointIndex });
     e.preventDefault();
     e.stopPropagation();
     setDraggingPoint({ drawingId, pointIndex });
@@ -423,8 +424,10 @@ export default function CryptoIndicators() {
   
   // Handler to complete point drag (called on document mouseup/touchend)
   const handlePointDragEnd = useCallback((clientX: number, clientY: number) => {
+    console.log('🎯 Point drag end:', { clientX, clientY, draggingPoint: draggingPointRef.current });
     const dp = draggingPointRef.current;
     if (!dp || !chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) {
+      console.log('🎯 Missing refs, aborting drag end');
       setDraggingPoint(null);
       return;
     }
