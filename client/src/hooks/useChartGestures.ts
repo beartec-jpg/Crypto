@@ -6,6 +6,7 @@ const GESTURE_CONFIG = {
   LONG_PRESS_MS: 500,
   MOVE_THRESHOLD_PX: 12,
   TAP_MAX_MS: 300,
+  DRAG_PROXIMITY_PX: 40, // Must touch within this distance of crosshair to drag it
 };
 
 interface BarData {
