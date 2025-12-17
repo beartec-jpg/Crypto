@@ -154,24 +154,19 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   };
 
   // Find best high/low in a window of candles around a center index
-  // Uses 2D SCREEN DISTANCE (Euclidean) to find the visually closest point
+  // Step 1: X position determines which candles are in the window (time-based)
+  // Step 2: Within that window, find max high and min low
+  // Step 3: Snap to whichever (high or low) is closest to cursor PRICE
   const findSnapPointInWindow = (
     centerIdx: number, 
     radius: number, 
-    _priceAtCursor: number, // Kept for API compatibility but unused
-    tapX: number,  // Screen X coordinate of tap
-    tapY: number   // Screen Y coordinate of tap
+    priceAtCursor: number,
+    _tapX?: number,  // Unused - kept for API compatibility
+    _tapY?: number   // Unused - kept for API compatibility
   ): GesturePoint | null => {
     const bars = dataRef.current;
-    const chart = chartRef.current;
-    const series = candleSeriesRef.current;
     
-    if (!chart || !series) {
-      console.warn('[Gesture] Chart or series not available');
-      return null;
-    }
-    
-    console.log(`[Gesture] findSnapPointInWindow: centerIdx=${centerIdx}, radius=${radius}, tap=(${tapX.toFixed(1)}, ${tapY.toFixed(1)})`);
+    console.log(`[Gesture] findSnapPointInWindow: centerIdx=${centerIdx}, radius=${radius}, cursorPrice=${priceAtCursor.toFixed(4)}`);
     
     // Validate center index
     if (centerIdx < 0 || centerIdx >= bars.length) {
@@ -179,84 +174,58 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       return null;
     }
     
-    const timeScale = chart.timeScale();
-    
-    // Collect all candidate snap points with their SCREEN coordinates
-    type Candidate = {
-      time: Time;
-      price: number;
-      screenX: number;
-      screenY: number;
-      dist2D: number;
-      snapType: 'high' | 'low';
-      idx: number;
-    };
-    
-    const candidates: Candidate[] = [];
-    
+    // STEP 1: Collect candles in the window (based on X/time position only)
+    const windowBars: { bar: BarData; idx: number }[] = [];
     for (let i = -radius; i <= radius; i++) {
       const idx = centerIdx + i;
-      if (idx < 0 || idx >= bars.length) continue;
-      
-      const bar = bars[idx];
-      
-      // Get screen X coordinate for this candle
-      const screenX = timeScale.logicalToCoordinate(idx);
-      if (screenX === null) continue;  // Off-screen
-      
-      // Get screen Y for the high
-      const highY = series.priceToCoordinate(bar.high);
-      if (highY !== null) {
-        const dx = screenX - tapX;
-        const dy = highY - tapY;
-        const dist2D = Math.sqrt(dx * dx + dy * dy);
-        candidates.push({
-          time: bar.time,
-          price: bar.high,
-          screenX,
-          screenY: highY,
-          dist2D,
-          snapType: 'high',
-          idx
-        });
-      }
-      
-      // Get screen Y for the low
-      const lowY = series.priceToCoordinate(bar.low);
-      if (lowY !== null) {
-        const dx = screenX - tapX;
-        const dy = lowY - tapY;
-        const dist2D = Math.sqrt(dx * dx + dy * dy);
-        candidates.push({
-          time: bar.time,
-          price: bar.low,
-          screenX,
-          screenY: lowY,
-          dist2D,
-          snapType: 'low',
-          idx
-        });
+      if (idx >= 0 && idx < bars.length) {
+        windowBars.push({ bar: bars[idx], idx });
       }
     }
     
-    if (candidates.length === 0) {
-      console.warn('[Gesture] No valid candidates found');
-      return null;
+    if (windowBars.length === 0) return null;
+    
+    console.log(`[Gesture] Window: ${windowBars.length} candles from idx ${windowBars[0].idx} to ${windowBars[windowBars.length - 1].idx}`);
+    
+    // STEP 2: Find the MAXIMUM high and MINIMUM low in the window
+    let maxHigh = -Infinity;
+    let maxHighTime: Time | null = null;
+    let maxHighIdx = -1;
+    
+    let minLow = Infinity;
+    let minLowTime: Time | null = null;
+    let minLowIdx = -1;
+    
+    for (const { bar, idx } of windowBars) {
+      if (bar.high > maxHigh) {
+        maxHigh = bar.high;
+        maxHighTime = bar.time;
+        maxHighIdx = idx;
+      }
+      if (bar.low < minLow) {
+        minLow = bar.low;
+        minLowTime = bar.time;
+        minLowIdx = idx;
+      }
     }
     
-    // Sort by 2D distance and pick the closest
-    candidates.sort((a, b) => a.dist2D - b.dist2D);
-    const best = candidates[0];
+    if (maxHighTime === null || minLowTime === null) return null;
     
-    console.log(`[Gesture] Found ${candidates.length} candidates, best: idx=${best.idx} ${best.snapType.toUpperCase()} @ ${best.price.toFixed(4)}, dist=${best.dist2D.toFixed(1)}px`);
+    // STEP 3: Decide based on PRICE distance - snap to whichever is closer
+    const distToHigh = Math.abs(priceAtCursor - maxHigh);
+    const distToLow = Math.abs(priceAtCursor - minLow);
     
-    // Log top 3 for debugging
-    for (let i = 0; i < Math.min(3, candidates.length); i++) {
-      const c = candidates[i];
-      console.log(`[Gesture]   #${i + 1}: idx=${c.idx} ${c.snapType} @ ${c.price.toFixed(4)}, screenPos=(${c.screenX.toFixed(0)}, ${c.screenY.toFixed(0)}), dist=${c.dist2D.toFixed(1)}px`);
-    }
+    const snapToHigh = distToHigh < distToLow;
+    const resultTime = snapToHigh ? maxHighTime : minLowTime;
+    const resultPrice = snapToHigh ? maxHigh : minLow;
+    const resultIdx = snapToHigh ? maxHighIdx : minLowIdx;
+    const snapType: 'high' | 'low' = snapToHigh ? 'high' : 'low';
     
-    return { time: best.time, price: best.price, snapType: best.snapType };
+    console.log(`[Gesture] Max HIGH: idx=${maxHighIdx}, price=${maxHigh.toFixed(4)}, dist=${distToHigh.toFixed(4)}`);
+    console.log(`[Gesture] Min LOW: idx=${minLowIdx}, price=${minLow.toFixed(4)}, dist=${distToLow.toFixed(4)}`);
+    console.log(`[Gesture] Cursor @ ${priceAtCursor.toFixed(4)} → snap to ${snapType.toUpperCase()} at idx=${resultIdx}, price=${resultPrice.toFixed(4)}`);
+    
+    return { time: resultTime, price: resultPrice, snapType };
   };
 
   // Create the custom crosshair elements
