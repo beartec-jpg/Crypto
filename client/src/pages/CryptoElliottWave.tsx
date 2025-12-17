@@ -2567,6 +2567,8 @@ export default function CryptoElliottWave() {
   const [timeframe, setTimeframe] = useState('15m');
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [waveAutoSnapEnabled, setWaveAutoSnapEnabled] = useState(true); // Auto-snap waves to highs/lows
+  const waveAutoSnapEnabledRef = useRef(true); // Ref for chart callbacks
   const [selectedDegree, setSelectedDegree] = useState('Minor');
   const [patternType, setPatternType] = useState('impulse');
   const [fibonacciMode, setFibonacciMode] = useState('measured');
@@ -3507,7 +3509,8 @@ const aiAnalyze = useMutation({
     fibonacciModeRef.current = fibonacciMode;
     timeframeRef.current = timeframe;
     drawingModeRef.current = drawingMode;
-  }, [isDrawing, selectedDegree, patternType, currentPoints, waveDegrees, candles, selectionMode, visibleCandleCount, savedLabels, selectedLabelId, draggedPointIndex, isDragging, updateLabel, fibonacciMode, timeframe, drawingMode]);
+    waveAutoSnapEnabledRef.current = waveAutoSnapEnabled;
+  }, [isDrawing, selectedDegree, patternType, currentPoints, waveDegrees, candles, selectionMode, visibleCandleCount, savedLabels, selectedLabelId, draggedPointIndex, isDragging, updateLabel, fibonacciMode, timeframe, drawingMode, waveAutoSnapEnabled]);
   
   // Clear correction context when switching away from correction pattern type
   useEffect(() => {
@@ -4893,19 +4896,26 @@ const aiAnalyze = useMutation({
       
       let snappedToHigh = false; // Track whether we snapped to high or low for marker positioning
       
+      // Check if wave auto-snap is enabled
+      const useWaveAutoSnap = waveAutoSnapEnabledRef.current;
+      
       if (nextLabel === '0') {
-        // First point - user click determines direction, snap to nearest wick
-        // CACHE the trend direction for all subsequent points
+        // First point - user click determines direction
         const isDowntrend = clickedPrice > candleMid;
         trendDirectionRef.current = isDowntrend ? 'down' : 'up';
         snappedToHigh = isDowntrend; // Point 0 in downtrend = high, uptrend = low
         
-        // Use nearest wick for point 0 (most intuitive - clicks where user intended)
-        const best = findNearestWick(snappedToHigh);
-        finalCandleIndex = best.index;
-        finalCandle = best.candle;
-        snappedPrice = best.price;
-        console.log('🎯 Point 0: Trend set to', trendDirectionRef.current, 'snapped to', snappedPrice, 'at candle', finalCandleIndex, 'high?', snappedToHigh);
+        if (useWaveAutoSnap) {
+          // Snap to nearest wick
+          const best = findNearestWick(snappedToHigh);
+          finalCandleIndex = best.index;
+          finalCandle = best.candle;
+          snappedPrice = best.price;
+        } else {
+          // No snap - use clicked price directly
+          snappedPrice = clickedPrice;
+        }
+        console.log('🎯 Point 0: Trend set to', trendDirectionRef.current, 'snapped to', snappedPrice, 'at candle', finalCandleIndex, 'high?', snappedToHigh, 'snap?', useWaveAutoSnap);
       } else if (patternTypeRef.current === 'impulse' || patternTypeRef.current === 'diagonal') {
         // Use CACHED trend direction from point 0
         const isDowntrend = trendDirectionRef.current === 'down';
@@ -4919,21 +4929,31 @@ const aiAnalyze = useMutation({
           snappedToHigh = isOddWave; // In uptrend: odd waves (1,3,5) snap to high
         }
         
-        // Use 5-candle window to find best snap point
-        const best = findBestCandle(snappedToHigh);
-        finalCandleIndex = best.index;
-        finalCandle = best.candle;
-        snappedPrice = best.price;
-        console.log('🎯 Wave', nextLabel, ': Trend=', trendDirectionRef.current, 'isOdd=', isOddWave, 'snapped to', snappedPrice, 'at candle', finalCandleIndex, 'high?', snappedToHigh);
+        if (useWaveAutoSnap) {
+          // Use 5-candle window to find best snap point
+          const best = findBestCandle(snappedToHigh);
+          finalCandleIndex = best.index;
+          finalCandle = best.candle;
+          snappedPrice = best.price;
+        } else {
+          // No snap - use clicked price directly
+          snappedPrice = clickedPrice;
+        }
+        console.log('🎯 Wave', nextLabel, ': Trend=', trendDirectionRef.current, 'isOdd=', isOddWave, 'snapped to', snappedPrice, 'at candle', finalCandleIndex, 'high?', snappedToHigh, 'snap?', useWaveAutoSnap);
       } else {
         // For corrections/triangles: use click position to determine high/low snap
         snappedToHigh = clickedPrice > candleMid;
 
-        // Use 5-candle window to find best snap point
-        const best = findBestCandle(snappedToHigh);
-        finalCandleIndex = best.index;
-        finalCandle = best.candle;
-        snappedPrice = best.price;
+        if (useWaveAutoSnap) {
+          // Use 5-candle window to find best snap point
+          const best = findBestCandle(snappedToHigh);
+          finalCandleIndex = best.index;
+          finalCandle = best.candle;
+          snappedPrice = best.price;
+        } else {
+          // No snap - use clicked price directly
+          snappedPrice = clickedPrice;
+        }
       }
 
       const newPoint: WavePoint = {
@@ -4949,11 +4969,13 @@ const aiAnalyze = useMutation({
       setCurrentPoints(updatedPoints);
       setPreviewPoint(null); // Clear preview after placing
       
-      // Show visual snap feedback at the snap location
-      const snapX = timeScale.timeToCoordinate(finalCandle.time as any);
-      const snapY = candleSeries.priceToCoordinate(snappedPrice);
-      if (snapX !== null && snapY !== null && showWaveSnapCircleRef.current) {
-        showWaveSnapCircleRef.current(snapX, snapY, true); // Wave snapping is always successful
+      // Show visual snap feedback at the snap location (only if snapping was used)
+      if (useWaveAutoSnap) {
+        const snapX = timeScale.timeToCoordinate(finalCandle.time as any);
+        const snapY = candleSeries.priceToCoordinate(snappedPrice);
+        if (snapX !== null && snapY !== null && showWaveSnapCircleRef.current) {
+          showWaveSnapCircleRef.current(snapX, snapY, true);
+        }
       }
       
       // Deactivate crosshair mode after placement and clear frozen position
@@ -6989,6 +7011,24 @@ const aiAnalyze = useMutation({
               title="Draw mode"
             >
               <Pencil className="w-4 h-4" />
+            </Button>
+            
+            {/* Wave Auto-Snap Toggle (Magnet) */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`w-8 h-7 p-0 ${waveAutoSnapEnabled ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-slate-800 text-gray-300 hover:bg-slate-700 border border-slate-700'}`}
+              onClick={() => {
+                setWaveAutoSnapEnabled(prev => !prev);
+                toast({
+                  title: waveAutoSnapEnabled ? 'Wave Snap OFF' : 'Wave Snap ON',
+                  description: waveAutoSnapEnabled ? 'Points placed exactly where you tap' : 'Points snap to highs/lows automatically',
+                });
+              }}
+              title={waveAutoSnapEnabled ? 'Wave snap ON (snaps to highs/lows)' : 'Wave snap OFF (exact placement)'}
+              data-testid="btn-wave-auto-snap"
+            >
+              <Magnet className="w-4 h-4" />
             </Button>
 
             <Button
