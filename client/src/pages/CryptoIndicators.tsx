@@ -9641,7 +9641,7 @@ export default function CryptoIndicators() {
                                 fill="#22c55e" 
                                 stroke="#fff" 
                                 strokeWidth={2}
-                                style={{ cursor: 'grab' }}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
                                 onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
                                 onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
                               />
@@ -9650,7 +9650,7 @@ export default function CryptoIndicators() {
                                 fill="#22c55e" 
                                 stroke="#fff" 
                                 strokeWidth={2}
-                                style={{ cursor: 'grab' }}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
                                 onMouseDown={(e) => handlePointDragStart(drawing.id, 1, e)}
                                 onTouchStart={(e) => handlePointDragStart(drawing.id, 1, e)}
                               />
@@ -9712,7 +9712,7 @@ export default function CryptoIndicators() {
                                 fill="#22c55e" 
                                 stroke="#fff" 
                                 strokeWidth={2}
-                                style={{ cursor: 'grab' }}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
                                 onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
                                 onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
                               />
@@ -9721,7 +9721,7 @@ export default function CryptoIndicators() {
                                 fill="#22c55e" 
                                 stroke="#fff" 
                                 strokeWidth={2}
-                                style={{ cursor: 'grab' }}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
                                 onMouseDown={(e) => handlePointDragStart(drawing.id, 1, e)}
                                 onTouchStart={(e) => handlePointDragStart(drawing.id, 1, e)}
                               />
@@ -9848,7 +9848,7 @@ export default function CryptoIndicators() {
                                 fill="#22c55e" 
                                 stroke="#fff" 
                                 strokeWidth={2}
-                                style={{ cursor: 'grab' }}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
                                 onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
                                 onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
                               />
@@ -9857,7 +9857,7 @@ export default function CryptoIndicators() {
                                 fill="#22c55e" 
                                 stroke="#fff" 
                                 strokeWidth={2}
-                                style={{ cursor: 'grab' }}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
                                 onMouseDown={(e) => handlePointDragStart(drawing.id, 0, e)}
                                 onTouchStart={(e) => handlePointDragStart(drawing.id, 0, e)}
                               />
