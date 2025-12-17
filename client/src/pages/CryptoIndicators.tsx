@@ -6568,6 +6568,10 @@ export default function CryptoIndicators() {
     // Render each drawing
     drawings.forEach(drawing => {
       if (drawing.type === 'horizontal' && drawing.points.length >= 1) {
+        // Skip rendering price line if this drawing's point is being edited
+        if (activeEdit && activeEdit.drawingId === drawing.id) {
+          return; // Don't create price line while editing
+        }
         // Use custom label if set, otherwise default to "H-Line"
         const customLabel = drawing.style?.label || 'H-Line';
         // Add alarm icon if alert is active
@@ -6587,7 +6591,7 @@ export default function CryptoIndicators() {
       }
       // For trendlines and other drawings, we'll use the overlay canvas later
     });
-  }, [drawings, chartReady, selectedDrawingId]);
+  }, [drawings, chartReady, selectedDrawingId, activeEdit]);
 
   // Update VWAPs
   useEffect(() => {
