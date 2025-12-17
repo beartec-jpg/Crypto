@@ -174,9 +174,10 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const centerBar = bars[centerIdx];
     console.log(`[Gesture] Center candle: idx=${centerIdx}, time=${centerBar.time}, H=${centerBar.high.toFixed(4)}, L=${centerBar.low.toFixed(4)}`);
     
-    // Use a larger search window to find significant highs/lows
-    // Minimum window of 11 candles, or user's radius, whichever is larger
-    const effectiveRadius = Math.max(radius, 5);
+    // Use the zoom-based radius - respects user's thresholds for zoom levels
+    // When zoomed in (<50 visible), radius=0 means just 1 candle (exact candle clicked)
+    // When zoomed out (>=700 visible), radius=5 means 11 candle window
+    const effectiveRadius = radius;
     
     // Collect bars in window
     const windowBars: { bar: BarData; idx: number }[] = [];
