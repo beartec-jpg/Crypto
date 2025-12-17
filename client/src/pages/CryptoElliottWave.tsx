@@ -2609,6 +2609,13 @@ export default function CryptoElliottWave() {
   const [chartReady, setChartReady] = useState(false);
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
 
+  // Cooldown ref to prevent immediate placement after wave point pickup (1 second delay)
+  const wavePointPickupTimeRef = useRef<number>(0);
+  const WAVE_EDIT_PLACEMENT_COOLDOWN_MS = 1000;
+  
+  // Ref for gesture controller's findSnapPoint function (for wave point editing)
+  const waveFindSnapPointRef = useRef<((clientX: number, clientY: number) => { time: any; price: number; snapType?: 'high' | 'low' | 'none' } | null) | null>(null);
+
   // Handle drawing point commits from gesture controller
   const handleDrawingPointCommit = useCallback((point: GesturePoint) => {
     const time = point.time as number;
@@ -2657,6 +2664,11 @@ export default function CryptoElliottWave() {
     },
     autoSnapEnabled,
   });
+
+  // Connect findSnapPoint function to the ref for wave point editing
+  useEffect(() => {
+    waveFindSnapPointRef.current = gestureController.findSnapPoint;
+  }, [gestureController.findSnapPoint]);
 
   // Waves Usage Guide collapsible state
   const [wavesTrainingOpen, setWavesTrainingOpen] = useState(false);
@@ -4326,6 +4338,13 @@ const aiAnalyze = useMutation({
         
         // If currently dragging a point, this click is the DROP
         if (isDraggingRef.current && selectedId !== null && draggedPointIndexRef.current !== null) {
+          // Check cooldown - prevent placement within 1 second of pickup
+          const timeSincePickup = Date.now() - wavePointPickupTimeRef.current;
+          if (timeSincePickup < WAVE_EDIT_PLACEMENT_COOLDOWN_MS) {
+            console.log('📍 Wave point placement blocked - cooldown active:', { timeSincePickup, required: WAVE_EDIT_PLACEMENT_COOLDOWN_MS });
+            return;
+          }
+          
           console.log('📍 DROPPING point at candle:', candleIndex);
           const selectedLabel = savedLabelsRef.current.find(l => l.id === selectedId);
           if (selectedLabel) {
@@ -4701,6 +4720,9 @@ const aiAnalyze = useMutation({
                 description: 'Tap new location to drop the point',
                 duration: 2000,
               });
+              
+              // Record pickup time for cooldown (prevents immediate placement on release)
+              wavePointPickupTimeRef.current = Date.now();
               
               setDraggedPointIndex(clickedPointIndex);
               setIsDragging(true);
