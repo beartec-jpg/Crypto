@@ -157,11 +157,11 @@ class PriceMonitorService {
   private async sendNotification(userId: number, notification: { title: string; body: string; tag: string }) {
     try {
       // VAPID keys re-enabled for push notifications
-      const publicKey = process.env.PUBLIC_VAPID_KEY;
-      const privateKey = process.env.PRIVATE_VAPID_KEY;
+      const publicKey = process.env.VAPID_PUBLIC_KEY;
+      const privateKey = process.env.VAPID_PRIVATE_KEY;
       
       if (!publicKey || !privateKey) {
-        console.log("Push notifications require VAPID keys - PUBLIC_VAPID_KEY and PRIVATE_VAPID_KEY");
+        console.log("Push notifications require VAPID keys - VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY");
         return;
       }
 
@@ -362,11 +362,11 @@ class PriceMonitorService {
   private async sendCryptoNotification(userId: string, notification: { title: string; body: string; tag: string }) {
     try {
       // VAPID keys re-enabled for push notifications
-      const publicKey = process.env.PUBLIC_VAPID_KEY;
-      const privateKey = process.env.PRIVATE_VAPID_KEY;
+      const publicKey = process.env.VAPID_PUBLIC_KEY;
+      const privateKey = process.env.VAPID_PRIVATE_KEY;
       
       if (!publicKey || !privateKey) {
-        console.log("Push notifications require VAPID keys - PUBLIC_VAPID_KEY and PRIVATE_VAPID_KEY");
+        console.log("Push notifications require VAPID keys - VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY");
         return;
       }
 

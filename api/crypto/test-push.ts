@@ -54,8 +54,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Sanitize VAPID keys - remove quotes, newlines, whitespace
-    let publicVapidKey = process.env.PUBLIC_VAPID_KEY?.replace(/["\n\r\s]/g, '').trim();
-    let privateVapidKey = process.env.PRIVATE_VAPID_KEY?.replace(/["\n\r\s]/g, '').trim();
+    let publicVapidKey = process.env.VAPID_PUBLIC_KEY?.replace(/["\n\r\s]/g, '').trim();
+    let privateVapidKey = process.env.VAPID_PRIVATE_KEY?.replace(/["\n\r\s]/g, '').trim();
     
     if (!publicVapidKey || !privateVapidKey) {
       await pool.end();

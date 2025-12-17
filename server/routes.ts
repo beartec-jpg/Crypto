@@ -3848,11 +3848,11 @@ CRITICAL RULES:
     const webpush = await import('web-push');
     
     // VAPID keys re-enabled for push notifications
-    const publicVapid = process.env.PUBLIC_VAPID_KEY;
-    const privateVapid = process.env.PRIVATE_VAPID_KEY;
+    const publicVapid = process.env.VAPID_PUBLIC_KEY;
+    const privateVapid = process.env.VAPID_PRIVATE_KEY;
     
     if (!publicVapid || !privateVapid) {
-      console.log('📭 Push notifications require VAPID keys - PUBLIC_VAPID_KEY and PRIVATE_VAPID_KEY');
+      console.log('📭 Push notifications require VAPID keys - VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY');
       return;
     }
     
@@ -3951,11 +3951,11 @@ CRITICAL RULES:
         });
       }
       
-      const publicKey = process.env.PUBLIC_VAPID_KEY;
-      const privateKey = process.env.PRIVATE_VAPID_KEY;
+      const publicKey = process.env.VAPID_PUBLIC_KEY;
+      const privateKey = process.env.VAPID_PRIVATE_KEY;
       
       if (!publicKey || !privateKey) {
-        console.log("❌ VAPID keys not configured");
+        console.log("❌ VAPID keys not configured (VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)");
         return res.status(500).json({ error: 'Push notifications not configured on server' });
       }
       
