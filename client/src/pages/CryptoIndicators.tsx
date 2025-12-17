@@ -424,11 +424,18 @@ export default function CryptoIndicators() {
     candlesRef.current = candles;
   }, [candles]);
   
+  // Cooldown ref to prevent immediate placement after pickup (1 second delay)
+  const pointPickupTimeRef = useRef<number>(0);
+  const EDIT_PLACEMENT_COOLDOWN_MS = 1000;
+  
   // Handler to pick up a point (first click on green circle) - removes point visually
   const handlePointPick = useCallback((drawingId: string, pointIndex: number, e: React.MouseEvent | React.TouchEvent) => {
     console.log('🎯 Point picked up (will be removed until replaced):', { drawingId, pointIndex });
     e.preventDefault();
     e.stopPropagation();
+    
+    // Record pickup time for cooldown
+    pointPickupTimeRef.current = Date.now();
     
     // Find the drawing
     const drawing = drawings.find(d => d.id === drawingId);
@@ -453,6 +460,13 @@ export default function CryptoIndicators() {
     console.log('🎯 Placing edited point:', { clientX, clientY, activeEdit: activeEditRef.current });
     const edit = activeEditRef.current;
     if (!edit) return;
+    
+    // Check cooldown - prevent placement within 1 second of pickup
+    const timeSincePickup = Date.now() - pointPickupTimeRef.current;
+    if (timeSincePickup < EDIT_PLACEMENT_COOLDOWN_MS) {
+      console.log('🎯 Placement blocked - cooldown active:', { timeSincePickup, required: EDIT_PLACEMENT_COOLDOWN_MS });
+      return;
+    }
     
     if (!chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) {
       setActiveEdit(null);
