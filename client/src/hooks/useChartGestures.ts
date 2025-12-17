@@ -59,6 +59,9 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   // The stored crosshair position - ONLY source of truth
   const crosshairCoordsRef = useRef<{ time: Time; price: number; localX: number; localY: number } | null>(null);
   
+  // For delta-based dragging: store where the finger started and where crosshair was at drag start
+  const dragStartRef = useRef<{ fingerX: number; fingerY: number; crosshairX: number; crosshairY: number } | null>(null);
+  
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pointerStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null);
   const savedHandleScrollRef = useRef<{ horzTouchDrag?: boolean; vertTouchDrag?: boolean } | null>(null);
@@ -234,14 +237,6 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     return true;
   };
 
-  // Check if a point is near the stored crosshair
-  const isNearCrosshair = (localX: number, localY: number): boolean => {
-    const coords = crosshairCoordsRef.current;
-    if (!coords) return false;
-    
-    const dist = Math.hypot(localX - coords.localX, localY - coords.localY);
-    return dist <= GESTURE_CONFIG.DRAG_PROXIMITY_PX;
-  };
 
   // Activate crosshair mode
   const activateCrosshairMode = (localX: number, localY: number) => {
@@ -399,18 +394,22 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       };
 
       if (crosshairActiveRef.current) {
-        // Crosshair is already active
-        // Only allow drag if touching near the crosshair
-        if (isNearCrosshair(local.x, local.y)) {
-          console.log('[Gesture] Touch near crosshair - enabling drag');
-          isDraggingRef.current = true;
-          try {
-            chartElement.setPointerCapture(e.pointerId);
-          } catch (err) {}
-        } else {
-          console.log('[Gesture] Touch far from crosshair - will be treated as tap');
-          isDraggingRef.current = false;
+        // Crosshair is already active - any swipe moves it (delta-based)
+        // Store the starting positions for delta calculation
+        const currentCrosshair = crosshairCoordsRef.current;
+        if (currentCrosshair) {
+          dragStartRef.current = {
+            fingerX: local.x,
+            fingerY: local.y,
+            crosshairX: currentCrosshair.localX,
+            crosshairY: currentCrosshair.localY,
+          };
+          console.log('[Gesture] Drag start - finger:', local, 'crosshair:', currentCrosshair.localX, currentCrosshair.localY);
         }
+        isDraggingRef.current = false; // Will be set true on move
+        try {
+          chartElement.setPointerCapture(e.pointerId);
+        } catch (err) {}
         return;
       }
 
@@ -442,12 +441,26 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
         return;
       }
 
-      // If crosshair active and we're dragging, update crosshair position
-      if (crosshairActiveRef.current && isDraggingRef.current) {
-        e.preventDefault();
+      // If crosshair active and finger has moved, apply delta to crosshair position
+      if (crosshairActiveRef.current && dragStartRef.current) {
         const local = getLocalCoords(e.clientX, e.clientY);
         if (local) {
-          setCrosshairPosition(local.x, local.y);
+          const deltaX = local.x - dragStartRef.current.fingerX;
+          const deltaY = local.y - dragStartRef.current.fingerY;
+          
+          // Check if moved enough to count as a drag
+          if (Math.abs(deltaX) > GESTURE_CONFIG.MOVE_THRESHOLD_PX || 
+              Math.abs(deltaY) > GESTURE_CONFIG.MOVE_THRESHOLD_PX) {
+            isDraggingRef.current = true;
+          }
+          
+          if (isDraggingRef.current) {
+            e.preventDefault();
+            // Apply delta to the crosshair's ORIGINAL position (not finger position)
+            const newX = dragStartRef.current.crosshairX + deltaX;
+            const newY = dragStartRef.current.crosshairY + deltaY;
+            setCrosshairPosition(newX, newY);
+          }
         }
       }
     };
@@ -480,6 +493,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
           // Was dragging - just stop, don't commit
           console.log('[Gesture] Drag ended - crosshair stays, no commit');
           isDraggingRef.current = false;
+          dragStartRef.current = null;
         } else if (elapsed < GESTURE_CONFIG.TAP_MAX_MS && dist < GESTURE_CONFIG.MOVE_THRESHOLD_PX) {
           // Quick tap while not dragging - COMMIT from stored crosshair position
           console.log('[Gesture] TAP detected - committing from crosshair');
@@ -501,6 +515,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const handlePointerCancel = () => {
       if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
       isDraggingRef.current = false;
+      dragStartRef.current = null;
       pointerStartRef.current = null;
     };
 
