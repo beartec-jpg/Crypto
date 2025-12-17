@@ -10,8 +10,9 @@ const GESTURE_CONFIG = {
 };
 
 // Snap window sizes based on visible candles - returns number of candles to search (radius from center)
-// User requested thresholds: <50→1, <150→3, <300→5, <500→7, >=500→9
+// User requested thresholds: <50→1, <150→3, <300→5, <500→7, <700→9, >=700→11
 const getCrosshairSnapRadius = (visibleCandles: number): number => {
+  if (visibleCandles >= 700) return 5; // 11 candle window
   if (visibleCandles >= 500) return 4; // 9 candle window
   if (visibleCandles >= 300) return 3; // 7 candle window
   if (visibleCandles >= 150) return 2; // 5 candle window  
@@ -21,6 +22,7 @@ const getCrosshairSnapRadius = (visibleCandles: number): number => {
 
 // Tap mode uses same thresholds as crosshair for consistency
 const getTapSnapRadius = (visibleCandles: number): number => {
+  if (visibleCandles >= 700) return 5; // 11 candle window
   if (visibleCandles >= 500) return 4; // 9 candle window
   if (visibleCandles >= 300) return 3; // 7 candle window
   if (visibleCandles >= 150) return 2; // 5 candle window
