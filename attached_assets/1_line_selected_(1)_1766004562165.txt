@@ -1,0 +1,54 @@
+1 line selected
+20:45:18 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:19 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:19 
+api/cron/check-alerts.ts(532,3): error TS6133: 'tier' is declared but its value is never read.
+20:45:19 
+20:45:22 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:24 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:25 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:25 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:27 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:27 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:28 
+api/crypto/multi-exchange-orderflow.ts(37,64): error TS6133: 'since' is declared but its value is never read.
+20:45:28 
+api/crypto/multi-exchange-orderflow.ts(72,67): error TS6133: 'since' is declared but its value is never read.
+20:45:28 
+20:45:28 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:29 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:29 
+api/crypto/order-flow-alerts.ts(38,7): error TS6133: 'obv' is declared but its value is never read.
+20:45:29 
+20:45:30 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:30 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:31 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:34 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:36 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:36 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:37 
+Using TypeScript 5.6.3 (local user-provided)
+20:45:38 
+Build Completed in /vercel/output [54s]
+20:45:39 
+Deploying outputs...
+20:45:47 
+Deployment completed
+20:45:48 
+Creating build cache...
