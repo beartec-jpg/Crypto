@@ -448,10 +448,18 @@ export default function CryptoIndicators() {
   // Delete drawing mutation  
   const deleteDrawingMutation = useMutation({
     mutationFn: async (drawingId: string) => {
+      // Immediately remove from local state for instant UI feedback
+      setDrawings(prev => prev.filter(d => d.id !== drawingId));
+      setSelectedDrawingId(null);
+      
       const response = await authenticatedApiRequest('DELETE', `/api/crypto/chart-drawings/${drawingId}`);
       return response.json();
     },
     onSuccess: () => {
+      refetchDrawings();
+    },
+    onError: () => {
+      // If delete fails, refetch to restore the drawing
       refetchDrawings();
     },
   });

@@ -79,7 +79,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const isDraggingRef = useRef<boolean>(false);
   
   // The stored crosshair position - ONLY source of truth
-  const crosshairCoordsRef = useRef<{ time: Time; price: number; localX: number; localY: number } | null>(null);
+  // Now also stores logicalIdx to prevent issues when chart scrolls
+  const crosshairCoordsRef = useRef<{ time: Time; price: number; localX: number; localY: number; logicalIdx: number } | null>(null);
   
   // For delta-based dragging: store where the finger started and where crosshair was at drag start
   const dragStartRef = useRef<{ fingerX: number; fingerY: number; crosshairX: number; crosshairY: number } | null>(null);
@@ -303,15 +304,19 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const time = getTimeFromCoord(localX);
     if (time === null) return false;
     
-    // Store the position
-    crosshairCoordsRef.current = { time, price, localX, localY };
+    // Get logical index at this position and store it to prevent drift when chart updates
+    const logicalIdx = getLogicalIndex(localX);
+    if (logicalIdx === null) return false;
+    
+    // Store the position with logical index
+    crosshairCoordsRef.current = { time, price, localX, localY, logicalIdx };
     
     // Draw crosshair at the STORED position (not finger position)
     drawCrosshairAt(localX, localY, time, price);
     
     onPreviewPointRef.current?.({ time, price });
     
-    console.log('[Gesture] Crosshair set to:', { time, price: price.toFixed(4), localX, localY });
+    console.log('[Gesture] Crosshair set to:', { time, price: price.toFixed(4), localX, localY, logicalIdx });
     return true;
   };
 
@@ -377,12 +382,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
     console.log('[Gesture] Committing from crosshair:', coords);
 
-    // Get logical index from crosshair position
-    const centerIdx = getLogicalIndex(coords.localX);
-    if (centerIdx === null) {
-      console.warn('[Gesture] Cannot get logical index');
-      return;
-    }
+    // Use the STORED logical index (not recalculated) to prevent drift
+    const centerIdx = coords.logicalIdx;
 
     // Get snap radius based on visible candles (crosshair mode)
     const visibleCount = getVisibleCandleCount();
