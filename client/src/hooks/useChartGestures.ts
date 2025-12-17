@@ -1,12 +1,12 @@
 import { useRef, useCallback, useEffect, useMemo } from 'react';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
-import { CrosshairMode, LineStyle } from 'lightweight-charts';
+import { CrosshairMode } from 'lightweight-charts';
 
 const GESTURE_CONFIG = {
   LONG_PRESS_MS: 500,
   MOVE_THRESHOLD_PX: 12,
   TAP_MAX_MS: 300,
-  DRAG_PROXIMITY_PX: 40, // Must touch within this distance of crosshair to drag it
+  DRAG_PROXIMITY_PX: 50,
 };
 
 interface BarData {
@@ -53,20 +53,21 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   useEffect(() => { onPreviewPointRef.current = onPreviewPoint; }, [onPreviewPoint]);
   useEffect(() => { onCrosshairModeChangeRef.current = onCrosshairModeChange; }, [onCrosshairModeChange]);
 
-  // STATE MACHINE:
-  // crosshairActiveRef = true means crosshair mode is ON (persists between touches)
-  // isDraggingRef = true means user is currently dragging to reposition crosshair
   const crosshairActiveRef = useRef<boolean>(false);
   const isDraggingRef = useRef<boolean>(false);
   
-  // The stored crosshair position - THIS is the only source of truth for commits
+  // The stored crosshair position - ONLY source of truth
   const crosshairCoordsRef = useRef<{ time: Time; price: number; localX: number; localY: number } | null>(null);
   
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pointerStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null);
   const savedHandleScrollRef = useRef<{ horzTouchDrag?: boolean; vertTouchDrag?: boolean } | null>(null);
-  const savedCrosshairStyleRef = useRef<any>(null);
-  const crosshairLabelRef = useRef<HTMLDivElement | null>(null);
+  
+  // Custom crosshair elements (we draw our own, don't rely on chart's native one)
+  const crosshairContainerRef = useRef<HTMLDivElement | null>(null);
+  const vertLineRef = useRef<HTMLDivElement | null>(null);
+  const horzLineRef = useRef<HTMLDivElement | null>(null);
+  const labelRef = useRef<HTMLDivElement | null>(null);
 
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -103,32 +104,83 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     return null;
   };
 
-  const updateCrosshairLabel = (localX: number, localY: number, time: Time, price: number) => {
-    if (!chartElementRef.current) return;
+  // Create the custom crosshair elements
+  const createCrosshairElements = () => {
+    if (!chartElementRef.current || crosshairContainerRef.current) return;
     
-    let label = crosshairLabelRef.current;
-    if (!label) {
-      label = document.createElement('div');
-      label.style.cssText = `
-        position: absolute;
-        background: rgba(255, 0, 0, 0.9);
-        color: white;
-        padding: 6px 10px;
-        border-radius: 4px;
-        font-size: 14px;
-        font-weight: bold;
-        pointer-events: none;
-        z-index: 1000;
-        white-space: nowrap;
-        transform: translate(-50%, -100%);
-        margin-top: -15px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      `;
-      chartElementRef.current.style.position = 'relative';
-      chartElementRef.current.appendChild(label);
-      crosshairLabelRef.current = label;
-    }
+    const container = document.createElement('div');
+    container.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      z-index: 999;
+    `;
     
+    const vertLine = document.createElement('div');
+    vertLine.style.cssText = `
+      position: absolute;
+      width: 2px;
+      background: #FF0000;
+      top: 0;
+      bottom: 50px;
+      display: none;
+    `;
+    
+    const horzLine = document.createElement('div');
+    horzLine.style.cssText = `
+      position: absolute;
+      height: 2px;
+      background: #FF0000;
+      left: 0;
+      right: 50px;
+      display: none;
+    `;
+    
+    const label = document.createElement('div');
+    label.style.cssText = `
+      position: absolute;
+      background: rgba(255, 0, 0, 0.95);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: bold;
+      white-space: nowrap;
+      transform: translate(-50%, -100%);
+      margin-top: -12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      display: none;
+    `;
+    
+    container.appendChild(vertLine);
+    container.appendChild(horzLine);
+    container.appendChild(label);
+    
+    chartElementRef.current.style.position = 'relative';
+    chartElementRef.current.appendChild(container);
+    
+    crosshairContainerRef.current = container;
+    vertLineRef.current = vertLine;
+    horzLineRef.current = horzLine;
+    labelRef.current = label;
+  };
+
+  // Update crosshair visuals at a specific position
+  const drawCrosshairAt = (localX: number, localY: number, time: Time, price: number) => {
+    if (!vertLineRef.current || !horzLineRef.current || !labelRef.current) return;
+    
+    // Position the vertical line
+    vertLineRef.current.style.left = `${localX}px`;
+    vertLineRef.current.style.display = 'block';
+    
+    // Position the horizontal line
+    horzLineRef.current.style.top = `${localY}px`;
+    horzLineRef.current.style.display = 'block';
+    
+    // Format time for label
     let timeStr = '';
     if (typeof time === 'number') {
       const date = new Date(time * 1000);
@@ -137,27 +189,31 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       timeStr = String(time);
     }
     
-    label.textContent = `📍 ${timeStr} | $${price.toFixed(4)}`;
-    label.style.left = `${localX}px`;
-    label.style.top = `${localY}px`;
-    label.style.display = 'block';
+    // Position and update the label
+    labelRef.current.textContent = `📍 ${timeStr} | $${price.toFixed(4)}`;
+    labelRef.current.style.left = `${localX}px`;
+    labelRef.current.style.top = `${localY}px`;
+    labelRef.current.style.display = 'block';
   };
 
-  const hideCrosshairLabel = () => {
-    if (crosshairLabelRef.current) {
-      crosshairLabelRef.current.style.display = 'none';
+  const hideCrosshair = () => {
+    if (vertLineRef.current) vertLineRef.current.style.display = 'none';
+    if (horzLineRef.current) horzLineRef.current.style.display = 'none';
+    if (labelRef.current) labelRef.current.style.display = 'none';
+  };
+
+  const removeCrosshairElements = () => {
+    if (crosshairContainerRef.current && crosshairContainerRef.current.parentNode) {
+      crosshairContainerRef.current.parentNode.removeChild(crosshairContainerRef.current);
     }
+    crosshairContainerRef.current = null;
+    vertLineRef.current = null;
+    horzLineRef.current = null;
+    labelRef.current = null;
   };
 
-  const removeCrosshairLabel = () => {
-    if (crosshairLabelRef.current && crosshairLabelRef.current.parentNode) {
-      crosshairLabelRef.current.parentNode.removeChild(crosshairLabelRef.current);
-      crosshairLabelRef.current = null;
-    }
-  };
-
-  // Update the stored crosshair position from screen coordinates
-  const updateCrosshairPosition = (localX: number, localY: number) => {
+  // Set crosshair position (stores coords and draws crosshair at that location)
+  const setCrosshairPosition = (localX: number, localY: number): boolean => {
     if (!chartRef.current || !candleSeriesRef.current) return false;
     
     const price = candleSeriesRef.current.coordinateToPrice(localY);
@@ -166,75 +222,79 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const time = getTimeFromCoord(localX);
     if (time === null) return false;
     
+    // Store the position
     crosshairCoordsRef.current = { time, price, localX, localY };
-    updateCrosshairLabel(localX, localY, time, price);
+    
+    // Draw crosshair at the STORED position (not finger position)
+    drawCrosshairAt(localX, localY, time, price);
+    
     onPreviewPointRef.current?.({ time, price });
     
+    console.log('[Gesture] Crosshair set to:', { time, price: price.toFixed(4), localX, localY });
     return true;
   };
 
-  // Apply red crosshair styling
-  const applyRedCrosshair = () => {
-    if (!chartRef.current) return;
+  // Check if a point is near the stored crosshair
+  const isNearCrosshair = (localX: number, localY: number): boolean => {
+    const coords = crosshairCoordsRef.current;
+    if (!coords) return false;
     
-    const currentOptions = chartRef.current.options();
-    const currentHS = (currentOptions as any).handleScroll ?? {};
-    savedHandleScrollRef.current = {
-      horzTouchDrag: currentHS.horzTouchDrag,
-      vertTouchDrag: currentHS.vertTouchDrag,
-    };
-    savedCrosshairStyleRef.current = currentOptions.crosshair ?? {};
-
-    chartRef.current.applyOptions({
-      handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-        vertLine: { color: '#FF0000', width: 2, style: LineStyle.Solid },
-        horzLine: { color: '#FF0000', width: 2, style: LineStyle.Solid },
-      },
-    });
+    const dist = Math.hypot(localX - coords.localX, localY - coords.localY);
+    return dist <= GESTURE_CONFIG.DRAG_PROXIMITY_PX;
   };
 
-  // Restore normal crosshair styling
-  const restoreNormalCrosshair = () => {
-    if (!chartRef.current) return;
-    
-    if (savedHandleScrollRef.current) {
-      chartRef.current.applyOptions({ handleScroll: savedHandleScrollRef.current });
-      savedHandleScrollRef.current = null;
-    }
-
-    if (savedCrosshairStyleRef.current) {
-      chartRef.current.applyOptions({ crosshair: savedCrosshairStyleRef.current });
-      savedCrosshairStyleRef.current = null;
-    }
-  };
-
-  // ACTIVATE crosshair mode (stays on until commit or cancel)
+  // Activate crosshair mode
   const activateCrosshairMode = (localX: number, localY: number) => {
-    console.log('[Gesture] ACTIVATING crosshair mode');
+    console.log('[Gesture] ACTIVATING crosshair mode at:', localX, localY);
+    
+    createCrosshairElements();
+    
     crosshairActiveRef.current = true;
     isDraggingRef.current = true;
     
-    applyRedCrosshair();
-    updateCrosshairPosition(localX, localY);
+    // Disable chart scrolling
+    if (chartRef.current) {
+      const currentOptions = chartRef.current.options();
+      const currentHS = (currentOptions as any).handleScroll ?? {};
+      savedHandleScrollRef.current = {
+        horzTouchDrag: currentHS.horzTouchDrag,
+        vertTouchDrag: currentHS.vertTouchDrag,
+      };
+      chartRef.current.applyOptions({
+        handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
+        crosshair: { mode: CrosshairMode.Hidden },
+      });
+    }
+    
+    setCrosshairPosition(localX, localY);
     onCrosshairModeChangeRef.current?.(true);
   };
 
-  // DEACTIVATE crosshair mode completely
+  // Deactivate crosshair mode
   const deactivateCrosshairMode = () => {
     console.log('[Gesture] DEACTIVATING crosshair mode');
+    
     crosshairActiveRef.current = false;
     isDraggingRef.current = false;
     crosshairCoordsRef.current = null;
     
-    restoreNormalCrosshair();
-    hideCrosshairLabel();
+    hideCrosshair();
+    
+    if (chartRef.current) {
+      if (savedHandleScrollRef.current) {
+        chartRef.current.applyOptions({ handleScroll: savedHandleScrollRef.current });
+        savedHandleScrollRef.current = null;
+      }
+      chartRef.current.applyOptions({
+        crosshair: { mode: CrosshairMode.Normal },
+      });
+    }
+    
     onCrosshairModeChangeRef.current?.(false);
     onPreviewPointRef.current?.(null);
   };
 
-  // COMMIT point using the stored crosshair position (ignores finger position)
+  // Commit point from stored crosshair position
   const commitFromCrosshair = () => {
     const coords = crosshairCoordsRef.current;
     if (!coords) {
@@ -244,18 +304,15 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
     console.log('[Gesture] Committing from crosshair:', coords);
 
-    // Find the bar at crosshair time
     const bar = getBarAtTime(coords.time);
     
     let commitPoint: GesturePoint;
     if (bar) {
-      // Snap to high or low based on crosshair price position
       const mid = (bar.high + bar.low) / 2;
       const snapPrice = coords.price >= mid ? bar.high : bar.low;
       commitPoint = { time: bar.time, price: snapPrice };
-      console.log('[Gesture] Snapped to bar:', { mid, snapPrice, high: bar.high, low: bar.low });
+      console.log('[Gesture] Snapped to bar:', { snapPrice, high: bar.high, low: bar.low });
     } else {
-      // Fallback: use raw coords
       commitPoint = { time: coords.time, price: coords.price };
       console.warn('[Gesture] Bar not found, using raw coords');
     }
@@ -263,7 +320,6 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     console.log('[Gesture] COMMIT POINT:', commitPoint);
     onPointCommitRef.current(commitPoint);
     
-    // Exit crosshair mode after commit
     deactivateCrosshairMode();
   };
 
@@ -327,14 +383,13 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     candleSeriesRef.current = candleSeries;
     chartElementRef.current = chartElement;
 
-    chart.applyOptions({
-      crosshair: { mode: CrosshairMode.Normal },
-    });
-
     const handlePointerDown = (e: PointerEvent) => {
       if (!enabledRef.current || !e.isPrimary) return;
 
-      console.log('[Gesture] PointerDown - crosshairActive:', crosshairActiveRef.current);
+      const local = getLocalCoords(e.clientX, e.clientY);
+      if (!local) return;
+
+      console.log('[Gesture] PointerDown - crosshairActive:', crosshairActiveRef.current, 'local:', local);
       
       pointerStartRef.current = {
         x: e.clientX,
@@ -343,22 +398,29 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
         id: e.pointerId,
       };
 
-      // If crosshair is already active, start a drag to reposition
       if (crosshairActiveRef.current) {
-        isDraggingRef.current = true;
-        try {
-          chartElement.setPointerCapture(e.pointerId);
-        } catch (err) {}
+        // Crosshair is already active
+        // Only allow drag if touching near the crosshair
+        if (isNearCrosshair(local.x, local.y)) {
+          console.log('[Gesture] Touch near crosshair - enabling drag');
+          isDraggingRef.current = true;
+          try {
+            chartElement.setPointerCapture(e.pointerId);
+          } catch (err) {}
+        } else {
+          console.log('[Gesture] Touch far from crosshair - will be treated as tap');
+          isDraggingRef.current = false;
+        }
         return;
       }
 
-      // Otherwise, start long press timer to activate crosshair mode
+      // Not in crosshair mode - start long press timer
       if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
       longPressTimeoutRef.current = setTimeout(() => {
-        console.log('[Gesture] Long press triggered - activating crosshair');
-        const local = getLocalCoords(e.clientX, e.clientY);
-        if (local) {
-          activateCrosshairMode(local.x, local.y);
+        console.log('[Gesture] Long press triggered');
+        const currentLocal = getLocalCoords(e.clientX, e.clientY);
+        if (currentLocal) {
+          activateCrosshairMode(currentLocal.x, currentLocal.y);
           try {
             chartElement.setPointerCapture(e.pointerId);
           } catch (err) {}
@@ -371,7 +433,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
       const dist = Math.hypot(e.clientX - pointerStartRef.current.x, e.clientY - pointerStartRef.current.y);
 
-      // If not in crosshair mode and moved too much, cancel long press
+      // Cancel long press if moved too much before activation
       if (!crosshairActiveRef.current && dist > GESTURE_CONFIG.MOVE_THRESHOLD_PX) {
         if (longPressTimeoutRef.current) {
           clearTimeout(longPressTimeoutRef.current);
@@ -380,12 +442,12 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
         return;
       }
 
-      // If crosshair is active and dragging, update crosshair position
+      // If crosshair active and we're dragging, update crosshair position
       if (crosshairActiveRef.current && isDraggingRef.current) {
         e.preventDefault();
         const local = getLocalCoords(e.clientX, e.clientY);
         if (local) {
-          updateCrosshairPosition(local.x, local.y);
+          setCrosshairPosition(local.x, local.y);
         }
       }
     };
@@ -400,7 +462,6 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
         longPressTimeoutRef.current = null;
       }
 
-      // Release pointer capture
       try {
         if (chartElement.hasPointerCapture(e.pointerId)) {
           chartElement.releasePointerCapture(e.pointerId);
@@ -413,19 +474,19 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
           ? Math.hypot(e.clientX - pointerStartRef.current.x, e.clientY - pointerStartRef.current.y)
           : 0;
 
-        console.log('[Gesture] Crosshair mode - elapsed:', elapsed, 'dist:', dist);
+        console.log('[Gesture] Crosshair mode - elapsed:', elapsed, 'dist:', dist, 'wasDragging:', isDraggingRef.current);
 
-        // If this was a quick tap (not a drag), COMMIT from crosshair position
-        if (elapsed < GESTURE_CONFIG.TAP_MAX_MS && dist < GESTURE_CONFIG.MOVE_THRESHOLD_PX) {
-          console.log('[Gesture] TAP detected while crosshair active - committing from crosshair');
-          commitFromCrosshair();
-        } else {
-          // This was a drag - just stop dragging, don't commit
-          console.log('[Gesture] Drag ended - crosshair stays active, no commit');
+        if (isDraggingRef.current) {
+          // Was dragging - just stop, don't commit
+          console.log('[Gesture] Drag ended - crosshair stays, no commit');
           isDraggingRef.current = false;
+        } else if (elapsed < GESTURE_CONFIG.TAP_MAX_MS && dist < GESTURE_CONFIG.MOVE_THRESHOLD_PX) {
+          // Quick tap while not dragging - COMMIT from stored crosshair position
+          console.log('[Gesture] TAP detected - committing from crosshair');
+          commitFromCrosshair();
         }
       } else if (pointerStartRef.current) {
-        // Not in crosshair mode - handle quick tap
+        // Not in crosshair mode
         const elapsed = Date.now() - pointerStartRef.current.time;
         const dist = Math.hypot(e.clientX - pointerStartRef.current.x, e.clientY - pointerStartRef.current.y);
 
@@ -463,8 +524,10 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const detachFromChart = useCallback(() => {
     cleanupFnsRef.current.forEach(fn => fn());
     cleanupFnsRef.current = [];
-    removeCrosshairLabel();
-    deactivateCrosshairMode();
+    removeCrosshairElements();
+    if (crosshairActiveRef.current) {
+      deactivateCrosshairMode();
+    }
     chartRef.current = null;
     candleSeriesRef.current = null;
     chartElementRef.current = null;
