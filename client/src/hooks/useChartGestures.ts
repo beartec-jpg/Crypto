@@ -58,6 +58,7 @@ interface UseChartGesturesReturn {
   isCrosshairModeActive: () => boolean;
   getCrosshairPoint: () => GesturePoint | null;
   resetState: () => void;
+  cancelCrosshairMode: () => void;
 }
 
 export function useChartGestures(options: UseChartGesturesOptions): UseChartGesturesReturn {
@@ -291,8 +292,13 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       timeStr = String(time);
     }
     
-    // Position and update the label
-    labelRef.current.textContent = `📍 ${timeStr} | $${price.toFixed(4)}`;
+    // Calculate window size for display
+    const visibleCount = getVisibleCandleCount();
+    const radius = getCrosshairSnapRadius(visibleCount);
+    const windowSize = radius * 2 + 1;
+    
+    // Position and update the label with window size
+    labelRef.current.textContent = `📍 ${timeStr} | $${price.toFixed(4)} | ${windowSize} candle${windowSize > 1 ? 's' : ''}`;
     labelRef.current.style.left = `${localX}px`;
     labelRef.current.style.top = `${localY}px`;
     labelRef.current.style.display = 'block';
@@ -659,6 +665,17 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     resetState();
   }, [resetState]);
 
+  // Force cancel crosshair mode - can be called externally when draw mode is disabled
+  const cancelCrosshairMode = useCallback(() => {
+    if (crosshairActiveRef.current) {
+      console.log('[Gesture] Force canceling crosshair mode (external)');
+      deactivateCrosshairMode();
+    }
+    hideCrosshair();
+    removeCrosshairElements();
+    resetState();
+  }, [resetState]);
+
   useEffect(() => {
     return () => detachFromChart();
   }, [detachFromChart]);
@@ -669,7 +686,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     isCrosshairModeActive,
     getCrosshairPoint,
     resetState,
-  }), [attachToChart, detachFromChart, isCrosshairModeActive, getCrosshairPoint, resetState]);
+    cancelCrosshairMode,
+  }), [attachToChart, detachFromChart, isCrosshairModeActive, getCrosshairPoint, resetState, cancelCrosshairMode]);
 }
 
 export { GESTURE_CONFIG };

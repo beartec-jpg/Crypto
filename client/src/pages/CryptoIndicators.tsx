@@ -527,6 +527,14 @@ export default function CryptoIndicators() {
     onPointCommit: handlePointCommit,
     onCrosshairModeChange: setCrosshairModeActive,
   });
+  
+  // Cancel crosshair when draw mode is turned off or tool is deselected
+  useEffect(() => {
+    if (drawingMode !== 'draw' || activeTool === null) {
+      gestureController.cancelCrosshairMode();
+      setCrosshairModeActive(false);
+    }
+  }, [drawingMode, activeTool]);
 
   // VWAP toggles
   const [showVWAPSession, setShowVWAPSession] = useState(false);
