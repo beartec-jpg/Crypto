@@ -48,6 +48,3 @@ integrations = ["javascript_stripe:1.0.0", "javascript_log_in_with_replit:1.0.0"
 
 [userenv.shared]
 CRYPTO_DOMAIN = "beartec.uk"
-TWILIO_ACCOUNT_SID = "AC635a345eeb151863c32c0e88fd1e6ed5"
-TWILIO_AUTH_TOKEN = "80d2989adfe06f83442d1968324a6c50"
-TWILIO_PHONE_NUMBER = "+447454321340"
