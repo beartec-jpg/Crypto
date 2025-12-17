@@ -154,7 +154,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   };
 
   // Fixed pixel radius for snap circle (2D mode)
-  const SNAP_CIRCLE_RADIUS = 60; // pixels
+  const SNAP_CIRCLE_RADIUS = 40; // pixels
   
   // Reference for snap circle visual element
   const snapCircleRef = useRef<HTMLDivElement | null>(null);
