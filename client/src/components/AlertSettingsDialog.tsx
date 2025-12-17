@@ -9,6 +9,7 @@ import { Bell, Loader2, MessageSquare, Phone, Send } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@clerk/clerk-react';
 import type { CryptoPreferences } from '@shared/schema';
 
 interface AlertSettingsDialogProps {
@@ -75,6 +76,7 @@ const ALERT_GRADES = [
 
 export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogProps) {
   const { toast } = useToast();
+  const { getToken } = useAuth();
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
   const [selectedTimeframes, setSelectedTimeframes] = useState<string[]>([]);
@@ -153,8 +155,11 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
       // First save the phone number
       await smsMutation.mutateAsync({ phoneNumber, smsAlertsEnabled: true });
       
-      // Then send test SMS
-      const response = await apiRequest('POST', '/api/crypto/sms-test', {});
+      // Get auth token for the request
+      const token = await getToken();
+      
+      // Then send test SMS with auth token
+      const response = await apiRequest('POST', '/api/crypto/sms-test', {}, token || undefined);
       const result = await response.json();
       
       if (result.success) {
