@@ -137,6 +137,11 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     if (!chartRef.current) return null;
     const ts = chartRef.current.timeScale();
     const logical = ts.coordinateToLogical(localX);
+    
+    // Debug logging
+    const visibleRange = ts.getVisibleLogicalRange();
+    console.log(`[Gesture] getLogicalIndex: localX=${localX.toFixed(1)}, raw logical=${logical?.toFixed(2)}, visibleRange=${visibleRange ? `${visibleRange.from.toFixed(0)}-${visibleRange.to.toFixed(0)}` : 'null'}`);
+    
     return logical !== null ? Math.round(logical) : null;
   };
 
