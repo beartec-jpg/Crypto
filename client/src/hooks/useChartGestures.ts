@@ -41,6 +41,7 @@ interface BarData {
 interface GesturePoint {
   time: Time;
   price: number;
+  snapType?: 'high' | 'low' | 'none';
 }
 
 interface UseChartGesturesOptions {
@@ -202,11 +203,12 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const resultTime = isHigh ? maxHighTime : minLowTime;
     const resultPrice = isHigh ? maxHigh : minLow;
     const resultIdx = isHigh ? maxHighIdx : minLowIdx;
+    const snapType: 'high' | 'low' = isHigh ? 'high' : 'low';
     
     console.log(`[Gesture] Window HIGH: idx=${maxHighIdx}, price=${maxHigh.toFixed(4)} | LOW: idx=${minLowIdx}, price=${minLow.toFixed(4)}`);
     console.log(`[Gesture] Cursor at ${priceAtCursor.toFixed(4)}, mid=${mid.toFixed(4)} → snapping to ${isHigh ? 'HIGH' : 'LOW'} at idx=${resultIdx}, price=${resultPrice.toFixed(4)}`);
     
-    return { time: resultTime, price: resultPrice };
+    return { time: resultTime, price: resultPrice, snapType };
   };
 
   // Create the custom crosshair elements
@@ -413,7 +415,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     // If auto-snap is disabled, use raw coords
     if (!autoSnapEnabledRef.current) {
       console.log('[Gesture] COMMIT POINT (no snap - raw):', { time: coords.time, price: coords.price });
-      onPointCommitRef.current({ time: coords.time, price: coords.price });
+      onPointCommitRef.current({ time: coords.time, price: coords.price, snapType: 'none' });
       deactivateCrosshairMode();
       return;
     }
@@ -436,7 +438,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     } else {
       // Fallback to raw coords
       console.warn('[Gesture] No snap point found, using raw coords');
-      onPointCommitRef.current({ time: coords.time, price: coords.price });
+      onPointCommitRef.current({ time: coords.time, price: coords.price, snapType: 'none' });
     }
     
     deactivateCrosshairMode();
@@ -463,7 +465,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     // If auto-snap is disabled, use raw coords
     if (!autoSnapEnabledRef.current) {
       console.log('[Gesture] Quick tap committed (no snap - raw):', { time: tapTime, price: tapPrice });
-      onPointCommitRef.current({ time: tapTime, price: tapPrice });
+      onPointCommitRef.current({ time: tapTime, price: tapPrice, snapType: 'none' });
       return;
     }
 

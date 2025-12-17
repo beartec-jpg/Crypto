@@ -385,17 +385,24 @@ export default function CryptoIndicators() {
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [drawings, setDrawings] = useState<any[]>([]);
-  const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number}[]} | null>(null);
+  const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
   const [crosshairModeActive, setCrosshairModeActive] = useState(false);
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
+  const [autoColorEnabled, setAutoColorEnabled] = useState(true);
   
   // Ref for tracking active tool in callbacks
   const activeToolRef = useRef(activeTool);
   useEffect(() => {
     activeToolRef.current = activeTool;
   }, [activeTool]);
+  
+  // Ref for tracking auto-color setting in callbacks
+  const autoColorEnabledRef = useRef(autoColorEnabled);
+  useEffect(() => {
+    autoColorEnabledRef.current = autoColorEnabled;
+  }, [autoColorEnabled]);
   
   // Ref for tracking crosshair info for UI display
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null);
@@ -488,24 +495,47 @@ export default function CryptoIndicators() {
     },
   });
   
+  // Determine color based on snap types for auto-color feature
+  const getAutoColor = (points: {snapType?: 'high' | 'low' | 'none'}[]): string => {
+    const snapTypes = points.map(p => p.snapType || 'none');
+    const highCount = snapTypes.filter(t => t === 'high').length;
+    const lowCount = snapTypes.filter(t => t === 'low').length;
+    const noneCount = snapTypes.filter(t => t === 'none').length;
+    
+    // If any point has no snap (free placement), use blue
+    if (noneCount > 0) return '#3b82f6'; // Blue
+    
+    // All highs = resistance = red
+    if (highCount === points.length) return '#ef4444'; // Red
+    
+    // All lows = support = green
+    if (lowCount === points.length) return '#22c55e'; // Green
+    
+    // Mixed highs and lows = blue
+    return '#3b82f6'; // Blue
+  };
+
   // Handle point commit from gesture controller
   const handlePointCommit = useCallback((point: GesturePoint) => {
     const currentTool = activeToolRef.current;
     if (drawingMode !== 'draw' || !currentTool) return;
     
     setTempDrawing(prev => {
-      if (!prev) return { points: [{ time: point.time, price: point.price }] };
+      if (!prev) return { points: [{ time: point.time, price: point.price, snapType: point.snapType }] };
       
-      const newPoints = [...prev.points, { time: point.time, price: point.price }];
+      const newPoints = [...prev.points, { time: point.time, price: point.price, snapType: point.snapType }];
       const requiredPoints = currentTool === 'horizontal' ? 1 : currentTool === 'trend_fib' ? 3 : 2;
       
       // If we have enough points, save the drawing
       if (newPoints.length >= requiredPoints) {
+        // Determine color based on auto-color setting and snap types
+        const color = autoColorEnabledRef.current ? getAutoColor(newPoints) : '#3b82f6';
+        
         const newDrawing = {
           id: `drawing-${Date.now()}`,
           type: currentTool,
           points: newPoints,
-          style: { color: '#3b82f6', lineWidth: 2 }
+          style: { color, lineWidth: 2 }
         };
         setDrawings(d => [...d, newDrawing]);
         
@@ -9608,7 +9638,7 @@ export default function CryptoIndicators() {
                     </button>
                   )}
                   
-                  {/* Auto-Snap Toggle Button */}
+                  {/* Auto-Snap Toggle Button (Magnet Icon) */}
                   <button
                     onClick={() => {
                       setAutoSnapEnabled(prev => !prev);
@@ -9625,8 +9655,37 @@ export default function CryptoIndicators() {
                     title={autoSnapEnabled ? 'Auto-Snap: ON (click to disable)' : 'Auto-Snap: OFF (click to enable)'}
                     data-testid="btn-auto-snap"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path d="M6 15V9a6 6 0 1 1 12 0v6" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M6 15a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M18 15a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M6 15v4" strokeLinecap="round"/>
+                      <path d="M18 15v4" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                  
+                  {/* Auto-Color Toggle Button (Palette Icon) */}
+                  <button
+                    onClick={() => {
+                      setAutoColorEnabled(prev => !prev);
+                      toast({ 
+                        title: autoColorEnabled ? 'Auto-Color Disabled' : 'Auto-Color Enabled',
+                        description: autoColorEnabled ? 'All drawings will be blue' : 'Green=support, Red=resistance, Blue=mixed'
+                      });
+                    }}
+                    className={`p-2 rounded-lg transition-all ${
+                      autoColorEnabled 
+                        ? 'bg-gradient-to-r from-green-500 via-blue-500 to-red-500 text-white' 
+                        : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                    }`}
+                    title={autoColorEnabled ? 'Auto-Color: ON (click to disable)' : 'Auto-Color: OFF (click to enable)'}
+                    data-testid="btn-auto-color"
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="7.5" cy="11.5" r="1.5" fill="currentColor"/>
+                      <circle cx="12" cy="7.5" r="1.5" fill="currentColor"/>
+                      <circle cx="16.5" cy="11.5" r="1.5" fill="currentColor"/>
                     </svg>
                   </button>
                   
