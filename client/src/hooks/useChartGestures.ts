@@ -812,9 +812,15 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   }, []);
 
   const detachFromChart = useCallback(() => {
+    console.log('[Gesture] Detaching from chart');
     cleanupFnsRef.current.forEach(fn => fn());
     cleanupFnsRef.current = [];
     removeCrosshairElements();
+    // Also clear snap circle reference - it was attached to old chart element
+    if (snapCircleRef.current && snapCircleRef.current.parentNode) {
+      snapCircleRef.current.parentNode.removeChild(snapCircleRef.current);
+    }
+    snapCircleRef.current = null;
     if (crosshairActiveRef.current) {
       deactivateCrosshairMode();
     }
