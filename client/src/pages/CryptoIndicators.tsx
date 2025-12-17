@@ -9667,6 +9667,10 @@ export default function CryptoIndicators() {
                       // Clamp label Y within chart bounds  
                       labelY = Math.max(15, Math.min(chartHeight - 5, labelY));
                       
+                      // Dynamic text anchor: use 'start' near left edge, 'end' near right edge
+                      // This prevents labels from extending off-screen
+                      const effectiveAnchor = labelX < 60 ? 'start' : (labelX > chartWidth - 60 ? 'end' : (labelRight ? 'start' : 'end'));
+                      
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
                           <line 
@@ -9686,7 +9690,7 @@ export default function CryptoIndicators() {
                               fill={isSelected ? '#22c55e' : color}
                               fontSize="11"
                               fontWeight="500"
-                              textAnchor={labelRight ? 'start' : 'end'}
+                              textAnchor={effectiveAnchor}
                             >
                               {label}
                             </text>
