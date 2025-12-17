@@ -521,10 +521,18 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     chartElementRef.current = chartElement;
 
     const handlePointerDown = (e: PointerEvent) => {
-      if (!enabledRef.current || !e.isPrimary) return;
+      console.log('[Gesture] PointerDown RAW - enabled:', enabledRef.current, 'isPrimary:', e.isPrimary);
+      
+      if (!enabledRef.current || !e.isPrimary) {
+        console.log('[Gesture] PointerDown IGNORED - enabled:', enabledRef.current, 'isPrimary:', e.isPrimary);
+        return;
+      }
 
       const local = getLocalCoords(e.clientX, e.clientY);
-      if (!local) return;
+      if (!local) {
+        console.log('[Gesture] PointerDown IGNORED - no local coords');
+        return;
+      }
 
       console.log('[Gesture] PointerDown - crosshairActive:', crosshairActiveRef.current, 'local:', local);
       
