@@ -396,6 +396,7 @@ export default function CryptoIndicators() {
   const [draggingPoint, setDraggingPoint] = useState<{ drawingId: string; pointIndex: number } | null>(null);
   const draggingPointRef = useRef<{ drawingId: string; pointIndex: number } | null>(null);
   const updateDrawingMutationRef = useRef<{ mutate: (data: { id: string; style?: any; coordinates?: any }) => void } | null>(null);
+  const candlesRef = useRef<CandleData[]>([]);
   
   // Ref for tracking active tool in callbacks
   const activeToolRef = useRef(activeTool);
@@ -413,6 +414,11 @@ export default function CryptoIndicators() {
   useEffect(() => {
     draggingPointRef.current = draggingPoint;
   }, [draggingPoint]);
+  
+  // Keep candles ref in sync for drag callbacks
+  useEffect(() => {
+    candlesRef.current = candles;
+  }, [candles]);
   
   // Handler to start point dragging
   const handlePointDragStart = useCallback((drawingId: string, pointIndex: number, e: React.MouseEvent | React.TouchEvent) => {
