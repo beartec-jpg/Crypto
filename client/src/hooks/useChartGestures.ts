@@ -9,6 +9,24 @@ const GESTURE_CONFIG = {
   DRAG_PROXIMITY_PX: 50,
 };
 
+// Snap window sizes based on visible candles - returns number of candles to search (radius from center)
+// Crosshair mode: less lenient (smaller windows)
+const getCrosshairSnapRadius = (visibleCandles: number): number => {
+  if (visibleCandles >= 700) return 3; // 7 candle window
+  if (visibleCandles >= 500) return 2; // 5 candle window
+  if (visibleCandles >= 300) return 1; // 3 candle window
+  return 0; // Single candle
+};
+
+// Single tap mode: more lenient (larger windows)
+const getTapSnapRadius = (visibleCandles: number): number => {
+  if (visibleCandles >= 700) return 4; // 9 candle window
+  if (visibleCandles >= 400) return 3; // 7 candle window
+  if (visibleCandles >= 200) return 2; // 5 candle window
+  if (visibleCandles >= 100) return 1; // 3 candle window
+  return 0; // Single candle (under 50)
+};
+
 interface BarData {
   time: Time;
   open?: number;
@@ -96,15 +114,68 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     return bars[idx].time;
   };
 
-  const getBarAtTime = (targetTime: Time): BarData | null => {
+  // Get number of visible candles on screen
+  const getVisibleCandleCount = (): number => {
+    if (!chartRef.current) return 100;
+    const ts = chartRef.current.timeScale();
+    const vr = ts.getVisibleLogicalRange();
+    if (!vr) return 100;
+    return Math.round(vr.to - vr.from) + 1;
+  };
+
+  // Get the logical index for a local X coordinate
+  const getLogicalIndex = (localX: number): number | null => {
+    if (!chartRef.current) return null;
+    const ts = chartRef.current.timeScale();
+    const logical = ts.coordinateToLogical(localX);
+    return logical !== null ? Math.round(logical) : null;
+  };
+
+  // Find best high/low in a window of candles around a center index
+  const findSnapPointInWindow = (
+    centerIdx: number, 
+    radius: number, 
+    priceAtCursor: number
+  ): GesturePoint | null => {
     const bars = dataRef.current;
-    const targetTimeStr = JSON.stringify(targetTime);
-    for (let i = 0; i < bars.length; i++) {
-      if (JSON.stringify(bars[i].time) === targetTimeStr) {
-        return bars[i];
+    
+    // Collect bars in window
+    const windowBars: BarData[] = [];
+    for (let i = -radius; i <= radius; i++) {
+      const idx = centerIdx + i;
+      if (idx >= 0 && idx < bars.length) {
+        windowBars.push(bars[idx]);
       }
     }
-    return null;
+    
+    if (windowBars.length === 0) return null;
+    
+    // Find highest high and lowest low in window
+    let maxHigh = -Infinity;
+    let maxHighTime: Time | null = null;
+    let minLow = Infinity;
+    let minLowTime: Time | null = null;
+    
+    for (const bar of windowBars) {
+      if (bar.high > maxHigh) {
+        maxHigh = bar.high;
+        maxHighTime = bar.time;
+      }
+      if (bar.low < minLow) {
+        minLow = bar.low;
+        minLowTime = bar.time;
+      }
+    }
+    
+    if (maxHighTime === null || minLowTime === null) return null;
+    
+    // Snap to high or low based on cursor price position
+    const mid = (maxHigh + minLow) / 2;
+    if (priceAtCursor >= mid) {
+      return { time: maxHighTime, price: maxHigh };
+    } else {
+      return { time: minLowTime, price: minLow };
+    }
   };
 
   // Create the custom crosshair elements
@@ -289,7 +360,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     onPreviewPointRef.current?.(null);
   };
 
-  // Commit point from stored crosshair position
+  // Commit point from stored crosshair position with window snapping
   const commitFromCrosshair = () => {
     const coords = crosshairCoordsRef.current;
     if (!coords) {
@@ -299,51 +370,62 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
     console.log('[Gesture] Committing from crosshair:', coords);
 
-    const bar = getBarAtTime(coords.time);
-    
-    let commitPoint: GesturePoint;
-    if (bar) {
-      const mid = (bar.high + bar.low) / 2;
-      const snapPrice = coords.price >= mid ? bar.high : bar.low;
-      commitPoint = { time: bar.time, price: snapPrice };
-      console.log('[Gesture] Snapped to bar:', { snapPrice, high: bar.high, low: bar.low });
-    } else {
-      commitPoint = { time: coords.time, price: coords.price };
-      console.warn('[Gesture] Bar not found, using raw coords');
+    // Get logical index from crosshair position
+    const centerIdx = getLogicalIndex(coords.localX);
+    if (centerIdx === null) {
+      console.warn('[Gesture] Cannot get logical index');
+      return;
     }
 
-    console.log('[Gesture] COMMIT POINT:', commitPoint);
-    onPointCommitRef.current(commitPoint);
+    // Get snap radius based on visible candles (crosshair mode)
+    const visibleCount = getVisibleCandleCount();
+    const radius = getCrosshairSnapRadius(visibleCount);
+    
+    console.log('[Gesture] Crosshair snap - visible:', visibleCount, 'radius:', radius, 'centerIdx:', centerIdx);
+
+    // Find best snap point in window
+    const snapPoint = findSnapPointInWindow(centerIdx, radius, coords.price);
+    
+    if (snapPoint) {
+      console.log('[Gesture] COMMIT POINT (snapped):', snapPoint);
+      onPointCommitRef.current(snapPoint);
+    } else {
+      // Fallback to raw coords
+      console.warn('[Gesture] No snap point found, using raw coords');
+      onPointCommitRef.current({ time: coords.time, price: coords.price });
+    }
     
     deactivateCrosshairMode();
   };
 
-  // Quick tap for non-crosshair mode
+  // Quick tap for non-crosshair mode with window snapping
   const commitQuickTap = (clientX: number, clientY: number) => {
     if (!chartRef.current || !candleSeriesRef.current) return;
 
     const local = getLocalCoords(clientX, clientY);
     if (!local) return;
 
-    const timeScale = chartRef.current.timeScale();
-    const logical = timeScale.coordinateToLogical(local.x);
-    if (logical === null) return;
+    const centerIdx = getLogicalIndex(local.x);
+    if (centerIdx === null) return;
 
-    const bars = dataRef.current;
-    const idx = Math.round(logical);
-    if (idx < 0 || idx >= bars.length) return;
-
-    const bar = bars[idx];
     const tapPrice = candleSeriesRef.current.coordinateToPrice(local.y);
     if (tapPrice === null) return;
 
-    const mid = (bar.high + bar.low) / 2;
-    const point: GesturePoint = tapPrice >= mid
-      ? { time: bar.time, price: bar.high }
-      : { time: bar.time, price: bar.low };
+    // Get snap radius based on visible candles (tap mode - more lenient)
+    const visibleCount = getVisibleCandleCount();
+    const radius = getTapSnapRadius(visibleCount);
+    
+    console.log('[Gesture] Tap snap - visible:', visibleCount, 'radius:', radius, 'centerIdx:', centerIdx);
 
-    console.log('[Gesture] Quick tap committed:', point);
-    onPointCommitRef.current(point);
+    // Find best snap point in window
+    const snapPoint = findSnapPointInWindow(centerIdx, radius, tapPrice);
+    
+    if (snapPoint) {
+      console.log('[Gesture] Quick tap committed (snapped):', snapPoint);
+      onPointCommitRef.current(snapPoint);
+    } else {
+      console.warn('[Gesture] No snap point found for tap');
+    }
   };
 
   const resetState = useCallback(() => {
