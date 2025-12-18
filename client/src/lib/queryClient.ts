@@ -32,7 +32,9 @@ export async function apiRequest(
     headers["Authorization"] = `Bearer ${authToken}`;
   }
   
-  const res = await fetch(url, {
+  const fullUrl = url.startsWith('/') ? `${window.location.origin}${url}` : url;
+  
+  const res = await fetch(fullUrl, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
