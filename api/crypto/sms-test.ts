@@ -1,4 +1,4 @@
-port type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyToken } from '@clerk/backend';
 
 async function verifyAuth(req: VercelRequest): Promise<string | null> {
