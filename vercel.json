@@ -21,8 +21,12 @@
     { "source": "/api/crypto/chart-drawings/:id", "destination": "/api/crypto/chart-drawings/[id]" },
     { "source": "/api/crypto/feedback-board/replies/:id", "destination": "/api/crypto/feedback-board/replies/[id]" },
     { "source": "/api/crypto/feedback-board/:id/replies", "destination": "/api/crypto/feedback-board/[id]/replies" },
-    { "source": "/api/crypto/feedback-board/:id", "destination": "/api/crypto/feedback-board/[id]" },
-    { "source": "/:path*", "has": [{ "type": "header", "key": "accept", "value": "text/html.*" }], "destination": "/index.html" }
+    { "source": "/api/crypto/feedback-board/:id", "destination": "/api/crypto/feedback-board/[id]" }
+  ],
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ],
   "headers": [
     {
