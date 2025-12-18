@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+port type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyToken } from '@clerk/backend';
 
 async function verifyAuth(req: VercelRequest): Promise<string | null> {
@@ -52,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pool = await getDb();
 
   try {
+    // Get user's phone number from database
     const userResult = await pool.query(
       'SELECT phone_number FROM crypto_users WHERE clerk_user_id = $1',
       [userId]
@@ -64,6 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const phoneNumber = userResult.rows[0].phone_number;
 
+    // Get Twilio credentials from environment
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const fromNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -73,6 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'SMS service not configured' });
     }
 
+    // Send test SMS via Twilio
     const twilioModule = await import('twilio');
     const twilioClient = twilioModule.default || twilioModule;
     const client = twilioClient(accountSid, authToken);
