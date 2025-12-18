@@ -15,15 +15,13 @@
       "schedule": "* * * * *"
     }
   ],
-  "routes": [
-    { "src": "/api/crypto/elliott-wave/labels/([^/]+)", "dest": "/api/crypto/elliott-wave/labels/[id]?id=$1" },
-    { "src": "/api/crypto/projection-lines/([^/]+)", "dest": "/api/crypto/projection-lines/[id]?id=$1" },
-    { "src": "/api/crypto/chart-drawings/([^/]+)", "dest": "/api/crypto/chart-drawings/[id]?id=$1" },
-    { "src": "/api/crypto/feedback-board/replies/([^/]+)", "dest": "/api/crypto/feedback-board/replies/[id]?id=$1" },
-    { "src": "/api/crypto/feedback-board/([^/]+)/replies", "dest": "/api/crypto/feedback-board/[id]/replies?id=$1" },
-    { "src": "/api/crypto/feedback-board/([^/]+)", "dest": "/api/crypto/feedback-board/[id]?id=$1" },
-    { "handle": "filesystem" },
-    { "src": "/((?!api/).*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/api/crypto/elliott-wave/labels/:id", "destination": "/api/crypto/elliott-wave/labels/[id]" },
+    { "source": "/api/crypto/projection-lines/:id", "destination": "/api/crypto/projection-lines/[id]" },
+    { "source": "/api/crypto/chart-drawings/:id", "destination": "/api/crypto/chart-drawings/[id]" },
+    { "source": "/api/crypto/feedback-board/replies/:id", "destination": "/api/crypto/feedback-board/replies/[id]" },
+    { "source": "/api/crypto/feedback-board/:id/replies", "destination": "/api/crypto/feedback-board/[id]/replies" },
+    { "source": "/api/crypto/feedback-board/:id", "destination": "/api/crypto/feedback-board/[id]" }
   ],
   "headers": [
     {
