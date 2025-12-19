@@ -6574,6 +6574,23 @@ export default function CryptoIndicators() {
         bosSeriesRefs.current = [];
         chochSeriesRefs.current = [];
         tradeMarkerRefs.current = [];
+        emaSeriesRefs.current = {};
+        smaSeriesRefs.current = {};
+        bbSeriesRefs.current = { upper: undefined, middle: undefined, lower: undefined };
+        supertrendSeriesRef.current = null;
+        parabolicSARRef.current = null;
+        orderBlocksRefs.current = [];
+        swingPivotSeriesRefs.current = [];
+        liquiditySweepSeriesRefs.current = [];
+        trendlineSeriesRefs.current = [];
+        sessionVWAPAsiaRef.current = null;
+        sessionVWAPLondonRef.current = null;
+        sessionVWAPNYRef.current = null;
+        vwapBandsUpperRef.current = null;
+        vwapBandsLowerRef.current = null;
+        orderFlowSeriesRef.current = null;
+        cumDeltaSeriesRef.current = null;
+        premiumDiscountRefs.current = { equilibrium: null, premium: null, discount: null };
         
         chartRef.current.remove();
         chartRef.current = null;
