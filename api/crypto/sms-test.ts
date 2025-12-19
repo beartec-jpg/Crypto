@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyToken } from '@clerk/backend';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 
-async function verifyAuth(req: VercelRequest): Promise<string | null> {
+async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -17,7 +17,15 @@ async function verifyAuth(req: VercelRequest): Promise<string | null> {
     }
     
     const payload = await verifyToken(token, { secretKey });
-    return payload?.sub || null;
+    if (!payload?.sub) {
+      return null;
+    }
+
+    const clerk = createClerkClient({ secretKey });
+    const user = await clerk.users.getUser(payload.sub);
+    const email = user.emailAddresses[0]?.emailAddress || '';
+
+    return { userId: payload.sub, email };
   } catch (error) {
     console.error('Auth verification failed:', error);
     return null;
@@ -44,18 +52,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const userId = await verifyAuth(req);
-  if (!userId) {
+  const auth = await verifyAuth(req);
+  if (!auth) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const { email } = auth;
   const pool = await getDb();
 
   try {
     // Get user's phone number from database
     const userResult = await pool.query(
-      'SELECT phone_number FROM crypto_users WHERE clerk_user_id = $1',
-      [userId]
+      'SELECT phone_number FROM crypto_users WHERE email = $1',
+      [email]
     );
     
     if (userResult.rows.length === 0 || !userResult.rows[0].phone_number) {

@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyToken } from '@clerk/backend';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 
-async function verifyAuth(req: VercelRequest): Promise<string | null> {
+async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -17,7 +17,15 @@ async function verifyAuth(req: VercelRequest): Promise<string | null> {
     }
     
     const payload = await verifyToken(token, { secretKey });
-    return payload?.sub || null;
+    if (!payload?.sub) {
+      return null;
+    }
+
+    const clerk = createClerkClient({ secretKey });
+    const user = await clerk.users.getUser(payload.sub);
+    const email = user.emailAddresses[0]?.emailAddress || '';
+
+    return { userId: payload.sub, email };
   } catch (error) {
     console.error('Auth verification failed:', error);
     return null;
@@ -40,18 +48,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const userId = await verifyAuth(req);
-  if (!userId) {
+  const auth = await verifyAuth(req);
+  if (!auth) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const { email } = auth;
   const pool = await getDb();
 
   try {
     if (req.method === 'GET') {
       const result = await pool.query(
-        'SELECT phone_number, sms_alerts_enabled FROM crypto_users WHERE clerk_user_id = $1',
-        [userId]
+        'SELECT phone_number, sms_alerts_enabled FROM crypto_users WHERE email = $1',
+        [email]
       );
 
       await pool.end();
@@ -91,9 +100,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       updates.push(`updated_at = NOW()`);
-      values.push(userId);
+      values.push(email);
 
-      const query = `UPDATE crypto_users SET ${updates.join(', ')} WHERE clerk_user_id = $${paramIndex} RETURNING phone_number, sms_alerts_enabled`;
+      const query = `UPDATE crypto_users SET ${updates.join(', ')} WHERE email = $${paramIndex} RETURNING phone_number, sms_alerts_enabled`;
       const result = await pool.query(query, values);
 
       await pool.end();
