@@ -358,8 +358,8 @@ async function sendPushNotification(
   notification: { title: string; body: string; tag: string }
 ) {
   try {
-    const publicKey = process.env.PUBLIC_VAPID_KEY;
-    const privateKey = process.env.PRIVATE_VAPID_KEY;
+    const publicKey = process.env.VAPID_PUBLIC_KEY || process.env.PUBLIC_VAPID_KEY;
+    const privateKey = process.env.VAPID_PRIVATE_KEY || process.env.PRIVATE_VAPID_KEY;
 
     if (!publicKey || !privateKey) {
       console.log('VAPID keys not configured');
