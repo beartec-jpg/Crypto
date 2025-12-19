@@ -32,7 +32,13 @@ export async function apiRequest(
     headers["Authorization"] = `Bearer ${authToken}`;
   }
   
-  const fullUrl = url.startsWith('/') ? `${window.location.origin}${url}` : url;
+  let apiOrigin = window.location.origin;
+  if (typeof window !== 'undefined' && window.location.hostname === 'beartec.uk') {
+    apiOrigin = 'https://www.beartec.uk';
+  }
+  const fullUrl = url.startsWith('/') ? `${apiOrigin}${url}` : url;
+  
+  console.log('[API Debug]', method, fullUrl);
   
   const res = await fetch(fullUrl, {
     method,
