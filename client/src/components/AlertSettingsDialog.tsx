@@ -120,7 +120,8 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
   // SMS settings mutation
   const smsMutation = useMutation({
     mutationFn: async (data: { phoneNumber?: string; smsAlertsEnabled?: boolean }) => {
-      const response = await apiRequest('POST', '/api/crypto/sms-settings', data);
+      const token = await getToken();
+      const response = await apiRequest('POST', '/api/crypto/sms-settings', data, token || undefined);
       return await response.json();
     },
     onSuccess: () => {
