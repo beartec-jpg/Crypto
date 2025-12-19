@@ -327,7 +327,11 @@ export default function CryptoIndicators() {
   const tier = subscription?.tier || 'free';
 
   const [symbol, setSymbol] = useState('XRPUSDT');
-  const [interval, setTimeframeInterval] = useState('15m');
+  const [interval, setTimeframeInterval] = useState(() => {
+    // Load saved default timeframe for the initial symbol
+    const savedTimeframe = localStorage.getItem('defaultTimeframe_XRPUSDT');
+    return savedTimeframe || '15m';
+  });
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
   
@@ -5990,13 +5994,18 @@ export default function CryptoIndicators() {
     const storageKey = `indicatorDefaults_${symbol}_${interval}`;
     localStorage.setItem(storageKey, JSON.stringify(indicatorDefaults));
     
+    // Also save the current timeframe as default for this ticker
+    const timeframeKey = `defaultTimeframe_${symbol}`;
+    localStorage.setItem(timeframeKey, interval);
+    
     toast({
-      title: "💾 Indicator Defaults Saved",
-      description: `Settings saved for ${symbol} on ${interval} timeframe`,
+      title: "💾 Defaults Saved",
+      description: `Settings and ${interval} timeframe saved for ${symbol}`,
       duration: 3000,
     });
     
     console.log(`💾 Saved indicator defaults for ${symbol}_${interval}:`, indicatorDefaults);
+    console.log(`💾 Saved default timeframe for ${symbol}: ${interval}`);
   }, [symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showBB, bbPeriod, bbStdDev, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, alertFilterMode, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showSessionVWAP, showOrderBlocks, obSwingLength, orderBlockLength, showCCI, cciPeriod, showADX, adxPeriod, toast]);
 
   // Load indicator defaults from localStorage
@@ -6893,12 +6902,19 @@ export default function CryptoIndicators() {
     });
   }, [chartReady, candles, showFVG, showHighValueOnly, calculateFVGs, isActiveFVG, getFVGFillTime, tradeSignals, backtestResults]);
 
-  // Clear HTF caches when symbol changes
+  // Clear HTF caches and load saved timeframe when symbol changes
   useEffect(() => {
     if (prevSymbolRef.current !== symbol) {
       emaHTFDataCache.current = {};
       smaHTFDataCache.current = {};
       prevSymbolRef.current = symbol;
+      
+      // Load saved default timeframe for the new symbol
+      const savedTimeframe = localStorage.getItem(`defaultTimeframe_${symbol}`);
+      if (savedTimeframe) {
+        setTimeframeInterval(savedTimeframe);
+        console.log(`📂 Loaded saved timeframe for ${symbol}: ${savedTimeframe}`);
+      }
     }
   }, [symbol]);
 
