@@ -13,12 +13,71 @@ async function fetchPrices(symbols: string[]): Promise<PriceData[]> {
   
   console.log(`📊 [PRICE DEBUG] Fetching prices for symbols: ${symbols.join(', ')}`);
   
-  // Try batch fetch first (more efficient)
+  // Map symbols to CoinGecko IDs for fallback
+  const symbolToCoinGecko: Record<string, string> = {
+    'BTCUSDT': 'bitcoin',
+    'ETHUSDT': 'ethereum',
+    'XRPUSDT': 'ripple',
+    'SOLUSDT': 'solana',
+    'ADAUSDT': 'cardano',
+    'DOGEUSDT': 'dogecoin',
+    'DOTUSDT': 'polkadot',
+    'MATICUSDT': 'matic-network',
+    'SHIBUSDT': 'shiba-inu',
+    'LTCUSDT': 'litecoin',
+    'AVAXUSDT': 'avalanche-2',
+    'LINKUSDT': 'chainlink',
+    'UNIUSDT': 'uniswap',
+    'ATOMUSDT': 'cosmos',
+    'XLMUSDT': 'stellar',
+    'NEARUSDT': 'near',
+    'ALGOUSDT': 'algorand',
+    'ICPUSDT': 'internet-computer',
+    'FILUSDT': 'filecoin',
+    'VETUSDT': 'vechain',
+    'HBARUSDT': 'hedera-hashgraph',
+    'SANDUSDT': 'the-sandbox',
+    'MANAUSDT': 'decentraland',
+    'AAVEUSDT': 'aave',
+    'AXSUSDT': 'axie-infinity',
+    'THETAUSDT': 'theta-token',
+    'EGLDUSDT': 'elrond-erd-2',
+    'FTMUSDT': 'fantom',
+    'XTZUSDT': 'tezos',
+    'EOSUSDT': 'eos',
+    'FLOWUSDT': 'flow',
+    'CHZUSDT': 'chiliz',
+    'APEUSDT': 'apecoin',
+    'LDOUSDT': 'lido-dao',
+    'CRVUSDT': 'curve-dao-token',
+    'RNDRUSDT': 'render-token',
+    'INJUSDT': 'injective-protocol',
+    'IMXUSDT': 'immutable-x',
+    'ARBUSDT': 'arbitrum',
+    'OPUSDT': 'optimism',
+    'SUIUSDT': 'sui',
+    'SEIUSDT': 'sei-network',
+    'TIAUSDT': 'celestia',
+    'JUPUSDT': 'jupiter-exchange-solana',
+    'WIFUSDT': 'dogwifcoin',
+    'PEPEUSDT': 'pepe',
+    'BONKUSDT': 'bonk',
+    'FLOKIUSDT': 'floki',
+    'FETUSDT': 'fetch-ai',
+    'GRTUSDT': 'the-graph',
+    'RUNEUSDT': 'thorchain',
+    'APTUSDT': 'aptos',
+  };
+  
+  // Try Binance US API first (works from US servers)
   try {
-    const response = await fetch('https://api.binance.com/api/v3/ticker/price');
+    console.log(`📊 [PRICE DEBUG] Trying Binance.US API...`);
+    const response = await fetch('https://api.binance.us/api/v3/ticker/price', {
+      headers: { 'Accept': 'application/json' }
+    });
     if (response.ok) {
       const allPrices = await response.json();
-      console.log(`📊 [PRICE DEBUG] Batch fetch got ${allPrices.length} prices`);
+      console.log(`📊 [PRICE DEBUG] Binance.US batch fetch got ${allPrices.length} prices`);
       
       for (const symbol of symbols) {
         const priceData = allPrices.find((p: any) => p.symbol === symbol);
@@ -27,45 +86,107 @@ async function fetchPrices(symbols: string[]): Promise<PriceData[]> {
             symbol,
             price: parseFloat(priceData.price)
           });
-          console.log(`📊 [PRICE DEBUG] ${symbol}: $${priceData.price}`);
-        } else {
-          console.log(`📊 [PRICE DEBUG] ${symbol} not found in batch response`);
+          console.log(`📊 [PRICE DEBUG] ${symbol}: $${priceData.price} (Binance.US)`);
         }
       }
       
-      if (prices.length > 0) {
+      if (prices.length === symbols.length) {
         return prices;
       }
     } else {
-      console.log(`📊 [PRICE DEBUG] Batch fetch failed: ${response.status}`);
+      console.log(`📊 [PRICE DEBUG] Binance.US batch fetch failed: ${response.status}`);
     }
   } catch (error: any) {
-    console.error(`📊 [PRICE DEBUG] Batch fetch error:`, error.message);
+    console.error(`📊 [PRICE DEBUG] Binance.US batch fetch error:`, error.message);
   }
   
-  // Fallback to individual fetches
-  console.log(`📊 [PRICE DEBUG] Falling back to individual price fetches`);
-  for (const symbol of symbols) {
-    try {
-      const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
-      const data = await response.json();
-      
-      console.log(`📊 [PRICE DEBUG] ${symbol} response:`, JSON.stringify(data).substring(0, 200));
-      
-      if (data.price) {
-        prices.push({
-          symbol,
-          price: parseFloat(data.price)
-        });
-      } else if (data.code) {
-        console.log(`📊 [PRICE DEBUG] ${symbol} API error: ${data.msg}`);
+  // Try CoinGecko for missing symbols
+  const missingSymbols = symbols.filter(s => !prices.find(p => p.symbol === s));
+  if (missingSymbols.length > 0) {
+    console.log(`📊 [PRICE DEBUG] Trying CoinGecko for ${missingSymbols.length} missing symbols...`);
+    
+    const coinGeckoIds = missingSymbols
+      .map(s => symbolToCoinGecko[s])
+      .filter(Boolean);
+    
+    if (coinGeckoIds.length > 0) {
+      try {
+        const cgResponse = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoIds.join(',')}&vs_currencies=usd`,
+          { headers: { 'Accept': 'application/json' } }
+        );
+        
+        if (cgResponse.ok) {
+          const cgData = await cgResponse.json();
+          console.log(`📊 [PRICE DEBUG] CoinGecko response:`, JSON.stringify(cgData).substring(0, 300));
+          
+          for (const symbol of missingSymbols) {
+            const cgId = symbolToCoinGecko[symbol];
+            if (cgId && cgData[cgId]?.usd) {
+              prices.push({
+                symbol,
+                price: cgData[cgId].usd
+              });
+              console.log(`📊 [PRICE DEBUG] ${symbol}: $${cgData[cgId].usd} (CoinGecko)`);
+            }
+          }
+        } else {
+          console.log(`📊 [PRICE DEBUG] CoinGecko fetch failed: ${cgResponse.status}`);
+        }
+      } catch (error: any) {
+        console.error(`📊 [PRICE DEBUG] CoinGecko error:`, error.message);
       }
-    } catch (error: any) {
-      console.error(`📊 [PRICE DEBUG] Error fetching ${symbol}:`, error.message);
     }
   }
   
-  console.log(`📊 [PRICE DEBUG] Final prices fetched: ${prices.length}`);
+  // Try Kraken API as another fallback
+  const stillMissing = symbols.filter(s => !prices.find(p => p.symbol === s));
+  if (stillMissing.length > 0) {
+    console.log(`📊 [PRICE DEBUG] Trying Kraken for ${stillMissing.length} still missing symbols...`);
+    
+    const symbolToKraken: Record<string, string> = {
+      'BTCUSDT': 'XXBTZUSD',
+      'ETHUSDT': 'XETHZUSD',
+      'XRPUSDT': 'XXRPZUSD',
+      'SOLUSDT': 'SOLUSD',
+      'ADAUSDT': 'ADAUSD',
+      'DOGEUSDT': 'XDGUSD',
+      'DOTUSDT': 'DOTUSD',
+      'LTCUSDT': 'XLTCZUSD',
+      'LINKUSDT': 'LINKUSD',
+      'AVAXUSDT': 'AVAXUSD',
+      'MATICUSDT': 'MATICUSD',
+      'ATOMUSDT': 'ATOMUSD',
+      'UNIUSDT': 'UNIUSD',
+    };
+    
+    for (const symbol of stillMissing) {
+      const krakenSymbol = symbolToKraken[symbol];
+      if (krakenSymbol) {
+        try {
+          const krakenRes = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${krakenSymbol}`);
+          if (krakenRes.ok) {
+            const krakenData = await krakenRes.json();
+            const result = krakenData.result;
+            if (result) {
+              const pair = Object.keys(result)[0];
+              if (pair && result[pair]?.c?.[0]) {
+                prices.push({
+                  symbol,
+                  price: parseFloat(result[pair].c[0])
+                });
+                console.log(`📊 [PRICE DEBUG] ${symbol}: $${result[pair].c[0]} (Kraken)`);
+              }
+            }
+          }
+        } catch (error: any) {
+          console.error(`📊 [PRICE DEBUG] Kraken error for ${symbol}:`, error.message);
+        }
+      }
+    }
+  }
+  
+  console.log(`📊 [PRICE DEBUG] Final prices fetched: ${prices.length}/${symbols.length}`);
   return prices;
 }
 
