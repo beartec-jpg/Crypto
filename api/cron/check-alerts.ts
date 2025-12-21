@@ -357,45 +357,67 @@ async function sendPushNotification(
   userId: string, 
   notification: { title: string; body: string; tag: string }
 ) {
+  console.log(`🔔 [PUSH DEBUG] Starting push notification for user: ${userId}`);
+  console.log(`🔔 [PUSH DEBUG] Notification: ${JSON.stringify(notification)}`);
+  
   try {
     const publicKey = process.env.VAPID_PUBLIC_KEY || process.env.PUBLIC_VAPID_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY || process.env.PRIVATE_VAPID_KEY;
 
+    console.log(`🔔 [PUSH DEBUG] VAPID_PUBLIC_KEY exists: ${!!process.env.VAPID_PUBLIC_KEY}`);
+    console.log(`🔔 [PUSH DEBUG] VAPID_PRIVATE_KEY exists: ${!!process.env.VAPID_PRIVATE_KEY}`);
+    console.log(`🔔 [PUSH DEBUG] PUBLIC_VAPID_KEY exists: ${!!process.env.PUBLIC_VAPID_KEY}`);
+    console.log(`🔔 [PUSH DEBUG] PRIVATE_VAPID_KEY exists: ${!!process.env.PRIVATE_VAPID_KEY}`);
+    console.log(`🔔 [PUSH DEBUG] Final publicKey exists: ${!!publicKey}, length: ${publicKey?.length || 0}`);
+    console.log(`🔔 [PUSH DEBUG] Final privateKey exists: ${!!privateKey}, length: ${privateKey?.length || 0}`);
+
     if (!publicKey || !privateKey) {
-      console.log('VAPID keys not configured');
+      console.log('❌ [PUSH DEBUG] VAPID keys not configured - cannot send push');
+      return;
+    }
+    
+    webpush.setVapidDetails('mailto:support@beartec.uk', publicKey, privateKey);
+    console.log(`🔔 [PUSH DEBUG] VAPID details set successfully`);
+
+    // Get user's push subscriptions
+    const subscriptions = await sql`
+      SELECT * FROM push_subscriptions WHERE user_id = ${userId}
+    `;
+
+    console.log(`🔔 [PUSH DEBUG] Found ${subscriptions.length} subscriptions for user ${userId}`);
+
+    if (subscriptions.length === 0) {
+      console.log(`❌ [PUSH DEBUG] No push subscriptions for user ${userId}`);
     } else {
-      webpush.setVapidDetails('mailto:support@beartec.uk', publicKey, privateKey);
+      const payload = JSON.stringify({
+        title: notification.title,
+        body: notification.body,
+        tag: notification.tag,
+        icon: '/icon.png',
+        badge: '/badge.png',
+        url: '/cryptoc',
+        timestamp: Date.now()
+      });
 
-      // Get user's push subscriptions
-      const subscriptions = await sql`
-        SELECT * FROM push_subscriptions WHERE user_id = ${userId}
-      `;
+      console.log(`🔔 [PUSH DEBUG] Payload: ${payload}`);
 
-      if (subscriptions.length === 0) {
-        console.log(`No push subscriptions for user ${userId}`);
-      } else {
-        const payload = JSON.stringify({
-          title: notification.title,
-          body: notification.body,
-          tag: notification.tag,
-          icon: '/icon.png',
-          badge: '/badge.png',
-        });
+      for (const sub of subscriptions) {
+        try {
+          const parsedSub = typeof sub.subscription === 'string' 
+            ? JSON.parse(sub.subscription) 
+            : sub.subscription;
 
-        for (const sub of subscriptions) {
-          try {
-            const parsedSub = typeof sub.subscription === 'string' 
-              ? JSON.parse(sub.subscription) 
-              : sub.subscription;
+          console.log(`🔔 [PUSH DEBUG] Sending to subscription ${sub.id}`);
+          console.log(`🔔 [PUSH DEBUG] Endpoint: ${parsedSub.endpoint?.substring(0, 80)}...`);
 
-            await webpush.sendNotification(parsedSub, payload);
-            console.log(`✅ Push sent to subscription ${sub.id}`);
-          } catch (error: any) {
-            console.error(`Failed to send push to ${sub.id}:`, error.message);
-            if (error.statusCode === 404 || error.statusCode === 410) {
-              console.log(`Deleting invalid subscription ${sub.id}`);
-              await sql`DELETE FROM push_subscriptions WHERE id = ${sub.id}`;
-            }
+          await webpush.sendNotification(parsedSub, payload);
+          console.log(`✅ [PUSH DEBUG] Push sent successfully to ${sub.id}`);
+        } catch (error: any) {
+          console.error(`❌ [PUSH DEBUG] Failed to send push to ${sub.id}:`, error.message);
+          console.error(`❌ [PUSH DEBUG] Error status: ${error.statusCode}, body: ${error.body}`);
+          if (error.statusCode === 404 || error.statusCode === 410) {
+            console.log(`🗑️ [PUSH DEBUG] Deleting invalid/expired subscription ${sub.id}`);
+            await sql`DELETE FROM push_subscriptions WHERE id = ${sub.id}`;
           }
         }
       }
@@ -403,8 +425,9 @@ async function sendPushNotification(
 
     // ========== ALSO SEND SMS ALERT ==========
     await sendSMSNotification(sql, userId, notification);
-  } catch (error) {
-    console.error('Error sending push notification:', error);
+  } catch (error: any) {
+    console.error('❌ [PUSH DEBUG] Error in sendPushNotification:', error.message);
+    console.error('❌ [PUSH DEBUG] Full error:', error);
   }
 }
 
