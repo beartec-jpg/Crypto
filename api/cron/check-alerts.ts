@@ -11,22 +11,61 @@ interface PriceData {
 async function fetchPrices(symbols: string[]): Promise<PriceData[]> {
   const prices: PriceData[] = [];
   
+  console.log(`📊 [PRICE DEBUG] Fetching prices for symbols: ${symbols.join(', ')}`);
+  
+  // Try batch fetch first (more efficient)
+  try {
+    const response = await fetch('https://api.binance.com/api/v3/ticker/price');
+    if (response.ok) {
+      const allPrices = await response.json();
+      console.log(`📊 [PRICE DEBUG] Batch fetch got ${allPrices.length} prices`);
+      
+      for (const symbol of symbols) {
+        const priceData = allPrices.find((p: any) => p.symbol === symbol);
+        if (priceData?.price) {
+          prices.push({
+            symbol,
+            price: parseFloat(priceData.price)
+          });
+          console.log(`📊 [PRICE DEBUG] ${symbol}: $${priceData.price}`);
+        } else {
+          console.log(`📊 [PRICE DEBUG] ${symbol} not found in batch response`);
+        }
+      }
+      
+      if (prices.length > 0) {
+        return prices;
+      }
+    } else {
+      console.log(`📊 [PRICE DEBUG] Batch fetch failed: ${response.status}`);
+    }
+  } catch (error: any) {
+    console.error(`📊 [PRICE DEBUG] Batch fetch error:`, error.message);
+  }
+  
+  // Fallback to individual fetches
+  console.log(`📊 [PRICE DEBUG] Falling back to individual price fetches`);
   for (const symbol of symbols) {
     try {
       const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
       const data = await response.json();
+      
+      console.log(`📊 [PRICE DEBUG] ${symbol} response:`, JSON.stringify(data).substring(0, 200));
       
       if (data.price) {
         prices.push({
           symbol,
           price: parseFloat(data.price)
         });
+      } else if (data.code) {
+        console.log(`📊 [PRICE DEBUG] ${symbol} API error: ${data.msg}`);
       }
-    } catch (error) {
-      console.error(`Error fetching price for ${symbol}:`, error);
+    } catch (error: any) {
+      console.error(`📊 [PRICE DEBUG] Error fetching ${symbol}:`, error.message);
     }
   }
   
+  console.log(`📊 [PRICE DEBUG] Final prices fetched: ${prices.length}`);
   return prices;
 }
 

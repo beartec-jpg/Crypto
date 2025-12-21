@@ -2769,18 +2769,32 @@ export default function CryptoAI() {
                         {trackedTradesData.length} total
                       </span>
                     </div>
-                    {/* Win/Loss Stats */}
+                    {/* Win/Loss Stats with Total P/L */}
                     {(() => {
                       const completed = trackedTradesData.filter(t => t.status === 'sl_hit' || t.status === 'tp_hit');
                       const wins = completed.filter(t => t.status === 'tp_hit').length;
                       const losses = completed.filter(t => t.status === 'sl_hit').length;
                       const winRate = completed.length > 0 ? ((wins / completed.length) * 100).toFixed(0) : '0';
+                      
+                      // Calculate total P/L for closed trades
+                      const totalPL = completed.reduce((sum, trade) => {
+                        const entry = parseFloat(trade.entry);
+                        const exitPrice = trade.status === 'tp_hit' ? parseFloat(trade.targets[0]) : parseFloat(trade.stopLoss);
+                        const pl = trade.direction === 'LONG' 
+                          ? ((exitPrice - entry) / entry) * 100
+                          : ((entry - exitPrice) / entry) * 100;
+                        return sum + pl;
+                      }, 0);
+                      
                       return completed.length > 0 ? (
                         <div className="flex items-center gap-3 text-sm">
                           <span className="text-green-400 font-semibold">{wins}W</span>
                           <span className="text-red-400 font-semibold">{losses}L</span>
                           <div className={`px-2 py-1 rounded text-xs font-bold ${Number(winRate) >= 50 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                            {winRate}% Win Rate
+                            {winRate}% WR
+                          </div>
+                          <div className={`px-2 py-1 rounded text-xs font-bold ${totalPL >= 0 ? 'bg-green-500/30 text-green-300 border border-green-500/50' : 'bg-red-500/30 text-red-300 border border-red-500/50'}`}>
+                            {totalPL >= 0 ? '+' : ''}{totalPL.toFixed(2)}% Total
                           </div>
                         </div>
                       ) : null;

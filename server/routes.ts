@@ -4386,6 +4386,133 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
+  // Get all active alerts for the user
+  app.get("/api/crypto/active-alerts", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { db } = await import("./db");
+      const { chartDrawings, trackedTrades } = await import("@shared/schema");
+      const { eq, and, sql, inArray } = await import("drizzle-orm");
+
+      // Get H-Line alerts
+      const hLineAlerts = await db.execute(sql`
+        SELECT id, symbol, coordinates, style, created_at
+        FROM chart_drawings 
+        WHERE user_id = ${userId}
+        AND drawing_type = 'horizontal' 
+        AND (style->>'alertActive')::boolean = true 
+        AND ((style->>'alertTriggered')::boolean IS NULL OR (style->>'alertTriggered')::boolean = false)
+        ORDER BY created_at DESC
+      `);
+
+      // Get Elliott Wave projection alerts (if table exists)
+      let elliottAlerts: any[] = [];
+      try {
+        const result = await db.execute(sql`
+          SELECT id, symbol, price, level_label, wave_type, created_at
+          FROM saved_projection_lines 
+          WHERE user_id = ${userId}
+          AND alert_enabled = true 
+          AND alert_triggered = false
+          ORDER BY created_at DESC
+        `);
+        elliottAlerts = result.rows || [];
+      } catch (e) {
+        // Table might not exist
+      }
+
+      // Get AI tracked trades
+      let aiTrades: any[] = [];
+      try {
+        const result = await db.execute(sql`
+          SELECT id, symbol, direction, entry, stop_loss, targets, status, created_at
+          FROM tracked_trades 
+          WHERE user_id = ${userId}
+          AND status IN ('pending', 'entry_hit')
+          ORDER BY created_at DESC
+        `);
+        aiTrades = result.rows || [];
+      } catch (e) {
+        // Table might not exist
+      }
+
+      res.json({
+        hLineAlerts: (hLineAlerts.rows || []).map((a: any) => ({
+          id: a.id,
+          type: 'hline',
+          symbol: a.symbol,
+          price: a.coordinates?.points?.[0]?.price,
+          label: a.style?.label || 'H-Line',
+          createdAt: a.created_at,
+        })),
+        elliottAlerts: elliottAlerts.map((a: any) => ({
+          id: a.id,
+          type: 'elliott',
+          symbol: a.symbol,
+          price: a.price,
+          label: a.level_label,
+          waveType: a.wave_type,
+          createdAt: a.created_at,
+        })),
+        aiTrades: aiTrades.map((t: any) => ({
+          id: t.id,
+          type: 'ai_trade',
+          symbol: t.symbol,
+          direction: t.direction,
+          entry: t.entry,
+          stopLoss: t.stop_loss,
+          targets: t.targets,
+          status: t.status,
+          createdAt: t.created_at,
+        })),
+      });
+    } catch (error: any) {
+      console.error('Error fetching active alerts:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete/deactivate an alert
+  app.delete("/api/crypto/active-alerts", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { alertType, alertId } = req.body;
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+
+      if (!alertType || !alertId) {
+        return res.status(400).json({ error: 'Missing alertType or alertId' });
+      }
+
+      if (alertType === 'hline') {
+        await db.execute(sql`
+          UPDATE chart_drawings 
+          SET style = style || '{"alertActive": false}'::jsonb
+          WHERE id = ${alertId} AND user_id = ${userId}
+        `);
+      } else if (alertType === 'elliott') {
+        await db.execute(sql`
+          UPDATE saved_projection_lines 
+          SET alert_enabled = false
+          WHERE id = ${alertId} AND user_id = ${userId}
+        `);
+      } else if (alertType === 'ai_trade') {
+        await db.execute(sql`
+          UPDATE tracked_trades 
+          SET status = 'cancelled'
+          WHERE id = ${alertId} AND user_id = ${userId}
+        `);
+      } else {
+        return res.status(400).json({ error: 'Invalid alertType' });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error removing alert:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get VAPID public key for push notifications
   app.get("/api/crypto/vapid-key", async (req, res) => {
     try {
@@ -4417,6 +4544,10 @@ Return ONLY valid JSON in this exact format:
         alertTimeframes: subscription?.alertTimeframes || ['15m', '1h', '4h'],
         alertTypes: subscription?.alertTypes || ['bos', 'choch', 'fvg', 'liquidation'],
         alertsEnabled: subscription?.alertsEnabled || false,
+        hlineAlertsEnabled: subscription?.hlineAlertsEnabled ?? true,
+        elliottAlertsEnabled: subscription?.elliottAlertsEnabled ?? true,
+        aiTradeAlertsEnabled: subscription?.aiTradeAlertsEnabled ?? true,
+        indicatorAlertsEnabled: subscription?.indicatorAlertsEnabled ?? true,
         pushSubscription: subscription?.pushSubscription || null,
         tier: subscription?.tier || 'free',
       });
@@ -4430,7 +4561,10 @@ Return ONLY valid JSON in this exact format:
   app.post("/api/crypto/preferences", requireCryptoAuth, async (req, res) => {
     try {
       const userId = (req as any).cryptoUser.id;
-      const { selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription } = req.body;
+      const { 
+        selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
+        hlineAlertsEnabled, elliottAlertsEnabled, aiTradeAlertsEnabled, indicatorAlertsEnabled 
+      } = req.body;
 
       // Get user subscription for tier-based validation
       const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
@@ -4529,6 +4663,10 @@ Return ONLY valid JSON in this exact format:
       if (alertTypes !== undefined) updateData.alertTypes = alertTypes;
       if (alertsEnabled !== undefined) updateData.alertsEnabled = alertsEnabled;
       if (pushSubscription !== undefined) updateData.pushSubscription = pushSubscription;
+      if (hlineAlertsEnabled !== undefined) updateData.hlineAlertsEnabled = hlineAlertsEnabled;
+      if (elliottAlertsEnabled !== undefined) updateData.elliottAlertsEnabled = elliottAlertsEnabled;
+      if (aiTradeAlertsEnabled !== undefined) updateData.aiTradeAlertsEnabled = aiTradeAlertsEnabled;
+      if (indicatorAlertsEnabled !== undefined) updateData.indicatorAlertsEnabled = indicatorAlertsEnabled;
 
       const updated = await db.update(cryptoSubscriptions)
         .set(updateData)

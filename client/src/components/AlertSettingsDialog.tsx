@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Bell, Loader2, MessageSquare, Phone, Send } from 'lucide-react';
+import { Bell, Loader2, MessageSquare, Phone, Send, Eye, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -86,10 +86,19 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
   const [notificationsSupported, setNotificationsSupported] = useState(true);
   const [userTier, setUserTier] = useState<string>('free');
   
+  // Alert source toggles
+  const [hlineAlertsEnabled, setHlineAlertsEnabled] = useState(true);
+  const [elliottAlertsEnabled, setElliottAlertsEnabled] = useState(true);
+  const [aiTradeAlertsEnabled, setAiTradeAlertsEnabled] = useState(true);
+  const [indicatorAlertsEnabled, setIndicatorAlertsEnabled] = useState(true);
+  
   // SMS Settings
   const [phoneNumber, setPhoneNumber] = useState('');
   const [smsAlertsEnabled, setSmsAlertsEnabled] = useState(false);
   const [isSendingTestSms, setIsSendingTestSms] = useState(false);
+  
+  // Active alerts view
+  const [showActiveAlerts, setShowActiveAlerts] = useState(false);
 
   // Fetch user preferences
   const { data: preferences, isLoading} = useQuery<CryptoPreferences>({
@@ -107,6 +116,41 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
   const { data: smsSettings } = useQuery<{ phoneNumber: string | null; smsAlertsEnabled: boolean }>({
     queryKey: ['/api/crypto/sms-settings'],
     enabled: open,
+  });
+  
+  // Fetch active alerts
+  interface ActiveAlertsResponse {
+    hLineAlerts: Array<{ id: number; type: string; symbol: string; price: number; label: string; createdAt: string }>;
+    elliottAlerts: Array<{ id: number; type: string; symbol: string; price: number; label: string; waveType: string; createdAt: string }>;
+    aiTrades: Array<{ id: number; type: string; symbol: string; direction: string; entry: number; stopLoss: number; targets: number[]; status: string; createdAt: string }>;
+  }
+  
+  const { data: activeAlerts, isLoading: isLoadingAlerts, refetch: refetchAlerts } = useQuery<ActiveAlertsResponse>({
+    queryKey: ['/api/crypto/active-alerts'],
+    enabled: open && showActiveAlerts,
+  });
+  
+  // Delete alert mutation
+  const deleteAlertMutation = useMutation({
+    mutationFn: async ({ alertType, alertId }: { alertType: string; alertId: number }) => {
+      const token = await getToken();
+      const response = await apiRequest('DELETE', '/api/crypto/active-alerts', { alertType, alertId }, token || undefined);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/active-alerts'] });
+      toast({
+        title: '✅ Alert Removed',
+        description: 'The alert has been deactivated.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: '❌ Error',
+        description: error.message || 'Failed to remove alert',
+        variant: 'destructive',
+      });
+    },
   });
   
   // Initialize SMS state from fetched settings
@@ -197,6 +241,11 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
       setSelectedAlertGrades(preferences.alertGrades?.length ? preferences.alertGrades : limits.allowedGrades.slice(0, 2)); // Default to first 2 of allowed grades
       setPushSubscription(preferences.pushSubscription || null);
       setUserTier(tier);
+      // Alert source toggles
+      setHlineAlertsEnabled(preferences.hlineAlertsEnabled ?? true);
+      setElliottAlertsEnabled(preferences.elliottAlertsEnabled ?? true);
+      setAiTradeAlertsEnabled(preferences.aiTradeAlertsEnabled ?? true);
+      setIndicatorAlertsEnabled(preferences.indicatorAlertsEnabled ?? true);
     }
   }, [preferences, subscription]);
 
@@ -213,6 +262,10 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
     alertGrades: string[];
     alertsEnabled: boolean;
     pushSubscription: any;
+    hlineAlertsEnabled?: boolean;
+    elliottAlertsEnabled?: boolean;
+    aiTradeAlertsEnabled?: boolean;
+    indicatorAlertsEnabled?: boolean;
   };
 
   // Save preferences mutation (accepts explicit payload)
@@ -251,6 +304,10 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
       alertGrades: selectedAlertGrades,
       alertsEnabled,
       pushSubscription,
+      hlineAlertsEnabled,
+      elliottAlertsEnabled,
+      aiTradeAlertsEnabled,
+      indicatorAlertsEnabled,
       ...overrides,
     };
     savePreferencesMutation.mutate(payload);
@@ -686,6 +743,164 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                 >
                   Enable
                 </Button>
+              )}
+            </div>
+
+            {/* Alert Sources - Control which alert types are monitored */}
+            <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
+              <Label className="text-white font-semibold mb-3 block">
+                Alert Sources
+              </Label>
+              <p className="text-xs text-gray-400 mb-3">Control which types of alerts are active</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex items-center justify-between p-2 bg-slate-900/50 rounded">
+                  <Label className="text-gray-300 text-sm">H-Line Alerts</Label>
+                  <Switch
+                    checked={hlineAlertsEnabled}
+                    onCheckedChange={(checked) => {
+                      setHlineAlertsEnabled(checked);
+                      persistPreferences({ hlineAlertsEnabled: checked }, false);
+                    }}
+                    data-testid="toggle-hline-alerts"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-2 bg-slate-900/50 rounded">
+                  <Label className="text-gray-300 text-sm">Elliott Wave</Label>
+                  <Switch
+                    checked={elliottAlertsEnabled}
+                    onCheckedChange={(checked) => {
+                      setElliottAlertsEnabled(checked);
+                      persistPreferences({ elliottAlertsEnabled: checked }, false);
+                    }}
+                    data-testid="toggle-elliott-alerts"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-2 bg-slate-900/50 rounded">
+                  <Label className="text-gray-300 text-sm">AI Trade Alerts</Label>
+                  <Switch
+                    checked={aiTradeAlertsEnabled}
+                    onCheckedChange={(checked) => {
+                      setAiTradeAlertsEnabled(checked);
+                      persistPreferences({ aiTradeAlertsEnabled: checked }, false);
+                    }}
+                    data-testid="toggle-ai-trade-alerts"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-2 bg-slate-900/50 rounded">
+                  <Label className="text-gray-300 text-sm">Indicator Alerts</Label>
+                  <Switch
+                    checked={indicatorAlertsEnabled}
+                    onCheckedChange={(checked) => {
+                      setIndicatorAlertsEnabled(checked);
+                      persistPreferences({ indicatorAlertsEnabled: checked }, false);
+                    }}
+                    data-testid="toggle-indicator-alerts"
+                  />
+                </div>
+              </div>
+              
+              {/* View Active Alerts Button */}
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowActiveAlerts(!showActiveAlerts);
+                    if (!showActiveAlerts) refetchAlerts();
+                  }}
+                  className="w-full border-blue-600 text-blue-400 hover:bg-blue-900/30"
+                  data-testid="button-view-active-alerts"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  {showActiveAlerts ? 'Hide Active Alerts' : 'View All Active Alerts'}
+                </Button>
+              </div>
+              
+              {/* Active Alerts List */}
+              {showActiveAlerts && (
+                <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
+                  {isLoadingAlerts ? (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                    </div>
+                  ) : (
+                    <>
+                      {/* H-Line Alerts */}
+                      {activeAlerts?.hLineAlerts?.map((alert) => (
+                        <div key={`hline-${alert.id}`} className="flex items-center justify-between p-2 bg-slate-900/70 rounded text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-yellow-400">H-Line</span>
+                            <span className="text-gray-300">{alert.symbol}</span>
+                            <span className="text-gray-500">@</span>
+                            <span className="text-white">${alert.price?.toFixed(2)}</span>
+                            <span className="text-gray-500 text-xs">({alert.label})</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteAlertMutation.mutate({ alertType: 'hline', alertId: alert.id })}
+                            className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-900/30"
+                            data-testid={`button-delete-hline-${alert.id}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ))}
+                      
+                      {/* Elliott Wave Alerts */}
+                      {activeAlerts?.elliottAlerts?.map((alert) => (
+                        <div key={`elliott-${alert.id}`} className="flex items-center justify-between p-2 bg-slate-900/70 rounded text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-purple-400">Elliott</span>
+                            <span className="text-gray-300">{alert.symbol}</span>
+                            <span className="text-gray-500">@</span>
+                            <span className="text-white">${alert.price?.toFixed(2)}</span>
+                            <span className="text-gray-500 text-xs">({alert.label})</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteAlertMutation.mutate({ alertType: 'elliott', alertId: alert.id })}
+                            className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-900/30"
+                            data-testid={`button-delete-elliott-${alert.id}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ))}
+                      
+                      {/* AI Trade Alerts */}
+                      {activeAlerts?.aiTrades?.map((trade) => (
+                        <div key={`ai-${trade.id}`} className="flex items-center justify-between p-2 bg-slate-900/70 rounded text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className={trade.direction === 'long' ? 'text-green-400' : 'text-red-400'}>
+                              {trade.direction === 'long' ? <TrendingUp className="w-3 h-3 inline" /> : <TrendingDown className="w-3 h-3 inline" />}
+                              {' '}AI
+                            </span>
+                            <span className="text-gray-300">{trade.symbol}</span>
+                            <span className="text-gray-500">Entry:</span>
+                            <span className="text-white">${trade.entry}</span>
+                            <span className="text-gray-500 text-xs">({trade.status})</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteAlertMutation.mutate({ alertType: 'ai_trade', alertId: trade.id })}
+                            className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-900/30"
+                            data-testid={`button-delete-ai-${trade.id}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ))}
+                      
+                      {/* No alerts message */}
+                      {(!activeAlerts?.hLineAlerts?.length && !activeAlerts?.elliottAlerts?.length && !activeAlerts?.aiTrades?.length) && (
+                        <p className="text-gray-500 text-center py-4 text-sm">No active alerts</p>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
             </div>
 

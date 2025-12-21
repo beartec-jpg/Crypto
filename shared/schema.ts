@@ -382,6 +382,11 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   alertTimeframes: text("alert_timeframes").array().default(sql`ARRAY['15m', '1h', '4h']::text[]`), // Which timeframes to monitor
   alertTypes: text("alert_types").array().default(sql`ARRAY['bos', 'choch', 'fvg', 'liquidation']::text[]`), // Which alert types to enable
   alertsEnabled: boolean("alerts_enabled").default(false), // Master toggle for push notifications
+  // Alert source toggles - control which alert types are active
+  hlineAlertsEnabled: boolean("hline_alerts_enabled").default(true), // Horizontal line price alerts
+  elliottAlertsEnabled: boolean("elliott_alerts_enabled").default(true), // Elliott Wave projection alerts
+  aiTradeAlertsEnabled: boolean("ai_trade_alerts_enabled").default(true), // AI tracked trade alerts
+  indicatorAlertsEnabled: boolean("indicator_alerts_enabled").default(true), // Smart Money/Indicator alerts
   aiCredits: integer("ai_credits").default(0), // Remaining AI trade idea credits (Intermediate tier gets 50/month)
   aiCreditsResetAt: timestamp("ai_credits_reset_at"), // When credits were last reset (monthly)
   dailyAiUsage: integer("daily_ai_usage").default(0), // Daily AI trade calls used today
@@ -405,6 +410,10 @@ export const insertCryptoSubscriptionSchema = z.object({
   alertTimeframes: z.array(z.string()).optional().default(['15m', '1h', '4h']),
   alertTypes: z.array(z.string()).optional().default(['bos', 'choch', 'fvg', 'liquidation']),
   alertsEnabled: z.boolean().optional().default(false),
+  hlineAlertsEnabled: z.boolean().optional().default(true),
+  elliottAlertsEnabled: z.boolean().optional().default(true),
+  aiTradeAlertsEnabled: z.boolean().optional().default(true),
+  indicatorAlertsEnabled: z.boolean().optional().default(true),
   aiCredits: z.number().int().optional().default(0),
   aiCreditsResetAt: z.date().optional().nullable(),
   dailyAiUsage: z.number().int().optional().default(0),
@@ -451,6 +460,10 @@ export const cryptoPreferencesSchema = z.object({
   alertTimeframes: z.array(z.string()).default(['15m', '1h', '4h']),
   alertTypes: z.array(z.string()).default(['bos', 'choch', 'fvg', 'liquidation']),
   alertsEnabled: z.boolean().default(false),
+  hlineAlertsEnabled: z.boolean().default(true),
+  elliottAlertsEnabled: z.boolean().default(true),
+  aiTradeAlertsEnabled: z.boolean().default(true),
+  indicatorAlertsEnabled: z.boolean().default(true),
   pushSubscription: z.any().nullable().default(null),
   tier: z.string().default('free'),
 });
