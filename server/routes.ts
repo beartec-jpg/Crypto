@@ -4923,17 +4923,21 @@ Return ONLY valid JSON in this exact format:
       const { trackedTrades } = await import("@shared/schema");
       const { eq, and } = await import("drizzle-orm");
 
+      // In development mode, delete by ID only (open access)
+      // In production, verify user owns the trade
+      const whereClause = !isProduction 
+        ? eq(trackedTrades.id, id)
+        : and(eq(trackedTrades.id, id), eq(trackedTrades.userId, userId));
+
       const deleted = await db.delete(trackedTrades)
-        .where(and(
-          eq(trackedTrades.id, id),
-          eq(trackedTrades.userId, userId)
-        ))
+        .where(whereClause)
         .returning();
 
       if (deleted.length === 0) {
         return res.status(404).json({ error: "Trade not found" });
       }
 
+      console.log(`🗑️ Deleted tracked trade: ${id}`);
       res.json({ success: true, trade: deleted[0] });
     } catch (error: any) {
       console.error('Error deleting tracked trade:', error);
