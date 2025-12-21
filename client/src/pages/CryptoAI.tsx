@@ -117,7 +117,7 @@ export default function CryptoAI() {
   });
 
   const { data: trackedTradesData, refetch: refetchTrackedTrades } = useQuery<any[]>({
-    queryKey: [`/api/crypto/tracked-trades/${symbol}`],
+    queryKey: ['/api/crypto/tracked-trades'],
     enabled: isAuthenticated && !authLoading,
     refetchInterval: 10000, // Refetch every 10 seconds to check for status updates
   });
@@ -2757,20 +2757,19 @@ export default function CryptoAI() {
               </Card>
             )}
 
-            {/* Tracked Trades Summary Panel */}
-            {trackedTradesData && trackedTradesData.length > 0 && (
-              <Card className="bg-[#1a1a1a] border-[#2a2e39] mt-6" data-testid="tracked-trades-panel">
+            {/* Tracked Trades Summary Panel - Always visible */}
+            <Card className="bg-[#1a1a1a] border-[#2a2e39] mt-6" data-testid="tracked-trades-panel">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <Target className="w-5 h-5 text-[#00c4b4]" />
                       <h3 className="font-semibold text-white">Tracked Trades</h3>
                       <span className="text-xs bg-[#2a2e39] px-2 py-1 rounded text-gray-400">
-                        {trackedTradesData.length} total
+                        {trackedTradesData?.length || 0} total
                       </span>
                     </div>
                     {/* Win/Loss Stats with Total P/L */}
-                    {(() => {
+                    {trackedTradesData && trackedTradesData.length > 0 && (() => {
                       const completed = trackedTradesData.filter(t => t.status === 'sl_hit' || t.status === 'tp_hit');
                       const wins = completed.filter(t => t.status === 'tp_hit').length;
                       const losses = completed.filter(t => t.status === 'sl_hit').length;
@@ -2803,7 +2802,7 @@ export default function CryptoAI() {
                   
                   {/* Individual Tracked Trades */}
                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {trackedTradesData.map((trade: any, idx: number) => {
+                    {trackedTradesData && trackedTradesData.map((trade: any, idx: number) => {
                       const entryPrice = parseFloat(trade.entry);
                       const slPrice = parseFloat(trade.stopLoss);
                       const tp1Price = parseFloat(trade.targets[0]);
@@ -2883,9 +2882,17 @@ export default function CryptoAI() {
                       );
                     })}
                   </div>
+                  
+                  {/* Empty state when no trades */}
+                  {(!trackedTradesData || trackedTradesData.length === 0) && (
+                    <div className="text-center text-gray-500 py-6">
+                      <Target className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No tracked trades yet</p>
+                      <p className="text-xs mt-1">Click "Track Trade" on any AI trade idea to start tracking</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            )}
 
             {/* Liquidation Heatmap - Show in Alerts tab for easy reference */}
             <Card className="bg-[#1a1a1a] border-[#2a2e39] mt-6">
