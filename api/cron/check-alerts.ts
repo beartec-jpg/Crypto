@@ -239,14 +239,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const currentStyle = drawing.style || {};
-      const lastCheckedPrice = currentStyle.lastCheckedPrice;
+      const rawLastCheckedPrice = currentStyle.lastCheckedPrice;
       const lineName = currentStyle.label || 'H-Line';
+      
+      // Parse lastCheckedPrice - handle both number and string formats
+      const lastCheckedPrice = typeof rawLastCheckedPrice === 'number' 
+        ? rawLastCheckedPrice 
+        : (typeof rawLastCheckedPrice === 'string' ? parseFloat(rawLastCheckedPrice) : null);
 
-      console.log(`🔍 H-Line: ${drawing.symbol} | Line: ${linePrice} | Current: ${currentPrice} | Last: ${lastCheckedPrice}`);
+      console.log(`🔍 H-Line: ${drawing.symbol} | Line: ${linePrice} | Current: ${currentPrice} | Last: ${lastCheckedPrice} (raw: ${rawLastCheckedPrice})`);
 
       // Check if price crossed the line
       let crossed = false;
-      if (lastCheckedPrice !== null && lastCheckedPrice !== undefined && Number.isFinite(lastCheckedPrice)) {
+      if (lastCheckedPrice !== null && Number.isFinite(lastCheckedPrice)) {
         if (lastCheckedPrice < linePrice && currentPrice >= linePrice) {
           crossed = true;
           console.log(`📈 Cross UP detected: ${lastCheckedPrice} → ${currentPrice}`);
@@ -255,6 +260,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           crossed = true;
           console.log(`📉 Cross DOWN detected: ${lastCheckedPrice} → ${currentPrice}`);
         }
+      } else {
+        console.log(`⚠️ No valid lastCheckedPrice yet - setting baseline`);
       }
 
       if (crossed) {
