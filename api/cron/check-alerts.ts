@@ -260,12 +260,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (crossed) {
         console.log(`✅ Alert triggered for ${lineName} at ${linePrice}`);
         
-        // Send push notification
-        await sendPushNotification(sql, drawing.user_id, {
+        const notification = {
           title: `📈 Price Crossing: ${drawing.symbol}`,
           body: `Price crossing '${lineName}' at $${linePrice.toFixed(4)}. Current: $${currentPrice.toFixed(4)}`,
           tag: `hline-${drawing.id}`,
-        });
+        };
+        
+        // Send push notification (may fail if no VAPID keys)
+        await sendPushNotification(sql, drawing.user_id, notification);
+        
+        // ALWAYS send SMS regardless of push status
+        await sendSMSNotification(sql, drawing.user_id, notification);
 
         alertsSent++;
 
@@ -589,9 +594,6 @@ async function sendPushNotification(
         }
       }
     }
-
-    // ========== ALSO SEND SMS ALERT ==========
-    await sendSMSNotification(sql, userId, notification);
   } catch (error: any) {
     console.error('❌ [PUSH DEBUG] Error in sendPushNotification:', error.message);
     console.error('❌ [PUSH DEBUG] Full error:', error);
