@@ -2878,7 +2878,8 @@ export default function CryptoAI() {
                                 e.stopPropagation();
                                 try {
                                   console.log('Deleting trade:', trade.id);
-                                  await apiRequest('DELETE', `/api/crypto/tracked-trades/${trade.id}`);
+                                  const token = await getToken();
+                                  await apiRequest('DELETE', `/api/crypto/tracked-trades/${trade.id}`, undefined, token || undefined);
                                   toast({
                                     title: "Trade Removed",
                                     description: `${trade.symbol} ${trade.direction} trade deleted`,
