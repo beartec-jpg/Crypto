@@ -5957,6 +5957,9 @@ export default function CryptoIndicators() {
       showEMA,
       emaFastPeriod,
       emaSlowPeriod,
+      emaConfigs,
+      showSMA,
+      smaConfigs,
       showRSI,
       rsiPeriod,
       showMACD,
@@ -5988,7 +5991,8 @@ export default function CryptoIndicators() {
       showCCI,
       cciPeriod,
       showADX,
-      adxPeriod
+      adxPeriod,
+      showAutoTrendlines
     };
     
     const storageKey = `indicatorDefaults_${symbol}_${interval}`;
@@ -6006,7 +6010,7 @@ export default function CryptoIndicators() {
     
     console.log(`💾 Saved indicator defaults for ${symbol}_${interval}:`, indicatorDefaults);
     console.log(`💾 Saved default timeframe for ${symbol}: ${interval}`);
-  }, [symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showBB, bbPeriod, bbStdDev, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, alertFilterMode, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showSessionVWAP, showOrderBlocks, obSwingLength, orderBlockLength, showCCI, cciPeriod, showADX, adxPeriod, toast]);
+  }, [symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showBB, bbPeriod, bbStdDev, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, alertFilterMode, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showSessionVWAP, showOrderBlocks, obSwingLength, orderBlockLength, showCCI, cciPeriod, showADX, adxPeriod, showAutoTrendlines, toast]);
 
   // Load indicator defaults from localStorage
   const loadIndicatorDefaults = useCallback(() => {
@@ -6105,6 +6109,28 @@ export default function CryptoIndicators() {
         if (defaults.adxPeriod !== undefined) {
           setAdxPeriod(defaults.adxPeriod);
           setAdxPeriodInput(defaults.adxPeriod.toString());
+        }
+        if (defaults.showAutoTrendlines !== undefined) setShowAutoTrendlines(defaults.showAutoTrendlines);
+        if (defaults.showSMA !== undefined) setShowSMA(defaults.showSMA);
+        
+        if (defaults.emaConfigs && Array.isArray(defaults.emaConfigs)) {
+          setEmaConfigs(defaults.emaConfigs);
+          const inputs: Record<string, string> = {};
+          defaults.emaConfigs.forEach((c: any) => {
+            inputs[c.id] = String(c.period);
+          });
+          setEmaInputs(inputs);
+          console.log('📂 Restored EMA configs:', defaults.emaConfigs);
+        }
+        
+        if (defaults.smaConfigs && Array.isArray(defaults.smaConfigs)) {
+          setSmaConfigs(defaults.smaConfigs);
+          const inputs: Record<string, string> = {};
+          defaults.smaConfigs.forEach((c: any) => {
+            inputs[c.id] = String(c.period);
+          });
+          setSmaInputs(inputs);
+          console.log('📂 Restored SMA configs:', defaults.smaConfigs);
         }
         
         toast({

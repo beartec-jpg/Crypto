@@ -2873,19 +2873,32 @@ export default function CryptoAI() {
                               <div className="text-sm text-gray-500">--</div>
                             )}
                             <button
-                              onClick={async () => {
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 try {
+                                  console.log('Deleting trade:', trade.id);
                                   await apiRequest('DELETE', `/api/crypto/tracked-trades/${trade.id}`);
+                                  toast({
+                                    title: "Trade Removed",
+                                    description: `${trade.symbol} ${trade.direction} trade deleted`,
+                                    duration: 2000,
+                                  });
                                   refetchTrackedTrades();
-                                } catch (err) {
+                                } catch (err: any) {
                                   console.error('Failed to delete trade:', err);
+                                  toast({
+                                    title: "Error",
+                                    description: err.message || "Failed to delete trade",
+                                    variant: "destructive",
+                                  });
                                 }
                               }}
-                              className="p-1 hover:bg-red-500/20 rounded transition-colors"
+                              className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
                               data-testid={`delete-tracked-trade-${idx}`}
                               title="Remove trade"
                             >
-                              <X className="w-4 h-4 text-gray-500 hover:text-red-400" />
+                              <X className="w-4 h-4 text-gray-400 hover:text-red-400" />
                             </button>
                           </div>
                         </div>
