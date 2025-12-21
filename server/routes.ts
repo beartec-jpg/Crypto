@@ -4386,6 +4386,23 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
+  // Get VAPID public key for push notifications
+  app.get("/api/crypto/vapid-key", async (req, res) => {
+    try {
+      const publicKey = process.env.VAPID_PUBLIC_KEY || process.env.PUBLIC_VAPID_KEY;
+      
+      if (!publicKey) {
+        console.error('VAPID public key not configured');
+        return res.status(500).json({ error: 'VAPID key not configured' });
+      }
+
+      res.json({ publicKey });
+    } catch (error: any) {
+      console.error('Error fetching VAPID key:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get crypto alert preferences
   app.get("/api/crypto/preferences", requireCryptoAuth, async (req, res) => {
     try {

@@ -783,11 +783,19 @@ export default function CryptoAI() {
         const permission = await Notification.requestPermission();
         
         if (permission === 'granted') {
-          const registration = await navigator.serviceWorker.ready;
+          // Fetch the VAPID public key from server
+          const vapidResponse = await fetch('/api/crypto/vapid-key');
+          if (!vapidResponse.ok) {
+            throw new Error('Failed to get VAPID key from server');
+          }
+          const { publicKey: vapidPublicKey } = await vapidResponse.json();
           
-          // Convert VAPID key
-          const publicVapidKey = import.meta.env.VITE_PUBLIC_VAPID_KEY || 'BIvKNAbXbD5crSXFie5H2yEXWT4tBhZGYqc9u8ADj5h9NXxgCi6ylS1M7KvowyyJFkQwEQaesLUuVgbOyHrM61M';
-          const convertedKey = urlBase64ToUint8Array(publicVapidKey);
+          if (!vapidPublicKey) {
+            throw new Error('VAPID key not configured on server');
+          }
+          
+          const registration = await navigator.serviceWorker.ready;
+          const convertedKey = urlBase64ToUint8Array(vapidPublicKey);
           
           const subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,

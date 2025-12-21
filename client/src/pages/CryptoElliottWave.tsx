@@ -8026,11 +8026,25 @@ const aiAnalyze = useMutation({
                                                     await navigator.serviceWorker.ready;
                                                   }
                                                   
-                                                  // Get VAPID key from env
-                                                  const vapidKey = import.meta.env.VITE_PUBLIC_VAPID_KEY;
+                                                  // Fetch VAPID key from server
+                                                  const vapidResponse = await fetch('/api/crypto/vapid-key');
+                                                  if (!vapidResponse.ok) {
+                                                    toast({ title: 'Config Error', description: 'Failed to get VAPID key', variant: 'destructive' });
+                                                    return;
+                                                  }
+                                                  const { publicKey: vapidKey } = await vapidResponse.json();
                                                   if (!vapidKey) {
                                                     toast({ title: 'Config Error', description: 'VAPID key not configured', variant: 'destructive' });
                                                     return;
+                                                  }
+                                                  
+                                                  // Convert VAPID key to Uint8Array
+                                                  const padding = '='.repeat((4 - vapidKey.length % 4) % 4);
+                                                  const base64 = (vapidKey + padding).replace(/-/g, '+').replace(/_/g, '/');
+                                                  const rawData = window.atob(base64);
+                                                  const vapidKeyArray = new Uint8Array(rawData.length);
+                                                  for (let i = 0; i < rawData.length; ++i) {
+                                                    vapidKeyArray[i] = rawData.charCodeAt(i);
                                                   }
                                                   
                                                   // Unsubscribe from old subscription (may have wrong VAPID key)
@@ -8042,7 +8056,7 @@ const aiAnalyze = useMutation({
                                                   // Create new subscription with correct VAPID key
                                                   const subscription = await registration.pushManager.subscribe({
                                                     userVisibleOnly: true,
-                                                    applicationServerKey: vapidKey
+                                                    applicationServerKey: vapidKeyArray
                                                   });
                                                   
                                                   // Save subscription to server

@@ -394,16 +394,25 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
         return;
       }
 
+      // Fetch the VAPID public key from server
+      const vapidResponse = await fetch('/api/crypto/vapid-key');
+      if (!vapidResponse.ok) {
+        throw new Error('Failed to get VAPID key from server');
+      }
+      const { publicKey: vapidPublicKey } = await vapidResponse.json();
+      
+      if (!vapidPublicKey) {
+        throw new Error('VAPID key not configured on server');
+      }
+
       // Register service worker
       const registration = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
 
-      // Subscribe to push notifications
+      // Subscribe to push notifications with correct VAPID key
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(
-          'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'
-        ),
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
       });
 
       const subscriptionJSON = subscription.toJSON();
