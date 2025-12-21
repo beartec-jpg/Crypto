@@ -563,14 +563,19 @@ async function sendPushNotification(
 
       for (const sub of subscriptions) {
         try {
-          const parsedSub = typeof sub.subscription === 'string' 
-            ? JSON.parse(sub.subscription) 
-            : sub.subscription;
+          // Build subscription object from separate columns (endpoint, p256dh, auth)
+          const pushSubscription = {
+            endpoint: sub.endpoint,
+            keys: {
+              p256dh: sub.p256dh,
+              auth: sub.auth
+            }
+          };
 
           console.log(`🔔 [PUSH DEBUG] Sending to subscription ${sub.id}`);
-          console.log(`🔔 [PUSH DEBUG] Endpoint: ${parsedSub.endpoint?.substring(0, 80)}...`);
+          console.log(`🔔 [PUSH DEBUG] Endpoint: ${pushSubscription.endpoint?.substring(0, 80)}...`);
 
-          await webpush.sendNotification(parsedSub, payload);
+          await webpush.sendNotification(pushSubscription, payload);
           console.log(`✅ [PUSH DEBUG] Push sent successfully to ${sub.id}`);
         } catch (error: any) {
           console.error(`❌ [PUSH DEBUG] Failed to send push to ${sub.id}:`, error.message);
