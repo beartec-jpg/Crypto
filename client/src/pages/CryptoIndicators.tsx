@@ -9870,14 +9870,24 @@ export default function CryptoIndicators() {
                       const hiddenLevels = drawing.style?.hiddenLevels || [];
                       const fibLevels = allFibLevels.filter(l => !hiddenLevels.includes(l));
                       const priceDiff = drawing.points[1].price - drawing.points[0].price;
-                      const width = Math.abs(p2.x - p1.x) + 100;
-                      const startX = Math.min(p1.x, p2.x);
+                      const chartWidth = chartContainerRef.current?.clientWidth || 800;
+                      
+                      const extendLeft = drawing.style?.extendLeft;
+                      const extendRight = drawing.style?.extendRight;
+                      const baseStartX = Math.min(p1.x, p2.x);
+                      const baseEndX = Math.max(p1.x, p2.x) + 100;
+                      const lineStartX = extendLeft ? 0 : baseStartX;
+                      const lineEndX = extendRight ? chartWidth : baseEndX;
                       const labelRight = drawing.style?.labelPosition === 'right';
+                      const labelPadding = 50;
+                      const labelX = labelRight 
+                        ? Math.min(lineEndX - 5, chartWidth - labelPadding)
+                        : Math.max(lineStartX + 5, labelPadding);
                       
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
                           {/* Click target area */}
-                          <rect x={startX} y={p1.y < p2.y ? p1.y : p2.y} width={width} height={Math.abs(p2.y - p1.y)} fill="transparent" />
+                          <rect x={lineStartX} y={p1.y < p2.y ? p1.y : p2.y} width={lineEndX - lineStartX} height={Math.abs(p2.y - p1.y)} fill="transparent" />
                           {fibLevels.map(level => {
                             const levelPrice = drawing.points[0].price + priceDiff * (1 - level);
                             const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
@@ -9885,13 +9895,13 @@ export default function CryptoIndicators() {
                             return (
                               <g key={level}>
                                 <line 
-                                  x1={startX} y1={y} x2={startX + width} y2={y}
+                                  x1={lineStartX} y1={y} x2={lineEndX} y2={y}
                                   stroke={levelColor}
                                   strokeWidth={isSelected ? 2 : 1}
                                   strokeDasharray={level === 0 || level === 1 ? '0' : '4,2'}
                                 />
                                 <text 
-                                  x={labelRight ? startX + width - 40 : startX + 5} 
+                                  x={labelX} 
                                   y={y - 3} 
                                   fill={levelColor} 
                                   fontSize="10"
@@ -9916,8 +9926,19 @@ export default function CryptoIndicators() {
                       const allFibLevels = [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
                       const hiddenLevels = drawing.style?.hiddenLevels || [];
                       const fibLevels = allFibLevels.filter(l => !hiddenLevels.includes(l));
-                      const width = 200;
+                      const chartWidth = chartContainerRef.current?.clientWidth || 800;
+                      
+                      const extendLeft = drawing.style?.extendLeft;
+                      const extendRight = drawing.style?.extendRight;
+                      const baseStartX = p3.x;
+                      const baseEndX = p3.x + 200;
+                      const lineStartX = extendLeft ? 0 : baseStartX;
+                      const lineEndX = extendRight ? chartWidth : baseEndX;
                       const labelRight = drawing.style?.labelPosition === 'right';
+                      const labelPadding = 50;
+                      const labelX = labelRight 
+                        ? Math.min(lineEndX - 5, chartWidth - labelPadding)
+                        : Math.max(lineStartX + 5, labelPadding);
                       
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
@@ -9931,12 +9952,12 @@ export default function CryptoIndicators() {
                             return (
                               <g key={level}>
                                 <line 
-                                  x1={p3.x} y1={y} x2={p3.x + width} y2={y}
+                                  x1={lineStartX} y1={y} x2={lineEndX} y2={y}
                                   stroke={levelColor}
                                   strokeWidth={1}
                                 />
                                 <text 
-                                  x={labelRight ? p3.x + width - 5 : p3.x + 5} 
+                                  x={labelX} 
                                   y={y - 3} 
                                   fill={levelColor} 
                                   fontSize="10"
@@ -10303,6 +10324,35 @@ export default function CryptoIndicators() {
                                 className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.labelPosition === 'right' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
                               >
                                 Right
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Extend Lines - For Fib Tools */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Extend Lines</div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => updateDrawingSettings({ extendLeft: !selectedDrawing.style?.extendLeft })}
+                                className={`flex-1 px-3 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                  selectedDrawing.style?.extendLeft 
+                                    ? 'bg-blue-500 text-white' 
+                                    : 'bg-slate-700 text-gray-300'
+                                }`}
+                                data-testid="btn-extend-fib-left"
+                              >
+                                ← Left
+                              </button>
+                              <button
+                                onClick={() => updateDrawingSettings({ extendRight: !selectedDrawing.style?.extendRight })}
+                                className={`flex-1 px-3 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                  selectedDrawing.style?.extendRight 
+                                    ? 'bg-blue-500 text-white' 
+                                    : 'bg-slate-700 text-gray-300'
+                                }`}
+                                data-testid="btn-extend-fib-right"
+                              >
+                                Right →
                               </button>
                             </div>
                           </div>
