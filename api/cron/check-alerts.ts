@@ -521,13 +521,15 @@ async function sendPushNotification(
   console.log(`🔔 [PUSH DEBUG] Notification: ${JSON.stringify(notification)}`);
   
   try {
-    const publicKey = process.env.VAPID_PUBLIC_KEY || process.env.PUBLIC_VAPID_KEY;
-    const privateKey = process.env.VAPID_PRIVATE_KEY || process.env.PRIVATE_VAPID_KEY;
+    // Sanitize VAPID keys - remove quotes, newlines, whitespace (same as test-push.ts)
+    const rawPublicKey = process.env.VAPID_PUBLIC_KEY || process.env.PUBLIC_VAPID_KEY;
+    const rawPrivateKey = process.env.VAPID_PRIVATE_KEY || process.env.PRIVATE_VAPID_KEY;
+    
+    const publicKey = rawPublicKey?.replace(/["\n\r\s]/g, '').trim();
+    const privateKey = rawPrivateKey?.replace(/["\n\r\s]/g, '').trim();
 
     console.log(`🔔 [PUSH DEBUG] VAPID_PUBLIC_KEY exists: ${!!process.env.VAPID_PUBLIC_KEY}`);
     console.log(`🔔 [PUSH DEBUG] VAPID_PRIVATE_KEY exists: ${!!process.env.VAPID_PRIVATE_KEY}`);
-    console.log(`🔔 [PUSH DEBUG] PUBLIC_VAPID_KEY exists: ${!!process.env.PUBLIC_VAPID_KEY}`);
-    console.log(`🔔 [PUSH DEBUG] PRIVATE_VAPID_KEY exists: ${!!process.env.PRIVATE_VAPID_KEY}`);
     console.log(`🔔 [PUSH DEBUG] Final publicKey exists: ${!!publicKey}, length: ${publicKey?.length || 0}`);
     console.log(`🔔 [PUSH DEBUG] Final privateKey exists: ${!!privateKey}, length: ${privateKey?.length || 0}`);
 
@@ -536,7 +538,7 @@ async function sendPushNotification(
       return;
     }
     
-    webpush.setVapidDetails('mailto:support@beartec.uk', publicKey, privateKey);
+    webpush.setVapidDetails('mailto:alerts@beartec.uk', publicKey, privateKey);
     console.log(`🔔 [PUSH DEBUG] VAPID details set successfully`);
 
     // Get user's push subscriptions
