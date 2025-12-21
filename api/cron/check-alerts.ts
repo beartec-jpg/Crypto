@@ -335,11 +335,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             SET status = 'entry_hit', entry_hit_at = NOW()
             WHERE id = ${trade.id}
           `;
-          await sendPushNotification(sql, trade.user_id, {
+          const entryNotification = {
             title: `🎯 Entry Hit: ${trade.symbol}`,
             body: `${trade.direction} entry at $${entry.toFixed(4)} hit! Current: $${currentPrice.toFixed(4)}`,
             tag: `entry-${trade.id}`,
-          });
+          };
+          await sendPushNotification(sql, trade.user_id, entryNotification);
+          await sendSMSNotification(sql, trade.user_id, entryNotification);
           alertsSent++;
           console.log(`✅ Entry hit for trade ${trade.id}`);
           continue;
@@ -356,11 +358,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             SET status = 'sl_hit', sl_hit_at = NOW()
             WHERE id = ${trade.id}
           `;
-          await sendPushNotification(sql, trade.user_id, {
+          const slNotification = {
             title: `🛑 Stop Loss Hit: ${trade.symbol}`,
             body: `${trade.direction} SL at $${stopLoss.toFixed(4)} hit. Current: $${currentPrice.toFixed(4)}`,
             tag: `sl-${trade.id}`,
-          });
+          };
+          await sendPushNotification(sql, trade.user_id, slNotification);
+          await sendSMSNotification(sql, trade.user_id, slNotification);
           alertsSent++;
           console.log(`❌ SL hit for trade ${trade.id}`);
           continue;
@@ -377,11 +381,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               SET status = 'tp_hit', tp_hit_at = NOW(), tp_hit_level = ${i + 1}
               WHERE id = ${trade.id}
             `;
-            await sendPushNotification(sql, trade.user_id, {
+            const tpNotification = {
               title: `🎉 Target ${i + 1} Hit: ${trade.symbol}`,
               body: `${trade.direction} TP${i + 1} at $${target.toFixed(4)} hit! Current: $${currentPrice.toFixed(4)}`,
               tag: `tp-${trade.id}`,
-            });
+            };
+            await sendPushNotification(sql, trade.user_id, tpNotification);
+            await sendSMSNotification(sql, trade.user_id, tpNotification);
             alertsSent++;
             console.log(`✅ TP${i + 1} hit for trade ${trade.id}`);
             break;
@@ -478,11 +484,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (crossed || priceHit) {
         console.log(`✅ Elliott Wave alert triggered: ${levelLabel} at ${targetPrice}`);
 
-        await sendPushNotification(sql, projection.user_id, {
+        const elliottNotification = {
           title: `🌊 Elliott Wave Target: ${projection.symbol}`,
           body: `Price reached ${levelLabel} at $${targetPrice.toFixed(4)}. Current: $${currentPrice.toFixed(4)}`,
           tag: `elliott-${projection.id}`,
-        });
+        };
+        await sendPushNotification(sql, projection.user_id, elliottNotification);
+        await sendSMSNotification(sql, projection.user_id, elliottNotification);
 
         alertsSent++;
 
@@ -779,19 +787,23 @@ async function checkAllIndicatorAlerts(
       const lastCCI = parseFloat(lastState.last_cci);
       if (Number.isFinite(lastCCI)) {
         if (lastCCI <= 100 && currentCCI > 100) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🔴 CCI Overbought: ${symbol}`,
             body: `${timeframe} CCI crossed above +100 (${currentCCI.toFixed(2)}).`,
             tag: `cci-ob-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
         if (lastCCI >= -100 && currentCCI < -100) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🟢 CCI Oversold: ${symbol}`,
             body: `${timeframe} CCI crossed below -100 (${currentCCI.toFixed(2)}).`,
             tag: `cci-os-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
       }
@@ -809,27 +821,33 @@ async function checkAllIndicatorAlerts(
       
       if (Number.isFinite(lastADX)) {
         if (lastADX <= 25 && currentADX.adx > 25) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `💪 Strong Trend: ${symbol}`,
             body: `${timeframe} ADX crossed above 25. Strong trend developing.`,
             tag: `adx-strong-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
         if (lastPlusDI <= lastMinusDI && currentADX.plusDI > currentADX.minusDI) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🟢 Bullish DI Cross: ${symbol}`,
             body: `${timeframe} +DI crossed above -DI.`,
             tag: `adx-bull-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
         if (lastPlusDI >= lastMinusDI && currentADX.plusDI < currentADX.minusDI) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🔴 Bearish DI Cross: ${symbol}`,
             body: `${timeframe} -DI crossed above +DI.`,
             tag: `adx-bear-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
       }
@@ -844,19 +862,23 @@ async function checkAllIndicatorAlerts(
       const lastRSI = parseFloat(lastState.last_rsi);
       if (Number.isFinite(lastRSI)) {
         if (lastRSI <= 70 && currentRSI > 70) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🔴 RSI Overbought: ${symbol}`,
             body: `${timeframe} RSI entered overbought zone (${currentRSI.toFixed(2)}).`,
             tag: `rsi-ob-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
         if (lastRSI >= 30 && currentRSI < 30) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🟢 RSI Oversold: ${symbol}`,
             body: `${timeframe} RSI entered oversold zone (${currentRSI.toFixed(2)}).`,
             tag: `rsi-os-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
       }
@@ -874,21 +896,25 @@ async function checkAllIndicatorAlerts(
         const wasBearish = lastMACD < lastSignal;
         const isBullish = currentMACD.macd > currentMACD.signal;
         if (wasBearish && isBullish) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🟢 MACD Bullish Cross: ${symbol}`,
             body: `${timeframe} MACD crossed above signal line.`,
             tag: `macd-bull-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
         const wasBullish = lastMACD > lastSignal;
         const isBearish = currentMACD.macd < currentMACD.signal;
         if (wasBullish && isBearish) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🔴 MACD Bearish Cross: ${symbol}`,
             body: `${timeframe} MACD crossed below signal line.`,
             tag: `macd-bear-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
       }
@@ -904,19 +930,23 @@ async function checkAllIndicatorAlerts(
       const lastD = parseFloat(lastState.last_stoch_d);
       if (Number.isFinite(lastK) && Number.isFinite(lastD)) {
         if (lastK < lastD && currentStoch.k > currentStoch.d && currentStoch.k < 20) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🟢 Stoch Bullish Cross: ${symbol}`,
             body: `${timeframe} Stochastic bullish crossover in oversold zone.`,
             tag: `stoch-bull-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
         if (lastK > lastD && currentStoch.k < currentStoch.d && currentStoch.k > 80) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🔴 Stoch Bearish Cross: ${symbol}`,
             body: `${timeframe} Stochastic bearish crossover in overbought zone.`,
             tag: `stoch-bear-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
       }
@@ -933,19 +963,23 @@ async function checkAllIndicatorAlerts(
       const lastEMA21 = parseFloat(lastState.last_ema21);
       if (Number.isFinite(lastEMA9) && Number.isFinite(lastEMA21)) {
         if (lastEMA9 < lastEMA21 && currentEMA9 > currentEMA21) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🟢 EMA Bullish Cross: ${symbol}`,
             body: `${timeframe} EMA 9 crossed above EMA 21.`,
             tag: `ema-bull-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
         if (lastEMA9 > lastEMA21 && currentEMA9 < currentEMA21) {
-          await sendPushNotification(sql, userId, {
+          const notification = {
             title: `🔴 EMA Bearish Cross: ${symbol}`,
             body: `${timeframe} EMA 9 crossed below EMA 21.`,
             tag: `ema-bear-${symbol}-${timeframe}`,
-          });
+          };
+          await sendPushNotification(sql, userId, notification);
+          await sendSMSNotification(sql, userId, notification);
           alertsSent++;
         }
       }
@@ -960,19 +994,23 @@ async function checkAllIndicatorAlerts(
     const prevPrice = candles[candles.length - 2]?.close;
     if (prevPrice && indicators.vwap) {
       if (prevPrice < indicators.vwap && currentPrice > indicators.vwap) {
-        await sendPushNotification(sql, userId, {
+        const notification = {
           title: `🟢 VWAP Bullish Cross: ${symbol}`,
           body: `${timeframe} Price crossed above VWAP.`,
           tag: `vwap-bull-${symbol}-${timeframe}`,
-        });
+        };
+        await sendPushNotification(sql, userId, notification);
+        await sendSMSNotification(sql, userId, notification);
         alertsSent++;
       }
       if (prevPrice > indicators.vwap && currentPrice < indicators.vwap) {
-        await sendPushNotification(sql, userId, {
+        const notification = {
           title: `🔴 VWAP Bearish Cross: ${symbol}`,
           body: `${timeframe} Price crossed below VWAP.`,
           tag: `vwap-bear-${symbol}-${timeframe}`,
-        });
+        };
+        await sendPushNotification(sql, userId, notification);
+        await sendSMSNotification(sql, userId, notification);
         alertsSent++;
       }
     }
@@ -982,11 +1020,13 @@ async function checkAllIndicatorAlerts(
   if (alertTypes.includes('volume_spike') && indicators.volumeAvg) {
     const currentVolume = candles[candles.length - 1].volume;
     if (currentVolume > indicators.volumeAvg * 2) {
-      await sendPushNotification(sql, userId, {
+      const notification = {
         title: `📊 Volume Spike: ${symbol}`,
         body: `${timeframe} Volume is ${(currentVolume / indicators.volumeAvg).toFixed(1)}x average!`,
         tag: `vol-spike-${symbol}-${timeframe}`,
-      });
+      };
+      await sendPushNotification(sql, userId, notification);
+      await sendSMSNotification(sql, userId, notification);
       alertsSent++;
     }
   }
@@ -994,19 +1034,23 @@ async function checkAllIndicatorAlerts(
   // ========== Engulfing Pattern Alerts ==========
   if (alertTypes.includes('engulfing') && indicators.engulfing) {
     if (indicators.engulfing === 'bullish') {
-      await sendPushNotification(sql, userId, {
+      const notification = {
         title: `🟢 Bullish Engulfing: ${symbol}`,
         body: `${timeframe} Bullish engulfing pattern detected!`,
         tag: `engulf-bull-${symbol}-${timeframe}`,
-      });
+      };
+      await sendPushNotification(sql, userId, notification);
+      await sendSMSNotification(sql, userId, notification);
       alertsSent++;
     }
     if (indicators.engulfing === 'bearish') {
-      await sendPushNotification(sql, userId, {
+      const notification = {
         title: `🔴 Bearish Engulfing: ${symbol}`,
         body: `${timeframe} Bearish engulfing pattern detected!`,
         tag: `engulf-bear-${symbol}-${timeframe}`,
-      });
+      };
+      await sendPushNotification(sql, userId, notification);
+      await sendSMSNotification(sql, userId, notification);
       alertsSent++;
     }
   }
@@ -1014,19 +1058,23 @@ async function checkAllIndicatorAlerts(
   // ========== Hammer/Shooting Star Alerts ==========
   if (alertTypes.includes('hammer_star') && indicators.hammerStar) {
     if (indicators.hammerStar === 'hammer') {
-      await sendPushNotification(sql, userId, {
+      const notification = {
         title: `🟢 Hammer Pattern: ${symbol}`,
         body: `${timeframe} Hammer reversal pattern detected!`,
         tag: `hammer-${symbol}-${timeframe}`,
-      });
+      };
+      await sendPushNotification(sql, userId, notification);
+      await sendSMSNotification(sql, userId, notification);
       alertsSent++;
     }
     if (indicators.hammerStar === 'shooting_star') {
-      await sendPushNotification(sql, userId, {
+      const notification = {
         title: `🔴 Shooting Star: ${symbol}`,
         body: `${timeframe} Shooting star reversal pattern!`,
         tag: `star-${symbol}-${timeframe}`,
-      });
+      };
+      await sendPushNotification(sql, userId, notification);
+      await sendSMSNotification(sql, userId, notification);
       alertsSent++;
     }
   }
