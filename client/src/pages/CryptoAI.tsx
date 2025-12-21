@@ -137,11 +137,6 @@ export default function CryptoAI() {
   const [trackingTradeId, setTrackingTradeId] = useState<string | null>(null); // Currently tracking
   const [activeTab, setActiveTab] = useState('chart'); // Track active tab for chart resize
   
-  // Clear tradeAlerts when symbol or interval changes - require fresh analysis
-  useEffect(() => {
-    setTradeAlerts([]);
-    setMarketInsights(null);
-  }, [symbol, interval]);
   
   const [stats, setStats] = useState({
     cvd: 0,
