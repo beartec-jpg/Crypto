@@ -5,13 +5,13 @@ import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickData, Histogr
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, TrendingUp, Zap, Loader2, ArrowLeft, Settings, Activity, Info, AlertCircle, Target, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, TrendingUp, Zap, Loader2, ArrowLeft, Settings, Activity, Info, AlertCircle, Target, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useQuery } from '@tanstack/react-query';
-import { queryClient } from '@/lib/queryClient';
+import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Link, useLocation } from 'wouter';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -2861,7 +2861,7 @@ export default function CryptoAI() {
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
                             <div className={`px-2 py-1 rounded text-xs font-semibold ${statusBg} ${statusColor}`}>
                               {statusLabel}
                             </div>
@@ -2872,6 +2872,21 @@ export default function CryptoAI() {
                             ) : (
                               <div className="text-sm text-gray-500">--</div>
                             )}
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await apiRequest('DELETE', `/api/crypto/tracked-trades/${trade.id}`);
+                                  refetchTrackedTrades();
+                                } catch (err) {
+                                  console.error('Failed to delete trade:', err);
+                                }
+                              }}
+                              className="p-1 hover:bg-red-500/20 rounded transition-colors"
+                              data-testid={`delete-tracked-trade-${idx}`}
+                              title="Remove trade"
+                            >
+                              <X className="w-4 h-4 text-gray-500 hover:text-red-400" />
+                            </button>
                           </div>
                         </div>
                       );
