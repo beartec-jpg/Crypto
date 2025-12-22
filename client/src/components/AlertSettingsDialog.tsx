@@ -9,7 +9,7 @@ import { Bell, Loader2, MessageSquare, Phone, Send, Eye, Trash2, TrendingUp, Tre
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@clerk/clerk-react';
+import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import type { CryptoPreferences } from '@shared/schema';
 
 interface AlertSettingsDialogProps {
@@ -76,7 +76,7 @@ const ALERT_GRADES = [
 
 export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogProps) {
   const { toast } = useToast();
-  const { getToken } = useAuth();
+  const { getToken } = useCryptoAuth();
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
   const [selectedTimeframes, setSelectedTimeframes] = useState<string[]>([]);
