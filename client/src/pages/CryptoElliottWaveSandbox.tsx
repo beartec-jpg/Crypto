@@ -126,15 +126,24 @@ export default function CryptoElliottWaveSandbox() {
     }
   }, [authReady.ready, isAdminUser, navigate, toast]);
 
-  // Fetch candle data
-  const { data: candles = [], isLoading: candlesLoading } = useQuery<CandleData[]>({
-    queryKey: ['/api/crypto/candles', symbol, timeframe],
+  // Fetch candle data - use same endpoint as main waves page
+  const { data: candleData, isLoading: candlesLoading } = useQuery<{
+    candles: CandleData[];
+    candleCount: number;
+  }>({
+    queryKey: ['/api/crypto/extended-history', symbol, timeframe],
     queryFn: async () => {
-      const response = await authenticatedApiRequest('GET', `/api/crypto/candles?symbol=${symbol}&interval=${timeframe}&limit=500`);
+      const response = await fetch(`/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}&limit=1000`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(error.error || `Failed to fetch history (${response.status})`);
+      }
       return response.json();
     },
     enabled: isDevelopment || (authReady.ready && isAuthenticated),
   });
+  
+  const candles = candleData?.candles || [];
 
   // Fetch ALL labels across all timeframes for Wave Stacking
   const { data: allTimeframeLabels } = useQuery<ElliottWaveLabel[]>({
