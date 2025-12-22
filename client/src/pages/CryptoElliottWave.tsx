@@ -1230,7 +1230,7 @@ function WaveEntryRow({
     <div>
       {/* Entry Row */}
       <div 
-        className={`flex items-center gap-2 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer ${
+        className={`flex items-center gap-2 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 cursor-pointer min-w-max ${
           selectedLabelId === entry.id ? 'bg-cyan-900/20' : ''
         }`}
         style={{ paddingLeft: `${12 + indentPx}px`, paddingRight: '12px' }}
@@ -7812,7 +7812,7 @@ const aiAnalyze = useMutation({
                 
                 {/* Grouped Wave Structures - PURE HIERARCHICAL TREE */}
                 {/* Only render ROOT structures (no parentId), children appear ONLY when parent entry is expanded */}
-                <div className="space-y-3">
+                <div className="space-y-3 overflow-x-auto">
                   {groupedStructures
                     .filter(s => !s.parentId) // Only root structures at top level
                     .map((structure) => {
@@ -7823,7 +7823,7 @@ const aiAnalyze = useMutation({
                       <div key={structure.id} className="rounded-lg border border-slate-700 overflow-hidden">
                         {/* Structure Header Row */}
                         <div 
-                          className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-800/50 transition-all flex-wrap"
+                          className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-800/50 transition-all min-w-max"
                           style={{ backgroundColor: `${degreeColor}15`, borderLeft: `3px solid ${degreeColor}` }}
                           onClick={() => toggleStructure(structure.id)}
                           data-testid={`structure-${structure.id}`}
