@@ -549,22 +549,30 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
             const endsWithinParent = child.endTime <= (parent.endTime + tolerance);
             
             if (startsWithinParent && endsWithinParent) {
-              // Calculate overlap score (0-1): how closely does child match parent's time range?
+              // Calculate overlap score using ACTUAL TIME INTERSECTION
+              // This correctly assigns children to shorter parents (like C) over longer parents (like A)
               const parentDuration = parent.endTime - parent.startTime;
               const childDuration = child.endTime - child.startTime;
               
-              // Score based on: 1) time alignment, 2) duration similarity
-              const childMidpoint = (child.startTime + child.endTime) / 2;
-              const parentMidpoint = (parent.startTime + parent.endTime) / 2;
-              const midpointDistance = Math.abs(childMidpoint - parentMidpoint);
-              const maxDistance = parentDuration / 2;
-              const alignmentScore = maxDistance > 0 ? 1 - (midpointDistance / maxDistance) : 1;
+              // Intersection: how much of the child overlaps with the parent
+              const intersectStart = Math.max(child.startTime, parent.startTime);
+              const intersectEnd = Math.min(child.endTime, parent.endTime);
+              const intersectionDuration = Math.max(0, intersectEnd - intersectStart);
               
-              // Bonus for exact span match (internal structure fills entire parent wave)
-              const startMatch = Math.abs(child.startTime - parent.startTime) < tolerance ? 0.3 : 0;
-              const endMatch = Math.abs(child.endTime - parent.endTime) < tolerance ? 0.3 : 0;
+              // PRIMARY METRIC: What % of the child is covered by this parent?
+              // A child fully inside C will have 100% coverage from C, but only partial from A
+              const childCoverage = childDuration > 0 ? intersectionDuration / childDuration : 0;
               
-              const overlap = alignmentScore + startMatch + endMatch;
+              // SECONDARY METRIC: What % of the parent is filled by the child?
+              // Prefer parents where the child fills a larger portion (tighter fit)
+              const parentFill = parentDuration > 0 ? intersectionDuration / parentDuration : 0;
+              
+              // Bonus for exact boundary matches (internal structure spans entire parent)
+              const startMatch = Math.abs(child.startTime - parent.startTime) < tolerance ? 0.1 : 0;
+              const endMatch = Math.abs(child.endTime - parent.endTime) < tolerance ? 0.1 : 0;
+              
+              // Combined score: prioritize child coverage, then parent fill, then boundary matches
+              const overlap = childCoverage * 1.0 + parentFill * 0.5 + startMatch + endMatch;
               
               if (overlap > bestOverlap) {
                 bestOverlap = overlap;
@@ -7854,7 +7862,8 @@ const aiAnalyze = useMutation({
                 
                 {/* Grouped Wave Structures - PURE HIERARCHICAL TREE */}
                 {/* Only render ROOT structures (no parentId), children appear ONLY when parent entry is expanded */}
-                <div className="space-y-3 overflow-x-auto">
+                <div className="space-y-3 overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  <div className="min-w-[600px]">
                   {groupedStructures
                     .filter(s => !s.parentId) // Only root structures at top level
                     .map((structure) => {
@@ -8285,6 +8294,7 @@ const aiAnalyze = useMutation({
                       </div>
                     );
                   })}
+                  </div>
                 </div>
 
                 <p className="text-xs text-gray-500 text-center mt-2">
