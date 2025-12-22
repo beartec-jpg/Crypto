@@ -5757,6 +5757,128 @@ Return JSON:
 
   // ==================== END FEEDBACK BOARD ROUTES ====================
 
+  // ==================== WAVE STACK AI ANALYSIS (SANDBOX) ====================
+  
+  // AI-powered Wave Stack analysis - sends wave data (not image) to Grok for interpretation
+  // Admin only (beartec@beartec.uk)
+  app.post("/api/crypto/elliott-wave/analyze-stack", requireCryptoAuth, async (req, res) => {
+    try {
+      const { waveEntries, symbol } = req.body;
+      const userEmail = (req as any).user?.email?.toLowerCase() || '';
+      
+      // Admin only access
+      if (userEmail !== ADMIN_EMAIL) {
+        return res.status(403).json({ error: 'This feature is in sandbox mode - admin access only' });
+      }
+      
+      if (!waveEntries || !Array.isArray(waveEntries) || waveEntries.length === 0) {
+        return res.status(400).json({ error: 'Wave entries array is required' });
+      }
+      
+      if (!process.env.XAI_API_KEY) {
+        return res.status(503).json({ error: 'AI analysis service unavailable. Configuration required.' });
+      }
+      
+      console.log(`🤖 Grok Wave Stack Analysis: ${waveEntries.length} entries for ${symbol}...`);
+      
+      // Format wave data for Grok
+      const waveDataFormatted = waveEntries.map((entry: any, idx: number) => ({
+        index: idx + 1,
+        degree: entry.degree,
+        patternType: entry.patternType,
+        waveCount: entry.waveCount,
+        direction: entry.direction,
+        startTime: new Date(entry.startTime * 1000).toISOString().split('T')[0],
+        endTime: new Date(entry.endTime * 1000).toISOString().split('T')[0],
+        startPrice: entry.startPrice?.toFixed(6),
+        endPrice: entry.endPrice?.toFixed(6),
+        priceChange: ((entry.endPrice - entry.startPrice) / entry.startPrice * 100).toFixed(2) + '%',
+      }));
+      
+      const prompt = `You are an Elliott Wave expert analyst. Analyze this wave stack data and determine the correct hierarchical structure.
+
+WAVE STACK DATA for ${symbol}:
+${JSON.stringify(waveDataFormatted, null, 2)}
+
+RULES:
+1. Higher degree waves contain lower degree waves based on TIME OVERLAP
+2. A 5-wave move is either an impulse (motive) or diagonal
+3. A 3-wave move is corrective (ABC, WXY, flat, zigzag)
+4. Wave 2 retraces Wave 1, Wave 4 retraces Wave 3
+5. Internal structures: Impulse waves have 5-3-5-3-5 internals, Corrections have 5-3-5 (zigzag) or 3-3-5 (flat)
+
+ANALYZE:
+1. Which waves are PARENT waves and which are INTERNAL/CHILD waves based on time ranges?
+2. What is the correct labeling for each wave in the hierarchy?
+3. Are there any rule violations?
+4. What wave is likely forming next?
+
+RESPOND IN JSON FORMAT:
+{
+  "hierarchy": [
+    { "entry": 1, "role": "W1 or A", "parent": null, "degree": "Intermediate" },
+    { "entry": 2, "role": "W2 or B", "parent": null, "degree": "Intermediate" },
+    { "entry": 3, "role": "A of W2", "parent": 2, "degree": "Minor" }
+  ],
+  "validation": {
+    "isValid": true,
+    "issues": ["list any rule violations"],
+    "warnings": ["list any concerns"]
+  },
+  "prediction": {
+    "nextWave": "W3 or C",
+    "direction": "up or down",
+    "confidence": 75,
+    "reasoning": "explanation"
+  },
+  "interpretation": "Plain English summary of the wave structure"
+}`;
+
+      const OpenAI = (await import('openai')).default;
+      const xaiClient = new OpenAI({
+        baseURL: 'https://api.x.ai/v1',
+        apiKey: process.env.XAI_API_KEY,
+        timeout: 120000,
+      });
+      
+      const response = await xaiClient.chat.completions.create({
+        model: 'grok-4',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1500,
+        temperature: 0,
+      });
+      
+      const content = response.choices?.[0]?.message?.content || '';
+      console.log(`✅ Grok Wave Stack analysis complete`);
+      
+      // Try to parse JSON from response
+      let analysis;
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          analysis = JSON.parse(jsonMatch[0]);
+        } else {
+          analysis = { raw: content, parseError: 'Could not extract JSON from response' };
+        }
+      } catch (parseErr) {
+        analysis = { raw: content, parseError: 'JSON parse failed' };
+      }
+      
+      res.json({
+        success: true,
+        waveCount: waveEntries.length,
+        symbol,
+        analysis,
+        rawResponse: content,
+      });
+    } catch (error: any) {
+      console.error('Error in Wave Stack AI analysis:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== END WAVE STACK AI ANALYSIS ====================
+
   // Start price monitoring service for tracked trades
   const { priceMonitorService } = await import("./services/priceMonitorService");
   priceMonitorService.start();

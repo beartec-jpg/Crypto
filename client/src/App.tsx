@@ -18,6 +18,7 @@ import CryptoPrivacy from '@/pages/CryptoPrivacy';
 import CryptoTerms from '@/pages/CryptoTerms';
 import CryptoAccount from '@/pages/CryptoAccount';
 import CryptoFeedbackBoard from '@/pages/CryptoFeedbackBoard';
+import CryptoElliottWaveSandbox from '@/pages/CryptoElliottWaveSandbox';
 import NotFound from '@/pages/not-found';
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -65,6 +66,9 @@ function App() {
             </Route>
             <Route path="/crypto/feedback">
               <ProtectedRoute component={CryptoFeedbackBoard} />
+            </Route>
+            <Route path="/waves-sandbox">
+              <ProtectedRoute component={CryptoElliottWaveSandbox} />
             </Route>
             
             <Route component={NotFound} />
