@@ -7862,8 +7862,8 @@ const aiAnalyze = useMutation({
                 
                 {/* Grouped Wave Structures - PURE HIERARCHICAL TREE */}
                 {/* Only render ROOT structures (no parentId), children appear ONLY when parent entry is expanded */}
-                <div className="space-y-3 overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-                  <div className="min-w-[600px]">
+                <div className="space-y-3" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxWidth: '100%' }}>
+                  <div style={{ minWidth: '650px' }}>
                   {groupedStructures
                     .filter(s => !s.parentId) // Only root structures at top level
                     .map((structure) => {
