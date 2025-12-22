@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff, X, Settings, Magnet } from 'lucide-react';
+import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff, X, Settings, Magnet, Sparkles } from 'lucide-react';
 import { useChartGestures, type GesturePoint, type BarData } from '@/hooks/useChartGestures';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -2625,6 +2625,11 @@ export default function CryptoElliottWave() {
   const [savedLabels, setSavedLabels] = useState<ElliottWaveLabel[]>([]);
   const [previewPoint, setPreviewPoint] = useState<{ time: number; price: number } | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<GrokWaveAnalysis | null>(null);
+  const [grokStackAnalysis, setGrokStackAnalysis] = useState<{
+    synopsis: string;
+    tableData: { degree: string; label: string; direction: string; startDate: string; endDate: string; startPrice: string; endPrice: string; pattern: string }[];
+    rawResponse?: string;
+  } | null>(null);
   const [isCapturingChart, setIsCapturingChart] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
@@ -3533,6 +3538,41 @@ const aiAnalyze = useMutation({
       });
     },
 });
+
+  // Grok Stack Analysis mutation (admin only)
+  const grokStackAnalyze = useMutation({
+    mutationFn: async (data: { waveEntries: WaveStackEntry[]; symbol: string }) => {
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze-stack', data);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.success && data.analysis) {
+        const { synopsis, tableData } = data.analysis;
+        setGrokStackAnalysis({
+          synopsis: synopsis || data.analysis.interpretation || 'No interpretation available',
+          tableData: tableData || [],
+          rawResponse: data.rawResponse,
+        });
+        toast({
+          title: 'Grok Stack Analysis Complete',
+          description: `Analyzed ${data.waveCount} waves`,
+        });
+      } else {
+        setGrokStackAnalysis({
+          synopsis: data.analysis?.interpretation || data.rawResponse || 'Analysis complete but no structured data',
+          tableData: [],
+          rawResponse: data.rawResponse,
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Stack Analysis Failed',
+        description: error.message || 'Could not analyze wave stack',
+        variant: 'destructive',
+      });
+    },
+  });
 
   // Refs to hold current state values for click handler (avoids re-creating chart)
   const isDrawingRef = useRef(isDrawing);
@@ -8300,6 +8340,93 @@ const aiAnalyze = useMutation({
                 <p className="text-xs text-gray-500 text-center mt-2">
                   Grouped by degree. Click to expand. {symbol} patterns across all timeframes.
                 </p>
+
+                {/* Grok Stack Analysis - Admin Only */}
+                {isAdmin && (
+                  <div className="mt-6 pt-4 border-t border-slate-700">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium text-purple-400 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4" />
+                        Grok Stack Analysis
+                      </span>
+                      <Button
+                        size="sm"
+                        onClick={() => grokStackAnalyze.mutate({ waveEntries: waveStackEntries, symbol })}
+                        disabled={grokStackAnalyze.isPending || waveStackEntries.length === 0}
+                        className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-xs"
+                        data-testid="grok-analyze-stack"
+                      >
+                        {grokStackAnalyze.isPending ? (
+                          <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing...</>
+                        ) : (
+                          <><Wand2 className="w-3 h-3 mr-1" /> Analyze Stack</>
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* Grok Analysis Results */}
+                    {grokStackAnalysis && (
+                      <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-purple-700/30">
+                        {/* Synopsis */}
+                        <div className="bg-purple-900/20 rounded p-3 border border-purple-600/30">
+                          <p className="text-sm text-gray-200">{grokStackAnalysis.synopsis}</p>
+                        </div>
+
+                        {/* Prediction */}
+                        {grokStackAnalysis.tableData.length > 0 && (() => {
+                          const rawAnalysis = grokStackAnalysis.rawResponse ? JSON.parse(grokStackAnalysis.rawResponse.match(/\{[\s\S]*\}/)?.[0] || '{}') : {};
+                          return rawAnalysis.prediction ? (
+                            <div className="bg-cyan-900/20 rounded p-2 border border-cyan-600/30">
+                              <span className="text-xs text-cyan-400">Next: </span>
+                              <span className="text-xs text-white font-medium">{rawAnalysis.prediction.nextWave}</span>
+                              <span className="text-xs text-gray-400"> ({rawAnalysis.prediction.direction})</span>
+                              <span className="text-xs text-cyan-400 ml-2">{rawAnalysis.prediction.confidence}% conf</span>
+                            </div>
+                          ) : null;
+                        })()}
+
+                        {/* Table by Degree */}
+                        {grokStackAnalysis.tableData.length > 0 && (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-gray-400 border-b border-slate-700">
+                                  <th className="text-left py-1 px-2">Degree</th>
+                                  <th className="text-left py-1 px-2">Label</th>
+                                  <th className="text-left py-1 px-2">Dir</th>
+                                  <th className="text-left py-1 px-2">Start</th>
+                                  <th className="text-left py-1 px-2">End</th>
+                                  <th className="text-right py-1 px-2">Pattern</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {grokStackAnalysis.tableData.map((row, idx) => (
+                                  <tr key={idx} className="border-b border-slate-800 hover:bg-slate-700/30">
+                                    <td className="py-1 px-2 text-purple-300">{row.degree}</td>
+                                    <td className="py-1 px-2 text-cyan-300 font-medium">{row.label}</td>
+                                    <td className={`py-1 px-2 ${row.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+                                      {row.direction === 'up' ? '↑' : '↓'}
+                                    </td>
+                                    <td className="py-1 px-2 text-gray-400">{row.startDate}</td>
+                                    <td className="py-1 px-2 text-gray-400">{row.endDate}</td>
+                                    <td className="py-1 px-2 text-right text-amber-300">{row.pattern}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => setGrokStackAnalysis(null)}
+                          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          Clear results
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">

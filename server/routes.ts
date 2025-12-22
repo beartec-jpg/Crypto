@@ -5807,32 +5807,27 @@ RULES:
 4. Wave 2 retraces Wave 1, Wave 4 retraces Wave 3
 5. Internal structures: Impulse waves have 5-3-5-3-5 internals, Corrections have 5-3-5 (zigzag) or 3-3-5 (flat)
 
-ANALYZE:
-1. Which waves are PARENT waves and which are INTERNAL/CHILD waves based on time ranges?
-2. What is the correct labeling for each wave in the hierarchy?
-3. Are there any rule violations?
-4. What wave is likely forming next?
-
-RESPOND IN JSON FORMAT:
+RESPOND IN EXACTLY THIS JSON FORMAT:
 {
-  "hierarchy": [
-    { "entry": 1, "role": "W1 or A", "parent": null, "degree": "Intermediate" },
-    { "entry": 2, "role": "W2 or B", "parent": null, "degree": "Intermediate" },
-    { "entry": 3, "role": "A of W2", "parent": 2, "degree": "Minor" }
+  "synopsis": "2-3 sentence plain English summary of the current wave structure and what's happening",
+  "tableData": [
+    { "degree": "Intermediate", "label": "1", "direction": "up", "startDate": "2025-01-01", "endDate": "2025-01-15", "startPrice": "2.00", "endPrice": "2.50", "pattern": "impulse" },
+    { "degree": "Minor", "label": "A", "direction": "down", "startDate": "2025-01-15", "endDate": "2025-01-20", "startPrice": "2.50", "endPrice": "2.30", "pattern": "zigzag" }
   ],
-  "validation": {
-    "isValid": true,
-    "issues": ["list any rule violations"],
-    "warnings": ["list any concerns"]
-  },
   "prediction": {
     "nextWave": "W3 or C",
     "direction": "up or down",
     "confidence": 75,
-    "reasoning": "explanation"
-  },
-  "interpretation": "Plain English summary of the wave structure"
-}`;
+    "reasoning": "brief explanation"
+  }
+}
+
+IMPORTANT:
+- tableData must contain one row per wave, grouped by degree (highest first)
+- Use the actual prices and dates from the input data
+- label should be the wave number/letter (1, 2, 3, 4, 5 or A, B, C, W, X, Y)
+- pattern is the pattern type (impulse, diagonal, zigzag, flat, triangle)
+- synopsis should explain the overall structure in plain English`;
 
       const OpenAI = (await import('openai')).default;
       const xaiClient = new OpenAI({
