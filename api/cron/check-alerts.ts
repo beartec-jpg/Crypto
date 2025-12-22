@@ -251,13 +251,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Check if price crossed the line
       let crossed = false;
+      let crossDirection = '';
       if (lastCheckedPrice !== null && Number.isFinite(lastCheckedPrice)) {
         if (lastCheckedPrice < linePrice && currentPrice >= linePrice) {
           crossed = true;
+          crossDirection = 'UP ↑';
           console.log(`📈 Cross UP detected: ${lastCheckedPrice} → ${currentPrice}`);
         }
         if (lastCheckedPrice > linePrice && currentPrice <= linePrice) {
           crossed = true;
+          crossDirection = 'DOWN ↓';
           console.log(`📉 Cross DOWN detected: ${lastCheckedPrice} → ${currentPrice}`);
         }
       } else {
@@ -267,9 +270,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (crossed) {
         console.log(`✅ Alert triggered for ${lineName} at ${linePrice}`);
         
+        // Use 6 decimal places to distinguish between similar price levels
         const notification = {
-          title: `📈 Price Crossing: ${drawing.symbol}`,
-          body: `Price crossing '${lineName}' at $${linePrice.toFixed(4)}. Current: $${currentPrice.toFixed(4)}`,
+          title: `${crossDirection === 'UP ↑' ? '📈' : '📉'} ${drawing.symbol} ${crossDirection}`,
+          body: `'${lineName}' crossed ${crossDirection} at $${linePrice.toFixed(6)}. Current: $${currentPrice.toFixed(6)}`,
           tag: `hline-${drawing.id}`,
         };
         

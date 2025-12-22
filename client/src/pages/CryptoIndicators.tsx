@@ -6527,6 +6527,11 @@ export default function CryptoIndicators() {
         borderVisible: false,
         wickUpColor: '#10b981',
         wickDownColor: '#ef4444',
+        priceFormat: {
+          type: 'price',
+          precision: 6,
+          minMove: 0.000001,
+        },
       });
 
       // Append future whitespace bars to allow drawing on future dates
