@@ -273,7 +273,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Use 6 decimal places to distinguish between similar price levels
         const notification = {
           title: `${crossDirection === 'UP ↑' ? '📈' : '📉'} ${drawing.symbol} ${crossDirection}`,
-          body: `'${lineName}' crossed ${crossDirection} at $${linePrice.toFixed(6)}. Current: $${currentPrice.toFixed(6)}`,
+          body: `'${lineName}' crossed ${crossDirection} at $${linePrice.toFixed(6)}. Current: $${currentPrice.toFixed(6)} 🐻‍❄️`,
           tag: `hline-${drawing.id}`,
         };
         
