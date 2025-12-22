@@ -658,9 +658,10 @@ async function sendSMSNotification(
 
     const smsBody = `${notification.title}\n${notification.body}`;
 
+    // Use alphanumeric sender ID "BearTec" for UK/international recipients
     const message = await client.messages.create({
       body: smsBody,
-      from: twilioCredentials.phoneNumber,
+      from: 'BearTec',
       to: user.phone_number
     });
 

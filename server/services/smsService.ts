@@ -69,9 +69,13 @@ export async function sendSMSAlert(options: SMSAlertOptions): Promise<boolean> {
     const body = options.message || 
       `🔔 ${options.symbol} Alert: ${options.alertType} at $${options.price.toFixed(options.price > 100 ? 2 : 4)}`;
 
+    // Use alphanumeric sender ID "BearTec" for UK/international recipients
+    // Falls back to phone number if alphanumeric fails (e.g., US recipients)
+    const senderId = 'BearTec';
+    
     const message = await client.messages.create({
       body,
-      from: fromNumber,
+      from: senderId,
       to: options.to
     });
 
