@@ -530,20 +530,62 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         // Track how many structures we create at this degree (for displayIndex)
         let structureCount = structures.filter(s => s.degree === currentDegree).length;
         
-        // For each parent WAVE ENTRY, find which lower degree patterns belong to it
-        // This preserves the correct segmentation (Minor A gets its own Minute structure, etc.)
+        // TIME-OVERLAP BASED MATCHING: Find best parent for each child based on overlap
+        // This handles "backward drawing" where internals are drawn after higher degree
+        // Step 1: Build a map of child -> best parent (by overlap score)
+        const childToBestParent: Map<string, { parentIdx: number; overlap: number }> = new Map();
+        
+        for (const child of sortedCurrent) {
+          let bestParentIdx = -1;
+          let bestOverlap = -Infinity; // Allow any valid match, not just positive scores
+          
+          for (let parentIdx = 0; parentIdx < sortedHigher.length; parentIdx++) {
+            const parent = sortedHigher[parentIdx];
+            const tolerance = (parent.endTime - parent.startTime) * 0.05;
+            
+            // Check if child fits within parent
+            const startsWithinParent = child.startTime >= (parent.startTime - tolerance) && 
+                                        child.startTime < parent.endTime;
+            const endsWithinParent = child.endTime <= (parent.endTime + tolerance);
+            
+            if (startsWithinParent && endsWithinParent) {
+              // Calculate overlap score (0-1): how closely does child match parent's time range?
+              const parentDuration = parent.endTime - parent.startTime;
+              const childDuration = child.endTime - child.startTime;
+              
+              // Score based on: 1) time alignment, 2) duration similarity
+              const childMidpoint = (child.startTime + child.endTime) / 2;
+              const parentMidpoint = (parent.startTime + parent.endTime) / 2;
+              const midpointDistance = Math.abs(childMidpoint - parentMidpoint);
+              const maxDistance = parentDuration / 2;
+              const alignmentScore = maxDistance > 0 ? 1 - (midpointDistance / maxDistance) : 1;
+              
+              // Bonus for exact span match (internal structure fills entire parent wave)
+              const startMatch = Math.abs(child.startTime - parent.startTime) < tolerance ? 0.3 : 0;
+              const endMatch = Math.abs(child.endTime - parent.endTime) < tolerance ? 0.3 : 0;
+              
+              const overlap = alignmentScore + startMatch + endMatch;
+              
+              if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestParentIdx = parentIdx;
+              }
+            }
+          }
+          
+          if (bestParentIdx >= 0) {
+            childToBestParent.set(child.id, { parentIdx: bestParentIdx, overlap: bestOverlap });
+          }
+        }
+        
+        // Step 2: Group children by their best parent
         for (let parentIdx = 0; parentIdx < sortedHigher.length; parentIdx++) {
           const parent = sortedHigher[parentIdx];
           
-          // Find lower degree patterns that are truly INTERNAL to this parent wave
-          // Child must START before parent ENDS (not just be "within" the timespan)
-          // This prevents post-completion patterns from being absorbed into the parent
+          // Find children assigned to this parent
           const childPatterns = sortedCurrent.filter(child => {
-            const tolerance = (parent.endTime - parent.startTime) * 0.05;
-            const startsWithinParent = child.startTime >= (parent.startTime - tolerance) && 
-                                        child.startTime < parent.endTime; // Must start BEFORE parent ends
-            const endsWithinParent = child.endTime <= (parent.endTime + tolerance);
-            return startsWithinParent && endsWithinParent;
+            const match = childToBestParent.get(child.id);
+            return match && match.parentIdx === parentIdx;
           });
           
           if (childPatterns.length > 0) {
@@ -582,20 +624,8 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
         }
         
         // Also check for patterns that fall BETWEEN or AFTER parent waves (orphans)
-        // A pattern is only "assigned" if it's truly INTERNAL to a parent wave
-        // (starts BEFORE parent ends and ends within parent's timespan)
-        const assignedIds = new Set<string>();
-        sortedHigher.forEach(parent => {
-          sortedCurrent.forEach(child => {
-            const tolerance = (parent.endTime - parent.startTime) * 0.05;
-            const startsWithinParent = child.startTime >= (parent.startTime - tolerance) && 
-                                        child.startTime < parent.endTime; // Must start BEFORE parent ends
-            const endsWithinParent = child.endTime <= (parent.endTime + tolerance);
-            if (startsWithinParent && endsWithinParent) {
-              assignedIds.add(child.id);
-            }
-          });
-        });
+        // Use the already-computed childToBestParent map for consistency
+        const assignedIds = new Set(childToBestParent.keys());
         
         const orphanPatterns = sortedCurrent.filter(child => !assignedIds.has(child.id));
         
@@ -3020,20 +3050,32 @@ export default function CryptoElliottWave() {
   });
 
   // Convert labels to stack entries for pattern analysis
+  // CRITICAL: Normalize times so startTime is always MIN and endTime is always MAX
+  // This handles "backward drawing" where user draws waves from end to start
   const waveStackEntries: WaveStackEntry[] = (allTimeframeLabels || [])
     .filter(label => label.points && label.points.length >= 2)
-    .map(label => ({
-      id: label.id,
-      timeframe: label.timeframe,
-      degree: label.degree,
-      patternType: label.patternType,
-      waveCount: getWaveCount(label.patternType),
-      direction: getPatternDirection(label.points),
-      startPrice: label.points[0]?.price || 0,
-      endPrice: label.points[label.points.length - 1]?.price || 0,
-      startTime: label.points[0]?.time || 0,
-      endTime: label.points[label.points.length - 1]?.time || 0,
-    }))
+    .map(label => {
+      const times = label.points.map(p => p.time);
+      const prices = label.points.map(p => p.price);
+      const minTime = Math.min(...times);
+      const maxTime = Math.max(...times);
+      // Get prices at the time boundaries (for direction calculation)
+      const priceAtMinTime = label.points.find(p => p.time === minTime)?.price || prices[0];
+      const priceAtMaxTime = label.points.find(p => p.time === maxTime)?.price || prices[prices.length - 1];
+      
+      return {
+        id: label.id,
+        timeframe: label.timeframe,
+        degree: label.degree,
+        patternType: label.patternType,
+        waveCount: getWaveCount(label.patternType),
+        direction: priceAtMaxTime > priceAtMinTime ? 'up' : 'down',
+        startPrice: priceAtMinTime,
+        endPrice: priceAtMaxTime,
+        startTime: minTime,
+        endTime: maxTime,
+      };
+    })
     .sort((a, b) => a.startTime - b.startTime); // Sort by start time
 
   // Analyze the wave stack for patterns
