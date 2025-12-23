@@ -8729,29 +8729,65 @@ const aiAnalyze = useMutation({
                     <Button
                       size="sm"
                       onClick={() => {
-                        // Calculate pivots from visible candles
-                        const pivotsToSend = calculatePivots(candles, 5);
-                        
-                        if (pivotsToSend.length < 3) {
+                        // Get VISIBLE candles only from chart's visible range
+                        if (!chartRef.current) {
                           toast({
-                            title: 'Not enough data',
-                            description: 'Need at least 3 pivot points to analyze patterns',
+                            title: 'Chart not ready',
+                            description: 'Please wait for chart to load',
                             variant: 'destructive',
                           });
                           return;
                         }
                         
-                        // Calculate price range from candles
-                        const prices = candles.map(c => [c.high, c.low]).flat();
+                        const timeScale = chartRef.current.timeScale();
+                        const visibleRange = timeScale.getVisibleRange();
+                        
+                        if (!visibleRange) {
+                          toast({
+                            title: 'Zoom required',
+                            description: 'Please zoom/pan the chart first',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+                        
+                        // Filter candles to only visible ones
+                        const visibleCandles = candles.filter(
+                          c => c.time >= visibleRange.from && c.time <= visibleRange.to
+                        );
+                        
+                        if (visibleCandles.length < 10) {
+                          toast({
+                            title: 'Not enough data',
+                            description: 'Need at least 10 visible candles to analyze',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+                        
+                        // Calculate pivots from VISIBLE candles only
+                        const pivotsToSend = calculatePivots(visibleCandles, 5);
+                        
+                        if (pivotsToSend.length < 3) {
+                          toast({
+                            title: 'Not enough pivots',
+                            description: 'Need at least 3 pivot points. Try zooming out slightly.',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+                        
+                        // Calculate price range from VISIBLE candles only
                         const priceRange = {
-                          high: Math.max(...candles.map(c => c.high)),
-                          low: Math.min(...candles.map(c => c.low)),
-                          start: candles[0]?.close || 0,
-                          end: candles[candles.length - 1]?.close || 0,
+                          high: Math.max(...visibleCandles.map(c => c.high)),
+                          low: Math.min(...visibleCandles.map(c => c.low)),
+                          start: visibleCandles[0]?.close || 0,
+                          end: visibleCandles[visibleCandles.length - 1]?.close || 0,
                         };
                         
                         if (isDevelopment) {
-                          console.log(`📊 Chart Analysis: ${pivotsToSend.length} pivots, price range $${priceRange.low.toFixed(4)} - $${priceRange.high.toFixed(4)}`);
+                          console.log(`📊 Chart Analysis: ${visibleCandles.length} visible candles, ${pivotsToSend.length} pivots`);
+                          console.log(`📊 Price range: $${priceRange.start.toFixed(4)} → $${priceRange.end.toFixed(4)} (high: $${priceRange.high.toFixed(4)}, low: $${priceRange.low.toFixed(4)})`);
                         }
                         
                         chartAnalyze.mutate({ 
@@ -8768,11 +8804,11 @@ const aiAnalyze = useMutation({
                       {chartAnalyze.isPending ? (
                         <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing Chart...</>
                       ) : (
-                        <><BarChart2 className="w-3 h-3 mr-1" /> Analyze Chart Data</>
+                        <><BarChart2 className="w-3 h-3 mr-1" /> Analyze Visible Chart</>
                       )}
                     </Button>
                     <p className="text-xs text-gray-500 mt-1 text-center">
-                      Detect patterns from raw price data (ignores your labels)
+                      Detect patterns from visible candles only (ignores your labels)
                     </p>
 
                     {/* Chart Analysis Results */}
