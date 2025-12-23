@@ -6107,6 +6107,54 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       const highestPivot = pivotHighs[0];
       const lowestPivot = pivotLows[0];
       
+      // CRITICAL: Detect two-phase structures (up move + down move within visible range)
+      // Calculate where the highest/lowest pivots are relative to the time range
+      const sortedByTime = [...pivots].sort((a: any, b: any) => a.time - b.time);
+      const firstPivotTime = sortedByTime[0]?.time || 0;
+      const lastPivotTime = sortedByTime[sortedByTime.length - 1]?.time || 0;
+      const timeRange = lastPivotTime - firstPivotTime;
+      
+      // Determine where the peak/trough occurred in the visible range (0 = start, 1 = end)
+      const highestPivotPosition = timeRange > 0 ? (highestPivot?.time - firstPivotTime) / timeRange : 0.5;
+      const lowestPivotPosition = timeRange > 0 ? (lowestPivot?.time - firstPivotTime) / timeRange : 0.5;
+      
+      // Detect two-phase structure
+      let structureType = 'SIMPLE';
+      let phaseAnalysis = '';
+      
+      // If highest is in middle (not at start or end), we have a two-phase structure
+      if (highestPivotPosition > 0.15 && highestPivotPosition < 0.85) {
+        // Peak is in the middle - likely UP phase followed by DOWN phase
+        const upMovePercent = ((highestPivot.price - priceRange.start) / priceRange.start * 100).toFixed(1);
+        const downMovePercent = ((priceRange.end - highestPivot.price) / highestPivot.price * 100).toFixed(1);
+        structureType = 'TWO_PHASE_UP_THEN_DOWN';
+        phaseAnalysis = `⚠️ TWO-PHASE STRUCTURE DETECTED:
+Phase 1 (UP): Price rose from $${priceRange.start.toFixed(4)} to peak at $${highestPivot.price.toFixed(4)} (+${upMovePercent}%) - This could be an IMPULSE UP or corrective ABC up
+Phase 2 (DOWN): Price fell from peak $${highestPivot.price.toFixed(4)} to $${priceRange.end.toFixed(4)} (${downMovePercent}%) - This could be a CORRECTION or start of new impulse down
+Peak occurred at ${(highestPivotPosition * 100).toFixed(0)}% through the visible range.
+
+DO NOT classify this as a single impulse. Analyze BOTH phases separately:
+1. What pattern fits Phase 1 (the UP move to the peak)?
+2. What pattern fits Phase 2 (the DOWN move from the peak)?`;
+      }
+      
+      // If lowest is in middle, we have DOWN then UP
+      if (lowestPivotPosition > 0.15 && lowestPivotPosition < 0.85 && structureType === 'SIMPLE') {
+        const downMovePercent = ((lowestPivot.price - priceRange.start) / priceRange.start * 100).toFixed(1);
+        const upMovePercent = ((priceRange.end - lowestPivot.price) / lowestPivot.price * 100).toFixed(1);
+        structureType = 'TWO_PHASE_DOWN_THEN_UP';
+        phaseAnalysis = `⚠️ TWO-PHASE STRUCTURE DETECTED:
+Phase 1 (DOWN): Price fell from $${priceRange.start.toFixed(4)} to trough at $${lowestPivot.price.toFixed(4)} (${downMovePercent}%) - This could be an IMPULSE DOWN or corrective ABC down
+Phase 2 (UP): Price rose from trough $${lowestPivot.price.toFixed(4)} to $${priceRange.end.toFixed(4)} (+${upMovePercent}%) - This could be a CORRECTION or start of new impulse up
+Trough occurred at ${(lowestPivotPosition * 100).toFixed(0)}% through the visible range.
+
+DO NOT classify this as a single impulse. Analyze BOTH phases separately:
+1. What pattern fits Phase 1 (the DOWN move to the trough)?
+2. What pattern fits Phase 2 (the UP move from the trough)?`;
+      }
+      
+      console.log(`📊 Structure type: ${structureType}, Peak position: ${(highestPivotPosition * 100).toFixed(0)}%, Trough position: ${(lowestPivotPosition * 100).toFixed(0)}%`);
+      
       // Format pivots for AI
       const pivotSummary = pivots.map((p: any) => ({
         type: p.type,
@@ -6114,16 +6162,18 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
         time: new Date(p.time).toISOString().split('T')[0],
       }));
       
-      const prompt = `You are an Elliott Wave analyst. Analyze these raw price pivot points and identify the BEST FITTING Elliott Wave pattern. Do NOT assume any position in a larger structure - just analyze what you see.
+      const prompt = `You are an Elliott Wave analyst. Analyze these raw price pivot points and identify the BEST FITTING Elliott Wave pattern(s). Do NOT assume any position in a larger structure - just analyze what you see.
 
-=== CRITICAL: OVERALL TREND DIRECTION ===
+=== CRITICAL: STRUCTURE ANALYSIS ===
+${phaseAnalysis ? phaseAnalysis : `Simple structure: Price moved ${overallTrend} from start to end.`}
+
+=== OVERALL MOVEMENT ===
 The price moved from $${priceRange.start.toFixed(4)} to $${priceRange.end.toFixed(4)} (${overallChangePercent}%)
-**OVERALL TREND: ${overallTrend}**
-${overallTrend === 'DOWNTREND' ? '⚠️ This is a DOWNTREND - the price FELL. Consider bearish impulses or corrective patterns DOWN.' : ''}
-${overallTrend === 'UPTREND' ? '⚠️ This is an UPTREND - the price ROSE. Consider bullish impulses or corrective patterns UP.' : ''}
+Overall net direction: ${overallTrend}
+${structureType !== 'SIMPLE' ? `⚠️ WARNING: This is NOT a simple one-directional move! See structure analysis above.` : ''}
 
-Highest Pivot: $${highestPivot?.price?.toFixed(4) || 'N/A'} on ${highestPivot ? new Date(highestPivot.time).toISOString().split('T')[0] : 'N/A'}
-Lowest Pivot: $${lowestPivot?.price?.toFixed(4) || 'N/A'} on ${lowestPivot ? new Date(lowestPivot.time).toISOString().split('T')[0] : 'N/A'}
+Highest Pivot: $${highestPivot?.price?.toFixed(4) || 'N/A'} on ${highestPivot ? new Date(highestPivot.time).toISOString().split('T')[0] : 'N/A'} (at ${(highestPivotPosition * 100).toFixed(0)}% through visible range)
+Lowest Pivot: $${lowestPivot?.price?.toFixed(4) || 'N/A'} on ${lowestPivot ? new Date(lowestPivot.time).toISOString().split('T')[0] : 'N/A'} (at ${(lowestPivotPosition * 100).toFixed(0)}% through visible range)
 
 === PRICE DATA ===
 Symbol: ${symbol}
@@ -6161,44 +6211,50 @@ CORRECTIVE (counter-trend):
 
 === RESPOND IN THIS JSON FORMAT ===
 {
-  "synopsis": "2-3 sentence summary of what you see in the price action",
+  "synopsis": "2-3 sentence summary describing EACH PHASE if a two-phase structure was detected. For example: 'Phase 1 shows a 5-wave impulse up to the peak. Phase 2 shows an overlapping correction down, likely a zigzag ABC.'",
   
-  "bestFitPattern": "Name of the best fitting pattern (e.g., 'Impulse', 'Zigzag ABC', 'Expanded Flat', 'Triangle ABCDE')",
+  "bestFitPattern": "For two-phase: describe both (e.g., 'Impulse UP (Phase 1) + Zigzag DOWN (Phase 2)'). For single phase: just the pattern name.",
   "confidence": 75,
-  "direction": "up or down or sideways",
+  "direction": "For two-phase: describe current phase direction. For single: overall direction.",
+  
+  "phase1Pattern": "Only for two-phase structures: Pattern of Phase 1 (e.g., 'Impulse 5-wave UP' or 'Zigzag ABC DOWN')",
+  "phase2Pattern": "Only for two-phase structures: Pattern of Phase 2 (e.g., 'Zigzag ABC correction' or 'Impulse DOWN')",
   
   "possiblePatterns": [
-    { "pattern": "Impulse (incomplete)", "probability": 60, "reasoning": "Clear 5-wave structure emerging with Wave 3 as longest" },
-    { "pattern": "Zigzag ABC", "probability": 25, "reasoning": "Could be sharp correction if we're in larger downtrend" },
-    { "pattern": "Leading Diagonal", "probability": 15, "reasoning": "Wave 1 & 4 overlap suggests diagonal possibility" }
+    { "pattern": "Phase 1: Impulse UP + Phase 2: Zigzag ABC", "probability": 60, "reasoning": "Clear 5-wave impulse to peak, now retracing in ABC" },
+    { "pattern": "Phase 1: Leading Diagonal + Phase 2: Sharp correction", "probability": 25, "reasoning": "Wave 1/4 overlap in up move, now correcting" },
+    { "pattern": "Entire range: Double Zigzag WXY", "probability": 15, "reasoning": "If both phases are corrective, could be WXY structure" }
   ],
   
   "possibleOutcomes": [
-    { "scenario": "If Impulse: completing Wave 5", "nextMove": "Expect correction (ABC) to follow", "targets": ["$2.50", "$2.20"] },
-    { "scenario": "If Zigzag: Wave C completing", "nextMove": "Expect reversal up for new impulse", "targets": ["$3.00", "$3.50"] },
-    { "scenario": "If Wave 4 of Impulse", "nextMove": "One more wave up (Wave 5) expected", "targets": ["$2.80", "$3.20"] }
+    { "scenario": "If Phase 2 is ABC correction", "nextMove": "Expect new impulse up after C completes", "targets": ["$2.50", "$3.00"] },
+    { "scenario": "If Phase 2 is start of new impulse down", "nextMove": "More downside expected", "targets": ["$1.50", "$1.20"] },
+    { "scenario": "If Wave 4 of larger structure", "nextMove": "One more wave expected in trend direction", "targets": ["$2.80", "$3.20"] }
   ],
   
   "fibonacciLevels": [
-    { "level": "38.2% retracement", "price": 2.15, "significance": "Wave 4 support if impulse" },
-    { "level": "61.8% retracement", "price": 1.95, "significance": "Deep correction support" },
-    { "level": "161.8% extension", "price": 3.25, "significance": "Wave 3 or 5 target" }
+    { "level": "38.2% retracement of Phase 1", "price": 2.15, "significance": "Shallow correction support" },
+    { "level": "61.8% retracement of Phase 1", "price": 1.95, "significance": "Deep correction support" },
+    { "level": "100% extension for Phase 2", "price": 1.50, "significance": "If C = A in zigzag" }
   ],
   
   "waveLabeling": [
-    { "pivotIndex": 0, "suggestedLabel": "0 or start", "price": 0.50 },
-    { "pivotIndex": 3, "suggestedLabel": "1 or A", "price": 1.20 },
-    { "pivotIndex": 5, "suggestedLabel": "2 or B", "price": 0.85 }
+    { "pivotIndex": 0, "suggestedLabel": "0 or start of Phase 1", "price": 0.50 },
+    { "pivotIndex": 8, "suggestedLabel": "5 or A (end of Phase 1 / peak)", "price": 3.66 },
+    { "pivotIndex": 12, "suggestedLabel": "A or 1 of Phase 2", "price": 2.80 }
   ]
 }
 
-CRITICAL: 
-- The "direction" field MUST match the OVERALL TREND (if price fell overall, direction = "down")
-- If price fell from high to low, this is a DOWNTREND - consider bearish impulses or corrections moving DOWN
-- If price rose from low to high, this is an UPTREND - consider bullish impulses or corrections moving UP
-- Do NOT assume this is part of a larger structure
-- Consider ALL pattern types equally based on the price relationships
-- Rank possibilities by probability based on Fibonacci relationships and rule compliance`;
+CRITICAL FOR TWO-PHASE STRUCTURES:
+- If the peak/trough is in the MIDDLE of the visible range, you MUST analyze BOTH phases separately
+- Do NOT call the entire visible range a single "impulse down" when there was clearly an UP move first
+- The synopsis MUST describe what happened in Phase 1 AND Phase 2
+- Consider: Was Phase 1 an impulse? A diagonal? A correction? Then what is Phase 2?
+
+CRITICAL FOR SINGLE-PHASE STRUCTURES:
+- If price moved mostly in one direction, analyze as a single pattern
+- The "direction" field MUST match the price movement direction
+- Consider impulses, diagonals, and corrections based on wave structure`;
 
       const OpenAI = (await import('openai')).default;
       const xaiClient = new OpenAI({
