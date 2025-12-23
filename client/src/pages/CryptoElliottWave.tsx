@@ -2630,16 +2630,8 @@ export default function CryptoElliottWave() {
     tableData: { degree: string; label: string; direction: string; startDate: string; endDate: string; startPrice: string; endPrice: string; pattern: string }[];
     rawResponse?: string;
   } | null>(null);
-  // Selected wave for scoped AI analysis
-  const [selectedWaveForAnalysis, setSelectedWaveForAnalysis] = useState<{
-    id: string;
-    degree: string;
-    label: string;
-    startTime: number;
-    endTime: number;
-    startPrice: number;
-    endPrice: number;
-  } | null>(null);
+  // Derive selected wave for AI analysis from the table's selectedLabelId
+  // Instead of separate state, we use the existing selection mechanism
   const [isCapturingChart, setIsCapturingChart] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
@@ -3470,7 +3462,11 @@ export default function CryptoElliottWave() {
 
   // Calculate validation instantly on client side (no API call)
   // Use current points if drawing, or selected saved label's points if in selection mode
-  const selectedLabel = selectedLabelId ? savedLabels.find(l => l.id === selectedLabelId) : null;
+  // Also check allTimeframeLabels for cross-timeframe selections from wave table
+  const selectedLabel = selectedLabelId 
+    ? (savedLabels.find(l => l.id === selectedLabelId) || 
+       (allTimeframeLabels || []).find(l => l.id === selectedLabelId))
+    : null;
   const validationPoints = currentPoints.length >= 3 
     ? currentPoints 
     : (selectedLabel?.points || []);
@@ -8393,95 +8389,93 @@ const aiAnalyze = useMutation({
                       </span>
                     </div>
                     
-                    {/* Wave Selector */}
-                    <div className="mb-3 space-y-2">
-                      <p className="text-xs text-gray-400">Select wave to analyze:</p>
-                      <div className="flex flex-wrap gap-1">
-                        <button
-                          onClick={() => setSelectedWaveForAnalysis(null)}
-                          className={`text-xs px-2 py-1 rounded border transition-colors ${
-                            !selectedWaveForAnalysis 
-                              ? 'bg-purple-600 border-purple-500 text-white' 
-                              : 'bg-slate-700 border-slate-600 text-gray-300 hover:bg-slate-600'
-                          }`}
-                          data-testid="button-scope-wave-full"
-                        >
-                          Full Stack
-                        </button>
-                        {waveStackEntries.map((entry, idx) => (
-                          <button
-                            key={entry.id}
-                            onClick={() => setSelectedWaveForAnalysis({
-                              id: entry.id,
-                              degree: entry.degree,
-                              label: `${entry.patternType} ${entry.waveCount}`,
-                              startTime: entry.startTime,
-                              endTime: entry.endTime,
-                              startPrice: entry.startPrice,
-                              endPrice: entry.endPrice,
-                            })}
-                            className={`text-xs px-2 py-1 rounded border transition-colors ${
-                              selectedWaveForAnalysis?.id === entry.id
-                                ? 'bg-cyan-600 border-cyan-500 text-white' 
-                                : 'bg-slate-700 border-slate-600 text-gray-300 hover:bg-slate-600'
-                            }`}
-                            data-testid={`button-scope-wave-${idx + 1}`}
-                          >
-                            #{idx + 1} {entry.degree.slice(0, 3)} {entry.patternType === 'impulse' ? '↑' : '↓'}
-                          </button>
-                        ))}
-                      </div>
-                      {selectedWaveForAnalysis && (
-                        <div className="text-xs bg-cyan-900/30 border border-cyan-700/50 rounded p-2">
-                          <span className="text-cyan-400">Analyzing: </span>
-                          <span className="text-white font-medium">{selectedWaveForAnalysis.degree} {selectedWaveForAnalysis.label}</span>
-                          <span className="text-gray-400 ml-2">
-                            ${selectedWaveForAnalysis.startPrice.toFixed(4)} → ${selectedWaveForAnalysis.endPrice.toFixed(4)}
-                          </span>
+                    {/* Selected Wave Info - derived from table selection */}
+                    {(() => {
+                      const selectedEntry = selectedLabelId ? waveStackEntries.find(e => e.id === selectedLabelId) : null;
+                      return (
+                        <div className="mb-3 space-y-2">
+                          <p className="text-xs text-gray-400">
+                            {selectedEntry ? 'Selected wave from table:' : 'Click a wave row above to scope analysis, or analyze full stack:'}
+                          </p>
+                          {selectedEntry ? (
+                            <div className="text-xs bg-cyan-900/30 border border-cyan-700/50 rounded p-2 flex items-center justify-between">
+                              <div>
+                                <span className="text-cyan-400">Analyzing: </span>
+                                <span className="text-white font-medium">{selectedEntry.degree} {selectedEntry.patternType} {selectedEntry.waveCount}</span>
+                                <span className="text-gray-400 ml-2">
+                                  ${selectedEntry.startPrice.toFixed(4)} → ${selectedEntry.endPrice.toFixed(4)}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => setSelectedLabelId(null)}
+                                className="text-xs text-gray-400 hover:text-white px-2"
+                                data-testid="button-clear-wave-selection"
+                              >
+                                ✕ Clear
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-xs bg-purple-900/30 border border-purple-700/50 rounded p-2">
+                              <span className="text-purple-400">Mode: </span>
+                              <span className="text-white font-medium">Full Stack Analysis</span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()}
                     
                     <Button
                       size="sm"
                       onClick={() => {
+                        // Derive selected wave from table selection
+                        const selectedWave = selectedLabelId ? waveStackEntries.find(e => e.id === selectedLabelId) : null;
+                        
                         let pivotsToSend = calculatePivots(candles, 5);
                         let entriesToSend = waveStackEntries;
                         let priorWaveContext = null;
+                        let scopedWaveInfo = null;
                         
-                        // If a specific wave is selected, scope the analysis
-                        if (selectedWaveForAnalysis) {
-                          // Add tolerance for time comparisons (5% of wave duration)
-                          const waveDuration = selectedWaveForAnalysis.endTime - selectedWaveForAnalysis.startTime;
-                          const timeTolerance = waveDuration * 0.05;
+                        // If a specific wave is selected via table click, scope the analysis
+                        if (selectedWave) {
+                          scopedWaveInfo = {
+                            id: selectedWave.id,
+                            degree: selectedWave.degree,
+                            label: `${selectedWave.patternType} ${selectedWave.waveCount}`,
+                            startTime: selectedWave.startTime,
+                            endTime: selectedWave.endTime,
+                            startPrice: selectedWave.startPrice,
+                            endPrice: selectedWave.endPrice,
+                          };
+                          
+                          // Use generous tolerance for time comparisons (10% of wave duration)
+                          const waveDuration = selectedWave.endTime - selectedWave.startTime;
+                          const timeTolerance = waveDuration * 0.1;
                           
                           // Filter pivots to only those within the selected wave's time range
                           pivotsToSend = pivotsToSend.filter(p => 
-                            p.time >= (selectedWaveForAnalysis.startTime - timeTolerance) && 
-                            p.time <= (selectedWaveForAnalysis.endTime + timeTolerance)
+                            p.time >= (selectedWave.startTime - timeTolerance) && 
+                            p.time <= (selectedWave.endTime + timeTolerance)
                           );
                           
-                          // Filter entries to sub-waves: must be DIFFERENT from selected wave
-                          // AND have start/end times that fall within the selected wave's range (with tolerance)
+                          // Filter entries to sub-waves: INCLUSIVE approach
+                          // Include any wave that OVERLAPS with the selected wave's time range
+                          // This catches child waves even with slightly snapped points
                           entriesToSend = waveStackEntries.filter(e => {
-                            if (e.id === selectedWaveForAnalysis.id) return false;
-                            // Check if this entry falls within the selected wave's time range
-                            return e.startTime >= (selectedWaveForAnalysis.startTime - timeTolerance) &&
-                                   e.endTime <= (selectedWaveForAnalysis.endTime + timeTolerance);
+                            if (e.id === selectedWave.id) return false;
+                            // Include if there's ANY overlap with the selected wave's range
+                            const overlapStart = Math.max(e.startTime, selectedWave.startTime - timeTolerance);
+                            const overlapEnd = Math.min(e.endTime, selectedWave.endTime + timeTolerance);
+                            return overlapEnd > overlapStart; // Has overlap
                           });
                           
                           // Include the selected wave itself at the start
-                          const selectedEntry = waveStackEntries.find(e => e.id === selectedWaveForAnalysis.id);
-                          if (selectedEntry) {
-                            entriesToSend = [selectedEntry, ...entriesToSend];
-                          }
+                          entriesToSend = [selectedWave, ...entriesToSend];
                           
                           // Find prior wave for context - look for same degree wave that ends before this one starts
-                          // Find waves at same degree level that end before this one
                           const sameDegreeWaves = waveStackEntries.filter(e => 
-                            e.id !== selectedWaveForAnalysis.id &&
-                            e.degree === selectedWaveForAnalysis.degree &&
-                            e.endTime <= selectedWaveForAnalysis.startTime + timeTolerance
+                            e.id !== selectedWave.id &&
+                            e.degree === selectedWave.degree &&
+                            e.endTime <= selectedWave.startTime + timeTolerance
                           ).sort((a, b) => b.endTime - a.endTime); // Most recent first
                           
                           if (sameDegreeWaves.length > 0) {
@@ -8499,7 +8493,7 @@ const aiAnalyze = useMutation({
                         }
                         
                         if (isDevelopment) {
-                          console.log(`🔍 Analysis scope: ${selectedWaveForAnalysis ? selectedWaveForAnalysis.degree + ' ' + selectedWaveForAnalysis.label : 'Full Stack'}`);
+                          console.log(`🔍 Analysis scope: ${scopedWaveInfo ? scopedWaveInfo.degree + ' ' + scopedWaveInfo.label : 'Full Stack'}`);
                           console.log(`🔍 Pivots: ${pivotsToSend.length}, Entries: ${entriesToSend.length}`);
                           if (priorWaveContext) console.log(`🔍 Prior wave context:`, priorWaveContext);
                         }
@@ -8508,7 +8502,7 @@ const aiAnalyze = useMutation({
                           waveEntries: entriesToSend, 
                           symbol, 
                           pivots: pivotsToSend,
-                          scopedWave: selectedWaveForAnalysis,
+                          scopedWave: scopedWaveInfo,
                           priorWaveContext,
                         });
                       }}
@@ -8519,7 +8513,7 @@ const aiAnalyze = useMutation({
                       {grokStackAnalyze.isPending ? (
                         <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing...</>
                       ) : (
-                        <><Wand2 className="w-3 h-3 mr-1" /> {selectedWaveForAnalysis ? `Analyze ${selectedWaveForAnalysis.degree.slice(0, 3)}` : 'Analyze Full Stack'}</>
+                        <><Wand2 className="w-3 h-3 mr-1" /> {selectedLabelId && waveStackEntries.find(e => e.id === selectedLabelId) ? `Analyze ${waveStackEntries.find(e => e.id === selectedLabelId)?.degree.slice(0, 3)}` : 'Analyze Full Stack'}</>
                       )}
                     </Button>
 
@@ -8659,6 +8653,43 @@ const aiAnalyze = useMutation({
                                 ))}
                               </tbody>
                             </table>
+                          </div>
+                        )}
+
+                        {/* Suggested Sub-Waves - For scoped analysis with no sub-waves */}
+                        {rawAnalysis.suggestedSubWaves && rawAnalysis.suggestedSubWaves.length > 0 && (
+                          <div className="overflow-x-auto">
+                            <p className="text-xs font-medium text-orange-400 mb-1 flex items-center gap-2">
+                              <Sparkles className="w-3 h-3" />
+                              Suggested Sub-Waves:
+                            </p>
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-gray-400 border-b border-slate-700">
+                                  <th className="text-left py-1 px-1">Label</th>
+                                  <th className="text-left py-1 px-1">Deg</th>
+                                  <th className="text-left py-1 px-1">Type</th>
+                                  <th className="text-left py-1 px-1">Dir</th>
+                                  <th className="text-right py-1 px-1">Start $</th>
+                                  <th className="text-right py-1 px-1">End $</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rawAnalysis.suggestedSubWaves.map((s: any, idx: number) => (
+                                  <tr key={idx} className="border-b border-slate-800 bg-orange-900/10">
+                                    <td className="py-1 px-1 text-orange-300 font-medium">{s.label}</td>
+                                    <td className="py-1 px-1 text-purple-300">{s.degree}</td>
+                                    <td className="py-1 px-1 text-gray-300">{s.type}</td>
+                                    <td className={`py-1 px-1 ${s.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+                                      {s.direction === 'up' ? '↑' : '↓'}
+                                    </td>
+                                    <td className="py-1 px-1 text-right font-mono text-gray-300">${parseFloat(s.startPrice || 0).toFixed(4)}</td>
+                                    <td className="py-1 px-1 text-right font-mono text-gray-300">${parseFloat(s.endPrice || 0).toFixed(4)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            <p className="text-[10px] text-gray-500 mt-1 italic">These are AI suggestions based on pivot data. Draw patterns to add them to your wave stack.</p>
                           </div>
                         )}
 

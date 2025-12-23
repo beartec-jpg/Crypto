@@ -5872,12 +5872,26 @@ Return JSON:
         date: new Date(p.time * 1000).toISOString().slice(0, 16),
       }));
       
+      // Determine if scoped analysis has no sub-waves (only 1 entry = the parent wave)
+      const hasNoSubWaves = scopedWave && waveEntries.length === 1;
+      
       // Build context sections based on analysis mode
       const scopedWaveSection = scopedWave ? `
 === SCOPED ANALYSIS MODE ===
 You are analyzing a SPECIFIC wave segment: ${scopedWave.degree} ${scopedWave.label}
 Price range: ${scopedWave.startPrice} → ${scopedWave.endPrice}
-Focus on finding/validating SUB-WAVES within this structure.
+${hasNoSubWaves ? `
+**NO SUB-WAVES EXIST YET** - Your MAIN task is to suggest sub-wave structure based on the pivot points!
+
+For this wave, analyze the pivots and propose:
+1. If it looks like an impulse: suggest 5 sub-waves (Minor 1-2-3-4-5 or Minute i-ii-iii-iv-v)
+2. If it looks corrective: suggest 3 sub-waves (A-B-C or W-X-Y)
+
+Include in "suggestedSubWaves" array with specific:
+- Price levels for each sub-wave (from pivot data)
+- The degree level (one lower than ${scopedWave.degree})
+- Whether each is motive or corrective
+` : 'Focus on validating existing SUB-WAVES within this structure.'}
 ${priorWaveContext ? `
 PRIOR WAVE CONTEXT (the wave before this one):
 - Degree: ${priorWaveContext.degree}
@@ -5945,6 +5959,11 @@ Within each degree level:
     { "uiIndex": 1, "degree": "Intermediate", "label": "1/A", "direction": "up", "startPrice": 0.50, "endPrice": 2.90, "status": "OK" },
     { "uiIndex": 2, "degree": "Intermediate", "label": "2/B", "direction": "down", "startPrice": 2.90, "endPrice": 1.80, "status": "OK" },
     { "uiIndex": 5, "degree": "Minor", "label": "Y", "direction": "down", "startPrice": 2.50, "endPrice": 2.10, "status": "REVIEW", "reason": "Deep retracement" }
+  ],
+  
+  "suggestedSubWaves": [
+    { "label": "1", "degree": "Minor", "type": "motive", "direction": "up", "startPrice": 0.46, "endPrice": 1.20, "startDate": "2024-11-01", "endDate": "2024-11-15", "reasoning": "First impulsive move from the low" },
+    { "label": "2", "degree": "Minor", "type": "corrective", "direction": "down", "startPrice": 1.20, "endPrice": 0.85, "startDate": "2024-11-15", "endDate": "2024-11-22", "reasoning": "50% retracement of wave 1" }
   ],
   
   "prediction": {
