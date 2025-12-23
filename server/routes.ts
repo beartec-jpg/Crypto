@@ -5843,9 +5843,9 @@ IMPORTANT:
         timeout: 120000,
       });
       
-      console.log(`🤖 Calling xAI API with grok-4 model...`);
+      console.log(`🤖 Calling xAI API with grok-3-beta model...`);
       const response = await xaiClient.chat.completions.create({
-        model: 'grok-4',
+        model: 'grok-3-beta',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 1500,
         temperature: 0,
