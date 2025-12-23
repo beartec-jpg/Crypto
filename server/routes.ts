@@ -5825,108 +5825,115 @@ Return JSON:
         .filter((p: any) => p.type === 'L')
         .map((p: any) => `PL ${new Date(p.time * 1000).toISOString().slice(0, 16)} @ ${p.price?.toFixed(6)}`);
       
-      // Build hierarchical structure - waves are ordered from highest degree to lowest
-      // Each lower degree wave is a SUB-WAVE of the most recent higher degree wave that contains it
+      // Build hierarchical structure with stable uiIndex for cross-referencing
       const degreeOrder = ['Grand Super Cycle', 'Super Cycle', 'Cycle', 'Primary', 'Intermediate', 'Minor', 'Minute', 'Minuette', 'Sub-Minuette'];
       
-      // Add parent context to each wave
-      const wavesWithHierarchy = waveDataFormatted.map((wave: any, idx: number) => {
+      // Add uiIndex (1-based, matching frontend table) and parent links
+      const wavesWithIndex = waveDataFormatted.map((wave: any, idx: number) => {
         const waveDegreeIdx = degreeOrder.indexOf(wave.degree);
-        // Find the most recent higher-degree wave that contains this wave's time range
-        let parentWave = null;
+        let parentIndex: number | null = null;
+        
         for (let i = idx - 1; i >= 0; i--) {
           const candidateParent = waveDataFormatted[i];
           const parentDegreeIdx = degreeOrder.indexOf(candidateParent.degree);
-          // Must be higher degree (lower index) and time range must overlap
           if (parentDegreeIdx < waveDegreeIdx) {
             const parentStart = new Date(candidateParent.startTime).getTime();
             const parentEnd = new Date(candidateParent.endTime).getTime();
             const waveStart = new Date(wave.startTime).getTime();
             const waveEnd = new Date(wave.endTime).getTime();
             if (waveStart >= parentStart && waveEnd <= parentEnd) {
-              parentWave = `${candidateParent.degree} ${candidateParent.patternType} (index ${i + 1})`;
+              parentIndex = i + 1; // 1-based index
               break;
             }
           }
         }
-        return { ...wave, parentWave };
+        return { 
+          uiIndex: idx + 1, // 1-based index matching frontend table
+          parentIndex,
+          degree: wave.degree,
+          userLabel: wave.patternType, // User's label (impulse, correction, etc)
+          waveCount: wave.waveCount,
+          direction: wave.direction,
+          startPrice: wave.startPrice,
+          endPrice: wave.endPrice,
+          percentChange: wave.percentChange,
+          durationHours: wave.durationHours,
+          startTime: wave.startTime,
+          endTime: wave.endTime,
+        };
       });
       
-      const prompt = `You are a CRITICAL Elliott Wave expert analyst. Your job is to AUDIT the user's wave labels and find ERRORS, not just agree with them.
+      // Create pivot summary with price levels
+      const pivotSummary = (pivots || []).slice(0, 30).map((p: any, i: number) => ({
+        seq: i + 1,
+        type: p.type,
+        price: parseFloat(p.price?.toFixed(6)),
+        date: new Date(p.time * 1000).toISOString().slice(0, 16),
+      }));
+      
+      const prompt = `You are an Elliott Wave analyst. Your job is to analyze PRICE POINTS and determine the best wave structure, then compare to the user's labels.
 
-IMPORTANT - DEGREE HIERARCHY:
-Elliott Wave uses nested degrees. Lower degree waves are SUB-WAVES inside higher degree waves.
-Degree hierarchy (highest to lowest): Grand Super Cycle > Super Cycle > Cycle > Primary > Intermediate > Minor > Minute > Minuette > Sub-Minuette
+IMPORTANT: Focus on PRICE RELATIONSHIPS and STRUCTURE, not label terminology. "Impulse" inside a correction is the C-wave - that's valid! Don't flag terminology.
 
-The "parentWave" field shows which higher-degree wave contains each sub-wave.
-Example: If Intermediate 2/B is a correction, and Minor W-X-Y waves have parentWave="Intermediate correction (index 2)", 
-then W, X, Y are the INTERNAL structure of that Intermediate 2 correction - NOT separate impulse waves!
+=== STEP 1: ANALYZE PIVOT POINTS ===
+Review these swing highs (H) and lows (L) to understand the price structure:
+${JSON.stringify(pivotSummary, null, 2)}
 
-WAVE DATA for ${symbol} (with hierarchy):
-${JSON.stringify(wavesWithHierarchy, null, 2)}
+=== STEP 2: USER'S WAVE STACK ===
+Each wave has a uiIndex (for reference), parentIndex (which higher wave contains it), and user's label.
+${JSON.stringify(wavesWithIndex, null, 2)}
 
-WAVES GROUPED BY DEGREE:
-${JSON.stringify(wavesByDegree, null, 2)}
+=== YOUR ANALYSIS PROCESS ===
+A) FIRST: Look at the raw price points (startPrice, endPrice, pivots) and determine what wave structure BEST FITS the data
+B) THEN: Map your analysis to the uiIndex numbers so results can be cross-referenced
+C) COMPARE: Your best-fit structure vs user's labels - note where they align and where they differ
+D) REPORT: Focus on PRICE RELATIONSHIP issues (Fib ratios, overlaps, rule violations), not terminology
 
-PIVOT HIGHS (PH = date @ high price):
-${pivotHighs.length > 0 ? pivotHighs.slice(0, 50).join('\n') : 'None'}
+=== ELLIOTT WAVE RULES TO CHECK ===
+Within each degree level:
+- Wave 2 cannot retrace >100% of Wave 1
+- Wave 3 cannot be shortest (of 1, 3, 5)
+- Wave 4 cannot overlap Wave 1 territory (except diagonals)
+- Common retracements: W2 = 50-78.6% of W1, W4 = 23.6-50% of W3
+- Common extensions: W3 = 1.618x W1, W5 = W1 or 0.618x W1-3
 
-PIVOT LOWS (PL = date @ low price):
-${pivotLows.length > 0 ? pivotLows.slice(0, 50).join('\n') : 'None'}
-
-Use the pivot data to verify if the user's wave endpoints align with actual swing highs/lows.
-
-CRITICAL: Analyze each degree level SEPARATELY. Don't mix degrees!
-- Check Intermediate waves against other Intermediate waves only
-- Check Minor waves (within their parent) against other Minor waves within that same parent
-- A Minor W-X-Y inside Intermediate 2 is CORRECTIVE structure, not an impulse!
-
-YOUR TASK - CRITICAL ANALYSIS:
-1. CHECK each wave against Elliott Wave rules
-2. CALCULATE Fibonacci ratios between waves (W2 vs W1, W3 vs W1, W4 vs W3, W5 vs W1-3)
-3. IDENTIFY rule violations
-4. SUGGEST corrections where rules are broken
-
-ELLIOTT WAVE RULES TO CHECK:
-- Wave 2 CANNOT retrace more than 100% of Wave 1
-- Wave 3 CANNOT be the shortest of waves 1, 3, and 5
-- Wave 4 CANNOT enter Wave 1 territory (except in diagonals)
-- Wave 3 typically extends to 1.618x or 2.618x of Wave 1
-- Wave 2 typically retraces 50%, 61.8%, or 78.6% of Wave 1
-- Wave 4 typically retraces 23.6%, 38.2%, or 50% of Wave 3
-- Wave 5 typically equals Wave 1 or extends to 0.618x or 1.618x of Wave 1-3
-- Alternation: If W2 is sharp (zigzag), W4 should be sideways (flat/triangle) and vice versa
-- Impulse internals: 5-3-5-3-5 (waves 1,3,5 are motive, 2,4 are corrective)
-- Diagonal internals: 3-3-3-3-3 (all waves are corrective)
-
-RESPOND IN EXACTLY THIS JSON FORMAT:
+=== RESPOND IN THIS JSON FORMAT ===
 {
-  "synopsis": "2-3 sentence summary of what you found, including any issues",
-  "ruleViolations": [
-    { "wave": "W2", "degree": "Minor", "rule": "Wave 2 retraced 105% of Wave 1", "severity": "CRITICAL", "suggestion": "This may not be Wave 2 - consider relabeling as part of Wave 1 extension" },
-    { "wave": "W3", "degree": "Minor", "rule": "Wave 3 is shorter than Wave 1", "severity": "CRITICAL", "suggestion": "Wave 3 cannot be shortest - consider if this is Wave 3 or still Wave 1" }
+  "synopsis": "2-3 sentence summary of your analysis",
+  
+  "aiBestFit": [
+    { "uiIndex": 1, "degree": "Intermediate", "suggestedLabel": "1 (motive)", "direction": "up", "reasoning": "Clear 5-wave impulse structure" },
+    { "uiIndex": 2, "degree": "Intermediate", "suggestedLabel": "2 (corrective)", "direction": "down", "reasoning": "61.8% retracement of wave 1" }
   ],
+  
+  "comparison": [
+    { "uiIndex": 1, "userLabel": "impulse 1/A", "aiLabel": "1 (motive)", "match": true, "note": "Agree on structure" },
+    { "uiIndex": 3, "userLabel": "impulse W", "aiLabel": "W of WXY", "match": true, "note": "Terminology differs but structure is correct - W is a 3-wave move inside correction" }
+  ],
+  
+  "priceIssues": [
+    { "uiIndex": 5, "issue": "Wave retraces 85% - deep for typical W4", "severity": "MODERATE", "suggestion": "Could be part of complex correction" }
+  ],
+  
   "fibonacciAnalysis": [
-    { "relationship": "W2/W1", "retracement": "61.8%", "isValid": true, "note": "Textbook W2 retracement" },
-    { "relationship": "W3/W1", "extension": "178%", "isValid": true, "note": "Slightly above 1.618, valid W3" }
+    { "uiIndex": 2, "relationship": "W2/W1", "value": "61.8%", "isValid": true },
+    { "uiIndex": 4, "relationship": "W4/W3", "value": "38.2%", "isValid": true }
   ],
-  "waveLabels": [
-    { "degree": "Minor", "label": "1", "direction": "up", "startPrice": "1.80", "endPrice": "2.50", "isValid": true },
-    { "degree": "Minor", "label": "2", "direction": "down", "startPrice": "2.50", "endPrice": "2.10", "isValid": false, "issue": "Retracement too deep" }
+  
+  "recommendationsTable": [
+    { "uiIndex": 1, "degree": "Intermediate", "label": "1/A", "direction": "up", "startPrice": 0.50, "endPrice": 2.90, "status": "OK" },
+    { "uiIndex": 2, "degree": "Intermediate", "label": "2/B", "direction": "down", "startPrice": 2.90, "endPrice": 1.80, "status": "OK" },
+    { "uiIndex": 5, "degree": "Minor", "label": "Y", "direction": "down", "startPrice": 2.50, "endPrice": 2.10, "status": "REVIEW", "reason": "Deep retracement" }
   ],
-  "alternativeCount": {
-    "description": "If the current count has issues, suggest an alternative interpretation",
-    "suggestion": "What you labeled as W3 may actually be W1 extended..."
-  },
+  
   "prediction": {
-    "nextWave": "W4 down or W5 up",
-    "targets": ["2.80 (0.382 retrace)", "3.00 (1.618 extension)"],
-    "confidence": 65,
-    "reasoning": "Based on Fibonacci levels..."
+    "nextWave": "Intermediate 3 up",
+    "targets": ["3.50", "4.20"],
+    "confidence": 70
   }
 }
 
-BE CRITICAL - don't just agree with the user's labels. Find issues if they exist!`;
+CRITICAL: Use the uiIndex numbers from the data. These match the user's table so they can cross-reference your findings.`;
 
       const OpenAI = (await import('openai')).default;
       const xaiClient = new OpenAI({
