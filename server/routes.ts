@@ -6080,15 +6080,14 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
   // ==================== END WAVE STACK AI ANALYSIS ====================
 
   // ==================== CHART DATA ANALYSIS (RAW PATTERN DETECTION) ====================
-  app.post('/api/crypto/elliott-wave/analyze-chart', isAuthenticated, async (req: any, res) => {
+  app.post('/api/crypto/elliott-wave/analyze-chart', requireCryptoAuth, async (req: any, res) => {
     try {
       const { symbol, timeframe, pivots, priceRange } = req.body;
-      const userId = req.auth?.userId || 'dev-open-access';
+      const userEmail = req.cryptoUser?.email?.toLowerCase() || '';
       
-      // Admin check
-      const user = await getUserByClerkId(userId);
-      if (!user || user.email !== 'beartec@beartec.uk') {
-        return res.status(403).json({ error: 'Admin access required for AI analysis' });
+      // Admin only access
+      if (userEmail !== ADMIN_EMAIL) {
+        return res.status(403).json({ error: 'This feature is in sandbox mode - admin access only' });
       }
       
       if (!pivots || pivots.length < 3) {
