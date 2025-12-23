@@ -5825,10 +5825,45 @@ Return JSON:
         .filter((p: any) => p.type === 'L')
         .map((p: any) => `PL ${new Date(p.time * 1000).toISOString().slice(0, 16)} @ ${p.price?.toFixed(6)}`);
       
+      // Build hierarchical structure - waves are ordered from highest degree to lowest
+      // Each lower degree wave is a SUB-WAVE of the most recent higher degree wave that contains it
+      const degreeOrder = ['Grand Super Cycle', 'Super Cycle', 'Cycle', 'Primary', 'Intermediate', 'Minor', 'Minute', 'Minuette', 'Sub-Minuette'];
+      
+      // Add parent context to each wave
+      const wavesWithHierarchy = waveDataFormatted.map((wave: any, idx: number) => {
+        const waveDegreeIdx = degreeOrder.indexOf(wave.degree);
+        // Find the most recent higher-degree wave that contains this wave's time range
+        let parentWave = null;
+        for (let i = idx - 1; i >= 0; i--) {
+          const candidateParent = waveDataFormatted[i];
+          const parentDegreeIdx = degreeOrder.indexOf(candidateParent.degree);
+          // Must be higher degree (lower index) and time range must overlap
+          if (parentDegreeIdx < waveDegreeIdx) {
+            const parentStart = new Date(candidateParent.startTime).getTime();
+            const parentEnd = new Date(candidateParent.endTime).getTime();
+            const waveStart = new Date(wave.startTime).getTime();
+            const waveEnd = new Date(wave.endTime).getTime();
+            if (waveStart >= parentStart && waveEnd <= parentEnd) {
+              parentWave = `${candidateParent.degree} ${candidateParent.patternType} (index ${i + 1})`;
+              break;
+            }
+          }
+        }
+        return { ...wave, parentWave };
+      });
+      
       const prompt = `You are a CRITICAL Elliott Wave expert analyst. Your job is to AUDIT the user's wave labels and find ERRORS, not just agree with them.
 
-WAVE DATA for ${symbol}:
-${JSON.stringify(waveDataFormatted, null, 2)}
+IMPORTANT - DEGREE HIERARCHY:
+Elliott Wave uses nested degrees. Lower degree waves are SUB-WAVES inside higher degree waves.
+Degree hierarchy (highest to lowest): Grand Super Cycle > Super Cycle > Cycle > Primary > Intermediate > Minor > Minute > Minuette > Sub-Minuette
+
+The "parentWave" field shows which higher-degree wave contains each sub-wave.
+Example: If Intermediate 2/B is a correction, and Minor W-X-Y waves have parentWave="Intermediate correction (index 2)", 
+then W, X, Y are the INTERNAL structure of that Intermediate 2 correction - NOT separate impulse waves!
+
+WAVE DATA for ${symbol} (with hierarchy):
+${JSON.stringify(wavesWithHierarchy, null, 2)}
 
 WAVES GROUPED BY DEGREE:
 ${JSON.stringify(wavesByDegree, null, 2)}
@@ -5840,6 +5875,11 @@ PIVOT LOWS (PL = date @ low price):
 ${pivotLows.length > 0 ? pivotLows.slice(0, 50).join('\n') : 'None'}
 
 Use the pivot data to verify if the user's wave endpoints align with actual swing highs/lows.
+
+CRITICAL: Analyze each degree level SEPARATELY. Don't mix degrees!
+- Check Intermediate waves against other Intermediate waves only
+- Check Minor waves (within their parent) against other Minor waves within that same parent
+- A Minor W-X-Y inside Intermediate 2 is CORRECTIVE structure, not an impulse!
 
 YOUR TASK - CRITICAL ANALYSIS:
 1. CHECK each wave against Elliott Wave rules
