@@ -3539,9 +3539,35 @@ const aiAnalyze = useMutation({
     },
 });
 
+  // Calculate pivot points from candles (for AI analysis)
+  const calculatePivots = (candleData: typeof candles, lookback: number = 5): Array<{time: number; price: number; type: 'H' | 'L'}> => {
+    const pivots: Array<{time: number; price: number; type: 'H' | 'L'}> = [];
+    if (candleData.length < lookback * 2 + 1) return pivots;
+    
+    for (let i = lookback; i < candleData.length - lookback; i++) {
+      const current = candleData[i];
+      let isPivotHigh = true;
+      let isPivotLow = true;
+      
+      for (let j = 1; j <= lookback; j++) {
+        if (candleData[i - j].high >= current.high || candleData[i + j].high >= current.high) {
+          isPivotHigh = false;
+        }
+        if (candleData[i - j].low <= current.low || candleData[i + j].low <= current.low) {
+          isPivotLow = false;
+        }
+      }
+      
+      if (isPivotHigh) pivots.push({ time: current.time, price: current.high, type: 'H' });
+      if (isPivotLow) pivots.push({ time: current.time, price: current.low, type: 'L' });
+    }
+    
+    return pivots.sort((a, b) => a.time - b.time);
+  };
+
   // Grok Stack Analysis mutation (admin only)
   const grokStackAnalyze = useMutation({
-    mutationFn: async (data: { waveEntries: WaveStackEntry[]; symbol: string }) => {
+    mutationFn: async (data: { waveEntries: WaveStackEntry[]; symbol: string; pivots?: Array<{time: number; price: number; type: 'H' | 'L'}> }) => {
       const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze-stack', data);
       return response.json();
     },
@@ -8351,7 +8377,10 @@ const aiAnalyze = useMutation({
                       </span>
                       <Button
                         size="sm"
-                        onClick={() => grokStackAnalyze.mutate({ waveEntries: waveStackEntries, symbol })}
+                        onClick={() => {
+                          const pivots = calculatePivots(candles, 5);
+                          grokStackAnalyze.mutate({ waveEntries: waveStackEntries, symbol, pivots });
+                        }}
                         disabled={grokStackAnalyze.isPending || waveStackEntries.length === 0}
                         className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-xs"
                         data-testid="grok-analyze-stack"

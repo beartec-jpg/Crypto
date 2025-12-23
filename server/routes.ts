@@ -5770,7 +5770,7 @@ Return JSON:
   // Admin only (beartec@beartec.uk)
   app.post("/api/crypto/elliott-wave/analyze-stack", requireCryptoAuth, async (req, res) => {
     try {
-      const { waveEntries, symbol } = req.body;
+      const { waveEntries, symbol, pivots } = req.body;
       const userEmail = (req as any).cryptoUser?.email?.toLowerCase() || '';
       
       // Admin only access
@@ -5786,7 +5786,8 @@ Return JSON:
         return res.status(503).json({ error: 'AI analysis service unavailable. Configuration required.' });
       }
       
-      console.log(`🤖 Grok Wave Stack Analysis: ${waveEntries.length} entries for ${symbol}...`);
+      const pivotCount = pivots?.length || 0;
+      console.log(`🤖 Grok Wave Stack Analysis: ${waveEntries.length} entries, ${pivotCount} pivots for ${symbol}...`);
       
       // Calculate Fibonacci ratios and rule checks for each wave
       const waveDataFormatted = waveEntries.map((entry: any, idx: number) => {
@@ -5816,6 +5817,14 @@ Return JSON:
         wavesByDegree[w.degree].push(w);
       });
       
+      // Format pivot data: PH = pivot high (date, high price), PL = pivot low (date, low price)
+      const pivotHighs = (pivots || [])
+        .filter((p: any) => p.type === 'H')
+        .map((p: any) => `PH ${new Date(p.time * 1000).toISOString().slice(0, 16)} @ ${p.price?.toFixed(6)}`);
+      const pivotLows = (pivots || [])
+        .filter((p: any) => p.type === 'L')
+        .map((p: any) => `PL ${new Date(p.time * 1000).toISOString().slice(0, 16)} @ ${p.price?.toFixed(6)}`);
+      
       const prompt = `You are a CRITICAL Elliott Wave expert analyst. Your job is to AUDIT the user's wave labels and find ERRORS, not just agree with them.
 
 WAVE DATA for ${symbol}:
@@ -5823,6 +5832,14 @@ ${JSON.stringify(waveDataFormatted, null, 2)}
 
 WAVES GROUPED BY DEGREE:
 ${JSON.stringify(wavesByDegree, null, 2)}
+
+PIVOT HIGHS (PH = date @ high price):
+${pivotHighs.length > 0 ? pivotHighs.slice(0, 50).join('\n') : 'None'}
+
+PIVOT LOWS (PL = date @ low price):
+${pivotLows.length > 0 ? pivotLows.slice(0, 50).join('\n') : 'None'}
+
+Use the pivot data to verify if the user's wave endpoints align with actual swing highs/lows.
 
 YOUR TASK - CRITICAL ANALYSIS:
 1. CHECK each wave against Elliott Wave rules
