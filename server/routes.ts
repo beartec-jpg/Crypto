@@ -6107,53 +6107,75 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       const highestPivot = pivotHighs[0];
       const lowestPivot = pivotLows[0];
       
-      // CRITICAL: Detect two-phase structures (up move + down move within visible range)
-      // Calculate where the highest/lowest pivots are relative to the time range
-      const sortedByTime = [...pivots].sort((a: any, b: any) => a.time - b.time);
-      const firstPivotTime = sortedByTime[0]?.time || 0;
-      const lastPivotTime = sortedByTime[sortedByTime.length - 1]?.time || 0;
-      const timeRange = lastPivotTime - firstPivotTime;
+      // CRITICAL: Detect two-phase structures using VISIBLE candle data from priceRange
+      // priceRange.start = first visible candle price, priceRange.end = last visible candle price
+      // These come from the actual visible chart, not the pivot array
       
-      // Determine where the peak/trough occurred in the visible range (0 = start, 1 = end)
-      const highestPivotPosition = timeRange > 0 ? (highestPivot?.time - firstPivotTime) / timeRange : 0.5;
-      const lowestPivotPosition = timeRange > 0 ? (lowestPivot?.time - firstPivotTime) / timeRange : 0.5;
+      const startPrice = priceRange.start;
+      const endPrice = priceRange.end;
+      const peakPrice = highestPivot?.price || priceRange.high;
+      const troughPrice = lowestPivot?.price || priceRange.low;
       
-      // Detect two-phase structure
+      // Calculate distances from visible start/end to determine structure
+      const startTopeakMove = peakPrice - startPrice; // positive = up from start
+      const peakToEndMove = endPrice - peakPrice;     // negative = down from peak
+      const startToTroughMove = troughPrice - startPrice; // negative = down from start
+      const troughToEndMove = endPrice - troughPrice;     // positive = up from trough
+      
+      // Detect structure based on where the extreme prices are relative to start/end
       let structureType = 'SIMPLE';
       let phaseAnalysis = '';
       
-      // If highest is in middle (not at start or end), we have a two-phase structure
-      if (highestPivotPosition > 0.15 && highestPivotPosition < 0.85) {
-        // Peak is in the middle - likely UP phase followed by DOWN phase
-        const upMovePercent = ((highestPivot.price - priceRange.start) / priceRange.start * 100).toFixed(1);
-        const downMovePercent = ((priceRange.end - highestPivot.price) / highestPivot.price * 100).toFixed(1);
+      // Check if peak is significantly higher than BOTH start and end (two-phase: up then down)
+      const peakAboveStart = peakPrice > startPrice * 1.02; // At least 2% higher
+      const peakAboveEnd = peakPrice > endPrice * 1.02;
+      const endBelowStart = endPrice < startPrice * 0.98; // Ended lower than started (net down)
+      
+      // Check if trough is significantly lower than BOTH start and end (two-phase: down then up)
+      const troughBelowStart = troughPrice < startPrice * 0.98;
+      const troughBelowEnd = troughPrice < endPrice * 0.98;
+      const endAboveStart = endPrice > startPrice * 1.02;
+      
+      console.log(`📊 Structure check: start=$${startPrice.toFixed(2)}, peak=$${peakPrice.toFixed(2)}, trough=$${troughPrice.toFixed(2)}, end=$${endPrice.toFixed(2)}`);
+      console.log(`📊 Peak above start: ${peakAboveStart}, Peak above end: ${peakAboveEnd}, End below start: ${endBelowStart}`);
+      console.log(`📊 Trough below start: ${troughBelowStart}, Trough below end: ${troughBelowEnd}, End above start: ${endAboveStart}`);
+      
+      // Two-phase UP then DOWN: Peak is above both start and end, we went up then came back down
+      if (peakAboveStart && peakAboveEnd) {
+        const upMovePercent = ((peakPrice - startPrice) / startPrice * 100).toFixed(1);
+        const downMovePercent = ((endPrice - peakPrice) / peakPrice * 100).toFixed(1);
         structureType = 'TWO_PHASE_UP_THEN_DOWN';
         phaseAnalysis = `⚠️ TWO-PHASE STRUCTURE DETECTED:
-Phase 1 (UP): Price rose from $${priceRange.start.toFixed(4)} to peak at $${highestPivot.price.toFixed(4)} (+${upMovePercent}%) - This could be an IMPULSE UP or corrective ABC up
-Phase 2 (DOWN): Price fell from peak $${highestPivot.price.toFixed(4)} to $${priceRange.end.toFixed(4)} (${downMovePercent}%) - This could be a CORRECTION or start of new impulse down
-Peak occurred at ${(highestPivotPosition * 100).toFixed(0)}% through the visible range.
+Phase 1 (UP): Price rose from $${startPrice.toFixed(4)} to peak at $${peakPrice.toFixed(4)} (+${upMovePercent}%) - This could be an IMPULSE UP or corrective ABC up
+Phase 2 (DOWN): Price fell from peak $${peakPrice.toFixed(4)} to $${endPrice.toFixed(4)} (${downMovePercent}%) - This could be a CORRECTION or start of new impulse down
 
 DO NOT classify this as a single impulse. Analyze BOTH phases separately:
 1. What pattern fits Phase 1 (the UP move to the peak)?
 2. What pattern fits Phase 2 (the DOWN move from the peak)?`;
       }
-      
-      // If lowest is in middle, we have DOWN then UP
-      if (lowestPivotPosition > 0.15 && lowestPivotPosition < 0.85 && structureType === 'SIMPLE') {
-        const downMovePercent = ((lowestPivot.price - priceRange.start) / priceRange.start * 100).toFixed(1);
-        const upMovePercent = ((priceRange.end - lowestPivot.price) / lowestPivot.price * 100).toFixed(1);
+      // Two-phase DOWN then UP: Trough is below both start and end, we went down then came back up
+      else if (troughBelowStart && troughBelowEnd) {
+        const downMovePercent = ((troughPrice - startPrice) / startPrice * 100).toFixed(1);
+        const upMovePercent = ((endPrice - troughPrice) / troughPrice * 100).toFixed(1);
         structureType = 'TWO_PHASE_DOWN_THEN_UP';
         phaseAnalysis = `⚠️ TWO-PHASE STRUCTURE DETECTED:
-Phase 1 (DOWN): Price fell from $${priceRange.start.toFixed(4)} to trough at $${lowestPivot.price.toFixed(4)} (${downMovePercent}%) - This could be an IMPULSE DOWN or corrective ABC down
-Phase 2 (UP): Price rose from trough $${lowestPivot.price.toFixed(4)} to $${priceRange.end.toFixed(4)} (+${upMovePercent}%) - This could be a CORRECTION or start of new impulse up
-Trough occurred at ${(lowestPivotPosition * 100).toFixed(0)}% through the visible range.
+Phase 1 (DOWN): Price fell from $${startPrice.toFixed(4)} to trough at $${troughPrice.toFixed(4)} (${downMovePercent}%) - This could be an IMPULSE DOWN or corrective ABC down
+Phase 2 (UP): Price rose from trough $${troughPrice.toFixed(4)} to $${endPrice.toFixed(4)} (+${upMovePercent}%) - This could be a CORRECTION or start of new impulse up
 
 DO NOT classify this as a single impulse. Analyze BOTH phases separately:
 1. What pattern fits Phase 1 (the DOWN move to the trough)?
 2. What pattern fits Phase 2 (the UP move from the trough)?`;
       }
       
-      console.log(`📊 Structure type: ${structureType}, Peak position: ${(highestPivotPosition * 100).toFixed(0)}%, Trough position: ${(lowestPivotPosition * 100).toFixed(0)}%`);
+      // Calculate positions for logging (using pivot times)
+      const sortedByTime = [...pivots].sort((a: any, b: any) => a.time - b.time);
+      const firstPivotTime = sortedByTime[0]?.time || 0;
+      const lastPivotTime = sortedByTime[sortedByTime.length - 1]?.time || 0;
+      const timeRange = lastPivotTime - firstPivotTime;
+      const highestPivotPosition = timeRange > 0 ? (highestPivot?.time - firstPivotTime) / timeRange : 0.5;
+      const lowestPivotPosition = timeRange > 0 ? (lowestPivot?.time - firstPivotTime) / timeRange : 0.5;
+      
+      console.log(`📊 Structure type: ${structureType}`);
       
       // Format pivots for AI
       const pivotSummary = pivots.map((p: any) => ({
