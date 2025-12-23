@@ -8399,51 +8399,95 @@ const aiAnalyze = useMutation({
                     </div>
 
                     {/* Grok Analysis Results */}
-                    {grokStackAnalysis && (
+                    {grokStackAnalysis && (() => {
+                      const rawAnalysis = grokStackAnalysis.rawResponse ? 
+                        (() => { try { return JSON.parse(grokStackAnalysis.rawResponse.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch { return {}; } })() 
+                        : {};
+                      return (
                       <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-purple-700/30">
                         {/* Synopsis */}
                         <div className="bg-purple-900/20 rounded p-3 border border-purple-600/30">
                           <p className="text-sm text-gray-200">{grokStackAnalysis.synopsis}</p>
                         </div>
 
-                        {/* Prediction */}
-                        {grokStackAnalysis.tableData.length > 0 && (() => {
-                          const rawAnalysis = grokStackAnalysis.rawResponse ? JSON.parse(grokStackAnalysis.rawResponse.match(/\{[\s\S]*\}/)?.[0] || '{}') : {};
-                          return rawAnalysis.prediction ? (
-                            <div className="bg-cyan-900/20 rounded p-2 border border-cyan-600/30">
-                              <span className="text-xs text-cyan-400">Next: </span>
-                              <span className="text-xs text-white font-medium">{rawAnalysis.prediction.nextWave}</span>
-                              <span className="text-xs text-gray-400"> ({rawAnalysis.prediction.direction})</span>
-                              <span className="text-xs text-cyan-400 ml-2">{rawAnalysis.prediction.confidence}% conf</span>
-                            </div>
-                          ) : null;
-                        })()}
+                        {/* Rule Violations */}
+                        {rawAnalysis.ruleViolations && rawAnalysis.ruleViolations.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-red-400">Rule Violations:</p>
+                            {rawAnalysis.ruleViolations.map((v: any, idx: number) => (
+                              <div key={idx} className={`rounded p-2 border text-xs ${v.severity === 'CRITICAL' ? 'bg-red-900/30 border-red-600/50' : 'bg-yellow-900/30 border-yellow-600/50'}`}>
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-bold ${v.severity === 'CRITICAL' ? 'text-red-400' : 'text-yellow-400'}`}>{v.wave}</span>
+                                  <span className="text-gray-400">({v.degree})</span>
+                                  <span className={`text-xs px-1 rounded ${v.severity === 'CRITICAL' ? 'bg-red-600' : 'bg-yellow-600'} text-white`}>{v.severity}</span>
+                                </div>
+                                <p className="text-gray-300 mt-1">{v.rule}</p>
+                                {v.suggestion && <p className="text-cyan-400 mt-1 italic">{v.suggestion}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
-                        {/* Table by Degree */}
-                        {grokStackAnalysis.tableData.length > 0 && (
+                        {/* Fibonacci Analysis */}
+                        {rawAnalysis.fibonacciAnalysis && rawAnalysis.fibonacciAnalysis.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-amber-400">Fibonacci Analysis:</p>
+                            <div className="grid grid-cols-2 gap-1">
+                              {rawAnalysis.fibonacciAnalysis.map((f: any, idx: number) => (
+                                <div key={idx} className={`text-xs p-1 rounded ${f.isValid ? 'bg-green-900/20 text-green-300' : 'bg-red-900/20 text-red-300'}`}>
+                                  <span className="font-medium">{f.relationship}</span>: {f.retracement || f.extension}
+                                  {f.note && <span className="text-gray-400 ml-1">- {f.note}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Alternative Count */}
+                        {rawAnalysis.alternativeCount?.suggestion && (
+                          <div className="bg-blue-900/20 rounded p-2 border border-blue-600/30">
+                            <p className="text-xs font-medium text-blue-400">Alternative Count:</p>
+                            <p className="text-xs text-gray-300 mt-1">{rawAnalysis.alternativeCount.suggestion}</p>
+                          </div>
+                        )}
+
+                        {/* Prediction */}
+                        {rawAnalysis.prediction && (
+                          <div className="bg-cyan-900/20 rounded p-2 border border-cyan-600/30">
+                            <span className="text-xs text-cyan-400">Next: </span>
+                            <span className="text-xs text-white font-medium">{rawAnalysis.prediction.nextWave}</span>
+                            <span className="text-xs text-gray-400"> ({rawAnalysis.prediction.direction})</span>
+                            <span className="text-xs text-cyan-400 ml-2">{rawAnalysis.prediction.confidence}% conf</span>
+                            {rawAnalysis.prediction.targets && (
+                              <div className="mt-1 text-xs text-gray-400">Targets: {rawAnalysis.prediction.targets.join(', ')}</div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Wave Labels Table */}
+                        {rawAnalysis.waveLabels && rawAnalysis.waveLabels.length > 0 && (
                           <div className="overflow-x-auto">
+                            <p className="text-xs font-medium text-purple-400 mb-1">Wave Labels:</p>
                             <table className="w-full text-xs">
                               <thead>
                                 <tr className="text-gray-400 border-b border-slate-700">
-                                  <th className="text-left py-1 px-2">Degree</th>
-                                  <th className="text-left py-1 px-2">Label</th>
-                                  <th className="text-left py-1 px-2">Dir</th>
-                                  <th className="text-left py-1 px-2">Start</th>
-                                  <th className="text-left py-1 px-2">End</th>
-                                  <th className="text-right py-1 px-2">Pattern</th>
+                                  <th className="text-left py-1 px-1">Deg</th>
+                                  <th className="text-left py-1 px-1">Label</th>
+                                  <th className="text-left py-1 px-1">Dir</th>
+                                  <th className="text-right py-1 px-1">Valid</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {grokStackAnalysis.tableData.map((row, idx) => (
-                                  <tr key={idx} className="border-b border-slate-800 hover:bg-slate-700/30">
-                                    <td className="py-1 px-2 text-purple-300">{row.degree}</td>
-                                    <td className="py-1 px-2 text-cyan-300 font-medium">{row.label}</td>
-                                    <td className={`py-1 px-2 ${row.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+                                {rawAnalysis.waveLabels.map((row: any, idx: number) => (
+                                  <tr key={idx} className={`border-b border-slate-800 ${row.isValid === false ? 'bg-red-900/20' : ''}`}>
+                                    <td className="py-1 px-1 text-purple-300">{row.degree}</td>
+                                    <td className="py-1 px-1 text-cyan-300 font-medium">{row.label}</td>
+                                    <td className={`py-1 px-1 ${row.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
                                       {row.direction === 'up' ? '↑' : '↓'}
                                     </td>
-                                    <td className="py-1 px-2 text-gray-400">{row.startDate}</td>
-                                    <td className="py-1 px-2 text-gray-400">{row.endDate}</td>
-                                    <td className="py-1 px-2 text-right text-amber-300">{row.pattern}</td>
+                                    <td className={`py-1 px-1 text-right ${row.isValid === false ? 'text-red-400' : 'text-green-400'}`}>
+                                      {row.isValid === false ? '✗' : '✓'}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -8458,7 +8502,7 @@ const aiAnalyze = useMutation({
                           Clear results
                         </button>
                       </div>
-                    )}
+                    );})()}
                   </div>
                 )}
               </div>
