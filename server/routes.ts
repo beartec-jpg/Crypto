@@ -6116,19 +6116,18 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       console.log(`🔍 Detailed Analysis: ${selectedWave.degree} ${selectedWave.patternType} on ${currentTimeframe}`);
       console.log(`📊 Fetching ${lowerTimeframe} data (interval: ${yahooInterval}) for sub-wave discovery...`);
       
-      // Calculate period based on wave duration
-      const waveDurationDays = (selectedWave.endTime - selectedWave.startTime) / 86400;
-      let period = '1mo';
-      if (waveDurationDays <= 1) period = '5d';
-      else if (waveDurationDays <= 7) period = '1mo';
-      else if (waveDurationDays <= 30) period = '3mo';
-      else period = '6mo';
+      // Calculate date range with buffer for the wave (10% on each side)
+      const waveBuffer = (selectedWave.endTime - selectedWave.startTime) * 0.1;
+      const startDate = new Date((selectedWave.startTime - waveBuffer) * 1000).toISOString().slice(0, 10);
+      const endDate = new Date((selectedWave.endTime + waveBuffer) * 1000).toISOString().slice(0, 10);
       
-      // Fetch lower timeframe candle data
+      console.log(`📅 Fetching data from ${startDate} to ${endDate}`);
+      
+      // Fetch lower timeframe candle data using specific date range
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'chart_data.py');
       const { stdout, stderr } = await execFileAsync(
         'python3',
-        [scriptPath, yahooSymbol, period, yahooInterval],
+        [scriptPath, yahooSymbol, '1mo', yahooInterval, startDate, endDate],
         { maxBuffer: 10 * 1024 * 1024 }
       );
       
@@ -6146,7 +6145,14 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       const waveEnd = selectedWave.endTime;
       const buffer = (waveEnd - waveStart) * 0.05;
       
-      const filteredCandles = (chartData.candles || []).filter((c: any) => 
+      // Debug: log wave time range and sample candle times
+      const allCandles = chartData.data || chartData.candles || [];
+      if (allCandles.length > 0) {
+        console.log(`📊 Wave time range: ${new Date(waveStart * 1000).toISOString()} to ${new Date(waveEnd * 1000).toISOString()}`);
+        console.log(`📊 Candle time range: ${new Date(allCandles[0].time * 1000).toISOString()} to ${new Date(allCandles[allCandles.length - 1].time * 1000).toISOString()}`);
+      }
+      
+      const filteredCandles = allCandles.filter((c: any) => 
         c.time >= (waveStart - buffer) && c.time <= (waveEnd + buffer)
       );
       
