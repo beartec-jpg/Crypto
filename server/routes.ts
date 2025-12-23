@@ -6008,7 +6008,7 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       const content = response.choices?.[0]?.message?.content || '';
       console.log(`✅ Grok Wave Stack analysis complete`);
       
-      // Try to parse JSON from response
+      // Try to parse JSON from response with fallback extraction
       let analysis;
       try {
         const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -6020,8 +6020,37 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
           console.log(`⚠️ Stack analysis: No JSON found in response`);
         }
       } catch (parseErr) {
-        analysis = { raw: content, parseError: 'JSON parse failed' };
         console.log(`⚠️ Stack analysis JSON parse failed: ${parseErr}`);
+        // Try to extract key fields manually from malformed JSON
+        const synopsisMatch = content.match(/"synopsis"\s*:\s*"([^"]+)"/);
+        const tableDataMatch = content.match(/"tableData"\s*:\s*\[([\s\S]*?)\]/);
+        
+        if (synopsisMatch) {
+          console.log(`📊 Extracted synopsis from malformed JSON: "${synopsisMatch[1].slice(0, 80)}..."`);
+          analysis = {
+            synopsis: synopsisMatch[1],
+            tableData: [],
+            parseError: 'Partial extraction from malformed response'
+          };
+          
+          // Try to extract individual table entries
+          if (tableDataMatch) {
+            try {
+              // Find all individual entry objects
+              const entries = tableDataMatch[1].match(/\{[^{}]+\}/g);
+              if (entries) {
+                analysis.tableData = entries.map(e => {
+                  try { return JSON.parse(e); } catch { return null; }
+                }).filter(Boolean);
+                console.log(`📊 Extracted ${analysis.tableData.length} table entries`);
+              }
+            } catch (e) {
+              console.log(`⚠️ Could not extract table data`);
+            }
+          }
+        } else {
+          analysis = { raw: content, parseError: 'JSON parse failed, no synopsis found' };
+        }
       }
       
       res.json({
