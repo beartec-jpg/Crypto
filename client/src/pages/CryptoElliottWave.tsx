@@ -2671,6 +2671,12 @@ export default function CryptoElliottWave() {
     fibonacciLevels?: { level: string; price: number; significance: string }[];
     rawResponse?: string;
   } | null>(null);
+  
+  // Clear chart analysis when symbol or timeframe changes
+  useEffect(() => {
+    setChartAnalysis(null);
+  }, [symbol, timeframe]);
+  
   // Derive selected wave for AI analysis from the table's selectedLabelId
   // Instead of separate state, we use the existing selection mechanism
   const [isCapturingChart, setIsCapturingChart] = useState(false);
