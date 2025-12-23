@@ -6096,6 +6096,17 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       
       console.log(`🤖 Grok Chart Analysis: ${pivots.length} pivots for ${symbol} ${timeframe}...`);
       
+      // Calculate overall trend direction
+      const overallChange = priceRange.end - priceRange.start;
+      const overallChangePercent = ((overallChange / priceRange.start) * 100).toFixed(2);
+      const overallTrend = overallChange > 0 ? 'UPTREND' : overallChange < 0 ? 'DOWNTREND' : 'SIDEWAYS';
+      
+      // Find key pivot highs and lows
+      const pivotHighs = pivots.filter((p: any) => p.type === 'H').sort((a: any, b: any) => b.price - a.price);
+      const pivotLows = pivots.filter((p: any) => p.type === 'L').sort((a: any, b: any) => a.price - b.price);
+      const highestPivot = pivotHighs[0];
+      const lowestPivot = pivotLows[0];
+      
       // Format pivots for AI
       const pivotSummary = pivots.map((p: any) => ({
         type: p.type,
@@ -6105,11 +6116,20 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       
       const prompt = `You are an Elliott Wave analyst. Analyze these raw price pivot points and identify the BEST FITTING Elliott Wave pattern. Do NOT assume any position in a larger structure - just analyze what you see.
 
+=== CRITICAL: OVERALL TREND DIRECTION ===
+The price moved from $${priceRange.start.toFixed(4)} to $${priceRange.end.toFixed(4)} (${overallChangePercent}%)
+**OVERALL TREND: ${overallTrend}**
+${overallTrend === 'DOWNTREND' ? '⚠️ This is a DOWNTREND - the price FELL. Consider bearish impulses or corrective patterns DOWN.' : ''}
+${overallTrend === 'UPTREND' ? '⚠️ This is an UPTREND - the price ROSE. Consider bullish impulses or corrective patterns UP.' : ''}
+
+Highest Pivot: $${highestPivot?.price?.toFixed(4) || 'N/A'} on ${highestPivot ? new Date(highestPivot.time).toISOString().split('T')[0] : 'N/A'}
+Lowest Pivot: $${lowestPivot?.price?.toFixed(4) || 'N/A'} on ${lowestPivot ? new Date(lowestPivot.time).toISOString().split('T')[0] : 'N/A'}
+
 === PRICE DATA ===
 Symbol: ${symbol}
 Timeframe: ${timeframe}
 Price Range: $${priceRange.low.toFixed(4)} to $${priceRange.high.toFixed(4)}
-Start Price: $${priceRange.start.toFixed(4)} → End Price: $${priceRange.end.toFixed(4)}
+Start Price: $${priceRange.start.toFixed(4)} → End Price: $${priceRange.end.toFixed(4)} (${overallTrend})
 
 === PIVOT POINTS (${pivots.length} total) ===
 ${JSON.stringify(pivotSummary, null, 2)}
@@ -6173,6 +6193,9 @@ CORRECTIVE (counter-trend):
 }
 
 CRITICAL: 
+- The "direction" field MUST match the OVERALL TREND (if price fell overall, direction = "down")
+- If price fell from high to low, this is a DOWNTREND - consider bearish impulses or corrections moving DOWN
+- If price rose from low to high, this is an UPTREND - consider bullish impulses or corrections moving UP
 - Do NOT assume this is part of a larger structure
 - Consider ALL pattern types equally based on the price relationships
 - Rank possibilities by probability based on Fibonacci relationships and rule compliance`;
