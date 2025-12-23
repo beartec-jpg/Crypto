@@ -6000,7 +6000,7 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       const response = await xaiClient.chat.completions.create({
         model: 'grok-3-beta',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 3000,
+        max_tokens: 4500,
         temperature: 0.1,
       });
       console.log(`✅ xAI API response received`);
@@ -6023,26 +6023,37 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
         console.log(`⚠️ Stack analysis JSON parse failed: ${parseErr}`);
         // Try to extract key fields manually from malformed JSON
         const synopsisMatch = content.match(/"synopsis"\s*:\s*"([^"]+)"/);
-        const tableDataMatch = content.match(/"tableData"\s*:\s*\[([\s\S]*?)\]/);
+        // Look for recommendationsTable (the actual field name in the response format)
+        const tableMatch = content.match(/"recommendationsTable"\s*:\s*\[([\s\S]*?)\]/);
+        // Also try aiBestFit as alternative
+        const aiBestFitMatch = content.match(/"aiBestFit"\s*:\s*\[([\s\S]*?)\]/);
         
         if (synopsisMatch) {
           console.log(`📊 Extracted synopsis from malformed JSON: "${synopsisMatch[1].slice(0, 80)}..."`);
           analysis = {
             synopsis: synopsisMatch[1],
-            tableData: [],
+            recommendationsTable: [],
+            aiBestFit: [],
             parseError: 'Partial extraction from malformed response'
           };
           
-          // Try to extract individual table entries
-          if (tableDataMatch) {
+          // Try to extract recommendationsTable entries
+          const dataMatch = tableMatch || aiBestFitMatch;
+          if (dataMatch) {
             try {
-              // Find all individual entry objects
-              const entries = tableDataMatch[1].match(/\{[^{}]+\}/g);
+              // Find all individual entry objects (simple flat objects)
+              const entries = dataMatch[1].match(/\{[^{}]+\}/g);
               if (entries) {
-                analysis.tableData = entries.map(e => {
+                const parsed = entries.map(e => {
                   try { return JSON.parse(e); } catch { return null; }
                 }).filter(Boolean);
-                console.log(`📊 Extracted ${analysis.tableData.length} table entries`);
+                if (tableMatch) {
+                  analysis.recommendationsTable = parsed;
+                  console.log(`📊 Extracted ${parsed.length} recommendations table entries`);
+                } else {
+                  analysis.aiBestFit = parsed;
+                  console.log(`📊 Extracted ${parsed.length} aiBestFit entries`);
+                }
               }
             } catch (e) {
               console.log(`⚠️ Could not extract table data`);
