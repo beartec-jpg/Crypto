@@ -6107,75 +6107,121 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       const highestPivot = pivotHighs[0];
       const lowestPivot = pivotLows[0];
       
-      // CRITICAL: Detect two-phase structures using VISIBLE candle data from priceRange
-      // priceRange.start = first visible candle price, priceRange.end = last visible candle price
-      // These come from the actual visible chart, not the pivot array
+      // CRITICAL: Analyze pivot SEQUENCE to detect structure (like stack/section analysis)
+      // Sort pivots by time and analyze the H/L pattern
+      const sortedByTime = [...pivots].sort((a: any, b: any) => a.time - b.time);
       
-      const startPrice = priceRange.start;
-      const endPrice = priceRange.end;
-      const peakPrice = highestPivot?.price || priceRange.high;
-      const troughPrice = lowestPivot?.price || priceRange.low;
+      console.log(`📊 ═══════════════════════════════════════════════`);
+      console.log(`📊 PIVOT SEQUENCE ANALYSIS (${sortedByTime.length} pivots)`);
       
-      // Calculate distances from visible start/end to determine structure
-      const startTopeakMove = peakPrice - startPrice; // positive = up from start
-      const peakToEndMove = endPrice - peakPrice;     // negative = down from peak
-      const startToTroughMove = troughPrice - startPrice; // negative = down from start
-      const troughToEndMove = endPrice - troughPrice;     // positive = up from trough
+      // Log the pivot sequence
+      const pivotSequence = sortedByTime.map((p: any) => `${p.type}:$${p.price.toFixed(2)}`).join(' → ');
+      console.log(`📊 Sequence: ${pivotSequence}`);
       
-      // Detect structure based on where the extreme prices are relative to start/end
+      // Identify key turning points in the sequence
+      const firstPivot = sortedByTime[0];
+      const lastPivot = sortedByTime[sortedByTime.length - 1];
+      
+      // Find the highest H pivot and lowest L pivot WITH their positions in the sequence
+      let highestHPivot: any = null;
+      let highestHIndex = -1;
+      let lowestLPivot: any = null;
+      let lowestLIndex = -1;
+      
+      sortedByTime.forEach((p: any, idx: number) => {
+        if (p.type === 'H' && (!highestHPivot || p.price > highestHPivot.price)) {
+          highestHPivot = p;
+          highestHIndex = idx;
+        }
+        if (p.type === 'L' && (!lowestLPivot || p.price < lowestLPivot.price)) {
+          lowestLPivot = p;
+          lowestLIndex = idx;
+        }
+      });
+      
+      console.log(`📊 First pivot: ${firstPivot?.type} at $${firstPivot?.price?.toFixed(4)} (index 0)`);
+      console.log(`📊 Highest H: $${highestHPivot?.price?.toFixed(4)} at index ${highestHIndex} of ${sortedByTime.length - 1}`);
+      console.log(`📊 Lowest L: $${lowestLPivot?.price?.toFixed(4)} at index ${lowestLIndex} of ${sortedByTime.length - 1}`);
+      console.log(`📊 Last pivot: ${lastPivot?.type} at $${lastPivot?.price?.toFixed(4)} (index ${sortedByTime.length - 1})`);
+      
+      // Determine structure based on pivot sequence position
+      // If lowest L comes BEFORE highest H in sequence = DOWN first, then UP
+      // If highest H comes BEFORE lowest L in sequence = UP first, then DOWN
       let structureType = 'SIMPLE';
       let phaseAnalysis = '';
       
-      // Check if peak is significantly higher than BOTH start and end (two-phase: up then down)
-      const peakAboveStart = peakPrice > startPrice * 1.02; // At least 2% higher
-      const peakAboveEnd = peakPrice > endPrice * 1.02;
-      const endBelowStart = endPrice < startPrice * 0.98; // Ended lower than started (net down)
+      const totalPivots = sortedByTime.length;
+      const highestHPosition = highestHIndex / (totalPivots - 1); // 0 = start, 1 = end
+      const lowestLPosition = lowestLIndex / (totalPivots - 1);
       
-      // Check if trough is significantly lower than BOTH start and end (two-phase: down then up)
-      const troughBelowStart = troughPrice < startPrice * 0.98;
-      const troughBelowEnd = troughPrice < endPrice * 0.98;
-      const endAboveStart = endPrice > startPrice * 1.02;
+      console.log(`📊 Highest H position: ${(highestHPosition * 100).toFixed(0)}% through sequence`);
+      console.log(`📊 Lowest L position: ${(lowestLPosition * 100).toFixed(0)}% through sequence`);
       
-      console.log(`📊 Structure check: start=$${startPrice.toFixed(2)}, peak=$${peakPrice.toFixed(2)}, trough=$${troughPrice.toFixed(2)}, end=$${endPrice.toFixed(2)}`);
-      console.log(`📊 Peak above start: ${peakAboveStart}, Peak above end: ${peakAboveEnd}, End below start: ${endBelowStart}`);
-      console.log(`📊 Trough below start: ${troughBelowStart}, Trough below end: ${troughBelowEnd}, End above start: ${endAboveStart}`);
+      // Analyze first pivot to determine initial direction
+      const firstPivotType = firstPivot?.type;
+      const startPrice = priceRange.start;
+      const endPrice = priceRange.end;
       
-      // Two-phase UP then DOWN: Peak is above both start and end, we went up then came back down
-      if (peakAboveStart && peakAboveEnd) {
-        const upMovePercent = ((peakPrice - startPrice) / startPrice * 100).toFixed(1);
-        const downMovePercent = ((endPrice - peakPrice) / peakPrice * 100).toFixed(1);
-        structureType = 'TWO_PHASE_UP_THEN_DOWN';
-        phaseAnalysis = `⚠️ TWO-PHASE STRUCTURE DETECTED:
-Phase 1 (UP): Price rose from $${startPrice.toFixed(4)} to peak at $${peakPrice.toFixed(4)} (+${upMovePercent}%) - This could be an IMPULSE UP or corrective ABC up
-Phase 2 (DOWN): Price fell from peak $${peakPrice.toFixed(4)} to $${endPrice.toFixed(4)} (${downMovePercent}%) - This could be a CORRECTION or start of new impulse down
+      // Two-phase detection based on sequence analysis
+      if (lowestLIndex < highestHIndex) {
+        // Lowest L comes FIRST in sequence = went DOWN to the low, then UP to the high
+        const downMovePercent = ((lowestLPivot.price - startPrice) / startPrice * 100).toFixed(1);
+        const upMovePercent = ((highestHPivot.price - lowestLPivot.price) / lowestLPivot.price * 100).toFixed(1);
+        
+        // Check if this is a significant two-phase move (not just at edges)
+        if (lowestLPosition > 0.1 && highestHPosition < 0.9 && lowestLPosition < 0.5) {
+          structureType = 'TWO_PHASE_DOWN_THEN_UP';
+          phaseAnalysis = `⚠️ TWO-PHASE STRUCTURE DETECTED (based on pivot sequence):
+Phase 1 (DOWN): From start, price fell to lowest pivot at $${lowestLPivot.price.toFixed(4)} (${downMovePercent}%)
+  - This low occurred at pivot ${lowestLIndex + 1} of ${totalPivots} (${(lowestLPosition * 100).toFixed(0)}% through the sequence)
+  - Analyze this DOWN phase: Could be impulse down, zigzag ABC down, or wave A/C down
 
-DO NOT classify this as a single impulse. Analyze BOTH phases separately:
-1. What pattern fits Phase 1 (the UP move to the peak)?
-2. What pattern fits Phase 2 (the DOWN move from the peak)?`;
-      }
-      // Two-phase DOWN then UP: Trough is below both start and end, we went down then came back up
-      else if (troughBelowStart && troughBelowEnd) {
-        const downMovePercent = ((troughPrice - startPrice) / startPrice * 100).toFixed(1);
-        const upMovePercent = ((endPrice - troughPrice) / troughPrice * 100).toFixed(1);
-        structureType = 'TWO_PHASE_DOWN_THEN_UP';
-        phaseAnalysis = `⚠️ TWO-PHASE STRUCTURE DETECTED:
-Phase 1 (DOWN): Price fell from $${startPrice.toFixed(4)} to trough at $${troughPrice.toFixed(4)} (${downMovePercent}%) - This could be an IMPULSE DOWN or corrective ABC down
-Phase 2 (UP): Price rose from trough $${troughPrice.toFixed(4)} to $${endPrice.toFixed(4)} (+${upMovePercent}%) - This could be a CORRECTION or start of new impulse up
+Phase 2 (UP): From that low, price rose to highest pivot at $${highestHPivot.price.toFixed(4)} (+${upMovePercent}%)
+  - This high occurred at pivot ${highestHIndex + 1} of ${totalPivots} (${(highestHPosition * 100).toFixed(0)}% through the sequence)
+  - Analyze this UP phase: Could be impulse up, zigzag ABC up, or corrective bounce
 
-DO NOT classify this as a single impulse. Analyze BOTH phases separately:
-1. What pattern fits Phase 1 (the DOWN move to the trough)?
-2. What pattern fits Phase 2 (the UP move from the trough)?`;
+CRITICAL: The FIRST significant move was DOWN. Do NOT say Phase 1 was UP.`;
+        }
+      } else if (highestHIndex < lowestLIndex) {
+        // Highest H comes FIRST in sequence = went UP to the high, then DOWN to the low
+        const upMovePercent = ((highestHPivot.price - startPrice) / startPrice * 100).toFixed(1);
+        const downMovePercent = ((lowestLPivot.price - highestHPivot.price) / highestHPivot.price * 100).toFixed(1);
+        
+        // Check if this is a significant two-phase move
+        if (highestHPosition > 0.1 && lowestLPosition < 0.9 && highestHPosition < 0.5) {
+          structureType = 'TWO_PHASE_UP_THEN_DOWN';
+          phaseAnalysis = `⚠️ TWO-PHASE STRUCTURE DETECTED (based on pivot sequence):
+Phase 1 (UP): From start, price rose to highest pivot at $${highestHPivot.price.toFixed(4)} (+${upMovePercent}%)
+  - This high occurred at pivot ${highestHIndex + 1} of ${totalPivots} (${(highestHPosition * 100).toFixed(0)}% through the sequence)
+  - Analyze this UP phase: Could be impulse up, zigzag ABC up, or wave A up
+
+Phase 2 (DOWN): From that high, price fell to lowest pivot at $${lowestLPivot.price.toFixed(4)} (${downMovePercent}%)
+  - This low occurred at pivot ${lowestLIndex + 1} of ${totalPivots} (${(lowestLPosition * 100).toFixed(0)}% through the sequence)
+  - Analyze this DOWN phase: Could be impulse down, zigzag ABC down, or corrective decline
+
+CRITICAL: The FIRST significant move was UP. Do NOT say Phase 1 was DOWN.`;
+        }
       }
       
-      // Calculate positions for logging (using pivot times)
-      const sortedByTime = [...pivots].sort((a: any, b: any) => a.time - b.time);
+      // If first pivot type clearly indicates direction
+      if (structureType === 'SIMPLE') {
+        if (firstPivotType === 'L' && lowestLIndex === 0) {
+          // Started at a low, so we're going UP from there
+          phaseAnalysis = `Structure starts at a LOW pivot ($${firstPivot.price.toFixed(4)}), indicating the visible range begins after a down move. Subsequent price action is primarily UPWARD from this low.`;
+        } else if (firstPivotType === 'H' && highestHIndex === 0) {
+          // Started at a high, so we're going DOWN from there
+          phaseAnalysis = `Structure starts at a HIGH pivot ($${firstPivot.price.toFixed(4)}), indicating the visible range begins at a peak. Subsequent price action is primarily DOWNWARD from this high.`;
+        }
+      }
+      
       const firstPivotTime = sortedByTime[0]?.time || 0;
       const lastPivotTime = sortedByTime[sortedByTime.length - 1]?.time || 0;
       const timeRange = lastPivotTime - firstPivotTime;
-      const highestPivotPosition = timeRange > 0 ? (highestPivot?.time - firstPivotTime) / timeRange : 0.5;
-      const lowestPivotPosition = timeRange > 0 ? (lowestPivot?.time - firstPivotTime) / timeRange : 0.5;
+      const highestPivotPosition = timeRange > 0 ? (highestHPivot?.time - firstPivotTime) / timeRange : 0.5;
+      const lowestPivotPosition = timeRange > 0 ? (lowestLPivot?.time - firstPivotTime) / timeRange : 0.5;
       
       console.log(`📊 Structure type: ${structureType}`);
+      console.log(`📊 ═══════════════════════════════════════════════`);
       
       // Format pivots for AI
       const pivotSummary = pivots.map((p: any) => ({
@@ -6194,8 +6240,10 @@ The price moved from $${priceRange.start.toFixed(4)} to $${priceRange.end.toFixe
 Overall net direction: ${overallTrend}
 ${structureType !== 'SIMPLE' ? `⚠️ WARNING: This is NOT a simple one-directional move! See structure analysis above.` : ''}
 
-Highest Pivot: $${highestPivot?.price?.toFixed(4) || 'N/A'} on ${highestPivot ? new Date(highestPivot.time).toISOString().split('T')[0] : 'N/A'} (at ${(highestPivotPosition * 100).toFixed(0)}% through visible range)
-Lowest Pivot: $${lowestPivot?.price?.toFixed(4) || 'N/A'} on ${lowestPivot ? new Date(lowestPivot.time).toISOString().split('T')[0] : 'N/A'} (at ${(lowestPivotPosition * 100).toFixed(0)}% through visible range)
+Highest H Pivot: $${highestHPivot?.price?.toFixed(4) || 'N/A'} on ${highestHPivot ? new Date(highestHPivot.time * 1000).toISOString().split('T')[0] : 'N/A'} (at index ${highestHIndex} of ${totalPivots}, ${(highestPivotPosition * 100).toFixed(0)}% through time range)
+Lowest L Pivot: $${lowestLPivot?.price?.toFixed(4) || 'N/A'} on ${lowestLPivot ? new Date(lowestLPivot.time * 1000).toISOString().split('T')[0] : 'N/A'} (at index ${lowestLIndex} of ${totalPivots}, ${(lowestPivotPosition * 100).toFixed(0)}% through time range)
+First Pivot: ${firstPivot?.type} at $${firstPivot?.price?.toFixed(4) || 'N/A'} - This tells you the INITIAL direction
+Last Pivot: ${lastPivot?.type} at $${lastPivot?.price?.toFixed(4) || 'N/A'}
 
 === PRICE DATA ===
 Symbol: ${symbol}
