@@ -6022,6 +6022,292 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
 
   // ==================== END WAVE STACK AI ANALYSIS ====================
 
+  // Timeframe hierarchy mapping for detailed analysis (higher → lower)
+  const TIMEFRAME_HIERARCHY: Record<string, string> = {
+    '1M': '1w',
+    '1w': '1d',
+    '1d': '4h',
+    '4h': '1h',
+    '1h': '15m',
+    '15m': '5m',
+    '5m': '1m',
+  };
+  
+  // Map frontend timeframe values to Yahoo Finance intervals
+  const TF_TO_INTERVAL: Record<string, string> = {
+    '1M': '1mo',
+    '1w': '1wk',
+    '1d': '1d',
+    '4h': '60m', // Yahoo uses 60m for 1h, we'll multiply
+    '1h': '60m',
+    '15m': '15m',
+    '5m': '5m',
+    '1m': '1m',
+  };
+  
+  // Calculate pivots from candle data
+  function calculatePivotsFromCandles(candles: any[], lookback: number = 5): Array<{time: number; price: number; type: 'H' | 'L'}> {
+    const pivots: Array<{time: number; price: number; type: 'H' | 'L'}> = [];
+    
+    for (let i = lookback; i < candles.length - lookback; i++) {
+      const current = candles[i];
+      let isPivotHigh = true;
+      let isPivotLow = true;
+      
+      for (let j = 1; j <= lookback; j++) {
+        if (candles[i - j].high >= current.high || candles[i + j].high >= current.high) {
+          isPivotHigh = false;
+        }
+        if (candles[i - j].low <= current.low || candles[i + j].low <= current.low) {
+          isPivotLow = false;
+        }
+      }
+      
+      if (isPivotHigh) pivots.push({ time: current.time, price: current.high, type: 'H' });
+      if (isPivotLow) pivots.push({ time: current.time, price: current.low, type: 'L' });
+    }
+    
+    return pivots.sort((a, b) => a.time - b.time);
+  }
+
+  // Detailed Sub-Wave Analysis - uses lower timeframe data for granular sub-wave discovery
+  app.post("/api/crypto/elliott-wave/analyze-detailed", requireCryptoAuth, async (req, res) => {
+    try {
+      const { selectedWave, symbol, priorWaveContext } = req.body;
+      const userEmail = (req as any).cryptoUser?.email?.toLowerCase() || '';
+      
+      // Admin only access
+      if (userEmail !== ADMIN_EMAIL) {
+        return res.status(403).json({ error: 'This feature is in sandbox mode - admin access only' });
+      }
+      
+      if (!selectedWave || !selectedWave.startTime || !selectedWave.endTime) {
+        return res.status(400).json({ error: 'Selected wave with start/end times is required' });
+      }
+      
+      if (!process.env.XAI_API_KEY) {
+        return res.status(503).json({ error: 'AI analysis service unavailable. Configuration required.' });
+      }
+      
+      const currentTimeframe = selectedWave.timeframe || '1d';
+      const lowerTimeframe = TIMEFRAME_HIERARCHY[currentTimeframe] || currentTimeframe;
+      const yahooInterval = TF_TO_INTERVAL[lowerTimeframe] || '15m';
+      
+      // Map symbol format (BTCUSDT → BTC-USD)
+      const symbolMap: Record<string, string> = {
+        'BTCUSDT': 'BTC-USD',
+        'ETHUSDT': 'ETH-USD',
+        'XRPUSDT': 'XRP-USD',
+        'ADAUSDT': 'ADA-USD',
+        'SOLUSDT': 'SOL-USD',
+      };
+      const yahooSymbol = symbolMap[symbol] || 'XRP-USD';
+      
+      console.log(`🔍 Detailed Analysis: ${selectedWave.degree} ${selectedWave.patternType} on ${currentTimeframe}`);
+      console.log(`📊 Fetching ${lowerTimeframe} data (interval: ${yahooInterval}) for sub-wave discovery...`);
+      
+      // Calculate period based on wave duration
+      const waveDurationDays = (selectedWave.endTime - selectedWave.startTime) / 86400;
+      let period = '1mo';
+      if (waveDurationDays <= 1) period = '5d';
+      else if (waveDurationDays <= 7) period = '1mo';
+      else if (waveDurationDays <= 30) period = '3mo';
+      else period = '6mo';
+      
+      // Fetch lower timeframe candle data
+      const scriptPath = path.join(process.cwd(), 'server', 'python', 'chart_data.py');
+      const { stdout, stderr } = await execFileAsync(
+        'python3',
+        [scriptPath, yahooSymbol, period, yahooInterval],
+        { maxBuffer: 10 * 1024 * 1024 }
+      );
+      
+      if (stderr) {
+        console.warn('Python script warnings:', stderr);
+      }
+      
+      const chartData = JSON.parse(stdout);
+      if (chartData.error) {
+        return res.status(400).json({ error: 'Failed to fetch lower timeframe data', details: chartData.error });
+      }
+      
+      // Filter candles to the wave's time range (with 5% buffer on each side)
+      const waveStart = selectedWave.startTime;
+      const waveEnd = selectedWave.endTime;
+      const buffer = (waveEnd - waveStart) * 0.05;
+      
+      const filteredCandles = (chartData.candles || []).filter((c: any) => 
+        c.time >= (waveStart - buffer) && c.time <= (waveEnd + buffer)
+      );
+      
+      console.log(`📈 Filtered ${filteredCandles.length} candles from ${chartData.count} total (${lowerTimeframe} timeframe)`);
+      
+      if (filteredCandles.length < 10) {
+        return res.status(400).json({ 
+          error: 'Insufficient data', 
+          message: `Only ${filteredCandles.length} candles available for the selected time range. Need at least 10 for pivot detection.` 
+        });
+      }
+      
+      // Calculate pivots from lower timeframe data
+      const pivots = calculatePivotsFromCandles(filteredCandles, 3);
+      console.log(`🔄 Detected ${pivots.length} pivots in ${lowerTimeframe} data`);
+      
+      // Get degree one level lower
+      const degreeOrder = ['Grand Super Cycle', 'Super Cycle', 'Cycle', 'Primary', 'Intermediate', 'Minor', 'Minute', 'Minuette', 'Sub-Minuette'];
+      const currentDegreeIdx = degreeOrder.indexOf(selectedWave.degree);
+      const lowerDegree = currentDegreeIdx >= 0 && currentDegreeIdx < degreeOrder.length - 1 
+        ? degreeOrder[currentDegreeIdx + 1] 
+        : 'Minor';
+      
+      // Format pivot data for prompt
+      const pivotSummary = pivots.slice(0, 50).map((p, i) => ({
+        seq: i + 1,
+        type: p.type,
+        price: parseFloat(p.price.toFixed(6)),
+        date: new Date(p.time * 1000).toISOString().slice(0, 16),
+      }));
+      
+      // Build the detailed analysis prompt
+      const prompt = `You are an Elliott Wave expert analyzing a specific wave segment to identify its INTERNAL sub-wave structure using high-resolution price data.
+
+=== PARENT WAVE CONTEXT ===
+Wave being analyzed: ${selectedWave.degree} ${selectedWave.patternType} ${selectedWave.waveCount || ''}
+Direction: ${selectedWave.direction || 'unknown'}
+Price range: $${selectedWave.startPrice?.toFixed(6)} → $${selectedWave.endPrice?.toFixed(6)}
+Time range: ${new Date(waveStart * 1000).toISOString().slice(0, 10)} to ${new Date(waveEnd * 1000).toISOString().slice(0, 10)}
+Current timeframe: ${currentTimeframe}
+Analysis timeframe: ${lowerTimeframe} (one level deeper for sub-wave visibility)
+
+${priorWaveContext ? `
+=== PRIOR WAVE CONTEXT ===
+The wave BEFORE this one was: ${priorWaveContext.degree} ${priorWaveContext.type}
+Direction: ${priorWaveContext.direction}
+Price: $${priorWaveContext.startPrice?.toFixed(6)} → $${priorWaveContext.endPrice?.toFixed(6)} (${priorWaveContext.priceChange}% change)
+Duration: ${priorWaveContext.durationHours} hours
+
+Use this to understand:
+- If prior was motive (5-wave), current should be corrective
+- If prior was corrective (3-wave), current might be motive or next correction
+- Calculate retracement depth from prior wave
+` : ''}
+
+=== HIGH-RESOLUTION PIVOT DATA (${lowerTimeframe} timeframe) ===
+These are swing highs (H) and lows (L) detected within the parent wave:
+${JSON.stringify(pivotSummary, null, 2)}
+
+=== YOUR TASK ===
+Analyze the pivot data to identify the INTERNAL sub-wave structure of this ${selectedWave.patternType}:
+
+1. If the parent appears to be a MOTIVE wave (impulse/diagonal):
+   - Identify 5 sub-waves (${lowerDegree} degree: i-ii-iii-iv-v or 1-2-3-4-5)
+   - Check Wave 2 doesn't retrace >100% of Wave 1
+   - Check Wave 3 isn't the shortest
+   - Check Wave 4 doesn't overlap Wave 1 (unless diagonal)
+
+2. If the parent appears to be a CORRECTIVE wave:
+   - Identify 3 sub-waves (${lowerDegree} degree: a-b-c or w-x-y)
+   - For zigzag: A and C should be 5-wave, B is 3-wave
+   - For flat: All three waves are typically 3-wave
+   - B should retrace 50-100% of A for flats, less for zigzags
+
+=== RESPOND IN THIS JSON FORMAT ===
+{
+  "synopsis": "Brief summary of the internal structure found",
+  
+  "parentWaveType": "motive" or "corrective",
+  
+  "detectedPattern": "Impulse" or "Zigzag" or "Flat" or "Triangle" or "Diagonal" or "Complex",
+  
+  "subWaves": [
+    {
+      "label": "i" or "1" or "a" or "w",
+      "degree": "${lowerDegree}",
+      "type": "motive" or "corrective",
+      "direction": "up" or "down",
+      "startPrice": 0.000000,
+      "endPrice": 0.000000,
+      "startDate": "2024-01-01T00:00",
+      "endDate": "2024-01-02T00:00",
+      "pivotSeq": [1, 3],
+      "confidence": 85,
+      "reasoning": "Clear impulsive move with 5 internal waves visible"
+    }
+  ],
+  
+  "fibonacciAnalysis": [
+    { "relationship": "ii/i", "value": "61.8%", "isValid": true, "note": "Typical Wave 2 retracement" },
+    { "relationship": "iii/i", "value": "161.8%", "isValid": true, "note": "Extended Wave 3" }
+  ],
+  
+  "ruleViolations": [
+    { "rule": "Wave 4 overlap", "violated": false, "note": "No overlap with Wave 1" }
+  ],
+  
+  "alternativeCount": "Could also be interpreted as a leading diagonal if waves overlap",
+  
+  "prediction": {
+    "nextMove": "Wave iv correction down expected",
+    "targets": ["0.5200", "0.4800"],
+    "confidence": 70
+  }
+}
+
+IMPORTANT: 
+- Use the actual price levels from the pivot data
+- Include pivotSeq numbers so results can be verified against the data
+- Provide specific price levels for each sub-wave start/end`;
+
+      const OpenAI = (await import('openai')).default;
+      const xaiClient = new OpenAI({
+        baseURL: 'https://api.x.ai/v1',
+        apiKey: process.env.XAI_API_KEY,
+        timeout: 120000,
+      });
+      
+      console.log(`🤖 Calling xAI API for detailed sub-wave analysis...`);
+      const response = await xaiClient.chat.completions.create({
+        model: 'grok-3-beta',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 3000,
+        temperature: 0.1,
+      });
+      console.log(`✅ Detailed analysis response received`);
+      
+      const content = response.choices?.[0]?.message?.content || '';
+      
+      // Parse JSON from response
+      let analysis;
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          analysis = JSON.parse(jsonMatch[0]);
+        } else {
+          analysis = { raw: content, parseError: 'Could not extract JSON from response' };
+        }
+      } catch (parseErr) {
+        analysis = { raw: content, parseError: 'JSON parse failed' };
+      }
+      
+      res.json({
+        success: true,
+        selectedWave: {
+          degree: selectedWave.degree,
+          patternType: selectedWave.patternType,
+          timeframe: currentTimeframe,
+        },
+        analysisTimeframe: lowerTimeframe,
+        pivotCount: pivots.length,
+        candleCount: filteredCandles.length,
+        analysis,
+        rawResponse: content,
+      });
+    } catch (error: any) {
+      console.error('Error in detailed sub-wave analysis:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Start price monitoring service for tracked trades
   const { priceMonitorService } = await import("./services/priceMonitorService");
   priceMonitorService.start();
