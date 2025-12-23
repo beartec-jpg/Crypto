@@ -135,6 +135,7 @@ export default function CryptoAI() {
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [trackedTrades, setTrackedTrades] = useState<string[]>([]); // IDs of tracked trades
   const [trackingTradeId, setTrackingTradeId] = useState<string | null>(null); // Currently tracking
+  const [selectedTrackedTradeId, setSelectedTrackedTradeId] = useState<number | null>(null); // Selected trade for chart display
   const [activeTab, setActiveTab] = useState('chart'); // Track active tab for chart resize
   
   
@@ -1295,9 +1296,11 @@ export default function CryptoAI() {
       title: 'VAL',
     });
 
-    // Draw Tracked Trade Lines
-    if (trackedTradesData && trackedTradesData.length > 0) {
-      trackedTradesData.forEach((trade) => {
+    // Draw Tracked Trade Lines - only show selected trade
+    if (trackedTradesData && trackedTradesData.length > 0 && selectedTrackedTradeId !== null) {
+      const selectedTrade = trackedTradesData.find((t: any) => t.id === selectedTrackedTradeId);
+      if (selectedTrade) {
+        const trade = selectedTrade;
         // Only show pending trades or trades that hit entry
         if (trade.status === 'pending' || trade.status === 'entry_hit') {
           // Convert string prices to numbers (database stores as text/decimal)
@@ -1343,7 +1346,7 @@ export default function CryptoAI() {
             }
           });
         }
-      });
+      }
     }
 
     // Detect Order Blocks
@@ -1409,7 +1412,7 @@ export default function CryptoAI() {
         // Chart already disposed, ignore
       }
     };
-  }, [data, trackedTradesData, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs]);
+  }, [data, trackedTradesData, selectedTrackedTradeId, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs]);
 
   // === Resize chart when switching to chart tab ===
   useEffect(() => {
