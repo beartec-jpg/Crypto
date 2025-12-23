@@ -2789,13 +2789,14 @@ export default function CryptoElliottWave() {
   debugSettingsRef.current = debugSettings;
 
   // Check subscription tier and Elliott Wave access
-  const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; canUseElliott?: boolean; hasElliottAddon?: boolean }>({
+  const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; canUseElliott?: boolean; hasElliottAddon?: boolean; monthlyUsage?: { aiCredits: number; aiLimit: number; elliottCredits: number; elliottLimit: number } }>({
     queryKey: ['/api/crypto/my-subscription'],
   });
 
   // User can use Elliott features if they have the addon OR elite tier OR are admin
   const canUseElliottFeatures = isAdmin || subscription?.canUseElliott || subscription?.hasElliottAddon || subscription?.tier === 'elite' || localTier === 'elite';
   const isElite = isAdmin || subscription?.tier === 'elite' || localTier === 'elite';
+  const hasElliottAIAccess = isAdmin || (subscription?.monthlyUsage?.elliottLimit ?? 0) > 0 || subscription?.tier === 'elite' || subscription?.hasElliottAddon;
   
   // Computed access flag: In development = always allowed; In production = need auth + subscription + ready
   // Also requires auth and subscription loading to be complete to prevent premature mutations
@@ -8530,7 +8531,7 @@ const aiAnalyze = useMutation({
           </TabsContent>
 
           <TabsContent value="ai" className="mt-4 space-y-4">
-            {isAdmin ? (
+            {hasElliottAIAccess ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-purple-400 flex items-center gap-2">
@@ -8701,8 +8702,17 @@ const aiAnalyze = useMutation({
             ) : (
               <div className="text-center py-12 text-gray-500">
                 <Sparkles className="w-8 h-8 text-gray-600 mx-auto mb-3" />
-                <p className="text-lg">AI Analysis (Admin Only)</p>
-                <p className="text-sm mt-2">This feature is in sandbox mode</p>
+                {!isAuthenticated ? (
+                  <>
+                    <p className="text-lg">Sign in to access Elliott Wave AI analysis</p>
+                    <p className="text-sm mt-2">Create an account to unlock AI-powered wave analysis</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg">Upgrade to Elite tier or add the Waves add-on to access AI Wave Analysis</p>
+                    <p className="text-sm mt-2">Get AI-powered Elliott Wave analysis with your subscription</p>
+                  </>
+                )}
               </div>
             )}
           </TabsContent>
@@ -8711,7 +8721,7 @@ const aiAnalyze = useMutation({
     </Card>
 
       {/* Waves Usage Training Section */}
-      <Card className="bg-slate-900/50 border-slate-800 w-full">
+      <Card className="bg-slate-900/90 border-slate-700">
         <CardHeader className="pb-3 cursor-pointer" onClick={() => setWavesTrainingOpen(!wavesTrainingOpen)}>
           <CardTitle className="flex items-center justify-between text-lg">
             <span className="flex items-center gap-2 text-cyan-400">

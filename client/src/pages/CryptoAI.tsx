@@ -4,6 +4,7 @@ import { Helmet } from 'react-helmet-async';
 import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickData, HistogramData, LineData, Time, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RefreshCw, TrendingUp, Zap, Loader2, ArrowLeft, Settings, Activity, Info, AlertCircle, Target, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
@@ -848,8 +849,11 @@ export default function CryptoAI() {
   };
 
   // === Fetch data from Binance ===
-  const fetchData = useCallback(async () => {
-    console.log(`📊 Fetching data for ${symbol} at ${interval} interval...`);
+  const fetchData = useCallback(async (retryCount = 0) => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 2000; // 2 seconds
+    
+    console.log(`📊 Fetching data for ${symbol} at ${interval} interval... (attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
     setLoading(true);
     try {
       // Delete all pending/active trades for this symbol before refreshing
@@ -867,7 +871,7 @@ export default function CryptoAI() {
       }
       
       const response = await fetch(`/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000`);
-      if (!response.ok) throw new Error('Failed to fetch data');
+      if (!response.ok) throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
       
       const rawData = await response.json();
       const bars: Bar[] = rawData.map((d: any) => ({
@@ -883,10 +887,29 @@ export default function CryptoAI() {
       setData(bars);
     } catch (error) {
       console.error('Failed to fetch candle data:', error);
+      
+      // Retry logic
+      if (retryCount < MAX_RETRIES) {
+        console.log(`🔄 Retrying in ${RETRY_DELAY / 1000} seconds...`);
+        setTimeout(() => {
+          fetchData(retryCount + 1);
+        }, RETRY_DELAY);
+        return; // Don't set loading false yet
+      }
+      
+      // Final failure - show toast to user
+      toast({
+        title: "Failed to load chart data",
+        description: "Unable to fetch candle data. Please refresh the page or try again later.",
+        variant: "destructive"
+      });
     } finally {
+      if (retryCount >= MAX_RETRIES || retryCount === 0) {
+        // Only set loading false if this is the final attempt or first successful attempt
+      }
       setLoading(false);
     }
-  }, [symbol, interval]);
+  }, [symbol, interval, toast]);
 
 
   // Initial fetch (removed auto-refresh for cost control)
@@ -2274,10 +2297,19 @@ export default function CryptoAI() {
             <div className={`space-y-4 ${activeTab === 'chart' ? 'block' : 'hidden'}`}>
             {/* Chart */}
             <Card className="bg-[#1a1a1a] border-[#2a2e39] p-4">
-              <div 
-                ref={chartContainerRef} 
-                className="w-full h-[350px] sm:h-[450px] lg:h-[600px]"
-              />
+              {loading || data.length === 0 ? (
+                <div className="w-full h-[350px] sm:h-[450px] lg:h-[600px] flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#00c4b4]" />
+                    <span className="text-sm text-gray-400">Loading chart data...</span>
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  ref={chartContainerRef} 
+                  className="w-full h-[350px] sm:h-[450px] lg:h-[600px]"
+                />
+              )}
             </Card>
 
             {/* Volume Chart */}
@@ -2293,7 +2325,16 @@ export default function CryptoAI() {
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <CardContent>
-                    <div ref={volumeChartRef} className="w-full" />
+                    {loading || data.length === 0 ? (
+                      <div className="w-full h-[150px] flex items-center justify-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                          <span className="text-xs text-gray-500">Loading volume data...</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div ref={volumeChartRef} className="w-full" />
+                    )}
                   </CardContent>
                 </CollapsibleContent>
               </Card>
@@ -2312,7 +2353,16 @@ export default function CryptoAI() {
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <CardContent>
-                    <div ref={cvdChartRef} className="w-full" />
+                    {loading || data.length === 0 ? (
+                      <div className="w-full h-[150px] flex items-center justify-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                          <span className="text-xs text-gray-500">Loading CVD data...</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div ref={cvdChartRef} className="w-full" />
+                    )}
                   </CardContent>
                 </CollapsibleContent>
               </Card>
@@ -2332,7 +2382,16 @@ export default function CryptoAI() {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <CardContent>
-                      <div ref={rsiRef} className="w-full" />
+                      {loading || data.length === 0 ? (
+                        <div className="w-full h-[200px] flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="text-xs text-gray-500">Loading RSI...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div ref={rsiRef} className="w-full" />
+                      )}
                     </CardContent>
                   </CollapsibleContent>
                 </Card>
@@ -2350,7 +2409,16 @@ export default function CryptoAI() {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <CardContent>
-                      <div ref={macdRef} className="w-full" />
+                      {loading || data.length === 0 ? (
+                        <div className="w-full h-[200px] flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="text-xs text-gray-500">Loading MACD...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div ref={macdRef} className="w-full" />
+                      )}
                     </CardContent>
                   </CollapsibleContent>
                 </Card>
@@ -2368,7 +2436,16 @@ export default function CryptoAI() {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <CardContent>
-                      <div ref={obvRef} className="w-full" />
+                      {loading || data.length === 0 ? (
+                        <div className="w-full h-[200px] flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="text-xs text-gray-500">Loading OBV...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div ref={obvRef} className="w-full" />
+                      )}
                     </CardContent>
                   </CollapsibleContent>
                 </Card>
@@ -2386,7 +2463,16 @@ export default function CryptoAI() {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <CardContent>
-                      <div ref={mfiRef} className="w-full" />
+                      {loading || data.length === 0 ? (
+                        <div className="w-full h-[200px] flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="text-xs text-gray-500">Loading MFI...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div ref={mfiRef} className="w-full" />
+                      )}
                     </CardContent>
                   </CollapsibleContent>
                 </Card>
@@ -2404,7 +2490,16 @@ export default function CryptoAI() {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <CardContent>
-                      <div ref={cciRef} className="w-full" />
+                      {loading || data.length === 0 ? (
+                        <div className="w-full h-[200px] flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="text-xs text-gray-500">Loading CCI...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div ref={cciRef} className="w-full" />
+                      )}
                     </CardContent>
                   </CollapsibleContent>
                 </Card>
@@ -2422,7 +2517,16 @@ export default function CryptoAI() {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <CardContent>
-                      <div ref={adxRef} className="w-full" />
+                      {loading || data.length === 0 ? (
+                        <div className="w-full h-[200px] flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="text-xs text-gray-500">Loading ADX...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div ref={adxRef} className="w-full" />
+                      )}
                     </CardContent>
                   </CollapsibleContent>
                 </Card>
