@@ -435,6 +435,7 @@ export const cryptoAiAnalyses = pgTable("crypto_ai_analyses", {
   alerts: jsonb("alerts").default(sql`'[]'::jsonb`), // Array of trade alerts
   marketInsights: jsonb("market_insights"), // Market summary, bias, key levels
   orderflowData: jsonb("orderflow_data"), // OI, Funding, L/S ratio snapshot
+  elliottAnalysis: jsonb("elliott_analysis"), // Elliott Wave AI analysis result
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -446,6 +447,7 @@ export const insertCryptoAiAnalysisSchema = z.object({
   alerts: z.any().optional().default([]),
   marketInsights: z.any().optional().nullable(),
   orderflowData: z.any().optional().nullable(),
+  elliottAnalysis: z.any().optional().nullable(),
 });
 
 export type InsertCryptoAiAnalysis = z.infer<typeof insertCryptoAiAnalysisSchema>;

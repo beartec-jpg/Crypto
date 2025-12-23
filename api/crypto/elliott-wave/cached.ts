@@ -82,9 +82,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const cryptoUserId = userResult.rows[0].id;
 
-    // Get cached analysis
+    // Get cached Elliott analysis
     const result = await pool.query(
-      `SELECT alerts, market_insights, orderflow_data, updated_at
+      `SELECT elliott_analysis, updated_at
        FROM crypto_ai_analyses
        WHERE user_id = $1 AND symbol = $2 AND interval = $3`,
       [cryptoUserId, symbol, interval]
@@ -92,23 +92,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await pool.end();
 
-    if (result.rows.length === 0) {
+    if (result.rows.length === 0 || !result.rows[0].elliott_analysis) {
       return res.json({ cached: null });
     }
 
     const row = result.rows[0];
     // Parse JSON if needed (pg driver usually handles this but be safe)
-    const parseJson = (val: any) => typeof val === 'string' ? JSON.parse(val) : val;
+    const elliottData = typeof row.elliott_analysis === 'string' 
+      ? JSON.parse(row.elliott_analysis) 
+      : row.elliott_analysis;
     return res.json({
       cached: {
-        alerts: parseJson(row.alerts) || [],
-        marketInsights: parseJson(row.market_insights) || null,
-        orderflowData: parseJson(row.orderflow_data) || null,
+        ...elliottData,
         updatedAt: row.updated_at?.toISOString() || null
       }
     });
   } catch (error: any) {
-    console.error('Error fetching cached analysis:', error);
+    console.error('Error fetching cached Elliott analysis:', error);
     try { await pool?.end(); } catch {}
     return res.status(500).json({ error: error.message });
   }
