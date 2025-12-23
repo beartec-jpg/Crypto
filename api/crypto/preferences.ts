@@ -107,6 +107,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST') {
       const { selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription } = req.body || {};
 
+      // Get current tier for validation
+      const tierResult = await pool.query(
+        'SELECT tier FROM crypto_subscriptions WHERE user_id = $1',
+        [cryptoUserId]
+      );
+      const tier = tierResult.rows[0]?.tier || 'free';
+
+      // Tier-based limits
+      const tierLimits: Record<string, { maxTickers: number; allowedAlertTypes: string[]; allowedGrades: string[]; allowedTimeframes: string[] }> = {
+        free: { maxTickers: 0, allowedAlertTypes: [], allowedGrades: [], allowedTimeframes: [] },
+        intermediate: { 
+          maxTickers: 3, 
+          allowedAlertTypes: ['bos', 'choch', 'fvg', 'liquidation', 'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx'],
+          allowedGrades: ['A+', 'A', 'B', 'C', 'D', 'E'],
+          allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
+        },
+        pro: { 
+          maxTickers: 4, 
+          allowedAlertTypes: ['bos', 'choch', 'fvg', 'liquidation', 'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx', 'ema_cross', 'sma_alignment', 'bb_squeeze', 'vwap_cross'],
+          allowedGrades: ['A+', 'A', 'B', 'C', 'D', 'E'],
+          allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
+        },
+        elite: { 
+          maxTickers: 5, 
+          allowedAlertTypes: ['bos', 'choch', 'fvg', 'liquidation', 'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx', 'ema_cross', 'sma_alignment', 'bb_squeeze', 'vwap_cross', 'volume_spike', 'volume_divergence', 'obv_divergence', 'cvd_spike', 'engulfing', 'hammer_star'],
+          allowedGrades: ['A+', 'A', 'B', 'C', 'D', 'E'],
+          allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
+        },
+      };
+
+      const limits = tierLimits[tier as keyof typeof tierLimits] || tierLimits.free;
+
+      // Validate ticker count
+      if (selectedTickers && selectedTickers.length > limits.maxTickers) {
+        await pool.end();
+        return res.status(403).json({ error: `${tier} tier allows maximum ${limits.maxTickers} ticker(s). Upgrade to unlock more.` });
+      }
+
+      // Validate alert types
+      if (alertTypes && alertTypes.length > 0) {
+        const invalidTypes = alertTypes.filter((type: string) => !limits.allowedAlertTypes.includes(type));
+        if (invalidTypes.length > 0) {
+          await pool.end();
+          return res.status(403).json({ error: `${tier} tier does not support alert types: ${invalidTypes.join(', ')}. Upgrade to unlock.` });
+        }
+      }
+
       // Check if subscription exists
       const existingResult = await pool.query(
         'SELECT id FROM crypto_subscriptions WHERE user_id = $1',

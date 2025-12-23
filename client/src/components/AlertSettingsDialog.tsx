@@ -352,6 +352,12 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
       allowedGrades: string[];
       allowedTimeframes: string[];
     }> = {
+      free: {
+        maxTickers: 0,
+        allowedAlertTypes: [],
+        allowedGrades: [],
+        allowedTimeframes: []
+      },
       intermediate: {
         maxTickers: 3,
         allowedAlertTypes: ['bos', 'choch', 'fvg', 'liquidation', 'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx'],
@@ -359,7 +365,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
         allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
       },
       pro: {
-        maxTickers: 3,
+        maxTickers: 4,
         allowedAlertTypes: [
           'bos', 'choch', 'fvg', 'liquidation',
           'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx',
@@ -369,7 +375,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
         allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
       },
       elite: {
-        maxTickers: 3,
+        maxTickers: 5,
         allowedAlertTypes: [
           'bos', 'choch', 'fvg', 'liquidation',
           'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx',
@@ -381,7 +387,8 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
         allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
       },
     };
-    // Return intermediate limits for any tier below intermediate (free, beginner)
+    // Return free limits for free tier, otherwise intermediate as fallback
+    if (normalizedTier === 'free') return tierLimits['free'];
     return tierLimits[normalizedTier] || tierLimits['intermediate'];
   };
   

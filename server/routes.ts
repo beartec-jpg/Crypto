@@ -4547,10 +4547,10 @@ Return ONLY valid JSON in this exact format:
       // Tier-based limits with progressive feature unlocking
       const tierLimits = {
         free: { 
-          maxTickers: 1, 
-          allowedAlertTypes: ['bos', 'choch'],
-          allowedGrades: ['A+', 'A', 'B'],
-          allowedTimeframes: ['15m', '1h', '4h', '1d']
+          maxTickers: 0, 
+          allowedAlertTypes: [],
+          allowedGrades: [],
+          allowedTimeframes: []
         },
         intermediate: { 
           maxTickers: 3, 
@@ -4559,7 +4559,7 @@ Return ONLY valid JSON in this exact format:
           allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
         },
         pro: { 
-          maxTickers: 3, 
+          maxTickers: 4, 
           allowedAlertTypes: [
             'bos', 'choch', 'fvg', 'liquidation', 
             'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx',
@@ -4569,7 +4569,7 @@ Return ONLY valid JSON in this exact format:
           allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
         },
         elite: { 
-          maxTickers: 3, 
+          maxTickers: 5, 
           allowedAlertTypes: [
             // All alert types - Smart Money, Oscillators, Indicators, Volume, Price Action
             'bos', 'choch', 'fvg', 'liquidation',
