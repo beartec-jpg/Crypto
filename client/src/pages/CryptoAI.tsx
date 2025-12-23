@@ -2333,7 +2333,7 @@ export default function CryptoAI() {
                         </div>
                       </div>
                     ) : (
-                      <div ref={volumeChartRef} className="w-full" />
+                      <div ref={volumeChartRef} className="w-full h-[150px]" />
                     )}
                   </CardContent>
                 </CollapsibleContent>
@@ -2361,7 +2361,7 @@ export default function CryptoAI() {
                         </div>
                       </div>
                     ) : (
-                      <div ref={cvdChartRef} className="w-full" />
+                      <div ref={cvdChartRef} className="w-full h-[150px]" />
                     )}
                   </CardContent>
                 </CollapsibleContent>
@@ -2390,7 +2390,7 @@ export default function CryptoAI() {
                           </div>
                         </div>
                       ) : (
-                        <div ref={rsiRef} className="w-full" />
+                        <div ref={rsiRef} className="w-full h-[200px]" />
                       )}
                     </CardContent>
                   </CollapsibleContent>
@@ -2417,7 +2417,7 @@ export default function CryptoAI() {
                           </div>
                         </div>
                       ) : (
-                        <div ref={macdRef} className="w-full" />
+                        <div ref={macdRef} className="w-full h-[200px]" />
                       )}
                     </CardContent>
                   </CollapsibleContent>
@@ -2444,7 +2444,7 @@ export default function CryptoAI() {
                           </div>
                         </div>
                       ) : (
-                        <div ref={obvRef} className="w-full" />
+                        <div ref={obvRef} className="w-full h-[200px]" />
                       )}
                     </CardContent>
                   </CollapsibleContent>
@@ -2471,7 +2471,7 @@ export default function CryptoAI() {
                           </div>
                         </div>
                       ) : (
-                        <div ref={mfiRef} className="w-full" />
+                        <div ref={mfiRef} className="w-full h-[200px]" />
                       )}
                     </CardContent>
                   </CollapsibleContent>
@@ -2498,7 +2498,7 @@ export default function CryptoAI() {
                           </div>
                         </div>
                       ) : (
-                        <div ref={cciRef} className="w-full" />
+                        <div ref={cciRef} className="w-full h-[200px]" />
                       )}
                     </CardContent>
                   </CollapsibleContent>
@@ -2525,7 +2525,7 @@ export default function CryptoAI() {
                           </div>
                         </div>
                       ) : (
-                        <div ref={adxRef} className="w-full" />
+                        <div ref={adxRef} className="w-full h-[200px]" />
                       )}
                     </CardContent>
                   </CollapsibleContent>
