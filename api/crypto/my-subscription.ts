@@ -15,10 +15,20 @@ const TIER_HIERARCHY: Record<BaseTier, number> = {
 const MONTHLY_AI_CREDITS: Record<BaseTier, number> = {
   free: 0,
   beginner: 0,
-  intermediate: 50,
-  pro: -1, // -1 means unlimited
-  elite: -1,
+  intermediate: 200,
+  pro: 400,
+  elite: 500,
 };
+
+const MONTHLY_ELLIOTT_AI_CREDITS: Record<BaseTier, number> = {
+  free: 0,
+  beginner: 0,
+  intermediate: 0,
+  pro: 0,
+  elite: 150,
+};
+
+const ELLIOTT_ADDON_CREDITS = 50;
 
 function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {
   const tierLevel = TIER_HIERARCHY[tier] || 0;
@@ -97,6 +107,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       aiCredits: 0,
       stripeSubscriptionId: null,
       elliottStripeItemId: null,
+      monthlyUsage: {
+        aiCredits: 0,
+        aiLimit: 0,
+        elliottCredits: 0,
+        elliottLimit: 0,
+      },
       ...capabilities,
     });
   }
@@ -141,19 +157,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const hasElliottAddon = subscription.has_elliott_addon || false;
     const capabilities = getCapabilities(tier, hasElliottAddon);
     
-    const monthlyLimit = MONTHLY_AI_CREDITS[tier] || 0;
-    const aiCreditsRemaining = subscription.ai_credits || 0;
-    const aiCreditsLimit = monthlyLimit >= 0 ? monthlyLimit : 0;
+    const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
+    const aiCredits = subscription.ai_credits || 0;
+    
+    const elliottLimit = (tier === 'elite' ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : 0) + (hasElliottAddon ? ELLIOTT_ADDON_CREDITS : 0);
+    const elliottCredits = subscription.elliott_ai_credits || 0;
 
     return res.status(200).json({
       id: subscription.id,
       userId: subscription.user_id,
       subscriptionStatus: subscription.subscription_status || 'active',
-      aiCredits: subscription.ai_credits || 0,
-      aiCreditsRemaining,
-      aiCreditsLimit,
+      aiCredits: aiCredits,
+      aiCreditsRemaining: aiCredits,
+      aiCreditsLimit: aiLimit,
       stripeSubscriptionId: subscription.stripe_subscription_id,
       elliottStripeItemId: subscription.elliott_stripe_item_id,
+      monthlyUsage: {
+        aiCredits: aiCredits,
+        aiLimit: aiLimit,
+        elliottCredits: elliottCredits,
+        elliottLimit: elliottLimit,
+      },
       ...capabilities,
     });
 
@@ -169,6 +193,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       aiCredits: 0,
       stripeSubscriptionId: null,
       elliottStripeItemId: null,
+      monthlyUsage: {
+        aiCredits: 0,
+        aiLimit: 0,
+        elliottCredits: 0,
+        elliottLimit: 0,
+      },
       ...capabilities,
     });
   } finally {

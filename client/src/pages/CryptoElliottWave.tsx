@@ -8538,6 +8538,11 @@ const aiAnalyze = useMutation({
                     <Sparkles className="w-4 h-4" />
                     AI Wave Analysis
                   </span>
+                  {subscription?.monthlyUsage && subscription.monthlyUsage.elliottLimit > 0 && (
+                    <span className="text-xs text-purple-400" data-testid="text-elliott-credits">
+                      Elliott AI: {subscription.monthlyUsage.elliottLimit - subscription.monthlyUsage.elliottCredits} of {subscription.monthlyUsage.elliottLimit} remaining
+                    </span>
+                  )}
                 </div>
                 
                 {(() => {
@@ -8700,19 +8705,29 @@ const aiAnalyze = useMutation({
                 })()}
               </div>
             ) : (
-              <div className="text-center py-12 text-gray-500">
-                <Sparkles className="w-8 h-8 text-gray-600 mx-auto mb-3" />
-                {!isAuthenticated ? (
-                  <>
-                    <p className="text-lg">Sign in to access Elliott Wave AI analysis</p>
-                    <p className="text-sm mt-2">Create an account to unlock AI-powered wave analysis</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-lg">Upgrade to Elite tier or add the Waves add-on to access AI Wave Analysis</p>
-                    <p className="text-sm mt-2">Get AI-powered Elliott Wave analysis with your subscription</p>
-                  </>
-                )}
+              <div className="relative rounded-lg overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-900/80 via-slate-900/90 to-cyan-900/80" />
+                <div className="relative text-center py-12 px-6">
+                  <Sparkles className="w-10 h-10 text-purple-400 mx-auto mb-4" />
+                  {!isAuthenticated ? (
+                    <>
+                      <p className="text-lg font-semibold text-white">Sign in to access Elliott Wave AI analysis</p>
+                      <p className="text-sm mt-2 text-gray-300">Create an account to unlock AI-powered wave analysis</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-lg font-semibold text-white">Upgrade to Elite or add the Waves Add-on</p>
+                      <p className="text-sm mt-2 text-gray-300">Get AI-powered Elliott Wave analysis with your subscription</p>
+                      <a 
+                        href="/plans" 
+                        className="inline-block mt-4 px-6 py-2 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 rounded-lg text-white font-medium transition-all"
+                        data-testid="link-upgrade-plans"
+                      >
+                        View Plans & Upgrade
+                      </a>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </TabsContent>
