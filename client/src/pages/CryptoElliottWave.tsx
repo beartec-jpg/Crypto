@@ -8760,32 +8760,64 @@ const aiAnalyze = useMutation({
                         // Use candlesRef for most up-to-date data (chart may have more than state)
                         const allCandles = candlesRef.current || candles;
                         
-                        if (isDevelopment) {
-                          console.log(`📊 Visible range: from ${new Date(visibleRange.from * 1000).toLocaleDateString()} to ${new Date(visibleRange.to * 1000).toLocaleDateString()}`);
-                          console.log(`📊 Total candles available: ${allCandles.length}`);
-                        }
-                        
-                        // Filter candles to only visible ones
+                        // Filter candles to only visible ones (exclude future virtual candles)
+                        const lastRealCandleTime = allCandles.length > 0 ? allCandles[allCandles.length - 1].time : 0;
                         const visibleCandles = allCandles.filter(
-                          c => c.time >= visibleRange.from && c.time <= visibleRange.to
+                          c => c.time >= visibleRange.from && c.time <= Math.min(visibleRange.to, lastRealCandleTime)
                         );
+                        
+                        console.log(`📊 ═══════════════════════════════════════════════`);
+                        console.log(`📊 CHART ANALYSIS DEBUG`);
+                        console.log(`📊 Visible time range: ${new Date(visibleRange.from * 1000).toLocaleDateString()} to ${new Date(visibleRange.to * 1000).toLocaleDateString()}`);
+                        console.log(`📊 Total candles in state: ${allCandles.length}`);
+                        console.log(`📊 Visible candles found: ${visibleCandles.length}`);
+                        
+                        if (visibleCandles.length > 0) {
+                          console.log(`📊 First visible candle: ${new Date(visibleCandles[0].time * 1000).toLocaleDateString()} @ $${visibleCandles[0].close.toFixed(4)}`);
+                          console.log(`📊 Last visible candle: ${new Date(visibleCandles[visibleCandles.length - 1].time * 1000).toLocaleDateString()} @ $${visibleCandles[visibleCandles.length - 1].close.toFixed(4)}`);
+                        }
                         
                         if (visibleCandles.length < 10) {
                           toast({
                             title: 'Not enough data',
-                            description: 'Need at least 10 visible candles to analyze',
+                            description: `Only ${visibleCandles.length} visible candles. Need at least 10.`,
                             variant: 'destructive',
                           });
                           return;
                         }
                         
-                        // Calculate pivots from VISIBLE candles only
-                        const pivotsToSend = calculatePivots(visibleCandles, 5);
+                        // Calculate DYNAMIC pivot length based on visible candle count
+                        // More candles = larger pivot length to detect major swings, not noise
+                        // ~40 candles per pivot point, minimum 3, maximum 20
+                        const dynamicPivotLength = Math.max(3, Math.min(20, Math.floor(visibleCandles.length / 40)));
+                        
+                        console.log(`📊 Dynamic pivot length: ${dynamicPivotLength} (based on ${visibleCandles.length} candles)`);
+                        
+                        // Calculate pivots from VISIBLE candles with dynamic length
+                        const pivotsToSend = calculatePivots(visibleCandles, dynamicPivotLength);
+                        
+                        console.log(`📊 Pivots detected: ${pivotsToSend.length}`);
+                        if (pivotsToSend.length > 0) {
+                          console.log(`📊 First pivot: ${pivotsToSend[0].type} at $${pivotsToSend[0].price.toFixed(4)}`);
+                          console.log(`📊 Last pivot: ${pivotsToSend[pivotsToSend.length - 1].type} at $${pivotsToSend[pivotsToSend.length - 1].price.toFixed(4)}`);
+                          
+                          // Find highest and lowest pivots
+                          const highPivots = pivotsToSend.filter(p => p.type === 'high');
+                          const lowPivots = pivotsToSend.filter(p => p.type === 'low');
+                          if (highPivots.length > 0) {
+                            const maxHigh = highPivots.reduce((a, b) => a.price > b.price ? a : b);
+                            console.log(`📊 Highest pivot: $${maxHigh.price.toFixed(4)} at ${new Date(maxHigh.time * 1000).toLocaleDateString()}`);
+                          }
+                          if (lowPivots.length > 0) {
+                            const minLow = lowPivots.reduce((a, b) => a.price < b.price ? a : b);
+                            console.log(`📊 Lowest pivot: $${minLow.price.toFixed(4)} at ${new Date(minLow.time * 1000).toLocaleDateString()}`);
+                          }
+                        }
                         
                         if (pivotsToSend.length < 3) {
                           toast({
                             title: 'Not enough pivots',
-                            description: 'Need at least 3 pivot points. Try zooming out slightly.',
+                            description: `Only ${pivotsToSend.length} pivots. Try zooming out to see more price action.`,
                             variant: 'destructive',
                           });
                           return;
@@ -8799,10 +8831,9 @@ const aiAnalyze = useMutation({
                           end: visibleCandles[visibleCandles.length - 1]?.close || 0,
                         };
                         
-                        if (isDevelopment) {
-                          console.log(`📊 Chart Analysis: ${visibleCandles.length} visible candles, ${pivotsToSend.length} pivots`);
-                          console.log(`📊 Price range: $${priceRange.start.toFixed(4)} → $${priceRange.end.toFixed(4)} (high: $${priceRange.high.toFixed(4)}, low: $${priceRange.low.toFixed(4)})`);
-                        }
+                        console.log(`📊 Price range: $${priceRange.low.toFixed(4)} - $${priceRange.high.toFixed(4)}`);
+                        console.log(`📊 Start→End: $${priceRange.start.toFixed(4)} → $${priceRange.end.toFixed(4)}`);
+                        console.log(`📊 ═══════════════════════════════════════════════`);
                         
                         chartAnalyze.mutate({ 
                           symbol, 
