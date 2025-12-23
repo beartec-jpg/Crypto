@@ -5770,7 +5770,7 @@ Return JSON:
   // Admin only (beartec@beartec.uk)
   app.post("/api/crypto/elliott-wave/analyze-stack", requireCryptoAuth, async (req, res) => {
     try {
-      const { waveEntries, symbol, pivots } = req.body;
+      const { waveEntries, symbol, pivots, scopedWave, priorWaveContext } = req.body;
       const userEmail = (req as any).cryptoUser?.email?.toLowerCase() || '';
       
       // Admin only access
@@ -5787,7 +5787,8 @@ Return JSON:
       }
       
       const pivotCount = pivots?.length || 0;
-      console.log(`🤖 Grok Wave Stack Analysis: ${waveEntries.length} entries, ${pivotCount} pivots for ${symbol}...`);
+      const analysisMode = scopedWave ? `SCOPED: ${scopedWave.degree} ${scopedWave.label}` : 'FULL STACK';
+      console.log(`🤖 Grok Wave Analysis [${analysisMode}]: ${waveEntries.length} entries, ${pivotCount} pivots for ${symbol}...`);
       
       // Calculate Fibonacci ratios and rule checks for each wave
       const waveDataFormatted = waveEntries.map((entry: any, idx: number) => {
@@ -5871,9 +5872,28 @@ Return JSON:
         date: new Date(p.time * 1000).toISOString().slice(0, 16),
       }));
       
+      // Build context sections based on analysis mode
+      const scopedWaveSection = scopedWave ? `
+=== SCOPED ANALYSIS MODE ===
+You are analyzing a SPECIFIC wave segment: ${scopedWave.degree} ${scopedWave.label}
+Price range: ${scopedWave.startPrice} → ${scopedWave.endPrice}
+Focus on finding/validating SUB-WAVES within this structure.
+${priorWaveContext ? `
+PRIOR WAVE CONTEXT (the wave before this one):
+- Degree: ${priorWaveContext.degree}
+- Type: ${priorWaveContext.type} (${priorWaveContext.waveCount}-wave, ${priorWaveContext.direction})
+- Price: ${priorWaveContext.startPrice} → ${priorWaveContext.endPrice} (${priorWaveContext.priceChange}%)
+
+Use this to determine:
+- If prior was motive (5-wave up), this should be corrective (ABC/WXY down)
+- Check retracement depth: should be 38.2%-78.6% of prior wave
+- Consider if this is simple (ABC) or complex (WXY, WXYXZ) based on depth/time
+` : ''}` : '';
+
       const prompt = `You are an Elliott Wave analyst. Your job is to analyze PRICE POINTS and determine the best wave structure, then compare to the user's labels.
 
 IMPORTANT: Focus on PRICE RELATIONSHIPS and STRUCTURE, not label terminology. "Impulse" inside a correction is the C-wave - that's valid! Don't flag terminology.
+${scopedWaveSection}
 
 === STEP 1: ANALYZE PIVOT POINTS ===
 Review these swing highs (H) and lows (L) to understand the price structure:
@@ -5888,6 +5908,7 @@ A) FIRST: Look at the raw price points (startPrice, endPrice, pivots) and determ
 B) THEN: Map your analysis to the uiIndex numbers so results can be cross-referenced
 C) COMPARE: Your best-fit structure vs user's labels - note where they align and where they differ
 D) REPORT: Focus on PRICE RELATIONSHIP issues (Fib ratios, overlaps, rule violations), not terminology
+${scopedWave ? `E) SUGGEST sub-wave structure if none exists, or validate existing sub-waves` : ''}
 
 === ELLIOTT WAVE RULES TO CHECK ===
 Within each degree level:

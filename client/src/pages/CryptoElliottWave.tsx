@@ -2630,6 +2630,16 @@ export default function CryptoElliottWave() {
     tableData: { degree: string; label: string; direction: string; startDate: string; endDate: string; startPrice: string; endPrice: string; pattern: string }[];
     rawResponse?: string;
   } | null>(null);
+  // Selected wave for scoped AI analysis
+  const [selectedWaveForAnalysis, setSelectedWaveForAnalysis] = useState<{
+    id: string;
+    degree: string;
+    label: string;
+    startTime: number;
+    endTime: number;
+    startPrice: number;
+    endPrice: number;
+  } | null>(null);
   const [isCapturingChart, setIsCapturingChart] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
@@ -3567,7 +3577,13 @@ const aiAnalyze = useMutation({
 
   // Grok Stack Analysis mutation (admin only)
   const grokStackAnalyze = useMutation({
-    mutationFn: async (data: { waveEntries: WaveStackEntry[]; symbol: string; pivots?: Array<{time: number; price: number; type: 'H' | 'L'}> }) => {
+    mutationFn: async (data: { 
+      waveEntries: WaveStackEntry[]; 
+      symbol: string; 
+      pivots?: Array<{time: number; price: number; type: 'H' | 'L'}>;
+      scopedWave?: { id: string; degree: string; label: string; startTime: number; endTime: number; startPrice: number; endPrice: number } | null;
+      priorWaveContext?: { degree: string; type: string; direction: string; waveCount: number; startPrice: number; endPrice: number; priceChange: string } | null;
+    }) => {
       const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze-stack', data);
       return response.json();
     },
@@ -8373,30 +8389,139 @@ const aiAnalyze = useMutation({
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm font-medium text-purple-400 flex items-center gap-2">
                         <Sparkles className="w-4 h-4" />
-                        Grok Stack Analysis
+                        AI Wave Analysis
                       </span>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          const pivots = calculatePivots(candles, 5);
-                          const pivotHighs = pivots.filter(p => p.type === 'H').length;
-                          const pivotLows = pivots.filter(p => p.type === 'L').length;
-                          if (isDevelopment) {
-                            console.log(`🔍 Pivot data: ${pivots.length} total (${pivotHighs} highs, ${pivotLows} lows) from ${candles.length} candles`);
-                          }
-                          grokStackAnalyze.mutate({ waveEntries: waveStackEntries, symbol, pivots });
-                        }}
-                        disabled={grokStackAnalyze.isPending || waveStackEntries.length === 0}
-                        className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-xs"
-                        data-testid="grok-analyze-stack"
-                      >
-                        {grokStackAnalyze.isPending ? (
-                          <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing...</>
-                        ) : (
-                          <><Wand2 className="w-3 h-3 mr-1" /> Analyze Stack</>
-                        )}
-                      </Button>
                     </div>
+                    
+                    {/* Wave Selector */}
+                    <div className="mb-3 space-y-2">
+                      <p className="text-xs text-gray-400">Select wave to analyze:</p>
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          onClick={() => setSelectedWaveForAnalysis(null)}
+                          className={`text-xs px-2 py-1 rounded border transition-colors ${
+                            !selectedWaveForAnalysis 
+                              ? 'bg-purple-600 border-purple-500 text-white' 
+                              : 'bg-slate-700 border-slate-600 text-gray-300 hover:bg-slate-600'
+                          }`}
+                          data-testid="button-scope-wave-full"
+                        >
+                          Full Stack
+                        </button>
+                        {waveStackEntries.map((entry, idx) => (
+                          <button
+                            key={entry.id}
+                            onClick={() => setSelectedWaveForAnalysis({
+                              id: entry.id,
+                              degree: entry.degree,
+                              label: `${entry.patternType} ${entry.waveCount}`,
+                              startTime: entry.startTime,
+                              endTime: entry.endTime,
+                              startPrice: entry.startPrice,
+                              endPrice: entry.endPrice,
+                            })}
+                            className={`text-xs px-2 py-1 rounded border transition-colors ${
+                              selectedWaveForAnalysis?.id === entry.id
+                                ? 'bg-cyan-600 border-cyan-500 text-white' 
+                                : 'bg-slate-700 border-slate-600 text-gray-300 hover:bg-slate-600'
+                            }`}
+                            data-testid={`button-scope-wave-${idx + 1}`}
+                          >
+                            #{idx + 1} {entry.degree.slice(0, 3)} {entry.patternType === 'impulse' ? '↑' : '↓'}
+                          </button>
+                        ))}
+                      </div>
+                      {selectedWaveForAnalysis && (
+                        <div className="text-xs bg-cyan-900/30 border border-cyan-700/50 rounded p-2">
+                          <span className="text-cyan-400">Analyzing: </span>
+                          <span className="text-white font-medium">{selectedWaveForAnalysis.degree} {selectedWaveForAnalysis.label}</span>
+                          <span className="text-gray-400 ml-2">
+                            ${selectedWaveForAnalysis.startPrice.toFixed(4)} → ${selectedWaveForAnalysis.endPrice.toFixed(4)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        let pivotsToSend = calculatePivots(candles, 5);
+                        let entriesToSend = waveStackEntries;
+                        let priorWaveContext = null;
+                        
+                        // If a specific wave is selected, scope the analysis
+                        if (selectedWaveForAnalysis) {
+                          // Add tolerance for time comparisons (5% of wave duration)
+                          const waveDuration = selectedWaveForAnalysis.endTime - selectedWaveForAnalysis.startTime;
+                          const timeTolerance = waveDuration * 0.05;
+                          
+                          // Filter pivots to only those within the selected wave's time range
+                          pivotsToSend = pivotsToSend.filter(p => 
+                            p.time >= (selectedWaveForAnalysis.startTime - timeTolerance) && 
+                            p.time <= (selectedWaveForAnalysis.endTime + timeTolerance)
+                          );
+                          
+                          // Filter entries to sub-waves: must be DIFFERENT from selected wave
+                          // AND have start/end times that fall within the selected wave's range (with tolerance)
+                          entriesToSend = waveStackEntries.filter(e => {
+                            if (e.id === selectedWaveForAnalysis.id) return false;
+                            // Check if this entry falls within the selected wave's time range
+                            return e.startTime >= (selectedWaveForAnalysis.startTime - timeTolerance) &&
+                                   e.endTime <= (selectedWaveForAnalysis.endTime + timeTolerance);
+                          });
+                          
+                          // Include the selected wave itself at the start
+                          const selectedEntry = waveStackEntries.find(e => e.id === selectedWaveForAnalysis.id);
+                          if (selectedEntry) {
+                            entriesToSend = [selectedEntry, ...entriesToSend];
+                          }
+                          
+                          // Find prior wave for context - look for same degree wave that ends before this one starts
+                          // Find waves at same degree level that end before this one
+                          const sameDegreeWaves = waveStackEntries.filter(e => 
+                            e.id !== selectedWaveForAnalysis.id &&
+                            e.degree === selectedWaveForAnalysis.degree &&
+                            e.endTime <= selectedWaveForAnalysis.startTime + timeTolerance
+                          ).sort((a, b) => b.endTime - a.endTime); // Most recent first
+                          
+                          if (sameDegreeWaves.length > 0) {
+                            const priorEntry = sameDegreeWaves[0];
+                            priorWaveContext = {
+                              degree: priorEntry.degree,
+                              type: priorEntry.patternType,
+                              direction: priorEntry.direction,
+                              waveCount: priorEntry.waveCount,
+                              startPrice: priorEntry.startPrice,
+                              endPrice: priorEntry.endPrice,
+                              priceChange: ((priorEntry.endPrice - priorEntry.startPrice) / priorEntry.startPrice * 100).toFixed(2),
+                            };
+                          }
+                        }
+                        
+                        if (isDevelopment) {
+                          console.log(`🔍 Analysis scope: ${selectedWaveForAnalysis ? selectedWaveForAnalysis.degree + ' ' + selectedWaveForAnalysis.label : 'Full Stack'}`);
+                          console.log(`🔍 Pivots: ${pivotsToSend.length}, Entries: ${entriesToSend.length}`);
+                          if (priorWaveContext) console.log(`🔍 Prior wave context:`, priorWaveContext);
+                        }
+                        
+                        grokStackAnalyze.mutate({ 
+                          waveEntries: entriesToSend, 
+                          symbol, 
+                          pivots: pivotsToSend,
+                          scopedWave: selectedWaveForAnalysis,
+                          priorWaveContext,
+                        });
+                      }}
+                      disabled={grokStackAnalyze.isPending || waveStackEntries.length === 0}
+                      className="w-full bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-xs"
+                      data-testid="grok-analyze-stack"
+                    >
+                      {grokStackAnalyze.isPending ? (
+                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing...</>
+                      ) : (
+                        <><Wand2 className="w-3 h-3 mr-1" /> {selectedWaveForAnalysis ? `Analyze ${selectedWaveForAnalysis.degree.slice(0, 3)}` : 'Analyze Full Stack'}</>
+                      )}
+                    </Button>
 
                     {/* Grok Analysis Results */}
                     {grokStackAnalysis && (() => {
