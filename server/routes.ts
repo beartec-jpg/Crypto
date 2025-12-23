@@ -262,7 +262,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if admin mode is requested via header
       const isAdminMode = req.headers['x-dev-admin-mode'] === 'true';
       req.cryptoUser = isAdminMode ? {
-        id: 'admin-dev',
+        id: 'user_36jmTprDUlzK89xlpNgGGtcH2KJ',
         email: 'beartec@beartec.uk',
         firstName: 'BearTec',
         lastName: 'Admin',
