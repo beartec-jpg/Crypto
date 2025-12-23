@@ -6093,15 +6093,25 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       const lowerTimeframe = TIMEFRAME_HIERARCHY[currentTimeframe] || currentTimeframe;
       const yahooInterval = TF_TO_INTERVAL[lowerTimeframe] || '15m';
       
-      // Map symbol format (BTCUSDT → BTC-USD)
-      const symbolMap: Record<string, string> = {
-        'BTCUSDT': 'BTC-USD',
-        'ETHUSDT': 'ETH-USD',
-        'XRPUSDT': 'XRP-USD',
-        'ADAUSDT': 'ADA-USD',
-        'SOLUSDT': 'SOL-USD',
-      };
-      const yahooSymbol = symbolMap[symbol] || 'XRP-USD';
+      // Convert symbol format dynamically (XYZUSDT → XYZ-USD)
+      // Supports any symbol ending in USDT
+      let yahooSymbol = 'XRP-USD'; // Default fallback
+      if (symbol && symbol.endsWith('USDT')) {
+        const base = symbol.replace('USDT', '');
+        yahooSymbol = `${base}-USD`;
+      } else if (symbol && symbol.includes('-')) {
+        // Already in Yahoo format
+        yahooSymbol = symbol;
+      }
+      
+      // Validate the symbol is one of our supported ones
+      const ALLOWED_SYMBOLS = ['XRP-USD', 'BTC-USD', 'ETH-USD', 'ADA-USD', 'SOL-USD'];
+      if (!ALLOWED_SYMBOLS.includes(yahooSymbol)) {
+        return res.status(400).json({ 
+          error: 'Unsupported symbol', 
+          message: `Symbol ${symbol} is not supported. Supported: BTCUSDT, ETHUSDT, XRPUSDT, ADAUSDT, SOLUSDT` 
+        });
+      }
       
       console.log(`🔍 Detailed Analysis: ${selectedWave.degree} ${selectedWave.patternType} on ${currentTimeframe}`);
       console.log(`📊 Fetching ${lowerTimeframe} data (interval: ${yahooInterval}) for sub-wave discovery...`);

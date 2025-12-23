@@ -2652,6 +2652,14 @@ export default function CryptoElliottWave() {
     tableData: { degree: string; label: string; direction: string; startDate: string; endDate: string; startPrice: string; endPrice: string; pattern: string }[];
     rawResponse?: string;
   } | null>(null);
+  // Detailed analysis state (uses lower timeframe data for sub-wave discovery)
+  const [detailedAnalysis, setDetailedAnalysis] = useState<{
+    synopsis: string;
+    subWaves: any[];
+    rawResponse?: string;
+    analysisTimeframe?: string;
+    pivotCount?: number;
+  } | null>(null);
   // Derive selected wave for AI analysis from the table's selectedLabelId
   // Instead of separate state, we use the existing selection mechanism
   const [isCapturingChart, setIsCapturingChart] = useState(false);
@@ -3629,6 +3637,62 @@ const aiAnalyze = useMutation({
       toast({
         title: 'Stack Analysis Failed',
         description: error.message || 'Could not analyze wave stack',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Timeframe hierarchy for detailed analysis
+  const TIMEFRAME_HIERARCHY: Record<string, string> = {
+    '1M': '1w', '1w': '1d', '1d': '4h', '4h': '1h', '1h': '15m', '15m': '5m', '5m': '1m',
+  };
+
+  // Detailed Sub-Wave Analysis mutation (uses lower timeframe data)
+  const detailedAnalyze = useMutation({
+    mutationFn: async (data: { 
+      selectedWave: {
+        id: string;
+        degree: string;
+        patternType: string;
+        waveCount: number;
+        direction: string;
+        startTime: number;
+        endTime: number;
+        startPrice: number;
+        endPrice: number;
+        timeframe: string;
+      };
+      symbol: string;
+      priorWaveContext?: { degree: string; type: string; direction: string; waveCount: number; startPrice: number; endPrice: number; priceChange: string; durationHours: number } | null;
+    }) => {
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze-detailed', data);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.success && data.analysis) {
+        setDetailedAnalysis({
+          synopsis: data.analysis.synopsis || 'Analysis complete',
+          subWaves: data.analysis.subWaves || [],
+          rawResponse: data.rawResponse,
+          analysisTimeframe: data.analysisTimeframe,
+          pivotCount: data.pivotCount,
+        });
+        toast({
+          title: 'Detailed Analysis Complete',
+          description: `Found ${data.analysis.subWaves?.length || 0} sub-waves using ${data.analysisTimeframe} data (${data.pivotCount} pivots)`,
+        });
+      } else {
+        setDetailedAnalysis({
+          synopsis: data.analysis?.synopsis || data.rawResponse || 'Analysis complete',
+          subWaves: [],
+          rawResponse: data.rawResponse,
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Detailed Analysis Failed',
+        description: error.message || 'Could not perform detailed sub-wave analysis',
         variant: 'destructive',
       });
     },
@@ -8539,6 +8603,69 @@ const aiAnalyze = useMutation({
                       )}
                     </Button>
 
+                    {/* Detailed Analysis Button - uses lower timeframe for sub-wave discovery */}
+                    {selectedLabelId && waveStackEntries.find(e => e.id === selectedLabelId) && (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const selectedWave = waveStackEntries.find(e => e.id === selectedLabelId);
+                          if (!selectedWave) return;
+                          
+                          const lowerTF = TIMEFRAME_HIERARCHY[timeframe] || timeframe;
+                          
+                          // Find prior wave for context
+                          const waveDuration = selectedWave.endTime - selectedWave.startTime;
+                          const timeTolerance = waveDuration * 0.1;
+                          const sameDegreeWaves = waveStackEntries.filter(e => 
+                            e.id !== selectedWave.id &&
+                            e.degree === selectedWave.degree &&
+                            e.endTime <= selectedWave.startTime + timeTolerance
+                          ).sort((a, b) => b.endTime - a.endTime);
+                          
+                          const priorWaveContext = sameDegreeWaves.length > 0 ? {
+                            degree: sameDegreeWaves[0].degree,
+                            type: sameDegreeWaves[0].patternType,
+                            direction: sameDegreeWaves[0].direction,
+                            waveCount: sameDegreeWaves[0].waveCount,
+                            startPrice: sameDegreeWaves[0].startPrice,
+                            endPrice: sameDegreeWaves[0].endPrice,
+                            priceChange: ((sameDegreeWaves[0].endPrice - sameDegreeWaves[0].startPrice) / sameDegreeWaves[0].startPrice * 100).toFixed(2),
+                            durationHours: Math.round((sameDegreeWaves[0].endTime - sameDegreeWaves[0].startTime) / 3600),
+                          } : null;
+                          
+                          if (isDevelopment) {
+                            console.log(`🔬 Detailed Analysis: ${selectedWave.degree} using ${lowerTF} data`);
+                          }
+                          
+                          detailedAnalyze.mutate({
+                            selectedWave: {
+                              id: selectedWave.id,
+                              degree: selectedWave.degree,
+                              patternType: selectedWave.patternType,
+                              waveCount: selectedWave.waveCount,
+                              direction: selectedWave.direction,
+                              startTime: selectedWave.startTime,
+                              endTime: selectedWave.endTime,
+                              startPrice: selectedWave.startPrice,
+                              endPrice: selectedWave.endPrice,
+                              timeframe,
+                            },
+                            symbol,
+                            priorWaveContext,
+                          });
+                        }}
+                        disabled={detailedAnalyze.isPending}
+                        className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-xs"
+                        data-testid="detailed-analysis-btn"
+                      >
+                        {detailedAnalyze.isPending ? (
+                          <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing {TIMEFRAME_HIERARCHY[timeframe] || timeframe}...</>
+                        ) : (
+                          <><Target className="w-3 h-3 mr-1" /> Detailed ({TIMEFRAME_HIERARCHY[timeframe] || timeframe})</>
+                        )}
+                      </Button>
+                    )}
+
                     {/* Grok Analysis Results */}
                     {grokStackAnalysis && (() => {
                       const rawAnalysis = grokStackAnalysis.rawResponse ? 
@@ -8732,6 +8859,120 @@ const aiAnalyze = useMutation({
                           className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
                         >
                           Clear results
+                        </button>
+                      </div>
+                    );})()}
+
+                    {/* Detailed Analysis Results - Sub-waves from lower timeframe */}
+                    {detailedAnalysis && (() => {
+                      const rawAnalysis = detailedAnalysis.rawResponse ? 
+                        (() => { try { return JSON.parse(detailedAnalysis.rawResponse.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch { return {}; } })() 
+                        : {};
+                      return (
+                      <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-amber-700/30 mt-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Target className="w-4 h-4 text-amber-400" />
+                          <span className="text-xs font-medium text-amber-400">Detailed Analysis ({detailedAnalysis.analysisTimeframe || 'Lower TF'})</span>
+                          <Badge variant="outline" className="text-[9px] border-amber-600 text-amber-400">{detailedAnalysis.pivotCount} pivots</Badge>
+                        </div>
+                        
+                        {/* Synopsis */}
+                        <div className="bg-amber-900/20 rounded p-3 border border-amber-600/30">
+                          <p className="text-sm text-gray-200">{rawAnalysis.synopsis || detailedAnalysis.synopsis}</p>
+                        </div>
+
+                        {/* Detected Pattern */}
+                        {rawAnalysis.detectedPattern && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400">Pattern:</span>
+                            <Badge className={`text-xs ${rawAnalysis.parentWaveType === 'motive' ? 'bg-emerald-600' : 'bg-amber-600'}`}>
+                              {rawAnalysis.detectedPattern}
+                            </Badge>
+                          </div>
+                        )}
+
+                        {/* Sub-Waves Table */}
+                        {(rawAnalysis.subWaves || detailedAnalysis.subWaves)?.length > 0 && (
+                          <div className="overflow-x-auto">
+                            <p className="text-xs font-medium text-amber-400 mb-1 flex items-center gap-2">
+                              <Sparkles className="w-3 h-3" />
+                              Detected Sub-Waves:
+                            </p>
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-gray-400 border-b border-slate-700">
+                                  <th className="text-left py-1 px-1">Label</th>
+                                  <th className="text-left py-1 px-1">Deg</th>
+                                  <th className="text-left py-1 px-1">Type</th>
+                                  <th className="text-left py-1 px-1">Dir</th>
+                                  <th className="text-right py-1 px-1">Start $</th>
+                                  <th className="text-right py-1 px-1">End $</th>
+                                  <th className="text-center py-1 px-1">Conf</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(rawAnalysis.subWaves || detailedAnalysis.subWaves).map((s: any, idx: number) => (
+                                  <tr key={idx} className="border-b border-slate-800 bg-amber-900/10">
+                                    <td className="py-1 px-1 text-amber-300 font-medium">{s.label}</td>
+                                    <td className="py-1 px-1 text-purple-300">{s.degree}</td>
+                                    <td className="py-1 px-1 text-gray-300">{s.type}</td>
+                                    <td className={`py-1 px-1 ${s.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+                                      {s.direction === 'up' ? '↑' : '↓'}
+                                    </td>
+                                    <td className="py-1 px-1 text-right font-mono text-gray-300">${parseFloat(s.startPrice || 0).toFixed(4)}</td>
+                                    <td className="py-1 px-1 text-right font-mono text-gray-300">${parseFloat(s.endPrice || 0).toFixed(4)}</td>
+                                    <td className="py-1 px-1 text-center text-cyan-400">{s.confidence || '-'}%</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Fibonacci Analysis */}
+                        {rawAnalysis.fibonacciAnalysis?.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-cyan-400">Fibonacci Relationships:</p>
+                            <div className="grid grid-cols-2 gap-1">
+                              {rawAnalysis.fibonacciAnalysis.map((f: any, idx: number) => (
+                                <div key={idx} className={`text-xs p-1 rounded ${f.isValid ? 'bg-green-900/20 text-green-300' : 'bg-red-900/20 text-red-300'}`}>
+                                  <span className="font-medium">{f.relationship}</span>: {f.value}
+                                  {f.note && <span className="text-gray-500 ml-1">({f.note})</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Rule Violations */}
+                        {rawAnalysis.ruleViolations?.some((r: any) => r.violated) && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-red-400">Rule Violations:</p>
+                            {rawAnalysis.ruleViolations.filter((r: any) => r.violated).map((r: any, idx: number) => (
+                              <div key={idx} className="text-xs p-1 rounded bg-red-900/30 text-red-300">
+                                {r.rule}: {r.note}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Prediction */}
+                        {rawAnalysis.prediction && (
+                          <div className="bg-cyan-900/20 rounded p-2 border border-cyan-600/30">
+                            <span className="text-xs text-cyan-400">Next: </span>
+                            <span className="text-xs text-white font-medium">{rawAnalysis.prediction.nextMove}</span>
+                            <span className="text-xs text-cyan-400 ml-2">{rawAnalysis.prediction.confidence}% conf</span>
+                            {rawAnalysis.prediction.targets && (
+                              <div className="mt-1 text-xs text-gray-400">Targets: {rawAnalysis.prediction.targets.join(', ')}</div>
+                            )}
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => setDetailedAnalysis(null)}
+                          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                        >
+                          Clear detailed results
                         </button>
                       </div>
                     );})()}
