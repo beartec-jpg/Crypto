@@ -6176,13 +6176,32 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
         ? degreeOrder[currentDegreeIdx + 1] 
         : 'Minor';
       
-      // Format pivot data for prompt
-      const pivotSummary = pivots.slice(0, 50).map((p, i) => ({
+      // Format pivot data for prompt - sample evenly across the entire range
+      // For long waves, we need to capture the full price range, not just the beginning
+      const maxPivots = 100; // Send up to 100 pivots for comprehensive analysis
+      let sampledPivots = pivots;
+      if (pivots.length > maxPivots) {
+        // Sample evenly across the entire range to capture all major moves
+        const step = Math.floor(pivots.length / maxPivots);
+        sampledPivots = [];
+        for (let i = 0; i < pivots.length; i += step) {
+          sampledPivots.push(pivots[i]);
+          if (sampledPivots.length >= maxPivots) break;
+        }
+        // Always include the last pivot to ensure we capture the end
+        if (sampledPivots[sampledPivots.length - 1] !== pivots[pivots.length - 1]) {
+          sampledPivots.push(pivots[pivots.length - 1]);
+        }
+      }
+      
+      const pivotSummary = sampledPivots.map((p, i) => ({
         seq: i + 1,
         type: p.type,
         price: parseFloat(p.price.toFixed(6)),
         date: new Date(p.time * 1000).toISOString().slice(0, 16),
       }));
+      
+      console.log(`📊 Sending ${pivotSummary.length} pivots to AI (sampled from ${pivots.length} total)`);
       
       // Build the detailed analysis prompt
       const prompt = `You are an Elliott Wave expert analyzing a specific wave segment to identify its INTERNAL sub-wave structure using high-resolution price data.
