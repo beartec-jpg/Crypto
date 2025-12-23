@@ -5788,53 +5788,88 @@ Return JSON:
       
       console.log(`🤖 Grok Wave Stack Analysis: ${waveEntries.length} entries for ${symbol}...`);
       
-      // Format wave data for Grok
-      const waveDataFormatted = waveEntries.map((entry: any, idx: number) => ({
-        index: idx + 1,
-        degree: entry.degree,
-        patternType: entry.patternType,
-        waveCount: entry.waveCount,
-        direction: entry.direction,
-        startTime: new Date(entry.startTime * 1000).toISOString().split('T')[0],
-        endTime: new Date(entry.endTime * 1000).toISOString().split('T')[0],
-        startPrice: entry.startPrice?.toFixed(6),
-        endPrice: entry.endPrice?.toFixed(6),
-        priceChange: ((entry.endPrice - entry.startPrice) / entry.startPrice * 100).toFixed(2) + '%',
-      }));
+      // Calculate Fibonacci ratios and rule checks for each wave
+      const waveDataFormatted = waveEntries.map((entry: any, idx: number) => {
+        const priceMove = Math.abs(entry.endPrice - entry.startPrice);
+        const percentMove = ((entry.endPrice - entry.startPrice) / entry.startPrice * 100);
+        
+        return {
+          index: idx + 1,
+          degree: entry.degree,
+          patternType: entry.patternType,
+          waveCount: entry.waveCount,
+          direction: entry.direction,
+          startTime: new Date(entry.startTime * 1000).toISOString(),
+          endTime: new Date(entry.endTime * 1000).toISOString(),
+          startPrice: parseFloat(entry.startPrice?.toFixed(8)),
+          endPrice: parseFloat(entry.endPrice?.toFixed(8)),
+          priceMove: parseFloat(priceMove.toFixed(8)),
+          percentChange: parseFloat(percentMove.toFixed(2)),
+          durationHours: Math.round((entry.endTime - entry.startTime) / 3600),
+        };
+      });
       
-      const prompt = `You are an Elliott Wave expert analyst. Analyze this wave stack data and determine the correct hierarchical structure.
+      // Group waves by degree for easier analysis
+      const wavesByDegree: Record<string, any[]> = {};
+      waveDataFormatted.forEach(w => {
+        if (!wavesByDegree[w.degree]) wavesByDegree[w.degree] = [];
+        wavesByDegree[w.degree].push(w);
+      });
+      
+      const prompt = `You are a CRITICAL Elliott Wave expert analyst. Your job is to AUDIT the user's wave labels and find ERRORS, not just agree with them.
 
-WAVE STACK DATA for ${symbol}:
+WAVE DATA for ${symbol}:
 ${JSON.stringify(waveDataFormatted, null, 2)}
 
-RULES:
-1. Higher degree waves contain lower degree waves based on TIME OVERLAP
-2. A 5-wave move is either an impulse (motive) or diagonal
-3. A 3-wave move is corrective (ABC, WXY, flat, zigzag)
-4. Wave 2 retraces Wave 1, Wave 4 retraces Wave 3
-5. Internal structures: Impulse waves have 5-3-5-3-5 internals, Corrections have 5-3-5 (zigzag) or 3-3-5 (flat)
+WAVES GROUPED BY DEGREE:
+${JSON.stringify(wavesByDegree, null, 2)}
+
+YOUR TASK - CRITICAL ANALYSIS:
+1. CHECK each wave against Elliott Wave rules
+2. CALCULATE Fibonacci ratios between waves (W2 vs W1, W3 vs W1, W4 vs W3, W5 vs W1-3)
+3. IDENTIFY rule violations
+4. SUGGEST corrections where rules are broken
+
+ELLIOTT WAVE RULES TO CHECK:
+- Wave 2 CANNOT retrace more than 100% of Wave 1
+- Wave 3 CANNOT be the shortest of waves 1, 3, and 5
+- Wave 4 CANNOT enter Wave 1 territory (except in diagonals)
+- Wave 3 typically extends to 1.618x or 2.618x of Wave 1
+- Wave 2 typically retraces 50%, 61.8%, or 78.6% of Wave 1
+- Wave 4 typically retraces 23.6%, 38.2%, or 50% of Wave 3
+- Wave 5 typically equals Wave 1 or extends to 0.618x or 1.618x of Wave 1-3
+- Alternation: If W2 is sharp (zigzag), W4 should be sideways (flat/triangle) and vice versa
+- Impulse internals: 5-3-5-3-5 (waves 1,3,5 are motive, 2,4 are corrective)
+- Diagonal internals: 3-3-3-3-3 (all waves are corrective)
 
 RESPOND IN EXACTLY THIS JSON FORMAT:
 {
-  "synopsis": "2-3 sentence plain English summary of the current wave structure and what's happening",
-  "tableData": [
-    { "degree": "Intermediate", "label": "1", "direction": "up", "startDate": "2025-01-01", "endDate": "2025-01-15", "startPrice": "2.00", "endPrice": "2.50", "pattern": "impulse" },
-    { "degree": "Minor", "label": "A", "direction": "down", "startDate": "2025-01-15", "endDate": "2025-01-20", "startPrice": "2.50", "endPrice": "2.30", "pattern": "zigzag" }
+  "synopsis": "2-3 sentence summary of what you found, including any issues",
+  "ruleViolations": [
+    { "wave": "W2", "degree": "Minor", "rule": "Wave 2 retraced 105% of Wave 1", "severity": "CRITICAL", "suggestion": "This may not be Wave 2 - consider relabeling as part of Wave 1 extension" },
+    { "wave": "W3", "degree": "Minor", "rule": "Wave 3 is shorter than Wave 1", "severity": "CRITICAL", "suggestion": "Wave 3 cannot be shortest - consider if this is Wave 3 or still Wave 1" }
   ],
+  "fibonacciAnalysis": [
+    { "relationship": "W2/W1", "retracement": "61.8%", "isValid": true, "note": "Textbook W2 retracement" },
+    { "relationship": "W3/W1", "extension": "178%", "isValid": true, "note": "Slightly above 1.618, valid W3" }
+  ],
+  "waveLabels": [
+    { "degree": "Minor", "label": "1", "direction": "up", "startPrice": "1.80", "endPrice": "2.50", "isValid": true },
+    { "degree": "Minor", "label": "2", "direction": "down", "startPrice": "2.50", "endPrice": "2.10", "isValid": false, "issue": "Retracement too deep" }
+  ],
+  "alternativeCount": {
+    "description": "If the current count has issues, suggest an alternative interpretation",
+    "suggestion": "What you labeled as W3 may actually be W1 extended..."
+  },
   "prediction": {
-    "nextWave": "W3 or C",
-    "direction": "up or down",
-    "confidence": 75,
-    "reasoning": "brief explanation"
+    "nextWave": "W4 down or W5 up",
+    "targets": ["2.80 (0.382 retrace)", "3.00 (1.618 extension)"],
+    "confidence": 65,
+    "reasoning": "Based on Fibonacci levels..."
   }
 }
 
-IMPORTANT:
-- tableData must contain one row per wave, grouped by degree (highest first)
-- Use the actual prices and dates from the input data
-- label should be the wave number/letter (1, 2, 3, 4, 5 or A, B, C, W, X, Y)
-- pattern is the pattern type (impulse, diagonal, zigzag, flat, triangle)
-- synopsis should explain the overall structure in plain English`;
+BE CRITICAL - don't just agree with the user's labels. Find issues if they exist!`;
 
       const OpenAI = (await import('openai')).default;
       const xaiClient = new OpenAI({
@@ -5847,8 +5882,8 @@ IMPORTANT:
       const response = await xaiClient.chat.completions.create({
         model: 'grok-3-beta',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1500,
-        temperature: 0,
+        max_tokens: 3000,
+        temperature: 0.1,
       });
       console.log(`✅ xAI API response received`);
       
