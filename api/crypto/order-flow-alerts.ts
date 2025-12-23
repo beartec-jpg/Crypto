@@ -1,5 +1,54 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache per symbol/timeframe
+
+const MONTHLY_AI_CREDITS: Record<string, number> = {
+  free: 0,
+  beginner: 0,
+  intermediate: 200,
+  pro: 400,
+  elite: 500,
+};
+
+async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return null;
+    }
+
+    const token = authHeader.substring(7);
+    const secretKey = process.env.CLERK_SECRET_KEY;
+
+    if (!secretKey) {
+      console.error('CLERK_SECRET_KEY not set');
+      return null;
+    }
+    
+    const payload = await verifyToken(token, { secretKey });
+    if (!payload?.sub) {
+      return null;
+    }
+
+    const clerk = createClerkClient({ secretKey });
+    const user = await clerk.users.getUser(payload.sub);
+    const email = user.emailAddresses[0]?.emailAddress || '';
+
+    return { userId: payload.sub, email };
+  } catch (error) {
+    console.error('Auth verification failed:', error);
+    return null;
+  }
+}
+
+async function getDb() {
+  const pg = await import('pg');
+  const Pool = pg.default?.Pool || pg.Pool;
+  const pool = new (Pool as any)({ connectionString: process.env.DATABASE_URL });
+  return pool;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,11 +63,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  console.log('📥 Order flow alerts API called');
+  // Require authentication
+  const auth = await verifyAuth(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const { email } = auth;
+  let pool: any = null;
+
+  console.log('📥 Order flow alerts API called for:', email);
 
   try {
     const apiKey = process.env.XAI_API_KEY;
-    console.log('🔑 XAI API key configured:', !!apiKey);
     if (!apiKey) {
       return res.status(503).json({ 
         error: 'AI service not configured',
@@ -42,10 +99,100 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Missing required data' });
     }
 
+    pool = await getDb();
+
+    // Get user from crypto_users
+    const userResult = await pool.query(
+      'SELECT id FROM crypto_users WHERE email = $1',
+      [email]
+    );
+
+    if (userResult.rows.length === 0) {
+      await pool.end();
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const cryptoUserId = userResult.rows[0].id;
+
+    // Get subscription for tier and credits
+    const subResult = await pool.query(
+      'SELECT tier, ai_credits, ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
+      [cryptoUserId]
+    );
+
+    const subscription = subResult.rows[0];
+    const tier = subscription?.tier || 'free';
+    const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
+    let aiCreditsUsed = subscription?.ai_credits || 0;
+    const resetAt = subscription?.ai_credits_reset_at ? new Date(subscription.ai_credits_reset_at) : null;
+
+    // Check tier eligibility
+    if (!['intermediate', 'pro', 'elite'].includes(tier)) {
+      await pool.end();
+      return res.status(403).json({ 
+        error: 'Subscription required',
+        message: 'AI analysis requires Intermediate tier or higher'
+      });
+    }
+
+    // Check if credits should reset (new month)
+    const now = new Date();
+    const shouldReset = !resetAt || 
+      (resetAt.getMonth() !== now.getMonth() || resetAt.getFullYear() !== now.getFullYear());
+
+    if (shouldReset && subscription) {
+      aiCreditsUsed = 0;
+      await pool.query(
+        'UPDATE crypto_subscriptions SET ai_credits = 0, ai_credits_reset_at = NOW() WHERE user_id = $1',
+        [cryptoUserId]
+      );
+    }
+
+    const aiCreditsRemaining = aiLimit - aiCreditsUsed;
+
+    // Check for cached analysis (1 hour TTL per symbol/interval)
+    const cacheResult = await pool.query(
+      `SELECT alerts, market_insights, orderflow_data, updated_at 
+       FROM crypto_ai_analyses 
+       WHERE user_id = $1 AND symbol = $2 AND interval = $3`,
+      [cryptoUserId, symbol, interval]
+    );
+
+    const cachedAnalysis = cacheResult.rows[0];
+    const cacheAge = cachedAnalysis?.updated_at 
+      ? Date.now() - new Date(cachedAnalysis.updated_at).getTime() 
+      : Infinity;
+
+    // If cache is valid (within 1 hour), return cached result without deducting credits
+    if (cachedAnalysis && cacheAge < CACHE_TTL) {
+      console.log(`📊 Returning cached analysis for ${symbol}/${interval} (${Math.round(cacheAge/1000)}s old)`);
+      await pool.end();
+      return res.json({
+        alerts: cachedAnalysis.alerts || [],
+        marketInsights: cachedAnalysis.market_insights || null,
+        cached: true,
+        cacheAge: Math.round(cacheAge / 1000),
+        cacheRemaining: Math.round((CACHE_TTL - cacheAge) / 1000),
+        creditsRemaining: aiCreditsRemaining
+      });
+    }
+
+    // No valid cache - check if user has credits
+    if (aiCreditsRemaining <= 0) {
+      await pool.end();
+      return res.status(403).json({ 
+        error: 'No AI credits remaining',
+        message: `You've used all ${aiLimit} AI credits for this month. Credits reset on the 1st.`,
+        creditsRemaining: 0,
+        creditsLimit: aiLimit,
+        tier
+      });
+    }
+
+    // Build the analysis prompt
     const last50Bars = recentBars.slice(-50);
     const priceChange = ((currentPrice - last50Bars[0].close) / last50Bars[0].close) * 100;
 
-    // Build comprehensive orderflow analysis section
     let orderflowAnalysis = '';
     if (orderflowData) {
       const oiDelta = orderflowData?.openInterest?.delta || 0;
@@ -62,7 +209,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 - Long/Short Ratio: ${lsRatio.toFixed(2)} (${lsRatio > 1.2 ? 'LONGS DOMINANT' : lsRatio < 0.8 ? 'SHORTS DOMINANT' : 'BALANCED'})`;
     }
 
-    // Build liquidation analysis section
     let liquidationAnalysis = '';
     if (liquidationData && liquidationData.topClusters && liquidationData.topClusters.length > 0) {
       const clusters = liquidationData.topClusters;
@@ -79,18 +225,11 @@ ${clusterList}
 - INTERPRETATION: Price often moves toward liquidity clusters to trigger stops before reversing`;
     }
 
-    // Interpret RSI
     const rsiInterpretation = rsi > 70 ? 'OVERBOUGHT' : rsi < 30 ? 'OVERSOLD' : 'NEUTRAL';
-    
-    // Interpret MACD
     const macdInterpretation = macdHistogram > 0 && macd > macdSignal ? 'BULLISH MOMENTUM' : 
                                macdHistogram < 0 && macd < macdSignal ? 'BEARISH MOMENTUM' : 'MIXED';
-    
-    // Interpret MFI
     const mfiInterpretation = mfi > 80 ? 'OVERBOUGHT (money flowing out)' : 
                               mfi < 20 ? 'OVERSOLD (money flowing in)' : 'NEUTRAL';
-    
-    // Interpret ADX
     const adxInterpretation = adx > 40 ? 'STRONG TREND' : adx > 25 ? 'TRENDING' : 'WEAK/RANGING';
     const diInterpretation = plusDI > minusDI ? 'BULLISH' : 'BEARISH';
       
@@ -181,12 +320,8 @@ Return ONLY valid JSON in this exact format:
     console.log(`✅ Grok response received in ${duration}ms`);
 
     const content = completion.choices[0]?.message?.content || '';
-    console.log('📝 Grok response length:', content.length);
     
-    let result: { alerts: any[]; marketInsights: { summary?: string; bias?: string; keyLevels?: string[]; noTradesReason?: string } } = { 
-      alerts: [], 
-      marketInsights: {} 
-    };
+    let result: { alerts: any[]; marketInsights: any } = { alerts: [], marketInsights: {} };
     
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -210,21 +345,47 @@ Return ONLY valid JSON in this exact format:
             noTradesReason: parsed.marketInsights?.noTradesReason || ''
           }
         };
-        console.log(`📊 Parsed ${result.alerts.length} alerts, summary length: ${result.marketInsights.summary?.length || 0}`);
       }
     } catch (parseError: any) {
       console.error('❌ Failed to parse Grok response:', parseError.message);
-      result = { 
-        alerts: [], 
-        marketInsights: { summary: content.substring(0, 500) } 
-      };
+      result = { alerts: [], marketInsights: { summary: content.substring(0, 500) } };
     }
 
-    console.log('📤 Sending response with', result.alerts.length, 'alerts');
-    res.json(result);
+    // Increment credits used
+    const newCreditsUsed = aiCreditsUsed + 1;
+    await pool.query(
+      'UPDATE crypto_subscriptions SET ai_credits = $1, updated_at = NOW() WHERE user_id = $2',
+      [newCreditsUsed, cryptoUserId]
+    );
+
+    // Store/update cached analysis (pass plain objects for JSONB columns)
+    if (cachedAnalysis) {
+      await pool.query(
+        `UPDATE crypto_ai_analyses 
+         SET alerts = $1::jsonb, market_insights = $2::jsonb, orderflow_data = $3::jsonb, updated_at = NOW() 
+         WHERE user_id = $4 AND symbol = $5 AND interval = $6`,
+        [JSON.stringify(result.alerts), JSON.stringify(result.marketInsights), JSON.stringify(orderflowData || {}), cryptoUserId, symbol, interval]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO crypto_ai_analyses (id, user_id, symbol, interval, alerts, market_insights, orderflow_data, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, NOW(), NOW())`,
+        [cryptoUserId, symbol, interval, JSON.stringify(result.alerts), JSON.stringify(result.marketInsights), JSON.stringify(orderflowData || {})]
+      );
+    }
+
+    await pool.end();
+
+    console.log(`📤 Sending response with ${result.alerts.length} alerts, credits remaining: ${aiLimit - newCreditsUsed}`);
+    res.json({
+      ...result,
+      cached: false,
+      creditsRemaining: aiLimit - newCreditsUsed
+    });
 
   } catch (error: any) {
     console.error('Order flow alerts error:', error);
+    try { await pool?.end(); } catch {}
     res.status(500).json({ 
       error: error.message,
       alerts: []
