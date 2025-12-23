@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { configureApiAuth } from '@/lib/apiAuth';
@@ -39,31 +39,56 @@ export const isDevelopment = typeof window !== 'undefined' &&
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
-const devUser: CryptoUser = {
-  id: 'dev-open-access',
-  email: 'dev@open.access',
-  firstName: 'Dev',
-  lastName: 'User',
-};
-
-const devSubscription: CryptoSubscription = {
-  id: 'dev-sub',
-  userId: 'dev-open-access',
-  tier: 'elite',
-  subscriptionStatus: 'active',
-  aiCredits: 999999,
-  hasElliottAddon: true,
-  canUseElliott: true,
-  canUseAI: true,
-  hasUnlimitedAI: true,
-};
-
 // Admin email gets unrestricted access everywhere
-const ADMIN_EMAIL = 'beartec@beartec.uk';
+export const ADMIN_EMAIL = 'beartec@beartec.uk';
+
+// Check if admin mode is enabled in localStorage
+function getDevAdminMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('dev-admin-mode') === 'true';
+}
+
+// Set admin mode in localStorage
+export function setDevAdminMode(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('dev-admin-mode', enabled ? 'true' : 'false');
+  window.location.reload();
+}
+
+function getDevUser(): CryptoUser {
+  const isAdminMode = getDevAdminMode();
+  return isAdminMode ? {
+    id: 'admin-dev',
+    email: ADMIN_EMAIL,
+    firstName: 'BearTec',
+    lastName: 'Admin',
+  } : {
+    id: 'dev-open-access',
+    email: 'dev@open.access',
+    firstName: 'Dev',
+    lastName: 'User',
+  };
+}
+
+function getDevSubscription(): CryptoSubscription {
+  const devUser = getDevUser();
+  return {
+    id: 'dev-sub',
+    userId: devUser.id,
+    tier: 'elite',
+    subscriptionStatus: 'active',
+    aiCredits: 999999,
+    hasElliottAddon: true,
+    canUseElliott: true,
+    canUseAI: true,
+    hasUnlimitedAI: true,
+  };
+}
 
 function useClerkHooks() {
   // In development, skip Clerk hooks entirely to avoid ClerkProvider requirement
   if (isDevelopment) {
+    const devUser = getDevUser();
     return {
       isSignedIn: true,
       getToken: async () => 'dev-token',
@@ -99,7 +124,7 @@ export function useCryptoAuth() {
       if (isDevelopment) {
         const response = await fetch('/api/crypto/my-subscription');
         if (!response.ok) {
-          return devSubscription;
+          return getDevSubscription();
         }
         return response.json();
       }
@@ -125,6 +150,9 @@ export function useCryptoAuth() {
   });
 
   if (isDevelopment) {
+    const devUser = getDevUser();
+    const devSubscription = getDevSubscription();
+    const isDevAdmin = devUser.email === ADMIN_EMAIL;
     const eliteSubscription: CryptoSubscription = {
       ...devSubscription,
       ...(subscription || {}),
@@ -144,7 +172,7 @@ export function useCryptoAuth() {
       canUseElliottFeatures: true,
       canUseAI: true,
       hasUnlimitedAI: true,
-      isAdmin: true,
+      isAdmin: isDevAdmin,
       refetchSubscription,
       getToken,
     };
@@ -165,7 +193,7 @@ export function useCryptoAuth() {
     return {
       user: cryptoUser,
       subscription: {
-        ...devSubscription,
+        ...getDevSubscription(),
         userId: cryptoUser?.id || 'admin',
         id: subscription?.id || 'admin-sub',
       },

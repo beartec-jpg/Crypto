@@ -1,8 +1,8 @@
 import { Helmet } from 'react-helmet-async';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
-import { useCryptoAuth, isDevelopment } from '@/hooks/useCryptoAuth';
+import { useCryptoAuth, isDevelopment, setDevAdminMode, ADMIN_EMAIL } from '@/hooks/useCryptoAuth';
 import { useQuery } from '@tanstack/react-query';
-import { Crown, Sparkles, Info, CreditCard, Waves, Bot, Shield, LogIn, LogOut, User } from 'lucide-react';
+import { Crown, Sparkles, Info, CreditCard, Waves, Bot, Shield, LogIn, LogOut, User, ShieldCheck, UserCircle } from 'lucide-react';
 import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/clerk-react';
@@ -10,10 +10,13 @@ import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/clerk-reac
 function useClerkHooks() {
   // In development, skip Clerk hooks entirely to avoid ClerkProvider requirement
   if (isDevelopment) {
+    const isAdminMode = typeof window !== 'undefined' && localStorage.getItem('dev-admin-mode') === 'true';
     return {
       isSignedIn: true,
       isLoaded: true,
-      user: { firstName: 'Dev', lastName: 'User', primaryEmailAddress: { emailAddress: 'dev@open.access' }, imageUrl: null }
+      user: isAdminMode 
+        ? { firstName: 'BearTec', lastName: 'Admin', primaryEmailAddress: { emailAddress: ADMIN_EMAIL }, imageUrl: null }
+        : { firstName: 'Dev', lastName: 'User', primaryEmailAddress: { emailAddress: 'dev@open.access' }, imageUrl: null }
     };
   }
   
@@ -134,7 +137,31 @@ export default function CryptoAccount() {
                 </div>
               </div>
               
-              {!isDevelopment && (
+              {isDevelopment ? (
+                <div className="flex gap-2">
+                  {isAdmin ? (
+                    <Button 
+                      variant="outline" 
+                      className="border-orange-500 text-orange-400 hover:bg-orange-500/10"
+                      onClick={() => setDevAdminMode(false)}
+                      data-testid="button-switch-to-dev-user"
+                    >
+                      <UserCircle className="w-4 h-4 mr-2" />
+                      Switch to Dev User
+                    </Button>
+                  ) : (
+                    <Button 
+                      variant="outline" 
+                      className="border-purple-500 text-purple-400 hover:bg-purple-500/10"
+                      onClick={() => setDevAdminMode(true)}
+                      data-testid="button-login-as-admin"
+                    >
+                      <ShieldCheck className="w-4 h-4 mr-2" />
+                      Login as Admin
+                    </Button>
+                  )}
+                </div>
+              ) : (
                 <ClerkSignOutButton>
                   <Button variant="outline" className="border-slate-700 text-gray-300">
                     <LogOut className="w-4 h-4 mr-2" />
