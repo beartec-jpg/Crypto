@@ -7,6 +7,11 @@ const isDevelopmentMode = typeof window !== 'undefined' &&
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
+function isDevAdminMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('dev-admin-mode') === 'true';
+}
+
 // Custom error class that preserves HTTP status code
 export class ApiError extends Error {
   status: number;
@@ -52,7 +57,12 @@ export async function authenticatedApiRequest(
     headers['Content-Type'] = 'application/json';
   }
   
-  if (!isDevelopmentMode) {
+  if (isDevelopmentMode) {
+    // In development, pass admin mode header
+    if (isDevAdminMode()) {
+      headers['X-Dev-Admin-Mode'] = 'true';
+    }
+  } else {
     const token = await getAuthToken();
     if (token && token.length > 0) {
       headers['Authorization'] = `Bearer ${token}`;

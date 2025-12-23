@@ -259,7 +259,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     // In development, allow open access
     if (!isProduction) {
-      req.cryptoUser = {
+      // Check if admin mode is requested via header
+      const isAdminMode = req.headers['x-dev-admin-mode'] === 'true';
+      req.cryptoUser = isAdminMode ? {
+        id: 'admin-dev',
+        email: 'beartec@beartec.uk',
+        firstName: 'BearTec',
+        lastName: 'Admin',
+      } : {
         id: 'dev-open-access',
         email: 'dev@open.access',
         firstName: 'Dev',
@@ -5764,7 +5771,7 @@ Return JSON:
   app.post("/api/crypto/elliott-wave/analyze-stack", requireCryptoAuth, async (req, res) => {
     try {
       const { waveEntries, symbol } = req.body;
-      const userEmail = (req as any).user?.email?.toLowerCase() || '';
+      const userEmail = (req as any).cryptoUser?.email?.toLowerCase() || '';
       
       // Admin only access
       if (userEmail !== ADMIN_EMAIL) {
