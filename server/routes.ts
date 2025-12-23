@@ -6269,10 +6269,14 @@ Analyze the pivot data to identify the INTERNAL sub-wave structure of this ${sel
   }
 }
 
-IMPORTANT: 
-- Use the actual price levels from the pivot data
-- Include pivotSeq numbers so results can be verified against the data
-- Provide specific price levels for each sub-wave start/end`;
+CRITICAL RULES:
+1. NEVER return 0.0000 for any price - ONLY use actual prices from the pivot data above
+2. Each sub-wave MUST reference specific pivots from the data (use pivotSeq to map)
+3. If a sub-wave hasn't started yet, DO NOT include it (only report what you can see in the data)
+4. Mark the current/in-progress wave as status: "in_progress" with the last known price
+5. For each sub-wave, startPrice and endPrice MUST match actual pivot prices from the list
+6. If only 2-3 sub-waves are visible so far, that's fine - report what exists, not what "should" exist
+7. Include "status": "complete" or "status": "in_progress" for each sub-wave`;
 
       const OpenAI = (await import('openai')).default;
       const xaiClient = new OpenAI({
