@@ -2010,7 +2010,7 @@ export default function CryptoAI() {
 
             <div className="flex gap-2 w-full sm:w-auto">
               <Button 
-                onClick={fetchData} 
+                onClick={() => fetchData()} 
                 disabled={loading}
                 className="flex-1 sm:flex-none bg-[#00c4b4] hover:bg-[#00a89c] text-black"
                 data-testid="button-refresh"
