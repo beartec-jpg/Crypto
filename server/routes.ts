@@ -6014,11 +6014,14 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           analysis = JSON.parse(jsonMatch[0]);
+          console.log(`📊 Stack analysis parsed synopsis: "${analysis.synopsis?.slice(0, 100) || 'MISSING'}..."`);
         } else {
           analysis = { raw: content, parseError: 'Could not extract JSON from response' };
+          console.log(`⚠️ Stack analysis: No JSON found in response`);
         }
       } catch (parseErr) {
         analysis = { raw: content, parseError: 'JSON parse failed' };
+        console.log(`⚠️ Stack analysis JSON parse failed: ${parseErr}`);
       }
       
       res.json({
@@ -6332,11 +6335,14 @@ Analyze the pivot data to identify the INTERNAL sub-wave structure of this ${sel
   "alternativeCount": "Could also be interpreted as a leading diagonal if waves overlap",
   
   "prediction": {
-    "nextMove": "Wave iv correction down expected",
+    "nextMove": "Describe what comes after this wave internally (e.g., 'Minor v in progress' or 'Complete, awaiting next wave')",
+    "afterCompletion": "Once this ${selectedWave.degree} wave completes, expect a same-degree corrective response",
     "targets": ["0.5200", "0.4800"],
     "confidence": 70
   }
 }
+
+IMPORTANT: Do NOT assume this wave's position in a larger structure (e.g., don't call it "Wave 5" or "Wave C" unless you have explicit evidence from prior wave context). Only describe what you see within this wave and what immediately follows after it completes.
 
 === ANCHOR REQUIREMENTS ===
 Parent wave starts at $${selectedWave.startPrice?.toFixed(6)} and ends at $${selectedWave.endPrice?.toFixed(6)}
