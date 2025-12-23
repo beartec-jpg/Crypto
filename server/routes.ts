@@ -5865,12 +5865,26 @@ Return JSON:
       });
       
       // Create pivot summary with price levels
-      const pivotSummary = (pivots || []).slice(0, 30).map((p: any, i: number) => ({
+      // If pivots were passed from frontend, use adaptive reprocessing if too many/few
+      let processedPivots = pivots || [];
+      let pivotLookback = 5;
+      
+      // If we have raw candle data in the pivots, we could reprocess
+      // For now, just use what was passed but log the count
+      console.log(`📊 Stack analysis received ${processedPivots.length} pivots from frontend`);
+      
+      // Find price extremes for anchoring
+      const stackPriceHigh = processedPivots.length > 0 ? Math.max(...processedPivots.map((p: any) => p.price || 0)) : 0;
+      const stackPriceLow = processedPivots.length > 0 ? Math.min(...processedPivots.map((p: any) => p.price || Infinity)) : 0;
+      
+      const pivotSummary = processedPivots.map((p: any, i: number) => ({
         seq: i + 1,
         type: p.type,
         price: parseFloat(p.price?.toFixed(6)),
         date: new Date(p.time * 1000).toISOString().slice(0, 16),
       }));
+      
+      console.log(`📊 Stack analysis: ${pivotSummary.length} pivots (price range: $${stackPriceLow.toFixed(4)} - $${stackPriceHigh.toFixed(4)})`);
       
       // Determine if scoped analysis has no sub-waves (only 1 entry = the parent wave)
       const hasNoSubWaves = scopedWave && waveEntries.length === 1;
@@ -6045,7 +6059,7 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
     '1m': '1m',
   };
   
-  // Calculate pivots from candle data
+  // Calculate pivots from candle data with a specific lookback
   function calculatePivotsFromCandles(candles: any[], lookback: number = 5): Array<{time: number; price: number; type: 'H' | 'L'}> {
     const pivots: Array<{time: number; price: number; type: 'H' | 'L'}> = [];
     
@@ -6068,6 +6082,47 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
     }
     
     return pivots.sort((a, b) => a.time - b.time);
+  }
+  
+  // Adaptive pivot detection: dynamically adjust lookback to achieve target pivot count
+  // Formula: lookback = clamp(candleCount / 150, 3, 40)
+  // Target: 120-200 pivots for optimal AI analysis
+  function calculateAdaptivePivots(
+    candles: any[], 
+    targetMin: number = 120, 
+    targetMax: number = 200
+  ): { pivots: Array<{time: number; price: number; type: 'H' | 'L'}>; lookback: number; iterations: number } {
+    const candleCount = candles.length;
+    
+    // Initial lookback based on candle count
+    let lookback = Math.round(candleCount / 150);
+    lookback = Math.max(3, Math.min(40, lookback)); // Clamp between 3 and 40
+    
+    let pivots = calculatePivotsFromCandles(candles, lookback);
+    let iterations = 1;
+    const maxIterations = 5;
+    
+    // Iteratively adjust lookback to hit target range
+    while (iterations < maxIterations) {
+      if (pivots.length < targetMin && lookback > 3) {
+        // Too few pivots - decrease lookback for more granularity
+        lookback = Math.max(3, lookback - 2);
+        pivots = calculatePivotsFromCandles(candles, lookback);
+        iterations++;
+      } else if (pivots.length > targetMax && lookback < 40) {
+        // Too many pivots - increase lookback for less granularity
+        lookback = Math.min(40, lookback + 2);
+        pivots = calculatePivotsFromCandles(candles, lookback);
+        iterations++;
+      } else {
+        // Within target range or at bounds
+        break;
+      }
+    }
+    
+    console.log(`📊 Adaptive pivots: ${candleCount} candles → lookback ${lookback} → ${pivots.length} pivots (${iterations} iterations)`);
+    
+    return { pivots, lookback, iterations };
   }
 
   // Detailed Sub-Wave Analysis - uses lower timeframe data for granular sub-wave discovery
@@ -6165,9 +6220,9 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
         });
       }
       
-      // Calculate pivots from lower timeframe data
-      const pivots = calculatePivotsFromCandles(filteredCandles, 3);
-      console.log(`🔄 Detected ${pivots.length} pivots in ${lowerTimeframe} data`);
+      // Use adaptive pivot detection - dynamically adjusts lookback based on candle count
+      const { pivots, lookback, iterations } = calculateAdaptivePivots(filteredCandles, 120, 200);
+      console.log(`🔄 Adaptive pivot detection: lookback=${lookback}, pivots=${pivots.length}, iterations=${iterations}`);
       
       // Get degree one level lower
       const degreeOrder = ['Grand Super Cycle', 'Super Cycle', 'Cycle', 'Primary', 'Intermediate', 'Minor', 'Minute', 'Minuette', 'Sub-Minuette'];
@@ -6176,32 +6231,27 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
         ? degreeOrder[currentDegreeIdx + 1] 
         : 'Minor';
       
-      // Format pivot data for prompt - sample evenly across the entire range
-      // For long waves, we need to capture the full price range, not just the beginning
-      const maxPivots = 100; // Send up to 100 pivots for comprehensive analysis
-      let sampledPivots = pivots;
-      if (pivots.length > maxPivots) {
-        // Sample evenly across the entire range to capture all major moves
-        const step = Math.floor(pivots.length / maxPivots);
-        sampledPivots = [];
-        for (let i = 0; i < pivots.length; i += step) {
-          sampledPivots.push(pivots[i]);
-          if (sampledPivots.length >= maxPivots) break;
-        }
-        // Always include the last pivot to ensure we capture the end
-        if (sampledPivots[sampledPivots.length - 1] !== pivots[pivots.length - 1]) {
-          sampledPivots.push(pivots[pivots.length - 1]);
-        }
+      // Check if we have any pivots
+      if (pivots.length === 0) {
+        return res.status(400).json({ 
+          error: 'No pivots detected', 
+          message: `Could not detect any swing highs/lows in the ${filteredCandles.length} candles. Try a different timeframe or wave selection.` 
+        });
       }
       
-      const pivotSummary = sampledPivots.map((p, i) => ({
+      // Send ALL pivots to the AI (no sampling - we need complete price coverage)
+      const pivotSummary = pivots.map((p, i) => ({
         seq: i + 1,
         type: p.type,
         price: parseFloat(p.price.toFixed(6)),
         date: new Date(p.time * 1000).toISOString().slice(0, 16),
       }));
       
-      console.log(`📊 Sending ${pivotSummary.length} pivots to AI (sampled from ${pivots.length} total)`);
+      // Find price extremes for anchoring (use parent wave bounds as fallback)
+      const priceHigh = pivots.length > 0 ? Math.max(...pivots.map(p => p.price)) : (selectedWave.endPrice || 0);
+      const priceLow = pivots.length > 0 ? Math.min(...pivots.map(p => p.price)) : (selectedWave.startPrice || 0);
+      
+      console.log(`📊 Sending ${pivotSummary.length} pivots to AI (price range: $${priceLow.toFixed(4)} - $${priceHigh.toFixed(4)})`);
       
       // Build the detailed analysis prompt
       const prompt = `You are an Elliott Wave expert analyzing a specific wave segment to identify its INTERNAL sub-wave structure using high-resolution price data.
@@ -6288,7 +6338,17 @@ Analyze the pivot data to identify the INTERNAL sub-wave structure of this ${sel
   }
 }
 
-CRITICAL RULES:
+=== ANCHOR REQUIREMENTS ===
+Parent wave starts at $${selectedWave.startPrice?.toFixed(6)} and ends at $${selectedWave.endPrice?.toFixed(6)}
+Pivot data price range: $${priceLow.toFixed(6)} to $${priceHigh.toFixed(6)}
+
+CRITICAL ANCHORING RULES:
+1. Sub-wave i/1/a MUST start near the parent wave startPrice ($${selectedWave.startPrice?.toFixed(6)})
+2. Sub-wave v/5/c MUST end near the parent wave endPrice ($${selectedWave.endPrice?.toFixed(6)})
+3. For an UP wave: the lowest pivot should be near wave start, highest near wave end
+4. For a DOWN wave: the highest pivot should be near wave start, lowest near wave end
+
+CRITICAL DATA RULES:
 1. NEVER return 0.0000 for any price - ONLY use actual prices from the pivot data above
 2. Each sub-wave MUST reference specific pivots from the data (use pivotSeq to map)
 3. If a sub-wave hasn't started yet, DO NOT include it (only report what you can see in the data)
