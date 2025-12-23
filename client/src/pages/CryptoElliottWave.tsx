@@ -8519,729 +8519,6 @@ const aiAnalyze = useMutation({
                   Grouped by degree. Click to expand. {symbol} patterns across all timeframes.
                 </p>
 
-                {/* Grok Stack Analysis - Admin Only */}
-                {isAdmin && (
-                  <div className="mt-6 pt-4 border-t border-slate-700">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-purple-400 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" />
-                        AI Wave Analysis
-                      </span>
-                    </div>
-                    
-                    {/* Selected Wave Info - derived from table selection */}
-                    {(() => {
-                      const selectedEntry = selectedLabelId ? waveStackEntries.find(e => e.id === selectedLabelId) : null;
-                      return (
-                        <div className="mb-3 space-y-2">
-                          <p className="text-xs text-gray-400">
-                            {selectedEntry ? 'Selected wave from table:' : 'Click a wave row above to scope analysis, or analyze full stack:'}
-                          </p>
-                          {selectedEntry ? (
-                            <div className="text-xs bg-cyan-900/30 border border-cyan-700/50 rounded p-2 flex items-center justify-between">
-                              <div>
-                                <span className="text-cyan-400">Analyzing: </span>
-                                <span className="text-white font-medium">{selectedEntry.degree} {selectedEntry.patternType} {selectedEntry.waveCount}</span>
-                                <span className="text-gray-400 ml-2">
-                                  ${selectedEntry.startPrice.toFixed(4)} → ${selectedEntry.endPrice.toFixed(4)}
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => setSelectedLabelId(null)}
-                                className="text-xs text-gray-400 hover:text-white px-2"
-                                data-testid="button-clear-wave-selection"
-                              >
-                                ✕ Clear
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="text-xs bg-purple-900/30 border border-purple-700/50 rounded p-2">
-                              <span className="text-purple-400">Mode: </span>
-                              <span className="text-white font-medium">Full Stack Analysis</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                    
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        // Derive selected wave from table selection
-                        const selectedWave = selectedLabelId ? waveStackEntries.find(e => e.id === selectedLabelId) : null;
-                        
-                        let pivotsToSend = calculatePivots(candles, 5);
-                        let entriesToSend = waveStackEntries;
-                        let priorWaveContext = null;
-                        let scopedWaveInfo = null;
-                        
-                        // If a specific wave is selected via table click, scope the analysis
-                        if (selectedWave) {
-                          scopedWaveInfo = {
-                            id: selectedWave.id,
-                            degree: selectedWave.degree,
-                            label: `${selectedWave.patternType} ${selectedWave.waveCount}`,
-                            startTime: selectedWave.startTime,
-                            endTime: selectedWave.endTime,
-                            startPrice: selectedWave.startPrice,
-                            endPrice: selectedWave.endPrice,
-                          };
-                          
-                          // Use generous tolerance for time comparisons (10% of wave duration)
-                          const waveDuration = selectedWave.endTime - selectedWave.startTime;
-                          const timeTolerance = waveDuration * 0.1;
-                          
-                          // Filter pivots to only those within the selected wave's time range
-                          pivotsToSend = pivotsToSend.filter(p => 
-                            p.time >= (selectedWave.startTime - timeTolerance) && 
-                            p.time <= (selectedWave.endTime + timeTolerance)
-                          );
-                          
-                          // Filter entries to sub-waves: INCLUSIVE approach
-                          // Include any wave that OVERLAPS with the selected wave's time range
-                          // This catches child waves even with slightly snapped points
-                          entriesToSend = waveStackEntries.filter(e => {
-                            if (e.id === selectedWave.id) return false;
-                            // Include if there's ANY overlap with the selected wave's range
-                            const overlapStart = Math.max(e.startTime, selectedWave.startTime - timeTolerance);
-                            const overlapEnd = Math.min(e.endTime, selectedWave.endTime + timeTolerance);
-                            return overlapEnd > overlapStart; // Has overlap
-                          });
-                          
-                          // Include the selected wave itself at the start
-                          entriesToSend = [selectedWave, ...entriesToSend];
-                          
-                          // Find prior wave for context - look for same degree wave that ends before this one starts
-                          const sameDegreeWaves = waveStackEntries.filter(e => 
-                            e.id !== selectedWave.id &&
-                            e.degree === selectedWave.degree &&
-                            e.endTime <= selectedWave.startTime + timeTolerance
-                          ).sort((a, b) => b.endTime - a.endTime); // Most recent first
-                          
-                          if (sameDegreeWaves.length > 0) {
-                            const priorEntry = sameDegreeWaves[0];
-                            priorWaveContext = {
-                              degree: priorEntry.degree,
-                              type: priorEntry.patternType,
-                              direction: priorEntry.direction,
-                              waveCount: priorEntry.waveCount,
-                              startPrice: priorEntry.startPrice,
-                              endPrice: priorEntry.endPrice,
-                              priceChange: ((priorEntry.endPrice - priorEntry.startPrice) / priorEntry.startPrice * 100).toFixed(2),
-                            };
-                          }
-                        }
-                        
-                        if (isDevelopment) {
-                          console.log(`🔍 Analysis scope: ${scopedWaveInfo ? scopedWaveInfo.degree + ' ' + scopedWaveInfo.label : 'Full Stack'}`);
-                          console.log(`🔍 Pivots: ${pivotsToSend.length}, Entries: ${entriesToSend.length}`);
-                          if (priorWaveContext) console.log(`🔍 Prior wave context:`, priorWaveContext);
-                        }
-                        
-                        grokStackAnalyze.mutate({ 
-                          waveEntries: entriesToSend, 
-                          symbol, 
-                          pivots: pivotsToSend,
-                          scopedWave: scopedWaveInfo,
-                          priorWaveContext,
-                        });
-                      }}
-                      disabled={grokStackAnalyze.isPending || waveStackEntries.length === 0}
-                      className="w-full bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-xs"
-                      data-testid="grok-analyze-stack"
-                    >
-                      {grokStackAnalyze.isPending ? (
-                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing...</>
-                      ) : (
-                        <><Wand2 className="w-3 h-3 mr-1" /> {selectedLabelId && waveStackEntries.find(e => e.id === selectedLabelId) ? `Analyze ${waveStackEntries.find(e => e.id === selectedLabelId)?.degree.slice(0, 3)}` : 'Analyze Full Stack'}</>
-                      )}
-                    </Button>
-
-                    {/* Detailed Analysis Button - uses lower timeframe for sub-wave discovery */}
-                    {selectedLabelId && waveStackEntries.find(e => e.id === selectedLabelId) && (
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          const selectedWave = waveStackEntries.find(e => e.id === selectedLabelId);
-                          if (!selectedWave) return;
-                          
-                          const lowerTF = TIMEFRAME_HIERARCHY[timeframe] || timeframe;
-                          
-                          // Find prior wave for context
-                          const waveDuration = selectedWave.endTime - selectedWave.startTime;
-                          const timeTolerance = waveDuration * 0.1;
-                          const sameDegreeWaves = waveStackEntries.filter(e => 
-                            e.id !== selectedWave.id &&
-                            e.degree === selectedWave.degree &&
-                            e.endTime <= selectedWave.startTime + timeTolerance
-                          ).sort((a, b) => b.endTime - a.endTime);
-                          
-                          const priorWaveContext = sameDegreeWaves.length > 0 ? {
-                            degree: sameDegreeWaves[0].degree,
-                            type: sameDegreeWaves[0].patternType,
-                            direction: sameDegreeWaves[0].direction,
-                            waveCount: sameDegreeWaves[0].waveCount,
-                            startPrice: sameDegreeWaves[0].startPrice,
-                            endPrice: sameDegreeWaves[0].endPrice,
-                            priceChange: ((sameDegreeWaves[0].endPrice - sameDegreeWaves[0].startPrice) / sameDegreeWaves[0].startPrice * 100).toFixed(2),
-                            durationHours: Math.round((sameDegreeWaves[0].endTime - sameDegreeWaves[0].startTime) / 3600),
-                          } : null;
-                          
-                          if (isDevelopment) {
-                            console.log(`🔬 Detailed Analysis: ${selectedWave.degree} using ${lowerTF} data`);
-                          }
-                          
-                          detailedAnalyze.mutate({
-                            selectedWave: {
-                              id: selectedWave.id,
-                              degree: selectedWave.degree,
-                              patternType: selectedWave.patternType,
-                              waveCount: selectedWave.waveCount,
-                              direction: selectedWave.direction,
-                              startTime: selectedWave.startTime,
-                              endTime: selectedWave.endTime,
-                              startPrice: selectedWave.startPrice,
-                              endPrice: selectedWave.endPrice,
-                              timeframe,
-                            },
-                            symbol,
-                            priorWaveContext,
-                          });
-                        }}
-                        disabled={detailedAnalyze.isPending}
-                        className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-xs"
-                        data-testid="detailed-analysis-btn"
-                      >
-                        {detailedAnalyze.isPending ? (
-                          <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing {TIMEFRAME_HIERARCHY[timeframe] || timeframe}...</>
-                        ) : (
-                          <><Target className="w-3 h-3 mr-1" /> Detailed ({TIMEFRAME_HIERARCHY[timeframe] || timeframe})</>
-                        )}
-                      </Button>
-                    )}
-
-                    {/* Analyze Chart Data Button - Raw pattern detection */}
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        // Get VISIBLE candles only from chart's visible range
-                        if (!chartRef.current) {
-                          toast({
-                            title: 'Chart not ready',
-                            description: 'Please wait for chart to load',
-                            variant: 'destructive',
-                          });
-                          return;
-                        }
-                        
-                        const timeScale = chartRef.current.timeScale();
-                        const visibleRange = timeScale.getVisibleRange();
-                        
-                        if (!visibleRange) {
-                          toast({
-                            title: 'Zoom required',
-                            description: 'Please zoom/pan the chart first',
-                            variant: 'destructive',
-                          });
-                          return;
-                        }
-                        
-                        // Use candlesRef for most up-to-date data (chart may have more than state)
-                        const allCandles = candlesRef.current || candles;
-                        
-                        // Filter candles to only visible ones (exclude future virtual candles)
-                        const lastRealCandleTime = allCandles.length > 0 ? allCandles[allCandles.length - 1].time : 0;
-                        const visibleCandles = allCandles.filter(
-                          c => c.time >= visibleRange.from && c.time <= Math.min(visibleRange.to, lastRealCandleTime)
-                        );
-                        
-                        console.log(`📊 ═══════════════════════════════════════════════`);
-                        console.log(`📊 CHART ANALYSIS DEBUG`);
-                        console.log(`📊 Visible time range: ${new Date(visibleRange.from * 1000).toLocaleDateString()} to ${new Date(visibleRange.to * 1000).toLocaleDateString()}`);
-                        console.log(`📊 Total candles in state: ${allCandles.length}`);
-                        console.log(`📊 Visible candles found: ${visibleCandles.length}`);
-                        
-                        if (visibleCandles.length > 0) {
-                          console.log(`📊 First visible candle: ${new Date(visibleCandles[0].time * 1000).toLocaleDateString()} @ $${visibleCandles[0].close.toFixed(4)}`);
-                          console.log(`📊 Last visible candle: ${new Date(visibleCandles[visibleCandles.length - 1].time * 1000).toLocaleDateString()} @ $${visibleCandles[visibleCandles.length - 1].close.toFixed(4)}`);
-                        }
-                        
-                        if (visibleCandles.length < 10) {
-                          toast({
-                            title: 'Not enough data',
-                            description: `Only ${visibleCandles.length} visible candles. Need at least 10.`,
-                            variant: 'destructive',
-                          });
-                          return;
-                        }
-                        
-                        // Calculate DYNAMIC pivot length based on visible candle count
-                        // More candles = larger pivot length to detect major swings, not noise
-                        // ~40 candles per pivot point, minimum 3, maximum 20
-                        const dynamicPivotLength = Math.max(3, Math.min(20, Math.floor(visibleCandles.length / 40)));
-                        
-                        console.log(`📊 Dynamic pivot length: ${dynamicPivotLength} (based on ${visibleCandles.length} candles)`);
-                        
-                        // Calculate pivots from VISIBLE candles with dynamic length
-                        const pivotsToSend = calculatePivots(visibleCandles, dynamicPivotLength);
-                        
-                        console.log(`📊 Pivots detected: ${pivotsToSend.length}`);
-                        if (pivotsToSend.length > 0) {
-                          console.log(`📊 First pivot: ${pivotsToSend[0].type} at $${pivotsToSend[0].price.toFixed(4)}`);
-                          console.log(`📊 Last pivot: ${pivotsToSend[pivotsToSend.length - 1].type} at $${pivotsToSend[pivotsToSend.length - 1].price.toFixed(4)}`);
-                          
-                          // Find highest and lowest pivots
-                          const highPivots = pivotsToSend.filter(p => p.type === 'high');
-                          const lowPivots = pivotsToSend.filter(p => p.type === 'low');
-                          if (highPivots.length > 0) {
-                            const maxHigh = highPivots.reduce((a, b) => a.price > b.price ? a : b);
-                            console.log(`📊 Highest pivot: $${maxHigh.price.toFixed(4)} at ${new Date(maxHigh.time * 1000).toLocaleDateString()}`);
-                          }
-                          if (lowPivots.length > 0) {
-                            const minLow = lowPivots.reduce((a, b) => a.price < b.price ? a : b);
-                            console.log(`📊 Lowest pivot: $${minLow.price.toFixed(4)} at ${new Date(minLow.time * 1000).toLocaleDateString()}`);
-                          }
-                        }
-                        
-                        if (pivotsToSend.length < 3) {
-                          toast({
-                            title: 'Not enough pivots',
-                            description: `Only ${pivotsToSend.length} pivots. Try zooming out to see more price action.`,
-                            variant: 'destructive',
-                          });
-                          return;
-                        }
-                        
-                        // Calculate price range from VISIBLE candles only
-                        const priceRange = {
-                          high: Math.max(...visibleCandles.map(c => c.high)),
-                          low: Math.min(...visibleCandles.map(c => c.low)),
-                          start: visibleCandles[0]?.close || 0,
-                          end: visibleCandles[visibleCandles.length - 1]?.close || 0,
-                        };
-                        
-                        console.log(`📊 Price range: $${priceRange.low.toFixed(4)} - $${priceRange.high.toFixed(4)}`);
-                        console.log(`📊 Start→End: $${priceRange.start.toFixed(4)} → $${priceRange.end.toFixed(4)}`);
-                        console.log(`📊 ═══════════════════════════════════════════════`);
-                        
-                        chartAnalyze.mutate({ 
-                          symbol, 
-                          timeframe,
-                          pivots: pivotsToSend,
-                          priceRange,
-                        });
-                      }}
-                      disabled={chartAnalyze.isPending || candles.length === 0}
-                      className="w-full bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-xs mt-2"
-                      data-testid="chart-analyze-btn"
-                    >
-                      {chartAnalyze.isPending ? (
-                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing Chart...</>
-                      ) : (
-                        <><BarChart2 className="w-3 h-3 mr-1" /> Analyze Visible Chart</>
-                      )}
-                    </Button>
-                    <p className="text-xs text-gray-500 mt-1 text-center">
-                      Detect patterns from visible candles only (ignores your labels)
-                    </p>
-
-                    {/* Chart Analysis Results */}
-                    {chartAnalysis && (
-                      <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-teal-700/30 mt-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-teal-400">Chart Pattern Analysis</span>
-                          <button 
-                            onClick={() => setChartAnalysis(null)}
-                            className="text-xs text-gray-400 hover:text-white"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                        
-                        {/* Synopsis */}
-                        <div className="bg-teal-900/20 rounded p-3 border border-teal-600/30">
-                          <p className="text-sm text-gray-200">{chartAnalysis.synopsis}</p>
-                        </div>
-                        
-                        {/* Best Fit Pattern */}
-                        <div className="flex items-center justify-between bg-slate-700/50 rounded p-2">
-                          <div>
-                            <span className="text-xs text-gray-400">Best Fit:</span>
-                            <span className="text-sm font-bold text-teal-300 ml-2">{chartAnalysis.bestFitPattern}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              chartAnalysis.direction === 'up' ? 'bg-green-600' : 
-                              chartAnalysis.direction === 'down' ? 'bg-red-600' : 'bg-gray-600'
-                            }`}>
-                              {chartAnalysis.direction === 'up' ? '↑ UP' : 
-                               chartAnalysis.direction === 'down' ? '↓ DOWN' : '↔ SIDEWAYS'}
-                            </span>
-                            <span className="text-xs text-gray-400">{chartAnalysis.confidence}% conf</span>
-                          </div>
-                        </div>
-                        
-                        {/* Possible Patterns */}
-                        {chartAnalysis.possiblePatterns.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium text-purple-400">Possible Patterns:</p>
-                            {chartAnalysis.possiblePatterns.map((p, idx) => (
-                              <div key={idx} className="bg-slate-700/30 rounded p-2 text-xs">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-cyan-300 font-medium">{p.pattern}</span>
-                                  <span className="text-gray-400">{p.probability}%</span>
-                                </div>
-                                <p className="text-gray-400 mt-1">{p.reasoning}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        
-                        {/* Possible Outcomes */}
-                        {chartAnalysis.possibleOutcomes.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium text-amber-400">Possible Outcomes:</p>
-                            {chartAnalysis.possibleOutcomes.map((o, idx) => (
-                              <div key={idx} className="bg-amber-900/20 rounded p-2 text-xs border border-amber-700/30">
-                                <p className="text-amber-300">{o.scenario}</p>
-                                <p className="text-gray-300 mt-1">→ {o.nextMove}</p>
-                                {o.targets && o.targets.length > 0 && (
-                                  <p className="text-green-400 mt-1">Targets: {o.targets.join(', ')}</p>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        
-                        {/* Fibonacci Levels */}
-                        {chartAnalysis.fibonacciLevels && chartAnalysis.fibonacciLevels.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium text-yellow-400">Key Fibonacci Levels:</p>
-                            <div className="grid grid-cols-2 gap-1">
-                              {chartAnalysis.fibonacciLevels.map((f, idx) => (
-                                <div key={idx} className="bg-yellow-900/20 rounded p-1 text-xs">
-                                  <span className="text-yellow-300">{f.level}</span>
-                                  <span className="text-gray-400 ml-1">${f.price.toFixed(4)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Grok Analysis Results */}
-                    {grokStackAnalysis && (() => {
-                      const rawAnalysis = grokStackAnalysis.rawResponse ? 
-                        (() => { try { return JSON.parse(grokStackAnalysis.rawResponse.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch { return {}; } })() 
-                        : {};
-                      return (
-                      <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-purple-700/30">
-                        {/* Synopsis */}
-                        <div className="bg-purple-900/20 rounded p-3 border border-purple-600/30">
-                          <p className="text-sm text-gray-200">{rawAnalysis.synopsis || grokStackAnalysis.synopsis}</p>
-                        </div>
-
-                        {/* AI Best Fit - What AI thinks the structure should be */}
-                        {rawAnalysis.aiBestFit && rawAnalysis.aiBestFit.length > 0 && (
-                          <div className="overflow-x-auto">
-                            <p className="text-xs font-medium text-purple-400 mb-1">AI's Best Fit Structure:</p>
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-gray-400 border-b border-slate-700">
-                                  <th className="text-left py-1 px-1">#</th>
-                                  <th className="text-left py-1 px-1">Degree</th>
-                                  <th className="text-left py-1 px-1">Label</th>
-                                  <th className="text-left py-1 px-1">Dir</th>
-                                  <th className="text-left py-1 px-1">Reasoning</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {rawAnalysis.aiBestFit.map((a: any, idx: number) => (
-                                  <tr key={idx} className="border-b border-slate-800">
-                                    <td className="py-1 px-1 text-gray-500 font-mono">{a.uiIndex}</td>
-                                    <td className="py-1 px-1 text-purple-300">{a.degree}</td>
-                                    <td className="py-1 px-1 text-cyan-300 font-medium">{a.suggestedLabel}</td>
-                                    <td className={`py-1 px-1 ${a.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
-                                      {a.direction === 'up' ? '↑' : '↓'}
-                                    </td>
-                                    <td className="py-1 px-1 text-gray-400 text-xs">{a.reasoning}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-
-                        {/* Comparison Table - User vs AI */}
-                        {rawAnalysis.comparison && rawAnalysis.comparison.length > 0 && (
-                          <div className="overflow-x-auto">
-                            <p className="text-xs font-medium text-cyan-400 mb-1">Your Labels vs AI Analysis:</p>
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-gray-400 border-b border-slate-700">
-                                  <th className="text-left py-1 px-1">#</th>
-                                  <th className="text-left py-1 px-1">Your Label</th>
-                                  <th className="text-left py-1 px-1">AI Label</th>
-                                  <th className="text-center py-1 px-1">Match</th>
-                                  <th className="text-left py-1 px-1">Note</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {rawAnalysis.comparison.map((c: any, idx: number) => (
-                                  <tr key={idx} className={`border-b border-slate-800 ${c.match === false ? 'bg-yellow-900/20' : ''}`}>
-                                    <td className="py-1 px-1 text-gray-500 font-mono">{c.uiIndex}</td>
-                                    <td className="py-1 px-1 text-purple-300">{c.userLabel}</td>
-                                    <td className="py-1 px-1 text-cyan-300">{c.aiLabel}</td>
-                                    <td className={`py-1 px-1 text-center ${c.match ? 'text-green-400' : 'text-yellow-400'}`}>
-                                      {c.match ? '✓' : '?'}
-                                    </td>
-                                    <td className="py-1 px-1 text-gray-400 text-xs">{c.note}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-
-                        {/* Price Issues */}
-                        {rawAnalysis.priceIssues && rawAnalysis.priceIssues.length > 0 && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium text-red-400">Price Relationship Issues:</p>
-                            {rawAnalysis.priceIssues.map((p: any, idx: number) => (
-                              <div key={idx} className={`rounded p-2 border text-xs ${p.severity === 'CRITICAL' ? 'bg-red-900/30 border-red-600/50' : 'bg-yellow-900/30 border-yellow-600/50'}`}>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono text-gray-400">#{p.uiIndex}</span>
-                                  <span className={`text-xs px-1 rounded ${p.severity === 'CRITICAL' ? 'bg-red-600' : 'bg-yellow-600'} text-white`}>{p.severity}</span>
-                                </div>
-                                <p className="text-gray-300 mt-1">{p.issue}</p>
-                                {p.suggestion && <p className="text-cyan-400 mt-1 italic">{p.suggestion}</p>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Fibonacci Analysis */}
-                        {rawAnalysis.fibonacciAnalysis && rawAnalysis.fibonacciAnalysis.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium text-amber-400">Fibonacci Analysis:</p>
-                            <div className="grid grid-cols-2 gap-1">
-                              {rawAnalysis.fibonacciAnalysis.map((f: any, idx: number) => (
-                                <div key={idx} className={`text-xs p-1 rounded ${f.isValid ? 'bg-green-900/20 text-green-300' : 'bg-red-900/20 text-red-300'}`}>
-                                  <span className="font-mono text-gray-500">#{f.uiIndex}</span>
-                                  <span className="font-medium ml-1">{f.relationship}</span>: {f.value || f.retracement || f.extension}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Recommendations Table */}
-                        {rawAnalysis.recommendationsTable && rawAnalysis.recommendationsTable.length > 0 && (
-                          <div className="overflow-x-auto">
-                            <p className="text-xs font-medium text-green-400 mb-1">AI Recommendations:</p>
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-gray-400 border-b border-slate-700">
-                                  <th className="text-left py-1 px-1">#</th>
-                                  <th className="text-left py-1 px-1">Deg</th>
-                                  <th className="text-left py-1 px-1">Label</th>
-                                  <th className="text-left py-1 px-1">Dir</th>
-                                  <th className="text-right py-1 px-1">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {rawAnalysis.recommendationsTable.map((r: any, idx: number) => (
-                                  <tr key={idx} className={`border-b border-slate-800 ${r.status === 'REVIEW' ? 'bg-yellow-900/20' : r.status === 'ISSUE' ? 'bg-red-900/20' : ''}`}>
-                                    <td className="py-1 px-1 text-gray-500 font-mono">{r.uiIndex}</td>
-                                    <td className="py-1 px-1 text-purple-300">{r.degree}</td>
-                                    <td className="py-1 px-1 text-cyan-300 font-medium">{r.label}</td>
-                                    <td className={`py-1 px-1 ${r.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
-                                      {r.direction === 'up' ? '↑' : '↓'}
-                                    </td>
-                                    <td className={`py-1 px-1 text-right font-medium ${r.status === 'OK' ? 'text-green-400' : r.status === 'REVIEW' ? 'text-yellow-400' : 'text-red-400'}`}>
-                                      {r.status}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-
-                        {/* Suggested Sub-Waves - For scoped analysis with no sub-waves */}
-                        {rawAnalysis.suggestedSubWaves && rawAnalysis.suggestedSubWaves.length > 0 && (
-                          <div className="overflow-x-auto">
-                            <p className="text-xs font-medium text-orange-400 mb-1 flex items-center gap-2">
-                              <Sparkles className="w-3 h-3" />
-                              Suggested Sub-Waves:
-                            </p>
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-gray-400 border-b border-slate-700">
-                                  <th className="text-left py-1 px-1">Label</th>
-                                  <th className="text-left py-1 px-1">Deg</th>
-                                  <th className="text-left py-1 px-1">Type</th>
-                                  <th className="text-left py-1 px-1">Dir</th>
-                                  <th className="text-right py-1 px-1">Start $</th>
-                                  <th className="text-right py-1 px-1">End $</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {rawAnalysis.suggestedSubWaves.map((s: any, idx: number) => (
-                                  <tr key={idx} className="border-b border-slate-800 bg-orange-900/10">
-                                    <td className="py-1 px-1 text-orange-300 font-medium">{s.label}</td>
-                                    <td className="py-1 px-1 text-purple-300">{s.degree}</td>
-                                    <td className="py-1 px-1 text-gray-300">{s.type}</td>
-                                    <td className={`py-1 px-1 ${s.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
-                                      {s.direction === 'up' ? '↑' : '↓'}
-                                    </td>
-                                    <td className="py-1 px-1 text-right font-mono text-gray-300">${parseFloat(s.startPrice || 0).toFixed(4)}</td>
-                                    <td className="py-1 px-1 text-right font-mono text-gray-300">${parseFloat(s.endPrice || 0).toFixed(4)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            <p className="text-[10px] text-gray-500 mt-1 italic">These are AI suggestions based on pivot data. Draw patterns to add them to your wave stack.</p>
-                          </div>
-                        )}
-
-                        {/* Prediction */}
-                        {rawAnalysis.prediction && (
-                          <div className="bg-cyan-900/20 rounded p-2 border border-cyan-600/30">
-                            <span className="text-xs text-cyan-400">Next: </span>
-                            <span className="text-xs text-white font-medium">{rawAnalysis.prediction.nextWave}</span>
-                            <span className="text-xs text-cyan-400 ml-2">{rawAnalysis.prediction.confidence}% conf</span>
-                            {rawAnalysis.prediction.targets && (
-                              <div className="mt-1 text-xs text-gray-400">Targets: {rawAnalysis.prediction.targets.join(', ')}</div>
-                            )}
-                          </div>
-                        )}
-
-                        <button
-                          onClick={() => setGrokStackAnalysis(null)}
-                          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                        >
-                          Clear results
-                        </button>
-                      </div>
-                    );})()}
-
-                    {/* Detailed Analysis Results - Sub-waves from lower timeframe */}
-                    {detailedAnalysis && (() => {
-                      const rawAnalysis = detailedAnalysis.rawResponse ? 
-                        (() => { try { return JSON.parse(detailedAnalysis.rawResponse.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch { return {}; } })() 
-                        : {};
-                      return (
-                      <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-amber-700/30 mt-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Target className="w-4 h-4 text-amber-400" />
-                          <span className="text-xs font-medium text-amber-400">Detailed Analysis ({detailedAnalysis.analysisTimeframe || 'Lower TF'})</span>
-                          <Badge variant="outline" className="text-[9px] border-amber-600 text-amber-400">{detailedAnalysis.pivotCount} pivots</Badge>
-                        </div>
-                        
-                        {/* Synopsis */}
-                        <div className="bg-amber-900/20 rounded p-3 border border-amber-600/30">
-                          <p className="text-sm text-gray-200">{rawAnalysis.synopsis || detailedAnalysis.synopsis}</p>
-                        </div>
-
-                        {/* Detected Pattern */}
-                        {rawAnalysis.detectedPattern && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400">Pattern:</span>
-                            <Badge className={`text-xs ${rawAnalysis.parentWaveType === 'motive' ? 'bg-emerald-600' : 'bg-amber-600'}`}>
-                              {rawAnalysis.detectedPattern}
-                            </Badge>
-                          </div>
-                        )}
-
-                        {/* Sub-Waves Table */}
-                        {(rawAnalysis.subWaves || detailedAnalysis.subWaves)?.length > 0 && (
-                          <div className="overflow-x-auto">
-                            <p className="text-xs font-medium text-amber-400 mb-1 flex items-center gap-2">
-                              <Sparkles className="w-3 h-3" />
-                              Detected Sub-Waves:
-                            </p>
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-gray-400 border-b border-slate-700">
-                                  <th className="text-left py-1 px-1">Label</th>
-                                  <th className="text-left py-1 px-1">Deg</th>
-                                  <th className="text-left py-1 px-1">Type</th>
-                                  <th className="text-left py-1 px-1">Dir</th>
-                                  <th className="text-right py-1 px-1">Start $</th>
-                                  <th className="text-right py-1 px-1">End $</th>
-                                  <th className="text-center py-1 px-1">Conf</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(rawAnalysis.subWaves || detailedAnalysis.subWaves).map((s: any, idx: number) => (
-                                  <tr key={idx} className="border-b border-slate-800 bg-amber-900/10">
-                                    <td className="py-1 px-1 text-amber-300 font-medium">{s.label}</td>
-                                    <td className="py-1 px-1 text-purple-300">{s.degree}</td>
-                                    <td className="py-1 px-1 text-gray-300">{s.type}</td>
-                                    <td className={`py-1 px-1 ${s.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>
-                                      {s.direction === 'up' ? '↑' : '↓'}
-                                    </td>
-                                    <td className="py-1 px-1 text-right font-mono text-gray-300">${parseFloat(s.startPrice || 0).toFixed(4)}</td>
-                                    <td className="py-1 px-1 text-right font-mono text-gray-300">${parseFloat(s.endPrice || 0).toFixed(4)}</td>
-                                    <td className="py-1 px-1 text-center text-cyan-400">{s.confidence || '-'}%</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-
-                        {/* Fibonacci Analysis */}
-                        {rawAnalysis.fibonacciAnalysis?.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium text-cyan-400">Fibonacci Relationships:</p>
-                            <div className="grid grid-cols-2 gap-1">
-                              {rawAnalysis.fibonacciAnalysis.map((f: any, idx: number) => (
-                                <div key={idx} className={`text-xs p-1 rounded ${f.isValid ? 'bg-green-900/20 text-green-300' : 'bg-red-900/20 text-red-300'}`}>
-                                  <span className="font-medium">{f.relationship}</span>: {f.value}
-                                  {f.note && <span className="text-gray-500 ml-1">({f.note})</span>}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Rule Violations */}
-                        {rawAnalysis.ruleViolations?.some((r: any) => r.violated) && (
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium text-red-400">Rule Violations:</p>
-                            {rawAnalysis.ruleViolations.filter((r: any) => r.violated).map((r: any, idx: number) => (
-                              <div key={idx} className="text-xs p-1 rounded bg-red-900/30 text-red-300">
-                                {r.rule}: {r.note}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Prediction */}
-                        {rawAnalysis.prediction && (
-                          <div className="bg-cyan-900/20 rounded p-2 border border-cyan-600/30">
-                            <span className="text-xs text-cyan-400">Next: </span>
-                            <span className="text-xs text-white font-medium">{rawAnalysis.prediction.nextMove}</span>
-                            <span className="text-xs text-cyan-400 ml-2">{rawAnalysis.prediction.confidence}% conf</span>
-                            {rawAnalysis.prediction.targets && (
-                              <div className="mt-1 text-xs text-gray-400">Targets: {rawAnalysis.prediction.targets.join(', ')}</div>
-                            )}
-                          </div>
-                        )}
-
-                        <button
-                          onClick={() => setDetailedAnalysis(null)}
-                          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                        >
-                          Clear detailed results
-                        </button>
-                      </div>
-                    );})()}
-                  </div>
-                )}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
@@ -9252,65 +8529,180 @@ const aiAnalyze = useMutation({
             )}
           </TabsContent>
 
-          <TabsContent value="ai" className="mt-4 space-y-5">
-            {aiAnalyze.isPending ? (
-              <div className="text-center py-16">
-                <Loader2 className="w-10 h-10 animate-spin text-[#00c4b4] mx-auto mb-4" />
-                <p className="text-gray-400 text-lg">Grok is analyzing the chart...</p>
-              </div>
-            ) : aiAnalysis ? (
-              <div className="space-y-6">
-                {/* Pattern Summary */}
-                <div className="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-600/50 rounded-xl p-6">
-                  <h3 className="text-2xl font-bold text-emerald-400 mb-3">
-                    {aiAnalysis.patternType.charAt(0).toUpperCase() + aiAnalysis.patternType.slice(1)} Pattern
-                  </h3>
-                  <div className="flex items-center gap-5 text-lg">
-                    <span className="text-gray-400">Confidence:</span>
-                    <span className="text-3xl font-bold text-emerald-300">{aiAnalysis.confidence}%</span>
-                    <span className="text-gray-300">— {aiAnalysis.currentWave}</span>
-                  </div>
-                  <p className="text-gray-200 mt-5 leading-relaxed text-base">{aiAnalysis.analysis}</p>
+          <TabsContent value="ai" className="mt-4 space-y-4">
+            {isAdmin ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-purple-400 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    AI Wave Analysis
+                  </span>
                 </div>
-
-                {/* Continuation Targets */}
-                {aiAnalysis.continuation && (
-                  <div className="bg-slate-800/90 rounded-xl p-6 border border-slate-700">
-                    <h4 className="text-xl font-semibold text-cyan-400 mb-4">
-                      {aiAnalysis.continuation.direction === 'up' ? 'Bullish' : 'Bearish'} Continuation
-                    </h4>
-                    <p className="text-gray-300 mb-5 text-base">{aiAnalysis.continuation.targetDescription}</p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {aiAnalysis.continuation.upTargets?.length > 0 && (
-                        <div>
-                          <h5 className="text-green-400 font-medium mb-3 text-lg">Upside Targets</h5>
-                          {aiAnalysis.continuation.upTargets.map((t, i) => (
-                            <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
-                              <span className="text-green-300">{t.level}</span>
-                              <span className="font-mono text-green-200 text-lg">${t.price?.toFixed(4)}</span>
-                            </div>
-                          ))}
+                
+                {(() => {
+                  const selectedEntry = selectedLabelId ? waveStackEntries.find(e => e.id === selectedLabelId) : null;
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400">
+                        {selectedEntry ? 'Selected wave from Stack tab:' : 'Click a wave row in Stack tab to scope analysis, or analyze full stack:'}
+                      </p>
+                      {selectedEntry ? (
+                        <div className="text-xs bg-cyan-900/30 border border-cyan-700/50 rounded p-2 flex items-center justify-between">
+                          <div>
+                            <span className="text-cyan-400">Analyzing: </span>
+                            <span className="text-white font-medium">{selectedEntry.degree} {selectedEntry.patternType} {selectedEntry.waveCount}</span>
+                            <span className="text-gray-400 ml-2">
+                              ${selectedEntry.startPrice.toFixed(4)} → ${selectedEntry.endPrice.toFixed(4)}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setSelectedLabelId(null)}
+                            className="text-xs text-gray-400 hover:text-white px-2"
+                            data-testid="button-clear-wave-selection-ai"
+                          >
+                            ✕ Clear
+                          </button>
                         </div>
-                      )}
-                      {aiAnalysis.continuation.downTargets?.length > 0 && (
-                        <div>
-                          <h5 className="text-red-400 font-medium mb-3 text-lg">Downside Targets</h5>
-                          {aiAnalysis.continuation.downTargets.map((t, i) => (
-                            <div key={i} className="flex justify-between py-2 border-b border-slate-700/50 last:border-0">
-                              <span className="text-red-300">{t.level}</span>
-                              <span className="font-mono text-red-200 text-lg">${t.price?.toFixed(4)}</span>
-                            </div>
-                          ))}
+                      ) : (
+                        <div className="text-xs bg-purple-900/30 border border-purple-700/50 rounded p-2">
+                          <span className="text-purple-400">Mode: </span>
+                          <span className="text-white font-medium">Full Stack Analysis</span>
                         </div>
                       )}
                     </div>
+                  );
+                })()}
+                
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const selectedWave = selectedLabelId ? waveStackEntries.find(e => e.id === selectedLabelId) : null;
+                    let pivotsToSend = calculatePivots(candles, 5);
+                    let entriesToSend = waveStackEntries;
+                    let priorWaveContext = null;
+                    let scopedWaveInfo = null;
+                    
+                    if (selectedWave) {
+                      scopedWaveInfo = { id: selectedWave.id, degree: selectedWave.degree, label: `${selectedWave.patternType} ${selectedWave.waveCount}`, startTime: selectedWave.startTime, endTime: selectedWave.endTime, startPrice: selectedWave.startPrice, endPrice: selectedWave.endPrice };
+                      const waveDuration = selectedWave.endTime - selectedWave.startTime;
+                      const timeTolerance = waveDuration * 0.1;
+                      pivotsToSend = pivotsToSend.filter(p => p.time >= (selectedWave.startTime - timeTolerance) && p.time <= (selectedWave.endTime + timeTolerance));
+                      entriesToSend = waveStackEntries.filter(e => { if (e.id === selectedWave.id) return false; const overlapStart = Math.max(e.startTime, selectedWave.startTime - timeTolerance); const overlapEnd = Math.min(e.endTime, selectedWave.endTime + timeTolerance); return overlapEnd > overlapStart; });
+                      entriesToSend = [selectedWave, ...entriesToSend];
+                      const sameDegreeWaves = waveStackEntries.filter(e => e.id !== selectedWave.id && e.degree === selectedWave.degree && e.endTime <= selectedWave.startTime + timeTolerance).sort((a, b) => b.endTime - a.endTime);
+                      if (sameDegreeWaves.length > 0) {
+                        const priorEntry = sameDegreeWaves[0];
+                        priorWaveContext = { degree: priorEntry.degree, type: priorEntry.patternType, direction: priorEntry.direction, waveCount: priorEntry.waveCount, startPrice: priorEntry.startPrice, endPrice: priorEntry.endPrice, priceChange: ((priorEntry.endPrice - priorEntry.startPrice) / priorEntry.startPrice * 100).toFixed(2) };
+                      }
+                    }
+                    grokStackAnalyze.mutate({ waveEntries: entriesToSend, symbol, pivots: pivotsToSend, scopedWave: scopedWaveInfo, priorWaveContext });
+                  }}
+                  disabled={grokStackAnalyze.isPending || waveStackEntries.length === 0}
+                  className="w-full bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-xs"
+                  data-testid="grok-analyze-stack-ai-tab"
+                >
+                  {grokStackAnalyze.isPending ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing...</> : <><Wand2 className="w-3 h-3 mr-1" /> {selectedLabelId && waveStackEntries.find(e => e.id === selectedLabelId) ? `Analyze ${waveStackEntries.find(e => e.id === selectedLabelId)?.degree.slice(0, 3)}` : 'Analyze Full Stack'}</>}
+                </Button>
+
+                {selectedLabelId && waveStackEntries.find(e => e.id === selectedLabelId) && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const selectedWave = waveStackEntries.find(e => e.id === selectedLabelId);
+                      if (!selectedWave) return;
+                      const lowerTF = TIMEFRAME_HIERARCHY[timeframe] || timeframe;
+                      const waveDuration = selectedWave.endTime - selectedWave.startTime;
+                      const timeTolerance = waveDuration * 0.1;
+                      const sameDegreeWaves = waveStackEntries.filter(e => e.id !== selectedWave.id && e.degree === selectedWave.degree && e.endTime <= selectedWave.startTime + timeTolerance).sort((a, b) => b.endTime - a.endTime);
+                      const priorWaveContext = sameDegreeWaves.length > 0 ? { degree: sameDegreeWaves[0].degree, type: sameDegreeWaves[0].patternType, direction: sameDegreeWaves[0].direction, waveCount: sameDegreeWaves[0].waveCount, startPrice: sameDegreeWaves[0].startPrice, endPrice: sameDegreeWaves[0].endPrice, priceChange: ((sameDegreeWaves[0].endPrice - sameDegreeWaves[0].startPrice) / sameDegreeWaves[0].startPrice * 100).toFixed(2), durationHours: Math.round((sameDegreeWaves[0].endTime - sameDegreeWaves[0].startTime) / 3600) } : null;
+                      detailedAnalyze.mutate({ selectedWave: { id: selectedWave.id, degree: selectedWave.degree, patternType: selectedWave.patternType, waveCount: selectedWave.waveCount, direction: selectedWave.direction, startTime: selectedWave.startTime, endTime: selectedWave.endTime, startPrice: selectedWave.startPrice, endPrice: selectedWave.endPrice, timeframe }, symbol, priorWaveContext });
+                    }}
+                    disabled={detailedAnalyze.isPending}
+                    className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-xs"
+                    data-testid="detailed-analysis-btn-ai-tab"
+                  >
+                    {detailedAnalyze.isPending ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing {TIMEFRAME_HIERARCHY[timeframe] || timeframe}...</> : <><Target className="w-3 h-3 mr-1" /> Detailed ({TIMEFRAME_HIERARCHY[timeframe] || timeframe})</>}
+                  </Button>
+                )}
+
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!chartRef.current) { toast({ title: 'Chart not ready', description: 'Please wait for chart to load', variant: 'destructive' }); return; }
+                    const timeScale = chartRef.current.timeScale();
+                    const visibleRange = timeScale.getVisibleRange();
+                    if (!visibleRange) { toast({ title: 'Zoom required', description: 'Please zoom/pan the chart first', variant: 'destructive' }); return; }
+                    const allCandles = candlesRef.current || candles;
+                    const lastRealCandleTime = allCandles.length > 0 ? allCandles[allCandles.length - 1].time : 0;
+                    const visibleCandles = allCandles.filter(c => c.time >= visibleRange.from && c.time <= Math.min(visibleRange.to, lastRealCandleTime));
+                    if (visibleCandles.length < 10) { toast({ title: 'Not enough data', description: `Only ${visibleCandles.length} visible candles. Need at least 10.`, variant: 'destructive' }); return; }
+                    const dynamicPivotLength = Math.max(3, Math.min(20, Math.floor(visibleCandles.length / 40)));
+                    const pivotsToSend = calculatePivots(visibleCandles, dynamicPivotLength);
+                    if (pivotsToSend.length < 3) { toast({ title: 'Not enough pivots', description: `Only ${pivotsToSend.length} pivots. Try zooming out.`, variant: 'destructive' }); return; }
+                    const priceRange = { high: Math.max(...visibleCandles.map(c => c.high)), low: Math.min(...visibleCandles.map(c => c.low)), start: visibleCandles[0]?.close || 0, end: visibleCandles[visibleCandles.length - 1]?.close || 0 };
+                    chartAnalyze.mutate({ symbol, timeframe, pivots: pivotsToSend, priceRange });
+                  }}
+                  disabled={chartAnalyze.isPending || candles.length === 0}
+                  className="w-full bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-xs"
+                  data-testid="chart-analyze-btn-ai-tab"
+                >
+                  {chartAnalyze.isPending ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing Chart...</> : <><BarChart2 className="w-3 h-3 mr-1" /> Analyze Visible Chart</>}
+                </Button>
+                <p className="text-xs text-gray-500 text-center">Detect patterns from visible candles only (ignores your labels)</p>
+
+                {chartAnalysis && (
+                  <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-teal-700/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-teal-400">Chart Pattern Analysis</span>
+                      <button onClick={() => setChartAnalysis(null)} className="text-xs text-gray-400 hover:text-white">Clear</button>
+                    </div>
+                    <div className="bg-teal-900/20 rounded p-3 border border-teal-600/30"><p className="text-sm text-gray-200">{chartAnalysis.synopsis}</p></div>
+                    <div className="flex items-center justify-between bg-slate-700/50 rounded p-2">
+                      <div><span className="text-xs text-gray-400">Best Fit:</span><span className="text-sm font-bold text-teal-300 ml-2">{chartAnalysis.bestFitPattern}</span></div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded ${chartAnalysis.direction === 'up' ? 'bg-green-600' : chartAnalysis.direction === 'down' ? 'bg-red-600' : 'bg-gray-600'}`}>{chartAnalysis.direction === 'up' ? '↑ UP' : chartAnalysis.direction === 'down' ? '↓ DOWN' : '↔ SIDEWAYS'}</span>
+                        <span className="text-xs text-gray-400">{chartAnalysis.confidence}% conf</span>
+                      </div>
+                    </div>
+                    {chartAnalysis.possiblePatterns.length > 0 && (<div className="space-y-1"><p className="text-xs font-medium text-purple-400">Possible Patterns:</p>{chartAnalysis.possiblePatterns.map((p: any, idx: number) => (<div key={idx} className="bg-slate-700/30 rounded p-2 text-xs"><div className="flex items-center justify-between"><span className="text-cyan-300 font-medium">{p.pattern}</span><span className="text-gray-400">{p.probability}%</span></div><p className="text-gray-400 mt-1">{p.reasoning}</p></div>))}</div>)}
+                    {chartAnalysis.possibleOutcomes.length > 0 && (<div className="space-y-1"><p className="text-xs font-medium text-amber-400">Possible Outcomes:</p>{chartAnalysis.possibleOutcomes.map((o: any, idx: number) => (<div key={idx} className="bg-amber-900/20 rounded p-2 text-xs border border-amber-700/30"><p className="text-amber-300">{o.scenario}</p><p className="text-gray-300 mt-1">→ {o.nextMove}</p>{o.targets && o.targets.length > 0 && (<p className="text-green-400 mt-1">Targets: {o.targets.join(', ')}</p>)}</div>))}</div>)}
                   </div>
                 )}
+
+                {grokStackAnalysis && (() => {
+                  const rawAnalysis = grokStackAnalysis.rawResponse ? (() => { try { return JSON.parse(grokStackAnalysis.rawResponse.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch { return {}; } })() : {};
+                  return (
+                    <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-purple-700/30">
+                      <div className="bg-purple-900/20 rounded p-3 border border-purple-600/30"><p className="text-sm text-gray-200">{rawAnalysis.synopsis || grokStackAnalysis.synopsis}</p></div>
+                      {rawAnalysis.aiBestFit && rawAnalysis.aiBestFit.length > 0 && (<div className="overflow-x-auto"><p className="text-xs font-medium text-purple-400 mb-1">AI Best Fit Structure:</p><table className="w-full text-xs"><thead><tr className="text-gray-400 border-b border-slate-700"><th className="text-left py-1 px-1">#</th><th className="text-left py-1 px-1">Degree</th><th className="text-left py-1 px-1">Label</th><th className="text-left py-1 px-1">Dir</th><th className="text-left py-1 px-1">Reasoning</th></tr></thead><tbody>{rawAnalysis.aiBestFit.map((a: any, idx: number) => (<tr key={idx} className="border-b border-slate-800"><td className="py-1 px-1 text-gray-500 font-mono">{a.uiIndex}</td><td className="py-1 px-1 text-purple-300">{a.degree}</td><td className="py-1 px-1 text-cyan-300 font-medium">{a.suggestedLabel}</td><td className={`py-1 px-1 ${a.direction === 'up' ? 'text-green-400' : 'text-red-400'}`}>{a.direction === 'up' ? '↑' : '↓'}</td><td className="py-1 px-1 text-gray-400 text-xs">{a.reasoning}</td></tr>))}</tbody></table></div>)}
+                      {rawAnalysis.comparison && rawAnalysis.comparison.length > 0 && (<div className="overflow-x-auto"><p className="text-xs font-medium text-cyan-400 mb-1">Your Labels vs AI Analysis:</p><table className="w-full text-xs"><thead><tr className="text-gray-400 border-b border-slate-700"><th className="text-left py-1 px-1">#</th><th className="text-left py-1 px-1">Your Label</th><th className="text-left py-1 px-1">AI Label</th><th className="text-center py-1 px-1">Match</th><th className="text-left py-1 px-1">Note</th></tr></thead><tbody>{rawAnalysis.comparison.map((c: any, idx: number) => (<tr key={idx} className={`border-b border-slate-800 ${c.match === false ? 'bg-yellow-900/20' : ''}`}><td className="py-1 px-1 text-gray-500 font-mono">{c.uiIndex}</td><td className="py-1 px-1 text-purple-300">{c.userLabel}</td><td className="py-1 px-1 text-cyan-300">{c.aiLabel}</td><td className={`py-1 px-1 text-center ${c.match ? 'text-green-400' : 'text-yellow-400'}`}>{c.match ? '✓' : '?'}</td><td className="py-1 px-1 text-gray-400 text-xs">{c.note}</td></tr>))}</tbody></table></div>)}
+                      {rawAnalysis.priceIssues && rawAnalysis.priceIssues.length > 0 && (<div className="space-y-2"><p className="text-xs font-medium text-red-400">Price Relationship Issues:</p>{rawAnalysis.priceIssues.map((p: any, idx: number) => (<div key={idx} className={`rounded p-2 border text-xs ${p.severity === 'CRITICAL' ? 'bg-red-900/30 border-red-600/50' : 'bg-yellow-900/30 border-yellow-600/50'}`}><div className="flex items-center gap-2"><span className={`text-xs font-bold ${p.severity === 'CRITICAL' ? 'text-red-400' : 'text-yellow-400'}`}>{p.severity}</span><span className="text-gray-300">{p.issue}</span></div></div>))}</div>)}
+                      {rawAnalysis.prediction && (<div className="bg-cyan-900/20 rounded p-2 border border-cyan-600/30"><span className="text-xs text-cyan-400">Next: </span><span className="text-xs text-white font-medium">{rawAnalysis.prediction.nextMove}</span><span className="text-xs text-cyan-400 ml-2">{rawAnalysis.prediction.confidence}% conf</span>{rawAnalysis.prediction.targets && (<div className="mt-1 text-xs text-gray-400">Targets: {rawAnalysis.prediction.targets.join(', ')}</div>)}</div>)}
+                      <button onClick={() => setGrokStackAnalysis(null)} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Clear stack analysis</button>
+                    </div>
+                  );
+                })()}
+
+                {detailedAnalysis && (() => {
+                  const rawAnalysis = detailedAnalysis.rawResponse ? (() => { try { return JSON.parse(detailedAnalysis.rawResponse.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch { return {}; } })() : {};
+                  return (
+                    <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-amber-700/30">
+                      <div className="flex items-center justify-between"><span className="text-sm font-medium text-amber-400">Detailed Sub-Wave Analysis</span></div>
+                      <div className="bg-amber-900/20 rounded p-3 border border-amber-600/30"><p className="text-sm text-gray-200">{rawAnalysis.synopsis || detailedAnalysis.synopsis}</p></div>
+                      {rawAnalysis.subWaveBreakdown && rawAnalysis.subWaveBreakdown.length > 0 && (<div className="overflow-x-auto"><p className="text-xs font-medium text-amber-400 mb-1">Sub-Wave Breakdown:</p><table className="w-full text-xs"><thead><tr className="text-gray-400 border-b border-slate-700"><th className="text-left py-1 px-1">Sub-Wave</th><th className="text-left py-1 px-1">Type</th><th className="text-left py-1 px-1">Price</th><th className="text-left py-1 px-1">Fib%</th><th className="text-left py-1 px-1">Notes</th></tr></thead><tbody>{rawAnalysis.subWaveBreakdown.map((s: any, idx: number) => (<tr key={idx} className="border-b border-slate-800"><td className="py-1 px-1 text-amber-300 font-medium">{s.label}</td><td className="py-1 px-1 text-purple-300">{s.type}</td><td className="py-1 px-1 text-gray-300 font-mono text-xs">${s.startPrice?.toFixed(4)} → ${s.endPrice?.toFixed(4)}</td><td className="py-1 px-1 text-cyan-300">{s.fibPercent}%</td><td className="py-1 px-1 text-gray-400 text-xs">{s.notes}</td></tr>))}</tbody></table></div>)}
+                      {rawAnalysis.internalStructure && (<div className="bg-purple-900/20 rounded p-2 border border-purple-600/30"><span className="text-xs text-purple-400">Internal Structure: </span><span className="text-xs text-white">{rawAnalysis.internalStructure}</span></div>)}
+                      {rawAnalysis.alternateCount && (<div className="bg-slate-700/50 rounded p-2"><span className="text-xs text-gray-400">Alternate Count: </span><span className="text-xs text-cyan-300">{rawAnalysis.alternateCount}</span></div>)}
+                      {rawAnalysis.prediction && (<div className="bg-cyan-900/20 rounded p-2 border border-cyan-600/30"><span className="text-xs text-cyan-400">Next: </span><span className="text-xs text-white font-medium">{rawAnalysis.prediction.nextMove}</span><span className="text-xs text-cyan-400 ml-2">{rawAnalysis.prediction.confidence}% conf</span>{rawAnalysis.prediction.targets && (<div className="mt-1 text-xs text-gray-400">Targets: {rawAnalysis.prediction.targets.join(', ')}</div>)}</div>)}
+                      <button onClick={() => setDetailedAnalysis(null)} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Clear detailed results</button>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
-              <div className="text-center py-20 text-gray-500 text-lg">
-                Click “AI Check” to analyze the current chart
+              <div className="text-center py-12 text-gray-500">
+                <Sparkles className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+                <p className="text-lg">AI Analysis (Admin Only)</p>
+                <p className="text-sm mt-2">This feature is in sandbox mode</p>
               </div>
             )}
           </TabsContent>
