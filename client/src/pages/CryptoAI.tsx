@@ -2850,7 +2850,12 @@ export default function CryptoAI() {
                       return (
                         <div 
                           key={trade.id || idx}
-                          className="flex items-center justify-between p-3 bg-[#0e0e0e] rounded-lg border border-[#2a2e39]"
+                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
+                            selectedTrackedTradeId === trade.id 
+                              ? 'bg-cyan-900/30 border-cyan-500' 
+                              : 'bg-[#0e0e0e] border-[#2a2e39] hover:border-[#3a3e49]'
+                          }`}
+                          onClick={() => setSelectedTrackedTradeId(selectedTrackedTradeId === trade.id ? null : trade.id)}
                           data-testid={`tracked-trade-${idx}`}
                         >
                           <div className="flex items-center gap-3">
