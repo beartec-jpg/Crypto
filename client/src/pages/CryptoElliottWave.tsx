@@ -7398,17 +7398,6 @@ const aiAnalyze = useMutation({
             </Select>
 
             <Button
-              onClick={handleAutoAnalyze}
-              disabled={aiAnalyze.isPending || isCapturingChart || !hasElliottAccess}
-              variant="ghost"
-              size="sm"
-              className="w-8 h-7 p-0 text-[#00c4b4] hover:bg-[#00c4b4]/10 font-bold text-xs bg-slate-800 border border-slate-700 disabled:opacity-50"
-              title={!hasElliottAccess ? "Subscription required for AI analysis" : "AI Auto-analyze"}
-            >
-              {aiAnalyze.isPending || isCapturingChart ? <Loader2 className="w-4 h-4 animate-spin" /> : 'AI'}
-            </Button>
-
-            <Button
               onClick={handleClearPoints}
               disabled={!isDrawing || currentPoints.length === 0}
               variant="ghost"
