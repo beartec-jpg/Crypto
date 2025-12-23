@@ -8757,8 +8757,16 @@ const aiAnalyze = useMutation({
                           return;
                         }
                         
+                        // Use candlesRef for most up-to-date data (chart may have more than state)
+                        const allCandles = candlesRef.current || candles;
+                        
+                        if (isDevelopment) {
+                          console.log(`📊 Visible range: from ${new Date(visibleRange.from * 1000).toLocaleDateString()} to ${new Date(visibleRange.to * 1000).toLocaleDateString()}`);
+                          console.log(`📊 Total candles available: ${allCandles.length}`);
+                        }
+                        
                         // Filter candles to only visible ones
-                        const visibleCandles = candles.filter(
+                        const visibleCandles = allCandles.filter(
                           c => c.time >= visibleRange.from && c.time <= visibleRange.to
                         );
                         
