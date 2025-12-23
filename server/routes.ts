@@ -5843,12 +5843,14 @@ IMPORTANT:
         timeout: 120000,
       });
       
+      console.log(`🤖 Calling xAI API with grok-3 model...`);
       const response = await xaiClient.chat.completions.create({
-        model: 'grok-4',
+        model: 'grok-3',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 1500,
         temperature: 0,
       });
+      console.log(`✅ xAI API response received`);
       
       const content = response.choices?.[0]?.message?.content || '';
       console.log(`✅ Grok Wave Stack analysis complete`);
