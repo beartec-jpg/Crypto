@@ -8379,6 +8379,11 @@ const aiAnalyze = useMutation({
                         size="sm"
                         onClick={() => {
                           const pivots = calculatePivots(candles, 5);
+                          const pivotHighs = pivots.filter(p => p.type === 'H').length;
+                          const pivotLows = pivots.filter(p => p.type === 'L').length;
+                          if (isDev) {
+                            console.log(`🔍 Pivot data: ${pivots.length} total (${pivotHighs} highs, ${pivotLows} lows) from ${candles.length} candles`);
+                          }
                           grokStackAnalyze.mutate({ waveEntries: waveStackEntries, symbol, pivots });
                         }}
                         disabled={grokStackAnalyze.isPending || waveStackEntries.length === 0}
