@@ -1273,12 +1273,34 @@ function WaveEntryRow({
         }`}
         style={{ paddingLeft: `${12 + indentPx}px`, paddingRight: '12px' }}
         onClick={(e) => {
+          e.stopPropagation();
           if (hasChildren) {
-            e.stopPropagation();
-            toggleEntry(entry.id);
+            // 3-click cycle for parent waves with children:
+            // 1. First click (collapsed) → Expand
+            // 2. Second click (expanded, not selected) → Select
+            // 3. Third click (expanded, selected) → Deselect and Collapse
+            const isSelected = selectedLabelId === entry.id;
+            
+            if (!isExpanded) {
+              // Click 1: Expand
+              toggleEntry(entry.id);
+            } else if (!isSelected) {
+              // Click 2: Select
+              setSelectedLabelId(entry.id);
+              toast({ title: 'Pattern Selected', description: `${parentStructure.degree} ${waveLabel} selected for analysis` });
+            } else {
+              // Click 3: Deselect and Collapse
+              setSelectedLabelId(null);
+              toggleEntry(entry.id);
+            }
           } else {
-            setSelectedLabelId(entry.id);
-            toast({ title: 'Pattern Selected', description: `${parentStructure.degree} ${waveLabel} selected` });
+            // No children: toggle selection directly
+            if (selectedLabelId === entry.id) {
+              setSelectedLabelId(null);
+            } else {
+              setSelectedLabelId(entry.id);
+              toast({ title: 'Pattern Selected', description: `${parentStructure.degree} ${waveLabel} selected` });
+            }
           }
         }}
       >
