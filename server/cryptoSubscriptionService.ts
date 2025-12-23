@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { cryptoSubscriptions, cryptoUsers, cryptoAiAnalyses } from "@shared/schema";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 // Base tiers (Elliott Wave is a separate add-on, not a tier)
 type BaseTier = "free" | "beginner" | "intermediate" | "pro" | "elite";
@@ -13,31 +13,26 @@ const TIER_HIERARCHY: Record<BaseTier, number> = {
   elite: 4,
 };
 
+// Monthly AI Trade credits per tier (all tiers now use monthly credits)
 const MONTHLY_AI_CREDITS: Record<BaseTier, number> = {
   free: 0,
   beginner: 0,
-  intermediate: 50,
-  pro: -1, // -1 means unlimited
-  elite: -1,
+  intermediate: 200,
+  pro: 400,
+  elite: 500,
 };
 
-// Daily AI trade call limits per tier
-const DAILY_AI_LIMITS: Record<BaseTier, number> = {
+// Monthly Elliott Wave AI credits (separate from trade AI)
+const MONTHLY_ELLIOTT_AI_CREDITS: Record<BaseTier, number> = {
   free: 0,
   beginner: 0,
-  intermediate: 3,
-  pro: 12, // Increased for auto-refresh support
-  elite: 24, // Increased for hourly auto-refresh
+  intermediate: 0, // Needs Elliott add-on
+  pro: 0, // Needs Elliott add-on
+  elite: 150, // Elite includes Elliott AI
 };
 
-// Auto-refresh intervals in seconds (null = manual only)
-const AUTO_REFRESH_INTERVALS: Record<BaseTier, number | null> = {
-  free: null,
-  beginner: null,
-  intermediate: null, // Manual only - each click uses credit
-  pro: 14400, // 4 hours (3 refreshes per 12-hour active trading session)
-  elite: 3600, // 1 hour (frequent updates for active traders)
-};
+// Elliott add-on gives 50 monthly Elliott AI credits
+const ELLIOTT_ADDON_CREDITS = 50;
 
 // Feature capability flags computed from base tier + add-ons
 export function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {
@@ -48,9 +43,11 @@ export function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {
     canViewElliott: true, // Everyone can VIEW the page
     canUseElliott: hasElliottAddon || tier === "elite", // Elliott add-on OR Elite tier
     canUseAI: tierLevel >= TIER_HIERARCHY.intermediate, // Intermediate+ for AI
-    hasUnlimitedAI: tier === "pro" || tier === "elite",
+    canUseElliottAI: hasElliottAddon || tier === "elite", // Elliott add-on OR Elite tier
     canUsePushNotifications: tierLevel >= TIER_HIERARCHY.pro,
     isElite: tier === "elite",
+    monthlyAiCredits: MONTHLY_AI_CREDITS[tier],
+    monthlyElliottCredits: tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : (hasElliottAddon ? ELLIOTT_ADDON_CREDITS : 0),
   };
 }
 
@@ -123,34 +120,71 @@ export class CryptoSubscriptionService {
     return subscription.hasElliottAddon || subscription.tier === "elite";
   }
 
-  async useAICredit(userId: string): Promise<boolean> {
+  async useAICredit(userId: string): Promise<{ success: boolean; remaining: number; limit: number }> {
     const subscription = await this.getUserSubscription(userId);
     const tier = subscription.tier as BaseTier;
+    const limit = MONTHLY_AI_CREDITS[tier];
 
-    // Pro and Elite have unlimited credits
-    if (tier === "pro" || tier === "elite") {
-      return true;
+    // No AI access for free/beginner
+    if (limit === 0) {
+      return { success: false, remaining: 0, limit: 0 };
     }
 
-    // Intermediate tier uses credit-based AI
-    if (tier === "intermediate") {
-      const credits = subscription.aiCredits || 0;
-      if (credits <= 0) {
-        return false;
-      }
-
-      await db
-        .update(cryptoSubscriptions)
-        .set({
-          aiCredits: credits - 1,
-          updatedAt: new Date(),
-        })
-        .where(eq(cryptoSubscriptions.userId, userId));
-
-      return true;
+    // Check monthly reset first
+    await this.resetMonthlyCredits(userId);
+    
+    // Re-fetch after potential reset
+    const updatedSub = await this.getUserSubscription(userId);
+    const credits = updatedSub.aiCredits || 0;
+    
+    if (credits <= 0) {
+      return { success: false, remaining: 0, limit };
     }
 
-    return false;
+    await db
+      .update(cryptoSubscriptions)
+      .set({
+        aiCredits: credits - 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(cryptoSubscriptions.userId, userId));
+
+    return { success: true, remaining: credits - 1, limit };
+  }
+
+  async useElliottAICredit(userId: string): Promise<{ success: boolean; remaining: number; limit: number }> {
+    const subscription = await this.getUserSubscription(userId);
+    const tier = subscription.tier as BaseTier;
+    const hasAddon = subscription.hasElliottAddon || false;
+    
+    // Calculate Elliott AI limit
+    const limit = tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : (hasAddon ? ELLIOTT_ADDON_CREDITS : 0);
+
+    // No Elliott AI access
+    if (limit === 0) {
+      return { success: false, remaining: 0, limit: 0 };
+    }
+
+    // Check monthly reset first
+    await this.resetElliottMonthlyCredits(userId);
+    
+    // Re-fetch after potential reset
+    const updatedSub = await this.getUserSubscription(userId);
+    const credits = updatedSub.elliottAiCredits || 0;
+    
+    if (credits <= 0) {
+      return { success: false, remaining: 0, limit };
+    }
+
+    await db
+      .update(cryptoSubscriptions)
+      .set({
+        elliottAiCredits: credits - 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(cryptoSubscriptions.userId, userId));
+
+    return { success: true, remaining: credits - 1, limit };
   }
 
   async resetMonthlyCredits(userId: string): Promise<void> {
@@ -193,22 +227,66 @@ export class CryptoSubscriptionService {
     }
   }
 
+  async resetElliottMonthlyCredits(userId: string): Promise<void> {
+    const subscription = await this.getUserSubscription(userId);
+    const tier = subscription.tier as BaseTier;
+    const hasAddon = subscription.hasElliottAddon || false;
+    
+    // Calculate Elliott credit limit
+    const creditsToSet = tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : (hasAddon ? ELLIOTT_ADDON_CREDITS : 0);
+    
+    if (creditsToSet === 0) return;
+
+    const now = new Date();
+    const lastReset = subscription.elliottAiCreditsResetAt;
+
+    if (!lastReset) {
+      await db
+        .update(cryptoSubscriptions)
+        .set({
+          elliottAiCredits: creditsToSet,
+          elliottAiCreditsResetAt: now,
+          updatedAt: now,
+        })
+        .where(eq(cryptoSubscriptions.userId, userId));
+      return;
+    }
+
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+    if (lastReset < oneMonthAgo) {
+      await db
+        .update(cryptoSubscriptions)
+        .set({
+          elliottAiCredits: creditsToSet,
+          elliottAiCreditsResetAt: now,
+          updatedAt: now,
+        })
+        .where(eq(cryptoSubscriptions.userId, userId));
+    }
+  }
+
   async updateSubscriptionTier(
     userId: string,
     tier: BaseTier,
     stripeSubscriptionId: string
   ): Promise<void> {
     const newCredits = MONTHLY_AI_CREDITS[tier];
+    const newElliottCredits = MONTHLY_ELLIOTT_AI_CREDITS[tier];
+    const now = new Date();
 
     await db
       .update(cryptoSubscriptions)
       .set({
         tier,
         stripeSubscriptionId,
-        aiCredits: newCredits >= 0 ? newCredits : 0,
-        aiCreditsResetAt: new Date(),
+        aiCredits: newCredits,
+        aiCreditsResetAt: now,
+        elliottAiCredits: newElliottCredits,
+        elliottAiCreditsResetAt: now,
         subscriptionStatus: "active",
-        updatedAt: new Date(),
+        updatedAt: now,
       })
       .where(eq(cryptoSubscriptions.userId, userId));
   }
@@ -218,12 +296,15 @@ export class CryptoSubscriptionService {
     enabled: boolean,
     elliottStripeItemId?: string
   ): Promise<void> {
+    const now = new Date();
     await db
       .update(cryptoSubscriptions)
       .set({
         hasElliottAddon: enabled,
         elliottStripeItemId: enabled ? elliottStripeItemId : null,
-        updatedAt: new Date(),
+        elliottAiCredits: enabled ? ELLIOTT_ADDON_CREDITS : 0,
+        elliottAiCreditsResetAt: enabled ? now : null,
+        updatedAt: now,
       })
       .where(eq(cryptoSubscriptions.userId, userId));
   }
@@ -236,12 +317,13 @@ export class CryptoSubscriptionService {
     return {
       tier: subscription.tier,
       hasElliottAddon,
-      aiCredits: subscription.aiCredits,
-      hasUnlimitedCredits: tier === "pro" || tier === "elite",
+      aiCredits: subscription.aiCredits || 0,
+      aiCreditsLimit: MONTHLY_AI_CREDITS[tier],
+      elliottAiCredits: subscription.elliottAiCredits || 0,
+      elliottAiCreditsLimit: tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : (hasElliottAddon ? ELLIOTT_ADDON_CREDITS : 0),
       status: subscription.subscriptionStatus,
       stripeSubscriptionId: subscription.stripeSubscriptionId,
       elliottStripeItemId: subscription.elliottStripeItemId,
-      autoRefreshInterval: subscription.autoRefreshInterval,
       selectedTickers: subscription.selectedTickers || [],
       alertGrades: subscription.alertGrades || ["A+", "A"],
     };
@@ -254,77 +336,21 @@ export class CryptoSubscriptionService {
     return getCapabilities(tier, hasElliottAddon);
   }
 
-  // Check if user can make a daily AI trade call (and use it if allowed)
-  // Uses fully atomic SQL to prevent all race conditions including midnight reset
-  async checkAndUseDailyLimit(userId: string): Promise<{ allowed: boolean; used: number; limit: number; remainingToday: number }> {
+  // Get current monthly usage status
+  async getMonthlyUsageStatus(userId: string): Promise<{ aiCredits: number; aiLimit: number; elliottCredits: number; elliottLimit: number }> {
+    await this.resetMonthlyCredits(userId);
+    await this.resetElliottMonthlyCredits(userId);
+    
     const subscription = await this.getUserSubscription(userId);
     const tier = subscription.tier as BaseTier;
-    const limit = DAILY_AI_LIMITS[tier] || 0;
+    const hasAddon = subscription.hasElliottAddon || false;
     
-    if (limit === 0) {
-      return { allowed: false, used: 0, limit: 0, remainingToday: 0 };
-    }
-
-    // Single atomic query that handles both:
-    // 1. Midnight reset (if reset_at < today's midnight, treat usage as 0)
-    // 2. Increment with limit check
-    // Uses CASE expression to reset usage if new day, then increment if under limit
-    const result = await db.execute(sql`
-      UPDATE crypto_subscriptions 
-      SET 
-        daily_ai_usage = CASE 
-          WHEN daily_ai_usage_reset_at IS NULL OR daily_ai_usage_reset_at < CURRENT_DATE 
-          THEN 1
-          WHEN COALESCE(daily_ai_usage, 0) < ${limit}
-          THEN COALESCE(daily_ai_usage, 0) + 1
-          ELSE daily_ai_usage
-        END,
-        daily_ai_usage_reset_at = NOW(),
-        updated_at = NOW()
-      WHERE user_id = ${userId} 
-        AND (
-          daily_ai_usage_reset_at IS NULL 
-          OR daily_ai_usage_reset_at < CURRENT_DATE 
-          OR COALESCE(daily_ai_usage, 0) < ${limit}
-        )
-      RETURNING daily_ai_usage
-    `);
-    
-    // If no rows were updated, limit was already reached
-    if (!result.rows || result.rows.length === 0) {
-      return { allowed: false, used: limit, limit, remainingToday: 0 };
-    }
-    
-    const newUsage = (result.rows[0] as any).daily_ai_usage as number;
-    return { allowed: true, used: newUsage, limit, remainingToday: limit - newUsage };
-  }
-
-  // Get current daily usage without incrementing
-  async getDailyUsageStatus(userId: string): Promise<{ used: number; limit: number; remainingToday: number }> {
-    const subscription = await this.getUserSubscription(userId);
-    const tier = subscription.tier as BaseTier;
-    const limit = DAILY_AI_LIMITS[tier] || 0;
-    
-    if (limit === 0) {
-      return { used: 0, limit: 0, remainingToday: 0 };
-    }
-
-    const now = new Date();
-    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const lastReset = subscription.dailyAiUsageResetAt;
-    
-    // If last reset was before today, usage is effectively 0
-    let currentUsage = subscription.dailyAiUsage || 0;
-    if (!lastReset || lastReset < todayMidnight) {
-      currentUsage = 0;
-    }
-    
-    return { used: currentUsage, limit, remainingToday: limit - currentUsage };
-  }
-
-  // Get auto-refresh interval for user's tier (in seconds)
-  getAutoRefreshInterval(tier: BaseTier): number | null {
-    return AUTO_REFRESH_INTERVALS[tier] || null;
+    return {
+      aiCredits: subscription.aiCredits || 0,
+      aiLimit: MONTHLY_AI_CREDITS[tier],
+      elliottCredits: subscription.elliottAiCredits || 0,
+      elliottLimit: tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : (hasAddon ? ELLIOTT_ADDON_CREDITS : 0),
+    };
   }
 
   // Save or update AI analysis for user/symbol/interval

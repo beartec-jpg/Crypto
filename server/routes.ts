@@ -3361,36 +3361,18 @@ Be concise and direct.`;
         });
       }
 
-      // Intermediate tier: Uses monthly credits (50/month)
-      if (tier === 'intermediate') {
-        const creditUsed = await cryptoSubscriptionService.useAICredit(userId);
-        if (!creditUsed) {
-          return res.status(403).json({ 
-            error: 'No AI credits remaining',
-            message: 'You have used all your monthly AI credits. Credits reset monthly.',
-            alerts: []
-          });
-        }
-        // Get updated credits after use
-        const updatedSub = await cryptoSubscriptionService.getUserSubscription(userId);
-        usageStatus.creditsRemaining = updatedSub.aiCredits || 0;
+      // All tiers use monthly credits now
+      const creditResult = await cryptoSubscriptionService.useAICredit(userId);
+      if (!creditResult.success) {
+        return res.status(403).json({ 
+          error: 'No AI credits remaining',
+          message: 'You have used all your monthly AI credits. Credits reset monthly.',
+          creditsRemaining: 0,
+          creditsLimit: creditResult.limit,
+          alerts: []
+        });
       }
-      
-      // Pro/Elite tiers: Uses daily limits (12/24 per day)
-      if (tier === 'pro' || tier === 'elite') {
-        const dailyStatus = await cryptoSubscriptionService.checkAndUseDailyLimit(userId);
-        if (!dailyStatus.allowed) {
-          return res.status(403).json({ 
-            error: 'Daily limit reached',
-            message: 'You have used all your AI trade calls for today. Limit resets at midnight.',
-            dailyUsed: dailyStatus.used,
-            dailyLimit: dailyStatus.limit,
-            remainingToday: 0,
-            alerts: []
-          });
-        }
-        usageStatus = { ...usageStatus, used: dailyStatus.used, limit: dailyStatus.limit, remainingToday: dailyStatus.remainingToday };
-      }
+      usageStatus.creditsRemaining = creditResult.remaining;
 
       const { 
         symbol, interval, currentPrice, cvd, cvdTrend, poc, vah, val, 
@@ -4071,12 +4053,12 @@ CRITICAL RULES:
       console.log(`📊 Subscription check for ${userEmail} (${userId})`);
 
       await cryptoSubscriptionService.resetMonthlyCredits(userId);
+      await cryptoSubscriptionService.resetElliottMonthlyCredits(userId);
       const stats = await cryptoSubscriptionService.getSubscriptionStats(userId);
       const capabilities = await cryptoSubscriptionService.getCapabilities(userId);
-      const dailyUsage = await cryptoSubscriptionService.getDailyUsageStatus(userId);
-      const autoRefreshInterval = cryptoSubscriptionService.getAutoRefreshInterval(stats.tier as any);
+      const monthlyUsage = await cryptoSubscriptionService.getMonthlyUsageStatus(userId);
       
-      res.json({ ...stats, ...capabilities, dailyUsage, autoRefreshInterval });
+      res.json({ ...stats, ...capabilities, monthlyUsage });
     } catch (error: any) {
       console.error('❌ Error fetching crypto subscription stats:', error);
       res.status(500).json({ error: error.message });
@@ -4200,29 +4182,15 @@ Keep the analysis concise but informative (200-300 words).`;
         });
       }
 
-      // Intermediate tier: Uses monthly credits (50/month)
-      if (tier === 'intermediate') {
-        const creditUsed = await cryptoSubscriptionService.useAICredit(userId);
-        if (!creditUsed) {
-          return res.status(403).json({ 
-            error: 'No AI credits remaining',
-            message: 'You have used all your monthly AI credits. Credits reset monthly.'
-          });
-        }
-      }
-      
-      // Pro/Elite tiers: Uses daily limits (12/24 per day)
-      if (tier === 'pro' || tier === 'elite') {
-        const dailyStatus = await cryptoSubscriptionService.checkAndUseDailyLimit(userId);
-        if (!dailyStatus.allowed) {
-          return res.status(403).json({ 
-            error: 'Daily limit reached',
-            message: 'You have used all your AI trade calls for today. Limit resets at midnight.',
-            dailyUsed: dailyStatus.used,
-            dailyLimit: dailyStatus.limit,
-            remainingToday: 0
-          });
-        }
+      // All tiers use monthly credits now
+      const creditResult = await cryptoSubscriptionService.useAICredit(userId);
+      if (!creditResult.success) {
+        return res.status(403).json({ 
+          error: 'No AI credits remaining',
+          message: 'You have used all your monthly AI credits. Credits reset monthly.',
+          creditsRemaining: 0,
+          creditsLimit: creditResult.limit
+        });
       }
 
       const { candles, indicators, ticker } = req.body;
@@ -4289,9 +4257,8 @@ Return ONLY valid JSON in this exact format:
 
       res.json({ 
         ...tradeIdeas,
-        dailyUsed: dailyStatus.used,
-        dailyLimit: dailyStatus.limit,
-        remainingToday: dailyStatus.remainingToday,
+        creditsRemaining: creditResult.remaining,
+        creditsLimit: creditResult.limit,
         timestamp: new Date().toISOString()
       });
     } catch (error: any) {

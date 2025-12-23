@@ -387,11 +387,10 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   elliottAlertsEnabled: boolean("elliott_alerts_enabled").default(true), // Elliott Wave projection alerts
   aiTradeAlertsEnabled: boolean("ai_trade_alerts_enabled").default(true), // AI tracked trade alerts
   indicatorAlertsEnabled: boolean("indicator_alerts_enabled").default(true), // Smart Money/Indicator alerts
-  aiCredits: integer("ai_credits").default(0), // Remaining AI trade idea credits (Intermediate tier gets 50/month)
+  aiCredits: integer("ai_credits").default(0), // Remaining AI trade credits (monthly: Intermediate 200, Pro 400, Elite 500)
   aiCreditsResetAt: timestamp("ai_credits_reset_at"), // When credits were last reset (monthly)
-  dailyAiUsage: integer("daily_ai_usage").default(0), // Daily AI trade calls used today
-  dailyAiUsageResetAt: timestamp("daily_ai_usage_reset_at"), // When daily usage was last reset (midnight)
-  autoRefreshInterval: integer("auto_refresh_interval"), // null=manual only, 3600=hourly, 900=15min
+  elliottAiCredits: integer("elliott_ai_credits").default(0), // Remaining Elliott Wave AI credits (monthly: Elite 150, Add-on 50)
+  elliottAiCreditsResetAt: timestamp("elliott_ai_credits_reset_at"), // When Elliott credits were last reset (monthly)
   pushSubscription: jsonb("push_subscription"), // Store push subscription data
   stripeSubscriptionId: varchar("stripe_subscription_id"),
   subscriptionStatus: varchar("subscription_status").default("active"),
@@ -416,9 +415,8 @@ export const insertCryptoSubscriptionSchema = z.object({
   indicatorAlertsEnabled: z.boolean().optional().default(true),
   aiCredits: z.number().int().optional().default(0),
   aiCreditsResetAt: z.date().optional().nullable(),
-  dailyAiUsage: z.number().int().optional().default(0),
-  dailyAiUsageResetAt: z.date().optional().nullable(),
-  autoRefreshInterval: z.number().int().optional().nullable(),
+  elliottAiCredits: z.number().int().optional().default(0),
+  elliottAiCreditsResetAt: z.date().optional().nullable(),
   pushSubscription: z.any().optional().nullable(),
   stripeSubscriptionId: z.string().optional().nullable(),
   subscriptionStatus: z.string().optional().default("active"),

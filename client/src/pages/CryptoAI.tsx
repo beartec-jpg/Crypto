@@ -107,8 +107,7 @@ export default function CryptoAI() {
 
   const { data: subscription, refetch: refetchSubscription } = useQuery<{
     tier: string;
-    dailyUsage?: { used: number; limit: number; remainingToday: number };
-    autoRefreshInterval?: number | null;
+    monthlyUsage?: { aiCredits: number; aiLimit: number; elliottCredits: number; elliottLimit: number };
   }>({
     queryKey: ['/api/crypto/my-subscription'],
     enabled: isAuthenticated && !authLoading,
@@ -895,6 +894,40 @@ export default function CryptoAI() {
     fetchData();
   }, [fetchData]);
 
+  // Helper function to calculate time ago string
+  const getTimeAgoString = useCallback((dateString: string) => {
+    const updatedAt = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - updatedAt.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    
+    if (diffMins < 1) return 'just now';
+    if (diffMins === 1) return '1 minute ago';
+    if (diffMins < 60) return `${diffMins} minutes ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours === 1) return '1 hour ago';
+    return `${diffHours} hours ago`;
+  }, []);
+
+  // Check if cache is still valid (less than 1 hour old)
+  const isCacheValid = useCallback((updatedAtString: string) => {
+    const updatedAt = new Date(updatedAtString);
+    const now = new Date();
+    const diffMs = now.getTime() - updatedAt.getTime();
+    const oneHourMs = 60 * 60 * 1000;
+    return diffMs < oneHourMs;
+  }, []);
+
+  // Get remaining cache time in minutes
+  const getRemainingCacheTime = useCallback((updatedAtString: string) => {
+    const updatedAt = new Date(updatedAtString);
+    const now = new Date();
+    const diffMs = now.getTime() - updatedAt.getTime();
+    const oneHourMs = 60 * 60 * 1000;
+    const remainingMs = oneHourMs - diffMs;
+    return Math.ceil(remainingMs / (1000 * 60));
+  }, []);
+
   // Load cached analysis (no credit used) - allows viewing previous analysis
   const loadCachedAnalysis = useCallback(() => {
     if (cachedAnalysis?.cached) {
@@ -902,15 +935,38 @@ export default function CryptoAI() {
       setMarketInsights(cachedAnalysis.cached.marketInsights || null);
       toast({
         title: "Previous analysis loaded",
-        description: `Last updated: ${new Date(cachedAnalysis.cached.updatedAt).toLocaleString()}`,
+        description: `Last updated: ${getTimeAgoString(cachedAnalysis.cached.updatedAt)}`,
         duration: 3000,
       });
     }
-  }, [cachedAnalysis, toast]);
+  }, [cachedAnalysis, toast, getTimeAgoString]);
 
   // === Analyze Trades with Grok API ===
   const analyzeTrades = useCallback(async () => {
     if (data.length === 0) return;
+    
+    // Check if we have a valid cache (less than 1 hour old)
+    if (cachedAnalysis?.cached?.updatedAt) {
+      const isValid = isCacheValid(cachedAnalysis.cached.updatedAt);
+      
+      if (isValid) {
+        const updatedAt = new Date(cachedAnalysis.cached.updatedAt);
+        const now = new Date();
+        const diffMins = Math.floor((now.getTime() - updatedAt.getTime()) / (1000 * 60));
+        const remainingMins = getRemainingCacheTime(cachedAnalysis.cached.updatedAt);
+        
+        // Show cached results and warning toast
+        setTradeAlerts(cachedAnalysis.cached.alerts || []);
+        setMarketInsights(cachedAnalysis.cached.marketInsights || null);
+        
+        toast({
+          title: "Analysis recently updated",
+          description: `Analysis was updated ${diffMins} minute${diffMins !== 1 ? 's' : ''} ago. Please wait ${remainingMins} more minute${remainingMins !== 1 ? 's' : ''} before refreshing.`,
+          duration: 5000,
+        });
+        return;
+      }
+    }
     
     setAnalyzing(true);
     try {
@@ -1070,12 +1126,12 @@ export default function CryptoAI() {
       
       const result = await response.json();
       
-      // Handle daily limit error
+      // Handle credit limit error
       if (!response.ok) {
-        if (result.error === 'Daily limit reached') {
+        if (result.error === 'No AI credits remaining') {
           toast({
-            title: "Daily limit reached",
-            description: "You've used all your AI trade calls for today. Limit resets at midnight.",
+            title: "No AI credits remaining",
+            description: "You've used all your AI credits for this month. Credits reset on the 1st.",
             duration: 5000,
           });
           refetchSubscription(); // Refresh the counter
@@ -1113,31 +1169,12 @@ export default function CryptoAI() {
     } finally {
       setAnalyzing(false);
     }
-  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, refetchCachedAnalysis, toast, getToken]);
+  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, refetchCachedAnalysis, toast, getToken, cachedAnalysis, isCacheValid, getRemainingCacheTime]);
 
   // Keep ref in sync with latest analyzeTrades callback
   useEffect(() => {
     analyzeTradesRef.current = analyzeTrades;
   }, [analyzeTrades]);
-
-  // Auto-refresh effect for Pro/Elite tiers
-  useEffect(() => {
-    // Only Pro and Elite get auto-refresh
-    if (!subscription?.autoRefreshInterval || tier === 'intermediate') return;
-    if (!isAuthenticated || authLoading) return;
-    
-    const intervalMs = subscription.autoRefreshInterval * 1000;
-    
-    const timer = setInterval(() => {
-      // Only auto-refresh if we have data and aren't already analyzing
-      if (!analyzing && data.length > 0) {
-        console.log(`🔄 Auto-refresh triggered for ${tier} tier (every ${subscription.autoRefreshInterval}s)`);
-        analyzeTradesRef.current();
-      }
-    }, intervalMs);
-    
-    return () => clearInterval(timer);
-  }, [subscription?.autoRefreshInterval, tier, analyzing, data.length, isAuthenticated, authLoading]);
 
   // === Track Trade ===
   const trackTrade = async (alert: TradeAlert) => {
@@ -1912,15 +1949,12 @@ export default function CryptoAI() {
                 <span className="text-gray-400">Tier: </span>
                 <span className="font-semibold capitalize text-[#00c4b4]" data-testid="text-tier">{tier}</span>
               </div>
-              {tier === 'intermediate' && subscription && (
+              {subscription?.monthlyUsage && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (
                 <div className="text-sm">
                   <span className="text-gray-400">AI Credits: </span>
-                  <span className="font-semibold text-white" data-testid="text-ai-credits">{subscription.aiCreditsRemaining}/{subscription.aiCreditsLimit}</span>
-                </div>
-              )}
-              {(tier === 'pro' || tier === 'elite') && (
-                <div className="text-sm text-green-500 font-semibold" data-testid="text-unlimited-credits">
-                  Unlimited AI Credits
+                  <span className="font-semibold text-white" data-testid="text-ai-credits">
+                    {subscription.monthlyUsage.aiLimit - subscription.monthlyUsage.aiCredits} of {subscription.monthlyUsage.aiLimit} remaining
+                  </span>
                 </div>
               )}
             </div>
@@ -2467,30 +2501,21 @@ export default function CryptoAI() {
                   </Button>
                 </div>
               </div>
-              {/* Daily Usage Counter */}
-              {subscription?.dailyUsage && subscription.dailyUsage.limit > 0 && (
+              {/* Monthly Usage Counter */}
+              {subscription?.monthlyUsage && subscription.monthlyUsage.aiLimit > 0 && (
                 <div className="mt-3 flex flex-col items-center gap-2">
                   <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700">
                     <Zap className="w-3.5 h-3.5 text-[#00c4b4]" />
                     <span className="text-xs text-gray-300">
-                      <span className="font-semibold text-white">{subscription.dailyUsage.remainingToday}</span>
-                      <span className="text-gray-500"> of {subscription.dailyUsage.limit}</span>
-                      <span className="ml-1 text-gray-400">remaining today</span>
+                      <span className="font-semibold text-white">{subscription.monthlyUsage.aiLimit - subscription.monthlyUsage.aiCredits}</span>
+                      <span className="text-gray-500"> of {subscription.monthlyUsage.aiLimit}</span>
+                      <span className="ml-1 text-gray-400">remaining this month</span>
                     </span>
                   </div>
-                  {/* Auto-refresh info for Pro/Elite */}
-                  {subscription?.autoRefreshInterval && (tier === 'pro' || tier === 'elite') && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-900/20 rounded-lg border border-green-700/30">
-                      <RefreshCw className="w-3.5 h-3.5 text-green-400" />
-                      <span className="text-xs text-green-300">
-                        Auto-refresh every {subscription.autoRefreshInterval === 3600 ? '1 hour' : '4 hours'}
-                      </span>
-                    </div>
-                  )}
                   {/* Cached analysis timestamp */}
                   {cachedAnalysis?.cached && (
                     <div className="text-xs text-gray-500">
-                      Last analysis: {new Date(cachedAnalysis.cached.updatedAt).toLocaleString()}
+                      Last updated: {getTimeAgoString(cachedAnalysis.cached.updatedAt)}
                     </div>
                   )}
                 </div>
