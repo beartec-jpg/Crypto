@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff, X, Settings, Magnet, Sparkles } from 'lucide-react';
+import { Loader2, TrendingUp, Trash2, Save, RefreshCw, AlertCircle, CheckCircle2, Info, Wand2, MousePointer2, Pencil, ChevronDown, Target, Bell, BellOff, X, Settings, Magnet, Sparkles, BarChart2 } from 'lucide-react';
 import { useChartGestures, type GesturePoint, type BarData } from '@/hooks/useChartGestures';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -2660,6 +2660,17 @@ export default function CryptoElliottWave() {
     analysisTimeframe?: string;
     pivotCount?: number;
   } | null>(null);
+  // Chart analysis state (raw pattern detection without labels)
+  const [chartAnalysis, setChartAnalysis] = useState<{
+    synopsis: string;
+    bestFitPattern: string;
+    confidence: number;
+    direction: 'up' | 'down' | 'sideways';
+    possiblePatterns: { pattern: string; probability: number; reasoning: string }[];
+    possibleOutcomes: { scenario: string; nextMove: string; targets?: string[] }[];
+    fibonacciLevels?: { level: string; price: number; significance: string }[];
+    rawResponse?: string;
+  } | null>(null);
   // Derive selected wave for AI analysis from the table's selectedLabelId
   // Instead of separate state, we use the existing selection mechanism
   const [isCapturingChart, setIsCapturingChart] = useState(false);
@@ -3693,6 +3704,54 @@ const aiAnalyze = useMutation({
       toast({
         title: 'Detailed Analysis Failed',
         description: error.message || 'Could not perform detailed sub-wave analysis',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Chart Data Analysis mutation (raw pattern detection without labels)
+  const chartAnalyze = useMutation({
+    mutationFn: async (data: { 
+      symbol: string;
+      timeframe: string;
+      pivots: Array<{time: number; price: number; type: 'H' | 'L'}>;
+      priceRange: { high: number; low: number; start: number; end: number };
+    }) => {
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze-chart', data);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.success && data.analysis) {
+        setChartAnalysis({
+          synopsis: data.analysis.synopsis || 'Analysis complete',
+          bestFitPattern: data.analysis.bestFitPattern || 'unclear',
+          confidence: data.analysis.confidence || 0,
+          direction: data.analysis.direction || 'sideways',
+          possiblePatterns: data.analysis.possiblePatterns || [],
+          possibleOutcomes: data.analysis.possibleOutcomes || [],
+          fibonacciLevels: data.analysis.fibonacciLevels,
+          rawResponse: data.rawResponse,
+        });
+        toast({
+          title: 'Chart Analysis Complete',
+          description: `Best fit: ${data.analysis.bestFitPattern} (${data.analysis.confidence}% confidence)`,
+        });
+      } else {
+        setChartAnalysis({
+          synopsis: data.rawResponse || 'Analysis complete',
+          bestFitPattern: 'unclear',
+          confidence: 0,
+          direction: 'sideways',
+          possiblePatterns: [],
+          possibleOutcomes: [],
+          rawResponse: data.rawResponse,
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Chart Analysis Failed',
+        description: error.message || 'Could not analyze chart data',
         variant: 'destructive',
       });
     },
@@ -8664,6 +8723,141 @@ const aiAnalyze = useMutation({
                           <><Target className="w-3 h-3 mr-1" /> Detailed ({TIMEFRAME_HIERARCHY[timeframe] || timeframe})</>
                         )}
                       </Button>
+                    )}
+
+                    {/* Analyze Chart Data Button - Raw pattern detection */}
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        // Calculate pivots from visible candles
+                        const pivotsToSend = calculatePivots(candles, 5);
+                        
+                        if (pivotsToSend.length < 3) {
+                          toast({
+                            title: 'Not enough data',
+                            description: 'Need at least 3 pivot points to analyze patterns',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+                        
+                        // Calculate price range from candles
+                        const prices = candles.map(c => [c.high, c.low]).flat();
+                        const priceRange = {
+                          high: Math.max(...candles.map(c => c.high)),
+                          low: Math.min(...candles.map(c => c.low)),
+                          start: candles[0]?.close || 0,
+                          end: candles[candles.length - 1]?.close || 0,
+                        };
+                        
+                        if (isDevelopment) {
+                          console.log(`📊 Chart Analysis: ${pivotsToSend.length} pivots, price range $${priceRange.low.toFixed(4)} - $${priceRange.high.toFixed(4)}`);
+                        }
+                        
+                        chartAnalyze.mutate({ 
+                          symbol, 
+                          timeframe,
+                          pivots: pivotsToSend,
+                          priceRange,
+                        });
+                      }}
+                      disabled={chartAnalyze.isPending || candles.length === 0}
+                      className="w-full bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-xs mt-2"
+                      data-testid="chart-analyze-btn"
+                    >
+                      {chartAnalyze.isPending ? (
+                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing Chart...</>
+                      ) : (
+                        <><BarChart2 className="w-3 h-3 mr-1" /> Analyze Chart Data</>
+                      )}
+                    </Button>
+                    <p className="text-xs text-gray-500 mt-1 text-center">
+                      Detect patterns from raw price data (ignores your labels)
+                    </p>
+
+                    {/* Chart Analysis Results */}
+                    {chartAnalysis && (
+                      <div className="space-y-3 bg-slate-800/50 rounded-lg p-3 border border-teal-700/30 mt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-teal-400">Chart Pattern Analysis</span>
+                          <button 
+                            onClick={() => setChartAnalysis(null)}
+                            className="text-xs text-gray-400 hover:text-white"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        
+                        {/* Synopsis */}
+                        <div className="bg-teal-900/20 rounded p-3 border border-teal-600/30">
+                          <p className="text-sm text-gray-200">{chartAnalysis.synopsis}</p>
+                        </div>
+                        
+                        {/* Best Fit Pattern */}
+                        <div className="flex items-center justify-between bg-slate-700/50 rounded p-2">
+                          <div>
+                            <span className="text-xs text-gray-400">Best Fit:</span>
+                            <span className="text-sm font-bold text-teal-300 ml-2">{chartAnalysis.bestFitPattern}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              chartAnalysis.direction === 'up' ? 'bg-green-600' : 
+                              chartAnalysis.direction === 'down' ? 'bg-red-600' : 'bg-gray-600'
+                            }`}>
+                              {chartAnalysis.direction === 'up' ? '↑ UP' : 
+                               chartAnalysis.direction === 'down' ? '↓ DOWN' : '↔ SIDEWAYS'}
+                            </span>
+                            <span className="text-xs text-gray-400">{chartAnalysis.confidence}% conf</span>
+                          </div>
+                        </div>
+                        
+                        {/* Possible Patterns */}
+                        {chartAnalysis.possiblePatterns.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-purple-400">Possible Patterns:</p>
+                            {chartAnalysis.possiblePatterns.map((p, idx) => (
+                              <div key={idx} className="bg-slate-700/30 rounded p-2 text-xs">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-cyan-300 font-medium">{p.pattern}</span>
+                                  <span className="text-gray-400">{p.probability}%</span>
+                                </div>
+                                <p className="text-gray-400 mt-1">{p.reasoning}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Possible Outcomes */}
+                        {chartAnalysis.possibleOutcomes.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-amber-400">Possible Outcomes:</p>
+                            {chartAnalysis.possibleOutcomes.map((o, idx) => (
+                              <div key={idx} className="bg-amber-900/20 rounded p-2 text-xs border border-amber-700/30">
+                                <p className="text-amber-300">{o.scenario}</p>
+                                <p className="text-gray-300 mt-1">→ {o.nextMove}</p>
+                                {o.targets && o.targets.length > 0 && (
+                                  <p className="text-green-400 mt-1">Targets: {o.targets.join(', ')}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Fibonacci Levels */}
+                        {chartAnalysis.fibonacciLevels && chartAnalysis.fibonacciLevels.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-yellow-400">Key Fibonacci Levels:</p>
+                            <div className="grid grid-cols-2 gap-1">
+                              {chartAnalysis.fibonacciLevels.map((f, idx) => (
+                                <div key={idx} className="bg-yellow-900/20 rounded p-1 text-xs">
+                                  <span className="text-yellow-300">{f.level}</span>
+                                  <span className="text-gray-400 ml-1">${f.price.toFixed(4)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
 
                     {/* Grok Analysis Results */}

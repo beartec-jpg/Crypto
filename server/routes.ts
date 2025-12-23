@@ -6079,6 +6079,164 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
 
   // ==================== END WAVE STACK AI ANALYSIS ====================
 
+  // ==================== CHART DATA ANALYSIS (RAW PATTERN DETECTION) ====================
+  app.post('/api/crypto/elliott-wave/analyze-chart', isAuthenticated, async (req: any, res) => {
+    try {
+      const { symbol, timeframe, pivots, priceRange } = req.body;
+      const userId = req.auth?.userId || 'dev-open-access';
+      
+      // Admin check
+      const user = await getUserByClerkId(userId);
+      if (!user || user.email !== 'beartec@beartec.uk') {
+        return res.status(403).json({ error: 'Admin access required for AI analysis' });
+      }
+      
+      if (!pivots || pivots.length < 3) {
+        return res.status(400).json({ error: 'Need at least 3 pivot points for pattern analysis' });
+      }
+      
+      console.log(`🤖 Grok Chart Analysis: ${pivots.length} pivots for ${symbol} ${timeframe}...`);
+      
+      // Format pivots for AI
+      const pivotSummary = pivots.map((p: any) => ({
+        type: p.type,
+        price: p.price.toFixed(4),
+        time: new Date(p.time).toISOString().split('T')[0],
+      }));
+      
+      const prompt = `You are an Elliott Wave analyst. Analyze these raw price pivot points and identify the BEST FITTING Elliott Wave pattern. Do NOT assume any position in a larger structure - just analyze what you see.
+
+=== PRICE DATA ===
+Symbol: ${symbol}
+Timeframe: ${timeframe}
+Price Range: $${priceRange.low.toFixed(4)} to $${priceRange.high.toFixed(4)}
+Start Price: $${priceRange.start.toFixed(4)} → End Price: $${priceRange.end.toFixed(4)}
+
+=== PIVOT POINTS (${pivots.length} total) ===
+${JSON.stringify(pivotSummary, null, 2)}
+
+=== ELLIOTT WAVE PATTERNS TO CONSIDER ===
+MOTIVE (trending):
+- Impulse (5-wave: 1-2-3-4-5) - Wave 3 never shortest, Wave 4 doesn't overlap Wave 1
+- Leading Diagonal (5-wave: 1-2-3-4-5) - Waves 1 & 4 can overlap, all waves are 3s
+- Ending Diagonal (5-wave: 1-2-3-4-5) - All waves are 3s, wedge shape
+
+CORRECTIVE (counter-trend):
+- Zigzag (ABC) - A=5 waves, B=3 waves, C=5 waves, sharp correction
+- Flat (ABC) - A=3 waves, B=3 waves, C=5 waves, sideways correction
+- Expanded Flat - B exceeds start of A, C exceeds end of A
+- Running Flat - B exceeds start of A, C doesn't reach end of A
+- Triangle (ABCDE) - 5 waves of 3s each, converging trendlines
+- Double Zigzag (WXY) - Two zigzags connected by X wave
+- Triple Zigzag (WXYXZ) - Three zigzags connected by two X waves
+- Double Three (WXY) - Combination of flats/triangles/zigzags
+- Triple Three (WXYXZ) - Three corrective patterns combined
+
+=== FIBONACCI RELATIONSHIPS ===
+- Wave 2: typically 50%, 61.8%, or 78.6% of Wave 1
+- Wave 3: typically 161.8% or 261.8% of Wave 1
+- Wave 4: typically 23.6%, 38.2%, or 50% of Wave 3
+- Wave 5: typically 61.8% or 100% of Wave 1, or 61.8% of Waves 1-3
+- Wave C: typically 100% or 161.8% of Wave A in zigzags
+- Wave B: typically 50-78.6% of Wave A in zigzags, can exceed A in flats
+
+=== RESPOND IN THIS JSON FORMAT ===
+{
+  "synopsis": "2-3 sentence summary of what you see in the price action",
+  
+  "bestFitPattern": "Name of the best fitting pattern (e.g., 'Impulse', 'Zigzag ABC', 'Expanded Flat', 'Triangle ABCDE')",
+  "confidence": 75,
+  "direction": "up or down or sideways",
+  
+  "possiblePatterns": [
+    { "pattern": "Impulse (incomplete)", "probability": 60, "reasoning": "Clear 5-wave structure emerging with Wave 3 as longest" },
+    { "pattern": "Zigzag ABC", "probability": 25, "reasoning": "Could be sharp correction if we're in larger downtrend" },
+    { "pattern": "Leading Diagonal", "probability": 15, "reasoning": "Wave 1 & 4 overlap suggests diagonal possibility" }
+  ],
+  
+  "possibleOutcomes": [
+    { "scenario": "If Impulse: completing Wave 5", "nextMove": "Expect correction (ABC) to follow", "targets": ["$2.50", "$2.20"] },
+    { "scenario": "If Zigzag: Wave C completing", "nextMove": "Expect reversal up for new impulse", "targets": ["$3.00", "$3.50"] },
+    { "scenario": "If Wave 4 of Impulse", "nextMove": "One more wave up (Wave 5) expected", "targets": ["$2.80", "$3.20"] }
+  ],
+  
+  "fibonacciLevels": [
+    { "level": "38.2% retracement", "price": 2.15, "significance": "Wave 4 support if impulse" },
+    { "level": "61.8% retracement", "price": 1.95, "significance": "Deep correction support" },
+    { "level": "161.8% extension", "price": 3.25, "significance": "Wave 3 or 5 target" }
+  ],
+  
+  "waveLabeling": [
+    { "pivotIndex": 0, "suggestedLabel": "0 or start", "price": 0.50 },
+    { "pivotIndex": 3, "suggestedLabel": "1 or A", "price": 1.20 },
+    { "pivotIndex": 5, "suggestedLabel": "2 or B", "price": 0.85 }
+  ]
+}
+
+CRITICAL: 
+- Do NOT assume this is part of a larger structure
+- Consider ALL pattern types equally based on the price relationships
+- Rank possibilities by probability based on Fibonacci relationships and rule compliance`;
+
+      const OpenAI = (await import('openai')).default;
+      const xaiClient = new OpenAI({
+        baseURL: 'https://api.x.ai/v1',
+        apiKey: process.env.XAI_API_KEY,
+        timeout: 120000,
+      });
+      
+      console.log(`🤖 Calling xAI API for chart pattern analysis...`);
+      const response = await xaiClient.chat.completions.create({
+        model: 'grok-3-beta',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 3000,
+        temperature: 0.1,
+      });
+      console.log(`✅ xAI chart analysis response received`);
+      
+      const content = response.choices?.[0]?.message?.content || '';
+      
+      // Parse JSON from response
+      let analysis;
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          analysis = JSON.parse(jsonMatch[0]);
+          console.log(`📊 Chart analysis: ${analysis.bestFitPattern} (${analysis.confidence}% confidence)`);
+        } else {
+          analysis = { synopsis: content, bestFitPattern: 'unclear', confidence: 0 };
+        }
+      } catch (parseErr) {
+        console.log(`⚠️ Chart analysis JSON parse failed: ${parseErr}`);
+        // Try to extract key fields
+        const synopsisMatch = content.match(/"synopsis"\s*:\s*"([^"]+)"/);
+        const patternMatch = content.match(/"bestFitPattern"\s*:\s*"([^"]+)"/);
+        const confidenceMatch = content.match(/"confidence"\s*:\s*(\d+)/);
+        analysis = {
+          synopsis: synopsisMatch?.[1] || 'Analysis complete but JSON parsing failed',
+          bestFitPattern: patternMatch?.[1] || 'unclear',
+          confidence: parseInt(confidenceMatch?.[1] || '0'),
+          possiblePatterns: [],
+          possibleOutcomes: [],
+        };
+      }
+      
+      res.json({
+        success: true,
+        symbol,
+        timeframe,
+        pivotCount: pivots.length,
+        analysis,
+        rawResponse: content,
+      });
+    } catch (error: any) {
+      console.error('Error in Chart AI analysis:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== END CHART DATA ANALYSIS ====================
+
   // Timeframe hierarchy mapping for detailed analysis (higher → lower)
   const TIMEFRAME_HIERARCHY: Record<string, string> = {
     '1M': '1w',
