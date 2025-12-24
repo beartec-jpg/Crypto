@@ -60,7 +60,8 @@ function calculateFibRatios(points: WavePoint[], patternType: string): FibRatio[
   if (points.length < 3) return ratios;
 
   const isImpulse = patternType === 'impulse' || patternType === 'diagonal';
-  const _isCorrection = patternType === 'zigzag' || patternType === 'flat' || patternType === 'triangle';
+  // Pattern type check for future use
+  void (patternType === 'zigzag' || patternType === 'flat' || patternType === 'triangle');
 
   // Wave 2/B retracement of Wave 1/A
   const p0 = points[0], p1 = points[1], p2 = points[2];

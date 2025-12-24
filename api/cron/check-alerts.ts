@@ -741,7 +741,7 @@ async function checkAllIndicatorAlerts(
   symbol: string,
   timeframe: string,
   alertTypes: string[],
-  tier: string
+  _tier: string
 ): Promise<number> {
   let alertsSent = 0;
 

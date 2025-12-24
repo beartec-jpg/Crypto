@@ -92,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       orderflowData, liquidationData,
       cci = 0, adx = 0, plusDI = 0, minusDI = 0,
       rsi = 50, macd = 0, macdSignal = 0, macdHistogram = 0,
-      obv = 0, obvTrend = 'neutral', mfi = 50
+      obv: _obv = 0, obvTrend = 'neutral', mfi = 50
     } = req.body;
 
     if (!symbol || !currentPrice || !recentBars) {

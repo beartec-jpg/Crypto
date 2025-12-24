@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
 
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache
+const _CACHE_TTL = 60 * 60 * 1000; // 1 hour cache (reserved for future use)
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 

@@ -156,7 +156,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       timeout: 120000,
     });
 
-    const pivotSummary = pivots.slice(-20).map((p: any, i: number) => 
+    const pivotSummary = pivots.slice(-20).map((p: any) => 
       `${p.type === 'H' ? 'High' : 'Low'}: $${p.price.toFixed(4)}`
     ).join(', ');
 

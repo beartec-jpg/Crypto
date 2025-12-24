@@ -208,8 +208,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           
           if (orderbookData.code === '0' && orderbookData.data?.length > 0) {
             const orderbookHistory = orderbookData.data;
-            const avgBids = orderbookHistory.reduce((sum: number, item: any) => sum + (item.aggregated_bids_usd || 0), 0) / orderbookHistory.length;
-            const avgAsks = orderbookHistory.reduce((sum: number, item: any) => sum + (item.aggregated_asks_usd || 0), 0) / orderbookHistory.length;
             
             orderbookHistory.forEach((item: any) => {
               const bids = item.aggregated_bids_usd || 0;

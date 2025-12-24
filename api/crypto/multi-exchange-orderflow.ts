@@ -34,7 +34,7 @@ async function fetchBinanceOHLCV(symbol: string, interval: string, since: number
 }
 
 // Fetch OHLCV from OKX - uses price movement to estimate buy/sell ratio
-async function fetchOKXOHLCV(symbol: string, interval: string, since: number, limit: number) {
+async function fetchOKXOHLCV(symbol: string, interval: string, _since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const instId = `${base}-USDT`;
   const barMap: Record<string, string> = { '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '4h': '4H', '1d': '1D' };
@@ -69,7 +69,7 @@ async function fetchOKXOHLCV(symbol: string, interval: string, since: number, li
 }
 
 // Fetch OHLCV from Gate.io - uses price movement to estimate buy/sell ratio
-async function fetchGateIOOHLCV(symbol: string, interval: string, since: number, limit: number) {
+async function fetchGateIOOHLCV(symbol: string, interval: string, _since: number, limit: number) {
   const base = symbol.replace('USDT', '').replace('USD', '');
   const currencyPair = `${base}_USDT`;
   const intervalMap: Record<string, string> = { '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '4h': '4h', '1d': '1d' };
