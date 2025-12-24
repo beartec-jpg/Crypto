@@ -26,9 +26,9 @@ interface ProfessionalOrderflowTableProps {
 
 interface OrderflowData {
   error?: string;
-  cvd?: { history: Array<{ timestamp: number; value: number }> };
-  openInterest?: { history: Array<{ timestamp: number; value: number }> };
-  fundingRate?: { history: Array<{ timestamp: number; value: number }> };
+  cvd?: { history: Array<{ timestamp: number; value: number }>; current?: { timestamp?: number; value: number } };
+  openInterest?: { history: Array<{ timestamp: number; value: number }>; current?: { timestamp?: number; value: number } };
+  fundingRate?: { history: Array<{ timestamp: number; value: number }>; current?: { timestamp?: number; value: number } };
   longShortRatio?: { current: any };
 }
 
@@ -105,13 +105,20 @@ export function ProfessionalOrderflowTable({ symbol, interval, className }: Prof
       .sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
 
     // Extract current and previous values using null checks (not falsy - to allow zero values)
-    const cvdValue = cvdHistory.length > 0 ? extractValue(cvdHistory[cvdHistory.length - 1]) : null;
+    // Fall back to .current field when history is empty (API may provide current value without history)
+    const cvdValue = cvdHistory.length > 0 
+      ? extractValue(cvdHistory[cvdHistory.length - 1]) 
+      : (data.cvd?.current ? extractValue(data.cvd.current) : null);
     const cvdPrevious = cvdHistory.length > 1 ? extractValue(cvdHistory[cvdHistory.length - 2]) : null;
     
-    const oiValue = oiHistory.length > 0 ? extractValue(oiHistory[oiHistory.length - 1]) : null;
+    const oiValue = oiHistory.length > 0 
+      ? extractValue(oiHistory[oiHistory.length - 1]) 
+      : (data.openInterest?.current ? extractValue(data.openInterest.current) : null);
     const oiPrevious = oiHistory.length > 1 ? extractValue(oiHistory[oiHistory.length - 2]) : null;
     
-    const fundingValue = fundingHistory.length > 0 ? extractValue(fundingHistory[fundingHistory.length - 1]) : null;
+    const fundingValue = fundingHistory.length > 0 
+      ? extractValue(fundingHistory[fundingHistory.length - 1]) 
+      : (data.fundingRate?.current ? extractValue(data.fundingRate.current) : null);
     
     const lsRatioCurrent = data.longShortRatio?.current;
     const lsRatioValue = extractValue(lsRatioCurrent) ?? 1.0;

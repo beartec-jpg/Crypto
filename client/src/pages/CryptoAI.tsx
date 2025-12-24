@@ -1528,7 +1528,7 @@ export default function CryptoAI() {
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0 } });
     
     return () => chart.remove();
-  }, [data]);
+  }, [data, volumeOpen]);
 
   // === CVD Chart ===
   useEffect(() => {
@@ -1577,7 +1577,7 @@ export default function CryptoAI() {
     }
     
     return () => chart.remove();
-  }, [data]);
+  }, [data, cvdOpen]);
 
   // === RSI Chart ===
   useEffect(() => {
@@ -1613,7 +1613,7 @@ export default function CryptoAI() {
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(data.map(d => ({ time: d.time as Time, value: 30 })));
     
     return () => chart.remove();
-  }, [data, rsiPeriod, calculateRSI]);
+  }, [data, rsiPeriod, calculateRSI, rsiOpen]);
 
   // === MACD Chart ===
   useEffect(() => {
@@ -1646,7 +1646,7 @@ export default function CryptoAI() {
     chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(validHistogram);
     
     return () => chart.remove();
-  }, [data, macdFast, macdSlow, macdSignal, calculateMACD]);
+  }, [data, macdFast, macdSlow, macdSignal, calculateMACD, macdOpen]);
 
   // === OBV Chart ===
   useEffect(() => {
@@ -1675,7 +1675,7 @@ export default function CryptoAI() {
     chart.addSeries(LineSeries, { color: '#9580ff', lineWidth: 2 }).setData(calculateOBV(data));
     
     return () => chart.remove();
-  }, [data, calculateOBV]);
+  }, [data, calculateOBV, obvOpen]);
 
   // === MFI Chart ===
   useEffect(() => {
@@ -1711,7 +1711,7 @@ export default function CryptoAI() {
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(data.map(d => ({ time: d.time as Time, value: 20 })));
     
     return () => chart.remove();
-  }, [data, mfiPeriod, calculateMFI]);
+  }, [data, mfiPeriod, calculateMFI, mfiOpen]);
 
   // === CCI Chart ===
   useEffect(() => {
@@ -1748,7 +1748,7 @@ export default function CryptoAI() {
     chart.addSeries(LineSeries, { color: '#444', lineStyle: 1, lineWidth: 1 }).setData(data.map(d => ({ time: d.time as Time, value: 0 })));
     
     return () => chart.remove();
-  }, [data, cciPeriod]);
+  }, [data, cciPeriod, cciOpen]);
 
   // === ADX Chart ===
   useEffect(() => {
@@ -1794,7 +1794,7 @@ export default function CryptoAI() {
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(data.map(d => ({ time: d.time as Time, value: 25 })));
     
     return () => chart.remove();
-  }, [data, adxPeriod]);
+  }, [data, adxPeriod, adxOpen]);
 
   const getGradeColor = (grade: string) => {
     switch (grade) {
