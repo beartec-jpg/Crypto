@@ -133,6 +133,11 @@ export default function CryptoAI() {
   const [selectedGrades, setSelectedGrades] = useState<string[]>(['A+', 'A', 'B', 'C']);
   const [alertTimeframe, setAlertTimeframe] = useState('15m');
   const [savingPreferences, setSavingPreferences] = useState(false);
+  
+  // Sync alertTimeframe with chart interval when interval changes
+  useEffect(() => {
+    setAlertTimeframe(interval);
+  }, [interval]);
   const [trackedTrades, setTrackedTrades] = useState<string[]>([]); // IDs of tracked trades
   const [trackingTradeId, setTrackingTradeId] = useState<string | null>(null); // Currently tracking
   const [selectedTrackedTradeId, setSelectedTrackedTradeId] = useState<number | null>(null); // Selected trade for chart display
