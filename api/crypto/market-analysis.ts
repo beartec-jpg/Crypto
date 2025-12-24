@@ -211,7 +211,7 @@ Provide a brief, actionable market analysis (3-4 sentences) covering:
 Be concise and direct.`;
 
     const response = await xai.chat.completions.create({
-      model: "grok-4.1-fast",
+      model: "grok-4",
       messages: [
         {
           role: "system",

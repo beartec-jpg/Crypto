@@ -307,7 +307,7 @@ Return ONLY valid JSON in this exact format:
     const startTime = Date.now();
 
     const completion = await openai.chat.completions.create({
-      model: 'grok-4.1-fast',
+      model: 'grok-4',
       messages: [
         { role: 'system', content: 'You are an expert SMC/ICT trader with deep knowledge of order flow, volume analysis, and technical indicators. Provide professional-grade analysis. Return ONLY valid JSON.' },
         { role: 'user', content: prompt }
