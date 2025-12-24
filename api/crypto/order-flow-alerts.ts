@@ -307,7 +307,7 @@ Return ONLY valid JSON in this exact format:
     const startTime = Date.now();
 
     const completion = await openai.chat.completions.create({
-      model: 'grok-3-fast',
+      model: 'grok-4.1-fast',
       messages: [
         { role: 'system', content: 'You are an expert SMC/ICT trader with deep knowledge of order flow, volume analysis, and technical indicators. Provide professional-grade analysis. Return ONLY valid JSON.' },
         { role: 'user', content: prompt }
@@ -384,10 +384,34 @@ Return ONLY valid JSON in this exact format:
     });
 
   } catch (error: any) {
-    console.error('Order flow alerts error:', error);
+    // Enhanced error logging for Grok API failures
+    const errorDetails = {
+      message: error.message,
+      status: error.status || error.response?.status,
+      code: error.code || error.response?.data?.error?.code,
+      type: error.type || error.response?.data?.error?.type,
+    };
+    console.error('Order flow alerts error:', JSON.stringify(errorDetails, null, 2));
+    
     try { await pool?.end(); } catch {}
+    
+    // Provide helpful error messages based on error type
+    let userMessage = 'Analysis failed';
+    if (errorDetails.status === 401 || errorDetails.status === 403) {
+      userMessage = 'AI service authentication error';
+    } else if (errorDetails.status === 429) {
+      userMessage = 'AI service rate limited - please try again later';
+    } else if (errorDetails.status === 404) {
+      userMessage = 'AI model unavailable';
+    } else if (errorDetails.message?.includes('timeout')) {
+      userMessage = 'AI service timeout - please try again';
+    } else if (errorDetails.message) {
+      userMessage = errorDetails.message;
+    }
+    
     res.status(500).json({ 
-      error: error.message,
+      error: userMessage,
+      details: process.env.NODE_ENV === 'development' ? errorDetails : undefined,
       alerts: []
     });
   }
