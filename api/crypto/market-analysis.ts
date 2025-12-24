@@ -10,13 +10,8 @@ const xai = new OpenAI({
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache per symbol/timeframe
 
-const MONTHLY_AI_CREDITS: Record<string, number> = {
-  free: 0,
-  beginner: 0,
-  intermediate: 200,
-  pro: 400,
-  elite: 500,
-};
+const ALLOWED_TIERS = ['intermediate', 'pro', 'elite'];
+const ADMIN_EMAIL = 'beartec@beartec.uk';
 
 async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
   try {
@@ -69,13 +64,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication
   const auth = await verifyAuth(req);
   if (!auth) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   const { email } = auth;
+  const isAdmin = email === ADMIN_EMAIL;
   let pool: any = null;
 
   try {
@@ -96,88 +91,72 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Symbol and timeframe required' });
     }
 
-    pool = await getDb();
+    let tier = 'free';
+    let cryptoUserId: number | null = null;
 
-    // Get user from crypto_users
-    const userResult = await pool.query(
-      'SELECT id FROM crypto_users WHERE email = $1',
-      [email]
-    );
+    try {
+      pool = await getDb();
 
-    if (userResult.rows.length === 0) {
-      await pool.end();
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const cryptoUserId = userResult.rows[0].id;
-
-    // Get subscription for tier and credits
-    const subResult = await pool.query(
-      'SELECT tier, ai_credits, ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
-      [cryptoUserId]
-    );
-
-    const subscription = subResult.rows[0];
-    const tier = subscription?.tier || 'free';
-    const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
-    let aiCreditsUsed = subscription?.ai_credits || 0;
-    const resetAt = subscription?.ai_credits_reset_at ? new Date(subscription.ai_credits_reset_at) : null;
-
-    // Check if credits should reset (new month)
-    const now = new Date();
-    const shouldReset = !resetAt || 
-      (resetAt.getMonth() !== now.getMonth() || resetAt.getFullYear() !== now.getFullYear());
-
-    if (shouldReset && subscription) {
-      aiCreditsUsed = 0;
-      await pool.query(
-        'UPDATE crypto_subscriptions SET ai_credits = 0, ai_credits_reset_at = NOW() WHERE user_id = $1',
-        [cryptoUserId]
+      const userResult = await pool.query(
+        'SELECT id FROM crypto_users WHERE email = $1',
+        [email]
       );
+
+      if (userResult.rows.length > 0) {
+        cryptoUserId = userResult.rows[0].id;
+
+        const subResult = await pool.query(
+          'SELECT tier FROM crypto_subscriptions WHERE user_id = $1',
+          [cryptoUserId]
+        );
+
+        tier = subResult.rows[0]?.tier || 'free';
+      }
+    } catch (dbError) {
+      console.error('DB connection error, continuing with tier check bypass:', dbError);
+      if (isAdmin) {
+        tier = 'elite';
+      }
     }
 
-    const aiCreditsRemaining = aiLimit - aiCreditsUsed;
-
-    // Check for cached analysis (1 hour TTL per symbol/timeframe)
-    const cacheResult = await pool.query(
-      `SELECT alerts, market_insights, orderflow_data, updated_at 
-       FROM crypto_ai_analyses 
-       WHERE user_id = $1 AND symbol = $2 AND interval = $3`,
-      [cryptoUserId, symbol, timeframe]
-    );
-
-    const cachedAnalysis = cacheResult.rows[0];
-    const cacheAge = cachedAnalysis?.updated_at 
-      ? Date.now() - new Date(cachedAnalysis.updated_at).getTime() 
-      : Infinity;
-
-    // If cache is valid (within 1 hour), return cached result
-    if (cachedAnalysis && cacheAge < CACHE_TTL) {
-      await pool.end();
-      return res.json({
-        analysis: cachedAnalysis.market_insights?.analysis || 'Cached analysis',
-        alerts: cachedAnalysis.alerts || [],
-        marketInsights: cachedAnalysis.market_insights,
-        cached: true,
-        cacheAge: Math.round(cacheAge / 1000),
-        cacheRemaining: Math.round((CACHE_TTL - cacheAge) / 1000),
-        creditsRemaining: aiCreditsRemaining,
-        estimatedCost: 0
-      });
-    }
-
-    // No valid cache - check if user has credits
-    if (aiCreditsRemaining <= 0) {
-      await pool.end();
+    if (!isAdmin && !ALLOWED_TIERS.includes(tier)) {
+      try { await pool?.end(); } catch {}
       return res.status(403).json({ 
-        error: `No AI credits remaining. ${tier} tier has ${aiLimit} credits/month. Upgrade for more.`,
-        creditsRemaining: 0,
-        creditsLimit: aiLimit,
+        error: `AI analysis requires Intermediate tier or higher. Current tier: ${tier}`,
         tier
       });
     }
 
-    // Prepare concise market summary for Grok
+    if (cryptoUserId && pool) {
+      try {
+        const cacheResult = await pool.query(
+          `SELECT market_insights, updated_at 
+           FROM crypto_ai_analyses 
+           WHERE user_id = $1 AND symbol = $2 AND interval = $3`,
+          [cryptoUserId, symbol, timeframe]
+        );
+
+        const cachedAnalysis = cacheResult.rows[0];
+        const cacheAge = cachedAnalysis?.updated_at 
+          ? Date.now() - new Date(cachedAnalysis.updated_at).getTime() 
+          : Infinity;
+
+        if (cachedAnalysis && cacheAge < CACHE_TTL) {
+          await pool.end();
+          return res.json({
+            analysis: cachedAnalysis.market_insights?.analysis || 'Cached analysis',
+            marketInsights: cachedAnalysis.market_insights,
+            cached: true,
+            cacheAge: Math.round(cacheAge / 1000),
+            cacheRemaining: Math.round((CACHE_TTL - cacheAge) / 1000),
+            estimatedCost: 0
+          });
+        }
+      } catch (cacheError) {
+        console.error('Cache check failed, proceeding with fresh analysis:', cacheError);
+      }
+    }
+
     const recentCandles = candles.slice(-50);
     const currentPrice = recentCandles[recentCandles.length - 1].close;
     const priceChange24h = ((currentPrice - recentCandles[0].close) / recentCandles[0].close) * 100;
@@ -211,7 +190,7 @@ Provide a brief, actionable market analysis (3-4 sentences) covering:
 Be concise and direct.`;
 
     const response = await xai.chat.completions.create({
-      model: "grok-4",
+      model: "grok-2-1212",
       messages: [
         {
           role: "system",
@@ -232,39 +211,41 @@ Be concise and direct.`;
     const outputTokens = response.usage?.completion_tokens || 0;
     const estimatedCost = (inputTokens / 1_000_000 * 2) + (outputTokens / 1_000_000 * 10);
 
-    // Increment credits used
-    const newCreditsUsed = aiCreditsUsed + 1;
-    await pool.query(
-      'UPDATE crypto_subscriptions SET ai_credits = $1, updated_at = NOW() WHERE user_id = $2',
-      [newCreditsUsed, cryptoUserId]
-    );
+    if (cryptoUserId && pool) {
+      try {
+        const marketInsights = { analysis, bias: 'neutral', timestamp: Date.now() };
+        
+        const existingCache = await pool.query(
+          `SELECT id FROM crypto_ai_analyses WHERE user_id = $1 AND symbol = $2 AND interval = $3`,
+          [cryptoUserId, symbol, timeframe]
+        );
 
-    // Store/update cached analysis (pass stringified JSON for JSONB columns with explicit cast)
-    const marketInsights = { analysis, bias: 'neutral', timestamp: Date.now() };
-    
-    if (cachedAnalysis) {
-      await pool.query(
-        `UPDATE crypto_ai_analyses 
-         SET market_insights = $1::jsonb, updated_at = NOW() 
-         WHERE user_id = $2 AND symbol = $3 AND interval = $4`,
-        [JSON.stringify(marketInsights), cryptoUserId, symbol, timeframe]
-      );
-    } else {
-      await pool.query(
-        `INSERT INTO crypto_ai_analyses (id, user_id, symbol, interval, market_insights, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, NOW(), NOW())`,
-        [cryptoUserId, symbol, timeframe, JSON.stringify(marketInsights)]
-      );
+        if (existingCache.rows.length > 0) {
+          await pool.query(
+            `UPDATE crypto_ai_analyses 
+             SET market_insights = $1::jsonb, updated_at = NOW() 
+             WHERE user_id = $2 AND symbol = $3 AND interval = $4`,
+            [JSON.stringify(marketInsights), cryptoUserId, symbol, timeframe]
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO crypto_ai_analyses (id, user_id, symbol, interval, market_insights, created_at, updated_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, NOW(), NOW())`,
+            [cryptoUserId, symbol, timeframe, JSON.stringify(marketInsights)]
+          );
+        }
+      } catch (cacheWriteError) {
+        console.error('Failed to cache analysis:', cacheWriteError);
+      }
     }
 
-    await pool.end();
+    try { await pool?.end(); } catch {}
 
     res.json({
       analysis,
       cached: false,
       cacheAge: 0,
       cacheRemaining: CACHE_TTL / 1000,
-      creditsRemaining: aiLimit - newCreditsUsed,
       estimatedCost,
       tokens: {
         input: inputTokens,

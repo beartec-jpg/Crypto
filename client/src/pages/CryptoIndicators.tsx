@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
-import { authenticatedApiRequest, isDevelopmentMode } from '@/lib/apiAuth';
+import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { useLocation } from 'wouter';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import bearTecLogo from '@assets/1_20251120_023939_0000_1763606422703.png';
@@ -317,7 +317,7 @@ export default function CryptoIndicators() {
   const abortControllerRef = useRef<AbortController | null>(null); // Cancel pending requests
   const { toast } = useToast();
 
-  const { isAuthenticated, isLoading: authLoading } = useCryptoAuth();
+  const { isAuthenticated, isLoading: authLoading, getToken } = useCryptoAuth();
   const [, setLocation] = useLocation();
 
   const { data: subscription } = useQuery<{tier: string, aiCreditsRemaining?: number}>({
@@ -1696,20 +1696,33 @@ export default function CryptoIndicators() {
     setLastAnalysisCheck(now);
     
     try {
-      // For AI analysis, we'll just send basic candle data and let the backend handle structure detection
-      // This avoids circular dependency issues with calculateBOSandCHoCH
+      const token = await getToken();
+      if (!token) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to use AI analysis.",
+          duration: 5000,
+        });
+        setAiAnalysisLoading(false);
+        return;
+      }
+      
       const response = await fetch('/api/crypto/market-analysis', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          candles: candles.slice(-200), // Send last 200 candles
+          candles: candles.slice(-200),
           symbol: symbol.replace('USDT', '/USD'),
           timeframe: interval
         })
       });
       
       if (!response.ok) {
-        throw new Error(`Analysis failed: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Analysis failed: ${response.statusText}`);
       }
       
       const data = await response.json();

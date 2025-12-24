@@ -12,6 +12,9 @@ const MONTHLY_AI_CREDITS: Record<string, number> = {
   elite: 500,
 };
 
+const ALLOWED_TIERS = ['intermediate', 'pro', 'elite'];
+const ADMIN_EMAIL = 'beartec@beartec.uk';
+
 async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
   try {
     const authHeader = req.headers.authorization;
@@ -63,13 +66,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication
   const auth = await verifyAuth(req);
   if (!auth) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   const { email } = auth;
+  const isAdmin = email === ADMIN_EMAIL;
   let pool: any = null;
 
   console.log('📥 Order flow alerts API called for:', email);
@@ -99,87 +102,99 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Missing required data' });
     }
 
-    pool = await getDb();
+    let tier = 'free';
+    let cryptoUserId: number | null = null;
+    let aiCreditsUsed = 0;
+    let aiLimit = 0;
+    let dbAvailable = false;
 
-    // Get user from crypto_users
-    const userResult = await pool.query(
-      'SELECT id FROM crypto_users WHERE email = $1',
-      [email]
-    );
+    try {
+      pool = await getDb();
 
-    if (userResult.rows.length === 0) {
-      await pool.end();
-      return res.status(404).json({ error: 'User not found' });
+      const userResult = await pool.query(
+        'SELECT id FROM crypto_users WHERE email = $1',
+        [email]
+      );
+
+      if (userResult.rows.length > 0) {
+        cryptoUserId = userResult.rows[0].id;
+        dbAvailable = true;
+
+        const subResult = await pool.query(
+          'SELECT tier, ai_credits, ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
+          [cryptoUserId]
+        );
+
+        const subscription = subResult.rows[0];
+        tier = subscription?.tier || 'free';
+        aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
+        aiCreditsUsed = subscription?.ai_credits || 0;
+        const resetAt = subscription?.ai_credits_reset_at ? new Date(subscription.ai_credits_reset_at) : null;
+
+        const now = new Date();
+        const shouldReset = !resetAt || 
+          (resetAt.getMonth() !== now.getMonth() || resetAt.getFullYear() !== now.getFullYear());
+
+        if (shouldReset && subscription) {
+          aiCreditsUsed = 0;
+          await pool.query(
+            'UPDATE crypto_subscriptions SET ai_credits = 0, ai_credits_reset_at = NOW() WHERE user_id = $1',
+            [cryptoUserId]
+          );
+        }
+      }
+    } catch (dbError) {
+      console.error('DB connection error:', dbError);
+      if (isAdmin) {
+        tier = 'elite';
+        aiLimit = 999;
+        console.log('Admin bypass enabled due to DB error');
+      }
     }
 
-    const cryptoUserId = userResult.rows[0].id;
-
-    // Get subscription for tier and credits
-    const subResult = await pool.query(
-      'SELECT tier, ai_credits, ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
-      [cryptoUserId]
-    );
-
-    const subscription = subResult.rows[0];
-    const tier = subscription?.tier || 'free';
-    const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
-    let aiCreditsUsed = subscription?.ai_credits || 0;
-    const resetAt = subscription?.ai_credits_reset_at ? new Date(subscription.ai_credits_reset_at) : null;
-
-    // Check tier eligibility
-    if (!['intermediate', 'pro', 'elite'].includes(tier)) {
-      await pool.end();
+    if (!isAdmin && !ALLOWED_TIERS.includes(tier)) {
+      try { await pool?.end(); } catch {}
       return res.status(403).json({ 
         error: 'Subscription required',
         message: 'AI analysis requires Intermediate tier or higher'
       });
     }
 
-    // Check if credits should reset (new month)
-    const now = new Date();
-    const shouldReset = !resetAt || 
-      (resetAt.getMonth() !== now.getMonth() || resetAt.getFullYear() !== now.getFullYear());
+    const aiCreditsRemaining = isAdmin ? 999 : (aiLimit - aiCreditsUsed);
 
-    if (shouldReset && subscription) {
-      aiCreditsUsed = 0;
-      await pool.query(
-        'UPDATE crypto_subscriptions SET ai_credits = 0, ai_credits_reset_at = NOW() WHERE user_id = $1',
-        [cryptoUserId]
-      );
+    if (cryptoUserId && pool && dbAvailable) {
+      try {
+        const cacheResult = await pool.query(
+          `SELECT alerts, market_insights, orderflow_data, updated_at 
+           FROM crypto_ai_analyses 
+           WHERE user_id = $1 AND symbol = $2 AND interval = $3`,
+          [cryptoUserId, symbol, interval]
+        );
+
+        const cachedAnalysis = cacheResult.rows[0];
+        const cacheAge = cachedAnalysis?.updated_at 
+          ? Date.now() - new Date(cachedAnalysis.updated_at).getTime() 
+          : Infinity;
+
+        if (cachedAnalysis && cacheAge < CACHE_TTL) {
+          console.log(`📊 Returning cached analysis for ${symbol}/${interval} (${Math.round(cacheAge/1000)}s old)`);
+          await pool.end();
+          return res.json({
+            alerts: cachedAnalysis.alerts || [],
+            marketInsights: cachedAnalysis.market_insights || null,
+            cached: true,
+            cacheAge: Math.round(cacheAge / 1000),
+            cacheRemaining: Math.round((CACHE_TTL - cacheAge) / 1000),
+            creditsRemaining: aiCreditsRemaining
+          });
+        }
+      } catch (cacheError) {
+        console.error('Cache check failed, proceeding with fresh analysis:', cacheError);
+      }
     }
 
-    const aiCreditsRemaining = aiLimit - aiCreditsUsed;
-
-    // Check for cached analysis (1 hour TTL per symbol/interval)
-    const cacheResult = await pool.query(
-      `SELECT alerts, market_insights, orderflow_data, updated_at 
-       FROM crypto_ai_analyses 
-       WHERE user_id = $1 AND symbol = $2 AND interval = $3`,
-      [cryptoUserId, symbol, interval]
-    );
-
-    const cachedAnalysis = cacheResult.rows[0];
-    const cacheAge = cachedAnalysis?.updated_at 
-      ? Date.now() - new Date(cachedAnalysis.updated_at).getTime() 
-      : Infinity;
-
-    // If cache is valid (within 1 hour), return cached result without deducting credits
-    if (cachedAnalysis && cacheAge < CACHE_TTL) {
-      console.log(`📊 Returning cached analysis for ${symbol}/${interval} (${Math.round(cacheAge/1000)}s old)`);
-      await pool.end();
-      return res.json({
-        alerts: cachedAnalysis.alerts || [],
-        marketInsights: cachedAnalysis.market_insights || null,
-        cached: true,
-        cacheAge: Math.round(cacheAge / 1000),
-        cacheRemaining: Math.round((CACHE_TTL - cacheAge) / 1000),
-        creditsRemaining: aiCreditsRemaining
-      });
-    }
-
-    // No valid cache - check if user has credits
-    if (aiCreditsRemaining <= 0) {
-      await pool.end();
+    if (!isAdmin && aiCreditsRemaining <= 0) {
+      try { await pool?.end(); } catch {}
       return res.status(403).json({ 
         error: 'No AI credits remaining',
         message: `You've used all ${aiLimit} AI credits for this month. Credits reset on the 1st.`,
@@ -189,7 +204,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Build the analysis prompt
     const last50Bars = recentBars.slice(-50);
     const priceChange = ((currentPrice - last50Bars[0].close) / last50Bars[0].close) * 100;
 
@@ -307,7 +321,7 @@ Return ONLY valid JSON in this exact format:
     const startTime = Date.now();
 
     const completion = await openai.chat.completions.create({
-      model: 'grok-4',
+      model: 'grok-3-fast',
       messages: [
         { role: 'system', content: 'You are an expert SMC/ICT trader with deep knowledge of order flow, volume analysis, and technical indicators. Provide professional-grade analysis. Return ONLY valid JSON.' },
         { role: 'user', content: prompt }
@@ -351,40 +365,50 @@ Return ONLY valid JSON in this exact format:
       result = { alerts: [], marketInsights: { summary: content.substring(0, 500) } };
     }
 
-    // Increment credits used
-    const newCreditsUsed = aiCreditsUsed + 1;
-    await pool.query(
-      'UPDATE crypto_subscriptions SET ai_credits = $1, updated_at = NOW() WHERE user_id = $2',
-      [newCreditsUsed, cryptoUserId]
-    );
+    if (!isAdmin && cryptoUserId && pool && dbAvailable) {
+      try {
+        const newCreditsUsed = aiCreditsUsed + 1;
+        await pool.query(
+          'UPDATE crypto_subscriptions SET ai_credits = $1, updated_at = NOW() WHERE user_id = $2',
+          [newCreditsUsed, cryptoUserId]
+        );
 
-    // Store/update cached analysis (pass plain objects for JSONB columns)
-    if (cachedAnalysis) {
-      await pool.query(
-        `UPDATE crypto_ai_analyses 
-         SET alerts = $1::jsonb, market_insights = $2::jsonb, orderflow_data = $3::jsonb, updated_at = NOW() 
-         WHERE user_id = $4 AND symbol = $5 AND interval = $6`,
-        [JSON.stringify(result.alerts), JSON.stringify(result.marketInsights), JSON.stringify(orderflowData || {}), cryptoUserId, symbol, interval]
-      );
-    } else {
-      await pool.query(
-        `INSERT INTO crypto_ai_analyses (id, user_id, symbol, interval, alerts, market_insights, orderflow_data, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, NOW(), NOW())`,
-        [cryptoUserId, symbol, interval, JSON.stringify(result.alerts), JSON.stringify(result.marketInsights), JSON.stringify(orderflowData || {})]
-      );
+        const existingCache = await pool.query(
+          `SELECT id FROM crypto_ai_analyses WHERE user_id = $1 AND symbol = $2 AND interval = $3`,
+          [cryptoUserId, symbol, interval]
+        );
+
+        if (existingCache.rows.length > 0) {
+          await pool.query(
+            `UPDATE crypto_ai_analyses 
+             SET alerts = $1::jsonb, market_insights = $2::jsonb, orderflow_data = $3::jsonb, updated_at = NOW() 
+             WHERE user_id = $4 AND symbol = $5 AND interval = $6`,
+            [JSON.stringify(result.alerts), JSON.stringify(result.marketInsights), JSON.stringify(orderflowData || {}), cryptoUserId, symbol, interval]
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO crypto_ai_analyses (id, user_id, symbol, interval, alerts, market_insights, orderflow_data, created_at, updated_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, NOW(), NOW())`,
+            [cryptoUserId, symbol, interval, JSON.stringify(result.alerts), JSON.stringify(result.marketInsights), JSON.stringify(orderflowData || {})]
+          );
+        }
+      } catch (dbWriteError) {
+        console.error('Failed to update credits/cache:', dbWriteError);
+      }
     }
 
-    await pool.end();
+    try { await pool?.end(); } catch {}
 
-    console.log(`📤 Sending response with ${result.alerts.length} alerts, credits remaining: ${aiLimit - newCreditsUsed}`);
+    const finalCreditsRemaining = isAdmin ? 999 : Math.max(0, aiLimit - aiCreditsUsed - 1);
+    console.log(`📤 Sending response with ${result.alerts.length} alerts, credits remaining: ${finalCreditsRemaining}`);
+    
     res.json({
       ...result,
       cached: false,
-      creditsRemaining: aiLimit - newCreditsUsed
+      creditsRemaining: finalCreditsRemaining
     });
 
   } catch (error: any) {
-    // Enhanced error logging for Grok API failures
     const errorDetails = {
       message: error.message,
       status: error.status || error.response?.status,
@@ -395,7 +419,6 @@ Return ONLY valid JSON in this exact format:
     
     try { await pool?.end(); } catch {}
     
-    // Provide helpful error messages based on error type
     let userMessage = 'Analysis failed';
     if (errorDetails.status === 401 || errorDetails.status === 403) {
       userMessage = 'AI service authentication error';

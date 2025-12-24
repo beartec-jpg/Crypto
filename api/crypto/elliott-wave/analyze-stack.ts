@@ -2,8 +2,6 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
 
-const _CACHE_TTL = 60 * 60 * 1000; // 1 hour cache (reserved for future use)
-
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
 const MONTHLY_ELLIOTT_CREDITS: Record<string, number> = {
@@ -63,6 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const { email } = auth;
+  const isAdmin = email === ADMIN_EMAIL;
   let pool: any = null;
 
   console.log('📥 Elliott Wave Stack analyze called for:', email);
@@ -74,44 +73,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'XAI_API_KEY missing' });
     }
 
-    pool = await getDb();
+    let tier = 'free';
+    let hasElliottAddon = false;
+    let elliottCreditsUsed = 0;
+    let cryptoUserId: number | null = null;
+    let dbAvailable = false;
+    let subscription: any = null;
 
-    const userResult = await pool.query(
-      'SELECT id FROM crypto_users WHERE email = $1',
-      [email]
-    );
+    try {
+      pool = await getDb();
 
-    if (userResult.rows.length === 0) {
-      await pool.end();
-      return res.status(404).json({ error: 'User not found' });
+      const userResult = await pool.query(
+        'SELECT id FROM crypto_users WHERE email = $1',
+        [email]
+      );
+
+      if (userResult.rows.length > 0) {
+        cryptoUserId = userResult.rows[0].id;
+        dbAvailable = true;
+
+        const subResult = await pool.query(
+          'SELECT tier, has_elliott_addon, elliott_ai_credits, elliott_ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
+          [cryptoUserId]
+        );
+
+        subscription = subResult.rows[0];
+        tier = subscription?.tier || 'free';
+        hasElliottAddon = subscription?.has_elliott_addon || false;
+        elliottCreditsUsed = subscription?.elliott_ai_credits || 0;
+        const resetAt = subscription?.elliott_ai_credits_reset_at ? new Date(subscription.elliott_ai_credits_reset_at) : null;
+
+        const now = new Date();
+        const shouldReset = !resetAt || 
+          (resetAt.getMonth() !== now.getMonth() || resetAt.getFullYear() !== now.getFullYear());
+
+        if (shouldReset && subscription) {
+          elliottCreditsUsed = 0;
+          await pool.query(
+            'UPDATE crypto_subscriptions SET elliott_ai_credits = 0, elliott_ai_credits_reset_at = NOW() WHERE user_id = $1',
+            [cryptoUserId]
+          );
+        }
+      }
+    } catch (dbError) {
+      console.error('DB connection error:', dbError);
+      if (isAdmin) {
+        tier = 'elite';
+        hasElliottAddon = true;
+        console.log('Admin bypass enabled due to DB error');
+      }
     }
-
-    const cryptoUserId = userResult.rows[0].id;
-
-    const subResult = await pool.query(
-      'SELECT tier, has_elliott_addon, elliott_ai_credits, elliott_ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
-      [cryptoUserId]
-    );
-
-    const subscription = subResult.rows[0];
-    const isAdmin = email === ADMIN_EMAIL;
-    
-    if (!subscription && !isAdmin) {
-      await pool.end();
-      return res.status(403).json({ 
-        error: 'No subscription found',
-        message: 'Please set up a subscription to access Elliott Wave AI analysis'
-      });
-    }
-
-    const tier = subscription?.tier || 'free';
-    const hasElliottAddon = subscription?.has_elliott_addon || false;
-    let elliottCreditsUsed = subscription?.elliott_ai_credits || 0;
-    const resetAt = subscription?.elliott_ai_credits_reset_at ? new Date(subscription.elliott_ai_credits_reset_at) : null;
 
     const hasElliottAccess = isAdmin || tier === 'elite' || hasElliottAddon;
     if (!hasElliottAccess) {
-      await pool.end();
+      try { await pool?.end(); } catch {}
       return res.status(403).json({ 
         error: 'Elliott Wave AI requires Elite tier or Elliott Wave add-on',
         message: 'Please upgrade to Elite tier or purchase the Elliott Wave add-on to access AI analysis'
@@ -119,23 +134,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const elliottLimit = isAdmin ? 999 : (tier === 'elite' ? MONTHLY_ELLIOTT_CREDITS.elite : MONTHLY_ELLIOTT_CREDITS.addon);
+    const elliottCreditsRemaining = isAdmin ? 999 : (elliottLimit - elliottCreditsUsed);
 
-    const now = new Date();
-    const shouldReset = !resetAt || 
-      (resetAt.getMonth() !== now.getMonth() || resetAt.getFullYear() !== now.getFullYear());
-
-    if (shouldReset && subscription) {
-      elliottCreditsUsed = 0;
-      await pool.query(
-        'UPDATE crypto_subscriptions SET elliott_ai_credits = 0, elliott_ai_credits_reset_at = NOW() WHERE user_id = $1',
-        [cryptoUserId]
-      );
-    }
-
-    const elliottCreditsRemaining = elliottLimit - elliottCreditsUsed;
-
-    if (elliottCreditsRemaining <= 0 && !isAdmin) {
-      await pool.end();
+    if (!isAdmin && elliottCreditsRemaining <= 0) {
+      try { await pool?.end(); } catch {}
       return res.status(403).json({ 
         error: 'No Elliott Wave AI credits remaining',
         message: `You've used all ${elliottLimit} Elliott Wave AI credits for this month. Credits reset on the 1st.`,
@@ -145,7 +147,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!waveEntries || waveEntries.length === 0) {
-      await pool.end();
+      try { await pool?.end(); } catch {}
       return res.json({
         success: false,
         analysis: { synopsis: 'No wave entries to analyze. Add some wave patterns first.' },
@@ -218,36 +220,32 @@ Provide JSON response with:
 
     const result = JSON.parse(jsonMatch[0]);
 
-    const newCreditsUsed = elliottCreditsUsed + 1;
-    if (!isAdmin && subscription) {
-      await pool.query(
-        'UPDATE crypto_subscriptions SET elliott_ai_credits = $1, updated_at = NOW() WHERE user_id = $2',
-        [newCreditsUsed, cryptoUserId]
-      );
+    if (!isAdmin && cryptoUserId && pool && dbAvailable && subscription) {
+      try {
+        const newCreditsUsed = elliottCreditsUsed + 1;
+        await pool.query(
+          'UPDATE crypto_subscriptions SET elliott_ai_credits = $1, updated_at = NOW() WHERE user_id = $2',
+          [newCreditsUsed, cryptoUserId]
+        );
+      } catch (dbWriteError) {
+        console.error('Failed to update credits:', dbWriteError);
+      }
     }
 
-    await pool.end();
+    try { await pool?.end(); } catch {}
 
-    console.log(`📤 Sending stack analysis, credits remaining: ${elliottLimit - newCreditsUsed}`);
-    return res.json({
+    const finalCreditsRemaining = isAdmin ? 999 : Math.max(0, elliottLimit - elliottCreditsUsed - 1);
+
+    res.json({
       success: true,
       analysis: result,
       waveCount: waveEntries.length,
-      rawResponse: content,
-      creditsRemaining: elliottLimit - newCreditsUsed
+      creditsRemaining: finalCreditsRemaining,
     });
 
   } catch (error: any) {
-    console.error('GROK STACK FAILED:', error.message);
+    console.error('Analyze stack error:', error);
     try { await pool?.end(); } catch {}
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Unknown error',
-    });
+    res.status(500).json({ error: error.message });
   }
 }
-
-export const config = {
-  maxDuration: 120,
-  memory: 1024,
-};
