@@ -62,19 +62,24 @@ export function LiquidationHeatmapChart({ symbol, currentPrice }: LiquidationHea
     const width = canvas.width;
     const height = canvas.height;
 
-    // Layout constants
+    // Layout constants - adaptive for mobile
     const marginLeft = 5;
-    const marginRight = 85; // Space for price labels on the right
     const marginTop = 35;
     const marginBottom = 50;
-    const predictedColWidth = 65; // Wider for readable labels
-    const orderbookColWidth = 65; // Wider for readable labels
-    const predictedColGap = 12;
-    const orderbookColGap = 12;
+    
+    // Responsive layout: On narrow screens, reduce side column widths
+    const isNarrow = width < 450;
+    const marginRight = isNarrow ? 55 : 85;
+    const predictedColWidth = isNarrow ? 40 : 65;
+    const orderbookColWidth = isNarrow ? 40 : 65;
+    const predictedColGap = isNarrow ? 6 : 12;
+    const orderbookColGap = isNarrow ? 6 : 12;
 
     // Main 30×30 grid gets full available width (minus both predicted columns space)
     const totalChartArea = width - marginLeft - marginRight;
-    const chartWidth = totalChartArea - predictedColWidth - predictedColGap - orderbookColWidth - orderbookColGap;
+    const sideColumnsWidth = predictedColWidth + predictedColGap + orderbookColWidth + orderbookColGap;
+    // Ensure minimum chartWidth of 100px
+    const chartWidth = Math.max(100, totalChartArea - sideColumnsWidth);
     const chartHeight = height - marginTop - marginBottom;
 
     // Clear canvas
