@@ -194,7 +194,7 @@ Based on these pivot points, identify the most likely Elliott Wave pattern. Prov
 }`;
 
     const completion = await openai.chat.completions.create({
-      model: 'grok-4',
+      model: 'grok-3',
       messages: [
         {
           role: 'system',
