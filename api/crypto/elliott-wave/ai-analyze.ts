@@ -43,7 +43,11 @@ async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: 
 async function getDb() {
   const pg = await import('pg');
   const Pool = pg.default?.Pool || pg.Pool;
-  const pool = new (Pool as any)({ connectionString: process.env.DATABASE_URL });
+  const pool = new (Pool as any)({ 
+    connectionString: process.env.DATABASE_URL,
+    connectionTimeoutMillis: 3000,
+    query_timeout: 5000
+  });
   return pool;
 }
 
@@ -204,7 +208,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     const completion = await openai.chat.completions.create({
-      model: 'grok-4',
+      model: process.env.XAI_ELLIOTT_MODEL || 'grok-4',
       messages: [
         {
           role: 'system',
