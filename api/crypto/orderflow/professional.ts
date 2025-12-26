@@ -70,7 +70,6 @@ async function _fetchBinanceOHLCV_legacy(symbol: string, interval: string, limit
 }
 
 // Fetch Open Interest from CoinGlass v4 API
-// Using 4h interval to work with Hobbyist plan (>=4h limit)
 async function fetchOpenInterest(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
   if (!apiKey) {
@@ -79,10 +78,8 @@ async function fetchOpenInterest(symbol: string): Promise<any> {
   }
   
   try {
-    // CoinGlass expects base symbol without USDT (e.g., "BTC" not "BTCUSDT")
-    const coinglassSymbol = symbol.replace('USDT', '');
-    // Use 4h interval (Hobbyist plan only allows >=4h)
-    const url = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${coinglassSymbol}&interval=4h&limit=24`;
+    // Restore original working URL with full symbol and 1h interval
+    const url = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${symbol}&interval=1h&limit=24`;
     console.log(`📊 Fetching CoinGlass OI: ${symbol}`);
     
     const response = await fetch(url, {
@@ -132,10 +129,8 @@ async function fetchFundingRate(symbol: string): Promise<any> {
   }
   
   try {
-    // CoinGlass expects base symbol without USDT (e.g., "BTC" not "BTCUSDT")
-    const coinglassSymbol = symbol.replace('USDT', '');
-    // Use 8h interval (standard funding rate interval, works with Hobbyist plan)
-    const url = `https://open-api-v4.coinglass.com/api/futures/funding-rate/history?exchange=Binance&symbol=${coinglassSymbol}&interval=8h&limit=24`;
+    // Use full symbol (BTCUSDT) - this was working before
+    const url = `https://open-api-v4.coinglass.com/api/futures/funding-rate/history?exchange=Binance&symbol=${symbol}&interval=8h&limit=24`;
     console.log(`📊 Fetching CoinGlass Funding: ${symbol}`);
     
     const response = await fetch(url, {
@@ -183,11 +178,9 @@ async function fetchLongShortRatio(symbol: string): Promise<any> {
   if (!apiKey) return { current: { ratio: 1.0 }, ratio: 1.0, history: [] };
   
   try {
-    // CoinGlass expects base symbol without USDT (e.g., "BTC" not "BTCUSDT")
-    const coinglassSymbol = symbol.replace('USDT', '');
-    // Use 4h interval (Hobbyist plan only allows >=4h)
-    const url = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${coinglassSymbol}&interval=4h&limit=24`;
-    console.log(`📊 Fetching CoinGlass L/S Ratio: ${coinglassSymbol}`);
+    // Use full symbol (BTCUSDT) - this was working before
+    const url = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol}&interval=4h&limit=24`;
+    console.log(`📊 Fetching CoinGlass L/S Ratio: ${symbol}`);
     
     const response = await fetch(url, {
       headers: { 'CG-API-KEY': apiKey, 'accept': 'application/json' }
