@@ -325,8 +325,8 @@ Return ONLY valid JSON:
     // Use text-only model when no image is provided
     const hasImage = base64Image && base64Image.length > 0;
     
-    // Use grok-4 for superior reasoning (vision model for images)
-    const modelToUse = hasImage ? "grok-2-vision-1212" : "grok-4";
+    // Use grok-4 for all tasks (supports both text and vision)
+    const modelToUse = hasImage ? "grok-4" : "grok-4";
     console.log(`⏱️ Sending to ${modelToUse} via native fetch...`);
     
     const messages: any[] = [
@@ -438,7 +438,7 @@ What is the most likely next wave and price target? Respond with JSON:
     },
   ];
 
-  const content = await callGrokAPI(messages, "grok-2-vision-1212", 500);
+  const content = await callGrokAPI(messages, "grok-4", 500);
   if (!content) {
     throw new Error("No response from Grok");
   }

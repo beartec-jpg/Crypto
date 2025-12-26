@@ -194,7 +194,7 @@ Provide a brief, actionable market analysis (3-4 sentences) covering:
 Be concise and direct.`;
 
     const response = await xai.chat.completions.create({
-      model: process.env.XAI_MARKET_MODEL || "grok-2-1212",
+      model: process.env.XAI_MARKET_MODEL || "grok-3",
       messages: [
         {
           role: "system",
