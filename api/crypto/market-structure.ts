@@ -65,16 +65,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const endTime = Date.now();
     const startTime = endTime - periodMs;
     
-    const url = `https://api.binance.us/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceInterval}&startTime=${startTime}&endTime=${endTime}&limit=1000`;
+    const urls = [
+      `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceInterval}&startTime=${startTime}&endTime=${endTime}&limit=1000`,
+      `https://api.binance.us/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceInterval}&startTime=${startTime}&endTime=${endTime}&limit=1000`
+    ];
     
     console.log(`📊 Fetching market structure for ${binanceSymbol}`);
     
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Binance API error: ${response.status}`);
+    let klines = null;
+    let lastError = null;
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        if (response.ok) {
+          klines = await response.json();
+          if (Array.isArray(klines) && klines.length > 0) break;
+        }
+      } catch (err: any) {
+        lastError = err;
+      }
     }
     
-    const klines = await response.json();
+    if (!klines || !Array.isArray(klines)) {
+      throw lastError || new Error('All Binance APIs failed');
+    }
     
     const candleData: CandleData[] = klines.map((k: any[]) => ({
       time: Math.floor(k[0] / 1000),

@@ -69,35 +69,44 @@ async function fetchPrices(symbols: string[]): Promise<PriceData[]> {
     'APTUSDT': 'aptos',
   };
   
-  // Try Binance US API first (works from US servers)
-  try {
-    console.log(`📊 [PRICE DEBUG] Trying Binance.US API...`);
-    const response = await fetch('https://api.binance.us/api/v3/ticker/price', {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (response.ok) {
-      const allPrices = await response.json();
-      console.log(`📊 [PRICE DEBUG] Binance.US batch fetch got ${allPrices.length} prices`);
-      
-      for (const symbol of symbols) {
-        const priceData = allPrices.find((p: any) => p.symbol === symbol);
-        if (priceData?.price) {
-          prices.push({
-            symbol,
-            price: parseFloat(priceData.price)
-          });
-          console.log(`📊 [PRICE DEBUG] ${symbol}: $${priceData.price} (Binance.US)`);
+  // Try Binance APIs (global first, then US fallback)
+  const binanceEndpoints = [
+    { url: 'https://api.binance.com/api/v3/ticker/price', name: 'global' },
+    { url: 'https://api.binance.us/api/v3/ticker/price', name: 'US' }
+  ];
+  
+  for (const endpoint of binanceEndpoints) {
+    try {
+      console.log(`📊 [PRICE DEBUG] Trying Binance ${endpoint.name} API...`);
+      const response = await fetch(endpoint.url, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000)
+      });
+      if (response.ok) {
+        const allPrices = await response.json();
+        console.log(`📊 [PRICE DEBUG] Binance ${endpoint.name} batch fetch got ${allPrices.length} prices`);
+        
+        for (const symbol of symbols) {
+          const priceData = allPrices.find((p: any) => p.symbol === symbol);
+          if (priceData?.price) {
+            prices.push({
+              symbol,
+              price: parseFloat(priceData.price)
+            });
+            console.log(`📊 [PRICE DEBUG] ${symbol}: $${priceData.price} (Binance ${endpoint.name})`);
+          }
         }
+        
+        if (prices.length === symbols.length) {
+          return prices;
+        }
+        break; // Got prices, move to CoinGecko for missing
+      } else {
+        console.log(`📊 [PRICE DEBUG] Binance ${endpoint.name} batch fetch failed: ${response.status}`);
       }
-      
-      if (prices.length === symbols.length) {
-        return prices;
-      }
-    } else {
-      console.log(`📊 [PRICE DEBUG] Binance.US batch fetch failed: ${response.status}`);
+    } catch (error: any) {
+      console.error(`📊 [PRICE DEBUG] Binance ${endpoint.name} batch fetch error:`, error.message);
     }
-  } catch (error: any) {
-    console.error(`📊 [PRICE DEBUG] Binance.US batch fetch error:`, error.message);
   }
   
   // Try CoinGecko for missing symbols

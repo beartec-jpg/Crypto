@@ -10,27 +10,41 @@ interface ExchangeConfig {
 // Fetch OHLCV from Binance with taker buy/sell volume breakdown
 async function fetchBinanceOHLCV(symbol: string, interval: string, since: number, limit: number) {
   const formattedSymbol = symbol.replace('/', '');
-  const url = `https://api.binance.us/api/v3/klines?symbol=${formattedSymbol}&interval=${interval}&startTime=${since}&limit=${limit}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Binance US error: ${response.status}`);
-  const klines = await response.json();
+  const urls = [
+    `https://api.binance.com/api/v3/klines?symbol=${formattedSymbol}&interval=${interval}&startTime=${since}&limit=${limit}`,
+    `https://api.binance.us/api/v3/klines?symbol=${formattedSymbol}&interval=${interval}&startTime=${since}&limit=${limit}`
+  ];
   
-  return klines.map((k: any) => {
-    const volume = parseFloat(k[5]);
-    const buyVolume = parseFloat(k[9]); // Taker buy base volume
-    const sellVolume = volume - buyVolume;
-    return {
-      timestamp: k[0],
-      open: parseFloat(k[1]),
-      high: parseFloat(k[2]),
-      low: parseFloat(k[3]),
-      close: parseFloat(k[4]),
-      volume,
-      buyVolume,
-      sellVolume,
-      delta: buyVolume - sellVolume,
-    };
-  });
+  let lastError: Error | null = null;
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (response.ok) {
+        const klines = await response.json();
+        if (Array.isArray(klines) && klines.length > 0) {
+          return klines.map((k: any) => {
+            const volume = parseFloat(k[5]);
+            const buyVolume = parseFloat(k[9]);
+            const sellVolume = volume - buyVolume;
+            return {
+              timestamp: k[0],
+              open: parseFloat(k[1]),
+              high: parseFloat(k[2]),
+              low: parseFloat(k[3]),
+              close: parseFloat(k[4]),
+              volume,
+              buyVolume,
+              sellVolume,
+              delta: buyVolume - sellVolume,
+            };
+          });
+        }
+      }
+    } catch (err: any) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('All Binance APIs failed');
 }
 
 // Fetch OHLCV from OKX - uses price movement to estimate buy/sell ratio

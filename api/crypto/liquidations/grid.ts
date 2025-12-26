@@ -13,15 +13,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const symbol = (req.query.symbol as string)?.toUpperCase() || 'XRPUSDT';
     const binanceSymbol = symbol.replace('-', '');
     
-    // Fetch 180 4-hour candles (30 days)
-    const binanceUrl = `https://api.binance.us/api/v3/klines?symbol=${binanceSymbol}&interval=4h&limit=180`;
-    const binanceResponse = await fetch(binanceUrl);
+    // Fetch 180 4-hour candles (30 days) - try global first, then US
+    const binanceUrls = [
+      `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=4h&limit=180`,
+      `https://api.binance.us/api/v3/klines?symbol=${binanceSymbol}&interval=4h&limit=180`
+    ];
     
-    if (!binanceResponse.ok) {
-      throw new Error(`Binance API error: ${binanceResponse.status}`);
+    let binanceData = null;
+    let lastError = null;
+    
+    for (const binanceUrl of binanceUrls) {
+      try {
+        const binanceResponse = await fetch(binanceUrl, { signal: AbortSignal.timeout(5000) });
+        if (binanceResponse.ok) {
+          binanceData = await binanceResponse.json();
+          if (Array.isArray(binanceData) && binanceData.length > 0) {
+            console.log(`✅ Binance data fetched from ${binanceUrl.includes('.com') ? 'global' : 'US'} API`);
+            break;
+          }
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.log(`⚠️ Binance ${binanceUrl.includes('.com') ? 'global' : 'US'} API failed: ${err.message}`);
+      }
     }
     
-    const binanceData = await binanceResponse.json();
+    if (!binanceData || !Array.isArray(binanceData) || binanceData.length === 0) {
+      throw lastError || new Error('All Binance APIs failed');
+    }
     
     // Convert to price candles
     const priceCandles = binanceData.map((candle: any) => ({

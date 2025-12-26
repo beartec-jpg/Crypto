@@ -64,12 +64,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 async function fetchBinanceTrades(symbol: string, startTime: number, endTime: number): Promise<any[]> {
-  const url = 'https://api.binance.us/api/v3/aggTrades';
+  const urls = ['https://api.binance.com/api/v3/aggTrades', 'https://api.binance.us/api/v3/aggTrades'];
   const allTrades: any[] = [];
   let currentStart = startTime;
   
   const maxIterations = 10;
   let iterations = 0;
+  
+  // Find working URL
+  let workingUrl = urls[0];
+  for (const url of urls) {
+    try {
+      const testParams = new URLSearchParams({ symbol, startTime: startTime.toString(), endTime: endTime.toString(), limit: '1' });
+      const testResponse = await fetch(`${url}?${testParams}`, { signal: AbortSignal.timeout(3000) });
+      if (testResponse.ok) {
+        workingUrl = url;
+        break;
+      }
+    } catch { /* try next */ }
+  }
   
   while (currentStart < endTime && iterations < maxIterations) {
     iterations++;
@@ -81,7 +94,7 @@ async function fetchBinanceTrades(symbol: string, startTime: number, endTime: nu
     });
     
     try {
-      const response = await fetch(`${url}?${params}`);
+      const response = await fetch(`${workingUrl}?${params}`, { signal: AbortSignal.timeout(5000) });
       if (!response.ok) break;
       
       const trades = await response.json();
