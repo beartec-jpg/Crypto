@@ -123,9 +123,16 @@ export function ProfessionalOrderflowTable({ symbol, interval, className }: Prof
     const lsRatioCurrent = data.longShortRatio?.current;
     const lsRatioValue = extractValue(lsRatioCurrent) ?? 1.0;
 
-    // Require at least OI and Funding to generate signals (CVD is optional)
-    // Some symbols may not have CVD data available from Coinalyze
-    if (oiValue == null || fundingValue == null) {
+    // Generate signal even with partial data - show what we have
+    // CVD is calculated from Binance data (most reliable)
+    // OI and Funding come from CoinGlass (may fail on some symbols)
+    const hasCVD = cvdValue != null;
+    const hasOI = oiValue != null;
+    const hasFunding = fundingValue != null;
+    
+    // If we have NO data at all, return null
+    if (!hasCVD && !hasOI && !hasFunding) {
+      console.warn('⚠️ No orderflow data available at all');
       return null;
     }
 
@@ -134,34 +141,32 @@ export function ProfessionalOrderflowTable({ symbol, interval, className }: Prof
 
     // Calculate real CVD delta (change from previous point)
     // CVD might not be available for all symbols, so handle null gracefully
-    const cvdDelta = cvdValue != null && cvdPrevious != null ? (cvdValue - cvdPrevious) : (cvdValue ?? 0);
+    const cvdDelta = cvdValue != null && cvdPrevious != null ? (cvdValue - cvdPrevious) : 0;
     const cvdTrend = cvdDelta > 0 ? 'positive' : cvdDelta < 0 ? 'negative' : 'neutral';
     
     // Calculate real OI delta (change from previous point)
     // On first load, OI delta will be 0 until we have historical data
-    const oiDelta = oiPrevious != null ? (oiValue - oiPrevious) : 0;
-    const oiChange = oiDelta > 0 ? '+rising' : oiDelta < 0 ? '-declining' : hasHistoricalData ? 'flat' : 'building...';
+    const oiDelta = hasOI && oiPrevious != null ? ((oiValue ?? 0) - oiPrevious) : 0;
+    const oiChange = oiDelta > 0 ? '+rising' : oiDelta < 0 ? '-declining' : hasHistoricalData ? 'flat' : 'N/A';
     
-    // Determine funding bias
-    const fundingBias = fundingValue > 0.01 ? 'bullish' : fundingValue < -0.01 ? 'bearish' : 'neutral';
+    // Determine funding bias (use 0 if not available)
+    const actualFunding = fundingValue ?? 0;
+    const fundingBias = actualFunding > 0.01 ? 'bullish' : actualFunding < -0.01 ? 'bearish' : 'neutral';
 
-    // Generate signal based on comprehensive confluence logic
+    // Generate signal based on available data
     let signal = 'NEUTRAL';
     let signalType: OrderflowSignal['signalType'] = 'neutral';
     let strength = 50;
-    let confidence = 50;
-
-    // If CVD is available, use it for stronger signals
-    const hasCVD = cvdValue != null;
+    let confidence = 30; // Lower base confidence when not all data available
     
     if (!hasHistoricalData) {
       // On first load - use single-point heuristics based on funding rate bias
-      if (fundingValue < -0.02) {
+      if (actualFunding < -0.02) {
         signal = 'BUILDING DATA (Bullish Bias)';
         signalType = 'buy';
         strength = 55;
-        confidence = 40; // Lower confidence without historical context
-      } else if (fundingValue > 0.02) {
+        confidence = 40;
+      } else if (actualFunding > 0.02) {
         signal = 'BUILDING DATA (Bearish Bias)';
         signalType = 'sell';
         strength = 55;
@@ -174,7 +179,7 @@ export function ProfessionalOrderflowTable({ symbol, interval, className }: Prof
       }
     } else if (hasCVD) {
       // Strong Buy: Positive CVD delta + Rising OI delta + Neutral/Negative Funding
-      if (cvdDelta > 0 && oiDelta > 0 && fundingValue <= 0.01) {
+      if (cvdDelta > 0 && oiDelta > 0 && actualFunding <= 0.01) {
         signal = 'STRONG BUY';
         signalType = 'strong-buy';
         strength = 95;
@@ -188,7 +193,7 @@ export function ProfessionalOrderflowTable({ symbol, interval, className }: Prof
         confidence = 70;
       }
       // Strong Sell: Negative CVD delta + Rising OI delta + Neutral Funding
-      else if (cvdDelta < 0 && oiDelta > 0 && Math.abs(fundingValue) < 0.01) {
+      else if (cvdDelta < 0 && oiDelta > 0 && Math.abs(actualFunding) < 0.01) {
         signal = 'STRONG SELL';
         signalType = 'strong-sell';
         strength = 90;
@@ -204,14 +209,14 @@ export function ProfessionalOrderflowTable({ symbol, interval, className }: Prof
     } else {
       // CVD not available - use OI and Funding for signals (lower confidence)
       // Buy: Rising OI + Negative Funding (accumulation phase)
-      if (oiDelta > 0 && fundingValue < -0.01) {
+      if (oiDelta > 0 && actualFunding < -0.01) {
         signal = 'BUY (No CVD)';
         signalType = 'buy';
         strength = 60;
         confidence = 50;
       }
       // Sell: Rising OI + Positive Funding (distribution phase)
-      else if (oiDelta > 0 && fundingValue > 0.01) {
+      else if (oiDelta > 0 && actualFunding > 0.01) {
         signal = 'SELL (No CVD)';
         signalType = 'sell';
         strength = 60;
@@ -220,7 +225,7 @@ export function ProfessionalOrderflowTable({ symbol, interval, className }: Prof
     }
     
     // Warning: High funding (overleveraged) - works regardless of CVD availability
-    if (Math.abs(fundingValue) > 0.05) {
+    if (Math.abs(actualFunding) > 0.05) {
       signal = 'OVERLEVERAGED';
       signalType = 'warning';
       strength = 60;
@@ -244,7 +249,7 @@ export function ProfessionalOrderflowTable({ symbol, interval, className }: Prof
       oiChange,
       cvd: cvdValue ?? 0,
       cvdTrend,
-      fundingRate: fundingValue,
+      fundingRate: actualFunding,
       fundingBias,
       lsRatio: lsRatioValue,
       signal,
