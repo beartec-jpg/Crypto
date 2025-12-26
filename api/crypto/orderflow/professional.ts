@@ -70,6 +70,7 @@ async function _fetchBinanceOHLCV_legacy(symbol: string, interval: string, limit
 }
 
 // Fetch Open Interest from CoinGlass v4 API
+// Always uses 4h interval (fixed) - required by CoinGlass Hobbyist plan
 async function fetchOpenInterest(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
   if (!apiKey) {
@@ -78,8 +79,8 @@ async function fetchOpenInterest(symbol: string): Promise<any> {
   }
   
   try {
-    // Restore original working URL with full symbol and 1h interval
-    const url = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${symbol}&interval=1h&limit=24`;
+    // Fixed 4h interval - ignores page timeframe setting
+    const url = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${symbol}&interval=4h&limit=24`;
     console.log(`📊 Fetching CoinGlass OI: ${symbol}`);
     
     const response = await fetch(url, {
@@ -120,7 +121,7 @@ async function fetchOpenInterest(symbol: string): Promise<any> {
 }
 
 // Fetch Funding Rate from CoinGlass v4 API
-// Using 8h interval (standard funding interval)
+// Always uses 8h interval (fixed) - standard funding interval
 async function fetchFundingRate(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
   if (!apiKey) {
@@ -129,7 +130,7 @@ async function fetchFundingRate(symbol: string): Promise<any> {
   }
   
   try {
-    // Use full symbol (BTCUSDT) - this was working before
+    // Fixed 8h interval - ignores page timeframe setting
     const url = `https://open-api-v4.coinglass.com/api/futures/funding-rate/history?exchange=Binance&symbol=${symbol}&interval=8h&limit=24`;
     console.log(`📊 Fetching CoinGlass Funding: ${symbol}`);
     
@@ -172,13 +173,13 @@ async function fetchFundingRate(symbol: string): Promise<any> {
 }
 
 // Fetch Long/Short Ratio from CoinGlass v4 API
-// Using 4h interval to work with Hobbyist plan
+// Always uses 4h interval (fixed) - required by CoinGlass Hobbyist plan
 async function fetchLongShortRatio(symbol: string): Promise<any> {
   const apiKey = process.env.COINGLASS_API_KEY;
   if (!apiKey) return { current: { ratio: 1.0 }, ratio: 1.0, history: [] };
   
   try {
-    // Use full symbol (BTCUSDT) - this was working before
+    // Fixed 4h interval - ignores page timeframe setting
     const url = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol}&interval=4h&limit=24`;
     console.log(`📊 Fetching CoinGlass L/S Ratio: ${symbol}`);
     

@@ -217,7 +217,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const coinglassSymbol = symbol.replace('USDT', '');
         console.log(`📊 Fetching CoinGlass orderbook for: ${coinglassSymbol}`);
-        // Restore original working URL with exchange_list and range parameters
+        // Fixed 4h interval - ignores page timeframe setting
         const orderbookUrl = `https://open-api-v4.coinglass.com/api/futures/orderbook/aggregated-ask-bids-history?exchange_list=Binance&symbol=${coinglassSymbol}&interval=4h&range=2&limit=30`;
         
         const orderbookResponse = await fetch(orderbookUrl, {
