@@ -216,17 +216,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (coinglassApiKey) {
       try {
         const coinglassSymbol = symbol.replace('USDT', '');
-        const orderbookUrl = `https://open-api-v4.coinglass.com/api/futures/orderbook/aggregated-ask-bids-history?exchange_list=Binance&symbol=${coinglassSymbol}&interval=4h&range=2&limit=30`;
+        console.log(`📊 Fetching CoinGlass orderbook for: ${coinglassSymbol}`);
+        // CoinGlass v4 API uses: symbol, interval, limit (no exchange_list parameter)
+        const orderbookUrl = `https://open-api-v4.coinglass.com/api/futures/orderbook/aggregated-ask-bids-history?symbol=${coinglassSymbol}&interval=4h&limit=30`;
         
         const orderbookResponse = await fetch(orderbookUrl, {
-          headers: { 'accept': 'application/json', 'CG-API-KEY': coinglassApiKey }
+          headers: { 'accept': 'application/json', 'CG-API-KEY': coinglassApiKey },
+          signal: AbortSignal.timeout(10000)
         });
+        
+        console.log(`📊 CoinGlass orderbook response status: ${orderbookResponse.status}`);
         
         if (orderbookResponse.ok) {
           const orderbookData = await orderbookResponse.json();
+          console.log(`📊 CoinGlass orderbook response: code=${orderbookData.code}, msg=${orderbookData.msg}, data count=${orderbookData.data?.length || 0}`);
           
           if (orderbookData.code === '0' && orderbookData.data?.length > 0) {
             const orderbookHistory = orderbookData.data;
+            console.log(`✅ CoinGlass orderbook data received: ${orderbookHistory.length} points`);
             
             orderbookHistory.forEach((item: any) => {
               const bids = item.aggregated_bids_usd || 0;
@@ -266,11 +273,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 }
               }
             });
+            
+            // Log how much data was populated
+            const nonZeroCount = orderbookColumn.filter(v => v > 0).length;
+            console.log(`✅ Orderbook column populated: ${nonZeroCount} non-zero bands`);
+          } else {
+            console.log(`⚠️ CoinGlass orderbook: Invalid response or no data`);
           }
+        } else {
+          console.log(`⚠️ CoinGlass orderbook failed: ${orderbookResponse.status} ${orderbookResponse.statusText}`);
         }
       } catch (error: any) {
-        console.error('Failed to fetch orderbook data:', error.message);
+        console.error('❌ Failed to fetch orderbook data:', error.message);
       }
+    } else {
+      console.log('⚠️ No CoinGlass API key for orderbook');
     }
     
     res.json({
