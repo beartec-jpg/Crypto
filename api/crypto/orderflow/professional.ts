@@ -3,6 +3,49 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 // Fetch OHLCV from Binance with taker buy/sell volume breakdown
 async function fetchBinanceOHLCV(symbol: string, interval: string, limit: number) {
   const since = Date.now() - 86400000; // Last 24 hours
+  
+  // Try global Binance first, then US as fallback
+  const urls = [
+    `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&startTime=${since}&limit=${limit}`,
+    `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&startTime=${since}&limit=${limit}`
+  ];
+  
+  let lastError: Error | null = null;
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (response.ok) {
+        const klines = await response.json();
+        if (Array.isArray(klines) && klines.length > 0) {
+          return klines.map((k: any) => {
+            const volume = parseFloat(k[5]);
+            const buyVolume = parseFloat(k[9]); // Taker buy base volume
+            const sellVolume = volume - buyVolume;
+            return {
+              timestamp: k[0],
+              open: parseFloat(k[1]),
+              high: parseFloat(k[2]),
+              low: parseFloat(k[3]),
+              close: parseFloat(k[4]),
+              volume,
+              buyVolume,
+              sellVolume,
+              delta: buyVolume - sellVolume,
+            };
+          });
+        }
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.log(`⚠️ Binance API failed (${url.includes('.com') ? 'global' : 'US'}): ${err.message}`);
+    }
+  }
+  throw lastError || new Error('All Binance APIs failed');
+}
+
+// Legacy code path - kept for reference but replaced above
+async function _fetchBinanceOHLCV_legacy(symbol: string, interval: string, limit: number) {
+  const since = Date.now() - 86400000;
   const url = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&startTime=${since}&limit=${limit}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Binance US error: ${response.status}`);
