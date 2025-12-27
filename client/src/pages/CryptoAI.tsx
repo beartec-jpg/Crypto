@@ -633,6 +633,38 @@ export default function CryptoAI() {
     return grabs;
   }, []);
 
+  // === Swing Pivot Detection (for market structure) ===
+  const detectSwingPivots = useCallback((bars: Bar[], swingLength: number = 5) => {
+    const swingHighs: { time: number; price: number; index: number }[] = [];
+    const swingLows: { time: number; price: number; index: number }[] = [];
+    
+    if (bars.length < swingLength * 2 + 1) return { swingHighs, swingLows };
+    
+    for (let i = swingLength; i < bars.length - swingLength; i++) {
+      // Check for swing high: current bar high is higher than all bars within swingLength on both sides
+      let isSwingHigh = true;
+      let isSwingLow = true;
+      
+      for (let j = 1; j <= swingLength; j++) {
+        if (bars[i].high <= bars[i - j].high || bars[i].high <= bars[i + j].high) {
+          isSwingHigh = false;
+        }
+        if (bars[i].low >= bars[i - j].low || bars[i].low >= bars[i + j].low) {
+          isSwingLow = false;
+        }
+      }
+      
+      if (isSwingHigh) {
+        swingHighs.push({ time: bars[i].time as number, price: bars[i].high, index: i });
+      }
+      if (isSwingLow) {
+        swingLows.push({ time: bars[i].time as number, price: bars[i].low, index: i });
+      }
+    }
+    
+    return { swingHighs, swingLows };
+  }, []);
+
   // === Oscillator Calculation Functions ===
   const calculateRSI = useCallback((candles: Bar[], period: number = 14) => {
     if (candles.length < period + 1) return [];
@@ -1032,6 +1064,7 @@ export default function CryptoAI() {
       const absorption = detectAbsorption(data, cvdData);
       const hiddenDivergences = detectHiddenDivergence(data, cvdData);
       const liquidityGrabs = detectLiquidityGrabs(data);
+      const { swingHighs, swingLows } = detectSwingPivots(data, 5);
       
       const currentPrice = data[data.length - 1].close;
       const cvdCurrent = cvdData[cvdData.length - 1].value;
@@ -1162,6 +1195,8 @@ export default function CryptoAI() {
           absorption: absorption.slice(-5),
           hiddenDivergences: hiddenDivergences.slice(-5),
           liquidityGrabs: liquidityGrabs.slice(-5),
+          swingHighs: swingHighs.slice(-10),
+          swingLows: swingLows.slice(-10),
           orderflowData,
           liquidationData,
           cci: currentCCI,
@@ -1223,7 +1258,7 @@ export default function CryptoAI() {
     } finally {
       setAnalyzing(false);
     }
-  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, refetchCachedAnalysis, toast, getToken, cachedAnalysis, isCacheValid, getRemainingCacheTime]);
+  }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, detectSwingPivots, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, refetchCachedAnalysis, toast, getToken, cachedAnalysis, isCacheValid, getRemainingCacheTime]);
 
   // Keep ref in sync with latest analyzeTrades callback
   useEffect(() => {

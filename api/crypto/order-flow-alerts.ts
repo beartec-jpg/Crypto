@@ -99,6 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       orderflowData, liquidationData,
       absorption = [], hiddenDivergences = [], liquidityGrabs = [],
       bullishOB = [], bearishOB = [], bullFVG = [], bearFVG = [],
+      swingHighs = [], swingLows = [],
       cci = 0, adx = 0, plusDI = 0, minusDI = 0,
       rsi = 50, macd = 0, macdSignal = 0, macdHistogram = 0,
       obv: _obv = 0, obvTrend = 'neutral', mfi = 50
@@ -283,6 +284,16 @@ ${clusterList}
 - +DI/-DI: ${plusDI.toFixed(2)}/${minusDI.toFixed(2)} - ${diInterpretation} direction
 ${orderflowAnalysis}
 ${liquidationAnalysis}
+
+**MARKET STRUCTURE (Swing Pivots - 5-bar lookback):**
+${swingHighs.length > 0 ? `- Swing Highs (Resistance): ${swingHighs.slice(-5).map((sh: any) => `$${sh.price?.toFixed(4)} @ ${formatEventTime(sh.time)}`).join(' → ')}` : '- No significant swing highs detected'}
+${swingLows.length > 0 ? `- Swing Lows (Support): ${swingLows.slice(-5).map((sl: any) => `$${sl.price?.toFixed(4)} @ ${formatEventTime(sl.time)}`).join(' → ')}` : '- No significant swing lows detected'}
+- Structure: ${swingHighs.length > 0 && swingLows.length > 0 ? 
+    (swingHighs[swingHighs.length - 1]?.price > (swingHighs[swingHighs.length - 2]?.price || 0) && 
+     swingLows[swingLows.length - 1]?.price > (swingLows[swingLows.length - 2]?.price || 0) ? 'HIGHER HIGHS + HIGHER LOWS (Uptrend)' :
+     swingHighs[swingHighs.length - 1]?.price < (swingHighs[swingHighs.length - 2]?.price || Infinity) && 
+     swingLows[swingLows.length - 1]?.price < (swingLows[swingLows.length - 2]?.price || Infinity) ? 'LOWER HIGHS + LOWER LOWS (Downtrend)' :
+     'MIXED (Consolidation/Range)') : 'Insufficient data'}
 
 **SMC/ICT ORDER FLOW SIGNALS:**
 - Bullish Order Blocks: ${bullishOBCount || 0}${bullishOB.length > 0 ? '\n  Recent: ' + bullishOB.slice(-3).map((ob: any) => `$${ob.low?.toFixed(4) || 'N/A'}-$${ob.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(ob.time)}`).join(', ') : ''}
