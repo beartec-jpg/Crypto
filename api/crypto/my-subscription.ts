@@ -85,6 +85,94 @@ async function getDb() {
   return pool;
 }
 
+// Get Stripe client
+async function getStripeClient() {
+  const Stripe = (await import('stripe')).default;
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  return new Stripe(key, { apiVersion: '2023-10-16' });
+}
+
+// Sync ALL subscriptions from Stripe for a customer
+// Returns null if sync fails (preserves existing DB values)
+async function syncAllSubscriptionsFromStripe(customerId: string, userId: string, pool: any): Promise<{ tier: BaseTier; hasElliott: boolean } | null> {
+  try {
+    const stripe = await getStripeClient();
+    if (!stripe || !customerId) {
+      console.log(`⚠️ Cannot sync - no Stripe client or customer ID`);
+      return null;
+    }
+
+    // Get ALL active subscriptions for this customer
+    const allSubs = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'active',
+      expand: ['data.items.data.price.product'],
+    });
+
+    console.log(`📋 Customer ${customerId} has ${allSubs.data.length} active subscriptions`);
+
+    if (allSubs.data.length === 0) {
+      console.log(`⚠️ No active subscriptions for customer`);
+      return null; // Don't downgrade - preserve existing
+    }
+
+    // Map product names to tiers
+    const tierMap: Record<string, BaseTier> = {
+      'Beginner membership': 'beginner',
+      'Intermediate membership': 'intermediate',
+      'Pro membership': 'pro',
+      'Elite membership': 'elite',
+    };
+
+    let bestTier: BaseTier = 'free';
+    let hasElliott = false;
+    let foundProducts: string[] = [];
+
+    // Check ALL subscriptions and ALL items
+    for (const sub of allSubs.data) {
+      console.log(`  📦 Subscription ${sub.id} (${sub.status}):`);
+      for (const item of sub.items.data) {
+        const productName = (item.price?.product as any)?.name || '';
+        console.log(`    - Product: "${productName}"`);
+        foundProducts.push(productName);
+
+        // Check for tier products
+        if (tierMap[productName]) {
+          const foundTier = tierMap[productName];
+          if (TIER_HIERARCHY[foundTier] > TIER_HIERARCHY[bestTier]) {
+            bestTier = foundTier;
+          }
+        }
+
+        // Check for Elliott Wave (handles "Elliot" and "Elliott" spellings)
+        if (productName.toLowerCase().includes('elliot')) {
+          hasElliott = true;
+          console.log(`    ✅ Found Elliott Wave!`);
+        }
+      }
+    }
+
+    // Only update if we found at least one known product
+    if (bestTier !== 'free' || hasElliott) {
+      await pool.query(`
+        UPDATE crypto_subscriptions 
+        SET tier = $1, has_elliott_addon = $2, updated_at = NOW()
+        WHERE user_id = $3
+      `, [bestTier, hasElliott, userId]);
+      
+      console.log(`✅ Synced: tier=${bestTier}, hasElliott=${hasElliott}`);
+      return { tier: bestTier, hasElliott };
+    } else {
+      console.log(`⚠️ Found ${foundProducts.length} products but none matched: ${foundProducts.join(', ')}`);
+      return null; // Preserve existing values
+    }
+  } catch (error) {
+    console.error('Stripe sync error:', error);
+    return null; // Preserve existing on error
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -153,9 +241,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       subscription = insertResult.rows[0];
     }
 
-    // Use database values directly - Stripe webhooks handle updates
-    const tier = (subscription.tier || 'free') as BaseTier;
-    const hasElliottAddon = subscription.has_elliott_addon || false;
+    // Get Stripe customer ID to sync from Stripe
+    const userResult = await pool.query(
+      'SELECT stripe_customer_id FROM crypto_users WHERE id = $1',
+      [userId]
+    );
+    const stripeCustomerId = userResult.rows[0]?.stripe_customer_id;
+
+    // Sync from Stripe if customer ID exists
+    let tier: BaseTier;
+    let hasElliottAddon: boolean;
+    
+    if (stripeCustomerId) {
+      const synced = await syncAllSubscriptionsFromStripe(stripeCustomerId, userId, pool);
+      if (synced) {
+        // Stripe sync successful - use synced values
+        tier = synced.tier;
+        hasElliottAddon = synced.hasElliott;
+      } else {
+        // Sync failed or no products found - use existing DB values
+        tier = (subscription.tier || 'free') as BaseTier;
+        hasElliottAddon = subscription.has_elliott_addon || false;
+      }
+    } else {
+      // No Stripe customer - use existing DB values
+      tier = (subscription.tier || 'free') as BaseTier;
+      hasElliottAddon = subscription.has_elliott_addon || false;
+    }
+    
     const capabilities = getCapabilities(tier, hasElliottAddon);
     
     const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
