@@ -181,12 +181,69 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const existingSub = subResult.rows[0];
 
       if (existingSub?.stripe_subscription_id && existingSub.tier !== 'free') {
-        // Use customer portal to manage existing subscription
-        const portal = await stripe.billingPortal.sessions.create({
-          customer: customerId,
-          return_url: successUrl,
-        });
-        return res.json({ url: portal.url });
+        // UPGRADE/DOWNGRADE: Update existing subscription with proration
+        try {
+          // Get the current subscription to find the base tier item
+          const subscription = await stripe.subscriptions.retrieve(existingSub.stripe_subscription_id, {
+            expand: ['items.data.price.product'],
+          });
+          
+          // Find the current base tier item (not Elliott addon)
+          const baseTierItem = subscription.items.data.find((item: any) => {
+            const productName = (item.price?.product as any)?.name || '';
+            return ['Beginner membership', 'Intermediate membership', 'Pro membership', 'Elite membership'].includes(productName);
+          });
+          
+          if (!baseTierItem) {
+            // No base tier found, create checkout for new subscription
+            const session = await stripe.checkout.sessions.create({
+              customer: customerId,
+              mode: 'subscription',
+              line_items: [{ price: priceId, quantity: 1 }],
+              success_url: successUrl,
+              cancel_url: cancelUrl,
+              metadata: { userId, tier, type: 'base_tier' },
+              subscription_data: {
+                metadata: { userId, tier, type: 'base_tier' },
+              },
+            });
+            return res.json({ url: session.url });
+          }
+          
+          // Update the subscription item to the new price (with proration)
+          await stripe.subscriptions.update(existingSub.stripe_subscription_id, {
+            items: [{
+              id: baseTierItem.id,
+              price: priceId,
+            }],
+            proration_behavior: 'create_prorations',
+            metadata: { userId, tier, type: 'base_tier' },
+          });
+          
+          // Update database
+          await pool.query(
+            `UPDATE crypto_subscriptions 
+             SET tier = $1, updated_at = NOW()
+             WHERE user_id = $2`,
+            [tier, userId]
+          );
+          
+          console.log(`✅ Upgraded user ${userId} from ${existingSub.tier} to ${tier}`);
+          return res.json({ 
+            success: true, 
+            upgraded: true,
+            message: `Successfully upgraded to ${tier.charAt(0).toUpperCase() + tier.slice(1)}! Proration applied.`,
+            url: successUrl 
+          });
+        } catch (upgradeError: any) {
+          console.error('Subscription upgrade error:', upgradeError);
+          // Fallback to portal if upgrade fails
+          const portal = await stripe.billingPortal.sessions.create({
+            customer: customerId,
+            return_url: successUrl,
+          });
+          return res.json({ url: portal.url });
+        }
       }
 
       // Create new checkout session

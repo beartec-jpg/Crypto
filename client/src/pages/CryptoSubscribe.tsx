@@ -114,7 +114,18 @@ export default function CryptoSubscribe() {
       return response.json();
     },
     onSuccess: (data) => {
-      if (data.url) {
+      if (data.upgraded && data.message) {
+        // Direct upgrade completed - show success and refresh
+        toast({
+          title: 'Subscription Upgraded!',
+          description: data.message,
+        });
+        queryClient.invalidateQueries({ queryKey: ['/api/crypto/my-subscription'] });
+        // Still redirect to success URL if provided
+        if (data.url) {
+          window.location.href = data.url;
+        }
+      } else if (data.url) {
         window.location.href = data.url;
       } else if (data.message) {
         toast({
