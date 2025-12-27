@@ -247,26 +247,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       [userId]
     );
     const stripeCustomerId = userResult.rows[0]?.stripe_customer_id;
+    
+    console.log(`🔍 User ${userId} (${email}): stripe_customer_id=${stripeCustomerId || 'NONE'}`);
 
-    // Sync from Stripe if customer ID exists
+    // Sync from Stripe if customer ID exists - this runs on EVERY request
     let tier: BaseTier;
     let hasElliottAddon: boolean;
     
     if (stripeCustomerId) {
+      console.log(`🔄 Starting Stripe sync for customer ${stripeCustomerId}...`);
       const synced = await syncAllSubscriptionsFromStripe(stripeCustomerId, userId, pool);
       if (synced) {
         // Stripe sync successful - use synced values
         tier = synced.tier;
         hasElliottAddon = synced.hasElliott;
+        console.log(`✅ Stripe sync complete: tier=${tier}, hasElliott=${hasElliottAddon}`);
       } else {
         // Sync failed or no products found - use existing DB values
         tier = (subscription.tier || 'free') as BaseTier;
         hasElliottAddon = subscription.has_elliott_addon || false;
+        console.log(`⚠️ Stripe sync returned null, using DB: tier=${tier}, hasElliott=${hasElliottAddon}`);
       }
     } else {
       // No Stripe customer - use existing DB values
       tier = (subscription.tier || 'free') as BaseTier;
       hasElliottAddon = subscription.has_elliott_addon || false;
+      console.log(`ℹ️ No Stripe customer, using DB: tier=${tier}, hasElliott=${hasElliottAddon}`);
     }
     
     const capabilities = getCapabilities(tier, hasElliottAddon);
