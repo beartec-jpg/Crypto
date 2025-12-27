@@ -487,6 +487,7 @@ export default function CryptoAI() {
   }, []);
 
   // === Absorption / Exhaustion Detection ===
+  // Detects significant absorption: massive volume + delta with minimal price movement
   const detectAbsorption = useCallback((bars: Bar[], cvdData: any[]): Absorption[] => {
     if (bars.length < 30) return [];
     
@@ -495,34 +496,38 @@ export default function CryptoAI() {
     const avgVol20 = averageVolume(bars.slice(-20));
     const avgDelta20 = averageDelta(bars.slice(-20));
     
-    const atr14 = atrArray[atrArray.length - 1]; // Use latest ATR
-    const MIN_PRICE_MOVE = 0.2 * atr14;     // price must stall <0.2 ATR (tighter)
-    const MIN_DELTA_STRENGTH = 3.5 * avgDelta20;  // delta surge >3.5x average (was 2.5)
-    const VOLUME_MULTIPLIER = 2.2;          // volume >2.2x 20-bar avg (was 1.8)
-    const COOLDOWN_BARS = 25;               // no repeat within 25 bars (was 15)
+    const atr14 = atrArray[atrArray.length - 1];
     
-    let lastAbsorb = -100;
+    // SIGNIFICANCE THRESHOLDS (no cooldowns, just strict requirements):
+    const MAX_PRICE_MOVE = 0.15 * atr14;      // price must stall <0.15 ATR (very tight)
+    const MIN_DELTA_STRENGTH = 4.0 * avgDelta20;  // delta surge >4x average (exceptional)
+    const VOLUME_MULTIPLIER = 2.5;            // volume >2.5x 20-bar avg (major spike)
+    const LOOKBACK_WINDOW = 5;                // check over 5 bars
     
     for (let i = 20; i < bars.length - 5; i++) {
-      const priceMove5 = Math.abs(bars[i].close - bars[i - 5].close);
-      const deltaSum = Math.abs(cvdData[i].delta - cvdData[i - 5].delta);
+      const priceMove = Math.abs(bars[i].close - bars[i - LOOKBACK_WINDOW].close);
+      const deltaChange = Math.abs(cvdData[i].delta - cvdData[i - LOOKBACK_WINDOW].delta);
       
-      if (priceMove5 > MIN_PRICE_MOVE) continue;
-      if (deltaSum < MIN_DELTA_STRENGTH) continue;
+      // All conditions must be met for significant absorption
+      if (priceMove > MAX_PRICE_MOVE) continue;
+      if (deltaChange < MIN_DELTA_STRENGTH) continue;
       if (bars[i].volume < avgVol20 * VOLUME_MULTIPLIER) continue;
-      if (i - lastAbsorb < COOLDOWN_BARS) continue;
+      
+      // Additional: confirm absorption over multiple bars (not just spike)
+      const multiBarVolume = bars.slice(i - 2, i + 1).reduce((s, b) => s + b.volume, 0) / 3;
+      if (multiBarVolume < avgVol20 * 2.0) continue;
       
       signals.push({
         time: bars[i].time,
         price: bars[i].close,
-        type: cvdData[i].delta > cvdData[i - 5].delta ? 'bullAbsorb' : 'bearAbsorb'
+        type: cvdData[i].delta > cvdData[i - LOOKBACK_WINDOW].delta ? 'bullAbsorb' : 'bearAbsorb'
       });
-      lastAbsorb = i;
     }
     return signals;
   }, [calculateATR, averageVolume, averageDelta]);
 
   // === Hidden Divergence Detection ===
+  // Detects significant divergences: price and CVD moving in opposite directions
   const detectHiddenDivergence = useCallback((bars: Bar[], cvdData: any[]) => {
     if (bars.length < 60) return [];
     
@@ -530,47 +535,46 @@ export default function CryptoAI() {
     const atrArray = calculateATR(bars, 14);
     const avgDelta20 = averageDelta(bars.slice(-20));
     
-    const atr14 = atrArray[atrArray.length - 1]; // Use latest ATR
-    const MIN_SWING_STRENGTH = 1.2 * atr14;  // price move must be >1.2 ATR (was 0.5)
-    const MIN_CVD_DIFF = 2.5 * avgDelta20;   // CVD counter-move >2.5x avg delta (was 1.5)
-    const LOOKBACK = 50;                     // only check last 50 bars
-    const MIN_BARS_BETWEEN = 20;             // no repeat signals sooner (was 5)
+    const atr14 = atrArray[atrArray.length - 1];
     
-    let lastBullSignalIndex = -100;
-    let lastBearSignalIndex = -100;
+    // SIGNIFICANCE THRESHOLDS (no cooldowns):
+    const MIN_SWING_STRENGTH = 1.8 * atr14;   // price swing >1.8 ATR (major swing)
+    const MIN_CVD_DIVERGENCE = 3.5 * avgDelta20;  // CVD counter-move >3.5x avg (strong divergence)
+    const LOOKBACK = 30;                      // 30-bar window to find swing points
     
-    for (let i = LOOKBACK; i < bars.length - 5; i++) {
-      const recentBars = bars.slice(i - LOOKBACK, i);
-      const recentCVD = cvdData.slice(i - LOOKBACK, i);
+    for (let i = LOOKBACK; i < bars.length - 3; i++) {
+      const recentBars = bars.slice(i - LOOKBACK, i + 1);
+      const recentCVD = cvdData.slice(i - LOOKBACK, i + 1);
       
-      // Bullish hidden divergence: price making lower lows, CVD making higher lows
+      // Find swing lows in price and CVD
       const priceLows = recentBars.map(b => b.low);
-      const cvdLows = recentCVD.map(c => c.value);
-      const priceSwing = priceLows[priceLows.length - 1] - Math.min(...priceLows.slice(0, -1));
-      const cvdSwing = cvdLows[cvdLows.length - 1] - Math.min(...cvdLows.slice(0, -1));
+      const cvdValues = recentCVD.map(c => c.value);
       
-      if (Math.abs(priceSwing) < MIN_SWING_STRENGTH) continue;
-      if (Math.abs(cvdSwing) < MIN_CVD_DIFF) continue;
-      if (i - lastBullSignalIndex < MIN_BARS_BETWEEN) continue;
+      const currentPriceLow = priceLows[priceLows.length - 1];
+      const prevPriceLow = Math.min(...priceLows.slice(0, -5));
+      const currentCVD = cvdValues[cvdValues.length - 1];
+      const prevCVDLow = Math.min(...cvdValues.slice(0, -5));
       
-      if (priceSwing < 0 && cvdSwing > 0) {
+      const priceSwing = currentPriceLow - prevPriceLow;
+      const cvdSwing = currentCVD - prevCVDLow;
+      
+      // Bullish hidden divergence: LOWER price low but HIGHER CVD low (accumulation)
+      if (priceSwing < -MIN_SWING_STRENGTH && cvdSwing > MIN_CVD_DIVERGENCE) {
         divergences.push({ time: bars[i].time, type: 'bullish', price: bars[i].low });
-        lastBullSignalIndex = i;
       }
       
-      // Bearish hidden divergence: price making higher highs, CVD making lower highs
+      // Find swing highs
       const priceHighs = recentBars.map(b => b.high);
-      const cvdHighs = recentCVD.map(c => c.value);
-      const priceHighSwing = priceHighs[priceHighs.length - 1] - Math.max(...priceHighs.slice(0, -1));
-      const cvdHighSwing = cvdHighs[cvdHighs.length - 1] - Math.max(...cvdHighs.slice(0, -1));
+      const currentPriceHigh = priceHighs[priceHighs.length - 1];
+      const prevPriceHigh = Math.max(...priceHighs.slice(0, -5));
+      const prevCVDHigh = Math.max(...cvdValues.slice(0, -5));
       
-      if (Math.abs(priceHighSwing) < MIN_SWING_STRENGTH) continue;
-      if (Math.abs(cvdHighSwing) < MIN_CVD_DIFF) continue;
-      if (i - lastBearSignalIndex < MIN_BARS_BETWEEN) continue;
+      const priceHighSwing = currentPriceHigh - prevPriceHigh;
+      const cvdHighSwing = currentCVD - prevCVDHigh;
       
-      if (priceHighSwing > 0 && cvdHighSwing < 0) {
+      // Bearish hidden divergence: HIGHER price high but LOWER CVD high (distribution)
+      if (priceHighSwing > MIN_SWING_STRENGTH && cvdHighSwing < -MIN_CVD_DIVERGENCE) {
         divergences.push({ time: bars[i].time, type: 'bearish', price: bars[i].high });
-        lastBearSignalIndex = i;
       }
     }
     
@@ -578,42 +582,51 @@ export default function CryptoAI() {
   }, [calculateATR, averageDelta]);
 
   // === Liquidity Grab Detection ===
+  // Detects significant liquidity grabs: sweeping major swing levels with strong reversal
   const detectLiquidityGrabs = useCallback((bars: Bar[]) => {
     const grabs: any[] = [];
-    const lookback = 25;           // Increased from 10 - need more significant swing levels
-    const COOLDOWN = 15;           // Minimum bars between signals
-    let lastGrabIndex = -100;
+    const lookback = 30;           // 30-bar lookback for significant swing levels
     
-    for (let i = lookback; i < bars.length - 5; i++) {
-      if (i - lastGrabIndex < COOLDOWN) continue;
-      
+    for (let i = lookback; i < bars.length - 4; i++) {
       const recentBars = bars.slice(i - lookback, i);
       const recentLows = recentBars.map(b => b.low);
       const recentHighs = recentBars.map(b => b.high);
       const minLow = Math.min(...recentLows);
       const maxHigh = Math.max(...recentHighs);
       
-      // Calculate swing significance (must be meaningful move)
+      // SIGNIFICANCE: swing range must be substantial
       const swingRange = maxHigh - minLow;
       const avgRange = recentBars.reduce((sum, b) => sum + (b.high - b.low), 0) / recentBars.length;
-      if (swingRange < avgRange * 3) continue;  // Swing must be at least 3x avg bar range
+      if (swingRange < avgRange * 5) continue;  // Swing must be 5x avg bar range (major level)
       
-      // Bullish liquidity grab: sweep below recent lows + strong reversal
-      if (bars[i].low < minLow && 
-          bars[i].close > bars[i].open &&
+      // The sweep must be meaningful (not just touching by a tiny wick)
+      const sweepDepth = minLow - bars[i].low;
+      const sweepHeight = bars[i].high - maxHigh;
+      
+      // Bullish liquidity grab: sweep well below + strong bullish reversal bar
+      if (sweepDepth > avgRange * 0.5 &&          // Swept by at least 0.5x avg range
+          bars[i].close > bars[i].open &&          // Bullish candle
           bars[i].close > (bars[i].high + bars[i].low) / 2 &&  // Close in upper half
-          bars.slice(i + 1, i + 4).every((b, idx) => idx === 0 || b.close > bars[i + idx].close)) {
-        grabs.push({ time: bars[i].time, type: 'bullish', price: bars[i].low });
-        lastGrabIndex = i;
+          (bars[i].close - bars[i].open) > avgRange * 0.8) {   // Strong body
+        // Confirm reversal in next 2-3 bars
+        const nextBars = bars.slice(i + 1, i + 4);
+        const allHigher = nextBars.every((b, idx) => b.close > bars[i].close - avgRange * 0.3);
+        if (allHigher) {
+          grabs.push({ time: bars[i].time, type: 'bullish', price: bars[i].low });
+        }
       }
       
-      // Bearish liquidity grab: sweep above recent highs + strong reversal
-      if (bars[i].high > maxHigh && 
-          bars[i].close < bars[i].open &&
+      // Bearish liquidity grab: sweep well above + strong bearish reversal bar
+      if (sweepHeight > avgRange * 0.5 &&          // Swept by at least 0.5x avg range
+          bars[i].close < bars[i].open &&          // Bearish candle
           bars[i].close < (bars[i].high + bars[i].low) / 2 &&  // Close in lower half
-          bars.slice(i + 1, i + 4).every((b, idx) => idx === 0 || b.close < bars[i + idx].close)) {
-        grabs.push({ time: bars[i].time, type: 'bearish', price: bars[i].high });
-        lastGrabIndex = i;
+          (bars[i].open - bars[i].close) > avgRange * 0.8) {   // Strong body
+        // Confirm reversal in next 2-3 bars
+        const nextBars = bars.slice(i + 1, i + 4);
+        const allLower = nextBars.every((b, idx) => b.close < bars[i].close + avgRange * 0.3);
+        if (allLower) {
+          grabs.push({ time: bars[i].time, type: 'bearish', price: bars[i].high });
+        }
       }
     }
     
