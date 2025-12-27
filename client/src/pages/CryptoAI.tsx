@@ -496,10 +496,10 @@ export default function CryptoAI() {
     const avgDelta20 = averageDelta(bars.slice(-20));
     
     const atr14 = atrArray[atrArray.length - 1]; // Use latest ATR
-    const MIN_PRICE_MOVE = 0.3 * atr14;     // price must stall <0.3 ATR over 5-10 bars
-    const MIN_DELTA_STRENGTH = 2.5 * avgDelta20;  // delta surge >2.5x average
-    const VOLUME_MULTIPLIER = 1.8;          // volume >1.8x 20-bar avg
-    const COOLDOWN_BARS = 15;               // no repeat within 15 bars
+    const MIN_PRICE_MOVE = 0.2 * atr14;     // price must stall <0.2 ATR (tighter)
+    const MIN_DELTA_STRENGTH = 3.5 * avgDelta20;  // delta surge >3.5x average (was 2.5)
+    const VOLUME_MULTIPLIER = 2.2;          // volume >2.2x 20-bar avg (was 1.8)
+    const COOLDOWN_BARS = 25;               // no repeat within 25 bars (was 15)
     
     let lastAbsorb = -100;
     
@@ -531,10 +531,10 @@ export default function CryptoAI() {
     const avgDelta20 = averageDelta(bars.slice(-20));
     
     const atr14 = atrArray[atrArray.length - 1]; // Use latest ATR
-    const MIN_SWING_STRENGTH = 0.5 * atr14;  // price move must be >0.5 ATR
-    const MIN_CVD_DIFF = 1.5 * avgDelta20;   // CVD counter-move >1.5x avg delta
+    const MIN_SWING_STRENGTH = 1.2 * atr14;  // price move must be >1.2 ATR (was 0.5)
+    const MIN_CVD_DIFF = 2.5 * avgDelta20;   // CVD counter-move >2.5x avg delta (was 1.5)
     const LOOKBACK = 50;                     // only check last 50 bars
-    const MIN_BARS_BETWEEN = 5;              // no repeat signals sooner
+    const MIN_BARS_BETWEEN = 20;             // no repeat signals sooner (was 5)
     
     let lastBullSignalIndex = -100;
     let lastBearSignalIndex = -100;
@@ -580,27 +580,40 @@ export default function CryptoAI() {
   // === Liquidity Grab Detection ===
   const detectLiquidityGrabs = useCallback((bars: Bar[]) => {
     const grabs: any[] = [];
-    const lookback = 10;
+    const lookback = 25;           // Increased from 10 - need more significant swing levels
+    const COOLDOWN = 15;           // Minimum bars between signals
+    let lastGrabIndex = -100;
     
     for (let i = lookback; i < bars.length - 5; i++) {
+      if (i - lastGrabIndex < COOLDOWN) continue;
+      
       const recentBars = bars.slice(i - lookback, i);
       const recentLows = recentBars.map(b => b.low);
       const recentHighs = recentBars.map(b => b.high);
       const minLow = Math.min(...recentLows);
       const maxHigh = Math.max(...recentHighs);
       
-      // Bullish liquidity grab: sweep below recent lows + immediate reversal
+      // Calculate swing significance (must be meaningful move)
+      const swingRange = maxHigh - minLow;
+      const avgRange = recentBars.reduce((sum, b) => sum + (b.high - b.low), 0) / recentBars.length;
+      if (swingRange < avgRange * 3) continue;  // Swing must be at least 3x avg bar range
+      
+      // Bullish liquidity grab: sweep below recent lows + strong reversal
       if (bars[i].low < minLow && 
           bars[i].close > bars[i].open &&
+          bars[i].close > (bars[i].high + bars[i].low) / 2 &&  // Close in upper half
           bars.slice(i + 1, i + 4).every((b, idx) => idx === 0 || b.close > bars[i + idx].close)) {
         grabs.push({ time: bars[i].time, type: 'bullish', price: bars[i].low });
+        lastGrabIndex = i;
       }
       
-      // Bearish liquidity grab: sweep above recent highs + immediate reversal
+      // Bearish liquidity grab: sweep above recent highs + strong reversal
       if (bars[i].high > maxHigh && 
           bars[i].close < bars[i].open &&
+          bars[i].close < (bars[i].high + bars[i].low) / 2 &&  // Close in lower half
           bars.slice(i + 1, i + 4).every((b, idx) => idx === 0 || b.close < bars[i + idx].close)) {
         grabs.push({ time: bars[i].time, type: 'bearish', price: bars[i].high });
+        lastGrabIndex = i;
       }
     }
     
