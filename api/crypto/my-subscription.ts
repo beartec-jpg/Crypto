@@ -85,6 +85,75 @@ async function getDb() {
   return pool;
 }
 
+// Stripe client
+async function getStripeClient() {
+  const Stripe = (await import('stripe')).default;
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeSecretKey) {
+    return null;
+  }
+  return new Stripe(stripeSecretKey, { apiVersion: '2023-10-16' });
+}
+
+// Sync subscription data from Stripe
+async function syncFromStripe(customerId: string, userId: string, pool: any): Promise<{ tier: BaseTier; hasElliott: boolean }> {
+  try {
+    const stripe = await getStripeClient();
+    if (!stripe || !customerId) {
+      return { tier: 'free', hasElliott: false };
+    }
+
+    // Get all active subscriptions for this customer
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'active',
+      expand: ['data.items.data.price.product'],
+    });
+
+    let detectedTier: BaseTier = 'free';
+    let hasElliott = false;
+
+    const tierMap: Record<string, BaseTier> = {
+      'Beginner membership': 'beginner',
+      'Intermediate membership': 'intermediate',
+      'Pro membership': 'pro',
+      'Elite membership': 'elite',
+    };
+
+    for (const sub of subscriptions.data) {
+      for (const item of sub.items.data) {
+        const productName = (item.price?.product as any)?.name || '';
+        
+        // Check for base tier
+        if (tierMap[productName]) {
+          const foundTier = tierMap[productName];
+          if (TIER_HIERARCHY[foundTier] > TIER_HIERARCHY[detectedTier]) {
+            detectedTier = foundTier;
+          }
+        }
+        
+        // Check for Elliott Wave (addon or separate subscription)
+        if (productName.toLowerCase().includes('elliot') || productName.toLowerCase().includes('elliott')) {
+          hasElliott = true;
+        }
+      }
+    }
+
+    // Update database with correct values from Stripe
+    await pool.query(`
+      UPDATE crypto_subscriptions 
+      SET tier = $1, has_elliott_addon = $2, updated_at = NOW()
+      WHERE user_id = $3
+    `, [detectedTier, hasElliott, userId]);
+
+    console.log(`✅ Synced user ${userId}: tier=${detectedTier}, hasElliott=${hasElliott}`);
+    return { tier: detectedTier, hasElliott };
+  } catch (error) {
+    console.error('Stripe sync error:', error);
+    return { tier: 'free', hasElliott: false };
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -153,8 +222,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       subscription = insertResult.rows[0];
     }
 
-    const tier = (subscription.tier || 'free') as BaseTier;
-    const hasElliottAddon = subscription.has_elliott_addon || false;
+    // Get Stripe customer ID to sync from Stripe
+    const userResult = await pool.query(
+      'SELECT stripe_customer_id FROM crypto_users WHERE id = $1',
+      [userId]
+    );
+    const stripeCustomerId = userResult.rows[0]?.stripe_customer_id;
+
+    // Sync from Stripe if customer exists (this updates database with real values)
+    let tier: BaseTier;
+    let hasElliottAddon: boolean;
+    
+    if (stripeCustomerId) {
+      const synced = await syncFromStripe(stripeCustomerId, userId, pool);
+      tier = synced.tier;
+      hasElliottAddon = synced.hasElliott;
+    } else {
+      tier = (subscription.tier || 'free') as BaseTier;
+      hasElliottAddon = subscription.has_elliott_addon || false;
+    }
     const capabilities = getCapabilities(tier, hasElliottAddon);
     
     const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
