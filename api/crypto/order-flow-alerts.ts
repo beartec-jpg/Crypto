@@ -292,16 +292,15 @@ ${liquidationAnalysis}
 - Swing Highs (oldest to newest): ${swingHighs.length > 0 ? swingHighs.slice(-20).map((sh: any) => `$${sh.price?.toFixed(4)} [${formatEventTime(sh.time)}]`).join(' → ') : 'None'}
 - Swing Lows (oldest to newest): ${swingLows.length > 0 ? swingLows.slice(-20).map((sl: any) => `$${sl.price?.toFixed(4)} [${formatEventTime(sl.time)}]`).join(' → ') : 'None'}
 
-**SMC/ICT ORDER FLOW SIGNALS:**
-- Bullish Order Blocks: ${bullishOBCount || 0}${bullishOB.length > 0 ? '\n  Recent: ' + bullishOB.slice(-3).map((ob: any) => `$${ob.low?.toFixed(4) || 'N/A'}-$${ob.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(ob.time)}`).join(', ') : ''}
-- Bearish Order Blocks: ${bearishOBCount || 0}${bearishOB.length > 0 ? '\n  Recent: ' + bearishOB.slice(-3).map((ob: any) => `$${ob.low?.toFixed(4) || 'N/A'}-$${ob.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(ob.time)}`).join(', ') : ''}
-- Bullish Fair Value Gaps: ${bullFVGCount || 0}${bullFVG.length > 0 ? '\n  Recent: ' + bullFVG.slice(-3).map((fvg: any) => `$${fvg.low?.toFixed(4) || 'N/A'}-$${fvg.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(fvg.time)}`).join(', ') : ''}
-- Bearish Fair Value Gaps: ${bearFVGCount || 0}${bearFVG.length > 0 ? '\n  Recent: ' + bearFVG.slice(-3).map((fvg: any) => `$${fvg.low?.toFixed(4) || 'N/A'}-$${fvg.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(fvg.time)}`).join(', ') : ''}
-- Buy Imbalances: ${buyImbalancesCount || 0}
-- Sell Imbalances: ${sellImbalancesCount || 0}
-- Absorption Events: ${absorptionCount || 0}${absorption.length > 0 ? '\n  Recent: ' + absorption.slice(-3).map((a: any) => `${a.type} @ $${a.price?.toFixed(4) || 'N/A'} (${formatEventTime(a.time)})`).join(', ') : ''}
-- Hidden Divergences: ${hiddenDivergenceCount || 0}${hiddenDivergences.length > 0 ? '\n  Recent: ' + hiddenDivergences.slice(-3).map((d: any) => `${d.type} @ $${d.price?.toFixed(4) || 'N/A'} (${formatEventTime(d.time)})`).join(', ') : ''}
-- Liquidity Grabs: ${liquidityGrabCount || 0}${liquidityGrabs.length > 0 ? '\n  Recent: ' + liquidityGrabs.slice(-3).map((lg: any) => `${lg.type} @ $${lg.price?.toFixed(4) || 'N/A'} (${formatEventTime(lg.time)})`).join(', ') : ''}
+**SMC/ICT ORDER FLOW SIGNALS (all events with timestamps):**
+- Bullish Order Blocks (${bullishOB.length}): ${bullishOB.length > 0 ? bullishOB.map((ob: any) => `$${ob.low?.toFixed(4)}-$${ob.high?.toFixed(4)} [${formatEventTime(ob.time)}]`).join(' → ') : 'None'}
+- Bearish Order Blocks (${bearishOB.length}): ${bearishOB.length > 0 ? bearishOB.map((ob: any) => `$${ob.low?.toFixed(4)}-$${ob.high?.toFixed(4)} [${formatEventTime(ob.time)}]`).join(' → ') : 'None'}
+- Bullish FVGs (${bullFVG.length}): ${bullFVG.length > 0 ? bullFVG.map((fvg: any) => `$${fvg.low?.toFixed(4)}-$${fvg.high?.toFixed(4)} [${formatEventTime(fvg.time)}]`).join(' → ') : 'None'}
+- Bearish FVGs (${bearFVG.length}): ${bearFVG.length > 0 ? bearFVG.map((fvg: any) => `$${fvg.low?.toFixed(4)}-$${fvg.high?.toFixed(4)} [${formatEventTime(fvg.time)}]`).join(' → ') : 'None'}
+- Buy Imbalances: ${buyImbalancesCount || 0} | Sell Imbalances: ${sellImbalancesCount || 0}
+- Absorption Events (${absorption.length}): ${absorption.length > 0 ? absorption.map((a: any) => `${a.type} $${a.price?.toFixed(4)} [${formatEventTime(a.time)}]`).join(' → ') : 'None'}
+- Hidden Divergences (${hiddenDivergences.length}): ${hiddenDivergences.length > 0 ? hiddenDivergences.map((d: any) => `${d.type} $${d.price?.toFixed(4)} [${formatEventTime(d.time)}]`).join(' → ') : 'None'}
+- Liquidity Grabs (${liquidityGrabs.length}): ${liquidityGrabs.length > 0 ? liquidityGrabs.map((lg: any) => `${lg.type} $${lg.price?.toFixed(4)} [${formatEventTime(lg.time)}]`).join(' → ') : 'None'}
 
 **ANALYSIS REQUIREMENTS:**
 1. Evaluate the OVERALL market structure and bias based on ALL available data
