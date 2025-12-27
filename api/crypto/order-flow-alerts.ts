@@ -296,13 +296,13 @@ ${liquidationAnalysis}
 - Liquidity Grabs: ${liquidityGrabCount || 0}${liquidityGrabs.length > 0 ? '\n  Recent: ' + liquidityGrabs.slice(-3).map((lg: any) => `${lg.type} @ $${lg.price?.toFixed(4) || 'N/A'} (${formatEventTime(lg.time)})`).join(', ') : ''}
 
 **ANALYSIS REQUIREMENTS:**
-1. Evaluate the OVERALL market structure and bias based on ALL indicators
+1. Evaluate the OVERALL market structure and bias based on ALL available data
 2. Look for CONFLUENCE between multiple signals (OBs + FVGs + oscillators + orderflow)
 3. Consider liquidation clusters as potential reversal zones
 4. Weight more heavily: RSI extremes, MACD crosses, CVD divergences, and absorption events
 5. Only suggest trades with 3+ confluence factors
 6. If no high-probability setup exists, say so clearly
-7. CRITICAL: Consider the TIMING of events - recent events (within last few candles) are more relevant than older ones. Events more than 20-30 candles ago may no longer be valid signals.
+7. Use the timestamps to understand the SEQUENCE of events - analyze how earlier events led to later ones, and use ALL data points to determine the highest probability outcome
 
 Return ONLY valid JSON in this exact format:
 {
