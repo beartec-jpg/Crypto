@@ -95,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       symbol, interval, currentPrice, cvd, cvdTrend, poc, vah, val, 
       bullishOBCount, bearishOBCount, bullFVGCount, bearFVGCount,
       buyImbalancesCount, sellImbalancesCount, absorptionCount,
-      hiddenDivergenceCount, liquidityGrabCount, recentBars,
+      hiddenDivergenceCount, liquidityGrabCount,
       orderflowData, liquidationData,
       absorption = [], hiddenDivergences = [], liquidityGrabs = [],
       bullishOB = [], bearishOB = [], bullFVG = [], bearFVG = [],
@@ -111,7 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return date.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
     };
 
-    if (!symbol || !currentPrice || !recentBars) {
+    if (!symbol || !currentPrice) {
       return res.status(400).json({ error: 'Missing required data' });
     }
 
@@ -217,8 +217,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const last50Bars = recentBars.slice(-50);
-    const priceChange = ((currentPrice - last50Bars[0].close) / last50Bars[0].close) * 100;
+    // Calculate price range from swing pivots
+    const allPrices = [...swingHighs.map((s: any) => s.price), ...swingLows.map((s: any) => s.price)].filter(Boolean);
+    const rangeHigh = allPrices.length > 0 ? Math.max(...allPrices) : currentPrice;
+    const rangeLow = allPrices.length > 0 ? Math.min(...allPrices) : currentPrice;
 
     let orderflowAnalysis = '';
     if (orderflowData) {
@@ -264,7 +266,7 @@ ${clusterList}
 
 **PRICE ACTION:**
 - Current Price: $${currentPrice.toFixed(4)}
-- Recent Change: ${priceChange.toFixed(2)}%
+- Position in Range: ${rangeHigh !== rangeLow ? ((currentPrice - rangeLow) / (rangeHigh - rangeLow) * 100).toFixed(1) : 50}% (0%=low, 100%=high)
 - Volume Profile POC: $${poc?.toFixed(4) || 'N/A'}
 - Value Area High (VAH): $${vah?.toFixed(4) || 'N/A'}
 - Value Area Low (VAL): $${val?.toFixed(4) || 'N/A'}
@@ -286,8 +288,10 @@ ${orderflowAnalysis}
 ${liquidationAnalysis}
 
 **MARKET STRUCTURE (Swing Pivots - 5-bar lookback):**
-${swingHighs.length > 0 ? `- Swing Highs (Resistance): ${swingHighs.slice(-5).map((sh: any) => `$${sh.price?.toFixed(4)} @ ${formatEventTime(sh.time)}`).join(' → ')}` : '- No significant swing highs detected'}
-${swingLows.length > 0 ? `- Swing Lows (Support): ${swingLows.slice(-5).map((sl: any) => `$${sl.price?.toFixed(4)} @ ${formatEventTime(sl.time)}`).join(' → ')}` : '- No significant swing lows detected'}
+- Total Swing Highs: ${swingHighs.length} | Total Swing Lows: ${swingLows.length}
+- Range: $${rangeLow.toFixed(4)} - $${rangeHigh.toFixed(4)}
+${swingHighs.length > 0 ? `- Recent Swing Highs (newest first): ${swingHighs.slice(-15).reverse().map((sh: any) => `$${sh.price?.toFixed(4)} (${formatEventTime(sh.time)})`).join(', ')}` : '- No swing highs detected'}
+${swingLows.length > 0 ? `- Recent Swing Lows (newest first): ${swingLows.slice(-15).reverse().map((sl: any) => `$${sl.price?.toFixed(4)} (${formatEventTime(sl.time)})`).join(', ')}` : '- No swing lows detected'}
 - Structure: ${swingHighs.length > 0 && swingLows.length > 0 ? 
     (swingHighs[swingHighs.length - 1]?.price > (swingHighs[swingHighs.length - 2]?.price || 0) && 
      swingLows[swingLows.length - 1]?.price > (swingLows[swingLows.length - 2]?.price || 0) ? 'HIGHER HIGHS + HIGHER LOWS (Uptrend)' :
