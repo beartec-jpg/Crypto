@@ -210,13 +210,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.json({ url: session.url });
           }
           
-          // Update the subscription item to the new price (with proration)
+          // Update the subscription item to the new price (with immediate billing)
           await stripe.subscriptions.update(existingSub.stripe_subscription_id, {
             items: [{
               id: baseTierItem.id,
               price: priceId,
             }],
-            proration_behavior: 'create_prorations',
+            proration_behavior: 'always_invoice', // Create and pay invoice immediately
+            payment_behavior: 'error_if_incomplete', // Fail if payment can't be collected
             metadata: { userId, tier, type: 'base_tier' },
           });
           
