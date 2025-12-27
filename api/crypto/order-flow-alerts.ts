@@ -288,16 +288,9 @@ ${orderflowAnalysis}
 ${liquidationAnalysis}
 
 **MARKET STRUCTURE (Swing Pivots - 5-bar lookback):**
-- Total Swing Highs: ${swingHighs.length} | Total Swing Lows: ${swingLows.length}
 - Range: $${rangeLow.toFixed(4)} - $${rangeHigh.toFixed(4)}
-${swingHighs.length > 0 ? `- Recent Swing Highs (newest first): ${swingHighs.slice(-15).reverse().map((sh: any) => `$${sh.price?.toFixed(4)} (${formatEventTime(sh.time)})`).join(', ')}` : '- No swing highs detected'}
-${swingLows.length > 0 ? `- Recent Swing Lows (newest first): ${swingLows.slice(-15).reverse().map((sl: any) => `$${sl.price?.toFixed(4)} (${formatEventTime(sl.time)})`).join(', ')}` : '- No swing lows detected'}
-- Structure: ${swingHighs.length > 0 && swingLows.length > 0 ? 
-    (swingHighs[swingHighs.length - 1]?.price > (swingHighs[swingHighs.length - 2]?.price || 0) && 
-     swingLows[swingLows.length - 1]?.price > (swingLows[swingLows.length - 2]?.price || 0) ? 'HIGHER HIGHS + HIGHER LOWS (Uptrend)' :
-     swingHighs[swingHighs.length - 1]?.price < (swingHighs[swingHighs.length - 2]?.price || Infinity) && 
-     swingLows[swingLows.length - 1]?.price < (swingLows[swingLows.length - 2]?.price || Infinity) ? 'LOWER HIGHS + LOWER LOWS (Downtrend)' :
-     'MIXED (Consolidation/Range)') : 'Insufficient data'}
+- Swing Highs (oldest to newest): ${swingHighs.length > 0 ? swingHighs.slice(-20).map((sh: any) => `$${sh.price?.toFixed(4)} [${formatEventTime(sh.time)}]`).join(' → ') : 'None'}
+- Swing Lows (oldest to newest): ${swingLows.length > 0 ? swingLows.slice(-20).map((sl: any) => `$${sl.price?.toFixed(4)} [${formatEventTime(sl.time)}]`).join(' → ') : 'None'}
 
 **SMC/ICT ORDER FLOW SIGNALS:**
 - Bullish Order Blocks: ${bullishOBCount || 0}${bullishOB.length > 0 ? '\n  Recent: ' + bullishOB.slice(-3).map((ob: any) => `$${ob.low?.toFixed(4) || 'N/A'}-$${ob.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(ob.time)}`).join(', ') : ''}
