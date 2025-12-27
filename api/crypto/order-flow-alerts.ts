@@ -97,10 +97,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       buyImbalancesCount, sellImbalancesCount, absorptionCount,
       hiddenDivergenceCount, liquidityGrabCount, recentBars,
       orderflowData, liquidationData,
+      absorption = [], hiddenDivergences = [], liquidityGrabs = [],
+      bullishOB = [], bearishOB = [], bullFVG = [], bearFVG = [],
       cci = 0, adx = 0, plusDI = 0, minusDI = 0,
       rsi = 50, macd = 0, macdSignal = 0, macdHistogram = 0,
       obv: _obv = 0, obvTrend = 'neutral', mfi = 50
     } = req.body;
+    
+    // Helper to format Unix timestamp to readable date/time
+    const formatEventTime = (timestamp: number) => {
+      const date = new Date(timestamp * 1000);
+      return date.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+    };
 
     if (!symbol || !currentPrice || !recentBars) {
       return res.status(400).json({ error: 'Missing required data' });
@@ -277,15 +285,15 @@ ${orderflowAnalysis}
 ${liquidationAnalysis}
 
 **SMC/ICT ORDER FLOW SIGNALS:**
-- Bullish Order Blocks: ${bullishOBCount || 0}
-- Bearish Order Blocks: ${bearishOBCount || 0}
-- Bullish Fair Value Gaps: ${bullFVGCount || 0}
-- Bearish Fair Value Gaps: ${bearFVGCount || 0}
+- Bullish Order Blocks: ${bullishOBCount || 0}${bullishOB.length > 0 ? '\n  Recent: ' + bullishOB.slice(-3).map((ob: any) => `$${ob.low?.toFixed(4) || 'N/A'}-$${ob.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(ob.time)}`).join(', ') : ''}
+- Bearish Order Blocks: ${bearishOBCount || 0}${bearishOB.length > 0 ? '\n  Recent: ' + bearishOB.slice(-3).map((ob: any) => `$${ob.low?.toFixed(4) || 'N/A'}-$${ob.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(ob.time)}`).join(', ') : ''}
+- Bullish Fair Value Gaps: ${bullFVGCount || 0}${bullFVG.length > 0 ? '\n  Recent: ' + bullFVG.slice(-3).map((fvg: any) => `$${fvg.low?.toFixed(4) || 'N/A'}-$${fvg.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(fvg.time)}`).join(', ') : ''}
+- Bearish Fair Value Gaps: ${bearFVGCount || 0}${bearFVG.length > 0 ? '\n  Recent: ' + bearFVG.slice(-3).map((fvg: any) => `$${fvg.low?.toFixed(4) || 'N/A'}-$${fvg.high?.toFixed(4) || 'N/A'} @ ${formatEventTime(fvg.time)}`).join(', ') : ''}
 - Buy Imbalances: ${buyImbalancesCount || 0}
 - Sell Imbalances: ${sellImbalancesCount || 0}
-- Absorption Events: ${absorptionCount || 0}
-- Hidden Divergences: ${hiddenDivergenceCount || 0}
-- Liquidity Grabs: ${liquidityGrabCount || 0}
+- Absorption Events: ${absorptionCount || 0}${absorption.length > 0 ? '\n  Recent: ' + absorption.slice(-3).map((a: any) => `${a.type} @ $${a.price?.toFixed(4) || 'N/A'} (${formatEventTime(a.time)})`).join(', ') : ''}
+- Hidden Divergences: ${hiddenDivergenceCount || 0}${hiddenDivergences.length > 0 ? '\n  Recent: ' + hiddenDivergences.slice(-3).map((d: any) => `${d.type} @ $${d.price?.toFixed(4) || 'N/A'} (${formatEventTime(d.time)})`).join(', ') : ''}
+- Liquidity Grabs: ${liquidityGrabCount || 0}${liquidityGrabs.length > 0 ? '\n  Recent: ' + liquidityGrabs.slice(-3).map((lg: any) => `${lg.type} @ $${lg.price?.toFixed(4) || 'N/A'} (${formatEventTime(lg.time)})`).join(', ') : ''}
 
 **ANALYSIS REQUIREMENTS:**
 1. Evaluate the OVERALL market structure and bias based on ALL indicators
@@ -294,6 +302,7 @@ ${liquidationAnalysis}
 4. Weight more heavily: RSI extremes, MACD crosses, CVD divergences, and absorption events
 5. Only suggest trades with 3+ confluence factors
 6. If no high-probability setup exists, say so clearly
+7. CRITICAL: Consider the TIMING of events - recent events (within last few candles) are more relevant than older ones. Events more than 20-30 candles ago may no longer be valid signals.
 
 Return ONLY valid JSON in this exact format:
 {
