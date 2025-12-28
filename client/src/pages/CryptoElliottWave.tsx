@@ -2601,6 +2601,45 @@ const TIMEFRAME_ONE_DOWN: Record<string, { tf: string; candleCount: number } | n
   '15m': null,                          // Lowest level - no drill-down
 };
 
+// Timeframe interval in milliseconds (for calculating candle ranges)
+const TIMEFRAME_INTERVAL_MS: Record<string, number> = {
+  '1M': 30 * 24 * 60 * 60 * 1000,  // ~30 days
+  '1w': 7 * 24 * 60 * 60 * 1000,   // 7 days
+  '1d': 24 * 60 * 60 * 1000,       // 24 hours
+  '4h': 4 * 60 * 60 * 1000,        // 4 hours
+  '1h': 60 * 60 * 1000,            // 1 hour
+  '15m': 15 * 60 * 1000,           // 15 minutes
+};
+
+// Find adjusted price for a wave point when drilling down to lower timeframe
+// Returns the highest high or lowest low from sub-candles based on snappedToHigh
+const findAdjustedPrice = (
+  pointTime: number,
+  snappedToHigh: boolean,
+  originalTf: string,
+  subCandles: CandleData[]
+): number | null => {
+  const intervalMs = TIMEFRAME_INTERVAL_MS[originalTf.toLowerCase()] || TIMEFRAME_INTERVAL_MS[originalTf];
+  if (!intervalMs || subCandles.length === 0) return null;
+  
+  // Find sub-candles within the original candle's time range
+  // Original candle starts at pointTime (as Unix seconds)
+  const startTime = pointTime;
+  const endTime = pointTime + intervalMs / 1000; // Convert ms to seconds
+  
+  const relevantCandles = subCandles.filter(c => c.time >= startTime && c.time < endTime);
+  
+  if (relevantCandles.length === 0) return null;
+  
+  if (snappedToHigh) {
+    // Find highest high
+    return Math.max(...relevantCandles.map(c => c.high));
+  } else {
+    // Find lowest low
+    return Math.min(...relevantCandles.map(c => c.low));
+  }
+};
+
 // Get display label for a timeframe value
 const getTimeframeLabel = (value: string): string => {
   const tf = TIMEFRAMES.find(t => t.value.toLowerCase() === value.toLowerCase());
@@ -5756,6 +5795,42 @@ const aiAnalyze = useMutation({
       }
       return candleTime;
     };
+    
+    // DRILL-DOWN HELPER: When viewing at lower timeframe than label's original,
+    // find the sub-candle with the highest high (or lowest low) within the original candle's range
+    const snapToExtremeSubCandle = (
+      originalTime: number,
+      labelTimeframe: string,
+      snappedToHigh: boolean
+    ): number => {
+      // Check if we're drilling down (current TF is lower than label's TF)
+      const oneDown = TIMEFRAME_ONE_DOWN[labelTimeframe.toLowerCase()] || TIMEFRAME_ONE_DOWN[labelTimeframe];
+      if (!oneDown || timeframe.toLowerCase() !== oneDown.tf.toLowerCase()) {
+        // Not drilling down - use normal snap
+        return snapToNearestCandleTime(originalTime);
+      }
+      
+      // Find sub-candles within the original candle's time range
+      const intervalMs = TIMEFRAME_INTERVAL_MS[labelTimeframe.toLowerCase()] || TIMEFRAME_INTERVAL_MS[labelTimeframe];
+      if (!intervalMs || candles.length === 0) return snapToNearestCandleTime(originalTime);
+      
+      const startTime = originalTime;
+      const endTime = originalTime + intervalMs / 1000; // Convert ms to seconds
+      
+      const subCandles = candles.filter(c => c.time >= startTime && c.time < endTime);
+      if (subCandles.length === 0) return snapToNearestCandleTime(originalTime);
+      
+      // Find the candle with the extreme value
+      if (snappedToHigh) {
+        // Find candle with highest high
+        const maxCandle = subCandles.reduce((max, c) => c.high > max.high ? c : max, subCandles[0]);
+        return maxCandle.time;
+      } else {
+        // Find candle with lowest low
+        const minCandle = subCandles.reduce((min, c) => c.low < min.low ? c : min, subCandles[0]);
+        return minCandle.time;
+      }
+    };
 
     // Build markers from saved labels (highlight selected pattern, SKIP dragged point entirely)
     // Also collect future projection points separately for special rendering
@@ -5819,8 +5894,9 @@ const aiAnalyze = useMutation({
             return null; // Don't create regular marker
           }
           
-          // SNAP time to nearest candle to prevent markers disappearing on pan/zoom
-          const snappedTime = snapToNearestCandleTime(point.time);
+          // DRILL-DOWN SNAP: When viewing at lower timeframe, snap to the sub-candle
+          // with the highest high (for highs) or lowest low (for lows)
+          const snappedTime = snapToExtremeSubCandle(point.time, label.timeframe, isHigh);
           
           return {
             time: snappedTime as any,
