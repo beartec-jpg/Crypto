@@ -8558,16 +8558,28 @@ export default function CryptoIndicators() {
     // Initial positioning
     updateLabelPositions();
 
-    // Subscribe to time range changes (zoom/pan)
+    // Subscribe to time range changes (zoom/pan) with requestAnimationFrame throttling
+    let rafId: number | null = null;
     const handleVisibleTimeRangeChange = () => {
-      updateLabelPositions();
-      setViewportVersion(v => v + 1); // Trigger SVG overlay re-render
+      // Cancel any pending frame to avoid queueing updates
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      // Schedule update on next animation frame for smooth performance
+      rafId = requestAnimationFrame(() => {
+        updateLabelPositions();
+        rafId = null;
+      });
     };
     
     chart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
 
     // Cleanup function
     return () => {
+      // Cancel any pending animation frame
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       try {
         chart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
       } catch (e) {
@@ -9623,21 +9635,29 @@ export default function CryptoIndicators() {
     const mainChart = chartRef.current;
     const timeScale = mainChart.timeScale();
     
+    // Use requestAnimationFrame for smooth sync without lag
+    let rafId: number | null = null;
     const syncVisibleRange = () => {
-      try {
-        const visibleRange = timeScale.getVisibleRange();
-        if (!visibleRange) return;
-        
-        oscillatorChartsRef.current.forEach((oscChart) => {
-          try {
-            oscChart.timeScale().setVisibleRange(visibleRange);
-          } catch (e) {
-            // Chart might not have data in this range
-          }
-        });
-      } catch (e) {
-        // Main chart might not be ready
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
       }
+      rafId = requestAnimationFrame(() => {
+        try {
+          const visibleRange = timeScale.getVisibleRange();
+          if (!visibleRange) return;
+          
+          oscillatorChartsRef.current.forEach((oscChart) => {
+            try {
+              oscChart.timeScale().setVisibleRange(visibleRange);
+            } catch (e) {
+              // Chart might not have data in this range
+            }
+          });
+        } catch (e) {
+          // Main chart might not be ready
+        }
+        rafId = null;
+      });
     };
     
     // Subscribe to time scale changes
@@ -9647,6 +9667,9 @@ export default function CryptoIndicators() {
     syncVisibleRange();
     
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       timeScale.unsubscribeVisibleTimeRangeChange(syncVisibleRange);
     };
   }, [syncOscillatorScale]);
