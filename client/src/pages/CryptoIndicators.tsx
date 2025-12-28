@@ -6209,141 +6209,223 @@ export default function CryptoIndicators() {
     makeTimeframeDefault();
   }, [saveToTimeframe, makeTimeframeDefault]);
 
+  // Reset all indicators to OFF (used when no saved config exists for timeframe)
+  const resetAllIndicators = useCallback(() => {
+    // EMAs
+    setShowEMA(false);
+    setEmaConfigs([]);
+    setEmaInputs({});
+    // SMAs
+    setShowSMA(false);
+    setSmaConfigs([]);
+    setSmaInputs({});
+    // Oscillators
+    setShowRSI(false);
+    setShowMACD(false);
+    setShowOBV(false);
+    setShowMFI(false);
+    setShowStochRSI(false);
+    setShowWilliamsR(false);
+    setShowCCI(false);
+    setShowADX(false);
+    // Bollinger Bands
+    setShowBB(false);
+    // VWAPs
+    setShowVWAPSession(false);
+    setShowVWAPDaily(false);
+    setShowVWAPWeekly(false);
+    setShowVWAPMonthly(false);
+    setShowVWAPRolling(false);
+    setShowVWAPBands(false);
+    setShowSessionVWAP(false);
+    // SMC Indicators
+    setShowFVG(false);
+    setShowBOS(false);
+    setShowCHoCH(false);
+    setShowSwingPivots(false);
+    setShowOrderBlocks(false);
+    setShowPremiumDiscount(false);
+    // Trend Indicators
+    setShowSupertrend(false);
+    setShowParabolicSAR(false);
+    setShowAutoTrendlines(false);
+    // Display options
+    setShowHighValueOnly(false);
+    setShowChartLabels(false);
+    
+    console.log(`🔄 Reset all indicators to OFF for ${symbol}_${interval} (no saved config)`);
+  }, [symbol, interval]);
+
   // Load indicator defaults from localStorage
   const loadIndicatorDefaults = useCallback(() => {
     try {
       const storageKey = `indicatorDefaults_${symbol}_${interval}`;
       const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const defaults = JSON.parse(saved);
-        
-        if (defaults.showEMA !== undefined) setShowEMA(defaults.showEMA);
-        if (defaults.emaFastPeriod !== undefined) {
-          setEmaFastPeriod(defaults.emaFastPeriod);
-          setEmaFastInput(defaults.emaFastPeriod.toString());
-        }
-        if (defaults.emaSlowPeriod !== undefined) {
-          setEmaSlowPeriod(defaults.emaSlowPeriod);
-          setEmaSlowInput(defaults.emaSlowPeriod.toString());
-        }
-        if (defaults.showRSI !== undefined) setShowRSI(defaults.showRSI);
-        if (defaults.rsiPeriod !== undefined) {
-          setRsiPeriod(defaults.rsiPeriod);
-          setRsiPeriodInput(defaults.rsiPeriod.toString());
-        }
-        if (defaults.showMACD !== undefined) setShowMACD(defaults.showMACD);
-        if (defaults.macdFast !== undefined) {
-          setMacdFast(defaults.macdFast);
-          setMacdFastInput(defaults.macdFast.toString());
-        }
-        if (defaults.macdSlow !== undefined) {
-          setMacdSlow(defaults.macdSlow);
-          setMacdSlowInput(defaults.macdSlow.toString());
-        }
-        if (defaults.macdSignal !== undefined) {
-          setMacdSignal(defaults.macdSignal);
-          setMacdSignalInput(defaults.macdSignal.toString());
-        }
-        if (defaults.showOBV !== undefined) setShowOBV(defaults.showOBV);
-        if (defaults.showMFI !== undefined) setShowMFI(defaults.showMFI);
-        if (defaults.mfiPeriod !== undefined) {
-          setMfiPeriod(defaults.mfiPeriod);
-          setMfiPeriodInput(defaults.mfiPeriod.toString());
-        }
-        if (defaults.showBB !== undefined) setShowBB(defaults.showBB);
-        if (defaults.bbPeriod !== undefined) {
-          setBbPeriod(defaults.bbPeriod);
-          setBbPeriodInput(defaults.bbPeriod.toString());
-        }
-        if (defaults.bbStdDev !== undefined) {
-          setBbStdDev(defaults.bbStdDev);
-          setBbStdDevInput(defaults.bbStdDev.toString());
-        }
-        if (defaults.showVWAPDaily !== undefined) setShowVWAPDaily(defaults.showVWAPDaily);
-        if (defaults.showVWAPWeekly !== undefined) setShowVWAPWeekly(defaults.showVWAPWeekly);
-        if (defaults.showVWAPMonthly !== undefined) setShowVWAPMonthly(defaults.showVWAPMonthly);
-        if (defaults.showVWAPRolling !== undefined) setShowVWAPRolling(defaults.showVWAPRolling);
-        if (defaults.vwapRollingPeriod !== undefined) {
-          setVwapRollingPeriod(defaults.vwapRollingPeriod);
-          setVwapRollingPeriodInput(defaults.vwapRollingPeriod.toString());
-        }
-        if (defaults.alertFilterMode !== undefined) setAlertFilterMode(defaults.alertFilterMode);
-        
-        if (defaults.showSupertrend !== undefined) setShowSupertrend(defaults.showSupertrend);
-        if (defaults.supertrendPeriod !== undefined) {
-          setSupertrendPeriod(defaults.supertrendPeriod);
-          setSupertrendPeriodInput(defaults.supertrendPeriod.toString());
-        }
-        if (defaults.supertrendMultiplier !== undefined) {
-          setSupertrendMultiplier(defaults.supertrendMultiplier);
-          setSupertrendMultiplierInput(defaults.supertrendMultiplier.toString());
-        }
-        if (defaults.showParabolicSAR !== undefined) setShowParabolicSAR(defaults.showParabolicSAR);
-        if (defaults.sarStep !== undefined) {
-          setSarStep(defaults.sarStep);
-          setSarStepInput(defaults.sarStep.toString());
-        }
-        if (defaults.sarMax !== undefined) {
-          setSarMax(defaults.sarMax);
-          setSarMaxInput(defaults.sarMax.toString());
-        }
-        if (defaults.showSessionVWAP !== undefined) setShowSessionVWAP(defaults.showSessionVWAP);
-        if (defaults.showOrderBlocks !== undefined) setShowOrderBlocks(defaults.showOrderBlocks);
-        if (defaults.obSwingLength !== undefined) {
-          setObSwingLength(defaults.obSwingLength);
-          setObSwingLengthInput(defaults.obSwingLength.toString());
-        }
-        if (defaults.orderBlockLength !== undefined) {
-          setOrderBlockLength(defaults.orderBlockLength);
-          setOrderBlockLengthInput(defaults.orderBlockLength.toString());
-        }
-        if (defaults.showCCI !== undefined) setShowCCI(defaults.showCCI);
-        if (defaults.cciPeriod !== undefined) {
-          setCciPeriod(defaults.cciPeriod);
-          setCciPeriodInput(defaults.cciPeriod.toString());
-        }
-        if (defaults.showADX !== undefined) setShowADX(defaults.showADX);
-        if (defaults.adxPeriod !== undefined) {
-          setAdxPeriod(defaults.adxPeriod);
-          setAdxPeriodInput(defaults.adxPeriod.toString());
-        }
-        if (defaults.showAutoTrendlines !== undefined) setShowAutoTrendlines(defaults.showAutoTrendlines);
-        if (defaults.showSMA !== undefined) setShowSMA(defaults.showSMA);
-        
-        if (defaults.emaConfigs && Array.isArray(defaults.emaConfigs)) {
-          setEmaConfigs(defaults.emaConfigs);
-          const inputs: Record<string, string> = {};
-          defaults.emaConfigs.forEach((c: any) => {
-            inputs[c.id] = String(c.period);
-          });
-          setEmaInputs(inputs);
-          console.log('📂 Restored EMA configs:', defaults.emaConfigs);
-        }
-        
-        if (defaults.smaConfigs && Array.isArray(defaults.smaConfigs)) {
-          setSmaConfigs(defaults.smaConfigs);
-          const inputs: Record<string, string> = {};
-          defaults.smaConfigs.forEach((c: any) => {
-            inputs[c.id] = String(c.period);
-          });
-          setSmaInputs(inputs);
-          console.log('📂 Restored SMA configs:', defaults.smaConfigs);
-        }
-        
-        toast({
-          title: "📂 Indicator Defaults Loaded",
-          description: `Settings restored for ${symbol} on ${interval}`,
-          duration: 3000,
-        });
-        
-        console.log(`📂 Loaded indicator defaults for ${symbol}_${interval}`);
-        return true;
+      
+      if (!saved) {
+        // No saved config for this timeframe - reset all indicators to OFF
+        resetAllIndicators();
+        return false;
       }
+      
+      const defaults = JSON.parse(saved);
+      
+      // EMAs
+      if (defaults.showEMA !== undefined) setShowEMA(defaults.showEMA);
+      if (defaults.emaFastPeriod !== undefined) {
+        setEmaFastPeriod(defaults.emaFastPeriod);
+        setEmaFastInput(defaults.emaFastPeriod.toString());
+      }
+      if (defaults.emaSlowPeriod !== undefined) {
+        setEmaSlowPeriod(defaults.emaSlowPeriod);
+        setEmaSlowInput(defaults.emaSlowPeriod.toString());
+      }
+      if (defaults.emaConfigs && Array.isArray(defaults.emaConfigs)) {
+        setEmaConfigs(defaults.emaConfigs);
+        const inputs: Record<string, string> = {};
+        defaults.emaConfigs.forEach((c: any) => {
+          inputs[c.id] = String(c.period);
+        });
+        setEmaInputs(inputs);
+      }
+      
+      // SMAs
+      if (defaults.showSMA !== undefined) setShowSMA(defaults.showSMA);
+      if (defaults.smaConfigs && Array.isArray(defaults.smaConfigs)) {
+        setSmaConfigs(defaults.smaConfigs);
+        const inputs: Record<string, string> = {};
+        defaults.smaConfigs.forEach((c: any) => {
+          inputs[c.id] = String(c.period);
+        });
+        setSmaInputs(inputs);
+      }
+      
+      // Oscillators
+      if (defaults.showRSI !== undefined) setShowRSI(defaults.showRSI);
+      if (defaults.rsiPeriod !== undefined) {
+        setRsiPeriod(defaults.rsiPeriod);
+        setRsiPeriodInput(defaults.rsiPeriod.toString());
+      }
+      if (defaults.showMACD !== undefined) setShowMACD(defaults.showMACD);
+      if (defaults.macdFast !== undefined) {
+        setMacdFast(defaults.macdFast);
+        setMacdFastInput(defaults.macdFast.toString());
+      }
+      if (defaults.macdSlow !== undefined) {
+        setMacdSlow(defaults.macdSlow);
+        setMacdSlowInput(defaults.macdSlow.toString());
+      }
+      if (defaults.macdSignal !== undefined) {
+        setMacdSignal(defaults.macdSignal);
+        setMacdSignalInput(defaults.macdSignal.toString());
+      }
+      if (defaults.showOBV !== undefined) setShowOBV(defaults.showOBV);
+      if (defaults.showMFI !== undefined) setShowMFI(defaults.showMFI);
+      if (defaults.mfiPeriod !== undefined) {
+        setMfiPeriod(defaults.mfiPeriod);
+        setMfiPeriodInput(defaults.mfiPeriod.toString());
+      }
+      if (defaults.showStochRSI !== undefined) setShowStochRSI(defaults.showStochRSI);
+      if (defaults.stochRSIPeriod !== undefined) {
+        setStochRSIPeriod(defaults.stochRSIPeriod);
+        setStochRSIPeriodInput(defaults.stochRSIPeriod.toString());
+      }
+      if (defaults.showWilliamsR !== undefined) setShowWilliamsR(defaults.showWilliamsR);
+      if (defaults.williamsRPeriod !== undefined) {
+        setWilliamsRPeriod(defaults.williamsRPeriod);
+        setWilliamsRPeriodInput(defaults.williamsRPeriod.toString());
+      }
+      if (defaults.showCCI !== undefined) setShowCCI(defaults.showCCI);
+      if (defaults.cciPeriod !== undefined) {
+        setCciPeriod(defaults.cciPeriod);
+        setCciPeriodInput(defaults.cciPeriod.toString());
+      }
+      if (defaults.showADX !== undefined) setShowADX(defaults.showADX);
+      if (defaults.adxPeriod !== undefined) {
+        setAdxPeriod(defaults.adxPeriod);
+        setAdxPeriodInput(defaults.adxPeriod.toString());
+      }
+      
+      // Bollinger Bands
+      if (defaults.showBB !== undefined) setShowBB(defaults.showBB);
+      if (defaults.bbPeriod !== undefined) {
+        setBbPeriod(defaults.bbPeriod);
+        setBbPeriodInput(defaults.bbPeriod.toString());
+      }
+      if (defaults.bbStdDev !== undefined) {
+        setBbStdDev(defaults.bbStdDev);
+        setBbStdDevInput(defaults.bbStdDev.toString());
+      }
+      
+      // VWAPs
+      if (defaults.showVWAPSession !== undefined) setShowVWAPSession(defaults.showVWAPSession);
+      if (defaults.showVWAPDaily !== undefined) setShowVWAPDaily(defaults.showVWAPDaily);
+      if (defaults.showVWAPWeekly !== undefined) setShowVWAPWeekly(defaults.showVWAPWeekly);
+      if (defaults.showVWAPMonthly !== undefined) setShowVWAPMonthly(defaults.showVWAPMonthly);
+      if (defaults.showVWAPRolling !== undefined) setShowVWAPRolling(defaults.showVWAPRolling);
+      if (defaults.vwapRollingPeriod !== undefined) {
+        setVwapRollingPeriod(defaults.vwapRollingPeriod);
+        setVwapRollingPeriodInput(defaults.vwapRollingPeriod.toString());
+      }
+      if (defaults.showVWAPBands !== undefined) setShowVWAPBands(defaults.showVWAPBands);
+      if (defaults.showSessionVWAP !== undefined) setShowSessionVWAP(defaults.showSessionVWAP);
+      
+      // SMC Indicators
+      if (defaults.showFVG !== undefined) setShowFVG(defaults.showFVG);
+      if (defaults.showBOS !== undefined) setShowBOS(defaults.showBOS);
+      if (defaults.showCHoCH !== undefined) setShowCHoCH(defaults.showCHoCH);
+      if (defaults.showSwingPivots !== undefined) setShowSwingPivots(defaults.showSwingPivots);
+      if (defaults.showOrderBlocks !== undefined) setShowOrderBlocks(defaults.showOrderBlocks);
+      if (defaults.obSwingLength !== undefined) {
+        setObSwingLength(defaults.obSwingLength);
+        setObSwingLengthInput(defaults.obSwingLength.toString());
+      }
+      if (defaults.orderBlockLength !== undefined) {
+        setOrderBlockLength(defaults.orderBlockLength);
+        setOrderBlockLengthInput(defaults.orderBlockLength.toString());
+      }
+      if (defaults.showPremiumDiscount !== undefined) setShowPremiumDiscount(defaults.showPremiumDiscount);
+      
+      // Trend Indicators
+      if (defaults.showSupertrend !== undefined) setShowSupertrend(defaults.showSupertrend);
+      if (defaults.supertrendPeriod !== undefined) {
+        setSupertrendPeriod(defaults.supertrendPeriod);
+        setSupertrendPeriodInput(defaults.supertrendPeriod.toString());
+      }
+      if (defaults.supertrendMultiplier !== undefined) {
+        setSupertrendMultiplier(defaults.supertrendMultiplier);
+        setSupertrendMultiplierInput(defaults.supertrendMultiplier.toString());
+      }
+      if (defaults.showParabolicSAR !== undefined) setShowParabolicSAR(defaults.showParabolicSAR);
+      if (defaults.sarStep !== undefined) {
+        setSarStep(defaults.sarStep);
+        setSarStepInput(defaults.sarStep.toString());
+      }
+      if (defaults.sarMax !== undefined) {
+        setSarMax(defaults.sarMax);
+        setSarMaxInput(defaults.sarMax.toString());
+      }
+      if (defaults.showAutoTrendlines !== undefined) setShowAutoTrendlines(defaults.showAutoTrendlines);
+      
+      // Display options
+      if (defaults.showHighValueOnly !== undefined) setShowHighValueOnly(defaults.showHighValueOnly);
+      if (defaults.showChartLabels !== undefined) setShowChartLabels(defaults.showChartLabels);
+      if (defaults.alertFilterMode !== undefined) setAlertFilterMode(defaults.alertFilterMode);
+      
+      toast({
+        title: "📂 Indicators Loaded",
+        description: `Settings restored for ${symbol} on ${interval}`,
+        duration: 2000,
+      });
+      
+      console.log(`📂 Loaded indicator defaults for ${symbol}_${interval}`);
+      return true;
     } catch (error) {
       console.error('Failed to load indicator defaults:', error);
+      resetAllIndicators();
     }
     return false;
-  }, [symbol, interval, toast]);
+  }, [symbol, interval, toast, resetAllIndicators]);
 
   // Load indicator defaults when symbol or interval changes
   useEffect(() => {
@@ -11504,15 +11586,23 @@ export default function CryptoIndicators() {
                         <p><strong>Premium/Discount:</strong> Shows if price is in upper or lower half of range</p>
                       </div>
                       
-                      {/* Save Defaults Button */}
-                      <div className="pt-2 border-t border-slate-700">
+                      {/* Save Buttons */}
+                      <div className="pt-2 border-t border-slate-700 flex gap-2">
                         <Button
-                          onClick={saveIndicatorDefaults}
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm h-8"
-                          data-testid="button-save-smc-defaults"
+                          onClick={saveToTimeframe}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm h-8"
+                          data-testid="button-save-smc-to-timeframe"
                         >
-                          <Save className="w-3 h-3 mr-2" />
-                          Save Defaults
+                          <Save className="w-3 h-3 mr-1" />
+                          Save to {interval}
+                        </Button>
+                        <Button
+                          onClick={makeTimeframeDefault}
+                          variant="outline"
+                          className="bg-slate-700 hover:bg-slate-600 text-white text-xs h-8 px-2"
+                          data-testid="button-make-smc-default"
+                        >
+                          ⭐
                         </Button>
                       </div>
                     </div>
@@ -11873,15 +11963,23 @@ export default function CryptoIndicators() {
                         <p><strong>Parabolic SAR:</strong> Trailing stop and reversal indicator</p>
                       </div>
                       
-                      {/* Save Defaults Button */}
-                      <div className="pt-2 border-t border-slate-700">
+                      {/* Save Buttons */}
+                      <div className="pt-2 border-t border-slate-700 flex gap-2">
                         <Button
-                          onClick={saveIndicatorDefaults}
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm h-8"
-                          data-testid="button-save-trend-defaults"
+                          onClick={saveToTimeframe}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm h-8"
+                          data-testid="button-save-trend-to-timeframe"
                         >
-                          <Save className="w-3 h-3 mr-2" />
-                          Save Defaults
+                          <Save className="w-3 h-3 mr-1" />
+                          Save to {interval}
+                        </Button>
+                        <Button
+                          onClick={makeTimeframeDefault}
+                          variant="outline"
+                          className="bg-slate-700 hover:bg-slate-600 text-white text-xs h-8 px-2"
+                          data-testid="button-make-trend-default"
+                        >
+                          ⭐
                         </Button>
                       </div>
                     </div>
@@ -11972,15 +12070,23 @@ export default function CryptoIndicators() {
                         <p><strong>Session VWAP:</strong> Separate VWAPs for Asia/London/NY trading sessions</p>
                       </div>
                       
-                      {/* Save Defaults Button */}
-                      <div className="pt-2 border-t border-slate-700">
+                      {/* Save Buttons */}
+                      <div className="pt-2 border-t border-slate-700 flex gap-2">
                         <Button
-                          onClick={saveIndicatorDefaults}
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm h-8"
-                          data-testid="button-save-vwap-defaults"
+                          onClick={saveToTimeframe}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm h-8"
+                          data-testid="button-save-vwap-to-timeframe"
                         >
-                          <Save className="w-3 h-3 mr-2" />
-                          Save Defaults
+                          <Save className="w-3 h-3 mr-1" />
+                          Save to {interval}
+                        </Button>
+                        <Button
+                          onClick={makeTimeframeDefault}
+                          variant="outline"
+                          className="bg-slate-700 hover:bg-slate-600 text-white text-xs h-8 px-2"
+                          data-testid="button-make-vwap-default"
+                        >
+                          ⭐
                         </Button>
                       </div>
                     </div>
@@ -12247,15 +12353,23 @@ export default function CryptoIndicators() {
                         </div>
                       )}
                       
-                      {/* Save Defaults Button */}
-                      <div className="pt-2 border-t border-slate-700">
+                      {/* Save Buttons */}
+                      <div className="pt-2 border-t border-slate-700 flex gap-2">
                         <Button
-                          onClick={saveIndicatorDefaults}
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm h-8"
-                          data-testid="button-save-indicator-defaults"
+                          onClick={saveToTimeframe}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm h-8"
+                          data-testid="button-save-oscillator-to-timeframe"
                         >
-                          <Save className="w-3 h-3 mr-2" />
-                          Save Defaults
+                          <Save className="w-3 h-3 mr-1" />
+                          Save to {interval}
+                        </Button>
+                        <Button
+                          onClick={makeTimeframeDefault}
+                          variant="outline"
+                          className="bg-slate-700 hover:bg-slate-600 text-white text-xs h-8 px-2"
+                          data-testid="button-make-oscillator-default"
+                        >
+                          ⭐
                         </Button>
                       </div>
                     </div>
