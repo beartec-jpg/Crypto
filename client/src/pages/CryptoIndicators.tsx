@@ -6112,15 +6112,18 @@ export default function CryptoIndicators() {
     loadDefaultSettings();
   }, [loadDefaultSettings]);
 
-  // Save indicator defaults to localStorage
-  const saveIndicatorDefaults = useCallback(() => {
+  // Save indicator defaults to localStorage (for current timeframe only)
+  const saveToTimeframe = useCallback(() => {
     const indicatorDefaults = {
+      // EMAs
       showEMA,
       emaFastPeriod,
       emaSlowPeriod,
       emaConfigs,
+      // SMAs
       showSMA,
       smaConfigs,
+      // Oscillators
       showRSI,
       rsiPeriod,
       showMACD,
@@ -6130,48 +6133,81 @@ export default function CryptoIndicators() {
       showOBV,
       showMFI,
       mfiPeriod,
+      showStochRSI,
+      stochRSIPeriod,
+      showWilliamsR,
+      williamsRPeriod,
+      showCCI,
+      cciPeriod,
+      showADX,
+      adxPeriod,
+      // Bollinger Bands
       showBB,
       bbPeriod,
       bbStdDev,
+      // VWAPs
+      showVWAPSession,
       showVWAPDaily,
       showVWAPWeekly,
       showVWAPMonthly,
       showVWAPRolling,
       vwapRollingPeriod,
-      alertFilterMode,
+      showVWAPBands,
+      showSessionVWAP,
+      // SMC Indicators
+      showFVG,
+      showBOS,
+      showCHoCH,
+      showSwingPivots,
+      showOrderBlocks,
+      obSwingLength,
+      orderBlockLength,
+      showPremiumDiscount,
+      // Trend Indicators
       showSupertrend,
       supertrendPeriod,
       supertrendMultiplier,
       showParabolicSAR,
       sarStep,
       sarMax,
-      showSessionVWAP,
-      showOrderBlocks,
-      obSwingLength,
-      orderBlockLength,
-      showCCI,
-      cciPeriod,
-      showADX,
-      adxPeriod,
-      showAutoTrendlines
+      showAutoTrendlines,
+      // Display options
+      showHighValueOnly,
+      showChartLabels,
+      alertFilterMode,
     };
     
     const storageKey = `indicatorDefaults_${symbol}_${interval}`;
     localStorage.setItem(storageKey, JSON.stringify(indicatorDefaults));
     
-    // Also save the current timeframe as default for this ticker
-    const timeframeKey = `defaultTimeframe_${symbol}`;
-    localStorage.setItem(timeframeKey, interval);
-    
     toast({
-      title: "💾 Defaults Saved",
-      description: `Settings and ${interval} timeframe saved for ${symbol}`,
+      title: "💾 Saved to Timeframe",
+      description: `Indicator settings saved for ${symbol} on ${interval}`,
       duration: 3000,
     });
     
     console.log(`💾 Saved indicator defaults for ${symbol}_${interval}:`, indicatorDefaults);
-    console.log(`💾 Saved default timeframe for ${symbol}: ${interval}`);
-  }, [symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showBB, bbPeriod, bbStdDev, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, alertFilterMode, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showSessionVWAP, showOrderBlocks, obSwingLength, orderBlockLength, showCCI, cciPeriod, showADX, adxPeriod, showAutoTrendlines, toast]);
+  }, [symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showStochRSI, stochRSIPeriod, showWilliamsR, williamsRPeriod, showCCI, cciPeriod, showADX, adxPeriod, showBB, bbPeriod, bbStdDev, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, showVWAPBands, showSessionVWAP, showFVG, showBOS, showCHoCH, showSwingPivots, showOrderBlocks, obSwingLength, orderBlockLength, showPremiumDiscount, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showAutoTrendlines, showHighValueOnly, showChartLabels, alertFilterMode, toast]);
+
+  // Set current timeframe as the default for this symbol on page load
+  const makeTimeframeDefault = useCallback(() => {
+    const timeframeKey = `defaultTimeframe_${symbol}`;
+    localStorage.setItem(timeframeKey, interval);
+    
+    toast({
+      title: "⭐ Default Timeframe Set",
+      description: `${interval} will load by default for ${symbol}`,
+      duration: 3000,
+    });
+    
+    console.log(`⭐ Set default timeframe for ${symbol}: ${interval}`);
+  }, [symbol, interval, toast]);
+
+  // Legacy function for backward compatibility - saves both
+  const saveIndicatorDefaults = useCallback(() => {
+    saveToTimeframe();
+    makeTimeframeDefault();
+  }, [saveToTimeframe, makeTimeframeDefault]);
 
   // Load indicator defaults from localStorage
   const loadIndicatorDefaults = useCallback(() => {
