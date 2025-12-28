@@ -51,6 +51,12 @@ interface SubscriptionData {
   hasUnlimitedAI: boolean;
   aiCredits: number;
   status: string;
+  monthlyUsage?: {
+    aiCredits: number;
+    aiLimit: number;
+    elliottCredits: number;
+    elliottLimit: number;
+  };
 }
 
 export default function CryptoAccount() {
@@ -189,14 +195,18 @@ export default function CryptoAccount() {
                     <Bot className="w-6 h-6 text-cyan-400 mx-auto mb-2" />
                     <p className="text-sm text-gray-400">AI Credits</p>
                     <p className="text-lg font-bold">
-                      {subscription?.hasUnlimitedAI ? '∞' : subscription?.aiCredits || 0}
+                      {isAdmin ? '∞' : subscription?.monthlyUsage ? (
+                        `${subscription.monthlyUsage.aiCredits}/${subscription.monthlyUsage.aiLimit}`
+                      ) : '0/0'}
                     </p>
                   </div>
                   <div className="bg-slate-800/50 rounded-lg p-4 text-center">
                     <Waves className="w-6 h-6 text-purple-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-400">Elliott Wave</p>
+                    <p className="text-sm text-gray-400">Elliott Wave AI</p>
                     <p className="text-lg font-bold">
-                      {subscription?.canUseElliott ? 'Active' : 'Locked'}
+                      {isAdmin ? '∞' : subscription?.monthlyUsage && subscription.monthlyUsage.elliottLimit > 0 ? (
+                        `${subscription.monthlyUsage.elliottCredits}/${subscription.monthlyUsage.elliottLimit}`
+                      ) : subscription?.canUseElliott ? 'Active' : 'Locked'}
                     </p>
                   </div>
                   <div className="bg-slate-800/50 rounded-lg p-4 text-center">

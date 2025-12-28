@@ -38,7 +38,7 @@ function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {
     canViewElliott: true,
     canUseElliott: hasElliottAddon || tier === "elite",
     canUseAI: tierLevel >= TIER_HIERARCHY.intermediate,
-    hasUnlimitedAI: tier === "pro" || tier === "elite",
+    hasUnlimitedAI: false, // No tier has unlimited AI - all have monthly credits
     canUsePushNotifications: tierLevel >= TIER_HIERARCHY.pro,
     isElite: tier === "elite",
   };
