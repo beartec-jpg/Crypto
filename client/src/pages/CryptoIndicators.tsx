@@ -325,6 +325,11 @@ export default function CryptoIndicators() {
     enabled: isAuthenticated && !authLoading
   });
   const tier = subscription?.tier || 'free';
+  const isPaidTier = tier !== 'free';
+  
+  // Free tier oscillators: only RSI and MACD, max 1 active at a time
+  const FREE_OSCILLATORS = ['RSI', 'MACD'];
+  const MAX_FREE_OSCILLATORS = 1;
 
   const [symbol, setSymbol] = useState('XRPUSDT');
   const [interval, setTimeframeInterval] = useState(() => {
@@ -929,6 +934,146 @@ export default function CryptoIndicators() {
   const [showADX, setShowADX] = useState(false);
   const [adxPeriod, setAdxPeriod] = useState(14);
   const [adxPeriodInput, setAdxPeriodInput] = useState('14');
+  
+  // ========== OSCILLATOR TIER ACCESS CONTROL ==========
+  // Count currently active oscillators for free tier limit
+  const getActiveOscillatorCount = () => {
+    return [showRSI, showMACD, showStochRSI, showOBV, showMFI, showWilliamsR, showCCI, showADX].filter(Boolean).length;
+  };
+  
+  // ========== DIVERGENCE DETECTION ==========
+  // Divergence state: -3 to +3 scale (-3 = strong bearish, +3 = strong bullish)
+  const [divergenceStrength, setDivergenceStrength] = useState(0);
+  const [divergenceType, setDivergenceType] = useState<'bullish' | 'bearish' | 'none'>('none');
+  
+  // Find local peaks/troughs in data series
+  const findPeaksAndTroughs = (data: number[], lookback: number = 5): { peaks: number[]; troughs: number[] } => {
+    const peaks: number[] = [];
+    const troughs: number[] = [];
+    
+    for (let i = lookback; i < data.length - lookback; i++) {
+      const slice = data.slice(i - lookback, i + lookback + 1);
+      const maxVal = Math.max(...slice);
+      const minVal = Math.min(...slice);
+      
+      if (data[i] === maxVal && slice.filter(v => v === maxVal).length === 1) {
+        peaks.push(i);
+      }
+      if (data[i] === minVal && slice.filter(v => v === minVal).length === 1) {
+        troughs.push(i);
+      }
+    }
+    
+    return { peaks, troughs };
+  };
+  
+  // Detect divergence between price and indicator
+  // Returns consecutive count: positive for bullish, negative for bearish
+  const detectDivergence = useCallback((
+    priceData: number[],
+    indicatorData: number[],
+    lookback: number = 5
+  ): number => {
+    if (priceData.length < 30 || indicatorData.length < 30) return 0;
+    
+    const pricePeaksTroughs = findPeaksAndTroughs(priceData, lookback);
+    const indicatorPeaksTroughs = findPeaksAndTroughs(indicatorData, lookback);
+    
+    let bullishCount = 0;
+    let bearishCount = 0;
+    
+    // Check for bullish divergence: price lower lows, indicator higher lows
+    const recentPriceTroughs = pricePeaksTroughs.troughs.slice(-5);
+    const recentIndicatorTroughs = indicatorPeaksTroughs.troughs.slice(-5);
+    
+    for (let i = 1; i < Math.min(recentPriceTroughs.length, recentIndicatorTroughs.length); i++) {
+      const prevPriceTrough = recentPriceTroughs[i - 1];
+      const currPriceTrough = recentPriceTroughs[i];
+      const prevIndTrough = recentIndicatorTroughs[i - 1];
+      const currIndTrough = recentIndicatorTroughs[i];
+      
+      if (prevPriceTrough < priceData.length && currPriceTrough < priceData.length &&
+          prevIndTrough < indicatorData.length && currIndTrough < indicatorData.length) {
+        // Price making lower low, indicator making higher low = bullish divergence
+        if (priceData[currPriceTrough] < priceData[prevPriceTrough] &&
+            indicatorData[currIndTrough] > indicatorData[prevIndTrough]) {
+          bullishCount++;
+        }
+      }
+    }
+    
+    // Check for bearish divergence: price higher highs, indicator lower highs
+    const recentPricePeaks = pricePeaksTroughs.peaks.slice(-5);
+    const recentIndicatorPeaks = indicatorPeaksTroughs.peaks.slice(-5);
+    
+    for (let i = 1; i < Math.min(recentPricePeaks.length, recentIndicatorPeaks.length); i++) {
+      const prevPricePeak = recentPricePeaks[i - 1];
+      const currPricePeak = recentPricePeaks[i];
+      const prevIndPeak = recentIndicatorPeaks[i - 1];
+      const currIndPeak = recentIndicatorPeaks[i];
+      
+      if (prevPricePeak < priceData.length && currPricePeak < priceData.length &&
+          prevIndPeak < indicatorData.length && currIndPeak < indicatorData.length) {
+        // Price making higher high, indicator making lower high = bearish divergence
+        if (priceData[currPricePeak] > priceData[prevPricePeak] &&
+            indicatorData[currIndPeak] < indicatorData[prevIndPeak]) {
+          bearishCount++;
+        }
+      }
+    }
+    
+    // Return net divergence: positive for bullish, negative for bearish
+    // Capped at ±3 for strength scale
+    if (bullishCount > bearishCount) {
+      return Math.min(bullishCount, 3);
+    } else if (bearishCount > bullishCount) {
+      return -Math.min(bearishCount, 3);
+    }
+    return 0;
+  }, []);
+  
+  // Handler for oscillator toggles with tier restrictions
+  const handleOscillatorToggle = (
+    oscillatorName: string,
+    currentValue: boolean,
+    setter: (value: boolean) => void
+  ) => {
+    // If turning off, always allow
+    if (currentValue) {
+      setter(false);
+      return;
+    }
+    
+    // Paid tier: allow all oscillators, no limit
+    if (isPaidTier) {
+      setter(true);
+      return;
+    }
+    
+    // Free tier restrictions
+    const isFreeAllowed = FREE_OSCILLATORS.includes(oscillatorName);
+    if (!isFreeAllowed) {
+      toast({
+        title: 'Upgrade Required',
+        description: `${oscillatorName} is available for paid subscribers only. Upgrade to access all oscillators.`,
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    // Check max active limit for free tier
+    const activeCount = getActiveOscillatorCount();
+    if (activeCount >= MAX_FREE_OSCILLATORS) {
+      toast({
+        title: 'Free Tier Limit',
+        description: 'Free users can only have 1 oscillator active at a time. Turn off the current one first, or upgrade for unlimited access.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    setter(true);
+  };
   
   // ========== CHART DISPLAY SETTINGS (independent from strategy settings) ==========
   // BOS swing length: 5 for tighter swing detection, CHoCH swing length: 20 for broader trend changes
@@ -9219,6 +9364,149 @@ export default function CryptoIndicators() {
     return () => chart.remove();
   }, [showADX, candles, adxPeriod]);
 
+  // ========== DIVERGENCE CALCULATION ==========
+  // Calculate divergence from active oscillators
+  useEffect(() => {
+    if (candles.length < 50) {
+      setDivergenceStrength(0);
+      setDivergenceType('none');
+      return;
+    }
+    
+    const priceData = candles.map(c => c.close);
+    let totalDivergence = 0;
+    let oscillatorCount = 0;
+    
+    // Check RSI divergence
+    if (showRSI) {
+      const rsiData = calculateRSI(candles, rsiPeriod);
+      const rsiValues = rsiData.map(d => d.value);
+      if (rsiValues.length > 0) {
+        totalDivergence += detectDivergence(priceData.slice(-rsiValues.length), rsiValues);
+        oscillatorCount++;
+      }
+    }
+    
+    // Check MACD divergence (using histogram)
+    if (showMACD) {
+      const { hist } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
+      const histValues = hist.map(d => d.value);
+      if (histValues.length > 0) {
+        totalDivergence += detectDivergence(priceData.slice(-histValues.length), histValues);
+        oscillatorCount++;
+      }
+    }
+    
+    // Check OBV divergence
+    if (showOBV) {
+      const obvData = calculateOBV(candles);
+      const obvValues = obvData.map(d => d.value);
+      if (obvValues.length > 0) {
+        totalDivergence += detectDivergence(priceData.slice(-obvValues.length), obvValues);
+        oscillatorCount++;
+      }
+    }
+    
+    // Check Stoch RSI divergence
+    if (showStochRSI) {
+      const stochData = calculateStochasticRSI(candles, stochRSIPeriod);
+      const kValues = stochData.map(d => d.k);
+      if (kValues.length > 0) {
+        totalDivergence += detectDivergence(priceData.slice(-kValues.length), kValues);
+        oscillatorCount++;
+      }
+    }
+    
+    // Average divergence across active oscillators - clamp to [-3, 3]
+    const avgDivergence = oscillatorCount > 0 ? Math.round(totalDivergence / oscillatorCount) : 0;
+    const clampedStrength = Math.max(-3, Math.min(3, avgDivergence));
+    setDivergenceStrength(clampedStrength);
+    setDivergenceType(clampedStrength > 0 ? 'bullish' : clampedStrength < 0 ? 'bearish' : 'none');
+    
+  }, [candles, showRSI, showMACD, showOBV, showStochRSI, rsiPeriod, macdFast, macdSlow, macdSignal, stochRSIPeriod, calculateRSI, calculateMACD, calculateOBV, calculateStochasticRSI, detectDivergence]);
+
+  // ========== INDICATOR REPORTS (Paid only) ==========
+  // Generate brief contextual reports for active oscillators
+  const getIndicatorReport = useCallback((
+    indicator: string
+  ): { text: string; color: string } => {
+    if (candles.length < 20) return { text: '', color: '' };
+    
+    switch (indicator) {
+      case 'RSI': {
+        const rsiData = calculateRSI(candles, rsiPeriod);
+        const lastRSI = rsiData[rsiData.length - 1]?.value;
+        if (!lastRSI) return { text: '', color: '' };
+        if (lastRSI >= 70) return { text: `Overbought (${lastRSI.toFixed(0)})`, color: 'text-red-400' };
+        if (lastRSI <= 30) return { text: `Oversold (${lastRSI.toFixed(0)})`, color: 'text-green-400' };
+        return { text: `Neutral (${lastRSI.toFixed(0)})`, color: 'text-gray-400' };
+      }
+      case 'MACD': {
+        const { macd, signal } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
+        const lastMACD = macd[macd.length - 1]?.value;
+        const lastSignal = signal[signal.length - 1]?.value;
+        const prevMACD = macd[macd.length - 2]?.value;
+        const prevSignal = signal[signal.length - 2]?.value;
+        if (!lastMACD || !lastSignal) return { text: '', color: '' };
+        if (prevMACD < prevSignal && lastMACD > lastSignal) return { text: 'Bullish Cross', color: 'text-green-400' };
+        if (prevMACD > prevSignal && lastMACD < lastSignal) return { text: 'Bearish Cross', color: 'text-red-400' };
+        if (lastMACD > lastSignal) return { text: 'Bullish', color: 'text-green-400' };
+        return { text: 'Bearish', color: 'text-red-400' };
+      }
+      case 'OBV': {
+        const obvData = calculateOBV(candles);
+        if (obvData.length < 10) return { text: '', color: '' };
+        const recent = obvData.slice(-5).map(d => d.value);
+        const trend = recent[recent.length - 1] - recent[0];
+        if (trend > 0) return { text: 'Rising', color: 'text-green-400' };
+        if (trend < 0) return { text: 'Falling', color: 'text-red-400' };
+        return { text: 'Flat', color: 'text-gray-400' };
+      }
+      case 'ADX': {
+        const adxData = calculateADX(candles, adxPeriod);
+        const lastADX = adxData[adxData.length - 1];
+        if (!lastADX) return { text: '', color: '' };
+        if (lastADX.adx >= 40) return { text: `Strong Trend (${lastADX.adx.toFixed(0)})`, color: 'text-blue-400' };
+        if (lastADX.adx >= 25) return { text: `Trending (${lastADX.adx.toFixed(0)})`, color: 'text-cyan-400' };
+        return { text: `Weak Trend (${lastADX.adx.toFixed(0)})`, color: 'text-gray-400' };
+      }
+      case 'StochRSI': {
+        const stochData = calculateStochasticRSI(candles, stochRSIPeriod);
+        const lastK = stochData[stochData.length - 1]?.k;
+        if (!lastK) return { text: '', color: '' };
+        if (lastK >= 80) return { text: `Overbought (${lastK.toFixed(0)})`, color: 'text-red-400' };
+        if (lastK <= 20) return { text: `Oversold (${lastK.toFixed(0)})`, color: 'text-green-400' };
+        return { text: `Neutral (${lastK.toFixed(0)})`, color: 'text-gray-400' };
+      }
+      case 'MFI': {
+        const mfiData = calculateMFI(candles, mfiPeriod);
+        const lastMFI = mfiData[mfiData.length - 1]?.value;
+        if (!lastMFI) return { text: '', color: '' };
+        if (lastMFI >= 80) return { text: `Overbought (${lastMFI.toFixed(0)})`, color: 'text-red-400' };
+        if (lastMFI <= 20) return { text: `Oversold (${lastMFI.toFixed(0)})`, color: 'text-green-400' };
+        return { text: `Neutral (${lastMFI.toFixed(0)})`, color: 'text-gray-400' };
+      }
+      case 'WilliamsR': {
+        const wrData = calculateWilliamsR(candles, williamsRPeriod);
+        const lastWR = wrData[wrData.length - 1]?.value;
+        if (!lastWR) return { text: '', color: '' };
+        if (lastWR >= -20) return { text: `Overbought (${lastWR.toFixed(0)})`, color: 'text-red-400' };
+        if (lastWR <= -80) return { text: `Oversold (${lastWR.toFixed(0)})`, color: 'text-green-400' };
+        return { text: `Neutral (${lastWR.toFixed(0)})`, color: 'text-gray-400' };
+      }
+      case 'CCI': {
+        const cciData = calculateCCI(candles, cciPeriod);
+        const lastCCI = cciData[cciData.length - 1]?.value;
+        if (!lastCCI) return { text: '', color: '' };
+        if (lastCCI >= 100) return { text: `Overbought (${lastCCI.toFixed(0)})`, color: 'text-red-400' };
+        if (lastCCI <= -100) return { text: `Oversold (${lastCCI.toFixed(0)})`, color: 'text-green-400' };
+        return { text: `Neutral (${lastCCI.toFixed(0)})`, color: 'text-gray-400' };
+      }
+      default:
+        return { text: '', color: '' };
+    }
+  }, [candles, rsiPeriod, macdFast, macdSlow, macdSignal, adxPeriod, stochRSIPeriod, mfiPeriod, williamsRPeriod, cciPeriod, calculateRSI, calculateMACD, calculateOBV, calculateADX, calculateStochasticRSI, calculateMFI, calculateWilliamsR, calculateCCI]);
+
   // Allow page to render for all users - unauthenticated get free tier
   // Sign in button in header handles authentication
 
@@ -11368,39 +11656,46 @@ export default function CryptoIndicators() {
                   {/* Oscillators Tab */}
                   {chartControlsTab === 'oscillators' && (
                     <div className="space-y-3">
+                      {/* Free tier notice */}
+                      {!isPaidTier && (
+                        <div className="bg-amber-900/30 border border-amber-600/50 rounded-lg p-2 text-xs text-amber-200">
+                          Free tier: RSI & MACD only, 1 active at a time. <span className="text-amber-400 cursor-pointer hover:underline" onClick={() => setLocation('/crypto/subscribe')}>Upgrade for all oscillators</span>
+                        </div>
+                      )}
+                      
                       {/* Main toggles */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div className="flex items-center gap-2">
-                          <Switch checked={showRSI} onCheckedChange={setShowRSI} id="show-rsi" data-testid="switch-rsi" />
+                          <Switch checked={showRSI} onCheckedChange={() => handleOscillatorToggle('RSI', showRSI, setShowRSI)} id="show-rsi" data-testid="switch-rsi" />
                           <Label htmlFor="show-rsi" className="text-sm text-white cursor-pointer">RSI</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showStochRSI} onCheckedChange={setShowStochRSI} id="show-stoch-rsi" data-testid="switch-stoch-rsi" />
-                          <Label htmlFor="show-stoch-rsi" className="text-sm text-white cursor-pointer">Stochastic RSI</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showStochRSI} onCheckedChange={() => handleOscillatorToggle('Stochastic RSI', showStochRSI, setShowStochRSI)} id="show-stoch-rsi" data-testid="switch-stoch-rsi" disabled={!isPaidTier && !showStochRSI} />
+                          <Label htmlFor="show-stoch-rsi" className="text-sm text-white cursor-pointer">Stochastic RSI {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={showMACD} onCheckedChange={setShowMACD} id="show-macd" data-testid="switch-macd" />
+                          <Switch checked={showMACD} onCheckedChange={() => handleOscillatorToggle('MACD', showMACD, setShowMACD)} id="show-macd" data-testid="switch-macd" />
                           <Label htmlFor="show-macd" className="text-sm text-white cursor-pointer">MACD</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showOBV} onCheckedChange={setShowOBV} id="show-obv" data-testid="switch-obv" />
-                          <Label htmlFor="show-obv" className="text-sm text-white cursor-pointer">OBV</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showOBV} onCheckedChange={() => handleOscillatorToggle('OBV', showOBV, setShowOBV)} id="show-obv" data-testid="switch-obv" disabled={!isPaidTier && !showOBV} />
+                          <Label htmlFor="show-obv" className="text-sm text-white cursor-pointer">OBV {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showMFI} onCheckedChange={setShowMFI} id="show-mfi" data-testid="switch-mfi" />
-                          <Label htmlFor="show-mfi" className="text-sm text-white cursor-pointer">MFI</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showMFI} onCheckedChange={() => handleOscillatorToggle('MFI', showMFI, setShowMFI)} id="show-mfi" data-testid="switch-mfi" disabled={!isPaidTier && !showMFI} />
+                          <Label htmlFor="show-mfi" className="text-sm text-white cursor-pointer">MFI {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showWilliamsR} onCheckedChange={setShowWilliamsR} id="show-williams-r" data-testid="switch-williams-r" />
-                          <Label htmlFor="show-williams-r" className="text-sm text-white cursor-pointer">Williams %R</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showWilliamsR} onCheckedChange={() => handleOscillatorToggle('Williams %R', showWilliamsR, setShowWilliamsR)} id="show-williams-r" data-testid="switch-williams-r" disabled={!isPaidTier && !showWilliamsR} />
+                          <Label htmlFor="show-williams-r" className="text-sm text-white cursor-pointer">Williams %R {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showCCI} onCheckedChange={setShowCCI} id="show-cci" data-testid="switch-cci" />
-                          <Label htmlFor="show-cci" className="text-sm text-white cursor-pointer">CCI</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showCCI} onCheckedChange={() => handleOscillatorToggle('CCI', showCCI, setShowCCI)} id="show-cci" data-testid="switch-cci" disabled={!isPaidTier && !showCCI} />
+                          <Label htmlFor="show-cci" className="text-sm text-white cursor-pointer">CCI {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showADX} onCheckedChange={setShowADX} id="show-adx" data-testid="switch-adx" />
-                          <Label htmlFor="show-adx" className="text-sm text-white cursor-pointer">ADX</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showADX} onCheckedChange={() => handleOscillatorToggle('ADX', showADX, setShowADX)} id="show-adx" data-testid="switch-adx" disabled={!isPaidTier && !showADX} />
+                          <Label htmlFor="show-adx" className="text-sm text-white cursor-pointer">ADX {!isPaidTier && '🔒'}</Label>
                         </div>
                       </div>
                       
@@ -11624,89 +11919,176 @@ export default function CryptoIndicators() {
         </Card>
 
         {/* Oscillator Charts - Full Width */}
-        {(showRSI || showStochRSI || showMACD || showOBV || showWilliamsR || showMFI) && (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-            {showRSI && (
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">RSI ({rsiPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={rsiRef} className="w-full" />
-                </CardContent>
-              </Card>
-            )}
-            {showStochRSI && (
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">Stochastic RSI ({stochRSIPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={stochRSIRef} className="w-full" />
-                </CardContent>
-              </Card>
-            )}
-            {showMACD && (
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">MACD ({macdFast}, {macdSlow}, {macdSignal})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={macdRef} className="w-full" />
-                </CardContent>
-              </Card>
-            )}
-            {showOBV && (
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={obvRef} className="w-full" />
-                </CardContent>
-              </Card>
-            )}
-            {showWilliamsR && (
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">Williams %R ({williamsRPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={williamsRRef} className="w-full" />
-                </CardContent>
-              </Card>
-            )}
-            {showMFI && (
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">Money Flow Index ({mfiPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={mfiRef} className="w-full" />
-                </CardContent>
-              </Card>
-            )}
-            {showCCI && (
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">CCI ({cciPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={cciRef} className="w-full" />
-                </CardContent>
-              </Card>
-            )}
-            {showADX && (
-              <Card className="bg-slate-800 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white text-sm">ADX ({adxPeriod})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div ref={adxRef} className="w-full" />
-                </CardContent>
-              </Card>
-            )}
-          </div>
+        {(showRSI || showStochRSI || showMACD || showOBV || showWilliamsR || showMFI || showCCI || showADX) && (
+          <>
+            {/* Divergence Meter Bar */}
+            <div className="bg-slate-800 border border-slate-700 rounded-lg p-3" data-testid="divergence-meter">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-400 font-medium">Divergence Meter</span>
+                {divergenceType !== 'none' && (
+                  <span className={`text-xs font-bold ${divergenceType === 'bullish' ? 'text-green-400' : 'text-red-400'}`}>
+                    {divergenceType === 'bullish' ? '▲ Bullish' : '▼ Bearish'} ({Math.abs(divergenceStrength)})
+                  </span>
+                )}
+              </div>
+              <div className="relative flex items-center gap-2">
+                <span className="text-lg">🐻</span>
+                <div className="flex-1 h-3 bg-slate-700 rounded-full relative overflow-hidden">
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-px h-full bg-slate-500" />
+                  </div>
+                  <div 
+                    className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow-lg transition-all duration-500"
+                    style={{
+                      left: `calc(50% + ${(divergenceStrength / 3) * 45}% - 8px)`,
+                      background: divergenceStrength === 0 
+                        ? '#3b82f6' 
+                        : divergenceStrength > 0 
+                          ? `linear-gradient(to right, #3b82f6, ${divergenceStrength === 1 ? '#86efac' : divergenceStrength === 2 ? '#4ade80' : '#22c55e'})`
+                          : `linear-gradient(to left, #3b82f6, ${divergenceStrength === -1 ? '#fca5a5' : divergenceStrength === -2 ? '#f87171' : '#ef4444'})`,
+                    }}
+                  />
+                </div>
+                <span className="text-lg">🐂</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-500 mt-1 px-6">
+                <span>Strong</span>
+                <span>Neutral</span>
+                <span>Strong</span>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+              {showRSI && (() => {
+                const report = isPaidTier ? getIndicatorReport('RSI') : null;
+                return (
+                  <Card className="bg-slate-800 border-slate-700">
+                    <CardHeader className="pb-1">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">RSI ({rsiPeriod})</CardTitle>
+                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div ref={rsiRef} className="w-full" data-testid="chart-rsi" />
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+              {showStochRSI && (() => {
+                const report = isPaidTier ? getIndicatorReport('StochRSI') : null;
+                return (
+                  <Card className="bg-slate-800 border-slate-700">
+                    <CardHeader className="pb-1">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">Stochastic RSI ({stochRSIPeriod})</CardTitle>
+                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div ref={stochRSIRef} className="w-full" data-testid="chart-stoch-rsi" />
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+              {showMACD && (() => {
+                const report = isPaidTier ? getIndicatorReport('MACD') : null;
+                return (
+                  <Card className="bg-slate-800 border-slate-700">
+                    <CardHeader className="pb-1">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">MACD ({macdFast}, {macdSlow}, {macdSignal})</CardTitle>
+                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div ref={macdRef} className="w-full" data-testid="chart-macd" />
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+              {showOBV && (() => {
+                const report = isPaidTier ? getIndicatorReport('OBV') : null;
+                return (
+                  <Card className="bg-slate-800 border-slate-700">
+                    <CardHeader className="pb-1">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
+                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div ref={obvRef} className="w-full" data-testid="chart-obv" />
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+              {showWilliamsR && (() => {
+                const report = isPaidTier ? getIndicatorReport('WilliamsR') : null;
+                return (
+                  <Card className="bg-slate-800 border-slate-700">
+                    <CardHeader className="pb-1">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">Williams %R ({williamsRPeriod})</CardTitle>
+                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div ref={williamsRRef} className="w-full" data-testid="chart-williams-r" />
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+              {showMFI && (() => {
+                const report = isPaidTier ? getIndicatorReport('MFI') : null;
+                return (
+                  <Card className="bg-slate-800 border-slate-700">
+                    <CardHeader className="pb-1">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">Money Flow Index ({mfiPeriod})</CardTitle>
+                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div ref={mfiRef} className="w-full" data-testid="chart-mfi" />
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+              {showCCI && (() => {
+                const report = isPaidTier ? getIndicatorReport('CCI') : null;
+                return (
+                  <Card className="bg-slate-800 border-slate-700">
+                    <CardHeader className="pb-1">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">CCI ({cciPeriod})</CardTitle>
+                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div ref={cciRef} className="w-full" data-testid="chart-cci" />
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+              {showADX && (() => {
+                const report = isPaidTier ? getIndicatorReport('ADX') : null;
+                return (
+                  <Card className="bg-slate-800 border-slate-700">
+                    <CardHeader className="pb-1">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">ADX ({adxPeriod})</CardTitle>
+                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div ref={adxRef} className="w-full" data-testid="chart-adx" />
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+            </div>
+          </>
         )}
 
         {/* 2x2 Grid on Desktop: Grok Summary, Alerts, Footprint, Indicators */}
