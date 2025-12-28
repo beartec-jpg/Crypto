@@ -9040,14 +9040,14 @@ const aiAnalyze = useMutation({
       </Card>
     </div>
 
-      {/* Elliott Wave Training Manual Section */}
+      {/* Elliott Wave Reference Book Section */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <Card className="bg-slate-900/90 border-slate-700">
           <CardHeader className="pb-3 cursor-pointer" onClick={() => setTrainingManualOpen(!trainingManualOpen)}>
             <CardTitle className="flex items-center justify-between text-lg">
               <span className="flex items-center gap-2 text-cyan-400">
                 <TrendingUp className="w-5 h-5" />
-                Elliott Wave Training Manual
+                Elliott Wave Reference Book
               </span>
               <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${trainingManualOpen ? '' : '-rotate-90'}`} />
             </CardTitle>

@@ -613,15 +613,15 @@ export default function CryptoElliottWaveLessons() {
                         </p>
                         <div className="space-y-2 text-sm">
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline">Regular Flat</Badge>
+                            <Badge className="bg-slate-700 text-white border-slate-500">Regular Flat</Badge>
                             <span className="text-gray-400">B = 90-105% of A, C = A</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline">Expanded Flat</Badge>
+                            <Badge className="bg-slate-700 text-white border-slate-500">Expanded Flat</Badge>
                             <span className="text-gray-400">B &gt; 105% of A, C = 127-161.8% of A</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline">Running Flat</Badge>
+                            <Badge className="bg-slate-700 text-white border-slate-500">Running Flat</Badge>
                             <span className="text-gray-400">B &gt; A, C fails to reach A's end</span>
                           </div>
                         </div>
@@ -639,19 +639,19 @@ export default function CryptoElliottWaveLessons() {
                         </p>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div>
-                            <Badge variant="outline" className="mb-1">Contracting</Badge>
+                            <Badge className="bg-slate-700 text-white border-slate-500 mb-1">Contracting</Badge>
                             <p className="text-gray-400">Waves converge to apex</p>
                           </div>
                           <div>
-                            <Badge variant="outline" className="mb-1">Expanding</Badge>
+                            <Badge className="bg-slate-700 text-white border-slate-500 mb-1">Expanding</Badge>
                             <p className="text-gray-400">Waves diverge outward</p>
                           </div>
                           <div>
-                            <Badge variant="outline" className="mb-1">Ascending</Badge>
+                            <Badge className="bg-slate-700 text-white border-slate-500 mb-1">Ascending</Badge>
                             <p className="text-gray-400">Flat top, rising bottom</p>
                           </div>
                           <div>
-                            <Badge variant="outline" className="mb-1">Descending</Badge>
+                            <Badge className="bg-slate-700 text-white border-slate-500 mb-1">Descending</Badge>
                             <p className="text-gray-400">Flat bottom, falling top</p>
                           </div>
                         </div>
@@ -725,11 +725,11 @@ export default function CryptoElliottWaveLessons() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <Badge className="bg-blue-600">W</Badge>
                           <ChevronRight className="w-4 h-4 text-gray-500" />
-                          <Badge variant="outline">X</Badge>
+                          <Badge className="bg-gray-600 text-white">X</Badge>
                           <ChevronRight className="w-4 h-4 text-gray-500" />
                           <Badge className="bg-green-600">Y</Badge>
                           <ChevronRight className="w-4 h-4 text-gray-500" />
-                          <Badge variant="outline">X</Badge>
+                          <Badge className="bg-gray-600 text-white">X</Badge>
                           <ChevronRight className="w-4 h-4 text-gray-500" />
                           <Badge className="bg-purple-600">Z</Badge>
                         </div>
