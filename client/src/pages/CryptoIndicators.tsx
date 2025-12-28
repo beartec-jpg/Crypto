@@ -6218,7 +6218,6 @@ export default function CryptoIndicators() {
     // SMAs
     setShowSMA(false);
     setSmaConfigs([]);
-    setSmaInputs({});
     // Oscillators
     setShowRSI(false);
     setShowMACD(false);
@@ -6293,11 +6292,6 @@ export default function CryptoIndicators() {
       if (defaults.showSMA !== undefined) setShowSMA(defaults.showSMA);
       if (defaults.smaConfigs && Array.isArray(defaults.smaConfigs)) {
         setSmaConfigs(defaults.smaConfigs);
-        const inputs: Record<string, string> = {};
-        defaults.smaConfigs.forEach((c: any) => {
-          inputs[c.id] = String(c.period);
-        });
-        setSmaInputs(inputs);
       }
       
       // Oscillators
