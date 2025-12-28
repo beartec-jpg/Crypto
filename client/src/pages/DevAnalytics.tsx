@@ -86,7 +86,7 @@ export default function DevAnalytics() {
                 <SelectItem value="all">All Time</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700" onClick={() => setLocation('/crypto/indicators')}>
+            <Button className="bg-slate-700 text-white hover:bg-slate-600 border border-slate-600" onClick={() => setLocation('/crypto/indicators')}>
               Back to App
             </Button>
           </div>
