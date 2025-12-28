@@ -208,13 +208,15 @@ export default function DevAnalytics() {
         </div>
         
         <Tabs defaultValue="features" className="space-y-4">
-          <TabsList className="bg-slate-800">
-            <TabsTrigger value="features" className="data-[state=active]:bg-[#00c4b4]">Top Features</TabsTrigger>
-            <TabsTrigger value="pages" className="data-[state=active]:bg-[#00c4b4]">Top Pages</TabsTrigger>
-            <TabsTrigger value="symbols" className="data-[state=active]:bg-[#00c4b4]">Top Symbols</TabsTrigger>
-            <TabsTrigger value="clicks" className="data-[state=active]:bg-[#00c4b4]">Top Clicks</TabsTrigger>
-            <TabsTrigger value="costs" className="data-[state=active]:bg-[#00c4b4]">API Costs</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto">
+            <TabsList className="bg-slate-800 inline-flex w-max">
+              <TabsTrigger value="features" className="data-[state=active]:bg-[#00c4b4] whitespace-nowrap">Top Features</TabsTrigger>
+              <TabsTrigger value="pages" className="data-[state=active]:bg-[#00c4b4] whitespace-nowrap">Top Pages</TabsTrigger>
+              <TabsTrigger value="symbols" className="data-[state=active]:bg-[#00c4b4] whitespace-nowrap">Top Symbols</TabsTrigger>
+              <TabsTrigger value="clicks" className="data-[state=active]:bg-[#00c4b4] whitespace-nowrap">Top Clicks</TabsTrigger>
+              <TabsTrigger value="costs" className="data-[state=active]:bg-[#00c4b4] whitespace-nowrap">API Costs</TabsTrigger>
+            </TabsList>
+          </div>
           
           <TabsContent value="features">
             <Card className="bg-slate-800 border-slate-700">
