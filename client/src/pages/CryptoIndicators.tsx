@@ -10026,11 +10026,21 @@ export default function CryptoIndicators() {
                 <SelectValue className="text-white font-bold" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="XRPUSDT">XRP/USDT</SelectItem>
                 <SelectItem value="BTCUSDT">BTC/USDT</SelectItem>
                 <SelectItem value="ETHUSDT">ETH/USDT</SelectItem>
-                <SelectItem value="ADAUSDT">ADA/USDT</SelectItem>
+                <SelectItem value="XRPUSDT">XRP/USDT</SelectItem>
                 <SelectItem value="SOLUSDT">SOL/USDT</SelectItem>
+                <SelectItem value="ADAUSDT">ADA/USDT</SelectItem>
+                <SelectItem value="DOGEUSDT">DOGE/USDT</SelectItem>
+                <SelectItem value="DOTUSDT">DOT/USDT</SelectItem>
+                <SelectItem value="LINKUSDT">LINK/USDT</SelectItem>
+                <SelectItem value="AVAXUSDT">AVAX/USDT</SelectItem>
+                <SelectItem value="MATICUSDT">MATIC/USDT</SelectItem>
+                <SelectItem value="LTCUSDT">LTC/USDT</SelectItem>
+                <SelectItem value="BNBUSDT">BNB/USDT</SelectItem>
+                <SelectItem value="ATOMUSDT">ATOM/USDT</SelectItem>
+                <SelectItem value="NEARUSDT">NEAR/USDT</SelectItem>
+                <SelectItem value="AAVEUSDT">AAVE/USDT</SelectItem>
               </SelectContent>
             </Select>
             <Select value={interval} onValueChange={setTimeframeInterval}>

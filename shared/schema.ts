@@ -828,3 +828,91 @@ export const insertChartDrawingSchema = z.object({
 
 export type InsertChartDrawing = z.infer<typeof insertChartDrawingSchema>;
 export type ChartDrawing = typeof chartDrawings.$inferSelect;
+
+// ========== ANALYTICS TABLES ==========
+// Track user events (clicks, feature usage, page views)
+export const analyticsEvents = pgTable("analytics_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Optional - can track anonymous users
+  userEmail: varchar("user_email"), // For quick reference
+  eventType: varchar("event_type").notNull(), // 'page_view', 'click', 'feature_usage', 'api_call'
+  eventName: varchar("event_name").notNull(), // 'symbol_change', 'indicator_toggle', etc.
+  eventData: jsonb("event_data"), // Additional event-specific data
+  page: varchar("page"), // Current page/route
+  symbol: varchar("symbol"), // Current crypto symbol if applicable
+  timeframe: varchar("timeframe"), // Current timeframe if applicable
+  userTier: varchar("user_tier"), // Subscription tier at time of event
+  sessionId: varchar("session_id"), // Group events by session
+  userAgent: varchar("user_agent"), // Browser/device info
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Track API usage and costs
+export const apiUsageLog = pgTable("api_usage_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  userEmail: varchar("user_email"),
+  apiType: varchar("api_type").notNull(), // 'ai_analysis', 'yahoo_finance', 'binance', 'coinglass', etc.
+  endpoint: varchar("endpoint"), // Specific endpoint called
+  symbol: varchar("symbol"),
+  interval: varchar("interval"),
+  tokensUsed: integer("tokens_used"), // For AI calls
+  estimatedCost: doublePrecision("estimated_cost"), // Estimated cost in USD
+  responseTime: integer("response_time"), // Response time in ms
+  success: boolean("success").default(true),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Daily aggregated stats for dashboard
+export const analyticsDailyStats = pgTable("analytics_daily_stats", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: timestamp("date").notNull(),
+  totalPageViews: integer("total_page_views").default(0),
+  uniqueUsers: integer("unique_users").default(0),
+  totalClicks: integer("total_clicks").default(0),
+  totalApiCalls: integer("total_api_calls").default(0),
+  totalAiCalls: integer("total_ai_calls").default(0),
+  totalAiTokens: integer("total_ai_tokens").default(0),
+  estimatedAiCost: doublePrecision("estimated_ai_cost").default(0),
+  topSymbols: jsonb("top_symbols"), // Array of {symbol, count}
+  topFeatures: jsonb("top_features"), // Array of {feature, count}
+  topPages: jsonb("top_pages"), // Array of {page, count}
+  tierBreakdown: jsonb("tier_breakdown"), // {free: X, beginner: Y, ...}
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schemas for analytics
+export const insertAnalyticsEventSchema = z.object({
+  userId: z.string().optional().nullable(),
+  userEmail: z.string().optional().nullable(),
+  eventType: z.string(),
+  eventName: z.string(),
+  eventData: z.any().optional().nullable(),
+  page: z.string().optional().nullable(),
+  symbol: z.string().optional().nullable(),
+  timeframe: z.string().optional().nullable(),
+  userTier: z.string().optional().nullable(),
+  sessionId: z.string().optional().nullable(),
+  userAgent: z.string().optional().nullable(),
+});
+
+export const insertApiUsageLogSchema = z.object({
+  userId: z.string().optional().nullable(),
+  userEmail: z.string().optional().nullable(),
+  apiType: z.string(),
+  endpoint: z.string().optional().nullable(),
+  symbol: z.string().optional().nullable(),
+  interval: z.string().optional().nullable(),
+  tokensUsed: z.number().int().optional().nullable(),
+  estimatedCost: z.number().optional().nullable(),
+  responseTime: z.number().int().optional().nullable(),
+  success: z.boolean().optional().default(true),
+  errorMessage: z.string().optional().nullable(),
+});
+
+export type InsertAnalyticsEvent = z.infer<typeof insertAnalyticsEventSchema>;
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
+export type InsertApiUsageLog = z.infer<typeof insertApiUsageLogSchema>;
+export type ApiUsageLog = typeof apiUsageLog.$inferSelect;
+export type AnalyticsDailyStats = typeof analyticsDailyStats.$inferSelect;
