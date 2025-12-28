@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { TrendingUp, TrendingDown, Activity, DollarSign, Loader2, Bell, ChevronDown, ChevronUp, Zap, Save, Settings, MessageSquare } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, Loader2, Bell, ChevronDown, ChevronUp, Zap, Save, Settings, MessageSquare, Maximize2, Minimize2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -391,6 +391,7 @@ export default function CryptoIndicators() {
   // Drawing tools state
   type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | null;
   const [drawingMode, setDrawingMode] = useState<'off' | 'draw' | 'select'>('draw'); // Draw mode active by default
+  const [isFullscreen, setIsFullscreen] = useState(false); // Fullscreen chart mode
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [drawings, setDrawings] = useState<any[]>([]);
@@ -782,6 +783,37 @@ export default function CryptoIndicators() {
       setCrosshairModeActive(false);
     }
   }, [drawingMode, activeTool]);
+  
+  // Fullscreen mode: resize chart and handle Escape key
+  useEffect(() => {
+    const handleResize = () => {
+      if (chartRef.current && chartContainerRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight
+        });
+      }
+    };
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+        setTimeout(handleResize, 100);
+      }
+    };
+    
+    if (isFullscreen) {
+      window.addEventListener('resize', handleResize);
+      window.addEventListener('keydown', handleKeyDown);
+      // Trigger resize immediately when entering fullscreen
+      setTimeout(handleResize, 50);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen]);
   
   // Connect findSnapPoint function to the ref for edit mode
   useEffect(() => {
@@ -10254,18 +10286,38 @@ export default function CryptoIndicators() {
         </Card>
 
         {/* Main Chart */}
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="p-4 bg-slate-800">
+        <Card 
+          className={`bg-slate-800 border-slate-700 transition-all duration-300 ${
+            isFullscreen 
+              ? 'fixed inset-0 z-50 rounded-none border-0' 
+              : ''
+          }`}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && isFullscreen) {
+              setIsFullscreen(false);
+              setTimeout(() => {
+                if (chartRef.current && chartContainerRef.current) {
+                  chartRef.current.applyOptions({
+                    width: chartContainerRef.current.clientWidth,
+                    height: chartContainerRef.current.clientHeight
+                  });
+                }
+              }, 100);
+            }
+          }}
+          tabIndex={isFullscreen ? 0 : -1}
+        >
+          <CardContent className={`p-4 bg-slate-800 ${isFullscreen ? 'h-full' : ''}`}>
             {loading ? (
-              <div className="h-[600px] flex items-center justify-center bg-slate-800">
+              <div className={`${isFullscreen ? 'h-full' : 'h-[600px]'} flex items-center justify-center bg-slate-800`}>
                 <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
               </div>
             ) : (
-              <div className="relative">
+              <div className={`relative ${isFullscreen ? 'h-full' : ''}`}>
                 <div 
                   ref={chartContainerRef} 
-                  className="w-full h-[600px] relative bg-[#0f172a] overflow-hidden" 
-                  style={{ minHeight: '600px', background: '#0f172a' }}
+                  className={`w-full relative bg-[#0f172a] overflow-hidden ${isFullscreen ? 'h-full' : 'h-[600px]'}`}
+                  style={{ minHeight: isFullscreen ? '100%' : '600px', background: '#0f172a' }}
                 />
                 
                 {/* Custom Crosshair Time Tooltip for Future Whitespace Area */}
@@ -10290,7 +10342,7 @@ export default function CryptoIndicators() {
                 {/* SVG Overlay for Drawings */}
                 <svg 
                   className={`absolute top-0 left-0 ${(drawingMode === 'select' || activeEdit) ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
-                  style={{ width: '100%', height: '600px', zIndex: 10 }}
+                  style={{ width: '100%', height: isFullscreen ? '100%' : '600px', zIndex: 10 }}
                   data-testid="drawing-overlay"
                   onClick={(e) => {
                     // If editing a point, place it here
@@ -10896,6 +10948,31 @@ export default function CryptoIndicators() {
                       <path d="M6 15v4" strokeLinecap="round"/>
                       <path d="M18 15v4" strokeLinecap="round"/>
                     </svg>
+                  </button>
+                  
+                  {/* Fullscreen Toggle Button */}
+                  <button
+                    onClick={() => {
+                      setIsFullscreen(prev => !prev);
+                      // Resize chart after a short delay to allow DOM to update
+                      setTimeout(() => {
+                        if (chartRef.current && chartContainerRef.current) {
+                          chartRef.current.applyOptions({
+                            width: chartContainerRef.current.clientWidth,
+                            height: chartContainerRef.current.clientHeight
+                          });
+                        }
+                      }, 100);
+                    }}
+                    className={`p-2 rounded-lg transition-all ${
+                      isFullscreen 
+                        ? 'bg-purple-500 text-white' 
+                        : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                    }`}
+                    title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Fullscreen Mode'}
+                    data-testid="btn-fullscreen"
+                  >
+                    {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
                   </button>
                   
                   {/* Auto-Color Toggle Button (Palette Icon) */}
