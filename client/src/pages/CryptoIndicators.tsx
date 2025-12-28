@@ -834,6 +834,8 @@ export default function CryptoIndicators() {
   const rsiRef = useRef<HTMLDivElement>(null);
   const macdRef = useRef<HTMLDivElement>(null);
   const obvRef = useRef<HTMLDivElement>(null);
+  // Store oscillator chart instances for time scale sync
+  const oscillatorChartsRef = useRef<Map<string, IChartApi>>(new Map());
   const [showRSI, setShowRSI] = useState(false);
   const [rsiPeriod, setRsiPeriod] = useState(14);
   const [rsiPeriodInput, setRsiPeriodInput] = useState('14');
@@ -849,6 +851,7 @@ export default function CryptoIndicators() {
   const [showMFI, setShowMFI] = useState(false);
   const [mfiPeriod, setMfiPeriod] = useState(14);
   const [mfiPeriodInput, setMfiPeriodInput] = useState('14');
+  const [syncOscillatorScale, setSyncOscillatorScale] = useState(false);
   
   // Bollinger Bands settings
   const bbRef = useRef<HTMLDivElement>(null);
@@ -9101,6 +9104,16 @@ export default function CryptoIndicators() {
       },
     });
     
+    oscillatorChartsRef.current.set('RSI', chart);
+    
+    // Sync with main chart if sync is enabled
+    if (syncOscillatorScale && chartRef.current) {
+      try {
+        const visibleRange = chartRef.current.timeScale().getVisibleRange();
+        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
+      } catch (e) { /* ignore */ }
+    }
+    
     const line = chart.addSeries(LineSeries, { color: '#ffa726', lineWidth: 2 });
     line.setData(calculateRSI(candles, rsiPeriod));
     
@@ -9110,7 +9123,10 @@ export default function CryptoIndicators() {
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 70 })));
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 30 })));
     
-    return () => chart.remove();
+    return () => {
+      oscillatorChartsRef.current.delete('RSI');
+      chart.remove();
+    };
   }, [showRSI, candles, rsiPeriod, calculateRSI]);
 
   // Create MACD chart
@@ -9137,12 +9153,25 @@ export default function CryptoIndicators() {
       },
     });
     
+    oscillatorChartsRef.current.set('MACD', chart);
+    
+    // Sync with main chart if sync is enabled
+    if (syncOscillatorScale && chartRef.current) {
+      try {
+        const visibleRange = chartRef.current.timeScale().getVisibleRange();
+        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
+      } catch (e) { /* ignore */ }
+    }
+    
     const { macd, signal, hist } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
     chart.addSeries(LineSeries, { color: '#26a69a', lineWidth: 2 }).setData(macd);
     chart.addSeries(LineSeries, { color: '#ef5350', lineWidth: 2 }).setData(signal);
     chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(hist);
     
-    return () => chart.remove();
+    return () => {
+      oscillatorChartsRef.current.delete('MACD');
+      chart.remove();
+    };
   }, [showMACD, candles, macdFast, macdSlow, macdSignal, calculateMACD]);
 
   // Create OBV chart
@@ -9169,9 +9198,22 @@ export default function CryptoIndicators() {
       },
     });
     
+    oscillatorChartsRef.current.set('OBV', chart);
+    
+    // Sync with main chart if sync is enabled
+    if (syncOscillatorScale && chartRef.current) {
+      try {
+        const visibleRange = chartRef.current.timeScale().getVisibleRange();
+        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
+      } catch (e) { /* ignore */ }
+    }
+    
     chart.addSeries(LineSeries, { color: '#9580ff', lineWidth: 2 }).setData(calculateOBV(candles));
     
-    return () => chart.remove();
+    return () => {
+      oscillatorChartsRef.current.delete('OBV');
+      chart.remove();
+    };
   }, [showOBV, candles, calculateOBV]);
 
   // Create Stochastic RSI chart
@@ -9198,6 +9240,16 @@ export default function CryptoIndicators() {
       },
     });
     
+    oscillatorChartsRef.current.set('StochRSI', chart);
+    
+    // Sync with main chart if sync is enabled
+    if (syncOscillatorScale && chartRef.current) {
+      try {
+        const visibleRange = chartRef.current.timeScale().getVisibleRange();
+        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
+      } catch (e) { /* ignore */ }
+    }
+    
     const stochData = calculateStochasticRSI(candles, stochRSIPeriod);
     const kLine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2, title: '%K' });
     const dLine = chart.addSeries(LineSeries, { color: '#f97316', lineWidth: 2, title: '%D' });
@@ -9211,7 +9263,10 @@ export default function CryptoIndicators() {
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 80 })));
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 20 })));
     
-    return () => chart.remove();
+    return () => {
+      oscillatorChartsRef.current.delete('StochRSI');
+      chart.remove();
+    };
   }, [showStochRSI, candles, stochRSIPeriod, calculateStochasticRSI]);
 
   // Create Williams %R chart
@@ -9238,6 +9293,16 @@ export default function CryptoIndicators() {
       },
     });
     
+    oscillatorChartsRef.current.set('WilliamsR', chart);
+    
+    // Sync with main chart if sync is enabled
+    if (syncOscillatorScale && chartRef.current) {
+      try {
+        const visibleRange = chartRef.current.timeScale().getVisibleRange();
+        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
+      } catch (e) { /* ignore */ }
+    }
+    
     const line = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2 });
     line.setData(calculateWilliamsR(candles, williamsRPeriod));
     
@@ -9247,7 +9312,10 @@ export default function CryptoIndicators() {
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: -20 })));
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: -80 })));
     
-    return () => chart.remove();
+    return () => {
+      oscillatorChartsRef.current.delete('WilliamsR');
+      chart.remove();
+    };
   }, [showWilliamsR, candles, williamsRPeriod, calculateWilliamsR]);
 
   // Create MFI chart
@@ -9274,6 +9342,16 @@ export default function CryptoIndicators() {
       },
     });
     
+    oscillatorChartsRef.current.set('MFI', chart);
+    
+    // Sync with main chart if sync is enabled
+    if (syncOscillatorScale && chartRef.current) {
+      try {
+        const visibleRange = chartRef.current.timeScale().getVisibleRange();
+        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
+      } catch (e) { /* ignore */ }
+    }
+    
     const line = chart.addSeries(LineSeries, { color: '#00bcd4', lineWidth: 2 });
     line.setData(calculateMFI(candles, mfiPeriod));
     
@@ -9283,7 +9361,10 @@ export default function CryptoIndicators() {
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 80 })));
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 20 })));
     
-    return () => chart.remove();
+    return () => {
+      oscillatorChartsRef.current.delete('MFI');
+      chart.remove();
+    };
   }, [showMFI, candles, mfiPeriod, calculateMFI]);
 
   // Create CCI chart
@@ -9310,6 +9391,16 @@ export default function CryptoIndicators() {
       },
     });
     
+    oscillatorChartsRef.current.set('CCI', chart);
+    
+    // Sync with main chart if sync is enabled
+    if (syncOscillatorScale && chartRef.current) {
+      try {
+        const visibleRange = chartRef.current.timeScale().getVisibleRange();
+        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
+      } catch (e) { /* ignore */ }
+    }
+    
     const line = chart.addSeries(LineSeries, { color: '#ec4899', lineWidth: 2 });
     line.setData(calculateCCI(candles, cciPeriod));
     
@@ -9320,7 +9411,10 @@ export default function CryptoIndicators() {
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: -100 })));
     chart.addSeries(LineSeries, { color: '#444', lineStyle: 2, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 0 })));
     
-    return () => chart.remove();
+    return () => {
+      oscillatorChartsRef.current.delete('CCI');
+      chart.remove();
+    };
   }, [showCCI, candles, cciPeriod]);
 
   // Create ADX chart
@@ -9347,6 +9441,16 @@ export default function CryptoIndicators() {
       },
     });
     
+    oscillatorChartsRef.current.set('ADX', chart);
+    
+    // Sync with main chart if sync is enabled
+    if (syncOscillatorScale && chartRef.current) {
+      try {
+        const visibleRange = chartRef.current.timeScale().getVisibleRange();
+        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
+      } catch (e) { /* ignore */ }
+    }
+    
     const adxData = calculateADX(candles, adxPeriod);
     const adxLine = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 2, title: 'ADX' });
     const plusDILine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, title: '+DI' });
@@ -9361,8 +9465,47 @@ export default function CryptoIndicators() {
     // Add strength level line (25 is typically considered strong trend)
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 25 })));
     
-    return () => chart.remove();
+    return () => {
+      oscillatorChartsRef.current.delete('ADX');
+      chart.remove();
+    };
   }, [showADX, candles, adxPeriod]);
+
+  // ========== OSCILLATOR TIME SCALE SYNC ==========
+  // Sync oscillator chart time scales with main chart when enabled
+  useEffect(() => {
+    if (!syncOscillatorScale || !chartRef.current) return;
+    
+    const mainChart = chartRef.current;
+    const timeScale = mainChart.timeScale();
+    
+    const syncVisibleRange = () => {
+      try {
+        const visibleRange = timeScale.getVisibleRange();
+        if (!visibleRange) return;
+        
+        oscillatorChartsRef.current.forEach((oscChart) => {
+          try {
+            oscChart.timeScale().setVisibleRange(visibleRange);
+          } catch (e) {
+            // Chart might not have data in this range
+          }
+        });
+      } catch (e) {
+        // Main chart might not be ready
+      }
+    };
+    
+    // Subscribe to time scale changes
+    timeScale.subscribeVisibleTimeRangeChange(syncVisibleRange);
+    
+    // Initial sync
+    syncVisibleRange();
+    
+    return () => {
+      timeScale.unsubscribeVisibleTimeRangeChange(syncVisibleRange);
+    };
+  }, [syncOscillatorScale]);
 
   // ========== DIVERGENCE CALCULATION ==========
   // Calculate divergence from active oscillators
@@ -9596,6 +9739,64 @@ export default function CryptoIndicators() {
           {type !== 'none' && (
             <span className={`text-xs font-medium ${type === 'bullish' ? 'text-green-400' : 'text-red-400'}`}>
               {type === 'bullish' ? '▲' : '▼'}{Math.abs(strength)}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ADX Trend Strength Meter - uses +DI/-DI for direction and ADX value for strength
+  const TrendStrengthMeter = () => {
+    const adxData = calculateADX(candles, adxPeriod);
+    const lastADX = adxData[adxData.length - 1];
+    
+    if (!lastADX) {
+      return (
+        <div className="mt-2 pt-2 border-t border-slate-600">
+          <div className="flex items-center gap-2 text-gray-500 text-xs">No data</div>
+        </div>
+      );
+    }
+    
+    // Direction from +DI vs -DI
+    const isBullish = lastADX.plusDI > lastADX.minusDI;
+    const direction = isBullish ? 'bullish' : 'bearish';
+    
+    // Strength from ADX value (0-100 scale -> 0-3 scale)
+    // < 20 = weak (1), 20-40 = moderate (2), > 40 = strong (3)
+    let strengthValue = 0;
+    if (lastADX.adx >= 40) strengthValue = 3;
+    else if (lastADX.adx >= 25) strengthValue = 2;
+    else if (lastADX.adx >= 15) strengthValue = 1;
+    
+    // Apply direction to strength
+    const signedStrength = isBullish ? strengthValue : -strengthValue;
+    
+    return (
+      <div className="mt-2 pt-2 border-t border-slate-600">
+        <div className="flex items-center gap-2">
+          <span className="text-sm">🐻‍❄️</span>
+          <div className="flex-1 h-2 bg-slate-700 rounded-full relative overflow-hidden">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-px h-full bg-slate-500" />
+            </div>
+            <div 
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-white shadow transition-all duration-500"
+              style={{
+                left: `calc(50% + ${(signedStrength / 3) * 45}% - 6px)`,
+                background: signedStrength === 0 
+                  ? '#3b82f6' 
+                  : signedStrength > 0 
+                    ? `linear-gradient(to right, #3b82f6, ${strengthValue === 1 ? '#86efac' : strengthValue === 2 ? '#4ade80' : '#22c55e'})`
+                    : `linear-gradient(to left, #3b82f6, ${strengthValue === 1 ? '#fca5a5' : strengthValue === 2 ? '#f87171' : '#ef4444'})`,
+              }}
+            />
+          </div>
+          <span className="text-sm">🐂</span>
+          {strengthValue > 0 && (
+            <span className={`text-xs font-medium ${direction === 'bullish' ? 'text-green-400' : 'text-red-400'}`}>
+              {direction === 'bullish' ? '▲' : '▼'}{strengthValue}
             </span>
           )}
         </div>
@@ -11759,6 +11960,22 @@ export default function CryptoIndicators() {
                         </div>
                       )}
                       
+                      {/* Sync Scale Toggle */}
+                      <div className="flex items-center justify-between bg-slate-800/50 rounded-lg p-2">
+                        <div className="flex items-center gap-2">
+                          <Switch 
+                            checked={syncOscillatorScale} 
+                            onCheckedChange={setSyncOscillatorScale}
+                            id="sync-oscillator-scale" 
+                            data-testid="switch-sync-oscillator-scale" 
+                          />
+                          <Label htmlFor="sync-oscillator-scale" className="text-xs text-white cursor-pointer">
+                            Sync Time Scale with Main Chart
+                          </Label>
+                        </div>
+                        <span className="text-xs text-gray-500">Match visible range</span>
+                      </div>
+                      
                       {/* Main toggles */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div className="flex items-center gap-2">
@@ -12148,7 +12365,7 @@ export default function CryptoIndicators() {
                     </CardHeader>
                     <CardContent>
                       <div ref={adxRef} className="w-full" data-testid="chart-adx" />
-                      <DivergenceMeter indicator="ADX" />
+                      <TrendStrengthMeter />
                     </CardContent>
                   </Card>
                 );
