@@ -1316,10 +1316,43 @@ function WaveEntryRow({
           {waveLabel}
         </span>
         
-        {/* Timeframe */}
-        <Badge variant="outline" className="text-[10px] px-1.5 text-gray-300 border-gray-600">
-          {entry.timeframe}
-        </Badge>
+        {/* Timeframe dropdown - allows viewing in original or one level down */}
+        {(() => {
+          const originalTf = entry.timeframe;
+          const oneDown = TIMEFRAME_ONE_DOWN[originalTf.toLowerCase()] || TIMEFRAME_ONE_DOWN[originalTf];
+          const canDrillDown = !!oneDown;
+          
+          if (!canDrillDown) {
+            // Lowest timeframe - show static badge
+            return (
+              <Badge variant="outline" className="text-[10px] px-1.5 text-gray-300 border-gray-600">
+                {entry.timeframe}
+              </Badge>
+            );
+          }
+          
+          return (
+            <select
+              value={timeframe}
+              onChange={(e) => {
+                e.stopPropagation();
+                const newTf = e.target.value;
+                setTimeframe(newTf);
+                toast({ 
+                  title: 'Timeframe Changed', 
+                  description: newTf === originalTf 
+                    ? `Viewing at original ${originalTf}` 
+                    : `Drilling down to ${newTf}` 
+                });
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="text-[10px] bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-cyan-400 hover:border-cyan-500/50 focus:border-cyan-500 focus:outline-none cursor-pointer"
+            >
+              <option value={originalTf}>{originalTf}</option>
+              <option value={oneDown.tf}>{oneDown.tf} ↓</option>
+            </select>
+          );
+        })()}
         
         {/* Pattern Type */}
         <span className={`text-xs font-medium ${
@@ -2556,6 +2589,23 @@ const TIMEFRAMES = [
   { label: '1 Hour', value: '1h' },
   { label: '15 Min', value: '15m' },
 ];
+
+// Timeframe hierarchy for drill-down (only 1 level down allowed)
+// Maps each timeframe to its one-level-lower timeframe and candle count
+const TIMEFRAME_ONE_DOWN: Record<string, { tf: string; candleCount: number } | null> = {
+  '1M': { tf: '1w', candleCount: 4 },   // Month → 4 weeks
+  '1w': { tf: '1d', candleCount: 7 },   // Week → 7 days
+  '1d': { tf: '4h', candleCount: 6 },   // Day → 6 x 4-hour candles
+  '4h': { tf: '1h', candleCount: 4 },   // 4h → 4 hourly candles
+  '1h': { tf: '15m', candleCount: 4 },  // 1h → 4 x 15-min candles
+  '15m': null,                          // Lowest level - no drill-down
+};
+
+// Get display label for a timeframe value
+const getTimeframeLabel = (value: string): string => {
+  const tf = TIMEFRAMES.find(t => t.value.toLowerCase() === value.toLowerCase());
+  return tf?.label || value;
+};
 
 const PATTERN_TYPES = [
   { label: 'Impulse (12345)', value: 'impulse' },

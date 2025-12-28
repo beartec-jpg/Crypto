@@ -63,13 +63,13 @@ export default function CryptoAccount() {
   const { tier: localTier, subscription: authSubscription, isAdmin } = useCryptoAuth();
   const { isSignedIn, isLoaded, user } = useClerkHooks();
   
-  const { data: apiSubscription, isLoading } = useQuery<SubscriptionData>({
+  const { data: apiSubscription } = useQuery<SubscriptionData>({
     queryKey: ['/api/crypto/my-subscription'],
     enabled: isDevelopment || isSignedIn === true,
   });
 
   // Admin users get the overridden subscription from useCryptoAuth
-  const subscription = isAdmin ? authSubscription as SubscriptionData : apiSubscription;
+  const subscription = isAdmin ? (authSubscription as unknown as SubscriptionData) : apiSubscription;
   const tier = isAdmin ? 'elite' : (subscription?.tier || localTier || 'free');
   
   const getTierColor = (t: string) => {
