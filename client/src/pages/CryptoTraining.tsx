@@ -1730,6 +1730,26 @@ export default function CryptoTraining() {
           </AccordionItem>
         </Accordion>
 
+          {/* ELLIOTT WAVE LESSONS PROMO */}
+          <Card className="bg-gradient-to-r from-purple-600/20 to-cyan-600/20 border-purple-600/50 mb-6">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <TrendingUp className="w-6 h-6 text-purple-400" />
+                <h3 className="text-xl font-bold text-white">Elliott Wave Mastery Course</h3>
+              </div>
+              <p className="text-gray-300 mb-4">
+                Learn advanced Elliott Wave patterns with interactive lessons covering impulse waves, diagonal patterns, 
+                corrections, complex combinations, and Fibonacci relationships. Includes quizzes to test your knowledge.
+              </p>
+              <Link href="/crypto/elliott-lessons">
+                <Button className="bg-purple-600 hover:bg-purple-700" data-testid="button-elliott-lessons">
+                  <GraduationCap className="w-4 h-4 mr-2" />
+                  Start Elliott Wave Lessons
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
           {/* CONCLUSION */}
           <Card className="bg-gradient-to-r from-[#00c4b4]/20 to-purple-600/20 border-[#00c4b4]/50">
             <CardContent className="p-6">
