@@ -1,0 +1,697 @@
+import type { 
+  ISeriesPrimitive, 
+  SeriesAttachedParameter,
+  IPrimitivePaneView,
+  IPrimitivePaneRenderer,
+  Time,
+  IChartApi,
+  ISeriesApi,
+  SeriesType
+} from 'lightweight-charts';
+
+interface DrawingPoint {
+  time: number;
+  price: number;
+  snapType?: 'high' | 'low' | 'none';
+}
+
+interface DrawingStyle {
+  color: string;
+  lineWidth?: number;
+}
+
+type RequestUpdateCallback = () => void;
+
+class TrendLineRenderer implements IPrimitivePaneRenderer {
+  private _point1: DrawingPoint;
+  private _point2: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+
+  constructor(
+    point1: DrawingPoint,
+    point2: DrawingPoint,
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._point1 = point1;
+    this._point2 = point2;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart) return;
+
+    const timeScale = this._chart.timeScale();
+    const x1 = timeScale.timeToCoordinate(this._point1.time as Time);
+    const y1 = this._series.priceToCoordinate(this._point1.price);
+    const x2 = timeScale.timeToCoordinate(this._point2.time as Time);
+    const y2 = this._series.priceToCoordinate(this._point2.price);
+
+    if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      
+      ctx.beginPath();
+      ctx.strokeStyle = this._style.color;
+      ctx.lineWidth = this._style.lineWidth || 2;
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      if (this._isSelected) {
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.arc(x1, y1, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x2, y2, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  }
+}
+
+class TrendLinePaneView implements IPrimitivePaneView {
+  private _primitive: TrendLinePrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: TrendLinePrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' {
+    return 'normal';
+  }
+
+  renderer() {
+    const points = this._primitive.getPoints();
+    return new TrendLineRenderer(
+      points[0],
+      points[1],
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class TrendLinePrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: TrendLinePaneView[];
+  private _points: DrawingPoint[];
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, points: DrawingPoint[], style: DrawingStyle) {
+    this._id = id;
+    this._points = points;
+    this._style = style;
+    this._paneViews = [new TrendLinePaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() {
+    return this._paneViews;
+  }
+
+  getId() { return this._id; }
+  getPoints() { return this._points; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoints(points: DrawingPoint[]) {
+    this._points = points;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
+
+class HorizontalLineRenderer implements IPrimitivePaneRenderer {
+  private _price: number;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+  private _time: number;
+
+  constructor(
+    price: number,
+    time: number,
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._price = price;
+    this._time = time;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart) return;
+
+    const y = this._series.priceToCoordinate(this._price);
+    if (y === null) return;
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      const width = scope.mediaSize.width;
+      
+      ctx.beginPath();
+      ctx.strokeStyle = this._style.color;
+      ctx.lineWidth = this._style.lineWidth || 2;
+      ctx.setLineDash([5, 5]);
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (this._isSelected) {
+        const timeScale = this._chart!.timeScale();
+        const x = timeScale.timeToCoordinate(this._time as Time);
+        if (x !== null) {
+          ctx.fillStyle = '#22c55e';
+          ctx.beginPath();
+          ctx.arc(x, y, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    });
+  }
+}
+
+class HorizontalLinePaneView implements IPrimitivePaneView {
+  private _primitive: HorizontalLinePrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: HorizontalLinePrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' {
+    return 'normal';
+  }
+
+  renderer() {
+    const point = this._primitive.getPoint();
+    return new HorizontalLineRenderer(
+      point.price,
+      point.time,
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class HorizontalLinePrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: HorizontalLinePaneView[];
+  private _point: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, point: DrawingPoint, style: DrawingStyle) {
+    this._id = id;
+    this._point = point;
+    this._style = style;
+    this._paneViews = [new HorizontalLinePaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() {
+    return this._paneViews;
+  }
+
+  getId() { return this._id; }
+  getPoint() { return this._point; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoint(point: DrawingPoint) {
+    this._point = point;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
+
+class RectangleRenderer implements IPrimitivePaneRenderer {
+  private _point1: DrawingPoint;
+  private _point2: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+
+  constructor(
+    point1: DrawingPoint,
+    point2: DrawingPoint,
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._point1 = point1;
+    this._point2 = point2;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart) return;
+
+    const timeScale = this._chart.timeScale();
+    const x1 = timeScale.timeToCoordinate(this._point1.time as Time);
+    const y1 = this._series.priceToCoordinate(this._point1.price);
+    const x2 = timeScale.timeToCoordinate(this._point2.time as Time);
+    const y2 = this._series.priceToCoordinate(this._point2.price);
+
+    if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      
+      const left = Math.min(x1, x2);
+      const top = Math.min(y1, y2);
+      const width = Math.abs(x2 - x1);
+      const height = Math.abs(y2 - y1);
+
+      ctx.fillStyle = this._style.color.replace(')', ', 0.2)').replace('rgb', 'rgba').replace('hsl', 'hsla');
+      if (this._style.color.startsWith('#')) {
+        const hex = this._style.color;
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.2)`;
+      }
+      ctx.fillRect(left, top, width, height);
+
+      ctx.strokeStyle = this._style.color;
+      ctx.lineWidth = this._style.lineWidth || 2;
+      ctx.strokeRect(left, top, width, height);
+
+      if (this._isSelected) {
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.arc(x1, y1, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x2, y2, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  }
+}
+
+class RectanglePaneView implements IPrimitivePaneView {
+  private _primitive: RectanglePrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: RectanglePrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' {
+    return 'normal';
+  }
+
+  renderer() {
+    const points = this._primitive.getPoints();
+    return new RectangleRenderer(
+      points[0],
+      points[1],
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class RectanglePrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: RectanglePaneView[];
+  private _points: DrawingPoint[];
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, points: DrawingPoint[], style: DrawingStyle) {
+    this._id = id;
+    this._points = points;
+    this._style = style;
+    this._paneViews = [new RectanglePaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() {
+    return this._paneViews;
+  }
+
+  getId() { return this._id; }
+  getPoints() { return this._points; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoints(points: DrawingPoint[]) {
+    this._points = points;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
+
+const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618];
+const FIB_COLORS: Record<number, string> = {
+  0: '#787b86',
+  0.236: '#f7525f',
+  0.382: '#ff9800',
+  0.5: '#4caf50',
+  0.618: '#2196f3',
+  0.786: '#9c27b0',
+  1: '#787b86',
+  1.272: '#00bcd4',
+  1.618: '#e91e63'
+};
+
+class FibRetracementRenderer implements IPrimitivePaneRenderer {
+  private _point1: DrawingPoint;
+  private _point2: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+
+  constructor(
+    point1: DrawingPoint,
+    point2: DrawingPoint,
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._point1 = point1;
+    this._point2 = point2;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart) return;
+
+    const timeScale = this._chart.timeScale();
+    const x1 = timeScale.timeToCoordinate(this._point1.time as Time);
+    const x2 = timeScale.timeToCoordinate(this._point2.time as Time);
+
+    if (x1 === null || x2 === null) return;
+
+    const priceDiff = this._point2.price - this._point1.price;
+    const left = Math.min(x1, x2);
+    const right = Math.max(x1, x2);
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      const chartWidth = scope.mediaSize.width;
+
+      FIB_LEVELS.forEach((level) => {
+        const levelPrice = this._point1.price + priceDiff * level;
+        const y = this._series!.priceToCoordinate(levelPrice);
+        if (y === null) return;
+
+        const color = FIB_COLORS[level] || this._style.color;
+        
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash(level === 0 || level === 1 ? [] : [3, 3]);
+        ctx.moveTo(left, y);
+        ctx.lineTo(chartWidth, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.font = '11px sans-serif';
+        ctx.fillStyle = color;
+        ctx.fillText(`${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`, right + 5, y + 4);
+      });
+
+      ctx.beginPath();
+      ctx.strokeStyle = this._style.color;
+      ctx.lineWidth = 2;
+      const y1 = this._series!.priceToCoordinate(this._point1.price);
+      const y2 = this._series!.priceToCoordinate(this._point2.price);
+      if (y1 !== null && y2 !== null) {
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+
+      if (this._isSelected && y1 !== null && y2 !== null) {
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.arc(x1, y1, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x2, y2, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  }
+}
+
+class FibRetracementPaneView implements IPrimitivePaneView {
+  private _primitive: FibRetracementPrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: FibRetracementPrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' {
+    return 'normal';
+  }
+
+  renderer() {
+    const points = this._primitive.getPoints();
+    return new FibRetracementRenderer(
+      points[0],
+      points[1],
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class FibRetracementPrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: FibRetracementPaneView[];
+  private _points: DrawingPoint[];
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, points: DrawingPoint[], style: DrawingStyle) {
+    this._id = id;
+    this._points = points;
+    this._style = style;
+    this._paneViews = [new FibRetracementPaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() {
+    return this._paneViews;
+  }
+
+  getId() { return this._id; }
+  getPoints() { return this._points; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoints(points: DrawingPoint[]) {
+    this._points = points;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
+
+export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive;
+
+export function createDrawingPrimitive(
+  id: string,
+  type: 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib',
+  points: DrawingPoint[],
+  style: DrawingStyle
+): DrawingPrimitive | null {
+  switch (type) {
+    case 'trendline':
+      if (points.length >= 2) {
+        return new TrendLinePrimitive(id, points, style);
+      }
+      break;
+    case 'horizontal':
+      if (points.length >= 1) {
+        return new HorizontalLinePrimitive(id, points[0], style);
+      }
+      break;
+    case 'rectangle':
+      if (points.length >= 2) {
+        return new RectanglePrimitive(id, points, style);
+      }
+      break;
+    case 'fib_retracement':
+    case 'trend_fib':
+      if (points.length >= 2) {
+        return new FibRetracementPrimitive(id, points, style);
+      }
+      break;
+  }
+  return null;
+}

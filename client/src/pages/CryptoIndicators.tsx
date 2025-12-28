@@ -42,6 +42,14 @@ import {
   BandValue,
   IndicatorValue
 } from '@/lib/indicators';
+import {
+  createDrawingPrimitive,
+  DrawingPrimitive,
+  TrendLinePrimitive,
+  HorizontalLinePrimitive,
+  RectanglePrimitive,
+  FibRetracementPrimitive
+} from '@/lib/chartPrimitives';
 
 interface CandleData {
   time: number;
@@ -397,6 +405,9 @@ export default function CryptoIndicators() {
   const [drawings, setDrawings] = useState<any[]>([]);
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  
+  // Native primitives for high-performance drawing rendering
+  const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
   const [crosshairModeActive, setCrosshairModeActive] = useState(false);
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
@@ -610,6 +621,76 @@ export default function CryptoIndicators() {
       })).filter(d => d.points.length > 0)); // Only keep drawings with valid points
     }
   }, [savedDrawings]);
+  
+  // Attach/detach native primitives for high-performance rendering
+  useEffect(() => {
+    if (!chartReady || !candleSeriesRef.current) return;
+    
+    const candleSeries = candleSeriesRef.current;
+    const currentPrimitives = drawingPrimitivesRef.current;
+    const currentDrawingIds = new Set(drawings.map(d => d.id));
+    
+    // Remove primitives for deleted drawings
+    currentPrimitives.forEach((primitive, id) => {
+      if (!currentDrawingIds.has(id)) {
+        try {
+          candleSeries.detachPrimitive(primitive);
+        } catch (e) {
+          // Already detached
+        }
+        currentPrimitives.delete(id);
+      }
+    });
+    
+    // Add or update primitives for current drawings
+    drawings.forEach(drawing => {
+      const existingPrimitive = currentPrimitives.get(drawing.id);
+      
+      if (existingPrimitive) {
+        // Update existing primitive
+        existingPrimitive.setSelected(selectedDrawingId === drawing.id);
+        
+        // Update points if they changed
+        if ('updatePoints' in existingPrimitive) {
+          (existingPrimitive as TrendLinePrimitive | RectanglePrimitive | FibRetracementPrimitive).updatePoints(drawing.points);
+        } else if ('updatePoint' in existingPrimitive) {
+          (existingPrimitive as HorizontalLinePrimitive).updatePoint(drawing.points[0]);
+        }
+        
+        // Update style
+        existingPrimitive.updateStyle(drawing.style);
+      } else {
+        // Create and attach new primitive
+        const primitive = createDrawingPrimitive(
+          drawing.id,
+          drawing.type,
+          drawing.points,
+          drawing.style
+        );
+        
+        if (primitive) {
+          try {
+            candleSeries.attachPrimitive(primitive);
+            currentPrimitives.set(drawing.id, primitive);
+          } catch (e) {
+            console.error('Failed to attach primitive:', e);
+          }
+        }
+      }
+    });
+    
+    // Cleanup on unmount
+    return () => {
+      currentPrimitives.forEach((primitive) => {
+        try {
+          candleSeries.detachPrimitive(primitive);
+        } catch (e) {
+          // Already detached or chart disposed
+        }
+      });
+      currentPrimitives.clear();
+    };
+  }, [chartReady, drawings, selectedDrawingId]);
   
   // Save drawing mutation
   const saveDrawingMutation = useMutation({
@@ -10362,7 +10443,8 @@ export default function CryptoIndicators() {
                   </div>
                 )}
                 
-                {/* SVG Overlay for Drawings */}
+                {/* SVG Overlay for Temporary Drawings & Edit Mode Only */}
+                {/* Completed drawings are rendered by native primitives for performance */}
                 <svg 
                   className={`absolute top-0 left-0 ${(drawingMode === 'select' || activeEdit) ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
                   style={{ width: '100%', height: isFullscreen ? '100%' : '600px', zIndex: 10 }}
@@ -10382,7 +10464,8 @@ export default function CryptoIndicators() {
                     }
                   }}
                 >
-                  {drawings.map(drawing => {
+                  {/* Only render drawings that are being edited - primitives handle normal rendering */}
+                  {drawings.filter(d => activeEdit && activeEdit.drawingId === d.id).map(drawing => {
                     if (!chartRef.current || !chartReady) return null;
                     
                     const chart = chartRef.current;
