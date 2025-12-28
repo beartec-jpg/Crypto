@@ -6829,6 +6829,7 @@ CRITICAL DATA RULES:
         case '24h': startDate.setHours(startDate.getHours() - 24); break;
         case '7d': startDate.setDate(startDate.getDate() - 7); break;
         case '30d': startDate.setDate(startDate.getDate() - 30); break;
+        case 'all': startDate = new Date(0); break; // Beginning of time
         default: startDate.setDate(startDate.getDate() - 7);
       }
       
@@ -6894,6 +6895,7 @@ CRITICAL DATA RULES:
         case '24h': startDate.setHours(startDate.getHours() - 24); break;
         case '7d': startDate.setDate(startDate.getDate() - 7); break;
         case '30d': startDate.setDate(startDate.getDate() - 30); break;
+        case 'all': startDate = new Date(0); break; // Beginning of time
         default: startDate.setDate(startDate.getDate() - 7);
       }
       

@@ -83,6 +83,7 @@ export default function DevAnalytics() {
                 <SelectItem value="24h">Last 24h</SelectItem>
                 <SelectItem value="7d">Last 7 days</SelectItem>
                 <SelectItem value="30d">Last 30 days</SelectItem>
+                <SelectItem value="all">All Time</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" onClick={() => setLocation('/crypto/indicators')}>
