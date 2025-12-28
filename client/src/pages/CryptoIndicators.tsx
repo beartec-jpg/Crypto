@@ -9507,6 +9507,102 @@ export default function CryptoIndicators() {
     }
   }, [candles, rsiPeriod, macdFast, macdSlow, macdSignal, adxPeriod, stochRSIPeriod, mfiPeriod, williamsRPeriod, cciPeriod, calculateRSI, calculateMACD, calculateOBV, calculateADX, calculateStochasticRSI, calculateMFI, calculateWilliamsR, calculateCCI]);
 
+  // Get per-oscillator divergence
+  const getOscillatorDivergence = useCallback((indicator: string): { strength: number; type: 'bullish' | 'bearish' | 'none' } => {
+    if (candles.length < 50) return { strength: 0, type: 'none' };
+    
+    const priceData = candles.map(c => c.close);
+    let divergence = 0;
+    
+    switch (indicator) {
+      case 'RSI': {
+        const rsiData = calculateRSI(candles, rsiPeriod);
+        const rsiValues = rsiData.map(d => d.value);
+        if (rsiValues.length > 0) divergence = detectDivergence(priceData.slice(-rsiValues.length), rsiValues);
+        break;
+      }
+      case 'MACD': {
+        const { hist } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
+        const histValues = hist.map(d => d.value);
+        if (histValues.length > 0) divergence = detectDivergence(priceData.slice(-histValues.length), histValues);
+        break;
+      }
+      case 'OBV': {
+        const obvData = calculateOBV(candles);
+        const obvValues = obvData.map(d => d.value);
+        if (obvValues.length > 0) divergence = detectDivergence(priceData.slice(-obvValues.length), obvValues);
+        break;
+      }
+      case 'StochRSI': {
+        const stochData = calculateStochasticRSI(candles, stochRSIPeriod);
+        const kValues = stochData.map(d => d.k);
+        if (kValues.length > 0) divergence = detectDivergence(priceData.slice(-kValues.length), kValues);
+        break;
+      }
+      case 'MFI': {
+        const mfiData = calculateMFI(candles, mfiPeriod);
+        const mfiValues = mfiData.map(d => d.value);
+        if (mfiValues.length > 0) divergence = detectDivergence(priceData.slice(-mfiValues.length), mfiValues);
+        break;
+      }
+      case 'WilliamsR': {
+        const wrData = calculateWilliamsR(candles, williamsRPeriod);
+        const wrValues = wrData.map(d => d.value);
+        if (wrValues.length > 0) divergence = detectDivergence(priceData.slice(-wrValues.length), wrValues);
+        break;
+      }
+      case 'CCI': {
+        const cciData = calculateCCI(candles, cciPeriod);
+        const cciValues = cciData.map(d => d.value);
+        if (cciValues.length > 0) divergence = detectDivergence(priceData.slice(-cciValues.length), cciValues);
+        break;
+      }
+      case 'ADX': {
+        const adxData = calculateADX(candles, adxPeriod);
+        const adxValues = adxData.map(d => d.adx);
+        if (adxValues.length > 0) divergence = detectDivergence(priceData.slice(-adxValues.length), adxValues);
+        break;
+      }
+    }
+    
+    const clamped = Math.max(-3, Math.min(3, divergence));
+    return { strength: clamped, type: clamped > 0 ? 'bullish' : clamped < 0 ? 'bearish' : 'none' };
+  }, [candles, rsiPeriod, macdFast, macdSlow, macdSignal, stochRSIPeriod, mfiPeriod, williamsRPeriod, cciPeriod, adxPeriod, calculateRSI, calculateMACD, calculateOBV, calculateStochasticRSI, calculateMFI, calculateWilliamsR, calculateCCI, calculateADX, detectDivergence]);
+
+  // Mini divergence meter component for each oscillator
+  const DivergenceMeter = ({ indicator }: { indicator: string }) => {
+    const { strength, type } = getOscillatorDivergence(indicator);
+    return (
+      <div className="mt-2 pt-2 border-t border-slate-600">
+        <div className="flex items-center gap-2">
+          <span className="text-sm">🐻‍❄️</span>
+          <div className="flex-1 h-2 bg-slate-700 rounded-full relative overflow-hidden">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-px h-full bg-slate-500" />
+            </div>
+            <div 
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-white shadow transition-all duration-500"
+              style={{
+                left: `calc(50% + ${(strength / 3) * 45}% - 6px)`,
+                background: strength === 0 
+                  ? '#3b82f6' 
+                  : strength > 0 
+                    ? `linear-gradient(to right, #3b82f6, ${strength === 1 ? '#86efac' : strength === 2 ? '#4ade80' : '#22c55e'})`
+                    : `linear-gradient(to left, #3b82f6, ${strength === -1 ? '#fca5a5' : strength === -2 ? '#f87171' : '#ef4444'})`,
+              }}
+            />
+          </div>
+          <span className="text-sm">🐂</span>
+          {type !== 'none' && (
+            <span className={`text-xs font-medium ${type === 'bullish' ? 'text-green-400' : 'text-red-400'}`}>
+              {type === 'bullish' ? '▲' : '▼'}{Math.abs(strength)}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // Allow page to render for all users - unauthenticated get free tier
   // Sign in button in header handles authentication
 
@@ -11920,44 +12016,6 @@ export default function CryptoIndicators() {
 
         {/* Oscillator Charts - Full Width */}
         {(showRSI || showStochRSI || showMACD || showOBV || showWilliamsR || showMFI || showCCI || showADX) && (
-          <>
-            {/* Divergence Meter Bar */}
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-3" data-testid="divergence-meter">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-400 font-medium">Divergence Meter</span>
-                {divergenceType !== 'none' && (
-                  <span className={`text-xs font-bold ${divergenceType === 'bullish' ? 'text-green-400' : 'text-red-400'}`}>
-                    {divergenceType === 'bullish' ? '▲ Bullish' : '▼ Bearish'} ({Math.abs(divergenceStrength)})
-                  </span>
-                )}
-              </div>
-              <div className="relative flex items-center gap-2">
-                <span className="text-lg">🐻</span>
-                <div className="flex-1 h-3 bg-slate-700 rounded-full relative overflow-hidden">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-px h-full bg-slate-500" />
-                  </div>
-                  <div 
-                    className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow-lg transition-all duration-500"
-                    style={{
-                      left: `calc(50% + ${(divergenceStrength / 3) * 45}% - 8px)`,
-                      background: divergenceStrength === 0 
-                        ? '#3b82f6' 
-                        : divergenceStrength > 0 
-                          ? `linear-gradient(to right, #3b82f6, ${divergenceStrength === 1 ? '#86efac' : divergenceStrength === 2 ? '#4ade80' : '#22c55e'})`
-                          : `linear-gradient(to left, #3b82f6, ${divergenceStrength === -1 ? '#fca5a5' : divergenceStrength === -2 ? '#f87171' : '#ef4444'})`,
-                    }}
-                  />
-                </div>
-                <span className="text-lg">🐂</span>
-              </div>
-              <div className="flex justify-between text-xs text-gray-500 mt-1 px-6">
-                <span>Strong</span>
-                <span>Neutral</span>
-                <span>Strong</span>
-              </div>
-            </div>
-            
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
               {showRSI && (() => {
                 const report = isPaidTier ? getIndicatorReport('RSI') : null;
@@ -11971,6 +12029,7 @@ export default function CryptoIndicators() {
                     </CardHeader>
                     <CardContent>
                       <div ref={rsiRef} className="w-full" data-testid="chart-rsi" />
+                      <DivergenceMeter indicator="RSI" />
                     </CardContent>
                   </Card>
                 );
@@ -11987,6 +12046,7 @@ export default function CryptoIndicators() {
                     </CardHeader>
                     <CardContent>
                       <div ref={stochRSIRef} className="w-full" data-testid="chart-stoch-rsi" />
+                      <DivergenceMeter indicator="StochRSI" />
                     </CardContent>
                   </Card>
                 );
@@ -12003,6 +12063,7 @@ export default function CryptoIndicators() {
                     </CardHeader>
                     <CardContent>
                       <div ref={macdRef} className="w-full" data-testid="chart-macd" />
+                      <DivergenceMeter indicator="MACD" />
                     </CardContent>
                   </Card>
                 );
@@ -12019,6 +12080,7 @@ export default function CryptoIndicators() {
                     </CardHeader>
                     <CardContent>
                       <div ref={obvRef} className="w-full" data-testid="chart-obv" />
+                      <DivergenceMeter indicator="OBV" />
                     </CardContent>
                   </Card>
                 );
@@ -12035,6 +12097,7 @@ export default function CryptoIndicators() {
                     </CardHeader>
                     <CardContent>
                       <div ref={williamsRRef} className="w-full" data-testid="chart-williams-r" />
+                      <DivergenceMeter indicator="WilliamsR" />
                     </CardContent>
                   </Card>
                 );
@@ -12051,6 +12114,7 @@ export default function CryptoIndicators() {
                     </CardHeader>
                     <CardContent>
                       <div ref={mfiRef} className="w-full" data-testid="chart-mfi" />
+                      <DivergenceMeter indicator="MFI" />
                     </CardContent>
                   </Card>
                 );
@@ -12067,6 +12131,7 @@ export default function CryptoIndicators() {
                     </CardHeader>
                     <CardContent>
                       <div ref={cciRef} className="w-full" data-testid="chart-cci" />
+                      <DivergenceMeter indicator="CCI" />
                     </CardContent>
                   </Card>
                 );
@@ -12083,12 +12148,12 @@ export default function CryptoIndicators() {
                     </CardHeader>
                     <CardContent>
                       <div ref={adxRef} className="w-full" data-testid="chart-adx" />
+                      <DivergenceMeter indicator="ADX" />
                     </CardContent>
                   </Card>
                 );
               })()}
             </div>
-          </>
         )}
 
         {/* 2x2 Grid on Desktop: Grok Summary, Alerts, Footprint, Indicators */}
