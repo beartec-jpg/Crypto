@@ -57,6 +57,14 @@ export interface IStorage {
   // Cached Historical Candles (for extended EW analysis)
   getCachedCandles(symbol: string, timeframe: string): Promise<CachedCandles | undefined>;
   upsertCachedCandles(candles: InsertCachedCandles): Promise<CachedCandles>;
+
+  // Analytics
+  logAnalyticsEvent(event: any): Promise<void>;
+  logApiUsage(usage: any): Promise<void>;
+  getAnalyticsDashboard(startDate: Date): Promise<any>;
+  getRealtimeAnalytics(): Promise<any>;
+  getTopAnalytics(type: string, limit: number): Promise<any>;
+  getApiCostBreakdown(startDate: Date): Promise<any>;
 }
 
 export class MemStorage implements IStorage {
@@ -453,6 +461,14 @@ export class MemStorage implements IStorage {
   async upsertCachedCandles(_candles: InsertCachedCandles): Promise<CachedCandles> {
     throw new Error("Cached candles require database storage");
   }
+
+  // Analytics stubs (uses database in production)
+  async logAnalyticsEvent(_event: any): Promise<void> {}
+  async logApiUsage(_usage: any): Promise<void> {}
+  async getAnalyticsDashboard(_startDate: Date): Promise<any> { return {}; }
+  async getRealtimeAnalytics(): Promise<any> { return {}; }
+  async getTopAnalytics(_type: string, _limit: number): Promise<any> { return []; }
+  async getApiCostBreakdown(_startDate: Date): Promise<any> { return { breakdown: [], totals: {} }; }
 }
 
 import { DatabaseStorage } from "./databaseStorage";

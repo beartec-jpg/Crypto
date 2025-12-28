@@ -6730,6 +6730,161 @@ CRITICAL DATA RULES:
   const { priceMonitorService } = await import("./services/priceMonitorService");
   priceMonitorService.start();
 
+  // ========== ANALYTICS API ROUTES ==========
+  // Log analytics event (lightweight, fire-and-forget)
+  app.post("/api/analytics/event", async (req: Request, res: Response) => {
+    try {
+      const { eventType, eventName, eventData, page, symbol, timeframe, userTier, sessionId } = req.body;
+      
+      // Get user info from auth if available
+      const userId = req.cryptoUser?.id || null;
+      const userEmail = req.cryptoUser?.email || null;
+      
+      await storage.logAnalyticsEvent({
+        userId,
+        userEmail,
+        eventType,
+        eventName,
+        eventData,
+        page,
+        symbol,
+        timeframe,
+        userTier,
+        sessionId,
+        userAgent: req.headers['user-agent'] || null,
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Analytics event error:', error);
+      res.json({ success: false }); // Don't fail the request for analytics
+    }
+  });
+
+  // Log API usage (called internally from other routes)
+  app.post("/api/analytics/api-usage", async (req: Request, res: Response) => {
+    try {
+      const { apiType, endpoint, symbol, interval, tokensUsed, estimatedCost, responseTime, success, errorMessage } = req.body;
+      
+      const userId = req.cryptoUser?.id || null;
+      const userEmail = req.cryptoUser?.email || null;
+      
+      await storage.logApiUsage({
+        userId,
+        userEmail,
+        apiType,
+        endpoint,
+        symbol,
+        interval,
+        tokensUsed,
+        estimatedCost,
+        responseTime,
+        success,
+        errorMessage,
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('API usage log error:', error);
+      res.json({ success: false });
+    }
+  });
+
+  // Get analytics dashboard data (dev access only)
+  app.get("/api/analytics/dashboard", async (req: Request, res: Response) => {
+    try {
+      // Check if user is dev (beartec@beartec.uk)
+      const userEmail = req.cryptoUser?.email || '';
+      const isDev = userEmail === 'beartec@beartec.uk';
+      
+      if (!isDev) {
+        return res.status(403).json({ error: 'Dev access only' });
+      }
+      
+      const { timeRange = '7d' } = req.query;
+      
+      // Calculate date range
+      let startDate = new Date();
+      switch(timeRange) {
+        case '24h': startDate.setHours(startDate.getHours() - 24); break;
+        case '7d': startDate.setDate(startDate.getDate() - 7); break;
+        case '30d': startDate.setDate(startDate.getDate() - 30); break;
+        default: startDate.setDate(startDate.getDate() - 7);
+      }
+      
+      const data = await storage.getAnalyticsDashboard(startDate);
+      res.json(data);
+    } catch (error: any) {
+      console.error('Analytics dashboard error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get real-time stats (dev access only)
+  app.get("/api/analytics/realtime", async (req: Request, res: Response) => {
+    try {
+      const userEmail = req.cryptoUser?.email || '';
+      const isDev = userEmail === 'beartec@beartec.uk';
+      
+      if (!isDev) {
+        return res.status(403).json({ error: 'Dev access only' });
+      }
+      
+      const stats = await storage.getRealtimeAnalytics();
+      res.json(stats);
+    } catch (error: any) {
+      console.error('Realtime analytics error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get top features/pages/symbols (dev access only)
+  app.get("/api/analytics/top", async (req: Request, res: Response) => {
+    try {
+      const userEmail = req.cryptoUser?.email || '';
+      const isDev = userEmail === 'beartec@beartec.uk';
+      
+      if (!isDev) {
+        return res.status(403).json({ error: 'Dev access only' });
+      }
+      
+      const { type = 'features', limit = 10 } = req.query;
+      const data = await storage.getTopAnalytics(type as string, Number(limit));
+      res.json(data);
+    } catch (error: any) {
+      console.error('Top analytics error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get API cost breakdown (dev access only)
+  app.get("/api/analytics/api-costs", async (req: Request, res: Response) => {
+    try {
+      const userEmail = req.cryptoUser?.email || '';
+      const isDev = userEmail === 'beartec@beartec.uk';
+      
+      if (!isDev) {
+        return res.status(403).json({ error: 'Dev access only' });
+      }
+      
+      const { timeRange = '7d' } = req.query;
+      
+      let startDate = new Date();
+      switch(timeRange) {
+        case '24h': startDate.setHours(startDate.getHours() - 24); break;
+        case '7d': startDate.setDate(startDate.getDate() - 7); break;
+        case '30d': startDate.setDate(startDate.getDate() - 30); break;
+        default: startDate.setDate(startDate.getDate() - 7);
+      }
+      
+      const costs = await storage.getApiCostBreakdown(startDate);
+      res.json(costs);
+    } catch (error: any) {
+      console.error('API costs error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

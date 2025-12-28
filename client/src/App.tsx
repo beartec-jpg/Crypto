@@ -19,6 +19,7 @@ import CryptoTerms from '@/pages/CryptoTerms';
 import CryptoAccount from '@/pages/CryptoAccount';
 import CryptoFeedbackBoard from '@/pages/CryptoFeedbackBoard';
 import CryptoElliottWaveLessons from '@/pages/CryptoElliottWaveLessons';
+import DevAnalytics from '@/pages/DevAnalytics';
 import NotFound from '@/pages/not-found';
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -69,6 +70,9 @@ function App() {
             </Route>
             <Route path="/crypto/elliott-lessons">
               <ProtectedRoute component={CryptoElliottWaveLessons} />
+            </Route>
+            <Route path="/dev/analytics">
+              <ProtectedRoute component={DevAnalytics} />
             </Route>
             
             <Route component={NotFound} />
