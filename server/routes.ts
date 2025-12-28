@@ -4052,6 +4052,26 @@ CRITICAL RULES:
 
       console.log(`📊 Subscription check for ${userEmail} (${userId})`);
 
+      // ADMIN OVERRIDE: beartec@beartec.uk is always elite without Stripe check
+      if (userEmail === 'beartec@beartec.uk') {
+        return res.json({
+          tier: 'elite',
+          status: 'active',
+          hasElliottAddon: true,
+          canUseElliott: true,
+          canUseAI: true,
+          hasUnlimitedAI: true,
+          aiCredits: 999999,
+          isAdmin: true,
+          monthlyUsage: {
+            aiCredits: 0,
+            aiLimit: 999999,
+            elliottCredits: 0,
+            elliottLimit: 999999,
+          }
+        });
+      }
+
       await cryptoSubscriptionService.resetMonthlyCredits(userId);
       await cryptoSubscriptionService.resetElliottMonthlyCredits(userId);
       const stats = await cryptoSubscriptionService.getSubscriptionStats(userId);

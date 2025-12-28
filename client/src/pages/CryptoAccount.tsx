@@ -2,7 +2,7 @@ import { Helmet } from 'react-helmet-async';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { useCryptoAuth, isDevelopment, setDevAdminMode, ADMIN_EMAIL } from '@/hooks/useCryptoAuth';
 import { useQuery } from '@tanstack/react-query';
-import { Crown, Sparkles, Info, CreditCard, Waves, Bot, Shield, LogIn, LogOut, User, ShieldCheck, UserCircle } from 'lucide-react';
+import { Crown, Sparkles, Info, CreditCard, Waves, Bot, Shield, LogIn, LogOut, User, ShieldCheck, UserCircle, BarChart3 } from 'lucide-react';
 import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { useAuth, useUser, SignInButton, SignOutButton } from '@clerk/clerk-react';
@@ -233,6 +233,24 @@ export default function CryptoAccount() {
                 </Link>
               </div>
             </div>
+
+            {/* Admin Panel - Only visible to admin */}
+            {isAdmin && (
+              <div className="bg-gradient-to-r from-purple-900/50 to-pink-900/50 border border-purple-500/50 rounded-lg p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <ShieldCheck className="w-6 h-6 text-purple-400" />
+                  <h3 className="text-lg font-bold text-purple-300">Admin Panel</h3>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Link href="/dev/analytics">
+                    <Button className="bg-purple-600 hover:bg-purple-700" data-testid="button-dev-analytics">
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      Developer Analytics
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            )}
 
             {/* Info */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
