@@ -608,8 +608,9 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const isRightLabel = this._style.labelPosition === 'right';
       // Labels go on the extended line edge if extended, otherwise on anchor point
       const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
-      // Hide labels when the label position goes off-screen
-      const showLabels = labelX >= 5 && labelX <= chartWidth - 5;
+      // Only show labels if the original anchor points are visible on chart
+      const anchorsVisible = anchorLeft <= chartWidth && anchorRight >= 0;
+      const showLabels = anchorsVisible;
 
       FIB_LEVELS.forEach((level) => {
         const levelPrice = this._point1.price + priceDiff * level;
@@ -821,8 +822,9 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const isRightLabel = this._style.labelPosition === 'right';
       // Labels go on the extended line edge if extended, otherwise on base area
       const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
-      // Hide labels when the label position goes off-screen
-      const showLabels = labelX >= 5 && labelX <= chartWidth - 5;
+      // Only show labels if the original anchor points are visible on chart
+      const anchorsVisible = baseStartX <= chartWidth && baseEndX >= 0;
+      const showLabels = anchorsVisible;
 
       TREND_FIB_LEVELS.forEach((level) => {
         const levelPrice = this._points[2].price + waveDiff * level;
