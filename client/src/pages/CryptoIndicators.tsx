@@ -10738,10 +10738,6 @@ export default function CryptoIndicators() {
                       const p1 = toPixel(drawing.points[0], 0);
                       const p2 = toPixel(drawing.points[1], 1);
                       if (p1.x === null || p2.x === null) return null;
-                      const allFibLevels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-                      const hiddenLevels = drawing.style?.hiddenLevels || [];
-                      const fibLevels = allFibLevels.filter(l => !hiddenLevels.includes(l));
-                      const priceDiff = drawing.points[1].price - drawing.points[0].price;
                       const chartWidth = chartContainerRef.current?.clientWidth || 800;
                       
                       const extendLeft = drawing.style?.extendLeft;
@@ -10750,41 +10746,34 @@ export default function CryptoIndicators() {
                       const baseEndX = Math.max(p1.x, p2.x) + 100;
                       const lineStartX = extendLeft ? 0 : baseStartX;
                       const lineEndX = extendRight ? chartWidth : baseEndX;
-                      const labelRight = drawing.style?.labelPosition === 'right';
-                      const labelPadding = 50;
-                      const labelX = labelRight 
-                        ? Math.min(lineEndX - 5, chartWidth - labelPadding)
-                        : Math.max(lineStartX + 5, labelPadding);
                       
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
-                          {/* Click target area - always present */}
+                          {/* Click target area - always present (fib lines/labels drawn by primitive) */}
                           <rect x={lineStartX} y={p1.y < p2.y ? p1.y : p2.y} width={lineEndX - lineStartX} height={Math.abs(p2.y - p1.y)} fill="transparent" />
-                          {/* Visible graphics only when editing */}
-                          {renderVisible && fibLevels.map(level => {
-                            const levelPrice = drawing.points[0].price + priceDiff * (1 - level);
-                            const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
-                            const levelColor = isSelected ? '#22c55e' : level === 0.618 ? '#fbbf24' : level === 0.5 ? '#22c55e' : color;
-                            return (
-                              <g key={level}>
-                                <line 
-                                  x1={lineStartX} y1={y} x2={lineEndX} y2={y}
-                                  stroke={levelColor}
-                                  strokeWidth={isSelected ? 2 : 1}
-                                  strokeDasharray={level === 0 || level === 1 ? '0' : '4,2'}
-                                />
-                                <text 
-                                  x={labelX} 
-                                  y={y - 3} 
-                                  fill={levelColor} 
-                                  fontSize="10"
-                                  textAnchor={labelRight ? 'end' : 'start'}
-                                >
-                                  {(level * 100).toFixed(1)}%
-                                </text>
-                              </g>
-                            );
-                          })}
+                          {/* Edit mode point handles */}
+                          {renderVisible && (
+                            <>
+                              <circle 
+                                cx={p1.x} cy={p1.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 0, e)}
+                              />
+                              <circle 
+                                cx={p2.x} cy={p2.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 1, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 1, e)}
+                              />
+                            </>
+                          )}
                         </g>
                       );
                     }
@@ -10797,8 +10786,6 @@ export default function CryptoIndicators() {
                       
                       const waveDiff = drawing.points[1].price - drawing.points[0].price;
                       const allFibLevels = [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
-                      const hiddenLevels = drawing.style?.hiddenLevels || [];
-                      const fibLevels = allFibLevels.filter(l => !hiddenLevels.includes(l));
                       const chartWidth = chartContainerRef.current?.clientWidth || 800;
                       
                       const extendLeft = drawing.style?.extendLeft;
@@ -10807,40 +10794,55 @@ export default function CryptoIndicators() {
                       const baseEndX = p3.x + 200;
                       const lineStartX = extendLeft ? 0 : baseStartX;
                       const lineEndX = extendRight ? chartWidth : baseEndX;
-                      const labelRight = drawing.style?.labelPosition === 'right';
-                      const labelPadding = 50;
-                      const labelX = labelRight 
-                        ? Math.min(lineEndX - 5, chartWidth - labelPadding)
-                        : Math.max(lineStartX + 5, labelPadding);
+                      
+                      // Calculate hit area bounds
+                      const minY = Math.min(...allFibLevels.map(level => {
+                        const levelPrice = drawing.points[2].price + waveDiff * level;
+                        return candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
+                      }));
+                      const maxY = Math.max(...allFibLevels.map(level => {
+                        const levelPrice = drawing.points[2].price + waveDiff * level;
+                        return candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
+                      }));
                       
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
-                          {/* Wave measurement line */}
+                          {/* Click target area (trend_fib lines/labels drawn by primitive) */}
+                          <rect x={lineStartX} y={minY} width={lineEndX - lineStartX} height={maxY - minY} fill="transparent" />
+                          {/* Wave measurement line - always visible for context */}
                           <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={isSelected ? '#22c55e' : '#888'} strokeWidth={isSelected ? 2 : 1} strokeDasharray="4,2" />
-                          {/* Projection from point 3 */}
-                          {fibLevels.map(level => {
-                            const levelPrice = drawing.points[2].price + waveDiff * level;
-                            const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
-                            const levelColor = isSelected ? '#22c55e' : level === 1.618 ? '#fbbf24' : level === 1.0 ? '#22c55e' : '#06b6d4';
-                            return (
-                              <g key={level}>
-                                <line 
-                                  x1={lineStartX} y1={y} x2={lineEndX} y2={y}
-                                  stroke={levelColor}
-                                  strokeWidth={1}
-                                />
-                                <text 
-                                  x={labelX} 
-                                  y={y - 3} 
-                                  fill={levelColor} 
-                                  fontSize="10"
-                                  textAnchor={labelRight ? 'end' : 'start'}
-                                >
-                                  {(level * 100).toFixed(1)}%
-                                </text>
-                              </g>
-                            );
-                          })}
+                          {/* Edit mode point handles */}
+                          {renderVisible && (
+                            <>
+                              <circle 
+                                cx={p1.x} cy={p1.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 0, e)}
+                              />
+                              <circle 
+                                cx={p2.x} cy={p2.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 1, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 1, e)}
+                              />
+                              <circle 
+                                cx={p3.x} cy={p3.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 2, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 2, e)}
+                              />
+                            </>
+                          )}
                         </g>
                       );
                     }
