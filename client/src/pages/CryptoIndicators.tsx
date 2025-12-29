@@ -494,33 +494,8 @@ export default function CryptoIndicators() {
       return;
     }
     
-    // Use gesture controller's findSnapPoint if available (same logic as drawing mode)
-    if (findSnapPointRef.current && autoSnapEnabled) {
-      const snapResult = findSnapPointRef.current(clientX, clientY);
-      if (snapResult) {
-        console.log('🎯 Using gesture controller snap:', snapResult);
-        const newPoints = [...edit.originalDrawing.points];
-        newPoints[edit.pointIndex] = { 
-          time: snapResult.time as number, 
-          price: snapResult.price, 
-          snapType: snapResult.snapType || 'none' 
-        };
-        
-        setDrawings(prev => prev.map(d => 
-          d.id === edit.drawingId ? { ...d, points: newPoints } : d
-        ));
-        
-        if (updateDrawingMutationRef.current) {
-          updateDrawingMutationRef.current.mutate({
-            id: edit.drawingId,
-            coordinates: { points: newPoints },
-          });
-        }
-        
-        setActiveEdit(null);
-        return;
-      }
-    }
+    // Skip gesture controller snap during edit - use free placement instead
+    // The gesture snap restricts to candle high/low, but during edit we want free Y placement
     
     // Fallback: manual coordinate conversion if no snap found
     const chart = chartRef.current;
@@ -549,31 +524,23 @@ export default function CryptoIndicators() {
     let finalTime: number;
     let snapType: 'high' | 'low' | 'none' = 'none';
     
-    // Use same snap logic as initial drawing
+    // During edit mode: snap time to candle, but keep free Y placement (no price snap)
+    // This allows users to place points anywhere on the Y axis
     if (candleIndex >= allCandles.length) {
       const lastCandle = allCandles[allCandles.length - 1];
       const secondLastCandle = allCandles.length > 1 ? allCandles[allCandles.length - 2] : null;
       const timeInterval = secondLastCandle ? (lastCandle.time - secondLastCandle.time) : 3600;
       const barsAhead = candleIndex - (allCandles.length - 1);
       finalTime = (lastCandle.time as number) + (barsAhead * (timeInterval as number));
+      // Free Y placement - no price snapping in edit mode
     } else if (candleIndex < 0) {
       const candle = allCandles[0];
       finalTime = candle.time as number;
-      if (autoSnapEnabled) {
-        const candleMid = (candle.high + candle.low) / 2;
-        const snapToHigh = price > candleMid;
-        price = snapToHigh ? candle.high : candle.low;
-        snapType = snapToHigh ? 'high' : 'low';
-      }
+      // Free Y placement - no price snapping in edit mode
     } else {
       const candle = allCandles[candleIndex];
       finalTime = candle.time as number;
-      if (autoSnapEnabled) {
-        const candleMid = (candle.high + candle.low) / 2;
-        const snapToHigh = price > candleMid;
-        price = snapToHigh ? candle.high : candle.low;
-        snapType = snapToHigh ? 'high' : 'low';
-      }
+      // Free Y placement - no price snapping in edit mode
     }
     
     // Create updated points array from original
@@ -630,9 +597,10 @@ export default function CryptoIndicators() {
     const currentPrimitives = drawingPrimitivesRef.current;
     const currentDrawingIds = new Set(drawings.map(d => d.id));
     
-    // Remove primitives for deleted drawings
+    // Remove primitives for deleted drawings OR drawings being edited
     currentPrimitives.forEach((primitive, id) => {
-      if (!currentDrawingIds.has(id)) {
+      const isBeingEdited = activeEdit && activeEdit.drawingId === id;
+      if (!currentDrawingIds.has(id) || isBeingEdited) {
         try {
           candleSeries.detachPrimitive(primitive);
         } catch (e) {
@@ -642,8 +610,11 @@ export default function CryptoIndicators() {
       }
     });
     
-    // Add or update primitives for current drawings
+    // Add or update primitives for current drawings (skip if being edited)
     drawings.forEach(drawing => {
+      const isBeingEdited = activeEdit && activeEdit.drawingId === drawing.id;
+      if (isBeingEdited) return; // Don't render primitive while editing
+      
       const existingPrimitive = currentPrimitives.get(drawing.id);
       
       if (existingPrimitive) {
@@ -690,7 +661,7 @@ export default function CryptoIndicators() {
       });
       currentPrimitives.clear();
     };
-  }, [chartReady, drawings, selectedDrawingId]);
+  }, [chartReady, drawings, selectedDrawingId, activeEdit]);
   
   // Save drawing mutation
   const saveDrawingMutation = useMutation({
@@ -10686,6 +10657,7 @@ export default function CryptoIndicators() {
                       const p2 = toPixel(drawing.points[1], 1);
                       if (p1.x === null || p2.x === null) return null;
                       
+                      const chartWidth = chartContainerRef.current?.clientWidth || 800;
                       const extendLeft = drawing.style?.extendLeft || false;
                       const extendRight = drawing.style?.extendRight || false;
                       
