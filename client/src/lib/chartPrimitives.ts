@@ -601,16 +601,15 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const x2 = x2Raw ?? chartWidth;
       
       // Determine drawing bounds based on extension
-      const lineLeft = extendLeft ? 0 : Math.min(x1, x2);
-      const lineRight = extendRight ? chartWidth : Math.max(x1, x2);
-      const isRightLabel = this._style.labelPosition === 'right';
-      // Labels stay anchored to original points - only show if anchor point is visible
       const anchorLeft = Math.min(x1, x2);
       const anchorRight = Math.max(x1, x2);
-      const labelAnchorX = isRightLabel ? anchorRight : anchorLeft;
-      // Only show labels if the anchor point is within visible chart area
-      const showLabels = labelAnchorX >= 0 && labelAnchorX <= chartWidth;
-      const labelX = isRightLabel ? anchorRight - 5 : anchorLeft + 5;
+      const lineLeft = extendLeft ? 0 : anchorLeft;
+      const lineRight = extendRight ? chartWidth : anchorRight;
+      const isRightLabel = this._style.labelPosition === 'right';
+      // Labels go on the extended line edge if extended, otherwise on anchor point
+      const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
+      // Hide labels when the label position goes off-screen
+      const showLabels = labelX >= 5 && labelX <= chartWidth - 5;
 
       FIB_LEVELS.forEach((level) => {
         const levelPrice = this._point1.price + priceDiff * level;
@@ -820,10 +819,10 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const lineLeft = extendLeft ? 0 : baseStartX;
       const lineRight = extendRight ? chartWidth : baseEndX;
       const isRightLabel = this._style.labelPosition === 'right';
-      // Labels stay anchored to original projection area - only show if anchor point is visible
-      const labelAnchorX = isRightLabel ? baseEndX : baseStartX;
-      const showLabels = labelAnchorX >= 0 && labelAnchorX <= chartWidth;
-      const labelX = isRightLabel ? baseEndX - 5 : baseStartX + 5;
+      // Labels go on the extended line edge if extended, otherwise on base area
+      const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
+      // Hide labels when the label position goes off-screen
+      const showLabels = labelX >= 5 && labelX <= chartWidth - 5;
 
       TREND_FIB_LEVELS.forEach((level) => {
         const levelPrice = this._points[2].price + waveDiff * level;
