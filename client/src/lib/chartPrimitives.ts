@@ -604,10 +604,12 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const lineLeft = extendLeft ? 0 : Math.min(x1, x2);
       const lineRight = extendRight ? chartWidth : Math.max(x1, x2);
       const isRightLabel = this._style.labelPosition === 'right';
-      // Labels stay anchored to original points, not extended edges
+      // Labels stay anchored to original points, but clamp to visible chart area
       const anchorLeft = Math.min(x1, x2);
       const anchorRight = Math.max(x1, x2);
-      const labelX = isRightLabel ? anchorRight - 5 : anchorLeft + 5;
+      const preferredLabelX = isRightLabel ? anchorRight - 5 : anchorLeft + 5;
+      // Clamp label to visible line portion
+      const labelX = Math.max(lineLeft + 5, Math.min(preferredLabelX, lineRight - 5));
 
       FIB_LEVELS.forEach((level) => {
         const levelPrice = this._point1.price + priceDiff * level;
@@ -815,8 +817,9 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const lineLeft = extendLeft ? 0 : baseStartX;
       const lineRight = extendRight ? chartWidth : baseEndX;
       const isRightLabel = this._style.labelPosition === 'right';
-      // Labels stay anchored to original projection area, not extended edges
-      const labelX = isRightLabel ? baseEndX - 5 : baseStartX + 5;
+      // Labels stay anchored to original projection area, but clamp to visible chart area
+      const preferredLabelX = isRightLabel ? baseEndX - 5 : baseStartX + 5;
+      const labelX = Math.max(lineLeft + 5, Math.min(preferredLabelX, lineRight - 5));
 
       TREND_FIB_LEVELS.forEach((level) => {
         const levelPrice = this._points[2].price + waveDiff * level;
