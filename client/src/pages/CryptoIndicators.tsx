@@ -10443,8 +10443,8 @@ export default function CryptoIndicators() {
                   </div>
                 )}
                 
-                {/* SVG Overlay for Temporary Drawings & Edit Mode Only */}
-                {/* Completed drawings are rendered by native primitives for performance */}
+                {/* SVG Overlay for Selection Hit Areas & Edit Mode */}
+                {/* Primitives handle visible rendering, SVG provides invisible hit areas for selection */}
                 <svg 
                   className={`absolute top-0 left-0 ${(drawingMode === 'select' || activeEdit) ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
                   style={{ width: '100%', height: isFullscreen ? '100%' : '600px', zIndex: 10 }}
@@ -10464,8 +10464,10 @@ export default function CryptoIndicators() {
                     }
                   }}
                 >
-                  {/* Only render drawings that are being edited - primitives handle normal rendering */}
-                  {drawings.filter(d => activeEdit && activeEdit.drawingId === d.id).map(drawing => {
+                  {/* Render all drawings - invisible hit areas when not editing, visible when editing */}
+                  {drawings.map(drawing => {
+                    const isBeingEdited = activeEdit && activeEdit.drawingId === drawing.id;
+                    const renderVisible = isBeingEdited; // Only show SVG graphics when editing this drawing
                     if (!chartRef.current || !chartReady) return null;
                     
                     const chart = chartRef.current;
@@ -10615,17 +10617,21 @@ export default function CryptoIndicators() {
                       
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          {/* Invisible hit area for selection - always present */}
                           <line 
                             x1={lineX1} y1={lineY1} x2={lineX2} y2={lineY2}
                             stroke="transparent"
                             strokeWidth={12}
                           />
-                          <line 
-                            x1={lineX1} y1={lineY1} x2={lineX2} y2={lineY2}
-                            stroke={isSelected ? '#22c55e' : color}
-                            strokeWidth={isSelected ? 3 : 2}
-                          />
-                          {label && (
+                          {/* Visible line - only when editing (primitives render normally) */}
+                          {renderVisible && (
+                            <line 
+                              x1={lineX1} y1={lineY1} x2={lineX2} y2={lineY2}
+                              stroke={isSelected ? '#22c55e' : color}
+                              strokeWidth={isSelected ? 3 : 2}
+                            />
+                          )}
+                          {renderVisible && label && (
                             <text 
                               x={labelX}
                               y={labelY}
@@ -10637,6 +10643,7 @@ export default function CryptoIndicators() {
                               {label}
                             </text>
                           )}
+                          {/* Selection handles - show when selected */}
                           {isSelected && (
                             <>
                               <circle 
@@ -10701,13 +10708,23 @@ export default function CryptoIndicators() {
                       
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          {/* Invisible hit area for selection */}
                           <rect 
                             x={x} y={y} width={rectWidth} height={h}
-                            fill={`${color}20`}
-                            stroke={isSelected ? '#22c55e' : color}
-                            strokeWidth={isSelected ? 3 : 2}
+                            fill="transparent"
+                            stroke="transparent"
+                            strokeWidth={8}
                           />
-                          {label && (
+                          {/* Visible graphics only when editing */}
+                          {renderVisible && (
+                            <rect 
+                              x={x} y={y} width={rectWidth} height={h}
+                              fill={`${color}20`}
+                              stroke={isSelected ? '#22c55e' : color}
+                              strokeWidth={isSelected ? 3 : 2}
+                            />
+                          )}
+                          {renderVisible && label && (
                             <text 
                               x={labelX}
                               y={y + 14}
@@ -10769,9 +10786,10 @@ export default function CryptoIndicators() {
                       
                       return (
                         <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
-                          {/* Click target area */}
+                          {/* Click target area - always present */}
                           <rect x={lineStartX} y={p1.y < p2.y ? p1.y : p2.y} width={lineEndX - lineStartX} height={Math.abs(p2.y - p1.y)} fill="transparent" />
-                          {fibLevels.map(level => {
+                          {/* Visible graphics only when editing */}
+                          {renderVisible && fibLevels.map(level => {
                             const levelPrice = drawing.points[0].price + priceDiff * (1 - level);
                             const y = candleSeriesRef.current?.priceToCoordinate(levelPrice) ?? 0;
                             const levelColor = isSelected ? '#22c55e' : level === 0.618 ? '#fbbf24' : level === 0.5 ? '#22c55e' : color;
