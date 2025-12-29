@@ -18,6 +18,9 @@ interface DrawingPoint {
 interface DrawingStyle {
   color: string;
   lineWidth?: number;
+  extendLeft?: boolean;
+  extendRight?: boolean;
+  labelPosition?: 'left' | 'right';
 }
 
 type RequestUpdateCallback = () => void;
@@ -50,31 +53,73 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
     if (!this._series || !this._chart) return;
 
     const timeScale = this._chart.timeScale();
-    const x1 = timeScale.timeToCoordinate(this._point1.time as Time);
+    const x1Raw = timeScale.timeToCoordinate(this._point1.time as Time);
     const y1 = this._series.priceToCoordinate(this._point1.price);
-    const x2 = timeScale.timeToCoordinate(this._point2.time as Time);
+    const x2Raw = timeScale.timeToCoordinate(this._point2.time as Time);
     const y2 = this._series.priceToCoordinate(this._point2.price);
 
-    if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+    // Need at least y coordinates to calculate slope
+    if (y1 === null || y2 === null) return;
+    // Need at least one x coordinate unless extending both ways
+    if (x1Raw === null && x2Raw === null && !this._style.extendLeft && !this._style.extendRight) return;
 
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx = scope.context;
+      const chartWidth = scope.mediaSize.width;
+      
+      // Handle extend left/right from style
+      const extendLeft = this._style.extendLeft ?? false;
+      const extendRight = this._style.extendRight ?? false;
+      
+      // Calculate base coordinates
+      const x1 = x1Raw ?? 0;
+      const x2 = x2Raw ?? chartWidth;
+      
+      // Calculate line extension if needed
+      let drawX1 = x1;
+      let drawY1 = y1;
+      let drawX2 = x2;
+      let drawY2 = y2;
+      
+      if (extendLeft || extendRight) {
+        // Calculate slope
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        
+        if (dx !== 0) {
+          const slope = dy / dx;
+          
+          if (extendLeft) {
+            drawX1 = 0;
+            drawY1 = y1 - slope * x1;
+          }
+          if (extendRight) {
+            drawX2 = chartWidth;
+            drawY2 = y1 + slope * (chartWidth - x1);
+          }
+        }
+      }
       
       ctx.beginPath();
       ctx.strokeStyle = this._style.color;
       ctx.lineWidth = this._style.lineWidth || 2;
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.moveTo(drawX1, drawY1);
+      ctx.lineTo(drawX2, drawY2);
       ctx.stroke();
 
+      // Draw selection handles at original points (not extended edges)
       if (this._isSelected) {
         ctx.fillStyle = '#22c55e';
-        ctx.beginPath();
-        ctx.arc(x1, y1, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x2, y2, 6, 0, Math.PI * 2);
-        ctx.fill();
+        if (x1Raw !== null) {
+          ctx.beginPath();
+          ctx.arc(x1Raw, y1, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (x2Raw !== null) {
+          ctx.beginPath();
+          ctx.arc(x2Raw, y2, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     });
   }
@@ -348,20 +393,29 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
     const x2Raw = timeScale.timeToCoordinate(this._point2.time as Time);
     const y2 = this._series.priceToCoordinate(this._point2.price);
 
-    // Need at least x1 and y coordinates to render
-    if (x1Raw === null || y1 === null || y2 === null) return;
+    // Need at least y coordinates to render
+    if (y1 === null || y2 === null) return;
+    // Need at least one x coordinate unless extending both ways
+    if (x1Raw === null && x2Raw === null && !this._style.extendLeft && !this._style.extendRight) return;
 
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx = scope.context;
       const chartWidth = scope.mediaSize.width;
       
-      // For extended rectangles, x2 may be null (off-screen right) - use chartWidth
-      const x1 = x1Raw;
-      const x2 = x2Raw !== null ? x2Raw : chartWidth;
+      // Handle extend left/right from style
+      const extendLeft = this._style.extendLeft ?? false;
+      const extendRight = this._style.extendRight ?? false;
       
-      const left = Math.min(x1, x2);
+      // Calculate base coordinates
+      const x1 = x1Raw ?? 0;
+      const x2 = x2Raw ?? chartWidth;
+      
+      // Determine drawing bounds based on extension
+      const rectLeft = extendLeft ? 0 : Math.min(x1, x2);
+      const rectRight = extendRight ? chartWidth : Math.max(x1, x2);
+      
       const top = Math.min(y1, y2);
-      const width = Math.abs(x2 - x1);
+      const width = rectRight - rectLeft;
       const height = Math.abs(y2 - y1);
 
       ctx.fillStyle = this._style.color.replace(')', ', 0.2)').replace('rgb', 'rgba').replace('hsl', 'hsla');
@@ -372,21 +426,23 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
         const b = parseInt(hex.slice(5, 7), 16);
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.2)`;
       }
-      ctx.fillRect(left, top, width, height);
+      ctx.fillRect(rectLeft, top, width, height);
 
       ctx.strokeStyle = this._style.color;
       ctx.lineWidth = this._style.lineWidth || 2;
-      ctx.strokeRect(left, top, width, height);
+      ctx.strokeRect(rectLeft, top, width, height);
 
+      // Draw selection handles at original points (not extended edges)
       if (this._isSelected) {
         ctx.fillStyle = '#22c55e';
-        ctx.beginPath();
-        ctx.arc(x1, y1, 6, 0, Math.PI * 2);
-        ctx.fill();
-        // Only draw second point if it's visible
+        if (x1Raw !== null) {
+          ctx.beginPath();
+          ctx.arc(x1Raw, y1, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
         if (x2Raw !== null) {
           ctx.beginPath();
-          ctx.arc(x2, y2, 6, 0, Math.PI * 2);
+          ctx.arc(x2Raw, y2, 6, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -527,8 +583,8 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
     const x1Raw = timeScale.timeToCoordinate(this._point1.time as Time);
     const x2Raw = timeScale.timeToCoordinate(this._point2.time as Time);
 
-    // Need at least x1 to render (the anchor point)
-    if (x1Raw === null) return;
+    // Need at least one valid x coordinate to render
+    if (x1Raw === null && x2Raw === null) return;
 
     const priceDiff = this._point2.price - this._point1.price;
 
@@ -536,11 +592,18 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const ctx = scope.context;
       const chartWidth = scope.mediaSize.width;
       
-      // For extended fibs, x2 may be null (off-screen right) - use chartWidth
-      const x1 = x1Raw;
-      const x2 = x2Raw !== null ? x2Raw : chartWidth;
-      const left = Math.min(x1, x2);
-      const right = Math.max(x1, x2);
+      // Handle extend left/right from style
+      const extendLeft = this._style.extendLeft ?? false;
+      const extendRight = this._style.extendRight ?? false;
+      
+      // Calculate base coordinates
+      const x1 = x1Raw ?? 0;
+      const x2 = x2Raw ?? chartWidth;
+      
+      // Determine drawing bounds based on extension
+      const lineLeft = extendLeft ? 0 : Math.min(x1, x2);
+      const lineRight = extendRight ? chartWidth : Math.max(x1, x2);
+      const labelX = this._style.labelPosition === 'left' ? lineLeft + 5 : lineRight + 5;
 
       FIB_LEVELS.forEach((level) => {
         const levelPrice = this._point1.price + priceDiff * level;
@@ -553,35 +616,41 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
         ctx.setLineDash(level === 0 || level === 1 ? [] : [3, 3]);
-        ctx.moveTo(left, y);
-        ctx.lineTo(chartWidth, y);
+        ctx.moveTo(lineLeft, y);
+        ctx.lineTo(lineRight, y);
         ctx.stroke();
         ctx.setLineDash([]);
 
         ctx.font = '11px sans-serif';
         ctx.fillStyle = color;
-        ctx.fillText(`${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`, right + 5, y + 4);
+        ctx.fillText(`${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`, labelX, y + 4);
       });
 
+      // Draw the diagonal anchor line
       ctx.beginPath();
       ctx.strokeStyle = this._style.color;
       ctx.lineWidth = 2;
       const y1 = this._series!.priceToCoordinate(this._point1.price);
       const y2 = this._series!.priceToCoordinate(this._point2.price);
-      if (y1 !== null && y2 !== null) {
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
+      if (y1 !== null && y2 !== null && x1Raw !== null && x2Raw !== null) {
+        ctx.moveTo(x1Raw, y1);
+        ctx.lineTo(x2Raw, y2);
         ctx.stroke();
       }
 
+      // Draw selection handles
       if (this._isSelected && y1 !== null && y2 !== null) {
         ctx.fillStyle = '#22c55e';
-        ctx.beginPath();
-        ctx.arc(x1, y1, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x2, y2, 6, 0, Math.PI * 2);
-        ctx.fill();
+        if (x1Raw !== null) {
+          ctx.beginPath();
+          ctx.arc(x1Raw, y1, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (x2Raw !== null) {
+          ctx.beginPath();
+          ctx.arc(x2Raw, y2, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     });
   }
