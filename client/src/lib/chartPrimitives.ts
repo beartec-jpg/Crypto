@@ -622,10 +622,19 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
 
+        const labelText = `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
         ctx.font = '11px sans-serif';
+        const textMetrics = ctx.measureText(labelText);
+        const textHeight = 12;
+        const padding = 2;
+        
+        const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(bgX, y - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
+        
         ctx.fillStyle = color;
         ctx.textAlign = isRightLabel ? 'right' : 'left';
-        ctx.fillText(`${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`, labelX, y + 4);
+        ctx.fillText(labelText, labelX, y + 4);
         ctx.textAlign = 'left';
       });
 
@@ -821,10 +830,19 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
 
+        const labelText = `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
         ctx.font = '11px sans-serif';
+        const textMetrics = ctx.measureText(labelText);
+        const textHeight = 12;
+        const padding = 2;
+        
+        const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(bgX, y - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
+        
         ctx.fillStyle = color;
         ctx.textAlign = isRightLabel ? 'right' : 'left';
-        ctx.fillText(`${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`, labelX, y + 4);
+        ctx.fillText(labelText, labelX, y + 4);
         ctx.textAlign = 'left';
       });
 
