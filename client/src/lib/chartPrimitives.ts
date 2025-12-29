@@ -603,7 +603,8 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       // Determine drawing bounds based on extension
       const lineLeft = extendLeft ? 0 : Math.min(x1, x2);
       const lineRight = extendRight ? chartWidth : Math.max(x1, x2);
-      const labelX = this._style.labelPosition === 'left' ? lineLeft + 5 : lineRight + 5;
+      const isRightLabel = this._style.labelPosition === 'right';
+      const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
 
       FIB_LEVELS.forEach((level) => {
         const levelPrice = this._point1.price + priceDiff * level;
@@ -623,7 +624,9 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
 
         ctx.font = '11px sans-serif';
         ctx.fillStyle = color;
+        ctx.textAlign = isRightLabel ? 'right' : 'left';
         ctx.fillText(`${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`, labelX, y + 4);
+        ctx.textAlign = 'left';
       });
 
       // Draw the diagonal anchor line
@@ -799,7 +802,8 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const baseEndX = x3Raw + 200;
       const lineLeft = extendLeft ? 0 : baseStartX;
       const lineRight = extendRight ? chartWidth : baseEndX;
-      const labelX = this._style.labelPosition === 'left' ? lineLeft + 5 : lineRight + 5;
+      const isRightLabel = this._style.labelPosition === 'right';
+      const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
 
       TREND_FIB_LEVELS.forEach((level) => {
         const levelPrice = this._points[2].price + waveDiff * level;
@@ -819,7 +823,9 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
 
         ctx.font = '11px sans-serif';
         ctx.fillStyle = color;
+        ctx.textAlign = isRightLabel ? 'right' : 'left';
         ctx.fillText(`${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`, labelX, y + 4);
+        ctx.textAlign = 'left';
       });
 
       const y1 = this._series!.priceToCoordinate(this._points[0].price);
