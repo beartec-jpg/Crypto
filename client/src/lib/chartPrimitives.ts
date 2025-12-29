@@ -745,7 +745,208 @@ export class FibRetracementPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
-export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive;
+const TREND_FIB_LEVELS = [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
+const TREND_FIB_COLORS: Record<number, string> = {
+  0.618: '#2196f3',
+  1.0: '#787b86',
+  1.272: '#00bcd4',
+  1.618: '#e91e63',
+  2.0: '#9c27b0',
+  2.618: '#ff9800'
+};
+
+class TrendFibRenderer implements IPrimitivePaneRenderer {
+  private _points: DrawingPoint[];
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+
+  constructor(
+    points: DrawingPoint[],
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._points = points;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart || this._points.length < 3) return;
+
+    const timeScale = this._chart.timeScale();
+    const x1Raw = timeScale.timeToCoordinate(this._points[0].time as Time);
+    const x2Raw = timeScale.timeToCoordinate(this._points[1].time as Time);
+    const x3Raw = timeScale.timeToCoordinate(this._points[2].time as Time);
+
+    if (x3Raw === null) return;
+
+    const waveDiff = this._points[1].price - this._points[0].price;
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      const chartWidth = scope.mediaSize.width;
+      
+      const extendLeft = this._style.extendLeft ?? false;
+      const extendRight = this._style.extendRight ?? false;
+      
+      const baseStartX = x3Raw;
+      const baseEndX = x3Raw + 200;
+      const lineLeft = extendLeft ? 0 : baseStartX;
+      const lineRight = extendRight ? chartWidth : baseEndX;
+      const labelX = this._style.labelPosition === 'left' ? lineLeft + 5 : lineRight + 5;
+
+      TREND_FIB_LEVELS.forEach((level) => {
+        const levelPrice = this._points[2].price + waveDiff * level;
+        const y = this._series!.priceToCoordinate(levelPrice);
+        if (y === null) return;
+
+        const color = TREND_FIB_COLORS[level] || this._style.color;
+        
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash(level === 1.0 ? [] : [3, 3]);
+        ctx.moveTo(lineLeft, y);
+        ctx.lineTo(lineRight, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.font = '11px sans-serif';
+        ctx.fillStyle = color;
+        ctx.fillText(`${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`, labelX, y + 4);
+      });
+
+      const y1 = this._series!.priceToCoordinate(this._points[0].price);
+      const y2 = this._series!.priceToCoordinate(this._points[1].price);
+      const y3 = this._series!.priceToCoordinate(this._points[2].price);
+      
+      if (y1 !== null && y2 !== null && x1Raw !== null && x2Raw !== null) {
+        ctx.beginPath();
+        ctx.strokeStyle = this._isSelected ? '#22c55e' : '#888';
+        ctx.lineWidth = this._isSelected ? 2 : 1;
+        ctx.setLineDash([4, 2]);
+        ctx.moveTo(x1Raw, y1);
+        ctx.lineTo(x2Raw, y2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      if (this._isSelected) {
+        ctx.fillStyle = '#22c55e';
+        if (x1Raw !== null && y1 !== null) {
+          ctx.beginPath();
+          ctx.arc(x1Raw, y1, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (x2Raw !== null && y2 !== null) {
+          ctx.beginPath();
+          ctx.arc(x2Raw, y2, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (y3 !== null) {
+          ctx.beginPath();
+          ctx.arc(x3Raw, y3, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    });
+  }
+}
+
+class TrendFibPaneView implements IPrimitivePaneView {
+  private _primitive: TrendFibPrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: TrendFibPrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' {
+    return 'normal';
+  }
+
+  renderer() {
+    return new TrendFibRenderer(
+      this._primitive.getPoints(),
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class TrendFibPrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: TrendFibPaneView[];
+  private _points: DrawingPoint[];
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, points: DrawingPoint[], style: DrawingStyle) {
+    this._id = id;
+    this._points = points;
+    this._style = style;
+    this._paneViews = [new TrendFibPaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() {
+    return this._paneViews;
+  }
+
+  getId() { return this._id; }
+  getPoints() { return this._points; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoints(points: DrawingPoint[]) {
+    this._points = points;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
+
+export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive;
 
 export function createDrawingPrimitive(
   id: string,
@@ -770,9 +971,13 @@ export function createDrawingPrimitive(
       }
       break;
     case 'fib_retracement':
-    case 'trend_fib':
       if (points.length >= 2) {
         return new FibRetracementPrimitive(id, points, style);
+      }
+      break;
+    case 'trend_fib':
+      if (points.length >= 3) {
+        return new TrendFibPrimitive(id, points, style);
       }
       break;
   }
