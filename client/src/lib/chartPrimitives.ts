@@ -343,15 +343,21 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
     if (!this._series || !this._chart) return;
 
     const timeScale = this._chart.timeScale();
-    const x1 = timeScale.timeToCoordinate(this._point1.time as Time);
+    const x1Raw = timeScale.timeToCoordinate(this._point1.time as Time);
     const y1 = this._series.priceToCoordinate(this._point1.price);
-    const x2 = timeScale.timeToCoordinate(this._point2.time as Time);
+    const x2Raw = timeScale.timeToCoordinate(this._point2.time as Time);
     const y2 = this._series.priceToCoordinate(this._point2.price);
 
-    if (x1 === null || y1 === null || x2 === null || y2 === null) return;
+    // Need at least x1 and y coordinates to render
+    if (x1Raw === null || y1 === null || y2 === null) return;
 
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx = scope.context;
+      const chartWidth = scope.mediaSize.width;
+      
+      // For extended rectangles, x2 may be null (off-screen right) - use chartWidth
+      const x1 = x1Raw;
+      const x2 = x2Raw !== null ? x2Raw : chartWidth;
       
       const left = Math.min(x1, x2);
       const top = Math.min(y1, y2);
@@ -377,9 +383,12 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
         ctx.beginPath();
         ctx.arc(x1, y1, 6, 0, Math.PI * 2);
         ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x2, y2, 6, 0, Math.PI * 2);
-        ctx.fill();
+        // Only draw second point if it's visible
+        if (x2Raw !== null) {
+          ctx.beginPath();
+          ctx.arc(x2, y2, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     });
   }
@@ -515,18 +524,23 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
     if (!this._series || !this._chart) return;
 
     const timeScale = this._chart.timeScale();
-    const x1 = timeScale.timeToCoordinate(this._point1.time as Time);
-    const x2 = timeScale.timeToCoordinate(this._point2.time as Time);
+    const x1Raw = timeScale.timeToCoordinate(this._point1.time as Time);
+    const x2Raw = timeScale.timeToCoordinate(this._point2.time as Time);
 
-    if (x1 === null || x2 === null) return;
+    // Need at least x1 to render (the anchor point)
+    if (x1Raw === null) return;
 
     const priceDiff = this._point2.price - this._point1.price;
-    const left = Math.min(x1, x2);
-    const right = Math.max(x1, x2);
 
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx = scope.context;
       const chartWidth = scope.mediaSize.width;
+      
+      // For extended fibs, x2 may be null (off-screen right) - use chartWidth
+      const x1 = x1Raw;
+      const x2 = x2Raw !== null ? x2Raw : chartWidth;
+      const left = Math.min(x1, x2);
+      const right = Math.max(x1, x2);
 
       FIB_LEVELS.forEach((level) => {
         const levelPrice = this._point1.price + priceDiff * level;
