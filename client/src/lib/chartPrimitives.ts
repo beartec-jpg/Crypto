@@ -604,12 +604,13 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const lineLeft = extendLeft ? 0 : Math.min(x1, x2);
       const lineRight = extendRight ? chartWidth : Math.max(x1, x2);
       const isRightLabel = this._style.labelPosition === 'right';
-      // Labels stay anchored to original points, but clamp to visible chart area
+      // Labels stay anchored to original points - only show if anchor point is visible
       const anchorLeft = Math.min(x1, x2);
       const anchorRight = Math.max(x1, x2);
-      const preferredLabelX = isRightLabel ? anchorRight - 5 : anchorLeft + 5;
-      // Clamp label to visible line portion
-      const labelX = Math.max(lineLeft + 5, Math.min(preferredLabelX, lineRight - 5));
+      const labelAnchorX = isRightLabel ? anchorRight : anchorLeft;
+      // Only show labels if the anchor point is within visible chart area
+      const showLabels = labelAnchorX >= 0 && labelAnchorX <= chartWidth;
+      const labelX = isRightLabel ? anchorRight - 5 : anchorLeft + 5;
 
       FIB_LEVELS.forEach((level) => {
         const levelPrice = this._point1.price + priceDiff * level;
@@ -627,20 +628,22 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        const labelText = `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
-        ctx.font = '11px sans-serif';
-        const textMetrics = ctx.measureText(labelText);
-        const textHeight = 12;
-        const padding = 2;
-        
-        const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        ctx.fillRect(bgX, y - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
-        
-        ctx.fillStyle = color;
-        ctx.textAlign = isRightLabel ? 'right' : 'left';
-        ctx.fillText(labelText, labelX, y + 4);
-        ctx.textAlign = 'left';
+        if (showLabels) {
+          const labelText = `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
+          ctx.font = '11px sans-serif';
+          const textMetrics = ctx.measureText(labelText);
+          const textHeight = 12;
+          const padding = 2;
+          
+          const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+          ctx.fillRect(bgX, y - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
+          
+          ctx.fillStyle = color;
+          ctx.textAlign = isRightLabel ? 'right' : 'left';
+          ctx.fillText(labelText, labelX, y + 4);
+          ctx.textAlign = 'left';
+        }
       });
 
       // Draw the diagonal anchor line
@@ -817,9 +820,10 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const lineLeft = extendLeft ? 0 : baseStartX;
       const lineRight = extendRight ? chartWidth : baseEndX;
       const isRightLabel = this._style.labelPosition === 'right';
-      // Labels stay anchored to original projection area, but clamp to visible chart area
-      const preferredLabelX = isRightLabel ? baseEndX - 5 : baseStartX + 5;
-      const labelX = Math.max(lineLeft + 5, Math.min(preferredLabelX, lineRight - 5));
+      // Labels stay anchored to original projection area - only show if anchor point is visible
+      const labelAnchorX = isRightLabel ? baseEndX : baseStartX;
+      const showLabels = labelAnchorX >= 0 && labelAnchorX <= chartWidth;
+      const labelX = isRightLabel ? baseEndX - 5 : baseStartX + 5;
 
       TREND_FIB_LEVELS.forEach((level) => {
         const levelPrice = this._points[2].price + waveDiff * level;
@@ -837,20 +841,22 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        const labelText = `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
-        ctx.font = '11px sans-serif';
-        const textMetrics = ctx.measureText(labelText);
-        const textHeight = 12;
-        const padding = 2;
-        
-        const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        ctx.fillRect(bgX, y - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
-        
-        ctx.fillStyle = color;
-        ctx.textAlign = isRightLabel ? 'right' : 'left';
-        ctx.fillText(labelText, labelX, y + 4);
-        ctx.textAlign = 'left';
+        if (showLabels) {
+          const labelText = `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
+          ctx.font = '11px sans-serif';
+          const textMetrics = ctx.measureText(labelText);
+          const textHeight = 12;
+          const padding = 2;
+          
+          const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+          ctx.fillRect(bgX, y - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
+          
+          ctx.fillStyle = color;
+          ctx.textAlign = isRightLabel ? 'right' : 'left';
+          ctx.fillText(labelText, labelX, y + 4);
+          ctx.textAlign = 'left';
+        }
       });
 
       const y1 = this._series!.priceToCoordinate(this._points[0].price);
