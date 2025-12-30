@@ -24,6 +24,7 @@ import transitionVideo from '@assets/grok_video_2025-11-20-06-10-37_176361982402
 import bullVideo from '@assets/grok_video_2025-11-20-06-16-11_1763619952816.mp4';
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
+import { getSortedTickers, incrementTickerClick } from '@/lib/tickerUtils';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import {
   calculateSupertrend,
@@ -10145,26 +10146,14 @@ export default function CryptoIndicators() {
         <div className="flex flex-col items-center gap-4">
           {/* Ticker and Timeframe Selectors */}
           <div className="flex items-center gap-2 md:gap-4">
-            <Select value={symbol} onValueChange={setSymbol}>
+            <Select value={symbol} onValueChange={(val) => { incrementTickerClick(val); setSymbol(val); }}>
               <SelectTrigger className="w-28 md:w-40 bg-slate-800 border-slate-600">
                 <SelectValue className="text-white font-bold" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="BTCUSDT">BTC/USDT</SelectItem>
-                <SelectItem value="ETHUSDT">ETH/USDT</SelectItem>
-                <SelectItem value="XRPUSDT">XRP/USDT</SelectItem>
-                <SelectItem value="SOLUSDT">SOL/USDT</SelectItem>
-                <SelectItem value="ADAUSDT">ADA/USDT</SelectItem>
-                <SelectItem value="DOGEUSDT">DOGE/USDT</SelectItem>
-                <SelectItem value="DOTUSDT">DOT/USDT</SelectItem>
-                <SelectItem value="LINKUSDT">LINK/USDT</SelectItem>
-                <SelectItem value="AVAXUSDT">AVAX/USDT</SelectItem>
-                <SelectItem value="MATICUSDT">MATIC/USDT</SelectItem>
-                <SelectItem value="LTCUSDT">LTC/USDT</SelectItem>
-                <SelectItem value="BNBUSDT">BNB/USDT</SelectItem>
-                <SelectItem value="ATOMUSDT">ATOM/USDT</SelectItem>
-                <SelectItem value="NEARUSDT">NEAR/USDT</SelectItem>
-                <SelectItem value="AAVEUSDT">AAVE/USDT</SelectItem>
+                {getSortedTickers().map(t => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={interval} onValueChange={setTimeframeInterval}>

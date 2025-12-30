@@ -2586,7 +2586,7 @@ interface GrokWaveAnalysis {
   riskFactors?: string[];
 }
 
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT'];
+import { getSortedTickers, incrementTickerClick } from '@/lib/tickerUtils';
 const TIMEFRAMES = [
   { label: '1 Month', value: '1M' },
   { label: '1 Week', value: '1w' },
@@ -7372,13 +7372,13 @@ const aiAnalyze = useMutation({
         </div>
 
         <div className="flex items-center gap-4">
-          <Select value={symbol} onValueChange={setSymbol}>
+          <Select value={symbol} onValueChange={(val) => { incrementTickerClick(val); setSymbol(val); }}>
             <SelectTrigger className="w-32 bg-slate-800 border-slate-700" data-testid="select-symbol">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SYMBOLS.map(s => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
+              {getSortedTickers().map(t => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -7416,11 +7416,11 @@ const aiAnalyze = useMutation({
         <div className="flex flex-wrap items-center gap-2 mb-2 p-2 bg-slate-900/95 rounded-lg border border-slate-800 fixed top-0 left-0 right-0 z-40 mx-4 mt-1 lg:static lg:mx-0 lg:mt-0 backdrop-blur-sm">
           <div className="flex items-center gap-2 lg:hidden w-full pb-2 border-b border-slate-700 mb-2">
             <img src={bearTecLogoNew} alt="BearTec" className="h-8" />
-            <Select value={symbol} onValueChange={setSymbol}>
+            <Select value={symbol} onValueChange={(val) => { incrementTickerClick(val); setSymbol(val); }}>
               <SelectTrigger className="flex-1 h-8 bg-slate-800 border-slate-700 text-sm">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700">{SYMBOLS.map(s => <SelectItem key={s} value={s} className="text-gray-200 hover:bg-slate-700 focus:bg-slate-700">{s}</SelectItem>)}</SelectContent>
+              <SelectContent className="bg-slate-800 border-slate-700">{getSortedTickers().map(t => <SelectItem key={t.value} value={t.value} className="text-gray-200 hover:bg-slate-700 focus:bg-slate-700">{t.label}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={timeframe} onValueChange={setTimeframe}>
               <SelectTrigger className="w-20 h-8 bg-slate-800 border-slate-700 text-sm">

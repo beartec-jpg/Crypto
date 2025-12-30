@@ -74,7 +74,7 @@ interface Absorption {
   type: 'bullAbsorb' | 'bearAbsorb';
 }
 
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT'];
+import { getSortedTickers, incrementTickerClick } from '@/lib/tickerUtils';
 const INTERVALS = [
   { label: '1m', value: '1m' },
   { label: '5m', value: '5m' },
@@ -2050,13 +2050,13 @@ export default function CryptoAI() {
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto">
             <div className="flex gap-2 w-full sm:w-auto">
-              <Select value={symbol} onValueChange={setSymbol}>
+              <Select value={symbol} onValueChange={(val) => { incrementTickerClick(val); setSymbol(val); }}>
                 <SelectTrigger className="flex-1 sm:w-[140px] bg-[#1a1a1a] border-[#2a2e39]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SYMBOLS.map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  {getSortedTickers().map(t => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
