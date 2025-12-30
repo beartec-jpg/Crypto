@@ -22,8 +22,10 @@ interface DrawingStyle {
   extendRight?: boolean;
   labelPosition?: 'left' | 'right';
   hiddenLevels?: number[];
-  customLabels?: Record<number, string>;
+  customLabels?: Record<number | string, string>;
   customValues?: Record<number, number>;
+  label?: string;
+  autoColor?: boolean;
 }
 
 type RequestUpdateCallback = () => void;
@@ -434,6 +436,28 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
       ctx.strokeStyle = this._style.color;
       ctx.lineWidth = this._style.lineWidth || 2;
       ctx.strokeRect(rectLeft, top, width, height);
+
+      // Draw label if present
+      const labelText = this._style.label;
+      if (labelText) {
+        ctx.font = '11px sans-serif';
+        const textMetrics = ctx.measureText(labelText);
+        const textHeight = 12;
+        const padding = 3;
+        
+        const isRightLabel = this._style.labelPosition === 'right';
+        const labelX = isRightLabel ? rectRight - 5 : rectLeft + 5;
+        const labelY = top + 15;
+        
+        const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(bgX, labelY - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
+        
+        ctx.fillStyle = this._style.color;
+        ctx.textAlign = isRightLabel ? 'right' : 'left';
+        ctx.fillText(labelText, labelX, labelY + 4);
+        ctx.textAlign = 'left';
+      }
 
       // Draw selection handles at original points (not extended edges)
       if (this._isSelected) {
