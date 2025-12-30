@@ -11170,9 +11170,10 @@ export default function CryptoIndicators() {
                     ? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618]
                     : [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
                   
-                  // Helper for float comparison when checking hidden levels
+                  // Helper for float comparison when checking hidden levels - use rounding for consistency
+                  const roundLevel = (n: number) => Math.round(n * 10000) / 10000;
                   const isLevelHidden = (level: number, hiddenArr: number[]) => 
-                    hiddenArr.some((h: number) => Math.abs(h - level) < 0.0001);
+                    hiddenArr.some((h: number) => roundLevel(h) === roundLevel(level));
                   
                   const updateDrawingSettings = (newStyle: any) => {
                     const mergedStyle = { ...selectedDrawing.style, ...newStyle };
@@ -11251,7 +11252,7 @@ export default function CryptoIndicators() {
                                         onChange={() => {
                                           const newHidden = isVisible 
                                             ? [...hiddenLevels, level]
-                                            : hiddenLevels.filter((l: number) => Math.abs(l - level) >= 0.0001);
+                                            : hiddenLevels.filter((l: number) => roundLevel(l) !== roundLevel(level));
                                           updateDrawingSettings({ hiddenLevels: newHidden });
                                         }}
                                         className="rounded border-slate-600 w-4 h-4"
@@ -11289,7 +11290,7 @@ export default function CryptoIndicators() {
                                         onChange={() => {
                                           const newHidden = isVisible 
                                             ? [...hiddenLevels, level]
-                                            : hiddenLevels.filter((l: number) => Math.abs(l - level) >= 0.0001);
+                                            : hiddenLevels.filter((l: number) => roundLevel(l) !== roundLevel(level));
                                           updateDrawingSettings({ hiddenLevels: newHidden });
                                         }}
                                         className="rounded border-slate-600 w-4 h-4"
@@ -11326,7 +11327,7 @@ export default function CryptoIndicators() {
                                         onChange={() => {
                                           const newHidden = isVisible 
                                             ? [...hiddenLevels, level]
-                                            : hiddenLevels.filter((l: number) => Math.abs(l - level) >= 0.0001);
+                                            : hiddenLevels.filter((l: number) => roundLevel(l) !== roundLevel(level));
                                           updateDrawingSettings({ hiddenLevels: newHidden });
                                         }}
                                         className="rounded border-slate-600"
