@@ -21,6 +21,7 @@ interface DrawingStyle {
   extendLeft?: boolean;
   extendRight?: boolean;
   labelPosition?: 'left' | 'right';
+  hiddenLevels?: number[];
 }
 
 type RequestUpdateCallback = () => void;
@@ -612,7 +613,12 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const anchorsVisible = anchorLeft <= chartWidth && anchorRight >= 0;
       const showLabels = anchorsVisible;
 
+      const hiddenLevels = this._style.hiddenLevels || [];
+      
       FIB_LEVELS.forEach((level) => {
+        // Skip hidden levels
+        if (hiddenLevels.includes(level)) return;
+        
         const levelPrice = this._point1.price + priceDiff * level;
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
@@ -826,7 +832,12 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const anchorsVisible = baseStartX <= chartWidth && baseEndX >= 0;
       const showLabels = anchorsVisible;
 
+      const hiddenLevels = this._style.hiddenLevels || [];
+      
       TREND_FIB_LEVELS.forEach((level) => {
+        // Skip hidden levels
+        if (hiddenLevels.includes(level)) return;
+        
         const levelPrice = this._points[2].price + waveDiff * level;
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
