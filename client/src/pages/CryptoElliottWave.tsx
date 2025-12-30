@@ -1191,6 +1191,8 @@ interface WaveEntryRowProps {
   updateLabel: { mutate: (data: { id: string; degree: string }) => void };
   toast: (opts: { title: string; description: string }) => void;
   waveDegrees: WaveDegree[];
+  timeframe: string;
+  setTimeframe: (tf: string) => void;
 }
 
 function WaveEntryRow({
@@ -1206,7 +1208,9 @@ function WaveEntryRow({
   deleteLabel,
   updateLabel,
   toast,
-  waveDegrees
+  waveDegrees,
+  timeframe,
+  setTimeframe
 }: WaveEntryRowProps) {
   // Get child structures for this entry
   const entryChildren = getChildrenForEntry(entry, parentStructure, allStructures);
@@ -1457,6 +1461,8 @@ function WaveEntryRow({
                     updateLabel={updateLabel}
                     toast={toast}
                     waveDegrees={waveDegrees}
+                    timeframe={timeframe}
+                    setTimeframe={setTimeframe}
                   />
                 ))}
               </div>
@@ -8300,6 +8306,8 @@ const aiAnalyze = useMutation({
                                 updateLabel={updateLabel}
                                 toast={toast}
                                 waveDegrees={waveDegrees}
+                                timeframe={timeframe}
+                                setTimeframe={setTimeframe}
                               />
                             ))}
                             
