@@ -877,7 +877,7 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       
       if (y1 !== null && y2 !== null && x1Raw !== null && x2Raw !== null) {
         ctx.beginPath();
-        ctx.strokeStyle = this._isSelected ? '#22c55e' : '#888';
+        ctx.strokeStyle = this._isSelected ? '#22c55e' : 'rgba(136, 136, 136, 0.15)';
         ctx.lineWidth = this._isSelected ? 2 : 1;
         ctx.setLineDash([4, 2]);
         ctx.moveTo(x1Raw, y1);
