@@ -11171,13 +11171,19 @@ export default function CryptoIndicators() {
                     : [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
                   
                   const updateDrawingSettings = (newStyle: any) => {
+                    const mergedStyle = { ...selectedDrawing.style, ...newStyle };
                     setDrawings(prev => prev.map(d => 
                       d.id === selectedDrawingId 
-                        ? { ...d, style: { ...d.style, ...newStyle } }
+                        ? { ...d, style: mergedStyle }
                         : d
                     ));
+                    // Update the primitive's style for immediate visual feedback
+                    const primitive = drawingPrimitivesRef.current.get(selectedDrawingId);
+                    if (primitive && typeof primitive.updateStyle === 'function') {
+                      primitive.updateStyle(mergedStyle);
+                    }
                     // Save to database
-                    updateDrawingMutation.mutate({ id: selectedDrawingId, style: { ...selectedDrawing.style, ...newStyle } });
+                    updateDrawingMutation.mutate({ id: selectedDrawingId, style: mergedStyle });
                   };
                   
                   return (
