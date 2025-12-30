@@ -48,7 +48,8 @@ import {
   TrendLinePrimitive,
   HorizontalLinePrimitive,
   RectanglePrimitive,
-  FibRetracementPrimitive
+  FibRetracementPrimitive,
+  ChannelPrimitive
 } from '@/lib/chartPrimitives';
 
 interface CandleData {
@@ -624,7 +625,7 @@ export default function CryptoIndicators() {
         
         // Update points if they changed
         if ('updatePoints' in existingPrimitive) {
-          (existingPrimitive as TrendLinePrimitive | RectanglePrimitive | FibRetracementPrimitive).updatePoints(drawing.points);
+          (existingPrimitive as TrendLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | ChannelPrimitive).updatePoints(drawing.points);
         } else if ('updatePoint' in existingPrimitive) {
           (existingPrimitive as HorizontalLinePrimitive).updatePoint(drawing.points[0]);
         }
@@ -11172,9 +11173,11 @@ export default function CryptoIndicators() {
                   if (!selectedDrawing) return null;
                   
                   const isFibTool = selectedDrawing.type === 'fib_retracement' || selectedDrawing.type === 'trend_fib';
+                  const isChannelTool = selectedDrawing.type === 'channel';
                   const fibLevels = selectedDrawing.type === 'fib_retracement' 
                     ? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618]
                     : [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
+                  const channelLevels = [0.25, 0.5, 0.75];
                   
                   // Helper for float comparison when checking hidden levels - use rounding for consistency
                   const roundLevel = (n: number) => Math.round(n * 10000) / 10000;
@@ -11208,7 +11211,177 @@ export default function CryptoIndicators() {
                         </button>
                       </div>
                       
-                      {isFibTool ? (
+                      {isChannelTool ? (
+                        <>
+                          {/* Channel Settings Panel */}
+                          
+                          {/* Auto-Color Toggle */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Auto Color</div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => updateDrawingSettings({ autoColor: true })}
+                                className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.autoColor !== false ? 'bg-green-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+                                data-testid="btn-autocolor-on"
+                              >
+                                🔴 Red/🟢 Green
+                              </button>
+                              <button
+                                onClick={() => updateDrawingSettings({ autoColor: false })}
+                                className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.autoColor === false ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+                                data-testid="btn-autocolor-off"
+                              >
+                                🔵 Blue
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Channel Level Toggles */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Internal Markers</div>
+                            <div className="space-y-1">
+                              {channelLevels.map(level => {
+                                const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
+                                const customLabels = selectedDrawing.style?.customLabels || {};
+                                const isVisible = !isLevelHidden(level, hiddenLevels);
+                                const customLabel = customLabels[level] || '';
+                                return (
+                                  <div key={level} className="flex items-center gap-2 text-xs">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={isVisible}
+                                      onChange={() => {
+                                        const newHidden = isVisible 
+                                          ? [...hiddenLevels, level]
+                                          : hiddenLevels.filter((l: number) => roundLevel(l) !== roundLevel(level));
+                                        updateDrawingSettings({ hiddenLevels: newHidden });
+                                      }}
+                                      className="rounded border-slate-600 w-4 h-4"
+                                    />
+                                    <span className="text-gray-400 w-10">{(level * 100).toFixed(0)}%</span>
+                                    <input
+                                      type="text"
+                                      value={customLabel}
+                                      onChange={(e) => {
+                                        const newLabels = { ...customLabels, [level]: e.target.value };
+                                        updateDrawingSettings({ customLabels: newLabels });
+                                      }}
+                                      placeholder="Custom label..."
+                                      className="flex-1 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-xs text-white placeholder-gray-500"
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          
+                          {/* Top/Bottom Custom Labels */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Boundary Labels</div>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-red-400 w-14">Top:</span>
+                                <input
+                                  type="text"
+                                  value={selectedDrawing.style?.customLabels?.['top'] || ''}
+                                  onChange={(e) => {
+                                    const customLabels = selectedDrawing.style?.customLabels || {};
+                                    updateDrawingSettings({ customLabels: { ...customLabels, top: e.target.value } });
+                                  }}
+                                  placeholder="Top label..."
+                                  className="flex-1 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-xs text-white placeholder-gray-500"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-green-400 w-14">Bottom:</span>
+                                <input
+                                  type="text"
+                                  value={selectedDrawing.style?.customLabels?.['bottom'] || ''}
+                                  onChange={(e) => {
+                                    const customLabels = selectedDrawing.style?.customLabels || {};
+                                    updateDrawingSettings({ customLabels: { ...customLabels, bottom: e.target.value } });
+                                  }}
+                                  placeholder="Bottom label..."
+                                  className="flex-1 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-xs text-white placeholder-gray-500"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Label Position */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Label Position</div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => updateDrawingSettings({ labelPosition: 'left' })}
+                                className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.labelPosition !== 'right' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+                              >
+                                Left
+                              </button>
+                              <button
+                                onClick={() => updateDrawingSettings({ labelPosition: 'right' })}
+                                className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.labelPosition === 'right' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
+                              >
+                                Right
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Extend Lines */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Extend Lines</div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => updateDrawingSettings({ extendLeft: !selectedDrawing.style?.extendLeft })}
+                                className={`flex-1 px-3 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                  selectedDrawing.style?.extendLeft 
+                                    ? 'bg-blue-500 text-white' 
+                                    : 'bg-slate-700 text-gray-300'
+                                }`}
+                                data-testid="btn-extend-channel-left"
+                              >
+                                ← Left
+                              </button>
+                              <button
+                                onClick={() => updateDrawingSettings({ extendRight: !selectedDrawing.style?.extendRight })}
+                                className={`flex-1 px-3 py-1 rounded text-xs flex items-center justify-center gap-1 ${
+                                  selectedDrawing.style?.extendRight 
+                                    ? 'bg-blue-500 text-white' 
+                                    : 'bg-slate-700 text-gray-300'
+                                }`}
+                                data-testid="btn-extend-channel-right"
+                              >
+                                Right →
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Save as Default Button */}
+                          <div className="mt-3 pt-3 border-t border-slate-600">
+                            <button
+                              onClick={() => {
+                                const defaults = {
+                                  hiddenLevels: selectedDrawing.style?.hiddenLevels || [],
+                                  labelPosition: selectedDrawing.style?.labelPosition || 'right',
+                                  extendLeft: selectedDrawing.style?.extendLeft || false,
+                                  extendRight: selectedDrawing.style?.extendRight || false,
+                                  autoColor: selectedDrawing.style?.autoColor !== false,
+                                  customLabels: selectedDrawing.style?.customLabels || {},
+                                };
+                                localStorage.setItem('channelDefaults', JSON.stringify(defaults));
+                                toast({ title: 'Defaults Saved', description: 'These settings will apply to new channel drawings' });
+                              }}
+                              className="w-full px-3 py-2 rounded text-xs bg-green-600 hover:bg-green-500 text-white flex items-center justify-center gap-2"
+                              data-testid="btn-save-channel-defaults"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Save as Default
+                            </button>
+                          </div>
+                        </>
+                      ) : isFibTool ? (
                         <>
                           {/* Edit Mode Toggles - Two Buttons */}
                           <div className="mb-3 flex gap-1">
