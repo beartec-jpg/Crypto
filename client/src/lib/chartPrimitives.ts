@@ -22,6 +22,7 @@ interface DrawingStyle {
   extendRight?: boolean;
   labelPosition?: 'left' | 'right';
   hiddenLevels?: number[];
+  customLabels?: Record<number, string>;
 }
 
 type RequestUpdateCallback = () => void;
@@ -619,7 +620,8 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         // Skip hidden levels
         if (hiddenLevels.includes(level)) return;
         
-        const levelPrice = this._point1.price + priceDiff * level;
+        // For retracements: 0% at end of move (point2), 100% at start (point1)
+        const levelPrice = this._point2.price - priceDiff * level;
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
@@ -635,7 +637,9 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         ctx.setLineDash([]);
 
         if (showLabels) {
-          const labelText = `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
+          const customLabels = this._style.customLabels || {};
+          const customLabel = customLabels[level];
+          const labelText = customLabel || `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
           ctx.font = '11px sans-serif';
           const textMetrics = ctx.measureText(labelText);
           const textHeight = 12;
@@ -652,16 +656,18 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         }
       });
 
-      // Draw the diagonal anchor line
-      ctx.beginPath();
-      ctx.strokeStyle = this._style.color;
-      ctx.lineWidth = 2;
+      // Draw the diagonal anchor line (very transparent when not selected)
       const y1 = this._series!.priceToCoordinate(this._point1.price);
       const y2 = this._series!.priceToCoordinate(this._point2.price);
       if (y1 !== null && y2 !== null && x1Raw !== null && x2Raw !== null) {
+        ctx.beginPath();
+        ctx.strokeStyle = this._isSelected ? '#22c55e' : 'rgba(136, 136, 136, 0.15)';
+        ctx.lineWidth = this._isSelected ? 2 : 1;
+        ctx.setLineDash([4, 2]);
         ctx.moveTo(x1Raw, y1);
         ctx.lineTo(x2Raw, y2);
         ctx.stroke();
+        ctx.setLineDash([]);
       }
 
       // Draw selection handles
@@ -859,7 +865,9 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
         ctx.setLineDash([]);
 
         if (showLabels) {
-          const labelText = `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
+          const customLabels = this._style.customLabels || {};
+          const customLabel = customLabels[level];
+          const labelText = customLabel || `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
           ctx.font = '11px sans-serif';
           const textMetrics = ctx.measureText(labelText);
           const textHeight = 12;

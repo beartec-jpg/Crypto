@@ -409,6 +409,7 @@ export default function CryptoIndicators() {
   // Native primitives for high-performance drawing rendering
   const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
+  const [editFibLevels, setEditFibLevels] = useState(false);
   const [crosshairModeActive, setCrosshairModeActive] = useState(false);
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
   const [autoColorEnabled, setAutoColorEnabled] = useState(true);
@@ -11192,31 +11193,86 @@ export default function CryptoIndicators() {
                       
                       {isFibTool ? (
                         <>
-                          {/* Fib Level Toggles */}
+                          {/* Edit Mode Toggle */}
                           <div className="mb-3">
-                            <div className="text-xs text-gray-300 mb-2">Visible Levels</div>
-                            <div className="grid grid-cols-2 gap-1">
-                              {fibLevels.map(level => {
-                                const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
-                                const isVisible = !hiddenLevels.includes(level);
-                                return (
-                                  <label key={level} className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:bg-slate-800 p-1 rounded">
-                                    <input 
-                                      type="checkbox" 
-                                      checked={isVisible}
-                                      onChange={() => {
-                                        const newHidden = isVisible 
-                                          ? [...hiddenLevels, level]
-                                          : hiddenLevels.filter((l: number) => l !== level);
-                                        updateDrawingSettings({ hiddenLevels: newHidden });
-                                      }}
-                                      className="rounded border-slate-600"
-                                    />
-                                    {(level * 100).toFixed(1)}%
-                                  </label>
-                                );
-                              })}
-                            </div>
+                            <button
+                              onClick={() => setEditFibLevels(!editFibLevels)}
+                              className={`w-full px-3 py-2 rounded text-xs flex items-center justify-center gap-2 ${
+                                editFibLevels ? 'bg-amber-600 text-white' : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                              }`}
+                              data-testid="btn-edit-fib-levels"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              {editFibLevels ? 'Done Editing' : 'Edit Levels'}
+                            </button>
+                          </div>
+                          
+                          {/* Fib Level Toggles / Edit Mode */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">{editFibLevels ? 'Custom Levels' : 'Visible Levels'}</div>
+                            {editFibLevels ? (
+                              <div className="space-y-1 max-h-[150px] overflow-y-auto">
+                                {fibLevels.map(level => {
+                                  const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
+                                  const customLabels = selectedDrawing.style?.customLabels || {};
+                                  const isVisible = !hiddenLevels.includes(level);
+                                  const customLabel = customLabels[level] || '';
+                                  return (
+                                    <div key={level} className="flex items-center gap-1 text-xs">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={isVisible}
+                                        onChange={() => {
+                                          const newHidden = isVisible 
+                                            ? [...hiddenLevels, level]
+                                            : hiddenLevels.filter((l: number) => l !== level);
+                                          updateDrawingSettings({ hiddenLevels: newHidden });
+                                        }}
+                                        className="rounded border-slate-600 w-4 h-4"
+                                      />
+                                      <span className="text-gray-400 w-12">{(level * 100).toFixed(1)}%</span>
+                                      <input
+                                        type="text"
+                                        value={customLabel}
+                                        onChange={(e) => {
+                                          const newLabels = { ...customLabels, [level]: e.target.value };
+                                          updateDrawingSettings({ customLabels: newLabels });
+                                        }}
+                                        placeholder="Custom label..."
+                                        className="flex-1 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-xs text-white placeholder-gray-500"
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-1">
+                                {fibLevels.map(level => {
+                                  const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
+                                  const isVisible = !hiddenLevels.includes(level);
+                                  const customLabels = selectedDrawing.style?.customLabels || {};
+                                  const displayLabel = customLabels[level] || `${(level * 100).toFixed(1)}%`;
+                                  return (
+                                    <label key={level} className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:bg-slate-800 p-1 rounded">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={isVisible}
+                                        onChange={() => {
+                                          const newHidden = isVisible 
+                                            ? [...hiddenLevels, level]
+                                            : hiddenLevels.filter((l: number) => l !== level);
+                                          updateDrawingSettings({ hiddenLevels: newHidden });
+                                        }}
+                                        className="rounded border-slate-600"
+                                      />
+                                      {displayLabel}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                           
                           {/* Label Position */}
@@ -11277,6 +11333,7 @@ export default function CryptoIndicators() {
                                   labelPosition: selectedDrawing.style?.labelPosition || 'left',
                                   extendLeft: selectedDrawing.style?.extendLeft || false,
                                   extendRight: selectedDrawing.style?.extendRight || false,
+                                  customLabels: selectedDrawing.style?.customLabels || {},
                                 };
                                 localStorage.setItem(defaultKey, JSON.stringify(defaults));
                                 toast({ title: 'Defaults Saved', description: 'These settings will apply to new drawings' });
