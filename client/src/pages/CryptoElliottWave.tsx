@@ -15,7 +15,7 @@ import { authenticatedApiRequest, ApiError } from '@/lib/apiAuth';
 import { useCryptoAuth, isDevelopment } from '@/hooks/useCryptoAuth';
 import { runValidation } from '@shared/elliottValidation';
 import { useEnsureAuthReady } from '@/hooks/useEnsureAuthReady';
-import { useLocation } from 'wouter';
+import { useLocation, Link } from 'wouter';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { AuthButtons } from '@/components/AuthButtons';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
