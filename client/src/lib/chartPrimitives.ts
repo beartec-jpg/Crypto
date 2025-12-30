@@ -1023,11 +1023,279 @@ export class TrendFibPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
-export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive;
+// Channel levels: 25%, 50%, 75% internal markers
+const CHANNEL_LEVELS = [0.25, 0.5, 0.75];
+
+class ChannelRenderer implements IPrimitivePaneRenderer {
+  private _point1: DrawingPoint;
+  private _point2: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+
+  constructor(
+    point1: DrawingPoint,
+    point2: DrawingPoint,
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._point1 = point1;
+    this._point2 = point2;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart) return;
+
+    const timeScale = this._chart.timeScale();
+    const x1Raw = timeScale.timeToCoordinate(this._point1.time as Time);
+    const x2Raw = timeScale.timeToCoordinate(this._point2.time as Time);
+
+    if (x1Raw === null && x2Raw === null) return;
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      const chartWidth = scope.mediaSize.width;
+      
+      const extendLeft = this._style.extendLeft ?? false;
+      const extendRight = this._style.extendRight ?? false;
+      
+      const x1 = x1Raw ?? 0;
+      const x2 = x2Raw ?? chartWidth;
+      
+      const anchorLeft = Math.min(x1, x2);
+      const anchorRight = Math.max(x1, x2);
+      const lineLeft = extendLeft ? 0 : anchorLeft;
+      const lineRight = extendRight ? chartWidth : anchorRight;
+      const isRightLabel = this._style.labelPosition === 'right';
+      const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
+      const anchorsVisible = anchorLeft <= chartWidth && anchorRight >= 0;
+      const showLabels = anchorsVisible;
+
+      const y1 = this._series!.priceToCoordinate(this._point1.price);
+      const y2 = this._series!.priceToCoordinate(this._point2.price);
+      if (y1 === null || y2 === null) return;
+
+      const topPrice = Math.max(this._point1.price, this._point2.price);
+      const bottomPrice = Math.min(this._point1.price, this._point2.price);
+      const yTop = this._series!.priceToCoordinate(topPrice);
+      const yBottom = this._series!.priceToCoordinate(bottomPrice);
+      if (yTop === null || yBottom === null) return;
+
+      const autoColor = this._style.autoColor ?? true;
+      const topColor = autoColor ? '#ef4444' : (this._style.color || '#3b82f6');
+      const bottomColor = autoColor ? '#22c55e' : (this._style.color || '#3b82f6');
+
+      // Draw top horizontal line
+      ctx.beginPath();
+      ctx.strokeStyle = topColor;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.moveTo(lineLeft, yTop);
+      ctx.lineTo(lineRight, yTop);
+      ctx.stroke();
+
+      // Draw bottom horizontal line
+      ctx.beginPath();
+      ctx.strokeStyle = bottomColor;
+      ctx.lineWidth = 2;
+      ctx.moveTo(lineLeft, yBottom);
+      ctx.lineTo(lineRight, yBottom);
+      ctx.stroke();
+
+      // Draw top and bottom labels
+      if (showLabels) {
+        const customLabels = this._style.customLabels || {};
+        ctx.font = '11px sans-serif';
+        
+        const topLabel = customLabels['top'] || `Top (${topPrice.toFixed(2)})`;
+        const bottomLabel = customLabels['bottom'] || `Bottom (${bottomPrice.toFixed(2)})`;
+        
+        const topMetrics = ctx.measureText(topLabel);
+        const bottomMetrics = ctx.measureText(bottomLabel);
+        const textHeight = 12;
+        const padding = 2;
+
+        // Top label
+        const topBgX = isRightLabel ? labelX - topMetrics.width - padding : labelX - padding;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(topBgX, yTop - textHeight + 2, topMetrics.width + padding * 2, textHeight + padding);
+        ctx.fillStyle = topColor;
+        ctx.textAlign = isRightLabel ? 'right' : 'left';
+        ctx.fillText(topLabel, labelX, yTop + 4);
+
+        // Bottom label
+        const bottomBgX = isRightLabel ? labelX - bottomMetrics.width - padding : labelX - padding;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(bottomBgX, yBottom - textHeight + 2, bottomMetrics.width + padding * 2, textHeight + padding);
+        ctx.fillStyle = bottomColor;
+        ctx.fillText(bottomLabel, labelX, yBottom + 4);
+        ctx.textAlign = 'left';
+      }
+
+      // Draw internal level lines (25%, 50%, 75%) - white with 50% transparency
+      const hiddenLevels = this._style.hiddenLevels || [];
+      const priceDiff = topPrice - bottomPrice;
+      
+      CHANNEL_LEVELS.forEach((level) => {
+        const roundedLevel = Math.round(level * 10000) / 10000;
+        if (hiddenLevels.some((h: number) => Math.round(h * 10000) / 10000 === roundedLevel)) return;
+        
+        const levelPrice = bottomPrice + priceDiff * level;
+        const y = this._series!.priceToCoordinate(levelPrice);
+        if (y === null) return;
+
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.moveTo(lineLeft, y);
+        ctx.lineTo(lineRight, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        if (showLabels) {
+          const customLabels = this._style.customLabels || {};
+          const customLabel = customLabels[level];
+          const labelText = customLabel || `${(level * 100).toFixed(0)}% (${levelPrice.toFixed(2)})`;
+          ctx.font = '11px sans-serif';
+          const textMetrics = ctx.measureText(labelText);
+          const textHeight = 12;
+          const padding = 2;
+          
+          const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+          ctx.fillRect(bgX, y - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
+          
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.textAlign = isRightLabel ? 'right' : 'left';
+          ctx.fillText(labelText, labelX, y + 4);
+          ctx.textAlign = 'left';
+        }
+      });
+
+      // Fill channel area with subtle background
+      ctx.fillStyle = autoColor ? 'rgba(100, 100, 100, 0.1)' : 'rgba(59, 130, 246, 0.1)';
+      ctx.fillRect(lineLeft, yTop, lineRight - lineLeft, yBottom - yTop);
+
+      // Draw selection handles
+      if (this._isSelected) {
+        ctx.fillStyle = '#22c55e';
+        if (x1Raw !== null) {
+          ctx.beginPath();
+          ctx.arc(x1Raw, y1, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (x2Raw !== null) {
+          ctx.beginPath();
+          ctx.arc(x2Raw, y2, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    });
+  }
+}
+
+class ChannelPaneView implements IPrimitivePaneView {
+  private _primitive: ChannelPrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: ChannelPrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' {
+    return 'normal';
+  }
+
+  renderer() {
+    const points = this._primitive.getPoints();
+    return new ChannelRenderer(
+      points[0],
+      points[1],
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class ChannelPrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: ChannelPaneView[];
+  private _points: DrawingPoint[];
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, points: DrawingPoint[], style: DrawingStyle) {
+    this._id = id;
+    this._points = points;
+    this._style = style;
+    this._paneViews = [new ChannelPaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() {
+    return this._paneViews;
+  }
+
+  getId() { return this._id; }
+  getPoints() { return this._points; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoints(points: DrawingPoint[]) {
+    this._points = points;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
+
+export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive | ChannelPrimitive;
 
 export function createDrawingPrimitive(
   id: string,
-  type: 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib',
+  type: 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
   points: DrawingPoint[],
   style: DrawingStyle
 ): DrawingPrimitive | null {
@@ -1055,6 +1323,11 @@ export function createDrawingPrimitive(
     case 'trend_fib':
       if (points.length >= 3) {
         return new TrendFibPrimitive(id, points, style);
+      }
+      break;
+    case 'channel':
+      if (points.length >= 2) {
+        return new ChannelPrimitive(id, points, style);
       }
       break;
   }
