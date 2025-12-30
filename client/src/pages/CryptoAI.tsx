@@ -126,6 +126,7 @@ export default function CryptoAI() {
   const [tradeAlerts, setTradeAlerts] = useState<TradeAlert[]>([]);
   
   const [marketInsights, setMarketInsights] = useState<{ noTradesReason?: string; summary?: string; bias?: string; keyLevels?: string[] } | null>(null);
+  const [indicatorData, setIndicatorData] = useState<any | null>(null); // All indicators from backend
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -177,6 +178,7 @@ export default function CryptoAI() {
   
   // Collapsible state for AI report sections - all minimized by default
   const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
+  const [indicatorDataOpen, setIndicatorDataOpen] = useState(false);
   const [tradeIdeasOpen, setTradeIdeasOpen] = useState(false);
   const [liquidationInfoOpen, setLiquidationInfoOpen] = useState(false);
   const [oiInfoOpen, setOiInfoOpen] = useState(false);
@@ -1250,6 +1252,13 @@ export default function CryptoAI() {
         setMarketInsights(result.marketInsights);
       } else {
         setMarketInsights(null);
+      }
+      
+      // Store indicator data from backend for display
+      if (result.indicatorData) {
+        setIndicatorData(result.indicatorData);
+      } else {
+        setIndicatorData(null);
       }
     } catch (error) {
       console.error('Failed to analyze trades:', error);
@@ -2851,6 +2860,206 @@ export default function CryptoAI() {
                     </CollapsibleContent>
                   </Collapsible>
                 </Card>
+
+                {/* 2.5. Data Sent to Grok - All Indicators */}
+                {indicatorData && (
+                  <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+                    <Collapsible open={indicatorDataOpen} onOpenChange={setIndicatorDataOpen}>
+                      <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <img src={grokLogo} alt="Grok" className="h-4 brightness-110" />
+                          <h3 className="text-lg font-semibold text-white">Data Sent to Grok</h3>
+                          <span className="text-xs text-gray-500 ml-2">Complete Analysis Input</span>
+                        </div>
+                        {indicatorDataOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="px-4 pb-4 space-y-4">
+                          {/* Market Data Section */}
+                          <div>
+                            <h4 className="text-sm font-semibold text-[#00c4b4] mb-2">Market Data</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Price</div>
+                                <div className="text-white font-semibold">${indicatorData.price?.toFixed(4)}</div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">50-bar Change</div>
+                                <div className={indicatorData.priceChange > 0 ? 'text-green-400' : 'text-red-400'}>
+                                  {indicatorData.priceChange > 0 ? '+' : ''}{indicatorData.priceChange?.toFixed(2)}%
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">POC</div>
+                                <div className="text-white">${indicatorData.volumeProfile?.poc?.toFixed(4)}</div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">VAH / VAL</div>
+                                <div className="text-white">${indicatorData.volumeProfile?.vah?.toFixed(4)} / ${indicatorData.volumeProfile?.val?.toFixed(4)}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Oscillators & Momentum */}
+                          <div>
+                            <h4 className="text-sm font-semibold text-[#00c4b4] mb-2">Oscillators & Momentum</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">RSI (14)</div>
+                                <div className={indicatorData.rsi?.value > 70 ? 'text-red-400' : indicatorData.rsi?.value < 30 ? 'text-green-400' : 'text-white'}>
+                                  {indicatorData.rsi?.value?.toFixed(1)} <span className="text-gray-500">({indicatorData.rsi?.label})</span>
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">MACD</div>
+                                <div className={indicatorData.macd?.momentum === 'bullish' ? 'text-green-400' : 'text-red-400'}>
+                                  {indicatorData.macd?.momentum} {indicatorData.macd?.crossover !== 'none' && `(${indicatorData.macd?.crossover})`}
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">CCI (20)</div>
+                                <div className={indicatorData.cci?.value > 100 ? 'text-red-400' : indicatorData.cci?.value < -100 ? 'text-green-400' : 'text-white'}>
+                                  {indicatorData.cci?.value?.toFixed(1)} <span className="text-gray-500">({indicatorData.cci?.label})</span>
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Stochastic</div>
+                                <div className={indicatorData.stochastic?.k > 80 ? 'text-red-400' : indicatorData.stochastic?.k < 20 ? 'text-green-400' : 'text-white'}>
+                                  %K {indicatorData.stochastic?.k?.toFixed(0)} / %D {indicatorData.stochastic?.d?.toFixed(0)}
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">MFI (14)</div>
+                                <div className={indicatorData.mfi?.value > 80 ? 'text-red-400' : indicatorData.mfi?.value < 20 ? 'text-green-400' : 'text-white'}>
+                                  {indicatorData.mfi?.value?.toFixed(1)} <span className="text-gray-500">({indicatorData.mfi?.label})</span>
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">CMF</div>
+                                <div className={indicatorData.cmf?.value > 0 ? 'text-green-400' : 'text-red-400'}>
+                                  {indicatorData.cmf?.value?.toFixed(3)} <span className="text-gray-500">({indicatorData.cmf?.label})</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Trend & Volatility */}
+                          <div>
+                            <h4 className="text-sm font-semibold text-[#00c4b4] mb-2">Trend & Volatility</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">ADX (14)</div>
+                                <div className={indicatorData.adx?.value > 25 ? 'text-yellow-400' : 'text-gray-400'}>
+                                  {indicatorData.adx?.value?.toFixed(1)} <span className="text-gray-500">({indicatorData.adx?.label})</span>
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">DI Direction</div>
+                                <div className={indicatorData.diPlusMinus?.momentum === 'bullish' ? 'text-green-400' : 'text-red-400'}>
+                                  +DI {indicatorData.diPlusMinus?.plusDI?.toFixed(1)} / -DI {indicatorData.diPlusMinus?.minusDI?.toFixed(1)}
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">ATR (14)</div>
+                                <div className="text-white">{indicatorData.atr?.value?.toFixed(6)}</div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Bollinger</div>
+                                <div className={indicatorData.bollingerBands?.squeeze ? 'text-yellow-400' : 'text-white'}>
+                                  {indicatorData.bollingerBands?.squeeze ? 'SQUEEZE' : `BW ${(indicatorData.bollingerBands?.bandwidth * 100)?.toFixed(1)}%`}
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">VWAP</div>
+                                <div className={indicatorData.vwap?.label === 'premium' ? 'text-red-400' : indicatorData.vwap?.label === 'discount' ? 'text-green-400' : 'text-white'}>
+                                  ${indicatorData.vwap?.value?.toFixed(4)} <span className="text-gray-500">({indicatorData.vwap?.label})</span>
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">CVD</div>
+                                <div className={indicatorData.cvd?.trend === 'rising' ? 'text-green-400' : 'text-red-400'}>
+                                  {(indicatorData.cvd?.value / 1000)?.toFixed(1)}K <span className="text-gray-500">({indicatorData.cvd?.trend})</span>
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">OBV</div>
+                                <div className={indicatorData.obv?.divergence !== 'none' ? 'text-yellow-400' : 'text-white'}>
+                                  {(indicatorData.obv?.value / 1000000)?.toFixed(2)}M {indicatorData.obv?.divergence !== 'none' && `(${indicatorData.obv?.divergence})`}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* SMC/ICT Structure */}
+                          <div>
+                            <h4 className="text-sm font-semibold text-[#00c4b4] mb-2">SMC/ICT Structure</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">BOS</div>
+                                <div className={indicatorData.bos === 'bullish' ? 'text-green-400' : indicatorData.bos === 'bearish' ? 'text-red-400' : 'text-gray-400'}>
+                                  {indicatorData.bos || 'none'}
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">CHoCH</div>
+                                <div className={indicatorData.choch === 'bullish' ? 'text-green-400' : indicatorData.choch === 'bearish' ? 'text-red-400' : 'text-gray-400'}>
+                                  {indicatorData.choch || 'none'}
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Displacement</div>
+                                <div className={indicatorData.displacement?.active ? (indicatorData.displacement?.direction === 'bullish' ? 'text-green-400' : 'text-red-400') : 'text-gray-400'}>
+                                  {indicatorData.displacement?.active ? indicatorData.displacement?.direction : 'none'}
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Order Blocks</div>
+                                <div className="text-white">
+                                  <span className="text-green-400">{indicatorData.orderBlocks?.bullish}</span> / <span className="text-red-400">{indicatorData.orderBlocks?.bearish}</span>
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">FVGs</div>
+                                <div className="text-white">
+                                  <span className="text-green-400">{indicatorData.fvgs?.bullish}</span> / <span className="text-red-400">{indicatorData.fvgs?.bearish}</span>
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Liq Grabs</div>
+                                <div className="text-yellow-400">{indicatorData.liquidityGrabs}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Institutional Sentiment */}
+                          <div>
+                            <h4 className="text-sm font-semibold text-[#00c4b4] mb-2">Institutional Sentiment</h4>
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Open Interest</div>
+                                <div className={indicatorData.openInterest?.trend === 'rising' ? 'text-green-400' : indicatorData.openInterest?.trend === 'falling' ? 'text-red-400' : 'text-white'}>
+                                  {indicatorData.openInterest?.trend} ({indicatorData.openInterest?.delta > 0 ? '+' : ''}{indicatorData.openInterest?.delta?.toFixed(2)}%)
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Funding Rate</div>
+                                <div className={indicatorData.fundingRate?.value > 0 ? 'text-green-400' : indicatorData.fundingRate?.value < 0 ? 'text-red-400' : 'text-white'}>
+                                  {indicatorData.fundingRate?.value?.toFixed(4)}% <span className="text-gray-500">({indicatorData.fundingRate?.bias})</span>
+                                </div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">L/S Ratio</div>
+                                <div className={indicatorData.longShortRatio?.value > 1.2 ? 'text-green-400' : indicatorData.longShortRatio?.value < 0.8 ? 'text-red-400' : 'text-white'}>
+                                  {indicatorData.longShortRatio?.value?.toFixed(2)} <span className="text-gray-500">({indicatorData.longShortRatio?.label})</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </Card>
+                )}
 
                 {/* 3. Trade Ideas - Collapsible */}
                 <Card className="bg-[#1a1a1a] border-[#2a2e39]">
