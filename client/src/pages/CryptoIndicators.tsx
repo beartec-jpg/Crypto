@@ -11259,27 +11259,6 @@ export default function CryptoIndicators() {
                         <>
                           {/* Channel Settings Panel */}
                           
-                          {/* Auto-Color Toggle */}
-                          <div className="mb-3">
-                            <div className="text-xs text-gray-300 mb-2">Auto Color</div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => updateDrawingSettings({ autoColor: true })}
-                                className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.autoColor !== false ? 'bg-green-500 text-white' : 'bg-slate-700 text-gray-300'}`}
-                                data-testid="btn-autocolor-on"
-                              >
-                                🔴 Red/🟢 Green
-                              </button>
-                              <button
-                                onClick={() => updateDrawingSettings({ autoColor: false })}
-                                className={`flex-1 px-3 py-1 rounded text-xs ${selectedDrawing.style?.autoColor === false ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300'}`}
-                                data-testid="btn-autocolor-off"
-                              >
-                                🔵 Blue
-                              </button>
-                            </div>
-                          </div>
-                          
                           {/* Channel Level Toggles */}
                           <div className="mb-3">
                             <div className="text-xs text-gray-300 mb-2">Internal Markers</div>
@@ -11408,8 +11387,7 @@ export default function CryptoIndicators() {
                                   hiddenLevels: selectedDrawing.style?.hiddenLevels || [],
                                   labelPosition: selectedDrawing.style?.labelPosition || 'right',
                                   extendLeft: selectedDrawing.style?.extendLeft || false,
-                                  extendRight: selectedDrawing.style?.extendRight || false,
-                                  autoColor: selectedDrawing.style?.autoColor !== false,
+                                  extendRight: selectedDrawing.style?.extendRight !== false,
                                   customLabels: selectedDrawing.style?.customLabels || {},
                                 };
                                 localStorage.setItem('channelDefaults', JSON.stringify(defaults));
