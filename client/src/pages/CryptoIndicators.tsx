@@ -811,9 +811,9 @@ export default function CryptoIndicators() {
           } catch (e) {}
         }
         
-        // For channels, set autoColor based on global setting
+        // For channels, set autoColor based on global setting and default extendRight to true
         const channelStyle = currentTool === 'channel' 
-          ? { autoColor: autoColorEnabledRef.current, labelPosition: 'right' as const }
+          ? { autoColor: autoColorEnabledRef.current, labelPosition: 'right' as const, extendRight: true }
           : {};
         
         const newDrawing = {
@@ -10726,6 +10726,50 @@ export default function CryptoIndicators() {
                             </text>
                           )}
                           {isSelected && (
+                            <>
+                              <circle 
+                                cx={p1.x} cy={p1.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 0, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 0, e)}
+                              />
+                              <circle 
+                                cx={p2.x} cy={p2.y} r={8} 
+                                fill="#22c55e" 
+                                stroke="#fff" 
+                                strokeWidth={2}
+                                style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                                onMouseDown={(e) => handlePointPick(drawing.id, 1, e)}
+                                onTouchStart={(e) => handlePointPick(drawing.id, 1, e)}
+                              />
+                            </>
+                          )}
+                        </g>
+                      );
+                    }
+                    
+                    if (drawing.type === 'channel' && drawing.points.length >= 2) {
+                      const p1 = toPixel(drawing.points[0], 0);
+                      const p2 = toPixel(drawing.points[1], 1);
+                      if (p1.x === null || p2.x === null) return null;
+                      const chartWidth = chartContainerRef.current?.clientWidth || 800;
+                      
+                      const extendLeft = drawing.style?.extendLeft;
+                      const extendRight = drawing.style?.extendRight !== false; // Default true
+                      const baseStartX = Math.min(p1.x, p2.x);
+                      const baseEndX = Math.max(p1.x, p2.x) + 100;
+                      const lineStartX = extendLeft ? 0 : baseStartX;
+                      const lineEndX = extendRight ? chartWidth : baseEndX;
+                      
+                      return (
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                          {/* Click target area for channel */}
+                          <rect x={lineStartX} y={Math.min(p1.y, p2.y)} width={lineEndX - lineStartX} height={Math.abs(p2.y - p1.y)} fill="transparent" />
+                          {/* Edit mode point handles */}
+                          {renderVisible && (
                             <>
                               <circle 
                                 cx={p1.x} cy={p1.y} r={8} 

@@ -1064,7 +1064,7 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
       const chartWidth = scope.mediaSize.width;
       
       const extendLeft = this._style.extendLeft ?? false;
-      const extendRight = this._style.extendRight ?? false;
+      const extendRight = this._style.extendRight !== false; // Default true for channels
       
       const x1 = x1Raw ?? 0;
       const x2 = x2Raw ?? chartWidth;
