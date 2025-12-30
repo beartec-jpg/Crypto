@@ -8135,6 +8135,39 @@ const aiAnalyze = useMutation({
           </TabsContent>
 
           <TabsContent value="stack" className="mt-4">
+            {/* Upgrade banner for free users */}
+            {!hasElliottAccess && (
+              <Card className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/50 mb-4">
+                <CardContent className="p-6">
+                  <div className="text-center space-y-3">
+                    <div className="flex justify-center">
+                      <div className="w-12 h-12 bg-purple-500/20 rounded-full flex items-center justify-center">
+                        <Sparkles className="w-6 h-6 text-purple-400" />
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white mb-1">
+                        Upgrade to Elite or add the Waves Add-on
+                      </h3>
+                      <p className="text-sm text-gray-300">
+                        Save wave patterns, build your wave stack, and track multi-degree structures across timeframes.
+                      </p>
+                    </div>
+                    <Link href="/cryptosubscribe">
+                      <Button 
+                        className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-4 sm:px-6 py-3 text-sm font-semibold"
+                        data-testid="button-upgrade-stack"
+                      >
+                        View Plans & Upgrade
+                      </Button>
+                    </Link>
+                    <p className="text-xs text-gray-500">
+                      Free trial: Draw 1 pattern to explore Fib levels & rules
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             {/* Saved Projection Lines Manager */}
             {savedProjectionLinesFromDB.filter(l => l.symbol === symbol).length > 0 && (
               <div className="mb-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
