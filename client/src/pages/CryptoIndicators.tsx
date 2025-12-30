@@ -799,11 +799,21 @@ export default function CryptoIndicators() {
         // Determine color based on auto-color setting and snap types
         const color = autoColorEnabledRef.current ? getAutoColor(newPoints) : '#3b82f6';
         
+        // Load saved defaults for fib tools
+        let savedDefaults: any = {};
+        if (currentTool === 'fib_retracement' || currentTool === 'trend_fib') {
+          try {
+            const defaultKey = `fibDefaults_${currentTool}`;
+            const stored = localStorage.getItem(defaultKey);
+            if (stored) savedDefaults = JSON.parse(stored);
+          } catch (e) {}
+        }
+        
         const newDrawing = {
           id: `drawing-${Date.now()}`,
           type: currentTool,
           points: newPoints,
-          style: { color, lineWidth: 2 }
+          style: { color, lineWidth: 2, ...savedDefaults }
         };
         setDrawings(d => [...d, newDrawing]);
         
@@ -11156,7 +11166,7 @@ export default function CryptoIndicators() {
                   
                   const isFibTool = selectedDrawing.type === 'fib_retracement' || selectedDrawing.type === 'trend_fib';
                   const fibLevels = selectedDrawing.type === 'fib_retracement' 
-                    ? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+                    ? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618]
                     : [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
                   
                   const updateDrawingSettings = (newStyle: any) => {
@@ -11255,6 +11265,30 @@ export default function CryptoIndicators() {
                                 Right →
                               </button>
                             </div>
+                          </div>
+                          
+                          {/* Save as Default Button */}
+                          <div className="mt-3 pt-3 border-t border-slate-600">
+                            <button
+                              onClick={() => {
+                                const defaultKey = `fibDefaults_${selectedDrawing.type}`;
+                                const defaults = {
+                                  hiddenLevels: selectedDrawing.style?.hiddenLevels || [],
+                                  labelPosition: selectedDrawing.style?.labelPosition || 'left',
+                                  extendLeft: selectedDrawing.style?.extendLeft || false,
+                                  extendRight: selectedDrawing.style?.extendRight || false,
+                                };
+                                localStorage.setItem(defaultKey, JSON.stringify(defaults));
+                                toast({ title: 'Defaults Saved', description: 'These settings will apply to new drawings' });
+                              }}
+                              className="w-full px-3 py-2 rounded text-xs bg-green-600 hover:bg-green-500 text-white flex items-center justify-center gap-2"
+                              data-testid="btn-save-fib-defaults"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Save as Default
+                            </button>
                           </div>
                         </>
                       ) : (
