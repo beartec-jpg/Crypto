@@ -775,7 +775,7 @@ export const chartDrawings = pgTable("chart_drawings", {
   userId: varchar("user_id").notNull(),
   symbol: varchar("symbol").notNull(),
   timeframe: varchar("timeframe").notNull(),
-  drawingType: varchar("drawing_type").notNull(), // 'trendline', 'horizontal', 'rectangle', 'fib_retracement', 'trend_fib'
+  drawingType: varchar("drawing_type").notNull(), // 'trendline', 'horizontal', 'rectangle', 'fib_retracement', 'trend_fib', 'channel'
   coordinates: jsonb("coordinates").notNull().$type<{
     points: { time: number; price: number }[];
     levels?: number[]; // For fib tools
@@ -802,7 +802,7 @@ export const insertChartDrawingSchema = z.object({
   userId: z.string(),
   symbol: z.string(),
   timeframe: z.string(),
-  drawingType: z.enum(['trendline', 'horizontal', 'rectangle', 'fib_retracement', 'trend_fib']),
+  drawingType: z.enum(['trendline', 'horizontal', 'rectangle', 'fib_retracement', 'trend_fib', 'channel']),
   coordinates: z.object({
     points: z.array(z.object({
       time: z.number(),
@@ -819,6 +819,8 @@ export const insertChartDrawingSchema = z.object({
     label: z.string().optional(),
     labelPosition: z.enum(['left', 'right']).optional(),
     hiddenLevels: z.array(z.number()).optional(),
+    customLabels: z.record(z.string(), z.string()).optional(),
+    autoColor: z.boolean().optional(),
     alertActive: z.boolean().optional(),
     alertTriggered: z.boolean().optional(),
     lastCheckedPrice: z.number().optional(),
