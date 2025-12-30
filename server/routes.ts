@@ -3568,12 +3568,11 @@ Return ONLY a JSON object in this exact format:
   }
 }
 
-CRITICAL RULES:
-1. SUMMARY = 2 sentences MAX. State bias + one key reason + target level. NO data dumps.
-2. REASONING = 1 sentence per trade. NO paragraphs.
-3. R/R must be >= 0.75:1
-4. Dedupe similar trades
-5. Quality over quantity`;
+STRICT FORMATTING (WILL BE REJECTED IF VIOLATED):
+- summary: EXACTLY 2 sentences. Example: "Bullish bias. Price at VAL with rising CVD - target 89500."
+- reasoning: EXACTLY 1 sentence per trade. Example: "Long at VAL with bullish CVD and FVG confluence."
+- NO paragraphs, NO detailed explanations, NO listing multiple data points
+- R/R >= 0.75:1, dedupe similar trades`;
 
       console.log('🤖 Calling xAI Grok for order flow analysis...');
       const startTime = Date.now();
@@ -3583,15 +3582,15 @@ CRITICAL RULES:
         messages: [
           {
             role: "system",
-            content: "You are a professional SMC/order flow trader. Return ONLY valid JSON, no additional text or markdown formatting."
+            content: "You are a professional trader. Return ONLY valid JSON. CRITICAL: summary MUST be 2 sentences max. reasoning MUST be 1 sentence max. NO paragraphs, NO data dumps. Be EXTREMELY concise."
           },
           {
             role: "user",
             content: prompt
           }
         ],
-        temperature: 0.3, // Lower temperature for more consistent structured output
-        max_tokens: 2000
+        temperature: 0.3,
+        max_tokens: 800
       });
 
       const content = response.choices[0].message.content || "{}";
