@@ -50,6 +50,7 @@ export async function authenticatedApiRequest(
   method: string,
   url: string,
   data?: unknown,
+  options?: { timeout?: number },
 ): Promise<Response> {
   const headers: Record<string, string> = {};
   
@@ -69,15 +70,31 @@ export async function authenticatedApiRequest(
     }
   }
   
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: 'include',
-  });
+  // Create AbortController for timeout if specified
+  const controller = options?.timeout ? new AbortController() : undefined;
+  const timeoutId = options?.timeout 
+    ? setTimeout(() => controller?.abort(), options.timeout)
+    : undefined;
+  
+  try {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: 'include',
+      signal: controller?.signal,
+    });
 
-  await throwIfResNotOk(res);
-  return res;
+    await throwIfResNotOk(res);
+    return res;
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new ApiError('Request timed out - AI analysis may take longer for complex charts', 408);
+    }
+    throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 export function isApiAuthConfigured(): boolean {

@@ -3778,7 +3778,7 @@ const aiAnalyze = useMutation({
       symbol: string;
       priorWaveContext?: { degree: string; type: string; direction: string; waveCount: number; startPrice: number; endPrice: number; priceChange: string; durationHours: number } | null;
     }) => {
-      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze-detailed', data);
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze-detailed', data, { timeout: 150000 });
       return response.json();
     },
     onSuccess: (data: any) => {
@@ -3819,7 +3819,7 @@ const aiAnalyze = useMutation({
       pivots: Array<{time: number; price: number; type: 'H' | 'L'}>;
       priceRange: { high: number; low: number; start: number; end: number };
     }) => {
-      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze-chart', data);
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/analyze-chart', data, { timeout: 150000 });
       return response.json();
     },
     onSuccess: (data: any) => {
