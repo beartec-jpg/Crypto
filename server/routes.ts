@@ -3494,43 +3494,8 @@ You are analyzing the ${interval} chart. This means:
 - Liquidity Grabs (Stop Hunts): ${liquidityGrabCount || 0}${liquidityGrabs?.length ? ` (latest: ${liquidityGrabs[liquidityGrabs.length - 1]?.type || 'N/A'} at ${liquidityGrabs[liquidityGrabs.length - 1]?.price?.toFixed(4) || 'N/A'})` : ''}
 ${orderflowAnalysis}
 
-**LONG ENTRY CONFLUENCE SIGNALS (need 3+ for tradeable setup):**
-1. Price mitigates bearish Order Block + bounces
-2. Price mitigates bullish FVG + holds as support
-3. Bullish hidden divergence (CVD rising while price makes lower lows)
-4. CVD trending higher (bullish delta)
-5. Price above POC/VAL + absorption at low volume node
-6. Buy volume imbalance zone below current price (support)
-7. Liquidity grab below equal lows + immediate bullish reversal
-8. Price rejection from VAL with strong bullish candle
-9. Bullish absorption event (large buy delta, weak price move up = accumulation)
-14. CCI < -100 (oversold, reversal potential) or CCI crossing above 0 (bullish momentum)
-15. ADX > 25 AND +DI > -DI (strong bullish trend confirmed)
-
-**SHORT ENTRY CONFLUENCE SIGNALS (need 3+ for tradeable setup):**
-1. Price mitigates bullish Order Block + rejects
-2. Price mitigates bearish FVG + acts as resistance
-3. Bearish hidden divergence (CVD falling while price makes higher highs)
-4. CVD trending lower (bearish delta)
-5. Price below POC/VAH + absorption at high volume node
-6. Sell volume imbalance zone above current price (resistance)
-7. Liquidity grab above equal highs + immediate bearish reversal
-8. Price rejection from VAH with strong bearish candle
-9. Bearish absorption event (large sell delta, weak price move down = distribution)
-14. CCI > +100 (overbought, reversal potential) or CCI crossing below 0 (bearish momentum)
-15. ADX > 25 AND -DI > +DI (strong bearish trend confirmed)
-
-**GRADING SYSTEM (institutional-grade with professional orderflow and oscillators):**
-- A+ Grade: 8+ confluence signals (institutional-grade setup with orderflow + oscillator alignment)
-- A Grade: 7 confluence signals (excellent trade, very high probability)
-- B Grade: 5-6 confluence signals (very good trade, strong edge)
-- C Grade: 3-4 confluence signals (tradeable setup, minimum for entry)
-- D Grade: 2 confluence signals (weak, watch only, avoid)
-- E Grade: 1 or conflicting signals (do not trade)
-
-**IMPORTANT:** Institutional orderflow signals (#10-13) are CRITICAL for professional-grade setups. Oscillator signals (#14-15 CCI/ADX) add technical confirmation. When OI+Funding+CVD+Oscillators align in the same direction AND 4+ other signals confirm, this is an A+ grade institutional trade - you're trading WITH the smart money using both institutional flow AND momentum/trend confirmation.
-
 **YOUR TASK:**
+You know SMC/ICT concepts (Order Blocks, FVGs, imbalances, absorption, liquidity grabs, etc.). Use your expertise to analyze the data above.
 Analyze the data and identify 1-3 high-probability trade setups. For each trade:
 - Count confluence signals and assign grade
 - Ensure R/R >= 0.75:1
@@ -3569,9 +3534,11 @@ Return ONLY a JSON object in this exact format:
 }
 
 STRICT FORMATTING (WILL BE REJECTED IF VIOLATED):
-- summary: EXACTLY 2 sentences. Example: "Bullish bias. Price at VAL with rising CVD - target 89500."
+- summary: EXACTLY 2 sentences. State bias + key reason + target. Example: "Bullish. Price at VAL with rising CVD - target 89500."
 - reasoning: EXACTLY 1 sentence per trade. Example: "Long at VAL with bullish CVD and FVG confluence."
-- NO paragraphs, NO detailed explanations, NO listing multiple data points
+- ONLY mention data that supports your trade thesis. Ignore irrelevant indicators.
+- NO paragraphs, NO data dumps, NO explaining every indicator
+- Grade trades A+ to E based on confluence count (you know the system)
 - R/R >= 0.75:1, dedupe similar trades`;
 
       console.log('🤖 Calling xAI Grok for order flow analysis...');
