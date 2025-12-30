@@ -23,6 +23,7 @@ interface DrawingStyle {
   labelPosition?: 'left' | 'right';
   hiddenLevels?: number[];
   customLabels?: Record<number, string>;
+  customValues?: Record<number, number>;
 }
 
 type RequestUpdateCallback = () => void;
@@ -615,13 +616,17 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const showLabels = anchorsVisible;
 
       const hiddenLevels = this._style.hiddenLevels || [];
+      const customValues = this._style.customValues || {};
       
       FIB_LEVELS.forEach((level) => {
         // Skip hidden levels
         if (hiddenLevels.includes(level)) return;
         
+        // Use custom value if set, otherwise use default level
+        const actualLevel = customValues[level] !== undefined ? customValues[level] : level;
+        
         // For retracements: 0% at end of move (point2), 100% at start (point1)
-        const levelPrice = this._point2.price - priceDiff * level;
+        const levelPrice = this._point2.price - priceDiff * actualLevel;
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
@@ -639,7 +644,9 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         if (showLabels) {
           const customLabels = this._style.customLabels || {};
           const customLabel = customLabels[level];
-          const labelText = customLabel || `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
+          // Show actual level value used (custom or default) in label
+          const displayLevel = customValues[level] !== undefined ? customValues[level] : level;
+          const labelText = customLabel || `${(displayLevel * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
           ctx.font = '11px sans-serif';
           const textMetrics = ctx.measureText(labelText);
           const textHeight = 12;
@@ -844,12 +851,16 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const showLabels = anchorsVisible;
 
       const hiddenLevels = this._style.hiddenLevels || [];
+      const customValues = this._style.customValues || {};
       
       TREND_FIB_LEVELS.forEach((level) => {
         // Skip hidden levels
         if (hiddenLevels.includes(level)) return;
         
-        const levelPrice = this._points[2].price + waveDiff * level;
+        // Use custom value if set, otherwise use default level
+        const actualLevel = customValues[level] !== undefined ? customValues[level] : level;
+        
+        const levelPrice = this._points[2].price + waveDiff * actualLevel;
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
@@ -867,7 +878,9 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
         if (showLabels) {
           const customLabels = this._style.customLabels || {};
           const customLabel = customLabels[level];
-          const labelText = customLabel || `${(level * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
+          // Show actual level value used (custom or default) in label
+          const displayLevel = customValues[level] !== undefined ? customValues[level] : level;
+          const labelText = customLabel || `${(displayLevel * 100).toFixed(1)}% (${levelPrice.toFixed(2)})`;
           ctx.font = '11px sans-serif';
           const textMetrics = ctx.measureText(labelText);
           const textHeight = 12;
