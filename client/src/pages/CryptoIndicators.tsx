@@ -329,6 +329,9 @@ export default function CryptoIndicators() {
 
   const { isAuthenticated, isLoading: authLoading, getToken, user } = useCryptoAuth();
   const [, setLocation] = useLocation();
+  
+  // Stable user ID for storage keys - prevents re-loading on user object reference changes
+  const userId = user?.id || 'anonymous';
 
   const { data: subscription } = useQuery<{tier: string, aiCreditsRemaining?: number}>({
     queryKey: ['/api/crypto/my-subscription'],
@@ -6279,7 +6282,6 @@ export default function CryptoIndicators() {
       alertFilterMode,
     };
     
-    const userId = user?.id || 'anonymous';
     const storageKey = `indicatorDefaults_${userId}_${symbol}_${interval}`;
     localStorage.setItem(storageKey, JSON.stringify(indicatorDefaults));
     
@@ -6290,7 +6292,7 @@ export default function CryptoIndicators() {
     });
     
     console.log(`💾 Saved indicator defaults for ${userId}_${symbol}_${interval}:`, indicatorDefaults);
-  }, [user, symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showStochRSI, stochRSIPeriod, showWilliamsR, williamsRPeriod, showCCI, cciPeriod, showADX, adxPeriod, showBB, bbPeriod, bbStdDev, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, showVWAPBands, showSessionVWAP, showFVG, showBOS, showCHoCH, showSwingPivots, showOrderBlocks, obSwingLength, orderBlockLength, showPremiumDiscount, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showAutoTrendlines, showHighValueOnly, showChartLabels, alertFilterMode, toast]);
+  }, [userId, symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showStochRSI, stochRSIPeriod, showWilliamsR, williamsRPeriod, showCCI, cciPeriod, showADX, adxPeriod, showBB, bbPeriod, bbStdDev, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, showVWAPBands, showSessionVWAP, showFVG, showBOS, showCHoCH, showSwingPivots, showOrderBlocks, obSwingLength, orderBlockLength, showPremiumDiscount, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showAutoTrendlines, showHighValueOnly, showChartLabels, alertFilterMode, toast]);
 
   // Set current timeframe as the default for this symbol on page load
   const makeTimeframeDefault = useCallback(() => {
@@ -6361,7 +6363,6 @@ export default function CryptoIndicators() {
   // Load indicator defaults from localStorage
   const loadIndicatorDefaults = useCallback(() => {
     try {
-      const userId = user?.id || 'anonymous';
       const storageKey = `indicatorDefaults_${userId}_${symbol}_${interval}`;
       const saved = localStorage.getItem(storageKey);
       
@@ -6523,7 +6524,7 @@ export default function CryptoIndicators() {
       resetAllIndicators();
     }
     return false;
-  }, [user, symbol, interval, toast, resetAllIndicators]);
+  }, [userId, symbol, interval, toast, resetAllIndicators]);
 
   // Load indicator defaults when symbol or interval changes
   useEffect(() => {
