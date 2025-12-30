@@ -1287,6 +1287,10 @@ export default function CryptoIndicators() {
   const [aiAnalysisExpanded, setAiAnalysisExpanded] = useState(false);
   const [lastAnalysisCheck, setLastAnalysisCheck] = useState<number>(0);
   const [footprintData, setFootprintData] = useState<FootprintData[]>([]);
+  
+  // Collapsible panel states - default to minimized
+  const [marketSummaryMinimized, setMarketSummaryMinimized] = useState(true);
+  const [cvdTableMinimized, setCvdTableMinimized] = useState(true);
   const [marketAlerts, setMarketAlerts] = useState<MarketAlert[]>([]);
   const [alertFilterMode, setAlertFilterMode] = useState<'all' | 'active'>('all');
   
@@ -13162,15 +13166,17 @@ export default function CryptoIndicators() {
         {/* Market Summary */}
         {tier !== 'free' ? (
           <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 cursor-pointer" onClick={() => setMarketSummaryMinimized(!marketSummaryMinimized)}>
               <div className="flex items-center gap-2">
                 <CardTitle className="text-white text-sm flex items-center gap-2">
+                  <span className={`transition-transform ${marketSummaryMinimized ? '' : 'rotate-90'}`}>▶</span>
                   <span className="text-lg">🤖</span>
                   Market Summary
                 </CardTitle>
                 <img src={grokLogo} alt="Grok" className="h-4 brightness-110" />
               </div>
             </CardHeader>
+            {!marketSummaryMinimized && (
             <CardContent className="space-y-2">
               {aiAnalysisLoading ? (
                 <div className="flex items-center justify-center py-4">
@@ -13195,7 +13201,7 @@ export default function CryptoIndicators() {
                   </div>
                   <Button
                     size="sm"
-                    onClick={() => fetchAIAnalysis(true)}
+                    onClick={(e) => { e.stopPropagation(); fetchAIAnalysis(true); }}
                     className="w-full h-7 text-xs"
                     disabled={aiAnalysisLoading}
                   >
@@ -13209,7 +13215,7 @@ export default function CryptoIndicators() {
                   </p>
                   <Button
                     size="sm"
-                    onClick={() => fetchAIAnalysis(true)}
+                    onClick={(e) => { e.stopPropagation(); fetchAIAnalysis(true); }}
                     className="h-7 text-xs"
                     disabled={candles.length < 100}
                   >
@@ -13218,6 +13224,7 @@ export default function CryptoIndicators() {
                 </div>
               )}
             </CardContent>
+            )}
           </Card>
         ) : (
           <Card className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30">
@@ -13257,10 +13264,13 @@ export default function CryptoIndicators() {
 
         {/* Footprint Delta Table */}
         <Card className="bg-slate-800 border-slate-700">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 cursor-pointer" onClick={() => setCvdTableMinimized(!cvdTableMinimized)}>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-white text-sm">Footprint Delta vs CVD</CardTitle>
-              <div className="flex items-center gap-2">
+              <CardTitle className="text-white text-sm flex items-center gap-2">
+                <span className={`transition-transform ${cvdTableMinimized ? '' : 'rotate-90'}`}>▶</span>
+                Footprint Delta vs CVD
+              </CardTitle>
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 {multiExchangeLoading && (
                   <span className="text-xs text-yellow-400">Loading...</span>
                 )}
@@ -13325,6 +13335,7 @@ export default function CryptoIndicators() {
                   </div>
                 )}
               </CardHeader>
+              {!cvdTableMinimized && (
               <CardContent>
                 <div className="overflow-y-auto">
                   <table className="w-full text-xs">
@@ -13484,6 +13495,7 @@ export default function CryptoIndicators() {
                   </table>
                 </div>
               </CardContent>
+              )}
         </Card>
 
         {/* Market Alerts */}
