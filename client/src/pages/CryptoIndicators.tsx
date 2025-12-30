@@ -11170,6 +11170,10 @@ export default function CryptoIndicators() {
                     ? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618]
                     : [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
                   
+                  // Helper for float comparison when checking hidden levels
+                  const isLevelHidden = (level: number, hiddenArr: number[]) => 
+                    hiddenArr.some((h: number) => Math.abs(h - level) < 0.0001);
+                  
                   const updateDrawingSettings = (newStyle: any) => {
                     const mergedStyle = { ...selectedDrawing.style, ...newStyle };
                     setDrawings(prev => prev.map(d => 
@@ -11237,7 +11241,7 @@ export default function CryptoIndicators() {
                                 {fibLevels.map((level, idx) => {
                                   const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
                                   const customValues = selectedDrawing.style?.customValues || {};
-                                  const isVisible = !hiddenLevels.includes(level);
+                                  const isVisible = !isLevelHidden(level, hiddenLevels);
                                   const currentValue = customValues[level] !== undefined ? customValues[level] : level;
                                   return (
                                     <div key={level} className="flex items-center gap-1 text-xs">
@@ -11247,7 +11251,7 @@ export default function CryptoIndicators() {
                                         onChange={() => {
                                           const newHidden = isVisible 
                                             ? [...hiddenLevels, level]
-                                            : hiddenLevels.filter((l: number) => l !== level);
+                                            : hiddenLevels.filter((l: number) => Math.abs(l - level) >= 0.0001);
                                           updateDrawingSettings({ hiddenLevels: newHidden });
                                         }}
                                         className="rounded border-slate-600 w-4 h-4"
@@ -11275,7 +11279,7 @@ export default function CryptoIndicators() {
                                 {fibLevels.map(level => {
                                   const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
                                   const customLabels = selectedDrawing.style?.customLabels || {};
-                                  const isVisible = !hiddenLevels.includes(level);
+                                  const isVisible = !isLevelHidden(level, hiddenLevels);
                                   const customLabel = customLabels[level] || '';
                                   return (
                                     <div key={level} className="flex items-center gap-1 text-xs">
@@ -11285,7 +11289,7 @@ export default function CryptoIndicators() {
                                         onChange={() => {
                                           const newHidden = isVisible 
                                             ? [...hiddenLevels, level]
-                                            : hiddenLevels.filter((l: number) => l !== level);
+                                            : hiddenLevels.filter((l: number) => Math.abs(l - level) >= 0.0001);
                                           updateDrawingSettings({ hiddenLevels: newHidden });
                                         }}
                                         className="rounded border-slate-600 w-4 h-4"
@@ -11309,7 +11313,7 @@ export default function CryptoIndicators() {
                               <div className="grid grid-cols-2 gap-1">
                                 {fibLevels.map(level => {
                                   const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
-                                  const isVisible = !hiddenLevels.includes(level);
+                                  const isVisible = !isLevelHidden(level, hiddenLevels);
                                   const customLabels = selectedDrawing.style?.customLabels || {};
                                   const customValues = selectedDrawing.style?.customValues || {};
                                   const displayValue = customValues[level] !== undefined ? customValues[level] : level;
@@ -11322,7 +11326,7 @@ export default function CryptoIndicators() {
                                         onChange={() => {
                                           const newHidden = isVisible 
                                             ? [...hiddenLevels, level]
-                                            : hiddenLevels.filter((l: number) => l !== level);
+                                            : hiddenLevels.filter((l: number) => Math.abs(l - level) >= 0.0001);
                                           updateDrawingSettings({ hiddenLevels: newHidden });
                                         }}
                                         className="rounded border-slate-600"
