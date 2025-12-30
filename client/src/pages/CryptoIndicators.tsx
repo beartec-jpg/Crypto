@@ -397,7 +397,7 @@ export default function CryptoIndicators() {
   const chartControlsRef = useRef<HTMLDivElement>(null);
   
   // Drawing tools state
-  type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | null;
+  type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
   const [drawingMode, setDrawingMode] = useState<'off' | 'draw' | 'select'>('draw'); // Draw mode active by default
   const [isFullscreen, setIsFullscreen] = useState(false); // Fullscreen chart mode
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
@@ -800,21 +800,26 @@ export default function CryptoIndicators() {
         // Determine color based on auto-color setting and snap types
         const color = autoColorEnabledRef.current ? getAutoColor(newPoints) : '#3b82f6';
         
-        // Load saved defaults for fib tools
+        // Load saved defaults for fib and channel tools
         let savedDefaults: any = {};
-        if (currentTool === 'fib_retracement' || currentTool === 'trend_fib') {
+        if (currentTool === 'fib_retracement' || currentTool === 'trend_fib' || currentTool === 'channel') {
           try {
-            const defaultKey = `fibDefaults_${currentTool}`;
+            const defaultKey = currentTool === 'channel' ? 'channelDefaults' : `fibDefaults_${currentTool}`;
             const stored = localStorage.getItem(defaultKey);
             if (stored) savedDefaults = JSON.parse(stored);
           } catch (e) {}
         }
         
+        // For channels, set autoColor based on global setting
+        const channelStyle = currentTool === 'channel' 
+          ? { autoColor: autoColorEnabledRef.current, labelPosition: 'right' as const }
+          : {};
+        
         const newDrawing = {
           id: `drawing-${Date.now()}`,
           type: currentTool,
           points: newPoints,
-          style: { color, lineWidth: 2, ...savedDefaults }
+          style: { color, lineWidth: 2, ...savedDefaults, ...channelStyle }
         };
         setDrawings(d => [...d, newDrawing]);
         
@@ -11138,6 +11143,7 @@ export default function CryptoIndicators() {
                       { id: 'rectangle', name: 'Rectangle', icon: '⬜' },
                       { id: 'fib_retracement', name: 'Fib Retracement', icon: '📊' },
                       { id: 'trend_fib', name: 'Trend-Based Fib', icon: '📉' },
+                      { id: 'channel', name: 'Channel', icon: '🐻‍❄️' },
                     ].map(tool => (
                       <button
                         key={tool.id}
