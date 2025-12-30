@@ -11368,6 +11368,21 @@ export default function CryptoIndicators() {
                             </div>
                           </div>
                           
+                          {/* Hide Labels Toggle */}
+                          <div className="mb-3">
+                            <button
+                              onClick={() => updateDrawingSettings({ hideLabels: !selectedDrawing.style?.hideLabels })}
+                              className={`w-full px-3 py-1.5 rounded text-xs flex items-center justify-center gap-2 ${
+                                selectedDrawing.style?.hideLabels 
+                                  ? 'bg-orange-600 text-white' 
+                                  : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                              }`}
+                              data-testid="btn-hide-channel-labels"
+                            >
+                              {selectedDrawing.style?.hideLabels ? '👁️‍🗨️ Labels Hidden' : '👁️ Hide Labels'}
+                            </button>
+                          </div>
+                          
                           {/* Save as Default Button */}
                           <div className="mt-3 pt-3 border-t border-slate-600">
                             <button
@@ -11378,6 +11393,7 @@ export default function CryptoIndicators() {
                                   extendLeft: selectedDrawing.style?.extendLeft || false,
                                   extendRight: selectedDrawing.style?.extendRight !== false,
                                   customLabels: selectedDrawing.style?.customLabels || {},
+                                  hideLabels: selectedDrawing.style?.hideLabels || false,
                                 };
                                 localStorage.setItem('channelDefaults', JSON.stringify(defaults));
                                 toast({ title: 'Defaults Saved', description: 'These settings will apply to new channel drawings' });
@@ -11578,6 +11594,21 @@ export default function CryptoIndicators() {
                             </div>
                           </div>
                           
+                          {/* Hide Labels Toggle */}
+                          <div className="mb-3">
+                            <button
+                              onClick={() => updateDrawingSettings({ hideLabels: !selectedDrawing.style?.hideLabels })}
+                              className={`w-full px-3 py-1.5 rounded text-xs flex items-center justify-center gap-2 ${
+                                selectedDrawing.style?.hideLabels 
+                                  ? 'bg-orange-600 text-white' 
+                                  : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                              }`}
+                              data-testid="btn-hide-fib-labels"
+                            >
+                              {selectedDrawing.style?.hideLabels ? '👁️‍🗨️ Labels Hidden' : '👁️ Hide Labels'}
+                            </button>
+                          </div>
+                          
                           {/* Save as Default Button */}
                           <div className="mt-3 pt-3 border-t border-slate-600">
                             <button
@@ -11590,6 +11621,7 @@ export default function CryptoIndicators() {
                                   extendRight: selectedDrawing.style?.extendRight || false,
                                   customLabels: selectedDrawing.style?.customLabels || {},
                                   customValues: selectedDrawing.style?.customValues || {},
+                                  hideLabels: selectedDrawing.style?.hideLabels || false,
                                 };
                                 localStorage.setItem(defaultKey, JSON.stringify(defaults));
                                 toast({ title: 'Defaults Saved', description: 'These settings will apply to new drawings' });

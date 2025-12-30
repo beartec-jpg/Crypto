@@ -26,6 +26,7 @@ interface DrawingStyle {
   customValues?: Record<number, number>;
   label?: string;
   autoColor?: boolean;
+  hideLabels?: boolean;
 }
 
 type RequestUpdateCallback = () => void;
@@ -637,7 +638,7 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
       // Only show labels if the original anchor points are visible on chart
       const anchorsVisible = anchorLeft <= chartWidth && anchorRight >= 0;
-      const showLabels = anchorsVisible;
+      const showLabels = anchorsVisible && !this._style.hideLabels;
 
       const hiddenLevels = this._style.hiddenLevels || [];
       const customValues = this._style.customValues || {};
@@ -873,7 +874,7 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
       // Only show labels if the original anchor points are visible on chart
       const anchorsVisible = baseStartX <= chartWidth && baseEndX >= 0;
-      const showLabels = anchorsVisible;
+      const showLabels = anchorsVisible && !this._style.hideLabels;
 
       const hiddenLevels = this._style.hiddenLevels || [];
       const customValues = this._style.customValues || {};
@@ -1100,7 +1101,7 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
       const isRightLabel = this._style.labelPosition === 'right';
       const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
       const anchorsVisible = anchorLeft <= chartWidth && anchorRight >= 0;
-      const showLabels = anchorsVisible;
+      const showLabels = anchorsVisible && !this._style.hideLabels;
 
       const y1 = this._series!.priceToCoordinate(this._point1.price);
       const y2 = this._series!.priceToCoordinate(this._point2.price);
