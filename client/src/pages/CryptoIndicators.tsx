@@ -1183,6 +1183,66 @@ export default function CryptoIndicators() {
     setter(true);
   };
   
+  // Handler for trend tool toggles with tier restrictions
+  // Free tier: only EMA and SMA allowed
+  const FREE_TREND_TOOLS = ['EMA', 'SMA'];
+  const handleTrendToolToggle = (
+    toolName: string,
+    currentValue: boolean,
+    setter: (value: boolean) => void
+  ) => {
+    // If turning off, always allow
+    if (currentValue) {
+      setter(false);
+      return;
+    }
+    
+    // Paid tier: allow all trend tools
+    if (isPaidTier) {
+      setter(true);
+      return;
+    }
+    
+    // Free tier restrictions
+    const isFreeAllowed = FREE_TREND_TOOLS.includes(toolName);
+    if (!isFreeAllowed) {
+      toast({
+        title: 'Upgrade Required',
+        description: `${toolName} is available for paid subscribers only. Upgrade to access all trend tools.`,
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    setter(true);
+  };
+  
+  // Handler for SMC tool toggles - all require paid tier
+  const handleSMCToolToggle = (
+    toolName: string,
+    currentValue: boolean,
+    setter: (value: boolean) => void
+  ) => {
+    // If turning off, always allow
+    if (currentValue) {
+      setter(false);
+      return;
+    }
+    
+    // Paid tier: allow all SMC tools
+    if (isPaidTier) {
+      setter(true);
+      return;
+    }
+    
+    // Free tier: no SMC tools allowed
+    toast({
+      title: 'Upgrade Required',
+      description: `${toolName} is a Smart Money Concept tool available for paid subscribers only.`,
+      variant: 'destructive'
+    });
+  };
+  
   // ========== CHART DISPLAY SETTINGS (independent from strategy settings) ==========
   // BOS swing length: 5 for tighter swing detection, CHoCH swing length: 20 for broader trend changes
   const [chartBosSwingLength, setChartBosSwingLength] = useState(5);
@@ -11879,43 +11939,49 @@ export default function CryptoIndicators() {
                   {/* SMC Controls Tab */}
                   {chartControlsTab === 'smc' && (
                     <div className="space-y-3">
+                      {/* Tier restriction notice */}
+                      {!isPaidTier && (
+                        <div className="bg-amber-900/30 border border-amber-600/50 rounded-lg px-3 py-2 text-xs text-amber-200">
+                          SMC tools require a paid subscription. <a href="/plans" className="underline text-amber-400">Upgrade for all SMC tools</a>
+                        </div>
+                      )}
                       {/* Main toggles */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showFVG} onCheckedChange={setShowFVG} id="show-fvg" data-testid="switch-fvg" />
-                          <Label htmlFor="show-fvg" className="text-sm text-white cursor-pointer">FVG</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showFVG} onCheckedChange={() => handleSMCToolToggle('FVG', showFVG, setShowFVG)} id="show-fvg" data-testid="switch-fvg" disabled={!isPaidTier && !showFVG} />
+                          <Label htmlFor="show-fvg" className="text-sm text-white cursor-pointer">FVG {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showBOS} onCheckedChange={setShowBOS} id="show-bos" data-testid="switch-bos" />
-                          <Label htmlFor="show-bos" className="text-sm text-white cursor-pointer">BOS</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showBOS} onCheckedChange={() => handleSMCToolToggle('BOS', showBOS, setShowBOS)} id="show-bos" data-testid="switch-bos" disabled={!isPaidTier && !showBOS} />
+                          <Label htmlFor="show-bos" className="text-sm text-white cursor-pointer">BOS {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showCHoCH} onCheckedChange={setShowCHoCH} id="show-choch" data-testid="switch-choch" />
-                          <Label htmlFor="show-choch" className="text-sm text-white cursor-pointer">CHoCH</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showCHoCH} onCheckedChange={() => handleSMCToolToggle('CHoCH', showCHoCH, setShowCHoCH)} id="show-choch" data-testid="switch-choch" disabled={!isPaidTier && !showCHoCH} />
+                          <Label htmlFor="show-choch" className="text-sm text-white cursor-pointer">CHoCH {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showSwingPivots} onCheckedChange={setShowSwingPivots} id="show-pivots" data-testid="switch-pivots" />
-                          <Label htmlFor="show-pivots" className="text-sm text-white cursor-pointer">Swing Pivots</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showSwingPivots} onCheckedChange={() => handleSMCToolToggle('Swing Pivots', showSwingPivots, setShowSwingPivots)} id="show-pivots" data-testid="switch-pivots" disabled={!isPaidTier && !showSwingPivots} />
+                          <Label htmlFor="show-pivots" className="text-sm text-white cursor-pointer">Swing Pivots {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={stratLiquidityGrab} onCheckedChange={setStratLiquidityGrab} id="show-liquidity" data-testid="switch-liquidity" />
-                          <Label htmlFor="show-liquidity" className="text-sm text-white cursor-pointer">Liquidity Sweeps</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={stratLiquidityGrab} onCheckedChange={() => handleSMCToolToggle('Liquidity Sweeps', stratLiquidityGrab, setStratLiquidityGrab)} id="show-liquidity" data-testid="switch-liquidity" disabled={!isPaidTier && !stratLiquidityGrab} />
+                          <Label htmlFor="show-liquidity" className="text-sm text-white cursor-pointer">Liquidity Sweeps {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showOrderBlocks} onCheckedChange={setShowOrderBlocks} id="show-order-blocks" data-testid="switch-order-blocks" />
-                          <Label htmlFor="show-order-blocks" className="text-sm text-white cursor-pointer">Order Blocks</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showOrderBlocks} onCheckedChange={() => handleSMCToolToggle('Order Blocks', showOrderBlocks, setShowOrderBlocks)} id="show-order-blocks" data-testid="switch-order-blocks" disabled={!isPaidTier && !showOrderBlocks} />
+                          <Label htmlFor="show-order-blocks" className="text-sm text-white cursor-pointer">Order Blocks {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showPremiumDiscount} onCheckedChange={setShowPremiumDiscount} id="show-premium-discount" data-testid="switch-premium-discount" />
-                          <Label htmlFor="show-premium-discount" className="text-sm text-white cursor-pointer">Premium/Discount</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showPremiumDiscount} onCheckedChange={() => handleSMCToolToggle('Premium/Discount', showPremiumDiscount, setShowPremiumDiscount)} id="show-premium-discount" data-testid="switch-premium-discount" disabled={!isPaidTier && !showPremiumDiscount} />
+                          <Label htmlFor="show-premium-discount" className="text-sm text-white cursor-pointer">Premium/Discount {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showChartLabels} onCheckedChange={setShowChartLabels} id="show-labels" data-testid="switch-labels" />
-                          <Label htmlFor="show-labels" className="text-sm text-white cursor-pointer">Chart Labels</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showChartLabels} onCheckedChange={() => handleSMCToolToggle('Chart Labels', showChartLabels, setShowChartLabels)} id="show-labels" data-testid="switch-labels" disabled={!isPaidTier && !showChartLabels} />
+                          <Label htmlFor="show-labels" className="text-sm text-white cursor-pointer">Chart Labels {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={cvdSpikeEnabled} onCheckedChange={setCvdSpikeEnabled} id="cvd-spike" data-testid="switch-cvd-spike" />
-                          <Label htmlFor="cvd-spike" className="text-sm text-white cursor-pointer">CVD Spike Alerts</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={cvdSpikeEnabled} onCheckedChange={() => handleSMCToolToggle('CVD Spike Alerts', cvdSpikeEnabled, setCvdSpikeEnabled)} id="cvd-spike" data-testid="switch-cvd-spike" disabled={!isPaidTier && !cvdSpikeEnabled} />
+                          <Label htmlFor="cvd-spike" className="text-sm text-white cursor-pointer">CVD Spike Alerts {!isPaidTier && '🔒'}</Label>
                         </div>
                       </div>
                       
@@ -12172,31 +12238,37 @@ export default function CryptoIndicators() {
                   {/* Trend Tools Tab */}
                   {chartControlsTab === 'trend' && (
                     <div className="space-y-3">
+                      {/* Tier restriction notice */}
+                      {!isPaidTier && (
+                        <div className="bg-blue-900/30 border border-blue-600/50 rounded-lg px-3 py-2 text-xs text-blue-200">
+                          Free tier: EMA & SMA only. <a href="/plans" className="underline text-blue-400">Upgrade for all trend tools</a>
+                        </div>
+                      )}
                       {/* Main toggles */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div className="flex items-center gap-2">
-                          <Switch checked={showEMA} onCheckedChange={setShowEMA} id="show-ema" data-testid="switch-ema" />
+                          <Switch checked={showEMA} onCheckedChange={() => handleTrendToolToggle('EMA', showEMA, setShowEMA)} id="show-ema" data-testid="switch-ema" />
                           <Label htmlFor="show-ema" className="text-sm text-white cursor-pointer">EMA</Label>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={showSMA} onCheckedChange={setShowSMA} id="show-sma" data-testid="switch-sma" />
+                          <Switch checked={showSMA} onCheckedChange={() => handleTrendToolToggle('SMA', showSMA, setShowSMA)} id="show-sma" data-testid="switch-sma" />
                           <Label htmlFor="show-sma" className="text-sm text-white cursor-pointer">SMA</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showBB} onCheckedChange={setShowBB} id="show-bb" data-testid="switch-bollinger-bands" />
-                          <Label htmlFor="show-bb" className="text-sm text-white cursor-pointer">Bollinger Bands</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showBB} onCheckedChange={() => handleTrendToolToggle('Bollinger Bands', showBB, setShowBB)} id="show-bb" data-testid="switch-bollinger-bands" disabled={!isPaidTier && !showBB} />
+                          <Label htmlFor="show-bb" className="text-sm text-white cursor-pointer">Bollinger Bands {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showSupertrend} onCheckedChange={setShowSupertrend} id="show-supertrend" data-testid="switch-supertrend" />
-                          <Label htmlFor="show-supertrend" className="text-sm text-white cursor-pointer">Supertrend</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showSupertrend} onCheckedChange={() => handleTrendToolToggle('Supertrend', showSupertrend, setShowSupertrend)} id="show-supertrend" data-testid="switch-supertrend" disabled={!isPaidTier && !showSupertrend} />
+                          <Label htmlFor="show-supertrend" className="text-sm text-white cursor-pointer">Supertrend {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showParabolicSAR} onCheckedChange={setShowParabolicSAR} id="show-sar" data-testid="switch-sar" />
-                          <Label htmlFor="show-sar" className="text-sm text-white cursor-pointer">Parabolic SAR</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showParabolicSAR} onCheckedChange={() => handleTrendToolToggle('Parabolic SAR', showParabolicSAR, setShowParabolicSAR)} id="show-sar" data-testid="switch-sar" disabled={!isPaidTier && !showParabolicSAR} />
+                          <Label htmlFor="show-sar" className="text-sm text-white cursor-pointer">Parabolic SAR {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch checked={showAutoTrendlines} onCheckedChange={setShowAutoTrendlines} id="show-trendlines" data-testid="switch-trendlines" />
-                          <Label htmlFor="show-trendlines" className="text-sm text-white cursor-pointer">Auto Trendlines</Label>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={showAutoTrendlines} onCheckedChange={() => handleTrendToolToggle('Auto Trendlines', showAutoTrendlines, setShowAutoTrendlines)} id="show-trendlines" data-testid="switch-trendlines" disabled={!isPaidTier && !showAutoTrendlines} />
+                          <Label htmlFor="show-trendlines" className="text-sm text-white cursor-pointer">Auto Trendlines {!isPaidTier && '🔒'}</Label>
                         </div>
                       </div>
                       
