@@ -2685,7 +2685,7 @@ export default function CryptoAI() {
                   <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700">
                     <Zap className="w-3.5 h-3.5 text-[#00c4b4]" />
                     <span className="text-xs text-gray-300">
-                      <span className="font-semibold text-white">{subscription.monthlyUsage.aiLimit - subscription.monthlyUsage.aiCredits}</span>
+                      <span className="font-semibold text-white">{subscription.monthlyUsage.aiCredits}</span>
                       <span className="text-gray-500"> of {subscription.monthlyUsage.aiLimit}</span>
                       <span className="ml-1 text-gray-400">remaining this month</span>
                     </span>
