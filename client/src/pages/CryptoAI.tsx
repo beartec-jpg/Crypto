@@ -3190,7 +3190,7 @@ export default function CryptoAI() {
                             <div className="pt-4">
                               <Link href="/cryptosubscribe">
                                 <Button 
-                                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8 py-6 text-lg font-semibold"
+                                  className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-4 sm:px-8 py-4 sm:py-6 text-base sm:text-lg font-semibold"
                                   data-testid="button-upgrade-intermediate"
                                 >
                                   Upgrade to Intermediate ($15/month)
