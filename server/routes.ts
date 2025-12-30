@@ -3572,7 +3572,7 @@ Return ONLY a JSON object in this exact format:
     }
   ],
   "marketInsights": {
-    "summary": "DETAILED 3-5 sentence market evaluation covering: 1) Current market structure and trend, 2) CVD and volume analysis, 3) Key orderflow signals detected, 4) Important price levels, 5) Overall bias with reasoning. This should read as a professional analyst's market review.",
+    "summary": "CONCISE 2-3 sentence prediction: State the clear directional bias (bullish/bearish/neutral), the key reason why, and what to watch for. Example: 'Bullish bias. Price holding above POC with rising CVD shows buyers in control. Watch for break above 1.95 to confirm upside to 2.05.' Be direct and actionable, not data-heavy.",
     "bias": "BULLISH/BEARISH/NEUTRAL",
     "keyLevels": ["level1", "level2", "level3"],
     "noTradesReason": "If no valid trades, explain specifically why (e.g., 'Conflicting signals between CVD and price action', 'No clear structure with R/R above 0.75:1', 'Range-bound market with no clear edge')"
@@ -3580,10 +3580,10 @@ Return ONLY a JSON object in this exact format:
 }
 
 CRITICAL RULES:
-1. The summary MUST be a detailed market review, NOT just "found X trades". Evaluate the data like a professional analyst.
+1. The summary MUST be SHORT and ACTIONABLE (2-3 sentences max). State the bias clearly, give ONE key reason, and what price level to watch. Do NOT list all the data - synthesize it into a prediction.
 2. Only include trades with R/R ratio >= 0.75:1 (Risk must be smaller than or equal to Reward * 0.75)
 3. If two trades are nearly identical (same direction, entries within 1%), keep only the better one
-4. If no quality trades exist, return empty alerts array with detailed noTradesReason explaining why
+4. If no quality trades exist, return empty alerts array with brief noTradesReason
 5. Focus on quality over quantity - better to return 0 trades with good reasoning than forced setups`;
 
       console.log('🤖 Calling xAI Grok for order flow analysis...');
