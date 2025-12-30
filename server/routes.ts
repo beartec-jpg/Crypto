@@ -3929,16 +3929,23 @@ CRITICAL RULES:
       const userId = (req as any).cryptoUser.id;
       console.log(`🧪 Sending test push notification for crypto user: ${userId}`);
       
-      // Get crypto user's push subscriptions
-      const subscriptions = await storage.getCryptoPushSubscriptionsByUserId(userId);
+      // Get user's subscription to check for pushSubscription in cryptoSubscriptions table
+      const userSubscription = await cryptoSubscriptionService.getUserSubscription(userId);
+      const pushSubData = userSubscription?.pushSubscription;
       
-      if (subscriptions.length === 0) {
-        console.log(`❌ No push subscriptions found for crypto user ${userId}`);
+      if (!pushSubData) {
+        console.log(`❌ No push subscription found for crypto user ${userId}`);
         return res.status(400).json({ 
-          error: 'No push subscription found', 
-          message: 'Please enable push notifications first by clicking the bell icon in the notification settings.' 
+          error: 'No push subscription found. Please enable notifications first.',
+          message: 'Click the bell icon and allow notifications, then try again.' 
         });
       }
+      
+      // Parse the subscription if it's a string
+      const subscriptions = [{ 
+        id: 'crypto-sub', 
+        subscription: typeof pushSubData === 'string' ? pushSubData : JSON.stringify(pushSubData) 
+      }];
       
       const publicKey = process.env.VAPID_PUBLIC_KEY;
       const privateKey = process.env.VAPID_PRIVATE_KEY;
