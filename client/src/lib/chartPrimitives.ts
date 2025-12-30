@@ -618,12 +618,9 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const hiddenLevels = this._style.hiddenLevels || [];
       const customValues = this._style.customValues || {};
       
-      // Helper for float comparison
-      const isHidden = (lvl: number) => hiddenLevels.some((h: number) => Math.abs(h - lvl) < 0.0001);
-      
       FIB_LEVELS.forEach((level) => {
-        // Skip hidden levels
-        if (isHidden(level)) return;
+        // Skip hidden levels - use tolerance comparison for float precision
+        if (hiddenLevels.some((h: number) => Math.abs(h - level) < 0.0001)) return;
         
         // Use custom value if set, otherwise use default level
         const actualLevel = customValues[level] !== undefined ? customValues[level] : level;
@@ -856,12 +853,9 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const hiddenLevels = this._style.hiddenLevels || [];
       const customValues = this._style.customValues || {};
       
-      // Helper for float comparison
-      const isHidden = (lvl: number) => hiddenLevels.some((h: number) => Math.abs(h - lvl) < 0.0001);
-      
       TREND_FIB_LEVELS.forEach((level) => {
-        // Skip hidden levels
-        if (isHidden(level)) return;
+        // Skip hidden levels - use tolerance comparison for float precision
+        if (hiddenLevels.some((h: number) => Math.abs(h - level) < 0.0001)) return;
         
         // Use custom value if set, otherwise use default level
         const actualLevel = customValues[level] !== undefined ? customValues[level] : level;
