@@ -771,13 +771,18 @@ export class FibRetracementPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
-const TREND_FIB_LEVELS = [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
+const TREND_FIB_LEVELS = [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
 const TREND_FIB_COLORS: Record<number, string> = {
+  0.382: '#ff9800',
+  0.5: '#8bc34a',
   0.618: '#2196f3',
+  0.786: '#00bcd4',
   1.0: '#787b86',
   1.272: '#00bcd4',
   1.618: '#e91e63',
   2.0: '#9c27b0',
+  3.618: '#673ab7',
+  4.236: '#3f51b5',
   2.618: '#ff9800'
 };
 

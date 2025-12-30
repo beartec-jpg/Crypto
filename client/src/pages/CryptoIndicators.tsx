@@ -11167,7 +11167,7 @@ export default function CryptoIndicators() {
                   const isFibTool = selectedDrawing.type === 'fib_retracement' || selectedDrawing.type === 'trend_fib';
                   const fibLevels = selectedDrawing.type === 'fib_retracement' 
                     ? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618]
-                    : [0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
+                    : [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
                   
                   const updateDrawingSettings = (newStyle: any) => {
                     setDrawings(prev => prev.map(d => 
