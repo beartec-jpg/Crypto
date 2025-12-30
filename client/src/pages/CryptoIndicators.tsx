@@ -327,7 +327,7 @@ export default function CryptoIndicators() {
   const abortControllerRef = useRef<AbortController | null>(null); // Cancel pending requests
   const { toast } = useToast();
 
-  const { isAuthenticated, isLoading: authLoading, getToken } = useCryptoAuth();
+  const { isAuthenticated, isLoading: authLoading, getToken, user } = useCryptoAuth();
   const [, setLocation] = useLocation();
 
   const { data: subscription } = useQuery<{tier: string, aiCreditsRemaining?: number}>({
@@ -6279,7 +6279,8 @@ export default function CryptoIndicators() {
       alertFilterMode,
     };
     
-    const storageKey = `indicatorDefaults_${symbol}_${interval}`;
+    const userId = user?.id || 'anonymous';
+    const storageKey = `indicatorDefaults_${userId}_${symbol}_${interval}`;
     localStorage.setItem(storageKey, JSON.stringify(indicatorDefaults));
     
     toast({
@@ -6288,8 +6289,8 @@ export default function CryptoIndicators() {
       duration: 3000,
     });
     
-    console.log(`💾 Saved indicator defaults for ${symbol}_${interval}:`, indicatorDefaults);
-  }, [symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showStochRSI, stochRSIPeriod, showWilliamsR, williamsRPeriod, showCCI, cciPeriod, showADX, adxPeriod, showBB, bbPeriod, bbStdDev, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, showVWAPBands, showSessionVWAP, showFVG, showBOS, showCHoCH, showSwingPivots, showOrderBlocks, obSwingLength, orderBlockLength, showPremiumDiscount, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showAutoTrendlines, showHighValueOnly, showChartLabels, alertFilterMode, toast]);
+    console.log(`💾 Saved indicator defaults for ${userId}_${symbol}_${interval}:`, indicatorDefaults);
+  }, [user, symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showStochRSI, stochRSIPeriod, showWilliamsR, williamsRPeriod, showCCI, cciPeriod, showADX, adxPeriod, showBB, bbPeriod, bbStdDev, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, showVWAPBands, showSessionVWAP, showFVG, showBOS, showCHoCH, showSwingPivots, showOrderBlocks, obSwingLength, orderBlockLength, showPremiumDiscount, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showAutoTrendlines, showHighValueOnly, showChartLabels, alertFilterMode, toast]);
 
   // Set current timeframe as the default for this symbol on page load
   const makeTimeframeDefault = useCallback(() => {
@@ -6360,7 +6361,8 @@ export default function CryptoIndicators() {
   // Load indicator defaults from localStorage
   const loadIndicatorDefaults = useCallback(() => {
     try {
-      const storageKey = `indicatorDefaults_${symbol}_${interval}`;
+      const userId = user?.id || 'anonymous';
+      const storageKey = `indicatorDefaults_${userId}_${symbol}_${interval}`;
       const saved = localStorage.getItem(storageKey);
       
       if (!saved) {
@@ -6521,7 +6523,7 @@ export default function CryptoIndicators() {
       resetAllIndicators();
     }
     return false;
-  }, [symbol, interval, toast, resetAllIndicators]);
+  }, [user, symbol, interval, toast, resetAllIndicators]);
 
   // Load indicator defaults when symbol or interval changes
   useEffect(() => {
