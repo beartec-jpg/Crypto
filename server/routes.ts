@@ -48,6 +48,321 @@ interface AnalysisCache {
 let marketAnalysisCache: AnalysisCache | null = null;
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
+// ===== TECHNICAL INDICATOR CALCULATION FUNCTIONS =====
+interface CandleBar {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  time?: number;
+}
+
+// RSI (14-period)
+function calculateRSI(bars: CandleBar[], period: number = 14): number {
+  if (bars.length < period + 1) return 50;
+  const changes = bars.slice(1).map((b, i) => b.close - bars[i].close);
+  const recentChanges = changes.slice(-period);
+  let gains = 0, losses = 0;
+  recentChanges.forEach(c => { if (c > 0) gains += c; else losses += Math.abs(c); });
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+// MACD (12,26,9)
+function calculateMACD(bars: CandleBar[]): { macd: number; signal: number; histogram: number; crossover: string; divergence: string } {
+  const closes = bars.map(b => b.close);
+  const ema12 = calculateEMA(closes, 12);
+  const ema26 = calculateEMA(closes, 26);
+  const macdLine = ema12 - ema26;
+  
+  // Calculate signal line (9-period EMA of MACD)
+  const macdHistory: number[] = [];
+  for (let i = 26; i < closes.length; i++) {
+    const e12 = calculateEMAAtIndex(closes, 12, i);
+    const e26 = calculateEMAAtIndex(closes, 26, i);
+    macdHistory.push(e12 - e26);
+  }
+  const signal = macdHistory.length >= 9 ? calculateEMA(macdHistory, 9) : macdLine;
+  const histogram = macdLine - signal;
+  
+  // Detect crossover
+  let crossover = 'none';
+  if (macdHistory.length >= 2) {
+    const prevMacd = macdHistory[macdHistory.length - 2];
+    const prevSignal = macdHistory.length >= 10 ? calculateEMA(macdHistory.slice(0, -1), 9) : prevMacd;
+    if (prevMacd < prevSignal && macdLine > signal) crossover = 'bullish';
+    else if (prevMacd > prevSignal && macdLine < signal) crossover = 'bearish';
+  }
+  
+  // Detect divergence (simplified)
+  let divergence = 'none';
+  if (bars.length >= 20) {
+    const recent = bars.slice(-10);
+    const prior = bars.slice(-20, -10);
+    const recentHighPrice = Math.max(...recent.map(b => b.high));
+    const priorHighPrice = Math.max(...prior.map(b => b.high));
+    const recentLowPrice = Math.min(...recent.map(b => b.low));
+    const priorLowPrice = Math.min(...prior.map(b => b.low));
+    
+    if (recentHighPrice > priorHighPrice && histogram < 0) divergence = 'hidden bullish';
+    else if (recentLowPrice < priorLowPrice && histogram > 0) divergence = 'hidden bearish';
+  }
+  
+  return { macd: macdLine, signal, histogram, crossover, divergence };
+}
+
+function calculateEMA(data: number[], period: number): number {
+  if (data.length === 0) return 0;
+  const k = 2 / (period + 1);
+  let ema = data[0];
+  for (let i = 1; i < data.length; i++) {
+    ema = data[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+function calculateEMAAtIndex(data: number[], period: number, endIndex: number): number {
+  const slice = data.slice(0, endIndex + 1);
+  return calculateEMA(slice, period);
+}
+
+// Stochastic (14,3,3)
+function calculateStochastic(bars: CandleBar[], kPeriod: number = 14, dPeriod: number = 3): { k: number; d: number; crossover: string } {
+  if (bars.length < kPeriod) return { k: 50, d: 50, crossover: 'none' };
+  
+  const kValues: number[] = [];
+  for (let i = kPeriod - 1; i < bars.length; i++) {
+    const slice = bars.slice(i - kPeriod + 1, i + 1);
+    const high = Math.max(...slice.map(b => b.high));
+    const low = Math.min(...slice.map(b => b.low));
+    const close = slice[slice.length - 1].close;
+    const k = high === low ? 50 : ((close - low) / (high - low)) * 100;
+    kValues.push(k);
+  }
+  
+  const k = kValues[kValues.length - 1];
+  const d = kValues.length >= dPeriod ? kValues.slice(-dPeriod).reduce((a, b) => a + b, 0) / dPeriod : k;
+  
+  let crossover = 'none';
+  if (kValues.length >= 2) {
+    const prevK = kValues[kValues.length - 2];
+    const prevD = kValues.length >= dPeriod + 1 ? kValues.slice(-dPeriod - 1, -1).reduce((a, b) => a + b, 0) / dPeriod : prevK;
+    if (prevK < prevD && k > d) crossover = 'bullish';
+    else if (prevK > prevD && k < d) crossover = 'bearish';
+  }
+  
+  return { k, d, crossover };
+}
+
+// MFI (14-period Money Flow Index)
+function calculateMFI(bars: CandleBar[], period: number = 14): { mfi: number; divergence: string } {
+  if (bars.length < period + 1) return { mfi: 50, divergence: 'none' };
+  
+  let positiveFlow = 0, negativeFlow = 0;
+  for (let i = bars.length - period; i < bars.length; i++) {
+    const typicalPrice = (bars[i].high + bars[i].low + bars[i].close) / 3;
+    const prevTypicalPrice = (bars[i - 1].high + bars[i - 1].low + bars[i - 1].close) / 3;
+    const rawMoneyFlow = typicalPrice * bars[i].volume;
+    
+    if (typicalPrice > prevTypicalPrice) positiveFlow += rawMoneyFlow;
+    else if (typicalPrice < prevTypicalPrice) negativeFlow += rawMoneyFlow;
+  }
+  
+  const mfi = negativeFlow === 0 ? 100 : 100 - (100 / (1 + positiveFlow / negativeFlow));
+  
+  // Simple divergence check
+  let divergence = 'none';
+  const recentClose = bars[bars.length - 1].close;
+  const priorClose = bars[bars.length - period].close;
+  if (recentClose > priorClose && mfi < 50) divergence = 'volume divergence';
+  else if (recentClose < priorClose && mfi > 50) divergence = 'volume divergence';
+  
+  return { mfi, divergence };
+}
+
+// CMF (Chaikin Money Flow)
+function calculateCMF(bars: CandleBar[], period: number = 20): { cmf: number; label: string } {
+  if (bars.length < period) return { cmf: 0, label: 'neutral' };
+  
+  const recentBars = bars.slice(-period);
+  let mfvSum = 0, volumeSum = 0;
+  
+  for (const bar of recentBars) {
+    const mfm = bar.high === bar.low ? 0 : ((bar.close - bar.low) - (bar.high - bar.close)) / (bar.high - bar.low);
+    mfvSum += mfm * bar.volume;
+    volumeSum += bar.volume;
+  }
+  
+  const cmf = volumeSum === 0 ? 0 : mfvSum / volumeSum;
+  const label = cmf > 0.1 ? 'accumulation' : cmf < -0.1 ? 'distribution' : 'neutral';
+  
+  return { cmf, label };
+}
+
+// ATR (14-period)
+function calculateATR(bars: CandleBar[], period: number = 14): number {
+  if (bars.length < period + 1) return 0;
+  
+  const trValues: number[] = [];
+  for (let i = 1; i < bars.length; i++) {
+    const high = bars[i].high;
+    const low = bars[i].low;
+    const prevClose = bars[i - 1].close;
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    trValues.push(tr);
+  }
+  
+  return trValues.slice(-period).reduce((a, b) => a + b, 0) / period;
+}
+
+// Bollinger Bands (20,2)
+function calculateBollingerBands(bars: CandleBar[], period: number = 20, stdDev: number = 2): { middle: number; upper: number; lower: number; bandwidth: number; squeeze: boolean } {
+  if (bars.length < period) return { middle: 0, upper: 0, lower: 0, bandwidth: 0, squeeze: false };
+  
+  const closes = bars.slice(-period).map(b => b.close);
+  const middle = closes.reduce((a, b) => a + b, 0) / period;
+  const variance = closes.reduce((sum, c) => sum + Math.pow(c - middle, 2), 0) / period;
+  const std = Math.sqrt(variance);
+  
+  const upper = middle + stdDev * std;
+  const lower = middle - stdDev * std;
+  const bandwidth = (upper - lower) / middle;
+  
+  // Squeeze detection: bandwidth < 20-period average bandwidth * 0.5
+  const squeeze = bandwidth < 0.02; // Simple threshold
+  
+  return { middle, upper, lower, bandwidth, squeeze };
+}
+
+// VWAP
+function calculateVWAP(bars: CandleBar[]): { vwap: number; label: string } {
+  if (bars.length === 0) return { vwap: 0, label: 'neutral' };
+  
+  let cumulativeTPV = 0, cumulativeVolume = 0;
+  for (const bar of bars) {
+    const tp = (bar.high + bar.low + bar.close) / 3;
+    cumulativeTPV += tp * bar.volume;
+    cumulativeVolume += bar.volume;
+  }
+  
+  const vwap = cumulativeVolume === 0 ? bars[bars.length - 1].close : cumulativeTPV / cumulativeVolume;
+  const currentPrice = bars[bars.length - 1].close;
+  const label = currentPrice > vwap * 1.01 ? 'premium' : currentPrice < vwap * 0.99 ? 'discount' : 'neutral';
+  
+  return { vwap, label };
+}
+
+// OBV (On Balance Volume)
+function calculateOBV(bars: CandleBar[]): { obv: number; divergence: string } {
+  if (bars.length < 2) return { obv: 0, divergence: 'none' };
+  
+  let obv = 0;
+  const obvHistory: number[] = [0];
+  
+  for (let i = 1; i < bars.length; i++) {
+    if (bars[i].close > bars[i - 1].close) obv += bars[i].volume;
+    else if (bars[i].close < bars[i - 1].close) obv -= bars[i].volume;
+    obvHistory.push(obv);
+  }
+  
+  // Divergence detection
+  let divergence = 'none';
+  if (bars.length >= 20) {
+    const recentPrice = bars.slice(-10);
+    const priorPrice = bars.slice(-20, -10);
+    const recentOBV = obvHistory.slice(-10);
+    const priorOBV = obvHistory.slice(-20, -10);
+    
+    const priceUp = recentPrice[recentPrice.length - 1].close > priorPrice[priorPrice.length - 1].close;
+    const obvUp = recentOBV[recentOBV.length - 1] > priorOBV[priorOBV.length - 1];
+    
+    if (priceUp && !obvUp) divergence = 'bearish';
+    else if (!priceUp && obvUp) divergence = 'bullish';
+  }
+  
+  return { obv, divergence };
+}
+
+// Swing Highs/Lows Detection
+function detectSwingPoints(bars: CandleBar[], lookback: number = 5): { swingHighs: { price: number; bar: number }[]; swingLows: { price: number; bar: number }[] } {
+  const swingHighs: { price: number; bar: number }[] = [];
+  const swingLows: { price: number; bar: number }[] = [];
+  
+  for (let i = lookback; i < bars.length - lookback; i++) {
+    let isHigh = true, isLow = true;
+    
+    for (let j = 1; j <= lookback; j++) {
+      if (bars[i].high <= bars[i - j].high || bars[i].high <= bars[i + j].high) isHigh = false;
+      if (bars[i].low >= bars[i - j].low || bars[i].low >= bars[i + j].low) isLow = false;
+    }
+    
+    if (isHigh) swingHighs.push({ price: bars[i].high, bar: i - bars.length });
+    if (isLow) swingLows.push({ price: bars[i].low, bar: i - bars.length });
+  }
+  
+  return { swingHighs: swingHighs.slice(-5), swingLows: swingLows.slice(-5) };
+}
+
+// BOS/CHoCH Detection
+function detectBOSCHoCH(bars: CandleBar[]): { bos: string; choch: string } {
+  if (bars.length < 20) return { bos: 'none', choch: 'none' };
+  
+  const swings = detectSwingPoints(bars);
+  const currentPrice = bars[bars.length - 1].close;
+  
+  let bos = 'none', choch = 'none';
+  
+  // Check for Break of Structure
+  if (swings.swingHighs.length >= 2) {
+    const lastHigh = swings.swingHighs[swings.swingHighs.length - 1].price;
+    if (currentPrice > lastHigh) bos = 'bullish';
+  }
+  if (swings.swingLows.length >= 2) {
+    const lastLow = swings.swingLows[swings.swingLows.length - 1].price;
+    if (currentPrice < lastLow) bos = 'bearish';
+  }
+  
+  // CHoCH: price breaks opposite direction after establishing a trend
+  if (swings.swingHighs.length >= 2 && swings.swingLows.length >= 2) {
+    const highs = swings.swingHighs.map(s => s.price);
+    const lows = swings.swingLows.map(s => s.price);
+    const wasUptrend = highs[highs.length - 1] > highs[highs.length - 2];
+    const wasDowntrend = lows[lows.length - 1] < lows[lows.length - 2];
+    
+    if (wasUptrend && currentPrice < lows[lows.length - 1]) choch = 'bearish';
+    if (wasDowntrend && currentPrice > highs[highs.length - 1]) choch = 'bullish';
+  }
+  
+  return { bos, choch };
+}
+
+// Displacement Detection
+function detectDisplacement(bars: CandleBar[]): { displacement: boolean; direction: string } {
+  if (bars.length < 5) return { displacement: false, direction: 'none' };
+  
+  const recent = bars.slice(-3);
+  const prior = bars.slice(-10, -3);
+  
+  const avgRange = prior.reduce((sum, b) => sum + (b.high - b.low), 0) / prior.length;
+  const avgVolume = prior.reduce((sum, b) => sum + b.volume, 0) / prior.length;
+  
+  for (const bar of recent) {
+    const range = bar.high - bar.low;
+    if (range > avgRange * 2 && bar.volume > avgVolume * 1.5) {
+      const direction = bar.close > bar.open ? 'bullish' : 'bearish';
+      return { displacement: true, direction };
+    }
+  }
+  
+  return { displacement: false, direction: 'none' };
+}
+
+// ===== END TECHNICAL INDICATOR FUNCTIONS =====
+
 // In-memory cache for liquidation data (5 min TTL)
 interface LiquidationCache {
   data: any;
@@ -3393,57 +3708,61 @@ Be concise and direct.`;
         return res.status(400).json({ error: 'Missing required data' });
       }
 
-      // Prepare order flow data for Grok analysis
-      const last50Bars = recentBars.slice(-50);
-      const priceChange = ((currentPrice - last50Bars[0].close) / last50Bars[0].close) * 100;
+      // ===== CALCULATE ALL INDICATORS FROM BAR DATA =====
+      const bars = recentBars.slice(-100) as CandleBar[];
+      const lastBar = bars[bars.length - 1];
+      const priceChange = ((currentPrice - bars[0].close) / bars[0].close) * 100;
       
-      // Detect liquidity sweeps (equal highs/lows)
-      const highs = last50Bars.map((b: any) => b.high);
-      const lows = last50Bars.map((b: any) => b.low);
-      const recentHigh = Math.max(...highs.slice(-10));
-      const recentLow = Math.min(...lows.slice(-10));
+      // Swing points
+      const swings = detectSwingPoints(bars);
+      const swingHighsStr = swings.swingHighs.slice(-3).map(s => `$${s.price.toFixed(4)} (bar ${s.bar})`).join(', ') || 'none';
+      const swingLowsStr = swings.swingLows.slice(-3).map(s => `$${s.price.toFixed(4)} (bar ${s.bar})`).join(', ') || 'none';
+      
+      // Oscillators & Momentum
+      const rsi = calculateRSI(bars, 14);
+      const rsiLabel = rsi > 70 ? 'OVERBOUGHT' : rsi < 30 ? 'OVERSOLD' : rsi > 50 ? 'bullish zone' : 'bearish zone';
+      
+      const macd = calculateMACD(bars);
+      const macdMomentum = macd.histogram > 0 ? 'bullish' : 'bearish';
+      
+      const stoch = calculateStochastic(bars, 14, 3);
+      const stochLabel = stoch.k > 80 ? 'overbought' : stoch.k < 20 ? 'oversold' : 'neutral';
+      
+      const mfi = calculateMFI(bars, 14);
+      const mfiLabel = mfi.mfi > 80 ? 'overbought' : mfi.mfi < 20 ? 'oversold' : 'neutral';
+      
+      const cmf = calculateCMF(bars, 20);
+      
+      // Trend & Volatility
+      const atr = calculateATR(bars, 14);
+      const bb = calculateBollingerBands(bars, 20, 2);
+      const vwapCalc = calculateVWAP(bars);
+      
+      // Volume & Order Flow
+      const obv = calculateOBV(bars);
+      
+      // SMC/ICT Structure
+      const boschoch = detectBOSCHoCH(bars);
+      const displacement = detectDisplacement(bars);
+      
+      // Recent high/low
+      const recentHigh = Math.max(...bars.slice(-10).map(b => b.high));
+      const recentLow = Math.min(...bars.slice(-10).map(b => b.low));
 
-      // Analyze professional orderflow data (OI, Funding, L/S Ratio) with defensive validation
-      let orderflowAnalysis = '';
+      // Analyze professional orderflow data (OI, Funding, L/S Ratio)
+      let oiTrend = 'N/A', oiDelta = 0, fundingValue = 0, fundingBias = 'neutral', lsRatio = 1.0;
       if (orderflowData) {
-        const openInterest = orderflowData?.openInterest ?? null;
-        const fundingRate = orderflowData?.fundingRate ?? null;
-        const longShortRatio = orderflowData?.longShortRatio ?? null;
-        
-        // Open Interest Analysis - defensive defaults
-        let oiTrend = 'neutral';
-        let oiDelta = 0;
-        if (openInterest?.current && openInterest?.delta !== undefined) {
-          oiDelta = openInterest.delta;
-          oiTrend = openInterest.trend || 'neutral';
+        if (orderflowData.openInterest?.delta !== undefined) {
+          oiDelta = orderflowData.openInterest.delta;
+          oiTrend = orderflowData.openInterest.trend || 'neutral';
         }
-
-        // Funding Rate Analysis - defensive defaults
-        let fundingBias = 'neutral';
-        let fundingValue = 0;
-        if (fundingRate?.current && fundingRate?.rate !== undefined) {
-          fundingValue = fundingRate.rate;
-          fundingBias = fundingRate.bias || 'neutral';
+        if (orderflowData.fundingRate?.rate !== undefined) {
+          fundingValue = orderflowData.fundingRate.rate;
+          fundingBias = orderflowData.fundingRate.bias || 'neutral';
         }
-
-        // Long/Short Ratio Analysis - defensive defaults
-        let lsRatio = 1.0;
-        if (longShortRatio?.ratio !== undefined) {
-          lsRatio = longShortRatio.ratio;
+        if (orderflowData.longShortRatio?.ratio !== undefined) {
+          lsRatio = orderflowData.longShortRatio.ratio;
         }
-
-        orderflowAnalysis = `\n**PROFESSIONAL ORDERFLOW DATA (Institutional-Grade):**
-- Open Interest: ${oiTrend.toUpperCase()} (${oiDelta > 0 ? '+' : ''}${oiDelta.toFixed(2)}% delta)
-- Funding Rate: ${fundingValue.toFixed(4)}% (${fundingBias.toUpperCase()} bias)
-- Long/Short Ratio: ${lsRatio.toFixed(2)} (${lsRatio > 1.2 ? 'LONG-heavy' : lsRatio < 0.8 ? 'SHORT-heavy' : 'balanced'})
-
-**INSTITUTIONAL ORDERFLOW CONFLUENCE (CRITICAL - Professional Edge):**
-10. BULLISH orderflow: OI rising + Funding negative/neutral + L/S ratio < 1 (shorts crowded, long squeeze potential)
-11. BEARISH orderflow: OI rising + Funding positive/extreme + L/S ratio > 1.5 (longs crowded, short squeeze potential)
-12. CONTRARIAN long: Funding heavily negative + CVD rising (smart money accumulating while crowd shorts)
-13. CONTRARIAN short: Funding heavily positive + CVD falling (smart money distributing while crowd longs)
-
-These signals reveal INSTITUTIONAL positioning. When OI+Funding+CVD align in the same direction, the trade has professional-grade edge. This is what separates retail from institutional trading.`;
       }
       
       // Calculate expected trade duration based on timeframe
@@ -3459,87 +3778,75 @@ These signals reveal INSTITUTIONAL positioning. When OI+Funding+CVD align in the
       };
       const expectedDuration = timeframeDurations[interval] || '1-7 days';
       
-      const prompt = `You are a professional Smart Money Concepts (SMC) / Order Flow trader analyzing advanced market structure for ${symbol} on ${interval} timeframe.
-
-**CRITICAL TIMEFRAME CONTEXT:**
-You are analyzing the ${interval} chart. This means:
-- Expected trade duration: ${expectedDuration}
-- Stop loss and take profit levels should match ${interval} candle range movements
-- Do NOT suggest scalp/intraday trades for higher timeframes (4h, 1d, 1w)
-- Do NOT suggest swing/position trades for lower timeframes (1m, 5m, 15m)
-- Trade duration must be appropriate for someone trading the ${interval} timeframe
+      // ===== BUILD REFINED PROMPT =====
+      const prompt = `Symbol: ${symbol} | Timeframe: ${interval} | Duration: ${expectedDuration}
+SL/TP: Use 1-2x ATR for SL; targets at 1:1 to 1:3 R/R aligned with key levels.
 
 **Current Market Data:**
-- Price: ${currentPrice.toFixed(4)}
-- 50-bar price change: ${priceChange.toFixed(2)}%
-- CVD (Cumulative Volume Delta): ${cvd.toFixed(0)} (${cvdTrend})
-- POC (Point of Control): ${poc.toFixed(4)}
-- VAH (Value Area High): ${vah.toFixed(4)}
-- VAL (Value Area Low): ${val.toFixed(4)}
-- Recent High: ${recentHigh.toFixed(4)}
-- Recent Low: ${recentLow.toFixed(4)}
-- CCI (Commodity Channel Index): ${cci.toFixed(2)} ${cci > 100 ? '(OVERBOUGHT)' : cci < -100 ? '(OVERSOLD)' : cci > 0 ? '(bullish zone)' : '(bearish zone)'}
-- ADX (Trend Strength): ${adx.toFixed(2)} ${adx > 25 ? '(STRONG TREND)' : '(weak/ranging)'}
-- +DI/-DI: ${plusDI.toFixed(2)}/${minusDI.toFixed(2)} ${plusDI > minusDI ? '(bullish momentum)' : '(bearish momentum)'}
+- Price: $${currentPrice.toFixed(4)}
+- OHLC (last bar): O $${lastBar.open.toFixed(4)}, H $${lastBar.high.toFixed(4)}, L $${lastBar.low.toFixed(4)}, C $${lastBar.close.toFixed(4)}
+- 50-bar Change: ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%
+- Swing Highs: ${swingHighsStr}
+- Swing Lows: ${swingLowsStr}
+- Volume Profile: POC $${poc.toFixed(4)}, VAH $${vah.toFixed(4)}, VAL $${val.toFixed(4)}
+- CVD: ${cvd.toFixed(0)} (${cvdTrend})
+- OBV: ${(obv.obv / 1000000).toFixed(2)}M${obv.divergence !== 'none' ? ` (${obv.divergence} divergence)` : ''}
 
-**Advanced Order Flow Indicators Detected:**
-- Bullish Order Blocks: ${bullishOBCount || 0}${bullishOB?.length ? ` (nearest at ${bullishOB[bullishOB.length - 1]?.price?.toFixed(4) || 'N/A'})` : ''}
-- Bearish Order Blocks: ${bearishOBCount || 0}${bearishOB?.length ? ` (nearest at ${bearishOB[bearishOB.length - 1]?.price?.toFixed(4) || 'N/A'})` : ''}
-- Bullish FVG (Fair Value Gaps): ${bullFVGCount || 0}${bullFVG?.length ? ` (nearest at ${bullFVG[bullFVG.length - 1]?.low?.toFixed(4) || 'N/A'}-${bullFVG[bullFVG.length - 1]?.high?.toFixed(4) || 'N/A'})` : ''}
-- Bearish FVG: ${bearFVGCount || 0}${bearFVG?.length ? ` (nearest at ${bearFVG[bearFVG.length - 1]?.low?.toFixed(4) || 'N/A'}-${bearFVG[bearFVG.length - 1]?.high?.toFixed(4) || 'N/A'})` : ''}
-- Buy Volume Imbalances: ${buyImbalancesCount || 0}${buyImbalances?.length ? ` (nearest at ${buyImbalances[buyImbalances.length - 1]?.price?.toFixed(4) || 'N/A'})` : ''}
-- Sell Volume Imbalances: ${sellImbalancesCount || 0}${sellImbalances?.length ? ` (nearest at ${sellImbalances[sellImbalances.length - 1]?.price?.toFixed(4) || 'N/A'})` : ''}
-- Absorption/Exhaustion Events: ${absorptionCount || 0}${absorption?.length ? ` (latest at ${absorption[absorption.length - 1]?.price?.toFixed(4) || 'N/A'}, ${absorption[absorption.length - 1]?.type || 'N/A'})` : ''}
-- Hidden Divergences: ${hiddenDivergenceCount || 0}${hiddenDivergences?.length ? ` (latest: ${hiddenDivergences[hiddenDivergences.length - 1]?.type || 'N/A'})` : ''}
-- Liquidity Grabs (Stop Hunts): ${liquidityGrabCount || 0}${liquidityGrabs?.length ? ` (latest: ${liquidityGrabs[liquidityGrabs.length - 1]?.type || 'N/A'} at ${liquidityGrabs[liquidityGrabs.length - 1]?.price?.toFixed(4) || 'N/A'})` : ''}
-${orderflowAnalysis}
+**Oscillators & Momentum:**
+- RSI (14): ${rsi.toFixed(2)} (${rsiLabel})
+- MACD (12,26,9): Histogram ${macd.histogram.toFixed(6)}, ${macdMomentum} momentum${macd.crossover !== 'none' ? `, ${macd.crossover} crossover` : ''}${macd.divergence !== 'none' ? `, ${macd.divergence} divergence` : ''}
+- CCI (20): ${cci.toFixed(2)} ${cci > 100 ? '(OVERBOUGHT)' : cci < -100 ? '(OVERSOLD)' : '(neutral)'}
+- Stochastic (14,3,3): %K ${stoch.k.toFixed(2)}, %D ${stoch.d.toFixed(2)} (${stochLabel})${stoch.crossover !== 'none' ? `, ${stoch.crossover} crossover` : ''}
+- MFI (14): ${mfi.mfi.toFixed(2)} (${mfiLabel})${mfi.divergence !== 'none' ? `, ${mfi.divergence}` : ''}
+- CMF: ${cmf.cmf > 0 ? '+' : ''}${cmf.cmf.toFixed(3)} (${cmf.label})
 
-**YOUR TASK:**
-You know SMC/ICT concepts (Order Blocks, FVGs, imbalances, absorption, liquidity grabs, etc.). Use your expertise to analyze the data above.
-Analyze the data and identify 1-3 high-probability trade setups. For each trade:
-- Count confluence signals and assign grade
-- Ensure R/R >= 0.75:1
-- Keep only the best trade if duplicates exist
+**Trend & Volatility:**
+- ADX (14): ${adx.toFixed(2)} (${adx > 25 ? 'STRONG TREND' : adx < 20 ? 'weak' : 'moderate'})
+- +DI/-DI: ${plusDI.toFixed(2)}/${minusDI.toFixed(2)} (${plusDI > minusDI ? 'bullish' : 'bearish'} momentum)
+- ATR (14): ${atr.toFixed(6)}
+- Bollinger (20,2): Middle $${bb.middle.toFixed(4)}${bb.squeeze ? ', SQUEEZE' : ''}, Bandwidth ${(bb.bandwidth * 100).toFixed(2)}%
+- VWAP: $${vwapCalc.vwap.toFixed(4)} (price in ${vwapCalc.label})
 
-For each valid trade, include:
-- grade: A+, A, B, C, D, or E
-- direction: LONG or SHORT
-- entry: specific price (e.g., "2.35")
-- stopLoss: stop loss price (e.g., "2.30")
-- targets: array of 2-3 targets (e.g., ["2.42", "2.48", "2.55"])
-- confluenceSignals: array of detected signals
-- confluenceCount: number of signals (1-15)
-- reasoning: ONE sentence explaining the trade (e.g., "Long at VAL support with bullish CVD divergence and FVG confluence.")
+**Order Flow & SMC/ICT:**
+- Bullish OBs: ${bullishOBCount || 0}${bullishOB?.length ? ` (nearest $${bullishOB[bullishOB.length - 1]?.price?.toFixed(4)})` : ''}
+- Bearish OBs: ${bearishOBCount || 0}${bearishOB?.length ? ` (nearest $${bearishOB[bearishOB.length - 1]?.price?.toFixed(4)})` : ''}
+- Bullish FVGs: ${bullFVGCount || 0}${bullFVG?.length ? ` ($${bullFVG[bullFVG.length - 1]?.low?.toFixed(4)}-$${bullFVG[bullFVG.length - 1]?.high?.toFixed(4)})` : ''}
+- Bearish FVGs: ${bearFVGCount || 0}${bearFVG?.length ? ` ($${bearFVG[bearFVG.length - 1]?.low?.toFixed(4)}-$${bearFVG[bearFVG.length - 1]?.high?.toFixed(4)})` : ''}
+- Absorption: ${absorptionCount || 0}${absorption?.length ? ` (${absorption[absorption.length - 1]?.type} at $${absorption[absorption.length - 1]?.price?.toFixed(4)})` : ''}
+- Volume Imbalances: Buy ${buyImbalancesCount || 0}, Sell ${sellImbalancesCount || 0}
+- BOS: ${boschoch.bos} | CHoCH: ${boschoch.choch}
+- Displacement: ${displacement.displacement ? `YES (${displacement.direction})` : 'none'}
+- Liquidity Grabs: ${liquidityGrabCount || 0}${liquidityGrabs?.length ? ` (${liquidityGrabs[liquidityGrabs.length - 1]?.type} at $${liquidityGrabs[liquidityGrabs.length - 1]?.price?.toFixed(4)})` : ''}
 
-Return ONLY a JSON object in this exact format:
+**Institutional Sentiment:**
+- Open Interest: ${oiTrend !== 'N/A' ? `${oiTrend.toUpperCase()} (${oiDelta > 0 ? '+' : ''}${oiDelta.toFixed(2)}% delta)` : 'N/A'}
+- Funding Rate: ${fundingValue.toFixed(4)}% (${fundingBias})
+- Long/Short Ratio: ${lsRatio.toFixed(2)} (${lsRatio > 1.2 ? 'longs dominant' : lsRatio < 0.8 ? 'shorts dominant' : 'balanced'})
+
+**TASK:**
+Find 1-3 trades with min 4 confluence factors, R/R ≥0.75. Grade: A+ (8+), A (7), B (5-6), C (3-4), D (2), E (1).
+Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
+
+**JSON Output:**
 {
+  "marketInsights": {
+    "summary": "Exactly 2 sentences: bias + key setup.",
+    "bias": "BULLISH|BEARISH|NEUTRAL",
+    "keyLevels": ["POC: $X", "VAL: $Y", "Swing High: $Z"]
+  },
   "alerts": [
     {
-      "grade": "A+",
-      "direction": "LONG",
-      "entry": "2.35",
-      "stopLoss": "2.30",
-      "targets": ["2.42", "2.48", "2.55"],
-      "confluenceSignals": ["signal1", "signal2", "signal3"],
-      "confluenceCount": 7,
-      "reasoning": "explanation"
+      "grade": "A+|A|B|C|D|E",
+      "direction": "LONG|SHORT",
+      "entry": 1.2345,
+      "stopLoss": 1.2300,
+      "targets": [1.2400, 1.2500],
+      "confluenceSignals": ["Bullish FVG at $1.23", "RSI oversold bounce", "CVD rising", "OB support"],
+      "confluenceCount": 6,
+      "reasoning": "Exactly 1 sentence explaining the trade."
     }
-  ],
-  "marketInsights": {
-    "summary": "2 sentences MAX. Example: 'Bullish. Price at VAL with rising CVD and bullish FVG nearby - expect bounce to 1.95.' Do NOT list data points.",
-    "bias": "BULLISH/BEARISH/NEUTRAL",
-    "keyLevels": ["1.8639", "1.9031"],
-    "noTradesReason": "Brief reason if no trades (1 sentence)"
-  }
-}
-
-STRICT FORMATTING (WILL BE REJECTED IF VIOLATED):
-- summary: EXACTLY 2 sentences. State bias + key reason + target. Example: "Bullish. Price at VAL with rising CVD - target 89500."
-- reasoning: EXACTLY 1 sentence per trade. Example: "Long at VAL with bullish CVD and FVG confluence."
-- ONLY mention data that supports your trade thesis. Ignore irrelevant indicators.
-- NO paragraphs, NO data dumps, NO explaining every indicator
-- Grade trades A+ to E based on confluence count (you know the system)
-- R/R >= 0.75:1, dedupe similar trades`;
+  ]
+}`;
 
       console.log('🤖 Calling xAI Grok for order flow analysis...');
       const startTime = Date.now();
@@ -3549,7 +3856,7 @@ STRICT FORMATTING (WILL BE REJECTED IF VIOLATED):
         messages: [
           {
             role: "system",
-            content: "You are a professional trader. Return ONLY valid JSON. CRITICAL: summary MUST be 2 sentences max. reasoning MUST be 1 sentence max. NO paragraphs, NO data dumps. Be EXTREMELY concise."
+            content: "You are a professional crypto trader specializing in SMC/ICT, technical analysis, order flow, and institutional sentiment. Return ONLY valid JSON. summary=2 sentences, reasoning=1 sentence per trade. No data dumps. Be concise."
           },
           {
             role: "user",
@@ -3557,7 +3864,7 @@ STRICT FORMATTING (WILL BE REJECTED IF VIOLATED):
           }
         ],
         temperature: 0.3,
-        max_tokens: 800
+        max_tokens: 1000
       });
 
       const content = response.choices[0].message.content || "{}";
@@ -3720,7 +4027,46 @@ STRICT FORMATTING (WILL BE REJECTED IF VIOLATED):
         dailyUsed: usageStatus.used,
         dailyLimit: usageStatus.limit,
         remainingToday: usageStatus.remainingToday,
-        creditsRemaining: usageStatus.creditsRemaining
+        creditsRemaining: usageStatus.creditsRemaining,
+        // All calculated indicator data for frontend display
+        indicatorData: {
+          // Market Data
+          price: currentPrice,
+          lastBar: { open: lastBar.open, high: lastBar.high, low: lastBar.low, close: lastBar.close },
+          priceChange,
+          swingHighs: swings.swingHighs.slice(-3),
+          swingLows: swings.swingLows.slice(-3),
+          volumeProfile: { poc, vah, val },
+          cvd: { value: cvd, trend: cvdTrend },
+          obv: { value: obv.obv, divergence: obv.divergence },
+          // Oscillators & Momentum
+          rsi: { value: rsi, label: rsiLabel },
+          macd: { histogram: macd.histogram, crossover: macd.crossover, divergence: macd.divergence, momentum: macdMomentum },
+          cci: { value: cci, label: cci > 100 ? 'OVERBOUGHT' : cci < -100 ? 'OVERSOLD' : 'neutral' },
+          stochastic: { k: stoch.k, d: stoch.d, crossover: stoch.crossover, label: stochLabel },
+          mfi: { value: mfi.mfi, label: mfiLabel, divergence: mfi.divergence },
+          cmf: { value: cmf.cmf, label: cmf.label },
+          // Trend & Volatility
+          adx: { value: adx, label: adx > 25 ? 'STRONG TREND' : adx < 20 ? 'weak' : 'moderate' },
+          diPlusMinus: { plusDI, minusDI, momentum: plusDI > minusDI ? 'bullish' : 'bearish' },
+          atr: { value: atr },
+          bollingerBands: { middle: bb.middle, upper: bb.upper, lower: bb.lower, bandwidth: bb.bandwidth, squeeze: bb.squeeze },
+          vwap: { value: vwapCalc.vwap, label: vwapCalc.label },
+          // SMC/ICT Structure
+          bos: boschoch.bos,
+          choch: boschoch.choch,
+          displacement: { active: displacement.displacement, direction: displacement.direction },
+          // Orderflow Counts
+          orderBlocks: { bullish: bullishOBCount || 0, bearish: bearishOBCount || 0 },
+          fvgs: { bullish: bullFVGCount || 0, bearish: bearFVGCount || 0 },
+          imbalances: { buy: buyImbalancesCount || 0, sell: sellImbalancesCount || 0 },
+          absorption: absorptionCount || 0,
+          liquidityGrabs: liquidityGrabCount || 0,
+          // Institutional
+          openInterest: { trend: oiTrend, delta: oiDelta },
+          fundingRate: { value: fundingValue, bias: fundingBias },
+          longShortRatio: { value: lsRatio, label: lsRatio > 1.2 ? 'longs dominant' : lsRatio < 0.8 ? 'shorts dominant' : 'balanced' }
+        }
       });
     } catch (error: any) {
       console.error('❌ Error generating order flow alerts:', error);
