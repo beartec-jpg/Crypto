@@ -3531,31 +3531,20 @@ ${orderflowAnalysis}
 **IMPORTANT:** Institutional orderflow signals (#10-13) are CRITICAL for professional-grade setups. Oscillator signals (#14-15 CCI/ADX) add technical confirmation. When OI+Funding+CVD+Oscillators align in the same direction AND 4+ other signals confirm, this is an A+ grade institutional trade - you're trading WITH the smart money using both institutional flow AND momentum/trend confirmation.
 
 **YOUR TASK:**
-FIRST, provide a comprehensive market evaluation analyzing ALL the data above. Evaluate:
-- Overall market structure and trend direction
-- CVD behavior and what it reveals about buyer/seller control
-- Volume profile positioning (POC/VAH/VAL) and price location
-- Order flow signals detected (Order Blocks, FVGs, Imbalances, etc.)
-- Institutional metrics if available (OI changes, Funding, L/S Ratio)
-- Key support/resistance levels and what they mean
-- Oscillator readings (CCI overbought/oversold, ADX trend strength)
+Analyze the data and identify 1-3 high-probability trade setups. For each trade:
+- Count confluence signals and assign grade
+- Ensure R/R >= 0.75:1
+- Keep only the best trade if duplicates exist
 
-THEN, based on your market evaluation, identify 1-3 high-probability trade setups ONLY IF there's genuine confluence worth trading. For each setup:
-- Count how many confluence signals align (including institutional orderflow and oscillators if applicable)
-- Assign the appropriate grade based on confluence count
-- Ensure the Risk/Reward ratio is at least 1:1 (reject trades with R/R below 0.75:1)
-- If two trades are essentially the same direction with similar entries (within 1%), only keep the higher quality one
-- If no trades meet quality standards, explicitly state why
-
-For each valid trade setup, include:
+For each valid trade, include:
 - grade: A+, A, B, C, D, or E
 - direction: LONG or SHORT
-- entry: specific entry price (single number, e.g., "2.35")
-- stopLoss: stop loss price (single number, e.g., "2.30")
-- targets: array of 2-3 take profit targets (e.g., ["2.42", "2.48", "2.55"])
-- confluenceSignals: array of specific signals detected from the lists above (including institutional orderflow if detected)
-- confluenceCount: exact number of confluence signals (1-15, with institutional orderflow and oscillator signals counting as critical signals)
-- reasoning: brief explanation of why this setup has edge (1-2 sentences, mention institutional orderflow if applicable)
+- entry: specific price (e.g., "2.35")
+- stopLoss: stop loss price (e.g., "2.30")
+- targets: array of 2-3 targets (e.g., ["2.42", "2.48", "2.55"])
+- confluenceSignals: array of detected signals
+- confluenceCount: number of signals (1-15)
+- reasoning: ONE sentence explaining the trade (e.g., "Long at VAL support with bullish CVD divergence and FVG confluence.")
 
 Return ONLY a JSON object in this exact format:
 {
@@ -3572,19 +3561,19 @@ Return ONLY a JSON object in this exact format:
     }
   ],
   "marketInsights": {
-    "summary": "CONCISE 2-3 sentence prediction: State the clear directional bias (bullish/bearish/neutral), the key reason why, and what to watch for. Example: 'Bullish bias. Price holding above POC with rising CVD shows buyers in control. Watch for break above 1.95 to confirm upside to 2.05.' Be direct and actionable, not data-heavy.",
+    "summary": "2 sentences MAX. Example: 'Bullish. Price at VAL with rising CVD and bullish FVG nearby - expect bounce to 1.95.' Do NOT list data points.",
     "bias": "BULLISH/BEARISH/NEUTRAL",
-    "keyLevels": ["level1", "level2", "level3"],
-    "noTradesReason": "If no valid trades, explain specifically why (e.g., 'Conflicting signals between CVD and price action', 'No clear structure with R/R above 0.75:1', 'Range-bound market with no clear edge')"
+    "keyLevels": ["1.8639", "1.9031"],
+    "noTradesReason": "Brief reason if no trades (1 sentence)"
   }
 }
 
 CRITICAL RULES:
-1. The summary MUST be SHORT and ACTIONABLE (2-3 sentences max). State the bias clearly, give ONE key reason, and what price level to watch. Do NOT list all the data - synthesize it into a prediction.
-2. Only include trades with R/R ratio >= 0.75:1 (Risk must be smaller than or equal to Reward * 0.75)
-3. If two trades are nearly identical (same direction, entries within 1%), keep only the better one
-4. If no quality trades exist, return empty alerts array with brief noTradesReason
-5. Focus on quality over quantity - better to return 0 trades with good reasoning than forced setups`;
+1. SUMMARY = 2 sentences MAX. State bias + one key reason + target level. NO data dumps.
+2. REASONING = 1 sentence per trade. NO paragraphs.
+3. R/R must be >= 0.75:1
+4. Dedupe similar trades
+5. Quality over quantity`;
 
       console.log('🤖 Calling xAI Grok for order flow analysis...');
       const startTime = Date.now();
