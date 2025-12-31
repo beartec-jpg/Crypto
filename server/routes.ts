@@ -3641,6 +3641,222 @@ Be concise and direct.`;
     }
   });
 
+  // Multi-Timeframe Analysis endpoint (15m, 1h, 4h in one call)
+  app.post("/api/crypto/order-flow-alerts-multi-tf", requireCryptoAuth, async (req, res) => {
+    console.log('📥 Multi-TF Order flow alerts endpoint called');
+    try {
+      const apiKeyCheck = checkXaiApiKey();
+      if (!apiKeyCheck.configured) {
+        return res.status(503).json({ 
+          error: apiKeyCheck.error,
+          available: false 
+        });
+      }
+
+      const userId = (req as any).cryptoUser.id;
+      const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
+      const tier = subscription.tier;
+
+      if (tier === 'free' || tier === 'beginner') {
+        return res.status(403).json({ 
+          error: 'Subscription required',
+          message: 'Please upgrade to Intermediate tier or higher',
+          requireUpgrade: true
+        });
+      }
+
+      // Use 2 credits for multi-TF (more comprehensive analysis)
+      const creditResult = await cryptoSubscriptionService.useAICredit(userId);
+      if (!creditResult.success) {
+        return res.status(403).json({ 
+          error: 'No AI credits remaining',
+          message: 'You have used all your monthly AI credits.',
+          creditsRemaining: 0
+        });
+      }
+
+      const { symbol, timeframes = ['15m', '1h', '4h'] } = req.body;
+      if (!symbol) {
+        return res.status(400).json({ error: 'Symbol is required' });
+      }
+
+      console.log(`📊 Multi-TF Analysis for ${symbol}: ${timeframes.join(', ')}`);
+
+      // Fetch data for all timeframes in parallel
+      const fetchBarsForTF = async (tf: string) => {
+        const url = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Failed to fetch ${tf} data`);
+        const data = await response.json();
+        return data.map((k: any) => ({
+          time: k[0] / 1000,
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4]),
+          volume: parseFloat(k[5])
+        }));
+      };
+
+      const [bars15m, bars1h, bars4h] = await Promise.all([
+        fetchBarsForTF('15m'),
+        fetchBarsForTF('1h'),
+        fetchBarsForTF('4h')
+      ]);
+
+      // Helper to compute indicators for a given bars array
+      const computeIndicators = (bars: any[]) => {
+        const currentPrice = bars[bars.length - 1].close;
+        const rsi = calculateRSI(bars, 14);
+        const macd = calculateMACD(bars);
+        const stoch = calculateStochastic(bars, 14, 3);
+        const atr = calculateATR(bars, 14);
+        const adx = calculateADX(bars);
+        const bb = calculateBollingerBands(bars, 20, 2);
+        const vwapCalc = calculateVWAP(bars);
+        const obv = calculateOBV(bars);
+        const boschoch = detectBOSCHoCH(bars);
+        
+        // Recent swing points
+        const swings = bars.slice(-50).map((b, i, arr) => {
+          const isHigh = i > 1 && i < arr.length - 2 && b.high > arr[i-1].high && b.high > arr[i-2].high && b.high > arr[i+1].high && b.high > arr[i+2].high;
+          const isLow = i > 1 && i < arr.length - 2 && b.low < arr[i-1].low && b.low < arr[i-2].low && b.low < arr[i+1].low && b.low < arr[i+2].low;
+          return { time: b.time, high: isHigh ? b.high : null, low: isLow ? b.low : null };
+        }).filter(s => s.high || s.low);
+
+        const recentHigh = Math.max(...bars.slice(-20).map(b => b.high));
+        const recentLow = Math.min(...bars.slice(-20).map(b => b.low));
+
+        return {
+          currentPrice,
+          rsi: rsi.toFixed(2),
+          macd: { histogram: macd.histogram.toFixed(4), crossover: macd.crossover },
+          stoch: { k: stoch.k.toFixed(2), d: stoch.d.toFixed(2), crossover: stoch.crossover },
+          atr: atr.toFixed(6),
+          adx: adx.toFixed(2),
+          bb: { middle: bb.middle.toFixed(4), squeeze: bb.squeeze, bandwidth: (bb.bandwidth * 100).toFixed(2) },
+          vwap: vwapCalc.vwap.toFixed(4),
+          obv: (obv.obv / 1000000).toFixed(2) + 'M',
+          bos: boschoch.bos,
+          choch: boschoch.choch,
+          recentHigh: recentHigh.toFixed(4),
+          recentLow: recentLow.toFixed(4),
+          swings: swings.slice(-5)
+        };
+      };
+
+      const data15m = computeIndicators(bars15m);
+      const data1h = computeIndicators(bars1h);
+      const data4h = computeIndicators(bars4h);
+
+      // Build multi-TF prompt for Grok
+      const prompt = `Symbol: ${symbol} | Multi-Timeframe Analysis (15m, 1h, 4h)
+You are analyzing this asset across 3 timeframes to find trades with cross-timeframe confluence.
+
+**15-Minute Data (Short-term, 1-4h trades):**
+- Price: $${data15m.currentPrice}, RSI: ${data15m.rsi}, MACD Histogram: ${data15m.macd.histogram}${data15m.macd.crossover !== 'none' ? ` (${data15m.macd.crossover})` : ''}
+- Stochastic: %K ${data15m.stoch.k}, %D ${data15m.stoch.d}${data15m.stoch.crossover !== 'none' ? ` (${data15m.stoch.crossover})` : ''}
+- ADX: ${data15m.adx}, ATR: ${data15m.atr}, BB Squeeze: ${data15m.bb.squeeze ? 'YES' : 'No'}
+- VWAP: $${data15m.vwap}, OBV: ${data15m.obv}
+- Structure: ${data15m.bos} BOS, ${data15m.choch} CHoCH
+- Range: High $${data15m.recentHigh}, Low $${data15m.recentLow}
+
+**1-Hour Data (Medium-term, 4h-1d trades):**
+- Price: $${data1h.currentPrice}, RSI: ${data1h.rsi}, MACD Histogram: ${data1h.macd.histogram}${data1h.macd.crossover !== 'none' ? ` (${data1h.macd.crossover})` : ''}
+- Stochastic: %K ${data1h.stoch.k}, %D ${data1h.stoch.d}${data1h.stoch.crossover !== 'none' ? ` (${data1h.stoch.crossover})` : ''}
+- ADX: ${data1h.adx}, ATR: ${data1h.atr}, BB Squeeze: ${data1h.bb.squeeze ? 'YES' : 'No'}
+- VWAP: $${data1h.vwap}, OBV: ${data1h.obv}
+- Structure: ${data1h.bos} BOS, ${data1h.choch} CHoCH
+- Range: High $${data1h.recentHigh}, Low $${data1h.recentLow}
+
+**4-Hour Data (Long-term, 1-3d trades):**
+- Price: $${data4h.currentPrice}, RSI: ${data4h.rsi}, MACD Histogram: ${data4h.macd.histogram}${data4h.macd.crossover !== 'none' ? ` (${data4h.macd.crossover})` : ''}
+- Stochastic: %K ${data4h.stoch.k}, %D ${data4h.stoch.d}${data4h.stoch.crossover !== 'none' ? ` (${data4h.stoch.crossover})` : ''}
+- ADX: ${data4h.adx}, ATR: ${data4h.atr}, BB Squeeze: ${data4h.bb.squeeze ? 'YES' : 'No'}
+- VWAP: $${data4h.vwap}, OBV: ${data4h.obv}
+- Structure: ${data4h.bos} BOS, ${data4h.choch} CHoCH
+- Range: High $${data4h.recentHigh}, Low $${data4h.recentLow}
+
+**Your Task:**
+1. Provide a 2-sentence summary for EACH timeframe's bias and key observation.
+2. Provide a 2-sentence overall cross-TF summary with alignment assessment.
+3. Identify 1-3 best trades that have CROSS-TIMEFRAME CONFLUENCE (higher TF sets bias, lower TF for timing).
+4. Grade each trade A+ to C based on confluence strength.
+
+Respond with ONLY valid JSON in this exact format:
+{
+  "multiTFInsights": {
+    "15m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
+    "1h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
+    "4h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
+    "overallSummary": "2 sentences on cross-TF alignment and dominant trend"
+  },
+  "bestTrades": [
+    {
+      "grade": "A+/A/B/C",
+      "primaryTF": "15m/1h/4h",
+      "direction": "LONG/SHORT",
+      "entry": "price",
+      "stopLoss": "price",
+      "targets": ["TP1", "TP2"],
+      "confluenceSignals": ["4-6 signals with TF prefix, e.g., '4h bullish bias + 1h RSI oversold + 15m stoch crossover'"],
+      "reasoning": "1 sentence explaining cross-TF logic"
+    }
+  ]
+}`;
+
+      console.log('🤖 Calling xAI Grok for multi-TF analysis...');
+      const startTime = Date.now();
+
+      const response = await xai.chat.completions.create({
+        model: "grok-3",
+        messages: [
+          {
+            role: "system",
+            content: "You are a professional crypto trader expert in multi-timeframe analysis. Higher timeframes set the bias, lower timeframes provide entry timing. Always respond with valid JSON only."
+          },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 1500
+      });
+
+      const duration = Date.now() - startTime;
+      const inputTokens = response.usage?.prompt_tokens || 0;
+      const outputTokens = response.usage?.completion_tokens || 0;
+      const estimatedCost = (inputTokens / 1_000_000 * 2) + (outputTokens / 1_000_000 * 10);
+
+      console.log(`✅ Multi-TF analysis complete (${duration}ms, ~$${estimatedCost.toFixed(6)})`);
+      console.log(`📊 Tokens: ${inputTokens} in, ${outputTokens} out`);
+
+      let parsedResult;
+      try {
+        let content = response.choices[0].message.content || '{}';
+        content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        parsedResult = JSON.parse(content);
+      } catch (parseError) {
+        console.error('Failed to parse Grok response:', parseError);
+        parsedResult = { multiTFInsights: null, bestTrades: [] };
+      }
+
+      res.json({
+        success: true,
+        multiTFInsights: parsedResult.multiTFInsights,
+        bestTrades: parsedResult.bestTrades || [],
+        cost: estimatedCost,
+        tokens: { input: inputTokens, output: outputTokens },
+        creditsRemaining: creditResult.remaining
+      });
+
+    } catch (error: any) {
+      console.error('❌ Multi-TF analysis error:', error);
+      res.status(500).json({ 
+        error: error.message,
+        success: false
+      });
+    }
+  });
+
   // Order Flow Alerts endpoint using xAI Grok (publicly accessible)
   app.post("/api/crypto/order-flow-alerts", requireCryptoAuth, async (req, res) => {
     console.log('📥 Order flow alerts endpoint called');

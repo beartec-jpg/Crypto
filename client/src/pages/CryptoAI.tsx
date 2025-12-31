@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, TrendingUp, Zap, Loader2, ArrowLeft, Settings, Activity, Info, AlertCircle, Target, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { RefreshCw, TrendingUp, Zap, Loader2, ArrowLeft, Settings, Activity, Info, AlertCircle, Target, ChevronDown, ChevronUp, X, Layers } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -123,6 +123,8 @@ export default function CryptoAI() {
   });
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzingMultiTF, setAnalyzingMultiTF] = useState(false);
+  const [multiTFInsights, setMultiTFInsights] = useState<any | null>(null);
   const [tradeAlerts, setTradeAlerts] = useState<TradeAlert[]>([]);
   
   const [marketInsights, setMarketInsights] = useState<{ noTradesReason?: string; summary?: string; bias?: string; keyLevels?: string[] } | null>(null);
@@ -1387,6 +1389,86 @@ export default function CryptoAI() {
       setAnalyzing(false);
     }
   }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, detectSwingPivots, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, refetchCachedAnalysis, toast, getToken, cachedAnalysis, isCacheValid, getRemainingCacheTime]);
+
+  // === Multi-Timeframe Analysis (15m, 1h, 4h) ===
+  const analyzeMultiTF = useCallback(async () => {
+    setAnalyzingMultiTF(true);
+    try {
+      const token = await getToken();
+      if (!token) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to use AI analysis.",
+          duration: 5000,
+        });
+        return;
+      }
+
+      const response = await fetch('/api/crypto/order-flow-alerts-multi-tf', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          symbol,
+          timeframes: ['15m', '1h', '4h'],
+        }),
+      });
+
+      const result = await response.json();
+      console.log('🤖 Multi-TF Analysis received', result);
+
+      if (!result.success && result.message) {
+        if (result.requireUpgrade) {
+          toast({
+            title: "Upgrade Required",
+            description: "Please upgrade to Intermediate tier or higher for AI analysis.",
+            duration: 5000,
+          });
+          return;
+        }
+        throw new Error(result.message || 'Failed to analyze');
+      }
+
+      // Store multi-TF insights
+      if (result.multiTFInsights) {
+        setMultiTFInsights(result.multiTFInsights);
+      }
+      
+      // Also set trade alerts from best trades
+      if (result.bestTrades?.length > 0) {
+        setTradeAlerts(result.bestTrades);
+      }
+      
+      // Set market insights from overall summary
+      if (result.multiTFInsights?.overallSummary) {
+        setMarketInsights({
+          summary: result.multiTFInsights.overallSummary,
+          bias: result.multiTFInsights['1h']?.bias || result.multiTFInsights['15m']?.bias || 'NEUTRAL',
+        });
+      }
+
+      // Refresh subscription to update credits
+      refetchSubscription();
+      refetchCachedAnalysis();
+
+      toast({
+        title: "Multi-TF Analysis Complete",
+        description: `Analyzed ${symbol} across 15m, 1h, and 4h timeframes`,
+        duration: 5000,
+      });
+    } catch (error) {
+      console.error('Failed to analyze multi-TF:', error);
+      toast({
+        title: "Analysis Failed",
+        description: "Unable to complete multi-timeframe analysis",
+        variant: "destructive",
+      });
+    } finally {
+      setAnalyzingMultiTF(false);
+    }
+  }, [symbol, getToken, toast, refetchSubscription, refetchCachedAnalysis]);
 
   // Keep ref in sync with latest analyzeTrades callback
   useEffect(() => {
@@ -3052,7 +3134,7 @@ export default function CryptoAI() {
                   )}
                   <Button
                     onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeTrades()}
-                    disabled={analyzing || data.length === 0}
+                    disabled={analyzing || analyzingMultiTF || data.length === 0}
                     className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white disabled:opacity-50"
                     data-testid="button-analyze-trades"
                   >
@@ -3065,6 +3147,25 @@ export default function CryptoAI() {
                       <>
                         <Zap className="w-4 h-4 mr-2" />
                         Analyze
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeMultiTF()}
+                    disabled={analyzing || analyzingMultiTF}
+                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white disabled:opacity-50"
+                    data-testid="button-multi-tf-analysis"
+                    title="Analyze 15m, 1h, 4h timeframes together"
+                  >
+                    {analyzingMultiTF ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Multi-TF...
+                      </>
+                    ) : (
+                      <>
+                        <Layers className="w-4 h-4 mr-2" />
+                        Multi-TF
                       </>
                     )}
                   </Button>
