@@ -1226,27 +1226,42 @@ export default function CryptoAI() {
 
   // Load cached Multi-TF analysis
   const loadCachedMultiTF = useCallback(async () => {
-    // Always force a fresh fetch to ensure we have latest data
-    const result = await refetchCachedMultiTF();
-    const data = result.data || cachedMultiTF;
+    console.log('🔄 loadCachedMultiTF called, existing cachedMultiTF:', !!cachedMultiTF?.cached);
     
-    if (data?.cached) {
-      // Clear single-TF insights when loading Multi-TF
-      setMarketInsights(null);
-      setMultiTFInsights(data.cached.multiTFInsights);
-      if (data.cached.bestTrades?.length > 0) {
-        setTradeAlerts(data.cached.bestTrades);
+    try {
+      // Always force a fresh fetch to ensure we have latest data
+      const result = await refetchCachedMultiTF();
+      console.log('🔄 refetch result:', !!result.data?.cached);
+      
+      const data = result.data || cachedMultiTF;
+      
+      if (data?.cached) {
+        console.log('✅ Loading cached Multi-TF data');
+        // Clear single-TF insights when loading Multi-TF
+        setMarketInsights(null);
+        setMultiTFInsights(data.cached.multiTFInsights);
+        if (data.cached.bestTrades?.length > 0) {
+          setTradeAlerts(data.cached.bestTrades);
+        }
+        toast({
+          title: "Previous Multi-TF analysis loaded",
+          description: `Last updated: ${getTimeAgoString(data.cached.updatedAt)}`,
+          duration: 3000,
+        });
+      } else {
+        console.log('❌ No cached Multi-TF data found');
+        toast({
+          title: "No cached analysis",
+          description: "Run Multi-TF analysis first to generate data",
+          duration: 3000,
+        });
       }
+    } catch (error) {
+      console.error('Failed to load cached Multi-TF:', error);
       toast({
-        title: "Previous Multi-TF analysis loaded",
-        description: `Last updated: ${getTimeAgoString(data.cached.updatedAt)}`,
-        duration: 3000,
-      });
-    } else {
-      toast({
-        title: "No cached analysis",
-        description: "Run Multi-TF analysis first to generate data",
-        duration: 3000,
+        title: "Failed to load",
+        description: "Could not load cached analysis",
+        variant: "destructive",
       });
     }
   }, [cachedMultiTF, toast, getTimeAgoString, refetchCachedMultiTF]);
@@ -3286,8 +3301,8 @@ export default function CryptoAI() {
                   )}
                 </Button>
                 
-                {/* Small reload icon for multi-TF - Elite only */}
-                {cachedMultiTF?.cached && tier === 'elite' && (
+                {/* Small reload icon for multi-TF - Elite only, always shown for elite users */}
+                {tier === 'elite' && (
                   <Button
                     onClick={loadCachedMultiTF}
                     variant="outline"
