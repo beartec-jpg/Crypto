@@ -1722,33 +1722,28 @@ export default function CryptoAI() {
         });
       });
       
-      // Swing Points as markers on candle series
-      const markers: any[] = [];
-      
+      // Swing Points as price lines (last 5 of each)
       swingHighs.slice(-5).forEach((sh) => {
-        markers.push({
-          time: sh.time as Time,
-          position: 'aboveBar',
-          color: '#ef4444',
-          shape: 'arrowDown',
-          text: 'H',
+        candleSeries.createPriceLine({
+          price: sh.price,
+          color: '#ef444460',
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: false,
+          title: '',
         });
       });
       
       swingLows.slice(-5).forEach((sl) => {
-        markers.push({
-          time: sl.time as Time,
-          position: 'belowBar',
-          color: '#22c55e',
-          shape: 'arrowUp',
-          text: 'L',
+        candleSeries.createPriceLine({
+          price: sl.price,
+          color: '#22c55e60',
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: false,
+          title: '',
         });
       });
-      
-      if (markers.length > 0) {
-        markers.sort((a, b) => (a.time as number) - (b.time as number));
-        candleSeries.setMarkers(markers);
-      }
     }
     
     // Update stats
