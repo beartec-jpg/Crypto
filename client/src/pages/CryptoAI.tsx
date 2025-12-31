@@ -3154,64 +3154,83 @@ export default function CryptoAI() {
 
             {/* AI Alerts Panel */}
             <div className={`space-y-4 ${activeTab === 'alerts' ? 'block' : 'hidden'}`}>
-            {/* Analyze Button */}
-            <Card className="bg-[#1a1a1a] border-[#2a2e39] p-4">
-              <div className="flex flex-col sm:flex-row items-center gap-3">
-                <img src={grokLogo} alt="Grok" className="h-8 brightness-110 hidden sm:block" />
-                <div className="flex flex-wrap items-center justify-center gap-2 w-full sm:w-auto sm:ml-auto">
-                  {/* View Last Analysis button - shows cached analysis without using credits */}
-                  {cachedAnalysis?.cached && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (
-                    <Button
-                      onClick={loadCachedAnalysis}
-                      variant="outline"
-                      size="sm"
-                      className="border-[#2a2e39] text-gray-300 hover:bg-[#252525] hover:text-white"
-                      data-testid="button-view-last-analysis"
-                    >
-                      <RefreshCw className="w-4 h-4 mr-1" />
-                      View Last
-                    </Button>
+            {/* Analyze Buttons - Compact layout with small reload icons */}
+            <Card className="bg-[#1a1a1a] border-[#2a2e39] p-3">
+              <div className="flex items-center justify-center gap-2">
+                {/* Small reload icon for single timeframe - left side */}
+                {cachedAnalysis?.cached && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (
+                  <Button
+                    onClick={loadCachedAnalysis}
+                    variant="outline"
+                    size="icon"
+                    className="border-[#2a2e39] text-gray-300 hover:bg-[#252525] hover:text-white h-9 w-9"
+                    data-testid="button-view-last-analysis"
+                    title="Load last single-TF analysis"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                )}
+                
+                {/* Analyze button - bigger */}
+                <Button
+                  onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeTrades()}
+                  disabled={analyzing || analyzingMultiTF || data.length === 0}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white disabled:opacity-50 px-4 py-2"
+                  data-testid="button-analyze-trades"
+                >
+                  {analyzing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 mr-2" />
+                      Analyze
+                    </>
                   )}
+                </Button>
+                
+                {/* Multi-TF button - bigger */}
+                <Button
+                  onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeMultiTF()}
+                  disabled={analyzing || analyzingMultiTF}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white disabled:opacity-50 px-4 py-2"
+                  data-testid="button-multi-tf-analysis"
+                  title="Analyze 15m, 1h, 4h timeframes together"
+                >
+                  {analyzingMultiTF ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Multi-TF...
+                    </>
+                  ) : (
+                    <>
+                      <Layers className="w-4 h-4 mr-2" />
+                      Multi-TF
+                    </>
+                  )}
+                </Button>
+                
+                {/* Small reload icon for multi-TF - right side */}
+                {multiTFInsights && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (
                   <Button
-                    onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeTrades()}
-                    disabled={analyzing || analyzingMultiTF || data.length === 0}
-                    size="sm"
-                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white disabled:opacity-50"
-                    data-testid="button-analyze-trades"
+                    onClick={() => {
+                      toast({
+                        title: "Multi-TF Results Loaded",
+                        description: "Showing your last Multi-TF analysis",
+                        duration: 2000,
+                      });
+                    }}
+                    variant="outline"
+                    size="icon"
+                    className="border-[#2a2e39] text-gray-300 hover:bg-[#252525] hover:text-white h-9 w-9"
+                    data-testid="button-view-last-multi-tf"
+                    title="Load last Multi-TF analysis"
                   >
-                    {analyzing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                        Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-4 h-4 mr-1" />
-                        Analyze
-                      </>
-                    )}
+                    <RefreshCw className="w-4 h-4" />
                   </Button>
-                  <Button
-                    onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeMultiTF()}
-                    disabled={analyzing || analyzingMultiTF}
-                    size="sm"
-                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white disabled:opacity-50"
-                    data-testid="button-multi-tf-analysis"
-                    title="Analyze 15m, 1h, 4h timeframes together"
-                  >
-                    {analyzingMultiTF ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                        Multi-TF...
-                      </>
-                    ) : (
-                      <>
-                        <Layers className="w-4 h-4 mr-1" />
-                        Multi-TF
-                      </>
-                    )}
-                  </Button>
-                </div>
+                )}
               </div>
               {/* Monthly Usage Counter */}
               {subscription?.monthlyUsage && subscription.monthlyUsage.aiLimit > 0 && (
