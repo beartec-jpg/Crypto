@@ -1647,8 +1647,11 @@ export default function CryptoAI() {
         return;
       }
       
-      // Strip dollar signs from price values if present
-      const parsePrice = (val: string) => parseFloat(val.replace(/[$,]/g, ''));
+      // Strip dollar signs from price values if present, handle both string and number inputs
+      const parsePrice = (val: string | number): number => {
+        if (typeof val === 'number') return val;
+        return parseFloat(String(val).replace(/[$,]/g, ''));
+      };
       
       const response = await fetch('/api/crypto/tracked-trades', {
         method: 'POST',
@@ -1662,13 +1665,17 @@ export default function CryptoAI() {
           grade: alert.grade,
           entry: parsePrice(alert.entry),
           stopLoss: parsePrice(alert.stopLoss),
-          targets: alert.targets.map((t: string) => parsePrice(t)),
+          targets: (alert.targets || []).map((t: string | number) => parsePrice(t)),
           confluenceSignals: alert.confluenceSignals || [],
           reasoning: alert.reasoning || '',
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to track trade');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Track trade error response:', response.status, errorData);
+        throw new Error(errorData.error || 'Failed to track trade');
+      }
 
       const tracked = await response.json();
       setTrackedTrades(prev => [...prev, tradeKey]);
