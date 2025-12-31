@@ -89,6 +89,7 @@ export default function CryptoAI() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const prevSymbolRef = useRef<string | null>(null);
   const rsiRef = useRef<HTMLDivElement>(null);
   const macdRef = useRef<HTMLDivElement>(null);
   const obvRef = useRef<HTMLDivElement>(null);
@@ -1142,10 +1143,14 @@ export default function CryptoAI() {
 
   // Clear analysis data when symbol changes to prevent showing stale data from another ticker
   useEffect(() => {
-    setTradeAlerts([]);
-    setMultiTFInsights(null);
-    setMarketInsights(null);
-    setIndicatorData(null);
+    // Only clear if symbol actually changed (not on initial mount)
+    if (prevSymbolRef.current !== null && prevSymbolRef.current !== symbol) {
+      setTradeAlerts([]);
+      setMultiTFInsights(null);
+      setMarketInsights(null);
+      setIndicatorData(null);
+    }
+    prevSymbolRef.current = symbol;
   }, [symbol]);
 
   // Helper function to calculate time ago string
