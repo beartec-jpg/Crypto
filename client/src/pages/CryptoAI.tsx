@@ -1236,12 +1236,20 @@ export default function CryptoAI() {
       const data = result.data || cachedMultiTF;
       
       if (data?.cached) {
-        console.log('✅ Loading cached Multi-TF data');
+        console.log('✅ Loading cached Multi-TF data:', {
+          hasMultiTFInsights: !!data.cached.multiTFInsights,
+          hasBestTrades: !!data.cached.bestTrades,
+          bestTradesLength: data.cached.bestTrades?.length || 0,
+          allKeys: Object.keys(data.cached)
+        });
         // Clear single-TF insights when loading Multi-TF
         setMarketInsights(null);
         setMultiTFInsights(data.cached.multiTFInsights);
-        if (data.cached.bestTrades?.length > 0) {
+        // Set trade alerts from bestTrades (if available)
+        if (data.cached.bestTrades && data.cached.bestTrades.length > 0) {
           setTradeAlerts(data.cached.bestTrades);
+        } else {
+          console.log('⚠️ No bestTrades in cached Multi-TF data');
         }
         toast({
           title: "Previous Multi-TF analysis loaded",
@@ -3739,7 +3747,7 @@ export default function CryptoAI() {
             )}
 
             {/* Placeholder when no analysis yet */}
-            {tradeAlerts.length === 0 && !marketInsights && !analyzing && (
+            {tradeAlerts.length === 0 && !marketInsights && !multiTFInsights && !analyzing && (
               <Card className="bg-[#1a1a1a] border-[#2a2e39] p-6 sm:p-12">
                 <div className="text-center text-gray-400">
                   <Zap className="w-12 h-12 mx-auto mb-4 text-gray-600" />
