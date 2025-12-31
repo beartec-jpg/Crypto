@@ -1173,6 +1173,7 @@ export default function CryptoAI() {
           symbol,
           interval: alertTimeframe,
           currentPrice,
+          recentBars: data.slice(-100),
           cvd: cvdCurrent,
           cvdTrend,
           poc,
@@ -2050,7 +2051,7 @@ export default function CryptoAI() {
                 <div className="text-sm">
                   <span className="text-gray-400">AI Credits: </span>
                   <span className="font-semibold text-white" data-testid="text-ai-credits">
-                    {subscription.monthlyUsage.aiLimit - subscription.monthlyUsage.aiCredits} of {subscription.monthlyUsage.aiLimit} remaining
+                    {subscription.monthlyUsage.aiCredits} of {subscription.monthlyUsage.aiLimit} remaining
                   </span>
                 </div>
               )}
