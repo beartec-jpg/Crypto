@@ -1140,6 +1140,14 @@ export default function CryptoAI() {
     fetchData();
   }, [fetchData]);
 
+  // Clear analysis data when symbol changes to prevent showing stale data from another ticker
+  useEffect(() => {
+    setTradeAlerts([]);
+    setMultiTFInsights(null);
+    setMarketInsights(null);
+    setIndicatorData(null);
+  }, [symbol]);
+
   // Helper function to calculate time ago string
   const getTimeAgoString = useCallback((dateString: string) => {
     const updatedAt = new Date(dateString);
@@ -1591,6 +1599,9 @@ export default function CryptoAI() {
         return;
       }
       
+      // Strip dollar signs from price values if present
+      const parsePrice = (val: string) => parseFloat(val.replace(/[$,]/g, ''));
+      
       const response = await fetch('/api/crypto/tracked-trades', {
         method: 'POST',
         headers: { 
@@ -1601,11 +1612,11 @@ export default function CryptoAI() {
           symbol,
           direction: alert.direction,
           grade: alert.grade,
-          entry: parseFloat(alert.entry),
-          stopLoss: parseFloat(alert.stopLoss),
-          targets: alert.targets.map((t: string) => parseFloat(t)),
-          confluenceSignals: alert.confluenceSignals,
-          reasoning: alert.reasoning,
+          entry: parsePrice(alert.entry),
+          stopLoss: parsePrice(alert.stopLoss),
+          targets: alert.targets.map((t: string) => parsePrice(t)),
+          confluenceSignals: alert.confluenceSignals || [],
+          reasoning: alert.reasoning || '',
         }),
       });
 
