@@ -1226,33 +1226,26 @@ export default function CryptoAI() {
 
   // Load cached Multi-TF analysis
   const loadCachedMultiTF = useCallback(async () => {
-    // First try from already-loaded data
-    if (cachedMultiTF?.cached) {
+    // Always force a fresh fetch to ensure we have latest data
+    const result = await refetchCachedMultiTF();
+    const data = result.data || cachedMultiTF;
+    
+    if (data?.cached) {
       // Clear single-TF insights when loading Multi-TF
       setMarketInsights(null);
-      setMultiTFInsights(cachedMultiTF.cached.multiTFInsights);
-      if (cachedMultiTF.cached.bestTrades?.length > 0) {
-        setTradeAlerts(cachedMultiTF.cached.bestTrades);
+      setMultiTFInsights(data.cached.multiTFInsights);
+      if (data.cached.bestTrades?.length > 0) {
+        setTradeAlerts(data.cached.bestTrades);
       }
       toast({
         title: "Previous Multi-TF analysis loaded",
-        description: `Last updated: ${getTimeAgoString(cachedMultiTF.cached.updatedAt)}`,
+        description: `Last updated: ${getTimeAgoString(data.cached.updatedAt)}`,
         duration: 3000,
       });
-      return;
-    }
-    
-    // If data not in state yet, refetch it
-    const result = await refetchCachedMultiTF();
-    if (result.data?.cached) {
-      setMarketInsights(null);
-      setMultiTFInsights(result.data.cached.multiTFInsights);
-      if (result.data.cached.bestTrades?.length > 0) {
-        setTradeAlerts(result.data.cached.bestTrades);
-      }
+    } else {
       toast({
-        title: "Previous Multi-TF analysis loaded",
-        description: `Last updated: ${getTimeAgoString(result.data.cached.updatedAt)}`,
+        title: "No cached analysis",
+        description: "Run Multi-TF analysis first to generate data",
         duration: 3000,
       });
     }
@@ -4039,7 +4032,7 @@ export default function CryptoAI() {
       </div>
 
         {/* Disclaimer Section */}
-        <div className="max-w-4xl mx-auto px-4 pb-6 text-center">
+        <div className="max-w-4xl mx-auto px-4 pt-6 pb-6 text-center">
           <div className="bg-gray-900/40 border border-gray-800 rounded-lg p-4">
             <p className="text-xs text-gray-500 mb-3">
               <strong className="text-gray-400">Disclaimer:</strong> This platform is for educational and informational purposes only. 
