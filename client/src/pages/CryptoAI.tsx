@@ -3117,35 +3117,37 @@ export default function CryptoAI() {
             <div className={`space-y-4 ${activeTab === 'alerts' ? 'block' : 'hidden'}`}>
             {/* Analyze Button */}
             <Card className="bg-[#1a1a1a] border-[#2a2e39] p-4">
-              <div className="flex items-center justify-between gap-4">
-                <img src={grokLogo} alt="Grok" className="h-8 brightness-110" />
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <img src={grokLogo} alt="Grok" className="h-8 brightness-110 hidden sm:block" />
+                <div className="flex flex-wrap items-center justify-center gap-2 w-full sm:w-auto sm:ml-auto">
                   {/* View Last Analysis button - shows cached analysis without using credits */}
                   {cachedAnalysis?.cached && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (
                     <Button
                       onClick={loadCachedAnalysis}
                       variant="outline"
+                      size="sm"
                       className="border-[#2a2e39] text-gray-300 hover:bg-[#252525] hover:text-white"
                       data-testid="button-view-last-analysis"
                     >
-                      <RefreshCw className="w-4 h-4 mr-2" />
+                      <RefreshCw className="w-4 h-4 mr-1" />
                       View Last
                     </Button>
                   )}
                   <Button
                     onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeTrades()}
                     disabled={analyzing || analyzingMultiTF || data.length === 0}
+                    size="sm"
                     className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white disabled:opacity-50"
                     data-testid="button-analyze-trades"
                   >
                     {analyzing ? (
                       <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                         Analyzing...
                       </>
                     ) : (
                       <>
-                        <Zap className="w-4 h-4 mr-2" />
+                        <Zap className="w-4 h-4 mr-1" />
                         Analyze
                       </>
                     )}
@@ -3153,18 +3155,19 @@ export default function CryptoAI() {
                   <Button
                     onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeMultiTF()}
                     disabled={analyzing || analyzingMultiTF}
+                    size="sm"
                     className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white disabled:opacity-50"
                     data-testid="button-multi-tf-analysis"
                     title="Analyze 15m, 1h, 4h timeframes together"
                   >
                     {analyzingMultiTF ? (
                       <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                         Multi-TF...
                       </>
                     ) : (
                       <>
-                        <Layers className="w-4 h-4 mr-2" />
+                        <Layers className="w-4 h-4 mr-1" />
                         Multi-TF
                       </>
                     )}
@@ -3202,7 +3205,8 @@ export default function CryptoAI() {
             {/* AI Analysis Report - Shows when analysis is complete or market insights available */}
             {(tradeAlerts.length > 0 || marketInsights) && (
               <div className="space-y-3">
-                {/* 1. AI Summary Report - Grok's Combined Analysis */}
+                {/* 1. AI Summary Report - Grok's Combined Analysis - HIDE if Multi-TF insights present */}
+                {!multiTFInsights && (
                 <Card className="bg-[#1a1a1a] border-[#2a2e39]">
                   <Collapsible open={aiSummaryOpen} onOpenChange={setAiSummaryOpen}>
                     <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
@@ -3254,6 +3258,7 @@ export default function CryptoAI() {
                     </CollapsibleContent>
                   </Collapsible>
                 </Card>
+                )}
 
                 {/* Multi-Timeframe Insights - Shows when multi-TF analysis is complete */}
                 {multiTFInsights && (
@@ -3528,12 +3533,15 @@ export default function CryptoAI() {
                         {tradeAlerts.length > 0 ? (
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {tradeAlerts.map((alert, idx) => {
-                              const entry = parseFloat(alert.entry);
-                              const stopLoss = parseFloat(alert.stopLoss);
-                              const firstTarget = parseFloat(alert.targets[0]);
-                              const risk = alert.direction === 'LONG' ? entry - stopLoss : stopLoss - entry;
-                              const reward = alert.direction === 'LONG' ? firstTarget - entry : entry - firstTarget;
-                              const rrRatio = risk > 0 ? (reward / risk).toFixed(2) : '0';
+                              const entry = parseFloat(alert.entry) || 0;
+                              const stopLoss = parseFloat(alert.stopLoss) || 0;
+                              const firstTargetStr = typeof alert.targets[0] === 'string' 
+                                ? alert.targets[0].replace(/[^0-9.]/g, '') 
+                                : String(alert.targets[0]);
+                              const firstTarget = parseFloat(firstTargetStr) || entry;
+                              const risk = Math.abs(alert.direction === 'LONG' ? entry - stopLoss : stopLoss - entry);
+                              const reward = Math.abs(alert.direction === 'LONG' ? firstTarget - entry : entry - firstTarget);
+                              const rrRatio = risk > 0 && reward > 0 ? (reward / risk).toFixed(1) : '0';
                               const rrRatioNum = parseFloat(rrRatio);
                               const rrColors = getRRColor(rrRatioNum);
                               
@@ -3650,7 +3658,10 @@ export default function CryptoAI() {
                       const entryPrice = parseFloat(trade.entry);
                       const slPrice = parseFloat(trade.stopLoss);
                       const tp1Price = parseFloat(trade.targets[0]);
-                      const currentPrice = data.length > 0 ? data[data.length - 1].close : entryPrice;
+                      
+                      // Only use current chart price if viewing the same symbol
+                      const isMatchingSymbol = trade.symbol === symbol;
+                      const currentPrice = isMatchingSymbol && data.length > 0 ? data[data.length - 1].close : entryPrice;
                       
                       let profitPercent = 0;
                       let statusLabel = 'Waiting';
@@ -3680,10 +3691,13 @@ export default function CryptoAI() {
                         statusLabel = 'In Trade';
                         statusColor = 'text-cyan-400';
                         statusBg = 'bg-cyan-500/20';
-                        showPL = true;
-                        profitPercent = trade.direction === 'LONG' 
-                          ? ((currentPrice - entryPrice) / entryPrice) * 100
-                          : ((entryPrice - currentPrice) / entryPrice) * 100;
+                        // Only show live P/L if viewing matching symbol
+                        showPL = isMatchingSymbol;
+                        if (isMatchingSymbol) {
+                          profitPercent = trade.direction === 'LONG' 
+                            ? ((currentPrice - entryPrice) / entryPrice) * 100
+                            : ((entryPrice - currentPrice) / entryPrice) * 100;
+                        }
                       } else if (trade.status === 'pending') {
                         statusLabel = 'Waiting';
                         statusColor = 'text-yellow-400';
