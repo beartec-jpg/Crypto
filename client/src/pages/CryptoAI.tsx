@@ -3663,9 +3663,10 @@ export default function CryptoAI() {
                         {trackedTradesData?.length || 0} total
                       </span>
                     </div>
-                    {/* Win/Loss Stats with Total P/L */}
+                    {/* Win/Loss Stats with Total P/L - Always show */}
                     {trackedTradesData && trackedTradesData.length > 0 && (() => {
                       const completed = trackedTradesData.filter(t => t.status === 'sl_hit' || t.status === 'tp_hit');
+                      const inTrade = trackedTradesData.filter(t => t.status === 'entry_hit').length;
                       const wins = completed.filter(t => t.status === 'tp_hit').length;
                       const losses = completed.filter(t => t.status === 'sl_hit').length;
                       const winRate = completed.length > 0 ? ((wins / completed.length) * 100).toFixed(0) : '0';
@@ -3680,18 +3681,23 @@ export default function CryptoAI() {
                         return sum + pl;
                       }, 0);
                       
-                      return completed.length > 0 ? (
-                        <div className="flex items-center gap-3 text-sm">
+                      return (
+                        <div className="flex items-center gap-2 text-sm flex-wrap">
                           <span className="text-green-400 font-semibold">{wins}W</span>
                           <span className="text-red-400 font-semibold">{losses}L</span>
-                          <div className={`px-2 py-1 rounded text-xs font-bold ${Number(winRate) >= 50 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                            {winRate}% WR
-                          </div>
-                          <div className={`px-2 py-1 rounded text-xs font-bold ${totalPL >= 0 ? 'bg-green-500/30 text-green-300 border border-green-500/50' : 'bg-red-500/30 text-red-300 border border-red-500/50'}`}>
-                            {totalPL >= 0 ? '+' : ''}{totalPL.toFixed(2)}% Total
-                          </div>
+                          {inTrade > 0 && <span className="text-cyan-400 font-semibold">{inTrade} Active</span>}
+                          {completed.length > 0 && (
+                            <>
+                              <div className={`px-2 py-1 rounded text-xs font-bold ${Number(winRate) >= 50 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                {winRate}% WR
+                              </div>
+                              <div className={`px-2 py-1 rounded text-xs font-bold ${totalPL >= 0 ? 'bg-green-500/30 text-green-300 border border-green-500/50' : 'bg-red-500/30 text-red-300 border border-red-500/50'}`}>
+                                {totalPL >= 0 ? '+' : ''}{totalPL.toFixed(2)}% Total
+                              </div>
+                            </>
+                          )}
                         </div>
-                      ) : null;
+                      );
                     })()}
                   </div>
                   
@@ -3928,59 +3934,6 @@ export default function CryptoAI() {
               </Collapsible>
             </Card>
 
-            {/* Trading Rules Reference */}
-            <Card className="bg-[#1a1a1a] border-[#2a2e39] p-4">
-              <div className="text-xs text-gray-500 space-y-2">
-                <div className="font-semibold text-gray-400 text-sm mb-2">Advanced Confluence Analysis Rules:</div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-[#00ff9d] font-medium mb-2">Long Entry Signals (9 total):</div>
-                    <ul className="list-disc list-inside space-y-0.5 text-[11px]">
-                      <li>Price mitigates bearish Order Block + bounces</li>
-                      <li>Price mitigates bullish FVG + holds as support</li>
-                      <li>Bullish hidden divergence (CVD rising, price lower lows)</li>
-                      <li>CVD trending higher (bullish delta)</li>
-                      <li>Price above POC/VAL + absorption at low volume</li>
-                      <li>Buy volume imbalance zone below (support)</li>
-                      <li>Liquidity grab below lows + bullish reversal</li>
-                      <li>Price rejection from VAL with strong bull candle</li>
-                      <li>Bullish absorption (large buy delta, weak price move)</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <div className="text-[#ff3b69] font-medium mb-2">Short Entry Signals (9 total):</div>
-                    <ul className="list-disc list-inside space-y-0.5 text-[11px]">
-                      <li>Price mitigates bullish Order Block + rejects</li>
-                      <li>Price mitigates bearish FVG + acts as resistance</li>
-                      <li>Bearish hidden divergence (CVD falling, price higher highs)</li>
-                      <li>CVD trending lower (bearish delta)</li>
-                      <li>Price below POC/VAH + absorption at high volume</li>
-                      <li>Sell volume imbalance zone above (resistance)</li>
-                      <li>Liquidity grab above highs + bearish reversal</li>
-                      <li>Price rejection from VAH with strong bear candle</li>
-                      <li>Bearish absorption (large sell delta, weak price move)</li>
-                    </ul>
-                  </div>
-                </div>
-                <div className="mt-3 pt-2 border-t border-[#2a2e39]">
-                  <div className="font-medium text-gray-400 mb-1">Grading System:</div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    <span className="px-2 py-0.5 bg-gradient-to-r from-yellow-400 to-amber-500 text-black rounded font-bold text-[11px]">A+</span>
-                    <span className="text-[11px]">7-9 signals (institutional-grade, rare)</span>
-                    <span className="px-2 py-0.5 bg-emerald-500 text-black rounded font-semibold text-[11px]">A</span>
-                    <span className="text-[11px]">6 signals</span>
-                    <span className="px-2 py-0.5 bg-blue-500 text-white rounded font-semibold text-[11px]">B</span>
-                    <span className="text-[11px]">5 signals</span>
-                    <span className="px-2 py-0.5 bg-yellow-500 text-black rounded font-semibold text-[11px]">C</span>
-                    <span className="text-[11px]">3-4 signals</span>
-                    <span className="px-2 py-0.5 bg-orange-500 text-white rounded font-semibold text-[11px]">D</span>
-                    <span className="text-[11px]">2 signals</span>
-                    <span className="px-2 py-0.5 bg-red-500 text-white rounded font-semibold text-[11px]">E</span>
-                    <span className="text-[11px]">≤1 signal</span>
-                  </div>
-                </div>
-              </div>
-            </Card>
             </div>
           </div>
         </div>
