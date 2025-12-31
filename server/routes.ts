@@ -3877,6 +3877,20 @@ Respond with ONLY valid JSON in this exact format:
         parsedResult = { multiTFInsights: null, bestTrades: [] };
       }
 
+      // Save Multi-TF analysis to cache
+      try {
+        await cryptoSubscriptionService.saveCachedMultiTFAnalysis(
+          userId,
+          symbol,
+          parsedResult.multiTFInsights,
+          parsedResult.bestTrades || [],
+          parsedResult.confluence || ''
+        );
+        console.log('💾 Multi-TF analysis cached for', symbol);
+      } catch (cacheError) {
+        console.error('Failed to cache multi-TF analysis:', cacheError);
+      }
+
       res.json({
         success: true,
         multiTFInsights: parsedResult.multiTFInsights,
@@ -4680,6 +4694,28 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
       res.json({ cached });
     } catch (error: any) {
       console.error('Error fetching cached AI analysis:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get cached Multi-TF analysis (without using credits)
+  app.get("/api/crypto/ai-analysis/cached-multi-tf", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { symbol } = req.query;
+
+      if (!symbol) {
+        return res.status(400).json({ error: 'Missing required query param: symbol' });
+      }
+
+      const cached = await cryptoSubscriptionService.getCachedMultiTFAnalysis(
+        userId,
+        symbol as string
+      );
+
+      res.json({ cached });
+    } catch (error: any) {
+      console.error('Error fetching cached Multi-TF analysis:', error);
       res.status(500).json({ error: error.message });
     }
   });

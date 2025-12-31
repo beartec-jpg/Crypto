@@ -251,6 +251,24 @@ export default function CryptoAI() {
     staleTime: 60000, // Cache for 1 minute
   });
 
+  // Cached Multi-TF analysis query - allows viewing previous multi-TF analysis without credits
+  const { data: cachedMultiTF, refetch: refetchCachedMultiTF } = useQuery<{
+    cached: { multiTFInsights: any; bestTrades: any[]; confluence: string; updatedAt: string } | null;
+  }>({
+    queryKey: ['/api/crypto/ai-analysis/cached-multi-tf', symbol],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) return { cached: null };
+      const res = await fetch(`/api/crypto/ai-analysis/cached-multi-tf?symbol=${symbol}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return { cached: null };
+      return res.json();
+    },
+    enabled: isAuthenticated && !authLoading && (tier === 'intermediate' || tier === 'pro' || tier === 'elite'),
+    staleTime: 60000,
+  });
+
   // === Helper: Calculate ATR (Average True Range) - Returns Array ===
   const calculateATR = useCallback((bars: Bar[], period = 14): number[] => {
     const tr: number[] = [];
@@ -1184,6 +1202,21 @@ export default function CryptoAI() {
       });
     }
   }, [cachedAnalysis, toast, getTimeAgoString]);
+
+  // Load cached Multi-TF analysis
+  const loadCachedMultiTF = useCallback(() => {
+    if (cachedMultiTF?.cached) {
+      setMultiTFInsights(cachedMultiTF.cached.multiTFInsights);
+      if (cachedMultiTF.cached.bestTrades?.length > 0) {
+        setTradeAlerts(cachedMultiTF.cached.bestTrades);
+      }
+      toast({
+        title: "Previous Multi-TF analysis loaded",
+        description: `Last updated: ${getTimeAgoString(cachedMultiTF.cached.updatedAt)}`,
+        duration: 3000,
+      });
+    }
+  }, [cachedMultiTF, toast, getTimeAgoString]);
 
   // === Analyze Trades with Grok API ===
   const analyzeTrades = useCallback(async () => {
@@ -3213,15 +3246,9 @@ export default function CryptoAI() {
                 </Button>
                 
                 {/* Small reload icon for multi-TF - right side */}
-                {multiTFInsights && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (
+                {cachedMultiTF?.cached && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (
                   <Button
-                    onClick={() => {
-                      toast({
-                        title: "Multi-TF Results Loaded",
-                        description: "Showing your last Multi-TF analysis",
-                        duration: 2000,
-                      });
-                    }}
+                    onClick={loadCachedMultiTF}
                     variant="outline"
                     size="icon"
                     className="border-[#2a2e39] text-gray-300 hover:bg-[#252525] hover:text-white h-9 w-9"

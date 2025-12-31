@@ -437,6 +437,76 @@ export class CryptoSubscriptionService {
       updatedAt: analysis.updatedAt,
     };
   }
+
+  // Save cached Multi-TF analysis
+  async saveCachedMultiTFAnalysis(
+    userId: string,
+    symbol: string,
+    multiTFInsights: any,
+    tradeAlerts: any[],
+    confluence: string
+  ): Promise<void> {
+    const existing = await db
+      .select()
+      .from(cryptoAiAnalyses)
+      .where(
+        and(
+          eq(cryptoAiAnalyses.userId, userId),
+          eq(cryptoAiAnalyses.symbol, symbol),
+          eq(cryptoAiAnalyses.interval, 'multi-tf')
+        )
+      )
+      .limit(1);
+
+    const analysisData = { multiTFInsights, tradeAlerts, confluence };
+
+    if (existing.length > 0) {
+      await db
+        .update(cryptoAiAnalyses)
+        .set({
+          alerts: tradeAlerts,
+          marketInsights: analysisData,
+          updatedAt: new Date(),
+        })
+        .where(eq(cryptoAiAnalyses.id, existing[0].id));
+    } else {
+      await db.insert(cryptoAiAnalyses).values({
+        userId,
+        symbol,
+        interval: 'multi-tf',
+        alerts: tradeAlerts,
+        marketInsights: analysisData,
+      });
+    }
+  }
+
+  // Get cached Multi-TF analysis
+  async getCachedMultiTFAnalysis(
+    userId: string,
+    symbol: string
+  ): Promise<{ multiTFInsights: any; tradeAlerts: any[]; confluence: string; updatedAt: Date | null } | null> {
+    const [analysis] = await db
+      .select()
+      .from(cryptoAiAnalyses)
+      .where(
+        and(
+          eq(cryptoAiAnalyses.userId, userId),
+          eq(cryptoAiAnalyses.symbol, symbol),
+          eq(cryptoAiAnalyses.interval, 'multi-tf')
+        )
+      )
+      .limit(1);
+
+    if (!analysis) return null;
+
+    const data = analysis.marketInsights as any || {};
+    return {
+      multiTFInsights: data.multiTFInsights || null,
+      tradeAlerts: data.tradeAlerts || [],
+      confluence: data.confluence || '',
+      updatedAt: analysis.updatedAt,
+    };
+  }
 }
 
 export const cryptoSubscriptionService = new CryptoSubscriptionService();
