@@ -3752,16 +3752,28 @@ Be concise and direct.`;
       // Analyze professional orderflow data (OI, Funding, L/S Ratio)
       let oiTrend = 'N/A', oiDelta = 0, fundingValue = 0, fundingBias = 'neutral', lsRatio = 1.0;
       if (orderflowData) {
-        if (orderflowData.openInterest?.delta !== undefined) {
-          oiDelta = orderflowData.openInterest.delta;
-          oiTrend = orderflowData.openInterest.trend || 'neutral';
+        // OI: compute delta/trend from history array
+        if (orderflowData.openInterest?.history?.length > 1) {
+          const oiHistory = orderflowData.openInterest.history;
+          const latestOI = oiHistory[oiHistory.length - 1]?.value || 0;
+          const prevOI = oiHistory[Math.max(0, oiHistory.length - 6)]?.value || latestOI; // Compare to ~24h ago
+          if (prevOI > 0) {
+            oiDelta = ((latestOI - prevOI) / prevOI) * 100;
+            oiTrend = oiDelta > 0.5 ? 'rising' : oiDelta < -0.5 ? 'falling' : 'neutral';
+          }
         }
-        if (orderflowData.fundingRate?.rate !== undefined) {
-          fundingValue = orderflowData.fundingRate.rate;
-          fundingBias = orderflowData.fundingRate.bias || 'neutral';
+        // Funding: extract from history or current
+        if (orderflowData.fundingRate?.history?.length > 0) {
+          const fundHistory = orderflowData.fundingRate.history;
+          fundingValue = fundHistory[fundHistory.length - 1]?.value || 0;
+          fundingBias = fundingValue > 0.01 ? 'bullish (longs pay)' : fundingValue < -0.01 ? 'bearish (shorts pay)' : 'neutral';
         }
-        if (orderflowData.longShortRatio?.ratio !== undefined) {
-          lsRatio = orderflowData.longShortRatio.ratio;
+        // L/S Ratio: extract from current object
+        if (orderflowData.longShortRatio?.current?.ratio !== undefined) {
+          lsRatio = orderflowData.longShortRatio.current.ratio;
+        } else if (orderflowData.longShortRatio?.history?.length > 0) {
+          const lsHistory = orderflowData.longShortRatio.history;
+          lsRatio = lsHistory[lsHistory.length - 1]?.ratio || 1.0;
         }
       }
       
