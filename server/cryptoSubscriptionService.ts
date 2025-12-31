@@ -415,7 +415,7 @@ export class CryptoSubscriptionService {
     userId: string,
     symbol: string,
     interval: string
-  ): Promise<{ alerts: any[]; marketInsights: any; orderflowData: any; updatedAt: Date | null } | null> {
+  ): Promise<{ alerts: any[]; marketInsights: any; indicatorData: any; updatedAt: Date | null } | null> {
     const [analysis] = await db
       .select()
       .from(cryptoAiAnalyses)
@@ -433,7 +433,7 @@ export class CryptoSubscriptionService {
     return {
       alerts: analysis.alerts as any[] || [],
       marketInsights: analysis.marketInsights,
-      orderflowData: analysis.orderflowData,
+      indicatorData: analysis.orderflowData, // orderflowData column now stores indicatorData
       updatedAt: analysis.updatedAt,
     };
   }

@@ -3974,6 +3974,46 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
       console.log(`📊 Tokens: ${inputTokens} in, ${outputTokens} out`);
       console.log(`🎯 Alerts generated: ${result.alerts?.length || 0}`);
 
+      // Build indicatorData object for caching
+      const indicatorDataForCache = {
+        // Market Data
+        price: currentPrice,
+        lastBar: { open: lastBar.open, high: lastBar.high, low: lastBar.low, close: lastBar.close },
+        priceChange,
+        swingHighs: swings.swingHighs.slice(-3),
+        swingLows: swings.swingLows.slice(-3),
+        volumeProfile: { poc, vah, val },
+        cvd: { value: cvd, trend: cvdTrend },
+        obv: { value: obv.obv, divergence: obv.divergence },
+        // Oscillators & Momentum
+        rsi: { value: rsi, label: rsiLabel },
+        macd: { histogram: macd.histogram, crossover: macd.crossover, divergence: macd.divergence, momentum: macdMomentum },
+        cci: { value: cci, label: cci > 100 ? 'OVERBOUGHT' : cci < -100 ? 'OVERSOLD' : 'neutral' },
+        stochastic: { k: stoch.k, d: stoch.d, crossover: stoch.crossover, label: stochLabel },
+        mfi: { value: mfi.mfi, label: mfiLabel, divergence: mfi.divergence },
+        cmf: { value: cmf.cmf, label: cmf.label },
+        // Trend & Volatility
+        adx: { value: adx, label: adx > 25 ? 'STRONG TREND' : adx < 20 ? 'weak' : 'moderate' },
+        diPlusMinus: { plusDI, minusDI, momentum: plusDI > minusDI ? 'bullish' : 'bearish' },
+        atr: { value: atr },
+        bollingerBands: { middle: bb.middle, upper: bb.upper, lower: bb.lower, bandwidth: bb.bandwidth, squeeze: bb.squeeze },
+        vwap: { value: vwapCalc.vwap, label: vwapCalc.label },
+        // SMC/ICT Structure
+        bos: boschoch.bos,
+        choch: boschoch.choch,
+        displacement: { active: displacement.displacement, direction: displacement.direction },
+        // Orderflow Counts
+        orderBlocks: { bullish: bullishOBCount || 0, bearish: bearishOBCount || 0 },
+        fvgs: { bullish: bullFVGCount || 0, bearish: bearFVGCount || 0 },
+        imbalances: { buy: buyImbalancesCount || 0, sell: sellImbalancesCount || 0 },
+        absorption: absorptionCount || 0,
+        liquidityGrabs: liquidityGrabCount || 0,
+        // Institutional
+        openInterest: { trend: oiTrend, delta: oiDelta },
+        fundingRate: { value: fundingValue, bias: fundingBias },
+        longShortRatio: { value: lsRatio, label: lsRatio > 1.2 ? 'longs dominant' : lsRatio < 0.8 ? 'shorts dominant' : 'balanced' }
+      };
+
       // Save analysis to cache for later retrieval
       try {
         await cryptoSubscriptionService.saveAiAnalysis(
@@ -3982,7 +4022,7 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
           interval,
           result.alerts || [],
           result.marketInsights || null,
-          orderflowData || null
+          indicatorDataForCache
         );
         console.log(`💾 AI analysis cached for ${symbol}/${interval}`);
       } catch (cacheError) {
@@ -4028,45 +4068,7 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
         dailyLimit: usageStatus.limit,
         remainingToday: usageStatus.remainingToday,
         creditsRemaining: usageStatus.creditsRemaining,
-        // All calculated indicator data for frontend display
-        indicatorData: {
-          // Market Data
-          price: currentPrice,
-          lastBar: { open: lastBar.open, high: lastBar.high, low: lastBar.low, close: lastBar.close },
-          priceChange,
-          swingHighs: swings.swingHighs.slice(-3),
-          swingLows: swings.swingLows.slice(-3),
-          volumeProfile: { poc, vah, val },
-          cvd: { value: cvd, trend: cvdTrend },
-          obv: { value: obv.obv, divergence: obv.divergence },
-          // Oscillators & Momentum
-          rsi: { value: rsi, label: rsiLabel },
-          macd: { histogram: macd.histogram, crossover: macd.crossover, divergence: macd.divergence, momentum: macdMomentum },
-          cci: { value: cci, label: cci > 100 ? 'OVERBOUGHT' : cci < -100 ? 'OVERSOLD' : 'neutral' },
-          stochastic: { k: stoch.k, d: stoch.d, crossover: stoch.crossover, label: stochLabel },
-          mfi: { value: mfi.mfi, label: mfiLabel, divergence: mfi.divergence },
-          cmf: { value: cmf.cmf, label: cmf.label },
-          // Trend & Volatility
-          adx: { value: adx, label: adx > 25 ? 'STRONG TREND' : adx < 20 ? 'weak' : 'moderate' },
-          diPlusMinus: { plusDI, minusDI, momentum: plusDI > minusDI ? 'bullish' : 'bearish' },
-          atr: { value: atr },
-          bollingerBands: { middle: bb.middle, upper: bb.upper, lower: bb.lower, bandwidth: bb.bandwidth, squeeze: bb.squeeze },
-          vwap: { value: vwapCalc.vwap, label: vwapCalc.label },
-          // SMC/ICT Structure
-          bos: boschoch.bos,
-          choch: boschoch.choch,
-          displacement: { active: displacement.displacement, direction: displacement.direction },
-          // Orderflow Counts
-          orderBlocks: { bullish: bullishOBCount || 0, bearish: bearishOBCount || 0 },
-          fvgs: { bullish: bullFVGCount || 0, bearish: bearFVGCount || 0 },
-          imbalances: { buy: buyImbalancesCount || 0, sell: sellImbalancesCount || 0 },
-          absorption: absorptionCount || 0,
-          liquidityGrabs: liquidityGrabCount || 0,
-          // Institutional
-          openInterest: { trend: oiTrend, delta: oiDelta },
-          fundingRate: { value: fundingValue, bias: fundingBias },
-          longShortRatio: { value: lsRatio, label: lsRatio > 1.2 ? 'longs dominant' : lsRatio < 0.8 ? 'shorts dominant' : 'balanced' }
-        }
+        indicatorData: indicatorDataForCache
       });
     } catch (error: any) {
       console.error('❌ Error generating order flow alerts:', error);

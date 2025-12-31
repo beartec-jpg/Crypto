@@ -189,7 +189,7 @@ export default function CryptoAI() {
 
   // Cached AI analysis query - allows viewing previous analysis without credits
   const { data: cachedAnalysis, refetch: refetchCachedAnalysis } = useQuery<{
-    cached: { alerts: any[]; marketInsights: any; orderflowData: any; updatedAt: string } | null;
+    cached: { alerts: any[]; marketInsights: any; indicatorData: any; updatedAt: string } | null;
   }>({
     queryKey: ['/api/crypto/ai-analysis/cached', symbol, alertTimeframe],
     queryFn: async () => {
@@ -1021,6 +1021,10 @@ export default function CryptoAI() {
     if (cachedAnalysis?.cached) {
       setTradeAlerts(cachedAnalysis.cached.alerts || []);
       setMarketInsights(cachedAnalysis.cached.marketInsights || null);
+      // Also restore indicatorData to show "Data Sent to Grok" section
+      if (cachedAnalysis.cached.indicatorData) {
+        setIndicatorData(cachedAnalysis.cached.indicatorData);
+      }
       toast({
         title: "Previous analysis loaded",
         description: `Last updated: ${getTimeAgoString(cachedAnalysis.cached.updatedAt)}`,
@@ -1046,6 +1050,10 @@ export default function CryptoAI() {
         // Show cached results and warning toast
         setTradeAlerts(cachedAnalysis.cached.alerts || []);
         setMarketInsights(cachedAnalysis.cached.marketInsights || null);
+        // Also restore indicatorData for cached timeout path
+        if (cachedAnalysis.cached.indicatorData) {
+          setIndicatorData(cachedAnalysis.cached.indicatorData);
+        }
         
         toast({
           title: "Analysis recently updated",
