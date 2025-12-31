@@ -1509,7 +1509,7 @@ export default function CryptoAI() {
         },
         body: JSON.stringify({
           symbol,
-          timeframes: ['15m', '1h', '4h'],
+          timeframes: ['5m', '15m', '1h', '4h'],
         }),
       });
 
@@ -1552,7 +1552,7 @@ export default function CryptoAI() {
 
       toast({
         title: "Multi-TF Analysis Complete",
-        description: `Analyzed ${symbol} across 15m, 1h, and 4h timeframes`,
+        description: `Analyzed ${symbol} across 5m, 15m, 1h, and 4h timeframes`,
         duration: 5000,
       });
     } catch (error) {
@@ -3255,7 +3255,7 @@ export default function CryptoAI() {
                   disabled={analyzing || analyzingMultiTF}
                   className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white disabled:opacity-50 px-4 py-2"
                   data-testid="button-multi-tf-analysis"
-                  title="Analyze 15m, 1h, 4h timeframes together"
+                  title="Analyze 5m, 15m, 1h, 4h timeframes together"
                 >
                   {analyzingMultiTF ? (
                     <>
@@ -3383,15 +3383,15 @@ export default function CryptoAI() {
                         <div className="flex items-center gap-2">
                           <Layers className="w-5 h-5 text-emerald-400" />
                           <h3 className="text-lg font-semibold text-white">Multi-Timeframe Analysis</h3>
-                          <span className="text-xs text-gray-500 ml-2">15m • 1h • 4h</span>
+                          <span className="text-xs text-gray-500 ml-2">5m • 15m • 1h • 4h</span>
                         </div>
                         <ChevronDown className="w-5 h-5 text-gray-400" />
                       </CollapsibleTrigger>
                       <CollapsibleContent>
                         <div className="px-4 pb-4 space-y-3">
                           {/* Per-TF Breakdown */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            {(['15m', '1h', '4h'] as const).map((tf) => (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                            {(['5m', '15m', '1h', '4h'] as const).map((tf) => (
                               multiTFInsights[tf] && (
                                 <div key={tf} className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
                                   <div className="flex items-center justify-between mb-2">

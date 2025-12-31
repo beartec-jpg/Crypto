@@ -3714,7 +3714,7 @@ Be concise and direct.`;
         });
       }
 
-      const { symbol, timeframes = ['15m', '1h', '4h'] } = req.body;
+      const { symbol, timeframes = ['5m', '15m', '1h', '4h'] } = req.body;
       if (!symbol) {
         return res.status(400).json({ error: 'Symbol is required' });
       }
@@ -3737,7 +3737,8 @@ Be concise and direct.`;
         }));
       };
 
-      const [bars15m, bars1h, bars4h] = await Promise.all([
+      const [bars5m, bars15m, bars1h, bars4h] = await Promise.all([
+        fetchBarsForTF('5m'),
         fetchBarsForTF('15m'),
         fetchBarsForTF('1h'),
         fetchBarsForTF('4h')
@@ -3784,13 +3785,22 @@ Be concise and direct.`;
         };
       };
 
+      const data5m = computeIndicators(bars5m);
       const data15m = computeIndicators(bars15m);
       const data1h = computeIndicators(bars1h);
       const data4h = computeIndicators(bars4h);
 
       // Build multi-TF prompt for Grok
-      const prompt = `Symbol: ${symbol} | Multi-Timeframe Analysis (15m, 1h, 4h)
-You are analyzing this asset across 3 timeframes to find trades with cross-timeframe confluence.
+      const prompt = `Symbol: ${symbol} | Multi-Timeframe Analysis (5m, 15m, 1h, 4h)
+You are analyzing this asset across 4 timeframes to find trades with cross-timeframe confluence.
+
+**5-Minute Data (Scalp/Entry timing, 15min-1h trades):**
+- Price: $${data5m.currentPrice}, RSI: ${data5m.rsi}, MACD Histogram: ${data5m.macd.histogram}${data5m.macd.crossover !== 'none' ? ` (${data5m.macd.crossover})` : ''}
+- Stochastic: %K ${data5m.stoch.k}, %D ${data5m.stoch.d}${data5m.stoch.crossover !== 'none' ? ` (${data5m.stoch.crossover})` : ''}
+- ADX: ${data5m.adx}, ATR: ${data5m.atr}, BB Squeeze: ${data5m.bb.squeeze ? 'YES' : 'No'}
+- VWAP: $${data5m.vwap}, OBV: ${data5m.obv}
+- Structure: ${data5m.bos} BOS, ${data5m.choch} CHoCH
+- Range: High $${data5m.recentHigh}, Low $${data5m.recentLow}
 
 **15-Minute Data (Short-term, 1-4h trades):**
 - Price: $${data15m.currentPrice}, RSI: ${data15m.rsi}, MACD Histogram: ${data15m.macd.histogram}${data15m.macd.crossover !== 'none' ? ` (${data15m.macd.crossover})` : ''}
@@ -3825,6 +3835,7 @@ You are analyzing this asset across 3 timeframes to find trades with cross-timef
 Respond with ONLY valid JSON in this exact format:
 {
   "multiTFInsights": {
+    "5m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
     "15m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
     "1h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
     "4h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
