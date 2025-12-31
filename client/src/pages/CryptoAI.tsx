@@ -1093,20 +1093,6 @@ export default function CryptoAI() {
     console.log(`📊 Fetching data for ${symbol} at ${interval} interval... (attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
     setLoading(true);
     try {
-      // Delete all pending/active trades for this symbol before refreshing
-      console.log(`🧹 Clearing pending trades for ${symbol}...`);
-      const deleteResponse = await fetch(`/api/crypto/tracked-trades/clear/${symbol}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      
-      if (deleteResponse.ok) {
-        const result = await deleteResponse.json();
-        console.log(`✅ Cleared ${result.deletedCount} pending trades`);
-        // Invalidate tracked trades cache to update UI
-        queryClient.invalidateQueries({ queryKey: ['/api/crypto/tracked-trades'] });
-      }
-      
       const response = await fetch(`/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000`);
       if (!response.ok) throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
       
