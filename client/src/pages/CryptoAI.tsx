@@ -83,6 +83,8 @@ const INTERVALS = [
   { label: '4h', value: '4h' },
 ];
 
+const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT', 'ADAUSDT'];
+
 export default function CryptoAI() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
