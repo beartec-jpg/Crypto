@@ -3179,37 +3179,6 @@ export default function CryptoAI() {
               </Collapsible>
             </div>
 
-            {/* Legend */}
-            <div className="text-sm text-gray-400 space-y-1">
-              <div className="flex gap-6 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#ffa726]"></div>
-                  <span>CVD (Cumulative Volume Delta) - Buy/Sell Pressure</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#ffd700]"></div>
-                  <span>POC (Point of Control) - Highest Volume Price</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#4caf50]"></div>
-                  <span>VAH (Value Area High) - 70% Volume Upper Bound</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#f44336]"></div>
-                  <span>VAL (Value Area Low) - 70% Volume Lower Bound</span>
-                </div>
-              </div>
-              <div className="flex gap-6 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-b-[8px] border-l-transparent border-r-transparent border-b-[#00ff9d]"></div>
-                  <span>Bullish Order Block - Smart Money Support</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-[#ff3b69]"></div>
-                  <span>Bearish Order Block - Smart Money Resistance</span>
-                </div>
-              </div>
-            </div>
             </div>
 
             {/* AI Alerts Panel */}
@@ -4016,6 +3985,42 @@ export default function CryptoAI() {
           </div>
         </div>
       </div>
+
+        {/* Disclaimer Section */}
+        <div className="max-w-4xl mx-auto px-4 pb-6 text-center">
+          <div className="bg-gray-900/40 border border-gray-800 rounded-lg p-4">
+            <p className="text-xs text-gray-500 mb-3">
+              <strong className="text-gray-400">Disclaimer:</strong> This platform is for educational and informational purposes only. 
+              We do not provide financial, investment, or trading advice. All trading involves risk, and you should conduct your own 
+              research before making any investment decisions. Past performance does not guarantee future results.
+            </p>
+            <div className="flex items-center justify-center gap-4 text-xs text-gray-600">
+              <a 
+                href="/privacy" 
+                className="hover:text-blue-400 transition-colors"
+                data-testid="link-privacy-policy"
+              >
+                Privacy Policy
+              </a>
+              <span className="text-gray-700">•</span>
+              <a 
+                href="/terms" 
+                className="hover:text-blue-400 transition-colors"
+                data-testid="link-terms-of-service"
+              >
+                Terms of Service
+              </a>
+              <span className="text-gray-700">•</span>
+              <a 
+                href="mailto:support@beartec.io" 
+                className="hover:text-blue-400 transition-colors"
+                data-testid="link-contact"
+              >
+                Contact Us
+              </a>
+            </div>
+          </div>
+        </div>
       
       {/* Bottom Navigation */}
       <CryptoNavigation />
