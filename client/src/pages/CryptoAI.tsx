@@ -3255,6 +3255,63 @@ export default function CryptoAI() {
                   </Collapsible>
                 </Card>
 
+                {/* Multi-Timeframe Insights - Shows when multi-TF analysis is complete */}
+                {multiTFInsights && (
+                  <Card className="bg-[#1a1a1a] border-[#2a2e39]">
+                    <Collapsible defaultOpen={true}>
+                      <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Layers className="w-5 h-5 text-emerald-400" />
+                          <h3 className="text-lg font-semibold text-white">Multi-Timeframe Analysis</h3>
+                          <span className="text-xs text-gray-500 ml-2">15m • 1h • 4h</span>
+                        </div>
+                        <ChevronDown className="w-5 h-5 text-gray-400" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="px-4 pb-4 space-y-3">
+                          {/* Per-TF Breakdown */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {(['15m', '1h', '4h'] as const).map((tf) => (
+                              multiTFInsights[tf] && (
+                                <div key={tf} className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-semibold text-emerald-400 uppercase">{tf}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                      multiTFInsights[tf]?.bias === 'BULLISH' ? 'bg-green-500/20 text-green-400' :
+                                      multiTFInsights[tf]?.bias === 'BEARISH' ? 'bg-red-500/20 text-red-400' :
+                                      'bg-gray-500/20 text-gray-400'
+                                    }`}>{multiTFInsights[tf]?.bias}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-300 leading-relaxed">{multiTFInsights[tf]?.summary}</p>
+                                  {multiTFInsights[tf]?.keyLevels?.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                      {multiTFInsights[tf].keyLevels.map((level: string, i: number) => (
+                                        <span key={i} className="px-1.5 py-0.5 bg-[#2a2e39] text-[10px] text-[#00c4b4] rounded">{level}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            ))}
+                          </div>
+                          {/* Overall Cross-TF Summary */}
+                          {multiTFInsights.overallSummary && (
+                            <div className="bg-emerald-500/10 border border-emerald-500/30 p-3 rounded-lg">
+                              <div className="flex items-start gap-2">
+                                <Target className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <span className="text-xs font-semibold text-emerald-400">Cross-TF Confluence</span>
+                                  <p className="text-xs text-emerald-300 mt-1">{multiTFInsights.overallSummary}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </Card>
+                )}
+
                 {/* Data Sent to Grok - All Indicators */}
                 {indicatorData && (
                   <Card className="bg-[#1a1a1a] border-[#2a2e39]">
