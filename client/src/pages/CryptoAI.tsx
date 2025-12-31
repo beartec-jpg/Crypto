@@ -1190,6 +1190,8 @@ export default function CryptoAI() {
   // Load cached analysis (no credit used) - allows viewing previous analysis
   const loadCachedAnalysis = useCallback(() => {
     if (cachedAnalysis?.cached) {
+      // Clear Multi-TF insights when loading single-TF
+      setMultiTFInsights(null);
       setTradeAlerts(cachedAnalysis.cached.alerts || []);
       setMarketInsights(cachedAnalysis.cached.marketInsights || null);
       // Also restore indicatorData to show "Data Sent to Grok" section
@@ -1207,6 +1209,8 @@ export default function CryptoAI() {
   // Load cached Multi-TF analysis
   const loadCachedMultiTF = useCallback(() => {
     if (cachedMultiTF?.cached) {
+      // Clear single-TF insights when loading Multi-TF
+      setMarketInsights(null);
       setMultiTFInsights(cachedMultiTF.cached.multiTFInsights);
       if (cachedMultiTF.cached.bestTrades?.length > 0) {
         setTradeAlerts(cachedMultiTF.cached.bestTrades);
@@ -1233,6 +1237,8 @@ export default function CryptoAI() {
         const diffMins = Math.floor((now.getTime() - updatedAt.getTime()) / (1000 * 60));
         const remainingMins = getRemainingCacheTime(cachedAnalysis.cached.updatedAt);
         
+        // Clear Multi-TF insights when showing single-TF analysis
+        setMultiTFInsights(null);
         // Show cached results and warning toast
         setTradeAlerts(cachedAnalysis.cached.alerts || []);
         setMarketInsights(cachedAnalysis.cached.marketInsights || null);
@@ -1475,6 +1481,8 @@ export default function CryptoAI() {
         const diffMins = Math.floor((now.getTime() - updatedAt.getTime()) / (1000 * 60));
         const remainingMins = getRemainingCacheTime(cachedMultiTF.cached.updatedAt);
         
+        // Clear single-TF insights when showing Multi-TF analysis
+        setMarketInsights(null);
         // Show cached results and warning toast
         setMultiTFInsights(cachedMultiTF.cached.multiTFInsights);
         if (cachedMultiTF.cached.bestTrades?.length > 0) {
