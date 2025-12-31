@@ -1462,8 +1462,33 @@ export default function CryptoAI() {
     }
   }, [data, symbol, interval, alertTimeframe, tier, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, detectSwingPivots, calculateRSI, calculateMACD, calculateOBV, calculateMFI, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod, cciPeriod, adxPeriod, refetchSubscription, refetchCachedAnalysis, toast, getToken, cachedAnalysis, isCacheValid, getRemainingCacheTime]);
 
-  // === Multi-Timeframe Analysis (15m, 1h, 4h) ===
+  // === Multi-Timeframe Analysis (15m, 1h, 4h) - Elite only ===
   const analyzeMultiTF = useCallback(async () => {
+    // Check if we have a valid cache (less than 1 hour old)
+    if (cachedMultiTF?.cached?.updatedAt) {
+      const isValid = isCacheValid(cachedMultiTF.cached.updatedAt);
+      
+      if (isValid) {
+        const updatedAt = new Date(cachedMultiTF.cached.updatedAt);
+        const now = new Date();
+        const diffMins = Math.floor((now.getTime() - updatedAt.getTime()) / (1000 * 60));
+        const remainingMins = getRemainingCacheTime(cachedMultiTF.cached.updatedAt);
+        
+        // Show cached results and warning toast
+        setMultiTFInsights(cachedMultiTF.cached.multiTFInsights);
+        if (cachedMultiTF.cached.bestTrades?.length > 0) {
+          setTradeAlerts(cachedMultiTF.cached.bestTrades);
+        }
+        
+        toast({
+          title: "Multi-TF analysis recently updated",
+          description: `Analysis was updated ${diffMins} minute${diffMins !== 1 ? 's' : ''} ago. Please wait ${remainingMins} more minute${remainingMins !== 1 ? 's' : ''} before refreshing.`,
+          duration: 5000,
+        });
+        return;
+      }
+    }
+
     setAnalyzingMultiTF(true);
     try {
       const token = await getToken();
@@ -1494,8 +1519,8 @@ export default function CryptoAI() {
       if (!result.success && result.message) {
         if (result.requireUpgrade) {
           toast({
-            title: "Upgrade Required",
-            description: "Please upgrade to Intermediate tier or higher for AI analysis.",
+            title: "Elite Required",
+            description: "Multi-TF Analysis is an Elite-only feature. Please upgrade to Elite tier.",
             duration: 5000,
           });
           return;
@@ -1523,7 +1548,7 @@ export default function CryptoAI() {
 
       // Refresh subscription to update credits
       refetchSubscription();
-      refetchCachedAnalysis();
+      refetchCachedMultiTF();
 
       toast({
         title: "Multi-TF Analysis Complete",
@@ -1540,7 +1565,7 @@ export default function CryptoAI() {
     } finally {
       setAnalyzingMultiTF(false);
     }
-  }, [symbol, getToken, toast, refetchSubscription, refetchCachedAnalysis]);
+  }, [symbol, getToken, toast, refetchSubscription, refetchCachedMultiTF, cachedMultiTF, isCacheValid, getRemainingCacheTime]);
 
   // Keep ref in sync with latest analyzeTrades callback
   useEffect(() => {
@@ -3224,9 +3249,9 @@ export default function CryptoAI() {
                   )}
                 </Button>
                 
-                {/* Multi-TF button - bigger */}
+                {/* Multi-TF button - Elite only */}
                 <Button
-                  onClick={() => (tier !== 'intermediate' && tier !== 'pro' && tier !== 'elite') ? setLocation('/cryptosubscribe') : analyzeMultiTF()}
+                  onClick={() => tier !== 'elite' ? setLocation('/cryptosubscribe') : analyzeMultiTF()}
                   disabled={analyzing || analyzingMultiTF}
                   className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white disabled:opacity-50 px-4 py-2"
                   data-testid="button-multi-tf-analysis"
@@ -3245,8 +3270,8 @@ export default function CryptoAI() {
                   )}
                 </Button>
                 
-                {/* Small reload icon for multi-TF - right side */}
-                {cachedMultiTF?.cached && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (
+                {/* Small reload icon for multi-TF - Elite only */}
+                {cachedMultiTF?.cached && tier === 'elite' && (
                   <Button
                     onClick={loadCachedMultiTF}
                     variant="outline"
@@ -3270,10 +3295,15 @@ export default function CryptoAI() {
                       <span className="ml-1 text-gray-400">remaining this month</span>
                     </span>
                   </div>
-                  {/* Cached analysis timestamp */}
+                  {/* Cached analysis timestamps */}
                   {cachedAnalysis?.cached && (
                     <div className="text-xs text-gray-500">
-                      Last updated: {getTimeAgoString(cachedAnalysis.cached.updatedAt)}
+                      Single-TF: {getTimeAgoString(cachedAnalysis.cached.updatedAt)}
+                    </div>
+                  )}
+                  {cachedMultiTF?.cached && tier === 'elite' && (
+                    <div className="text-xs text-gray-500">
+                      Multi-TF: {getTimeAgoString(cachedMultiTF.cached.updatedAt)}
                     </div>
                   )}
                 </div>

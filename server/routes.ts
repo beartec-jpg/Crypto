@@ -3695,10 +3695,11 @@ Be concise and direct.`;
       const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
       const tier = subscription.tier;
 
-      if (tier === 'free' || tier === 'beginner') {
+      // Multi-TF is Elite only
+      if (tier !== 'elite') {
         return res.status(403).json({ 
-          error: 'Subscription required',
-          message: 'Please upgrade to Intermediate tier or higher',
+          error: 'Elite subscription required',
+          message: 'Multi-Timeframe Analysis is an Elite-only feature. Please upgrade to Elite tier.',
           requireUpgrade: true
         });
       }
