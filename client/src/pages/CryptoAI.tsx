@@ -1238,18 +1238,18 @@ export default function CryptoAI() {
       if (data?.cached) {
         console.log('✅ Loading cached Multi-TF data:', {
           hasMultiTFInsights: !!data.cached.multiTFInsights,
-          hasBestTrades: !!data.cached.bestTrades,
-          bestTradesLength: data.cached.bestTrades?.length || 0,
+          hasTradeAlerts: !!data.cached.tradeAlerts,
+          tradeAlertsLength: data.cached.tradeAlerts?.length || 0,
           allKeys: Object.keys(data.cached)
         });
         // Clear single-TF insights when loading Multi-TF
         setMarketInsights(null);
         setMultiTFInsights(data.cached.multiTFInsights);
-        // Set trade alerts from bestTrades (if available)
-        if (data.cached.bestTrades && data.cached.bestTrades.length > 0) {
-          setTradeAlerts(data.cached.bestTrades);
+        // Set trade alerts from tradeAlerts (the correct field name)
+        if (data.cached.tradeAlerts && data.cached.tradeAlerts.length > 0) {
+          setTradeAlerts(data.cached.tradeAlerts);
         } else {
-          console.log('⚠️ No bestTrades in cached Multi-TF data');
+          console.log('⚠️ No tradeAlerts in cached Multi-TF data');
         }
         toast({
           title: "Previous Multi-TF analysis loaded",
