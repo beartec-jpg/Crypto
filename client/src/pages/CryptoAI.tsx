@@ -1188,7 +1188,8 @@ export default function CryptoAI() {
   }, []);
 
   // Load cached analysis (no credit used) - allows viewing previous analysis
-  const loadCachedAnalysis = useCallback(() => {
+  const loadCachedAnalysis = useCallback(async () => {
+    // First try from already-loaded data
     if (cachedAnalysis?.cached) {
       // Clear Multi-TF insights when loading single-TF
       setMultiTFInsights(null);
@@ -1203,11 +1204,29 @@ export default function CryptoAI() {
         description: `Last updated: ${getTimeAgoString(cachedAnalysis.cached.updatedAt)}`,
         duration: 3000,
       });
+      return;
     }
-  }, [cachedAnalysis, toast, getTimeAgoString]);
+    
+    // If data not in state yet, refetch it
+    const result = await refetchCachedAnalysis();
+    if (result.data?.cached) {
+      setMultiTFInsights(null);
+      setTradeAlerts(result.data.cached.alerts || []);
+      setMarketInsights(result.data.cached.marketInsights || null);
+      if (result.data.cached.indicatorData) {
+        setIndicatorData(result.data.cached.indicatorData);
+      }
+      toast({
+        title: "Previous analysis loaded",
+        description: `Last updated: ${getTimeAgoString(result.data.cached.updatedAt)}`,
+        duration: 3000,
+      });
+    }
+  }, [cachedAnalysis, toast, getTimeAgoString, refetchCachedAnalysis]);
 
   // Load cached Multi-TF analysis
-  const loadCachedMultiTF = useCallback(() => {
+  const loadCachedMultiTF = useCallback(async () => {
+    // First try from already-loaded data
     if (cachedMultiTF?.cached) {
       // Clear single-TF insights when loading Multi-TF
       setMarketInsights(null);
@@ -1220,8 +1239,24 @@ export default function CryptoAI() {
         description: `Last updated: ${getTimeAgoString(cachedMultiTF.cached.updatedAt)}`,
         duration: 3000,
       });
+      return;
     }
-  }, [cachedMultiTF, toast, getTimeAgoString]);
+    
+    // If data not in state yet, refetch it
+    const result = await refetchCachedMultiTF();
+    if (result.data?.cached) {
+      setMarketInsights(null);
+      setMultiTFInsights(result.data.cached.multiTFInsights);
+      if (result.data.cached.bestTrades?.length > 0) {
+        setTradeAlerts(result.data.cached.bestTrades);
+      }
+      toast({
+        title: "Previous Multi-TF analysis loaded",
+        description: `Last updated: ${getTimeAgoString(result.data.cached.updatedAt)}`,
+        duration: 3000,
+      });
+    }
+  }, [cachedMultiTF, toast, getTimeAgoString, refetchCachedMultiTF]);
 
   // === Analyze Trades with Grok API ===
   const analyzeTrades = useCallback(async () => {
