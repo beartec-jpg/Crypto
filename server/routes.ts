@@ -361,6 +361,44 @@ function detectDisplacement(bars: CandleBar[]): { displacement: boolean; directi
   return { displacement: false, direction: 'none' };
 }
 
+// ADX (Average Directional Index) for trend strength
+function calculateADX(bars: CandleBar[], period: number = 14): number {
+  if (bars.length < period * 2) return 25; // Default neutral
+  
+  const tr: number[] = [];
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  
+  for (let i = 1; i < bars.length; i++) {
+    const high = bars[i].high;
+    const low = bars[i].low;
+    const prevHigh = bars[i-1].high;
+    const prevLow = bars[i-1].low;
+    const prevClose = bars[i-1].close;
+    
+    // True Range
+    tr.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+    
+    // Directional Movement
+    const upMove = high - prevHigh;
+    const downMove = prevLow - low;
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+  }
+  
+  // Calculate smoothed values
+  const smoothTR = tr.slice(-period).reduce((a, b) => a + b, 0);
+  const smoothPlusDM = plusDM.slice(-period).reduce((a, b) => a + b, 0);
+  const smoothMinusDM = minusDM.slice(-period).reduce((a, b) => a + b, 0);
+  
+  const plusDI = (smoothPlusDM / smoothTR) * 100;
+  const minusDI = (smoothMinusDM / smoothTR) * 100;
+  
+  const dx = Math.abs(plusDI - minusDI) / (plusDI + minusDI) * 100;
+  
+  return isNaN(dx) ? 25 : dx;
+}
+
 // ===== END TECHNICAL INDICATOR FUNCTIONS =====
 
 // In-memory cache for liquidation data (5 min TTL)
