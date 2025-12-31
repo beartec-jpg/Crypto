@@ -5423,6 +5423,37 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
+  // Get current prices for multiple symbols (for tracked trades)
+  app.post("/api/crypto/current-prices", requireCryptoAuth, async (req, res) => {
+    try {
+      const { symbols } = req.body;
+      if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+        return res.status(400).json({ error: "symbols array required" });
+      }
+      
+      const prices: Record<string, number> = {};
+      
+      // Fetch current prices for each unique symbol
+      const uniqueSymbols = [...new Set(symbols)];
+      await Promise.all(uniqueSymbols.map(async (sym: string) => {
+        try {
+          const response = await fetch(`https://api.binance.us/api/v3/ticker/price?symbol=${sym}`);
+          if (response.ok) {
+            const data = await response.json();
+            prices[sym] = parseFloat(data.price);
+          }
+        } catch (err) {
+          console.log(`Failed to fetch price for ${sym}:`, err);
+        }
+      }));
+      
+      res.json({ prices });
+    } catch (error: any) {
+      console.error('Error fetching current prices:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get tracked trades for specific symbol
   app.get("/api/crypto/tracked-trades/:symbol", requireCryptoAuth, async (req, res) => {
     try {

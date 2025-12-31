@@ -121,6 +121,45 @@ export default function CryptoAI() {
     enabled: isAuthenticated && !authLoading,
     refetchInterval: 10000, // Refetch every 10 seconds to check for status updates
   });
+  
+  // Current prices for tracked trades symbols
+  const [trackedTradesPrices, setTrackedTradesPrices] = useState<Record<string, number>>({});
+  
+  // Fetch current prices for tracked trades
+  useEffect(() => {
+    const fetchPrices = async () => {
+      if (!trackedTradesData || trackedTradesData.length === 0) return;
+      
+      // Get unique symbols from tracked trades that are "entry_hit" status
+      const inTradeSymbols = trackedTradesData
+        .filter((t: any) => t.status === 'entry_hit')
+        .map((t: any) => t.symbol);
+      
+      if (inTradeSymbols.length === 0) return;
+      
+      try {
+        const token = await getToken();
+        const response = await fetch('/api/crypto/current-prices', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ symbols: inTradeSymbols })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setTrackedTradesPrices(data.prices || {});
+        }
+      } catch (err) {
+        console.error('Error fetching tracked trade prices:', err);
+      }
+    };
+    
+    fetchPrices();
+  }, [trackedTradesData, getToken]);
+  
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingMultiTF, setAnalyzingMultiTF] = useState(false);
@@ -3533,12 +3572,16 @@ export default function CryptoAI() {
                         {tradeAlerts.length > 0 ? (
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {tradeAlerts.map((alert, idx) => {
-                              const entry = parseFloat(alert.entry) || 0;
-                              const stopLoss = parseFloat(alert.stopLoss) || 0;
-                              const firstTargetStr = typeof alert.targets[0] === 'string' 
-                                ? alert.targets[0].replace(/[^0-9.]/g, '') 
-                                : String(alert.targets[0]);
-                              const firstTarget = parseFloat(firstTargetStr) || entry;
+                              // Parse prices, stripping $ and other non-numeric chars
+                              const parsePrice = (val: any): number => {
+                                if (!val) return 0;
+                                const str = String(val).replace(/[^0-9.-]/g, '');
+                                return parseFloat(str) || 0;
+                              };
+                              const entry = parsePrice(alert.entry);
+                              const stopLoss = parsePrice(alert.stopLoss);
+                              const firstTarget = parsePrice(alert.targets?.[0]) || entry;
+                              
                               const risk = Math.abs(alert.direction === 'LONG' ? entry - stopLoss : stopLoss - entry);
                               const reward = Math.abs(alert.direction === 'LONG' ? firstTarget - entry : entry - firstTarget);
                               const rrRatio = risk > 0 && reward > 0 ? (reward / risk).toFixed(1) : '0';
@@ -3659,9 +3702,11 @@ export default function CryptoAI() {
                       const slPrice = parseFloat(trade.stopLoss);
                       const tp1Price = parseFloat(trade.targets[0]);
                       
-                      // Only use current chart price if viewing the same symbol
+                      // Use fetched price for the trade's symbol, fallback to chart price if same symbol
                       const isMatchingSymbol = trade.symbol === symbol;
-                      const currentPrice = isMatchingSymbol && data.length > 0 ? data[data.length - 1].close : entryPrice;
+                      const fetchedPrice = trackedTradesPrices[trade.symbol];
+                      const chartPrice = data.length > 0 ? data[data.length - 1].close : 0;
+                      const currentPrice = fetchedPrice || (isMatchingSymbol ? chartPrice : 0);
                       
                       let profitPercent = 0;
                       let statusLabel = 'Waiting';
@@ -3691,9 +3736,9 @@ export default function CryptoAI() {
                         statusLabel = 'In Trade';
                         statusColor = 'text-cyan-400';
                         statusBg = 'bg-cyan-500/20';
-                        // Only show live P/L if viewing matching symbol
-                        showPL = isMatchingSymbol;
-                        if (isMatchingSymbol) {
+                        // Show live P/L if we have a current price
+                        showPL = currentPrice > 0;
+                        if (currentPrice > 0) {
                           profitPercent = trade.direction === 'LONG' 
                             ? ((currentPrice - entryPrice) / entryPrice) * 100
                             : ((entryPrice - currentPrice) / entryPrice) * 100;
