@@ -186,6 +186,11 @@ export default function CryptoAI() {
   const [mfiPeriod, setMfiPeriod] = useState(14);
   const [cciPeriod, setCciPeriod] = useState(20);
   const [adxPeriod, setAdxPeriod] = useState(14);
+  const [showGrokIndicators, setShowGrokIndicators] = useState(true); // Toggle for Grok's indicators overlay
+  const [stochOpen, setStochOpen] = useState(false); // Stochastic sub-chart
+  const [cmfOpen, setCmfOpen] = useState(false); // CMF sub-chart
+  const stochRef = useRef<HTMLDivElement>(null);
+  const cmfRef = useRef<HTMLDivElement>(null);
 
   // Cached AI analysis query - allows viewing previous analysis without credits
   const { data: cachedAnalysis, refetch: refetchCachedAnalysis } = useQuery<{
@@ -781,6 +786,112 @@ export default function CryptoAI() {
       
       const mfi = negFlow === 0 ? 100 : (100 - (100 / (1 + (posFlow / negFlow))));
       result.push({ time: candles[i].time as number, value: mfi });
+    }
+    
+    return result;
+  }, []);
+
+  // === Bollinger Bands Calculation ===
+  const calculateBollingerBands = useCallback((candles: Bar[], period: number = 20, stdDev: number = 2) => {
+    if (candles.length < period) return { upper: [], middle: [], lower: [] };
+    
+    const upper: { time: number; value: number }[] = [];
+    const middle: { time: number; value: number }[] = [];
+    const lower: { time: number; value: number }[] = [];
+    
+    for (let i = period - 1; i < candles.length; i++) {
+      let sum = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        sum += candles[j].close;
+      }
+      const sma = sum / period;
+      
+      let sumSquares = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        sumSquares += Math.pow(candles[j].close - sma, 2);
+      }
+      const std = Math.sqrt(sumSquares / period);
+      
+      middle.push({ time: candles[i].time as number, value: sma });
+      upper.push({ time: candles[i].time as number, value: sma + stdDev * std });
+      lower.push({ time: candles[i].time as number, value: sma - stdDev * std });
+    }
+    
+    return { upper, middle, lower };
+  }, []);
+
+  // === VWAP Calculation ===
+  const calculateVWAP = useCallback((candles: Bar[]) => {
+    if (candles.length === 0) return [];
+    
+    const result: { time: number; value: number }[] = [];
+    let cumulativeTPV = 0;
+    let cumulativeVolume = 0;
+    
+    for (let i = 0; i < candles.length; i++) {
+      const typicalPrice = (candles[i].high + candles[i].low + candles[i].close) / 3;
+      cumulativeTPV += typicalPrice * candles[i].volume;
+      cumulativeVolume += candles[i].volume;
+      
+      const vwap = cumulativeVolume > 0 ? cumulativeTPV / cumulativeVolume : typicalPrice;
+      result.push({ time: candles[i].time as number, value: vwap });
+    }
+    
+    return result;
+  }, []);
+
+  // === Stochastic Oscillator Calculation ===
+  const calculateStochastic = useCallback((candles: Bar[], kPeriod: number = 14, dPeriod: number = 3) => {
+    if (candles.length < kPeriod) return { k: [], d: [] };
+    
+    const kValues: { time: number; value: number }[] = [];
+    
+    for (let i = kPeriod - 1; i < candles.length; i++) {
+      let highestHigh = candles[i].high;
+      let lowestLow = candles[i].low;
+      
+      for (let j = i - kPeriod + 1; j <= i; j++) {
+        if (candles[j].high > highestHigh) highestHigh = candles[j].high;
+        if (candles[j].low < lowestLow) lowestLow = candles[j].low;
+      }
+      
+      const range = highestHigh - lowestLow;
+      const k = range === 0 ? 50 : ((candles[i].close - lowestLow) / range) * 100;
+      kValues.push({ time: candles[i].time as number, value: k });
+    }
+    
+    const dValues: { time: number; value: number }[] = [];
+    for (let i = dPeriod - 1; i < kValues.length; i++) {
+      let sum = 0;
+      for (let j = i - dPeriod + 1; j <= i; j++) {
+        sum += kValues[j].value;
+      }
+      dValues.push({ time: kValues[i].time, value: sum / dPeriod });
+    }
+    
+    return { k: kValues, d: dValues };
+  }, []);
+
+  // === CMF (Chaikin Money Flow) Calculation ===
+  const calculateCMF = useCallback((candles: Bar[], period: number = 20) => {
+    if (candles.length < period) return [];
+    
+    const result: { time: number; value: number }[] = [];
+    
+    for (let i = period - 1; i < candles.length; i++) {
+      let mfvSum = 0;
+      let volSum = 0;
+      
+      for (let j = i - period + 1; j <= i; j++) {
+        const hl = candles[j].high - candles[j].low;
+        const mfMultiplier = hl === 0 ? 0 : ((candles[j].close - candles[j].low) - (candles[j].high - candles[j].close)) / hl;
+        const mfVolume = mfMultiplier * candles[j].volume;
+        mfvSum += mfVolume;
+        volSum += candles[j].volume;
+      }
+      
+      const cmf = volSum === 0 ? 0 : mfvSum / volSum;
+      result.push({ time: candles[i].time as number, value: cmf });
     }
     
     return result;
@@ -1512,8 +1623,133 @@ export default function CryptoAI() {
     // Detect Liquidity Grabs
     const liquidityGrabs = detectLiquidityGrabs(data);
     
-    // FVG detection and mitigation logic runs above (no visual rendering)
-    // Stats will show count of unmitigated FVGs for AI analysis
+    // Detect Swing Points
+    const { swingHighs, swingLows } = detectSwingPivots(data, 5);
+    
+    // === Grok's Indicators Overlay ===
+    if (showGrokIndicators) {
+      // Bollinger Bands (purple tones)
+      const bb = calculateBollingerBands(data, 20, 2);
+      if (bb.upper.length > 0) {
+        const bbUpperSeries = chart.addSeries(LineSeries, { 
+          color: '#9333ea', 
+          lineWidth: 1,
+          lineStyle: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+        bbUpperSeries.setData(bb.upper.map(d => ({ time: d.time as Time, value: d.value })));
+        
+        const bbMiddleSeries = chart.addSeries(LineSeries, { 
+          color: '#a855f7', 
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+        bbMiddleSeries.setData(bb.middle.map(d => ({ time: d.time as Time, value: d.value })));
+        
+        const bbLowerSeries = chart.addSeries(LineSeries, { 
+          color: '#9333ea', 
+          lineWidth: 1,
+          lineStyle: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+        bbLowerSeries.setData(bb.lower.map(d => ({ time: d.time as Time, value: d.value })));
+      }
+      
+      // VWAP (orange line)
+      const vwapData = calculateVWAP(data);
+      if (vwapData.length > 0) {
+        const vwapSeries = chart.addSeries(LineSeries, { 
+          color: '#f97316', 
+          lineWidth: 2,
+          priceLineVisible: false,
+          lastValueVisible: true,
+        });
+        vwapSeries.setData(vwapData.map(d => ({ time: d.time as Time, value: d.value })));
+      }
+      
+      // Order Blocks as price lines (last 3 of each)
+      const recentBullOB = bullishOB.slice(-3);
+      const recentBearOB = bearishOB.slice(-3);
+      
+      recentBullOB.forEach((ob, idx) => {
+        candleSeries.createPriceLine({
+          price: ob.price,
+          color: '#22c55e80',
+          lineWidth: 1,
+          lineStyle: 1,
+          axisLabelVisible: false,
+          title: '',
+        });
+      });
+      
+      recentBearOB.forEach((ob, idx) => {
+        candleSeries.createPriceLine({
+          price: ob.price,
+          color: '#ef444480',
+          lineWidth: 1,
+          lineStyle: 1,
+          axisLabelVisible: false,
+          title: '',
+        });
+      });
+      
+      // FVG zones as price lines (last 3 of each)
+      const recentBullFVG = bullFVG.slice(-3);
+      const recentBearFVG = bearFVG.slice(-3);
+      
+      recentBullFVG.forEach((fvg) => {
+        candleSeries.createPriceLine({
+          price: (fvg.high + fvg.low) / 2,
+          color: '#22c55e50',
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: false,
+          title: '',
+        });
+      });
+      
+      recentBearFVG.forEach((fvg) => {
+        candleSeries.createPriceLine({
+          price: (fvg.high + fvg.low) / 2,
+          color: '#ef444450',
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: false,
+          title: '',
+        });
+      });
+      
+      // Swing Points as markers on candle series
+      const markers: any[] = [];
+      
+      swingHighs.slice(-5).forEach((sh) => {
+        markers.push({
+          time: sh.time as Time,
+          position: 'aboveBar',
+          color: '#ef4444',
+          shape: 'arrowDown',
+          text: 'H',
+        });
+      });
+      
+      swingLows.slice(-5).forEach((sl) => {
+        markers.push({
+          time: sl.time as Time,
+          position: 'belowBar',
+          color: '#22c55e',
+          shape: 'arrowUp',
+          text: 'L',
+        });
+      });
+      
+      if (markers.length > 0) {
+        markers.sort((a, b) => (a.time as number) - (b.time as number));
+        candleSeries.setMarkers(markers);
+      }
+    }
     
     // Update stats
     setStats({
@@ -1555,7 +1791,7 @@ export default function CryptoAI() {
         // Chart already disposed, ignore
       }
     };
-  }, [data, trackedTradesData, selectedTrackedTradeId, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs]);
+  }, [data, trackedTradesData, selectedTrackedTradeId, showGrokIndicators, calculateCVD, calculateVolumeProfile, detectOrderBlocks, detectFVG, detectImbalances, detectAbsorption, detectHiddenDivergence, detectLiquidityGrabs, detectSwingPivots, calculateBollingerBands, calculateVWAP]);
 
   // === Resize chart when switching to chart tab ===
   useEffect(() => {
@@ -1878,6 +2114,87 @@ export default function CryptoAI() {
     
     return () => chart.remove();
   }, [data, adxPeriod, adxOpen]);
+
+  // === Stochastic Chart ===
+  useEffect(() => {
+    if (!stochRef.current || data.length === 0 || !stochOpen) return;
+    
+    const chart = createChart(stochRef.current, { 
+      width: stochRef.current.clientWidth, 
+      height: 200, 
+      layout: {
+        background: { type: ColorType.Solid, color: '#1e293b' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#334155' },
+        horzLines: { color: '#334155' },
+      },
+      timeScale: {
+        borderColor: '#475569',
+        timeVisible: true,
+      },
+      rightPriceScale: {
+        borderColor: '#475569',
+      },
+    });
+    
+    const stochData = calculateStochastic(data, 14, 3);
+    
+    // %K line (blue)
+    const kLine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 });
+    kLine.setData(stochData.k.map(d => ({ time: d.time as Time, value: d.value })));
+    
+    // %D line (orange)
+    const dLine = chart.addSeries(LineSeries, { color: '#f97316', lineWidth: 2 });
+    dLine.setData(stochData.d.map(d => ({ time: d.time as Time, value: d.value })));
+    
+    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
+    
+    // Add overbought/oversold lines (80/20)
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(data.map(d => ({ time: d.time as Time, value: 80 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(data.map(d => ({ time: d.time as Time, value: 20 })));
+    
+    return () => chart.remove();
+  }, [data, calculateStochastic, stochOpen]);
+
+  // === CMF Chart ===
+  useEffect(() => {
+    if (!cmfRef.current || data.length === 0 || !cmfOpen) return;
+    
+    const chart = createChart(cmfRef.current, { 
+      width: cmfRef.current.clientWidth, 
+      height: 200, 
+      layout: {
+        background: { type: ColorType.Solid, color: '#1e293b' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#334155' },
+        horzLines: { color: '#334155' },
+      },
+      timeScale: {
+        borderColor: '#475569',
+        timeVisible: true,
+      },
+      rightPriceScale: {
+        borderColor: '#475569',
+      },
+    });
+    
+    const cmfData = calculateCMF(data, 20);
+    
+    // CMF line (cyan/teal)
+    const cmfLine = chart.addSeries(LineSeries, { color: '#14b8a6', lineWidth: 2 });
+    cmfLine.setData(cmfData.map(d => ({ time: d.time as Time, value: d.value })));
+    
+    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
+    
+    // Add zero line
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(data.map(d => ({ time: d.time as Time, value: 0 })));
+    
+    return () => chart.remove();
+  }, [data, calculateCMF, cmfOpen]);
 
   const getGradeColor = (grade: string) => {
     switch (grade) {
@@ -2395,6 +2712,20 @@ export default function CryptoAI() {
               )}
             </Card>
 
+            {/* Grok Indicators Toggle */}
+            <div className="flex items-center justify-between p-3 bg-[#1a1a1a] border border-[#2a2e39] rounded-lg">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-purple-400" />
+                <span className="text-sm text-gray-300">Show Grok's Indicators</span>
+                <span className="text-xs text-gray-500">(BB, VWAP, OB, FVG, Swings)</span>
+              </div>
+              <Switch
+                checked={showGrokIndicators}
+                onCheckedChange={setShowGrokIndicators}
+                data-testid="toggle-grok-indicators"
+              />
+            </div>
+
             {/* Volume Chart */}
             <Collapsible open={volumeOpen} onOpenChange={setVolumeOpen}>
               <Card className="bg-slate-800 border-slate-700">
@@ -2614,6 +2945,62 @@ export default function CryptoAI() {
                   </CollapsibleContent>
                 </Card>
               </Collapsible>
+
+              {/* Stochastic Chart */}
+              <Collapsible open={stochOpen} onOpenChange={setStochOpen}>
+                <Card className="bg-slate-800 border-slate-700">
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">Stochastic (14, 3)</CardTitle>
+                        {stochOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      {loading || data.length === 0 ? (
+                        <div className="w-full h-[200px] flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="text-xs text-gray-500">Loading Stochastic...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div ref={stochRef} className="w-full h-[200px]" />
+                      )}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+
+              {/* CMF Chart */}
+              <Collapsible open={cmfOpen} onOpenChange={setCmfOpen}>
+                <Card className="bg-slate-800 border-slate-700">
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-slate-700/50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white text-sm">CMF (20)</CardTitle>
+                        {cmfOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      {loading || data.length === 0 ? (
+                        <div className="w-full h-[200px] flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                            <span className="text-xs text-gray-500">Loading CMF...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div ref={cmfRef} className="w-full h-[200px]" />
+                      )}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
             </div>
 
             {/* Legend */}
@@ -2772,105 +3159,7 @@ export default function CryptoAI() {
                   </Collapsible>
                 </Card>
 
-                {/* 2. Indicator Statuses - Oscillator Events */}
-                <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-                  <Collapsible open={indicatorStatusOpen} onOpenChange={setIndicatorStatusOpen}>
-                    <CollapsibleTrigger className="w-full p-4 flex items-center justify-between hover:bg-[#252525] transition-colors rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-[#00c4b4]" />
-                        <h3 className="text-lg font-semibold text-white">Indicator Statuses</h3>
-                        <span className="text-xs text-gray-500 ml-2">Oscillator Events</span>
-                      </div>
-                      {indicatorStatusOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="px-4 pb-4 space-y-3">
-                        {(() => {
-                          const cciValues = data.length > 0 ? calculateCCI(data, cciPeriod) : [];
-                          const adxValues = data.length > 0 ? calculateADX(data, adxPeriod) : [];
-                          const latestCCIObj = cciValues.length > 0 ? cciValues[cciValues.length - 1] : null;
-                          const latestCCI = latestCCIObj?.value ?? 0;
-                          const latestADX = adxValues.length > 0 ? adxValues[adxValues.length - 1] : { adx: 0, plusDI: 0, minusDI: 0 };
-                          
-                          const cciStatus = latestCCI > 100 ? 'Overbought' : latestCCI < -100 ? 'Oversold' : 'Neutral';
-                          const cciColor = latestCCI > 100 ? 'text-red-400' : latestCCI < -100 ? 'text-green-400' : 'text-gray-400';
-                          const adxTrendStrength = latestADX.adx > 25 ? 'Strong Trend' : 'Weak/No Trend';
-                          const adxColor = latestADX.adx > 25 ? 'text-yellow-400' : 'text-gray-400';
-                          const diDirection = latestADX.plusDI > latestADX.minusDI ? 'Bullish' : 'Bearish';
-                          const diColor = latestADX.plusDI > latestADX.minusDI ? 'text-green-400' : 'text-red-400';
-                          
-                          const rsiValue = data.length > rsiPeriod ? (() => {
-                            const closes = data.map(d => d.close);
-                            let gains = 0, losses = 0;
-                            for (let i = data.length - rsiPeriod; i < data.length; i++) {
-                              const change = closes[i] - closes[i - 1];
-                              if (change > 0) gains += change;
-                              else losses += Math.abs(change);
-                            }
-                            const avgGain = gains / rsiPeriod;
-                            const avgLoss = losses / rsiPeriod;
-                            return avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
-                          })() : 50;
-                          const rsiStatus = rsiValue > 70 ? 'Overbought' : rsiValue < 30 ? 'Oversold' : 'Neutral';
-                          const rsiColor = rsiValue > 70 ? 'text-red-400' : rsiValue < 30 ? 'text-green-400' : 'text-gray-400';
-                          
-                          const mfiValue = data.length > mfiPeriod ? (() => {
-                            let positiveFlow = 0, negativeFlow = 0;
-                            for (let i = data.length - mfiPeriod; i < data.length; i++) {
-                              const tp = (data[i].high + data[i].low + data[i].close) / 3;
-                              const prevTp = (data[i - 1].high + data[i - 1].low + data[i - 1].close) / 3;
-                              const rawMF = tp * data[i].volume;
-                              if (tp > prevTp) positiveFlow += rawMF;
-                              else negativeFlow += rawMF;
-                            }
-                            return negativeFlow === 0 ? 100 : 100 - (100 / (1 + positiveFlow / negativeFlow));
-                          })() : 50;
-                          const mfiStatus = mfiValue > 80 ? 'Overbought' : mfiValue < 20 ? 'Oversold' : 'Neutral';
-                          const mfiColor = mfiValue > 80 ? 'text-red-400' : mfiValue < 20 ? 'text-green-400' : 'text-gray-400';
-                          
-                          return (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                                <div className="text-xs text-gray-500 mb-1">RSI ({rsiPeriod})</div>
-                                <div className={`font-bold ${rsiColor}`}>{rsiStatus}</div>
-                                <div className="text-xs text-gray-500 mt-1">Value: {rsiValue.toFixed(1)}</div>
-                                {rsiValue > 70 && <div className="text-xs text-red-400 mt-1">Reversal zone</div>}
-                                {rsiValue < 30 && <div className="text-xs text-green-400 mt-1">Reversal zone</div>}
-                              </div>
-                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                                <div className="text-xs text-gray-500 mb-1">CCI ({cciPeriod})</div>
-                                <div className={`font-bold ${cciColor}`}>{cciStatus}</div>
-                                <div className="text-xs text-gray-500 mt-1">Value: {latestCCI.toFixed(1)}</div>
-                                {latestCCI > 100 && <div className="text-xs text-red-400 mt-1">Reversal zone</div>}
-                                {latestCCI < -100 && <div className="text-xs text-green-400 mt-1">Reversal zone</div>}
-                              </div>
-                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                                <div className="text-xs text-gray-500 mb-1">MFI ({mfiPeriod})</div>
-                                <div className={`font-bold ${mfiColor}`}>{mfiStatus}</div>
-                                <div className="text-xs text-gray-500 mt-1">Value: {mfiValue.toFixed(1)}</div>
-                                {mfiValue > 80 && <div className="text-xs text-red-400 mt-1">Reversal zone</div>}
-                                {mfiValue < 20 && <div className="text-xs text-green-400 mt-1">Reversal zone</div>}
-                              </div>
-                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                                <div className="text-xs text-gray-500 mb-1">ADX ({adxPeriod})</div>
-                                <div className={`font-bold ${adxColor}`}>{adxTrendStrength}</div>
-                                <div className="text-xs text-gray-500 mt-1">Value: {latestADX.adx.toFixed(1)}</div>
-                                {latestADX.adx > 40 && <div className="text-xs text-yellow-400 mt-1">Very strong</div>}
-                              </div>
-                              <div className="bg-[#0e0e0e] p-3 rounded-lg border border-[#2a2e39]">
-                                <div className="text-xs text-gray-500 mb-1">DI Direction</div>
-                                <div className={`font-bold ${diColor}`}>{diDirection}</div>
-                                <div className="text-xs text-gray-500 mt-1">+DI: {latestADX.plusDI.toFixed(1)} / -DI: {latestADX.minusDI.toFixed(1)}</div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </Card>
-
-                {/* 2.5. Data Sent to Grok - All Indicators */}
+                {/* Data Sent to Grok - All Indicators */}
                 {indicatorData && (
                   <Card className="bg-[#1a1a1a] border-[#2a2e39]">
                     <Collapsible open={indicatorDataOpen} onOpenChange={setIndicatorDataOpen}>
