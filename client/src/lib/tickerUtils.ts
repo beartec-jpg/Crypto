@@ -14,6 +14,8 @@ export const ALL_TICKERS = [
   { value: 'ATOMUSDT', label: 'ATOM/USDT' },
   { value: 'NEARUSDT', label: 'NEAR/USDT' },
   { value: 'AAVEUSDT', label: 'AAVE/USDT' },
+  { value: 'CRVUSDT', label: 'CRV/USDT' },
+  { value: 'CVXUSDT', label: 'CVX/USDT' },
 ];
 
 const TICKER_CLICKS_KEY = 'beartec_ticker_clicks';
