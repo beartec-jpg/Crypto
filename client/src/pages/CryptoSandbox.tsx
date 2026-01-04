@@ -60,6 +60,7 @@ export default function CryptoSandbox() {
     color: string;
     opacity: number;
     lineStyle: LineStyle;
+    thickness: number;
     extendLeft: boolean;
     extendRight: boolean;
     label?: { text: string; position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' };
@@ -287,6 +288,7 @@ export default function CryptoSandbox() {
         color: '#facc15',
         opacity: 1,
         lineStyle: 'solid',
+        thickness: 2,
         extendLeft: false,
         extendRight: false,
       };
@@ -1262,13 +1264,13 @@ export default function CryptoSandbox() {
                 
                 return (
                   <g key={line.id}>
-                    {/* Extended line parts (dimmer) */}
+                    {/* Extended line parts - matches main line style exactly */}
                     {line.extendLeft && (
                       <line 
                         x1={extX1} y1={extY1} x2={x1} y2={y1}
                         stroke={line.color}
-                        strokeWidth="1"
-                        strokeOpacity={line.opacity * 0.5}
+                        strokeWidth={line.thickness || 2}
+                        strokeOpacity={line.opacity}
                         strokeDasharray={strokeDash}
                       />
                     )}
@@ -1276,8 +1278,8 @@ export default function CryptoSandbox() {
                       <line 
                         x1={x2} y1={y2} x2={extX2} y2={extY2}
                         stroke={line.color}
-                        strokeWidth="1"
-                        strokeOpacity={line.opacity * 0.5}
+                        strokeWidth={line.thickness || 2}
+                        strokeOpacity={line.opacity}
                         strokeDasharray={strokeDash}
                       />
                     )}
@@ -1296,7 +1298,7 @@ export default function CryptoSandbox() {
                     <line 
                       x1={x1} y1={y1} x2={x2} y2={y2}
                       stroke={line.color}
-                      strokeWidth="2"
+                      strokeWidth={line.thickness || 2}
                       strokeOpacity={line.opacity}
                       strokeDasharray={strokeDash}
                       style={{ pointerEvents: 'none' }}
@@ -1429,7 +1431,7 @@ export default function CryptoSandbox() {
                   />
                   
                   <div className="text-xs text-gray-400 mb-1">Line Style</div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 mb-3">
                     {(['solid', 'dashed', 'dotted'] as LineStyle[]).map(style => (
                       <button
                         key={style}
@@ -1437,6 +1439,19 @@ export default function CryptoSandbox() {
                         className={`px-2 py-1 text-xs rounded ${selectedLine?.lineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
                       >
                         {style}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  <div className="text-xs text-gray-400 mb-1">Thickness</div>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map(t => (
+                      <button
+                        key={t}
+                        onClick={() => updateTrendline(selectedTrendline, { thickness: t })}
+                        className={`w-8 h-6 flex items-center justify-center rounded ${(selectedLine?.thickness || 2) === t ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                      >
+                        <div style={{ width: 16, height: t, backgroundColor: 'currentColor', borderRadius: 1 }} />
                       </button>
                     ))}
                   </div>
