@@ -27,6 +27,7 @@ import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { incrementTickerClick } from '@/lib/tickerUtils';
 import { TickerSelector } from '@/components/TickerSelector';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
+import { usePageViewTracking } from '@/hooks/useAnalytics';
 import {
   calculateSupertrend,
   calculateVWAPBands,
@@ -329,6 +330,8 @@ export default function CryptoIndicators() {
   const { toast } = useToast();
 
   const { isAuthenticated, isLoading: authLoading, getToken, user } = useCryptoAuth();
+  
+  usePageViewTracking('crypto-indicators');
   const [, setLocation] = useLocation();
   
   // Stable user ID for storage keys - prevents re-loading on user object reference changes

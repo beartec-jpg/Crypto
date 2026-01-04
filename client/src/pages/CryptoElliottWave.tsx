@@ -17,6 +17,7 @@ import { runValidation } from '@shared/elliottValidation';
 import { useEnsureAuthReady } from '@/hooks/useEnsureAuthReady';
 import { useLocation, Link } from 'wouter';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
+import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { AuthButtons } from '@/components/AuthButtons';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import trainingChartImpulse from '@assets/Screenshot_2025-12-14_14.49.33_1765724048911.png';
@@ -2672,6 +2673,8 @@ export default function CryptoElliottWave() {
   const localTier = isAdmin ? 'elite' : rawTier; // Admin gets unrestricted elite access
   const authReady = useEnsureAuthReady();
   const { toast } = useToast();
+  
+  usePageViewTracking('crypto-elliott-wave');
   
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);

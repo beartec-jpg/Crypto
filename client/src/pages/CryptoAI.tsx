@@ -19,6 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 import { LiquidationHeatmapChart } from '@/components/LiquidationHeatmapChart';
 import { ProfessionalOrderflowTable } from '@/components/ProfessionalOrderflowTable';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
+import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { calculateCCI, calculateADX, ADXValue } from '@/lib/indicators';
 import grokLogo from '@assets/Grok_Full_Logomark_Light_1763287603908.png';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
@@ -100,6 +101,8 @@ export default function CryptoAI() {
   const analyzeTradesRef = useRef<() => void>(() => {});
 
   const { isAuthenticated, isLoading: authLoading, tier: rawTier, getToken, isAdmin } = useCryptoAuth();
+  
+  usePageViewTracking('crypto-ai');
   const tier = isAdmin ? 'elite' : rawTier; // Admin gets unrestricted elite access
   const [, setLocation] = useLocation();
   const { toast } = useToast();
