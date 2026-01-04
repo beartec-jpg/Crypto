@@ -446,22 +446,25 @@ export default function CryptoSandbox() {
               style={{ display: 'block' }}
               data-testid="sandbox-chart"
             />
-            {/* Crosshair toggle button - bottom left corner */}
-            <button
-              onClick={() => {
-                setCrosshairMode(prev => !prev);
-                if (crosshairMode) setCrosshairPos(null);
-              }}
-              className={`absolute bottom-4 left-4 p-2 rounded-lg z-20 transition-all ${
-                crosshairMode 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
-              }`}
-              title={crosshairMode ? 'Disable Crosshair' : 'Enable Crosshair'}
-              data-testid="btn-crosshair"
-            >
-              <Crosshair className="w-5 h-5" />
-            </button>
+            {/* Left toolbar - drawing tools will go here */}
+            <div className="absolute top-2 left-2 flex flex-col gap-1 z-20">
+              {/* Crosshair toggle button */}
+              <button
+                onClick={() => {
+                  setCrosshairMode(prev => !prev);
+                  if (crosshairMode) setCrosshairPos(null);
+                }}
+                className={`p-2 rounded-lg transition-all ${
+                  crosshairMode 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                }`}
+                title={crosshairMode ? 'Disable Crosshair' : 'Enable Crosshair'}
+                data-testid="btn-crosshair"
+              >
+                <Crosshair className="w-5 h-5" />
+              </button>
+            </div>
             {/* Crosshair overlay - only captures events when crosshair mode enabled */}
             <div 
               className="absolute inset-0"
