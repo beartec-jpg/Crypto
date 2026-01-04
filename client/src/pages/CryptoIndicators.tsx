@@ -7776,7 +7776,7 @@ export default function CryptoIndicators() {
     orderBlocksRefs.current = [];
     
     if (showOrderBlocks) {
-      const orderBlocks = calculateOrderBlocks(candles, 1.0, orderBlockLength);
+      const orderBlocks = calculateOrderBlocks(candles, obSwingLength, orderBlockLength);
       const lastTime = candles[candles.length - 1].time;
       
       // Render each order block as a shaded box like FVG

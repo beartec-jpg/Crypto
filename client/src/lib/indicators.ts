@@ -371,85 +371,124 @@ export interface OrderBlock {
 
 /**
  * Detect Order Blocks (SMC)
- * Order blocks are the last opposite-colored candle before a strong move
- * Shows both fresh and mitigated blocks (mitigated blocks shown with lower opacity)
+ * Order blocks are the last opposite-colored candle before a strong move from a swing point
+ * Uses swing length to find significant swing highs/lows where order blocks form
  */
 export function calculateOrderBlocks(
   candles: CandleData[],
-  _minStrength: number = 1.0, // Not used anymore, kept for API compatibility
+  swingLength: number = 10, // Swing lookback for finding significant pivots
   lookback: number = 100 // How many candles back to look for order blocks
 ): OrderBlock[] {
-  if (candles.length < 5) return [];
+  if (candles.length < swingLength * 2 + 1) return [];
   
   const orderBlocks: OrderBlock[] = [];
   
   // Calculate start index based on lookback
-  const startIndex = Math.max(3, candles.length - lookback);
+  const startIndex = Math.max(swingLength, candles.length - lookback);
+  const endIndex = candles.length - swingLength;
   
-  for (let i = startIndex; i < candles.length - 1; i++) {
-    const current = candles[i];
-    const next = candles[i + 1];
+  // First, find swing highs and lows using the swing length
+  const swingHighs: number[] = [];
+  const swingLows: number[] = [];
+  
+  for (let i = startIndex; i < endIndex; i++) {
+    // Check if this is a swing high
+    let isSwingHigh = true;
+    let isSwingLow = true;
     
-    // Calculate body size and move size
-    const currentBodySize = Math.abs(current.close - current.open);
-    const nextBodySize = Math.abs(next.close - next.open);
-    
-    // Check for bullish order block (bearish candle before bullish move)
-    const isBearishCandle = current.close < current.open;
-    const nextIsBullish = next.close > next.open;
-    // Strong move: next candle body is larger than current, or next candle closes above current high
-    const isStrongBullishMove = nextBodySize > currentBodySize * 0.8 || next.close > current.high;
-    
-    if (isBearishCandle && nextIsBullish && isStrongBullishMove) {
-      const volumeStrength = i >= 2 && current.volume > (candles[i - 1].volume + candles[i - 2].volume) / 2 ? 3 : 2;
-      
-      // Check for mitigation: bullish block is mitigated if price dropped below the block's low
-      let isMitigated = false;
-      for (let j = i + 2; j < candles.length; j++) {
-        if (candles[j].low < current.low) {
-          isMitigated = true;
-          break;
-        }
-      }
-      
-      orderBlocks.push({
-        time: current.time,
-        high: current.high,
-        low: current.low,
-        type: 'bullish',
-        strength: volumeStrength,
-        mitigated: isMitigated
-      });
+    for (let j = 1; j <= swingLength; j++) {
+      if (i - j >= 0 && candles[i].high <= candles[i - j].high) isSwingHigh = false;
+      if (i + j < candles.length && candles[i].high <= candles[i + j].high) isSwingHigh = false;
+      if (i - j >= 0 && candles[i].low >= candles[i - j].low) isSwingLow = false;
+      if (i + j < candles.length && candles[i].low >= candles[i + j].low) isSwingLow = false;
     }
     
-    // Check for bearish order block (bullish candle before bearish move)
-    const isBullishCandle = current.close > current.open;
-    const nextIsBearish = next.close < next.open;
-    // Strong move: next candle body is larger than current, or next candle closes below current low
-    const isStrongBearishMove = nextBodySize > currentBodySize * 0.8 || next.close < current.low;
-    
-    if (isBullishCandle && nextIsBearish && isStrongBearishMove) {
-      const volumeStrength = i >= 2 && current.volume > (candles[i - 1].volume + candles[i - 2].volume) / 2 ? 3 : 2;
+    if (isSwingHigh) swingHighs.push(i);
+    if (isSwingLow) swingLows.push(i);
+  }
+  
+  // Find bullish order blocks at swing lows (last bearish candle before upward reversal)
+  for (const swingLowIdx of swingLows) {
+    // Look for the last bearish candle before/at the swing low
+    for (let i = swingLowIdx; i >= Math.max(0, swingLowIdx - 3); i--) {
+      const candle = candles[i];
+      const isBearish = candle.close < candle.open;
       
-      // Check for mitigation: bearish block is mitigated if price rose above the block's high
-      let isMitigated = false;
-      for (let j = i + 2; j < candles.length; j++) {
-        if (candles[j].high > current.high) {
-          isMitigated = true;
-          break;
+      if (isBearish) {
+        // Verify there's a strong move up after this
+        const postCandles = candles.slice(i + 1, Math.min(i + swingLength + 1, candles.length));
+        const maxHighAfter = postCandles.length > 0 ? Math.max(...postCandles.map(c => c.high)) : candle.high;
+        const moveUp = maxHighAfter - candle.low;
+        const avgRange = candles.slice(Math.max(0, i - 10), i).reduce((sum, c) => sum + (c.high - c.low), 0) / 10;
+        
+        if (moveUp > avgRange * 1.5) {
+          // Check for mitigation
+          let isMitigated = false;
+          for (let j = i + swingLength + 1; j < candles.length; j++) {
+            if (candles[j].low < candle.low) {
+              isMitigated = true;
+              break;
+            }
+          }
+          
+          const volumeStrength = i >= 2 && candle.volume > (candles[i - 1].volume + candles[i - 2].volume) / 2 ? 3 : 2;
+          
+          orderBlocks.push({
+            time: candle.time,
+            high: candle.high,
+            low: candle.low,
+            type: 'bullish',
+            strength: volumeStrength,
+            mitigated: isMitigated
+          });
+          break; // Only one OB per swing
         }
       }
-      
-      orderBlocks.push({
-        time: current.time,
-        high: current.high,
-        low: current.low,
-        type: 'bearish',
-        strength: volumeStrength,
-        mitigated: isMitigated
-      });
     }
   }
+  
+  // Find bearish order blocks at swing highs (last bullish candle before downward reversal)
+  for (const swingHighIdx of swingHighs) {
+    // Look for the last bullish candle before/at the swing high
+    for (let i = swingHighIdx; i >= Math.max(0, swingHighIdx - 3); i--) {
+      const candle = candles[i];
+      const isBullish = candle.close > candle.open;
+      
+      if (isBullish) {
+        // Verify there's a strong move down after this
+        const postCandles = candles.slice(i + 1, Math.min(i + swingLength + 1, candles.length));
+        const minLowAfter = postCandles.length > 0 ? Math.min(...postCandles.map(c => c.low)) : candle.low;
+        const moveDown = candle.high - minLowAfter;
+        const avgRange = candles.slice(Math.max(0, i - 10), i).reduce((sum, c) => sum + (c.high - c.low), 0) / 10;
+        
+        if (moveDown > avgRange * 1.5) {
+          // Check for mitigation
+          let isMitigated = false;
+          for (let j = i + swingLength + 1; j < candles.length; j++) {
+            if (candles[j].high > candle.high) {
+              isMitigated = true;
+              break;
+            }
+          }
+          
+          const volumeStrength = i >= 2 && candle.volume > (candles[i - 1].volume + candles[i - 2].volume) / 2 ? 3 : 2;
+          
+          orderBlocks.push({
+            time: candle.time,
+            high: candle.high,
+            low: candle.low,
+            type: 'bearish',
+            strength: volumeStrength,
+            mitigated: isMitigated
+          });
+          break; // Only one OB per swing
+        }
+      }
+    }
+  }
+  
+  // Sort by time
+  orderBlocks.sort((a, b) => a.time - b.time);
   
   return orderBlocks;
 }
