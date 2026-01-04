@@ -24,7 +24,8 @@ import transitionVideo from '@assets/grok_video_2025-11-20-06-10-37_176361982402
 import bullVideo from '@assets/grok_video_2025-11-20-06-16-11_1763619952816.mp4';
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
-import { getSortedTickers, incrementTickerClick } from '@/lib/tickerUtils';
+import { incrementTickerClick } from '@/lib/tickerUtils';
+import { TickerSelector } from '@/components/TickerSelector';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import {
   calculateSupertrend,
@@ -10213,16 +10214,11 @@ export default function CryptoIndicators() {
         <div className="flex flex-col items-center gap-4">
           {/* Ticker and Timeframe Selectors */}
           <div className="flex items-center gap-2 md:gap-4">
-            <Select value={symbol} onValueChange={(val) => { incrementTickerClick(val); setSymbol(val); }}>
-              <SelectTrigger className="w-28 md:w-40 bg-slate-800 border-slate-600">
-                <SelectValue className="text-white font-bold" />
-              </SelectTrigger>
-              <SelectContent>
-                {getSortedTickers().map(t => (
-                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <TickerSelector 
+              value={symbol} 
+              onChange={(val) => { incrementTickerClick(val); setSymbol(val); }}
+              showSearch={true}
+            />
             <Select value={interval} onValueChange={setTimeframeInterval}>
               <SelectTrigger className="w-20 md:w-32 bg-slate-800 border-slate-600">
                 <SelectValue className="text-white font-bold" />
