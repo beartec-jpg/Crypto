@@ -361,6 +361,19 @@ export default function CryptoSandbox() {
             .attr('y2', d => newYScale(d))
             .attr('stroke', '#1e293b')
             .attr('stroke-width', 1);
+          
+          // Update current price line and label
+          const lastCandle = candles[candles.length - 1];
+          if (lastCandle) {
+            const priceLineColor = lastCandle.close >= lastCandle.open ? '#22c55e' : '#ef4444';
+            g.select('.current-price-line')
+              .attr('y1', newYScale(lastCandle.close))
+              .attr('y2', newYScale(lastCandle.close));
+            g.select('.current-price-rect')
+              .attr('y', newYScale(lastCandle.close) - 10);
+            g.select('.current-price-text')
+              .attr('y', newYScale(lastCandle.close) + 4);
+          }
         }
       });
     
@@ -386,6 +399,7 @@ export default function CryptoSandbox() {
       
       // Price label on right
       g.append('rect')
+        .attr('class', 'current-price-rect')
         .attr('x', innerWidth + 2)
         .attr('y', yScale(lastCandle.close) - 10)
         .attr('width', 70)
@@ -394,6 +408,7 @@ export default function CryptoSandbox() {
         .attr('rx', 3);
       
       g.append('text')
+        .attr('class', 'current-price-text')
         .attr('x', innerWidth + 37)
         .attr('y', yScale(lastCandle.close) + 4)
         .attr('text-anchor', 'middle')
@@ -869,9 +884,9 @@ export default function CryptoSandbox() {
                       })()}
                     </div>
                   )}
-                  {/* Crosshair active indicator */}
-                  <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none">
-                    Crosshair Mode (use button to exit)
+                  {/* Crosshair active indicator - positioned below dropdowns */}
+                  <div className="absolute top-14 left-14 bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                    Crosshair Mode (click button to exit)
                   </div>
                 </>
               )}
