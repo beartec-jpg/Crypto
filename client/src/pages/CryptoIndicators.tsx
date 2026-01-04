@@ -13485,6 +13485,7 @@ export default function CryptoIndicators() {
                         {useMultiExchange && (
                           <>
                             <th className="text-center text-gray-400 py-1 px-1" title="Number of exchanges">Ex</th>
+                            <th className="text-center text-gray-400 py-1 px-1" title="Bullish/Bearish exchange split">🟢/🔴</th>
                             <th className="text-center text-gray-400 py-1 px-1" title="Confidence level">Conf</th>
                           </>
                         )}
@@ -13532,6 +13533,11 @@ export default function CryptoIndicators() {
                                   <>
                                     <td className="text-center py-1 px-1 text-gray-300 font-semibold">
                                       {currentBar.exchanges || 0}
+                                    </td>
+                                    <td className="text-center py-1 px-1 font-mono text-[10px]">
+                                      <span className="text-green-400">{currentBar.bullishExchanges || 0}</span>
+                                      <span className="text-gray-500">/</span>
+                                      <span className="text-red-400">{currentBar.bearishExchanges || 0}</span>
                                     </td>
                                     <td className="text-center py-1 px-1">
                                       <span className={`text-[10px] font-bold ${
@@ -13586,6 +13592,11 @@ export default function CryptoIndicators() {
                                 <>
                                   <td className="text-center py-1 px-1 text-gray-300">
                                     {item.exchanges || 0}
+                                  </td>
+                                  <td className="text-center py-1 px-1 font-mono text-[10px]">
+                                    <span className="text-green-400">{item.bullishExchanges || 0}</span>
+                                    <span className="text-gray-500">/</span>
+                                    <span className="text-red-400">{item.bearishExchanges || 0}</span>
                                   </td>
                                   <td className="text-center py-1 px-1">
                                     <span className={`text-[10px] font-semibold ${

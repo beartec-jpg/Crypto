@@ -362,12 +362,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     for (const timestamp of sortedTimestamps) {
       const agg = candlesByTimestamp.get(timestamp)!;
       const exchangeCount = new Set(agg.exchanges).size;
-      const avgDelta = agg.totalWeight > 0 ? agg.weightedDelta / agg.totalWeight : 0;
-      cumulativeDelta += avgDelta;
+      // Use totalDelta (sum) instead of weighted average to get real volume
+      const delta = agg.totalDelta;
+      cumulativeDelta += delta;
 
       footprint.push({
         time: Math.floor(timestamp / 1000),
-        delta: avgDelta,
+        delta: delta,
         volume: agg.totalVolume,
         exchanges: exchangeCount,
         bullishExchanges: agg.bullishExchanges,
@@ -379,16 +380,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       cvdData.push({
         time: Math.floor(timestamp / 1000),
         value: cumulativeDelta,
-        delta: avgDelta,
-        color: avgDelta >= 0 ? 'green' : 'red',
+        delta: delta,
+        color: delta >= 0 ? 'green' : 'red',
         confidence: Math.min(1.0, exchangeCount / EXCHANGES.length),
       });
 
       orderflowTable.push({
         time: Math.floor(timestamp / 1000),
-        buyVol: agg.totalVolume * 0.5 + avgDelta * 0.5,
-        sellVol: agg.totalVolume * 0.5 - avgDelta * 0.5,
-        delta: avgDelta,
+        buyVol: agg.totalVolume * 0.5 + delta * 0.5,
+        sellVol: agg.totalVolume * 0.5 - delta * 0.5,
+        delta: delta,
         volume: agg.totalVolume,
         exchanges: exchangeCount,
         bullishExchanges: agg.bullishExchanges,
