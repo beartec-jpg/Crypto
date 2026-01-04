@@ -2545,37 +2545,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const currentCandleStart = Math.floor(now / intervalMs) * intervalMs;
       const currentCandleTimestampSec = Math.floor(currentCandleStart / 1000);
 
-      // Check cache for complete historical candles (not the live candle)
-      const cachedData = await db.select()
+      // Check cache for ALL historical candles (complete and partial, not live candle)
+      const allCachedData = await db.select()
         .from(multiExchangeCvdCache)
         .where(
           and(
             eq(multiExchangeCvdCache.symbol, symbol),
             eq(multiExchangeCvdCache.interval, interval),
-            eq(multiExchangeCvdCache.isComplete, true),
             lt(multiExchangeCvdCache.timestamp, currentCandleTimestampSec) // Exclude live candle
           )
         )
         .orderBy(desc(multiExchangeCvdCache.timestamp))
-        .limit(200);
+        .limit(500);
 
-      // Get timestamps of cached complete candles
-      const cachedTimestamps = new Set(cachedData.map(c => c.timestamp));
-      const cachedCompleteCount = cachedData.length;
+      // Separate complete (6/6) and partial (<6) candles
+      const completeCachedData = allCachedData.filter(c => c.isComplete);
+      const partialCachedData = allCachedData.filter(c => !c.isComplete);
+      
+      // Map of timestamp -> cached candle for quick lookup
+      const cachedByTimestamp = new Map(allCachedData.map(c => [c.timestamp, c]));
+      const cachedCompleteCount = completeCachedData.length;
+      const cachedPartialCount = partialCachedData.length;
 
-      console.log(`📊 Cache check for ${symbol}/${interval}: ${cachedCompleteCount} complete candles cached`);
+      console.log(`📊 Cache check for ${symbol}/${interval}: ${cachedCompleteCount} complete, ${cachedPartialCount} partial candles cached`);
 
       // Path to Python script
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'multi_exchange_orderflow.py');
 
       // Determine how much data to fetch from Python
-      // If we have cached data, only fetch recent candles (live + small buffer)
-      // Otherwise, fetch full period
-      const LIVE_BUFFER_CANDLES = 15; // Number of recent candles to always fetch fresh
-      const useCachedData = cachedCompleteCount >= 10; // Only use cache if we have enough history
-      const fetchPeriod = useCachedData ? '1d' : period; // Fetch only last day if using cache
+      // If we have complete cached data, only fetch recent candles
+      // If we have partial cached data, fetch more to try to fill in gaps
+      const totalCachedCandles = allCachedData.length;
+      const useCachedData = cachedCompleteCount >= 10; // Only use cache if we have enough complete history
+      
+      // Fetch period: shorter if we have good cache, longer if we need to fill gaps
+      let fetchPeriod = period;
+      if (useCachedData) {
+        fetchPeriod = '1d'; // Just get recent data
+      } else if (cachedPartialCount > 0) {
+        fetchPeriod = '3d'; // Get more to try filling in partials
+      }
 
-      console.log(`📡 Fetch strategy: ${useCachedData ? 'CACHED + LIVE' : 'FULL FETCH'}, period: ${fetchPeriod}`);
+      console.log(`📡 Fetch strategy: ${useCachedData ? 'CACHED + LIVE' : cachedPartialCount > 0 ? 'PARTIAL CACHE + FILL' : 'FULL FETCH'}, period: ${fetchPeriod}`);
 
       // Execute Python script with args array (prevents command injection)
       const { stdout, stderr } = await execFileAsync(
@@ -2616,14 +2627,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const periodMs = PERIOD_MS[period] || 2592000000;
       const requestedStartTimeSec = Math.floor((now - periodMs) / 1000);
 
-      // Convert cached data to footprint/cvd format
-      if (useCachedData && cachedData.length > 0) {
-        // Filter cached data to requested period and sort by timestamp
-        const relevantCached = cachedData
-          .filter(c => c.timestamp >= requestedStartTimeSec && c.timestamp < currentCandleTimestampSec)
-          .sort((a, b) => a.timestamp - b.timestamp);
+      // Track candles to insert/update in cache
+      const candlesToInsert: any[] = [];
+      const candlesToUpdate: { timestamp: number; newCount: number; newDelta: number; newVolume: number; bullish: number; bearish: number }[] = [];
 
-        for (const cached of relevantCached) {
+      // Process fresh data and merge with cache
+      const processedTimestamps = new Set<number>();
+
+      if (freshData.footprint && Array.isArray(freshData.footprint)) {
+        for (const fp of freshData.footprint) {
+          if (fp.time < requestedStartTimeSec) continue; // Skip if before requested period
+          
+          const existingCached = cachedByTimestamp.get(fp.time);
+          const freshExchangeCount = fp.exchanges || 0;
+          
+          if (existingCached) {
+            // We have cached data for this timestamp - check if fresh has more exchanges
+            if (freshExchangeCount > existingCached.exchangeCount) {
+              // Fresh data has more exchanges - use fresh and update cache
+              mergedFootprint.push({
+                time: fp.time,
+                delta: fp.delta,
+                volume: fp.volume,
+                exchanges: freshExchangeCount,
+                bullishExchanges: fp.bullishExchanges || 0,
+                bearishExchanges: fp.bearishExchanges || 0,
+                confidence: freshExchangeCount / TOTAL_EXCHANGES,
+                divergence: fp.divergence || false,
+                highValueDivergence: fp.highValueDivergence || false,
+                volumeMultiple: fp.volumeMultiple || 0
+              });
+              
+              // Mark for cache update if not live candle
+              if (fp.time < currentCandleTimestampSec) {
+                candlesToUpdate.push({
+                  timestamp: fp.time,
+                  newCount: freshExchangeCount,
+                  newDelta: fp.delta || 0,
+                  newVolume: fp.volume || 0,
+                  bullish: fp.bullishExchanges || 0,
+                  bearish: fp.bearishExchanges || 0
+                });
+              }
+            } else {
+              // Cached has same or more - use cached
+              mergedFootprint.push({
+                time: existingCached.timestamp,
+                delta: existingCached.delta,
+                volume: existingCached.volume,
+                exchanges: existingCached.exchangeCount,
+                bullishExchanges: existingCached.bullishExchanges || 0,
+                bearishExchanges: existingCached.bearishExchanges || 0,
+                confidence: existingCached.exchangeCount / TOTAL_EXCHANGES,
+                divergence: false,
+                highValueDivergence: false,
+                volumeMultiple: 0
+              });
+            }
+          } else {
+            // No cached data - use fresh
+            mergedFootprint.push({
+              time: fp.time,
+              delta: fp.delta,
+              volume: fp.volume,
+              exchanges: freshExchangeCount,
+              bullishExchanges: fp.bullishExchanges || 0,
+              bearishExchanges: fp.bearishExchanges || 0,
+              confidence: freshExchangeCount / TOTAL_EXCHANGES,
+              divergence: fp.divergence || false,
+              highValueDivergence: fp.highValueDivergence || false,
+              volumeMultiple: fp.volumeMultiple || 0
+            });
+            
+            // Add to cache if not live candle and has at least 1 exchange
+            if (fp.time < currentCandleTimestampSec && freshExchangeCount > 0) {
+              candlesToInsert.push(fp);
+            }
+          }
+          processedTimestamps.add(fp.time);
+        }
+      }
+
+      // Add cached candles that weren't in fresh data (older history)
+      for (const cached of allCachedData) {
+        if (!processedTimestamps.has(cached.timestamp) && cached.timestamp >= requestedStartTimeSec) {
           mergedFootprint.push({
             time: cached.timestamp,
             delta: cached.delta,
@@ -2631,32 +2718,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             exchanges: cached.exchangeCount,
             bullishExchanges: cached.bullishExchanges || 0,
             bearishExchanges: cached.bearishExchanges || 0,
-            confidence: 1.0, // Full confidence for complete candles
+            confidence: cached.exchangeCount / TOTAL_EXCHANGES,
             divergence: false,
             highValueDivergence: false,
             volumeMultiple: 0
           });
         }
-        console.log(`📦 Using ${relevantCached.length} cached candles`);
       }
 
-      // Add fresh data (deduplicating by timestamp)
-      const mergedTimestamps = new Set(mergedFootprint.map(fp => fp.time));
-      const newCandles: any[] = [];
-
-      if (freshData.footprint && Array.isArray(freshData.footprint)) {
-        for (const fp of freshData.footprint) {
-          if (!mergedTimestamps.has(fp.time) && fp.time >= requestedStartTimeSec) {
-            mergedFootprint.push(fp);
-            mergedTimestamps.add(fp.time);
-
-            // Track new complete candles for caching
-            if (fp.time < currentCandleTimestampSec && (fp.exchanges || 0) >= TOTAL_EXCHANGES && !cachedTimestamps.has(fp.time)) {
-              newCandles.push(fp);
-            }
-          }
-        }
-      }
+      console.log(`📦 Merged: ${processedTimestamps.size} fresh + ${allCachedData.filter(c => !processedTimestamps.has(c.timestamp)).length} cached-only`);
 
       // Sort merged footprint by time
       mergedFootprint.sort((a, b) => a.time - b.time);
@@ -2707,34 +2777,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prevCvd = cumulativeDelta;
       }
 
-      // Cache new complete candles
-      if (newCandles.length > 0) {
+      // Cache new candles (insert) and update existing partial candles
+      const { gte } = await import("drizzle-orm");
+      let insertedCount = 0;
+      let updatedCount = 0;
+
+      // Insert new candles
+      if (candlesToInsert.length > 0) {
         try {
-          let cachedCvd = 0;
-          for (const candle of newCandles) {
-            cachedCvd += candle.delta || 0;
+          for (const candle of candlesToInsert) {
+            const exchangeCount = candle.exchanges || 0;
             await db.insert(multiExchangeCvdCache)
               .values({
                 symbol,
                 interval,
                 timestamp: candle.time,
                 delta: candle.delta || 0,
-                cvd: cachedCvd,
+                cvd: 0, // Will be recalculated
                 volume: candle.volume || 0,
                 buyVolume: candle.buyVolume || null,
                 sellVolume: candle.sellVolume || null,
-                exchangeCount: candle.exchanges || 0,
+                exchangeCount,
                 exchangesResponded: null,
                 bullishExchanges: candle.bullishExchanges || 0,
                 bearishExchanges: candle.bearishExchanges || 0,
-                isComplete: true
+                isComplete: exchangeCount >= TOTAL_EXCHANGES
               })
               .onConflictDoNothing();
+            insertedCount++;
           }
-          console.log(`💾 Cached ${newCandles.length} new complete CVD candles for ${symbol}/${interval}`);
         } catch (cacheError: any) {
           console.error('Cache insert error:', cacheError.message);
         }
+      }
+
+      // Update existing partial candles with more exchange data
+      if (candlesToUpdate.length > 0) {
+        try {
+          for (const update of candlesToUpdate) {
+            await db.update(multiExchangeCvdCache)
+              .set({
+                delta: update.newDelta,
+                volume: update.newVolume,
+                exchangeCount: update.newCount,
+                bullishExchanges: update.bullish,
+                bearishExchanges: update.bearish,
+                isComplete: update.newCount >= TOTAL_EXCHANGES,
+                updatedAt: new Date()
+              })
+              .where(
+                and(
+                  eq(multiExchangeCvdCache.symbol, symbol),
+                  eq(multiExchangeCvdCache.interval, interval),
+                  eq(multiExchangeCvdCache.timestamp, update.timestamp)
+                )
+              );
+            updatedCount++;
+          }
+        } catch (updateError: any) {
+          console.error('Cache update error:', updateError.message);
+        }
+      }
+
+      if (insertedCount > 0 || updatedCount > 0) {
+        console.log(`💾 Cache: ${insertedCount} new, ${updatedCount} updated for ${symbol}/${interval}`);
       }
 
       // Build response matching Python output format
@@ -2758,10 +2864,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         divergences: divergenceAlerts,
         metadata: {
           ...(freshData.metadata || {}),
-          cachedCandles: useCachedData ? cachedCompleteCount : 0,
+          cachedComplete: cachedCompleteCount,
+          cachedPartial: cachedPartialCount,
           freshCandles: freshData.footprint?.length || 0,
           totalCandles: mergedFootprint.length,
-          cacheHit: useCachedData
+          newlyCached: insertedCount,
+          updatedCache: updatedCount,
+          cacheHit: useCachedData || cachedPartialCount > 0
         }
       };
 
@@ -2769,9 +2878,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         footprint: data.footprint?.length || 0,
         cvd: data.cvd?.length || 0,
         divergences: data.divergences?.length || 0,
-        cachedUsed: useCachedData ? cachedCompleteCount : 0,
+        cachedComplete: cachedCompleteCount,
+        cachedPartial: cachedPartialCount,
         freshFetched: freshData.footprint?.length || 0,
-        newlyCached: newCandles.length
+        newlyCached: insertedCount,
+        updatedCache: updatedCount
       });
 
       res.json(data);
