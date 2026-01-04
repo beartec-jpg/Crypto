@@ -6453,6 +6453,11 @@ export default function CryptoIndicators() {
       showHighValueOnly,
       showChartLabels,
       alertFilterMode,
+      // CVD Spike settings
+      cvdSpikeEnabled,
+      cvdSpikeLevel1,
+      cvdSpikeLevel2,
+      cvdSpikeLevel3,
     };
     
     const storageKey = `indicatorDefaults_${userId}_${symbol}_${interval}`;
@@ -6465,7 +6470,7 @@ export default function CryptoIndicators() {
     });
     
     console.log(`💾 Saved indicator defaults for ${userId}_${symbol}_${interval}:`, indicatorDefaults);
-  }, [userId, symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showStochRSI, stochRSIPeriod, showWilliamsR, williamsRPeriod, showCCI, cciPeriod, showADX, adxPeriod, showBB, bbPeriod, bbStdDev, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, showVWAPBands, showSessionVWAP, showFVG, showBOS, showCHoCH, showSwingPivots, showOrderBlocks, obSwingLength, orderBlockLength, showPremiumDiscount, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showAutoTrendlines, showHighValueOnly, showChartLabels, alertFilterMode, toast]);
+  }, [userId, symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showStochRSI, stochRSIPeriod, showWilliamsR, williamsRPeriod, showCCI, cciPeriod, showADX, adxPeriod, showBB, bbPeriod, bbStdDev, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, showVWAPBands, showSessionVWAP, showFVG, showBOS, showCHoCH, showSwingPivots, showOrderBlocks, obSwingLength, orderBlockLength, showPremiumDiscount, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showAutoTrendlines, showHighValueOnly, showChartLabels, alertFilterMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, toast]);
 
   // Set current timeframe as the default for this symbol on page load
   const makeTimeframeDefault = useCallback(() => {
@@ -6529,6 +6534,14 @@ export default function CryptoIndicators() {
     // Display options
     setShowHighValueOnly(false);
     setShowChartLabels(false);
+    // CVD Spike settings - reset to defaults (enabled with default thresholds)
+    setCvdSpikeEnabled(true);
+    setCvdSpikeLevel1(175);
+    setCvdSpikeLevel1Input('175');
+    setCvdSpikeLevel2(250);
+    setCvdSpikeLevel2Input('250');
+    setCvdSpikeLevel3(400);
+    setCvdSpikeLevel3Input('400');
     
     console.log(`🔄 Reset all indicators to OFF for ${symbol}_${interval} (no saved config)`);
   }, [symbol, interval]);
@@ -6683,6 +6696,21 @@ export default function CryptoIndicators() {
       if (defaults.showHighValueOnly !== undefined) setShowHighValueOnly(defaults.showHighValueOnly);
       if (defaults.showChartLabels !== undefined) setShowChartLabels(defaults.showChartLabels);
       if (defaults.alertFilterMode !== undefined) setAlertFilterMode(defaults.alertFilterMode);
+      
+      // CVD Spike settings
+      if (defaults.cvdSpikeEnabled !== undefined) setCvdSpikeEnabled(defaults.cvdSpikeEnabled);
+      if (defaults.cvdSpikeLevel1 !== undefined) {
+        setCvdSpikeLevel1(defaults.cvdSpikeLevel1);
+        setCvdSpikeLevel1Input(defaults.cvdSpikeLevel1.toString());
+      }
+      if (defaults.cvdSpikeLevel2 !== undefined) {
+        setCvdSpikeLevel2(defaults.cvdSpikeLevel2);
+        setCvdSpikeLevel2Input(defaults.cvdSpikeLevel2.toString());
+      }
+      if (defaults.cvdSpikeLevel3 !== undefined) {
+        setCvdSpikeLevel3(defaults.cvdSpikeLevel3);
+        setCvdSpikeLevel3Input(defaults.cvdSpikeLevel3.toString());
+      }
       
       toast({
         title: "📂 Indicators Loaded",
