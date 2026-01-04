@@ -9356,7 +9356,7 @@ export default function CryptoIndicators() {
     } else {
       console.warn('⚠️ candleSeriesRef.current is null');
     }
-  }, [chartReady, backtestResults, candles, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, isReplayMode, cvdSpikeEnabled, deltaHistory]);
+  }, [chartReady, backtestResults, candles, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, isReplayMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, deltaHistory]);
 
   // ========== DEBOUNCE EFFECTS FOR STRATEGY SETTINGS ==========
   
