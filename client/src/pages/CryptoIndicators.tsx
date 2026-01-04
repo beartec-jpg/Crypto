@@ -13659,8 +13659,11 @@ export default function CryptoIndicators() {
                               ? bearishBars.reduce((sum, h) => sum + h.delta, 0) / bearishBars.length 
                               : 0;
                             
-                            const isBullishSpike = currentBar.delta > 0 && currentBar.delta >= avgBullishDelta * 1.5;
-                            const isBearishSpike = currentBar.delta < 0 && currentBar.delta <= avgBearishDelta * 1.5;
+                            const level1Mult = cvdSpikeLevel1 / 100;
+                            const level2Mult = cvdSpikeLevel2 / 100;
+                            const level3Mult = cvdSpikeLevel3 / 100;
+                            const isBullishSpike = currentBar.delta > 0 && currentBar.delta >= avgBullishDelta * level1Mult;
+                            const isBearishSpike = currentBar.delta < 0 && currentBar.delta <= avgBearishDelta * level1Mult;
                             const hasDivergence = useMultiExchange && currentBar.divergence;
                             
                             return (
@@ -13702,7 +13705,7 @@ export default function CryptoIndicators() {
                                     
                                     if (isBullishSpike) {
                                       const multiple = avgBullishDelta > 0 ? currentBar.delta / avgBullishDelta : 0;
-                                      const triangleCount = multiple >= 3 ? 3 : multiple >= 2 ? 2 : 1;
+                                      const triangleCount = multiple >= level3Mult ? 3 : multiple >= level2Mult ? 2 : 1;
                                       const colorClass = bullishExchanges >= 5 ? 'text-green-400' : 
                                                          bullishExchanges >= 3 ? 'text-blue-400' : 'text-gray-400';
                                       return (
@@ -13715,7 +13718,7 @@ export default function CryptoIndicators() {
                                     
                                     if (isBearishSpike) {
                                       const multiple = avgBearishDelta !== 0 ? Math.abs(currentBar.delta / avgBearishDelta) : 0;
-                                      const triangleCount = multiple >= 3 ? 3 : multiple >= 2 ? 2 : 1;
+                                      const triangleCount = multiple >= level3Mult ? 3 : multiple >= level2Mult ? 2 : 1;
                                       const colorClass = bearishExchanges >= 5 ? 'text-red-400' : 
                                                          bearishExchanges >= 3 ? 'text-yellow-400' : 'text-gray-400';
                                       return (
@@ -13752,10 +13755,14 @@ export default function CryptoIndicators() {
                               ? bearishBars.reduce((sum, h) => sum + h.delta, 0) / bearishBars.length 
                               : 0;
                             
+                            const level1Mult = cvdSpikeLevel1 / 100;
+                            const level2Mult = cvdSpikeLevel2 / 100;
+                            const level3Mult = cvdSpikeLevel3 / 100;
+                            
                             let lastDate = '';
                             return limitedHistory.map((item, idx) => {
-                              const isBullishSpike = item.delta > 0 && item.delta >= avgBullishDelta * 1.5;
-                              const isBearishSpike = item.delta < 0 && item.delta <= avgBearishDelta * 1.5;
+                              const isBullishSpike = item.delta > 0 && item.delta >= avgBullishDelta * level1Mult;
+                              const isBearishSpike = item.delta < 0 && item.delta <= avgBearishDelta * level1Mult;
                               const hasDivergence = useMultiExchange && item.divergence;
                               const cellBg = hasDivergence 
                                 ? 'bg-yellow-900/20' 
@@ -13805,7 +13812,7 @@ export default function CryptoIndicators() {
                                   
                                   if (isBullishSpike) {
                                     const multiple = avgBullishDelta > 0 ? item.delta / avgBullishDelta : 0;
-                                    const triangleCount = multiple >= 3 ? 3 : multiple >= 2 ? 2 : 1;
+                                    const triangleCount = multiple >= level3Mult ? 3 : multiple >= level2Mult ? 2 : 1;
                                     // Color: green (5-6), blue (3-4), grey (1-2)
                                     const colorClass = bullishExchanges >= 5 ? 'text-green-400' : 
                                                        bullishExchanges >= 3 ? 'text-blue-400' : 'text-gray-400';
@@ -13819,7 +13826,7 @@ export default function CryptoIndicators() {
                                   
                                   if (isBearishSpike) {
                                     const multiple = avgBearishDelta !== 0 ? Math.abs(item.delta / avgBearishDelta) : 0;
-                                    const triangleCount = multiple >= 3 ? 3 : multiple >= 2 ? 2 : 1;
+                                    const triangleCount = multiple >= level3Mult ? 3 : multiple >= level2Mult ? 2 : 1;
                                     // Color: red (5-6), yellow (3-4), grey (1-2)
                                     const colorClass = bearishExchanges >= 5 ? 'text-red-400' : 
                                                        bearishExchanges >= 3 ? 'text-yellow-400' : 'text-gray-400';
