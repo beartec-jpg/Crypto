@@ -58,6 +58,8 @@ export default function CryptoSandbox() {
   const [drawnTrendlines, setDrawnTrendlines] = useState<{ p1: { x: number; y: number; time: number; price: number }; p2: { x: number; y: number; time: number; price: number } }[]>([]);
   const [magnetPulse, setMagnetPulse] = useState<{ x: number; y: number } | null>(null);
   const MAGNET_RADIUS = 30; // pixels
+  // Zoom counter to trigger re-renders for trendlines during zoom/pan
+  const [zoomVersion, setZoomVersion] = useState(0);
   
   // Indicator states - Trend Tools
   const [showEMA, setShowEMA] = useState(false);
@@ -479,6 +481,9 @@ export default function CryptoSandbox() {
             g.select('.current-price-text')
               .attr('y', newYScale(lastCandle.close) + 4);
           }
+          
+          // Trigger React re-render for trendlines
+          setZoomVersion(v => v + 1);
         }
       });
     
@@ -1138,8 +1143,9 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Render drawn trendlines */}
-            <svg className="absolute inset-0 pointer-events-none overflow-visible">
+            {/* Render drawn trendlines - no end circles, just lines */}
+            {/* zoomVersion ensures re-render on zoom/pan */}
+            <svg className="absolute inset-0 pointer-events-none overflow-visible" data-zoom={zoomVersion}>
               {drawnTrendlines.map((line, i) => {
                 // Recalculate positions based on current scale (for zoom/pan)
                 if (!xScaleRef.current || !yScaleRef.current) return null;
@@ -1148,15 +1154,12 @@ export default function CryptoSandbox() {
                 const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
                 const y2 = yScaleRef.current(line.p2.price) + margin.top;
                 return (
-                  <g key={i}>
-                    <line 
-                      x1={x1} y1={y1} x2={x2} y2={y2}
-                      stroke="#facc15"
-                      strokeWidth="2"
-                    />
-                    <circle cx={x1} cy={y1} r="4" fill="#facc15" />
-                    <circle cx={x2} cy={y2} r="4" fill="#facc15" />
-                  </g>
+                  <line 
+                    key={i}
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke="#facc15"
+                    strokeWidth="2"
+                  />
                 );
               })}
             </svg>
