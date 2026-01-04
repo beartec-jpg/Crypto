@@ -67,39 +67,42 @@ export default function CryptoSandbox() {
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
   
-  // Fetch candle data - up to 2997 candles (3 batches of 999)
+  // Fetch candle data - use backend proxy for reliable data (up to 5000+ candles)
   const fetchCandles = useCallback(async () => {
     setLoading(true);
     try {
-      // First batch - most recent 999 (using main Binance API for more history)
-      const url1 = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999`;
+      // Use backend proxy which handles CORS and can fetch more data
+      // First batch - most recent 1000
+      const url1 = `/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000`;
       const response1 = await fetch(url1);
       if (!response1.ok) throw new Error('Failed to fetch data');
       const data1 = await response1.json();
       
       let allData = [...data1];
+      console.log(`📊 Batch 1: ${data1.length} candles`);
       
-      // Second batch - 999 before that
-      if (data1.length > 0) {
-        const endTime2 = data1[0][0] - 1;
-        const url2 = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999&endTime=${endTime2}`;
-        const response2 = await fetch(url2);
-        if (response2.ok) {
-          const data2 = await response2.json();
-          allData = [...data2, ...allData];
-          
-          // Third batch - another 999
-          if (data2.length > 0) {
-            const endTime3 = data2[0][0] - 1;
-            const url3 = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999&endTime=${endTime3}`;
-            const response3 = await fetch(url3);
-            if (response3.ok) {
-              const data3 = await response3.json();
-              allData = [...data3, ...allData];
-            }
+      // Fetch additional batches for more history
+      const batchCount = 5; // Total 5 batches = up to 5000 candles
+      let lastEndTime = data1.length > 0 ? data1[0][0] - 1 : null;
+      
+      for (let i = 2; i <= batchCount && lastEndTime; i++) {
+        const url = `/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000&endTime=${lastEndTime}`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.length > 0) {
+            console.log(`📊 Batch ${i}: ${data.length} candles`);
+            allData = [...data, ...allData];
+            lastEndTime = data[0][0] - 1;
+          } else {
+            break; // No more data available
           }
+        } else {
+          break;
         }
       }
+      
+      console.log(`✅ Total candles loaded: ${allData.length}`);
       
       const formattedCandles: CandleData[] = allData.map((k: any) => ({
         time: k[0],
