@@ -42,6 +42,9 @@ export default function CryptoSandbox() {
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
   const [crosshairMode, setCrosshairMode] = useState(false);
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null);
+  // For mobile "push" behavior - track touch start position
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const crosshairStartRef = useRef<{ x: number; y: number } | null>(null);
   
   // Drawing tool state
   type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | null;
@@ -825,20 +828,42 @@ export default function CryptoSandbox() {
                   setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                 }
               }}
-              onTouchMove={(e) => {
+              onTouchStart={(e) => {
                 if (crosshairMode && e.touches[0]) {
                   e.preventDefault();
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  setCrosshairPos({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
+                  // Store where the touch started
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  // Store where crosshair currently is (or center if not set)
+                  crosshairStartRef.current = crosshairPos || { 
+                    x: dimensions.width / 2, 
+                    y: dimensions.height / 2 
+                  };
+                  // If no crosshair yet, initialize at center
+                  if (!crosshairPos) {
+                    setCrosshairPos({ x: dimensions.width / 2, y: dimensions.height / 2 });
+                  }
                 }
               }}
-              onTouchStart={(e) => {
-                if (crosshairMode && e.touches[0]) {
+              onTouchMove={(e) => {
+                if (crosshairMode && e.touches[0] && touchStartRef.current && crosshairStartRef.current) {
+                  e.preventDefault();
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  setCrosshairPos({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
+                  // Calculate how much the finger moved
+                  const deltaX = (touch.clientX - rect.left) - touchStartRef.current.x;
+                  const deltaY = (touch.clientY - rect.top) - touchStartRef.current.y;
+                  // Move crosshair by that delta from its starting position
+                  const newX = Math.max(margin.left, Math.min(dimensions.width - margin.right, crosshairStartRef.current.x + deltaX));
+                  const newY = Math.max(margin.top, Math.min(dimensions.height - margin.bottom, crosshairStartRef.current.y + deltaY));
+                  setCrosshairPos({ x: newX, y: newY });
                 }
+              }}
+              onTouchEnd={() => {
+                // Clear touch tracking on end
+                touchStartRef.current = null;
+                crosshairStartRef.current = null;
               }}
             >
               {/* Crosshair lines */}
