@@ -102,6 +102,28 @@ const getFutureBarCount = (interval: string): number => {
   return 300;
 };
 
+// Get table row limit based on timeframe - industry standard lookback periods
+const getTableRowLimit = (interval: string): number => {
+  const limits: Record<string, number> = {
+    '1m': 60,   // 1 hour of data
+    '3m': 40,   // 2 hours
+    '5m': 36,   // 3 hours
+    '15m': 32,  // 8 hours
+    '30m': 24,  // 12 hours
+    '1h': 24,   // 1 day
+    '2h': 24,   // 2 days
+    '4h': 18,   // 3 days
+    '6h': 16,   // 4 days
+    '8h': 15,   // 5 days
+    '12h': 14,  // 1 week
+    '1d': 21,   // 3 weeks
+    '3d': 14,   // 6 weeks
+    '1w': 12,   // 3 months
+    '1M': 6,    // 6 months
+  };
+  return limits[interval] || 24;
+};
+
 interface VWAPData {
   time: number;
   value: number;
@@ -2122,9 +2144,11 @@ export default function CryptoIndicators() {
             runningCVD += row.delta;
             // API returns timestamps in milliseconds, chart uses seconds
             const timestampSeconds = row.time > 9999999999 ? Math.floor(row.time / 1000) : row.time;
+            const date = new Date(timestampSeconds * 1000);
             return {
-              time: new Date(timestampSeconds * 1000).toLocaleTimeString(),
-              timestamp: timestampSeconds, // Unix timestamp in seconds for chart matching
+              time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              date: date.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+              timestamp: timestampSeconds,
               delta: row.delta,
               cumDelta: runningCVD,
               isBull: row.delta >= 0,
@@ -13644,8 +13668,9 @@ export default function CryptoIndicators() {
                           })()}
                           
                           {/* Historical Bars */}
-                          {deltaHistory.slice(0, -1).reverse().map((item, idx) => {
-                            // Calculate separate averages for bullish and bearish bars
+                          {(() => {
+                            const tableLimit = getTableRowLimit(interval);
+                            const limitedHistory = deltaHistory.slice(0, -1).reverse().slice(0, tableLimit - 1);
                             const bullishBars = deltaHistory.filter(h => h.delta > 0);
                             const bearishBars = deltaHistory.filter(h => h.delta < 0);
                             const avgBullishDelta = bullishBars.length > 0 
@@ -13655,16 +13680,24 @@ export default function CryptoIndicators() {
                               ? bearishBars.reduce((sum, h) => sum + h.delta, 0) / bearishBars.length 
                               : 0;
                             
-                            const isBullishSpike = item.delta > 0 && item.delta >= avgBullishDelta * 1.5;
-                            const isBearishSpike = item.delta < 0 && item.delta <= avgBearishDelta * 1.5;
-                            const hasDivergence = useMultiExchange && item.divergence;
-                            const cellBg = hasDivergence 
-                              ? 'bg-yellow-900/20' 
-                              : item.isBull ? 'bg-green-900/20' : 'bg-red-900/20';
-                            
-                            return (
-                              <tr key={idx} className={`border-b border-slate-700/50 ${cellBg}`}>
-                              <td className="text-gray-300 py-1 px-1 font-mono text-[10px]">{item.time}</td>
+                            let lastDate = '';
+                            return limitedHistory.map((item, idx) => {
+                              const isBullishSpike = item.delta > 0 && item.delta >= avgBullishDelta * 1.5;
+                              const isBearishSpike = item.delta < 0 && item.delta <= avgBearishDelta * 1.5;
+                              const hasDivergence = useMultiExchange && item.divergence;
+                              const cellBg = hasDivergence 
+                                ? 'bg-yellow-900/20' 
+                                : item.isBull ? 'bg-green-900/20' : 'bg-red-900/20';
+                              
+                              const showDate = item.date !== lastDate;
+                              lastDate = item.date || '';
+                              
+                              return (
+                                <tr key={idx} className={`border-b border-slate-700/50 ${cellBg}`}>
+                                <td className="text-gray-300 py-1 px-1 font-mono text-[10px]">
+                                  {showDate && <span className="text-gray-500 mr-1">{item.date}</span>}
+                                  {item.time}
+                                </td>
                               <td className={`text-right py-1 px-1 font-mono font-semibold ${item.delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
                                 {item.delta > 0 ? '+' : ''}{(item.delta / 1000).toFixed(1)}k
                               </td>
@@ -13736,9 +13769,10 @@ export default function CryptoIndicators() {
                                   return null;
                                 })()}
                               </td>
-                            </tr>
-                          );
-                        })}
+                              </tr>
+                              );
+                            });
+                          })()}
                         </>
                       )}
                     </tbody>
