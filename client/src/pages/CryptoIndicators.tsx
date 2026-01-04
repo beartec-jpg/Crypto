@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries, ISeriesApi } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries, ISeriesApi, createSeriesMarkers } from 'lightweight-charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -324,6 +324,7 @@ export default function CryptoIndicators() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const seriesMarkersRef = useRef<ReturnType<typeof createSeriesMarkers> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fetchGenerationRef = useRef(0); // Track latest fetch to prevent stale updates
   const abortControllerRef = useRef<AbortController | null>(null); // Cancel pending requests
@@ -7146,6 +7147,7 @@ export default function CryptoIndicators() {
         orderFlowSeriesRef.current = null;
         cumDeltaSeriesRef.current = null;
         premiumDiscountRefs.current = { equilibrium: null, premium: null, discount: null };
+        seriesMarkersRef.current = null;
         
         chartRef.current.remove();
         chartRef.current = null;
@@ -8819,20 +8821,8 @@ export default function CryptoIndicators() {
 
   // Update backtest trade markers with price level lines and shaded zones
   useEffect(() => {
-    if (!chartReady || !chartRef.current || !backtestResults || backtestResults.trades.length === 0) {
-      // Clean up old trade markers
-      if (tradeMarkerRefs.current.length > 0) {
-        tradeMarkerRefs.current.forEach(series => {
-          try {
-            if (series && chartRef.current) {
-              chartRef.current.removeSeries(series);
-            }
-          } catch (e) {
-            // Already disposed
-          }
-        });
-        tradeMarkerRefs.current = [];
-      }
+    // Only return early if chart isn't ready at all
+    if (!chartReady || !chartRef.current) {
       return;
     }
 
@@ -8845,24 +8835,29 @@ export default function CryptoIndicators() {
       return;
     }
 
-    // Remove old trade markers
-    tradeMarkerRefs.current.forEach(series => {
-      try {
-        chart.removeSeries(series);
-      } catch (e) {
-        // Already disposed
-      }
-    });
-    tradeMarkerRefs.current = [];
+    // Clean up old trade markers
+    if (tradeMarkerRefs.current.length > 0) {
+      tradeMarkerRefs.current.forEach(series => {
+        try {
+          if (series && chart) {
+            chart.removeSeries(series);
+          }
+        } catch (e) {
+          // Already disposed
+        }
+      });
+      tradeMarkerRefs.current = [];
+    }
 
-    // Filter trades for replay mode - only show trades that have opened by current replay time
-    const currentReplayTime = isReplayMode && candles.length > 0 ? candles[candles.length - 1].time : Infinity;
-    const visibleTrades = backtestResults.trades.filter(trade => 
-      !isReplayMode || trade.entryTime <= currentReplayTime
-    );
-
-    // Collect all markers for visible trades
+    // Collect all markers
     const allMarkers: any[] = [];
+    
+    // Filter trades for replay mode - only show trades that have opened by current replay time
+    const hasBacktestTrades = backtestResults && backtestResults.trades && backtestResults.trades.length > 0;
+    const currentReplayTime = isReplayMode && candles.length > 0 ? candles[candles.length - 1].time : Infinity;
+    const visibleTrades = hasBacktestTrades 
+      ? backtestResults.trades.filter(trade => !isReplayMode || trade.entryTime <= currentReplayTime)
+      : [];
 
     // Add shaded zones and horizontal lines for each visible trade
     visibleTrades.forEach(trade => {
@@ -9263,16 +9258,32 @@ export default function CryptoIndicators() {
     // Sort markers by time (required by lightweight-charts)
     allMarkers.sort((a, b) => (a.time as number) - (b.time as number));
     
-    // Set all markers at once on the candlestick series
+    // Log marker count
+    console.log('📍 Setting chart markers:', {
+      totalMarkers: allMarkers.length,
+      cvdMarkers: allMarkers.filter(m => m.text && (m.text.includes('▲') || m.text.includes('▼'))).length,
+      hasCandleSeries: !!candleSeriesRef.current,
+      sampleMarkers: allMarkers.slice(-3).map(m => ({ time: m.time, text: m.text, color: m.color }))
+    });
+    
+    // Set all markers at once on the candlestick series using v5 API
     if (candleSeriesRef.current) {
       try {
-        const series = candleSeriesRef.current as any;
-        if (series && typeof series.setMarkers === 'function') {
-          series.setMarkers(allMarkers);
+        // Use v5 createSeriesMarkers API
+        if (seriesMarkersRef.current) {
+          // Update existing markers primitive
+          seriesMarkersRef.current.setMarkers(allMarkers);
+          console.log('✅ Markers updated on chart:', allMarkers.length);
+        } else if (allMarkers.length > 0) {
+          // Create new markers primitive
+          seriesMarkersRef.current = createSeriesMarkers(candleSeriesRef.current, allMarkers);
+          console.log('✅ Markers primitive created with', allMarkers.length, 'markers');
         }
       } catch (e) {
         console.error('Failed to set markers on candlestick series:', e);
       }
+    } else {
+      console.warn('⚠️ candleSeriesRef.current is null');
     }
   }, [chartReady, backtestResults, candles, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, isReplayMode, cvdSpikeEnabled, deltaHistory]);
 
