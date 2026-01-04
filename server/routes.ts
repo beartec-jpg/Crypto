@@ -2493,6 +2493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Multi-Exchange Orderflow API - aggregates delta across multiple exchanges (public access)
+  // Uses database caching to avoid redundant API calls for historical data
   app.get("/api/crypto/multi-exchange-orderflow", async (req, res) => {
     try {
       // Input validation with allow-lists
@@ -2526,7 +2527,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      console.log(`📊 Analyzing multi-exchange orderflow: ${symbol}, period: ${period}, interval: ${interval}`);
+      // Import database utilities
+      const { db } = await import("./db");
+      const { multiExchangeCvdCache } = await import("@shared/schema");
+      const { eq, and, lt, desc } = await import("drizzle-orm");
+
+      // Calculate interval in milliseconds for timestamp normalization
+      const INTERVAL_MS: Record<string, number> = {
+        '1m': 60000, '3m': 180000, '5m': 300000, '15m': 900000,
+        '30m': 1800000, '1h': 3600000, '2h': 7200000, '4h': 14400000,
+        '6h': 21600000, '12h': 43200000, '1d': 86400000
+      };
+      const intervalMs = INTERVAL_MS[interval] || 900000;
+      
+      // Current timestamp normalized to interval boundary
+      const now = Date.now();
+      const currentCandleStart = Math.floor(now / intervalMs) * intervalMs;
+      const currentCandleTimestampSec = Math.floor(currentCandleStart / 1000);
+
+      // Check cache for complete historical candles (not the live candle)
+      const cachedData = await db.select()
+        .from(multiExchangeCvdCache)
+        .where(
+          and(
+            eq(multiExchangeCvdCache.symbol, symbol),
+            eq(multiExchangeCvdCache.interval, interval),
+            eq(multiExchangeCvdCache.isComplete, true),
+            lt(multiExchangeCvdCache.timestamp, currentCandleTimestampSec) // Exclude live candle
+          )
+        )
+        .orderBy(desc(multiExchangeCvdCache.timestamp))
+        .limit(200);
+
+      // Get timestamps of cached complete candles
+      const cachedTimestamps = new Set(cachedData.map(c => c.timestamp));
+      const cachedCompleteCount = cachedData.length;
+
+      console.log(`📊 Cache check for ${symbol}/${interval}: ${cachedCompleteCount} complete candles cached`);
 
       // Path to Python script
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'multi_exchange_orderflow.py');
@@ -2556,12 +2593,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Save newly fetched complete candles to cache (6/6 exchanges)
+      // Only save historical candles (not the live one)
+      const candlesToCache: any[] = [];
+      const TOTAL_EXCHANGES = 6;
+
+      if (data.footprint && Array.isArray(data.footprint)) {
+        let cumulativeDelta = 0;
+        for (const fp of data.footprint) {
+          const timestampSec = fp.time;
+          cumulativeDelta += fp.delta || 0;
+          
+          // Skip live candle and already cached candles
+          if (timestampSec >= currentCandleTimestampSec) continue;
+          if (cachedTimestamps.has(timestampSec)) continue;
+          
+          // Only cache if all 6 exchanges responded
+          const exchangeCount = fp.exchanges || 0;
+          if (exchangeCount >= TOTAL_EXCHANGES) {
+            candlesToCache.push({
+              symbol,
+              interval,
+              timestamp: timestampSec,
+              delta: fp.delta || 0,
+              cvd: cumulativeDelta,
+              volume: fp.volume || 0,
+              buyVolume: fp.buyVolume || null,
+              sellVolume: fp.sellVolume || null,
+              exchangeCount,
+              exchangesResponded: null, // We don't track individual names currently
+              bullishExchanges: fp.bullishExchanges || 0,
+              bearishExchanges: fp.bearishExchanges || 0,
+              isComplete: true
+            });
+          }
+        }
+      }
+
+      // Batch insert new complete candles
+      if (candlesToCache.length > 0) {
+        try {
+          // Use ON CONFLICT to upsert (update if exists)
+          for (const candle of candlesToCache) {
+            await db.insert(multiExchangeCvdCache)
+              .values(candle)
+              .onConflictDoNothing(); // Skip if already exists
+          }
+          console.log(`💾 Cached ${candlesToCache.length} complete CVD candles for ${symbol}/${interval}`);
+        } catch (cacheError: any) {
+          console.error('Cache insert error:', cacheError.message);
+          // Continue - caching is not critical
+        }
+      }
+
       console.log(`✅ Multi-exchange analysis complete:`, {
         footprint: data.footprint?.length || 0,
         cvd: data.cvd?.length || 0,
         divergences: data.divergences?.length || 0,
         successRate: data.metadata?.success_rate,
-        avgResponseTime: data.metadata?.avg_response_time_ms
+        avgResponseTime: data.metadata?.avg_response_time_ms,
+        newlyCached: candlesToCache.length
       });
 
       res.json(data);
