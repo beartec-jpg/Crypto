@@ -884,6 +884,46 @@ export const analyticsDailyStats = pgTable("analytics_daily_stats", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ========== MULTI-EXCHANGE CVD CACHE ==========
+// Cache for multi-exchange CVD/footprint data to avoid redundant API calls
+export const multiExchangeCvdCache = pgTable("multi_exchange_cvd_cache", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(), // e.g., 'BTCUSDT'
+  interval: varchar("interval").notNull(), // e.g., '1h', '15m'
+  timestamp: integer("timestamp").notNull(), // Unix timestamp (seconds)
+  delta: doublePrecision("delta").notNull(), // CVD delta value
+  cvd: doublePrecision("cvd").notNull(), // Cumulative CVD
+  volume: doublePrecision("volume"), // Total volume
+  buyVolume: doublePrecision("buy_volume"), // Buy volume estimate
+  sellVolume: doublePrecision("sell_volume"), // Sell volume estimate
+  exchangeCount: integer("exchange_count").notNull(), // Number of exchanges that responded
+  exchangesResponded: text("exchanges_responded").array(), // Array of exchange IDs that contributed
+  bullishExchanges: integer("bullish_exchanges"), // How many exchanges showed bullish delta
+  bearishExchanges: integer("bearish_exchanges"), // How many exchanges showed bearish delta
+  isComplete: boolean("is_complete").notNull().default(false), // True if all 6 exchanges responded
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMultiExchangeCvdCacheSchema = z.object({
+  symbol: z.string(),
+  interval: z.string(),
+  timestamp: z.number().int(),
+  delta: z.number(),
+  cvd: z.number(),
+  volume: z.number().optional().nullable(),
+  buyVolume: z.number().optional().nullable(),
+  sellVolume: z.number().optional().nullable(),
+  exchangeCount: z.number().int(),
+  exchangesResponded: z.array(z.string()).optional().nullable(),
+  bullishExchanges: z.number().int().optional().nullable(),
+  bearishExchanges: z.number().int().optional().nullable(),
+  isComplete: z.boolean().optional().default(false),
+});
+
+export type InsertMultiExchangeCvdCache = z.infer<typeof insertMultiExchangeCvdCacheSchema>;
+export type MultiExchangeCvdCache = typeof multiExchangeCvdCache.$inferSelect;
+
 // Insert schemas for analytics
 export const insertAnalyticsEventSchema = z.object({
   userId: z.string().optional().nullable(),
