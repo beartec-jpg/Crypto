@@ -9153,6 +9153,7 @@ export default function CryptoIndicators() {
     });
     
     // Add CVD spike markers if enabled
+    console.log('📊 CVD Spike Check:', { cvdSpikeEnabled, deltaHistoryLen: deltaHistory.length, candlesLen: candles.length });
     if (cvdSpikeEnabled && deltaHistory.length >= 10 && candles.length > 0) {
       // Calculate average delta for bullish and bearish separately
       const bullishDeltas = deltaHistory.filter(d => d.delta > 0).map(d => d.delta);
@@ -9165,12 +9166,22 @@ export default function CryptoIndicators() {
         ? bearishDeltas.reduce((a, b) => a + b, 0) / bearishDeltas.length 
         : 0;
       
+      let matchedCount = 0;
+      let spikeCount = 0;
+      
       // Check each delta bar for spikes - use timestamp for matching
       deltaHistory.forEach((bar) => {
-        // Match by Unix timestamp directly
+        // Match by Unix timestamp directly, with fallback to time string
         const barTimestamp = bar.timestamp;
-        const candle = candles.find(c => c.time === barTimestamp);
+        let candle;
+        if (barTimestamp) {
+          candle = candles.find(c => c.time === barTimestamp);
+        } else {
+          // Fallback: match by time string
+          candle = candles.find(c => new Date(c.time * 1000).toLocaleTimeString() === bar.time);
+        }
         if (!candle) return;
+        matchedCount++;
         
         // Get exchange consensus count for direction-specific coloring
         const bullishExchanges = bar.bullishExchanges || 0;
@@ -9194,6 +9205,7 @@ export default function CryptoIndicators() {
             }
             
             const triangles = '▲'.repeat(triangleCount);
+            spikeCount++;
             allMarkers.push({
               time: candle.time,
               position: 'belowBar',
@@ -9222,6 +9234,7 @@ export default function CryptoIndicators() {
             }
             
             const triangles = '▼'.repeat(triangleCount);
+            spikeCount++;
             allMarkers.push({
               time: candle.time,
               position: 'aboveBar',
@@ -9231,6 +9244,17 @@ export default function CryptoIndicators() {
             });
           }
         }
+      });
+      
+      console.log('📊 CVD Spike Detection:', {
+        deltaHistoryLen: deltaHistory.length,
+        candlesLen: candles.length,
+        matchedCount,
+        spikeCount,
+        avgBullish: avgBullishDelta.toFixed(0),
+        avgBearish: avgBearishDelta.toFixed(0),
+        sampleTimestamps: deltaHistory.slice(0, 3).map(d => d.timestamp),
+        sampleCandleTimes: candles.slice(0, 3).map(c => c.time)
       });
     }
     
