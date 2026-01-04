@@ -4640,7 +4640,7 @@ export default function CryptoIndicators() {
     
     // Add divergence alerts (skip - replaced with enhanced multi-indicator divergence detection below)
     
-    // Add CVD/Delta Spike alerts
+    // Add CVD/Delta Spike alerts with exchange consensus color grading
     if (cvdSpikeEnabled && deltaHistory.length >= 10) {
       // Calculate separate averages for bullish and bearish deltas
       const bullishDeltas = deltaHistory.filter(h => h.delta > 0);
@@ -4661,21 +4661,31 @@ export default function CryptoIndicators() {
         const candle = candles.find(c => new Date(c.time * 1000).toLocaleTimeString() === bar.time);
         if (!candle) return;
         
-        // Bullish spike detection - graded by multiple: 2x, 3x, 5x
+        // Get exchange consensus for color coding
+        const bullishExchanges = bar.bullishExchanges || 0;
+        const bearishExchanges = bar.bearishExchanges || 0;
+        
+        // Bullish spike detection with lower thresholds: 1.5x, 2x, 3x
         if (bar.delta > 0 && avgBullishDelta > 0) {
           const multiple = bar.delta / avgBullishDelta;
-          if (multiple >= 2) {
-            // Determine grade symbol based on multiple
-            let gradeSymbol = '⚡'; // 2x
-            let gradeLabel = '2x';
-            if (multiple >= 5) {
-              gradeSymbol = '🔥🔥🔥'; // 5x - extreme
-              gradeLabel = '5x';
-            } else if (multiple >= 3) {
-              gradeSymbol = '🔥🔥'; // 3x - strong
+          if (multiple >= 1.5) {
+            // Determine grade symbol based on multiple and exchange consensus
+            // Color code: 5-6 exchanges = 🟢, 3-4 = 🔵, 1-2 = ⚪
+            let consensusEmoji = '🟢'; // 5-6 exchanges (strong)
+            if (bullishExchanges <= 2) {
+              consensusEmoji = '⚪'; // 1-2 exchanges (weak)
+            } else if (bullishExchanges <= 4) {
+              consensusEmoji = '🔵'; // 3-4 exchanges (moderate)
+            }
+            
+            let gradeLabel = '1.5x';
+            let gradeEmoji = '▲';
+            if (multiple >= 3) {
               gradeLabel = '3x';
-            } else {
-              gradeSymbol = '🔥'; // 2x - moderate
+              gradeEmoji = '▲▲▲';
+            } else if (multiple >= 2) {
+              gradeLabel = '2x';
+              gradeEmoji = '▲▲';
             }
             
             newAlerts.push({
@@ -4684,26 +4694,32 @@ export default function CryptoIndicators() {
               type: 'CVD Spike',
               direction: 'bullish',
               price: candle.close,
-              description: `${gradeSymbol} ${gradeLabel} Bullish delta: ${bar.delta.toFixed(0)} (${multiple.toFixed(1)}x avg)`,
+              description: `${consensusEmoji} ${gradeEmoji} ${gradeLabel} Bullish (${bullishExchanges}/6 exchanges)`,
             });
           }
         }
         
-        // Bearish spike detection - graded by multiple: 2x, 3x, 5x
+        // Bearish spike detection with lower thresholds: 1.5x, 2x, 3x
         if (bar.delta < 0 && avgBearishDelta > 0) {
           const multiple = Math.abs(bar.delta) / avgBearishDelta;
-          if (multiple >= 2) {
-            // Determine grade symbol based on multiple
-            let gradeSymbol = '💧'; // 2x
-            let gradeLabel = '2x';
-            if (multiple >= 5) {
-              gradeSymbol = '🌊🌊🌊'; // 5x - extreme
-              gradeLabel = '5x';
-            } else if (multiple >= 3) {
-              gradeSymbol = '🌊🌊'; // 3x - strong
+          if (multiple >= 1.5) {
+            // Determine grade symbol based on multiple and exchange consensus
+            // Color code: 5-6 exchanges = 🔴, 3-4 = 🟡, 1-2 = ⚪
+            let consensusEmoji = '🔴'; // 5-6 exchanges (strong)
+            if (bearishExchanges <= 2) {
+              consensusEmoji = '⚪'; // 1-2 exchanges (weak)
+            } else if (bearishExchanges <= 4) {
+              consensusEmoji = '🟡'; // 3-4 exchanges (moderate)
+            }
+            
+            let gradeLabel = '1.5x';
+            let gradeEmoji = '▼';
+            if (multiple >= 3) {
               gradeLabel = '3x';
-            } else {
-              gradeSymbol = '🌊'; // 2x - moderate
+              gradeEmoji = '▼▼▼';
+            } else if (multiple >= 2) {
+              gradeLabel = '2x';
+              gradeEmoji = '▼▼';
             }
             
             newAlerts.push({
@@ -4712,7 +4728,7 @@ export default function CryptoIndicators() {
               type: 'CVD Spike',
               direction: 'bearish',
               price: candle.close,
-              description: `${gradeSymbol} ${gradeLabel} Bearish delta: ${bar.delta.toFixed(0)} (${multiple.toFixed(1)}x avg)`,
+              description: `${consensusEmoji} ${gradeEmoji} ${gradeLabel} Bearish (${bearishExchanges}/6 exchanges)`,
             });
           }
         }
