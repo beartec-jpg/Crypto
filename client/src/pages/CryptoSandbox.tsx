@@ -909,12 +909,18 @@ export default function CryptoSandbox() {
               <div className="h-px bg-slate-600 my-1" />
               
               {/* Trend Line with Mode Selector */}
-              <Popover open={showTrendlineModeSelector} onOpenChange={setShowTrendlineModeSelector}>
+              <Popover open={showTrendlineModeSelector} onOpenChange={(open) => {
+                // Only allow opening if not already in trendline mode
+                if (open && activeTool === 'trendline') return;
+                setShowTrendlineModeSelector(open);
+              }}>
                 <PopoverTrigger asChild>
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
                       if (activeTool === 'trendline') {
-                        // Deactivate tool
+                        // Deactivate tool - prevent popover from opening
+                        e.preventDefault();
+                        e.stopPropagation();
                         setActiveTool(null);
                         setTrendlineMode(null);
                         setTrendlinePoints([]);
