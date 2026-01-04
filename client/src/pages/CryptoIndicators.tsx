@@ -1300,7 +1300,7 @@ export default function CryptoIndicators() {
   const [currentDelta, setCurrentDelta] = useState(0);
   const [cumDelta, setCumDelta] = useState(0);
   const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; timestamp: number; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; bullishExchanges?: number; bearishExchanges?: number; confidence?: number; divergence?: boolean; highValueDivergence?: boolean; volumeMultiple?: number }>>([]);
-  const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(true); // Show CVD spike triangles on chart
+  const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(false); // Show CVD spike triangles on chart (default OFF)
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
   const [cvdBearishThreshold, setCvdBearishThreshold] = useState(200); // % of average bearish delta
@@ -6534,8 +6534,8 @@ export default function CryptoIndicators() {
     // Display options
     setShowHighValueOnly(false);
     setShowChartLabels(false);
-    // CVD Spike settings - reset to defaults (enabled with default thresholds)
-    setCvdSpikeEnabled(true);
+    // CVD Spike settings - reset to defaults (disabled by default)
+    setCvdSpikeEnabled(false);
     setCvdSpikeLevel1(175);
     setCvdSpikeLevel1Input('175');
     setCvdSpikeLevel2(250);
