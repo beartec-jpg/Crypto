@@ -294,7 +294,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     // Collect successful results and aggregate by timestamp
-    const candlesByTimestamp = new Map<number, { exchanges: string[]; totalDelta: number; totalVolume: number; weightedDelta: number; totalWeight: number }>();
+    const candlesByTimestamp = new Map<number, { 
+      exchanges: string[]; 
+      totalDelta: number; 
+      totalVolume: number; 
+      weightedDelta: number; 
+      totalWeight: number;
+      bullishExchanges: number;
+      bearishExchanges: number;
+    }>();
     const metadata: any[] = [];
 
     for (const result of exchangeResults) {
@@ -321,6 +329,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 totalVolume: 0,
                 weightedDelta: 0,
                 totalWeight: 0,
+                bullishExchanges: 0,
+                bearishExchanges: 0,
               });
             }
             
@@ -330,6 +340,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             agg.totalVolume += candle.volume;
             agg.weightedDelta += candle.delta * candle.volume * exchange.priority;
             agg.totalWeight += candle.volume * exchange.priority;
+            // Track per-exchange direction
+            if (candle.delta > 0) {
+              agg.bullishExchanges++;
+            } else if (candle.delta < 0) {
+              agg.bearishExchanges++;
+            }
           }
         }
       }
@@ -354,6 +370,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         delta: avgDelta,
         volume: agg.totalVolume,
         exchanges: exchangeCount,
+        bullishExchanges: agg.bullishExchanges,
+        bearishExchanges: agg.bearishExchanges,
         confidence: Math.min(1.0, exchangeCount / EXCHANGES.length),
         divergence: false,
       });
@@ -373,6 +391,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         delta: avgDelta,
         volume: agg.totalVolume,
         exchanges: exchangeCount,
+        bullishExchanges: agg.bullishExchanges,
+        bearishExchanges: agg.bearishExchanges,
         confidence: Math.min(1.0, exchangeCount / EXCHANGES.length),
       });
     }
