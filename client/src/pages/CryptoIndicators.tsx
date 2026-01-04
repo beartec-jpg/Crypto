@@ -1276,7 +1276,7 @@ export default function CryptoIndicators() {
   const [backtesting, setBacktesting] = useState(false);
   const [currentDelta, setCurrentDelta] = useState(0);
   const [cumDelta, setCumDelta] = useState(0);
-  const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; bullishExchanges?: number; bearishExchanges?: number; confidence?: number; divergence?: boolean; highValueDivergence?: boolean; volumeMultiple?: number }>>([]);
+  const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; timestamp: number; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; bullishExchanges?: number; bearishExchanges?: number; confidence?: number; divergence?: boolean; highValueDivergence?: boolean; volumeMultiple?: number }>>([]);
   const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(true); // Show CVD spike triangles on chart
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
@@ -1955,6 +1955,7 @@ export default function CryptoIndicators() {
                 runningCVD += delta;
                 return {
                   time: new Date(candle.time * 1000).toLocaleTimeString(),
+                  timestamp: candle.time, // Unix timestamp for chart matching
                   delta,
                   cumDelta: runningCVD,
                   isBull: candle.close >= candle.open,
@@ -2120,6 +2121,7 @@ export default function CryptoIndicators() {
             runningCVD += row.delta;
             return {
               time: new Date(row.time * 1000).toLocaleTimeString(),
+              timestamp: row.time, // Unix timestamp for chart matching
               delta: row.delta,
               cumDelta: runningCVD,
               isBull: row.delta >= 0,
@@ -9163,16 +9165,18 @@ export default function CryptoIndicators() {
         ? bearishDeltas.reduce((a, b) => a + b, 0) / bearishDeltas.length 
         : 0;
       
-      // Check each delta bar for spikes
+      // Check each delta bar for spikes - use timestamp for matching
       deltaHistory.forEach((bar) => {
-        const candle = candles.find(c => new Date(c.time * 1000).toLocaleTimeString() === bar.time);
+        // Match by Unix timestamp directly
+        const barTimestamp = bar.timestamp;
+        const candle = candles.find(c => c.time === barTimestamp);
         if (!candle) return;
         
         // Get exchange consensus count for direction-specific coloring
         const bullishExchanges = bar.bullishExchanges || 0;
         const bearishExchanges = bar.bearishExchanges || 0;
         
-        // Bullish spike detection with lower thresholds: 1.5x, 2x, 3x
+        // Bullish spike detection with thresholds: 1.5x, 2x, 3x
         if (bar.delta > 0 && avgBullishDelta > 0) {
           const multiple = bar.delta / avgBullishDelta;
           if (multiple >= 1.5) {
@@ -9200,7 +9204,7 @@ export default function CryptoIndicators() {
           }
         }
         
-        // Bearish spike detection with lower thresholds: 1.5x, 2x, 3x
+        // Bearish spike detection with thresholds: 1.5x, 2x, 3x
         if (bar.delta < 0 && avgBearishDelta > 0) {
           const multiple = Math.abs(bar.delta) / avgBearishDelta;
           if (multiple >= 1.5) {
@@ -9434,6 +9438,7 @@ export default function CryptoIndicators() {
                 const delta = realDeltaData.get(bar.time) || currentDelta;
                 const newHist = [...prevHist, {
                   time: new Date(bar.time * 1000).toLocaleTimeString(),
+                  timestamp: bar.time, // Unix timestamp for chart matching
                   delta,
                   cumDelta: cumDelta,
                   isBull: bar.close >= bar.open,
@@ -13514,8 +13519,8 @@ export default function CryptoIndicators() {
                               ? bearishBars.reduce((sum, h) => sum + h.delta, 0) / bearishBars.length 
                               : 0;
                             
-                            const isBullishSpike = currentBar.delta > 0 && currentBar.delta >= avgBullishDelta * 2;
-                            const isBearishSpike = currentBar.delta < 0 && currentBar.delta <= avgBearishDelta * 2;
+                            const isBullishSpike = currentBar.delta > 0 && currentBar.delta >= avgBullishDelta * 1.5;
+                            const isBearishSpike = currentBar.delta < 0 && currentBar.delta <= avgBearishDelta * 1.5;
                             const hasDivergence = useMultiExchange && currentBar.divergence;
                             
                             return (
@@ -13551,10 +13556,44 @@ export default function CryptoIndicators() {
                                   </>
                                 )}
                                 <td className="text-center py-1 px-1">
-                                  {currentBar.highValueDivergence && <span className="text-orange-400 text-xs" title={`High-value CVD divergence (${currentBar.volumeMultiple?.toFixed(1)}x volume)`}>🔥</span>}
-                                  {hasDivergence && !currentBar.highValueDivergence && <span className="text-yellow-400 text-xs" title="CVD/Delta divergence">⚠️</span>}
-                                  {isBullishSpike && !hasDivergence && <span className="text-green-400 text-xs" title="Bullish delta spike (2x avg)">📈</span>}
-                                  {isBearishSpike && !hasDivergence && !isBullishSpike && <span className="text-red-400 text-xs" title="Bearish delta spike (2x avg)">📉</span>}
+                                  {(() => {
+                                    const bullishExchanges = currentBar.bullishExchanges || 0;
+                                    const bearishExchanges = currentBar.bearishExchanges || 0;
+                                    
+                                    if (isBullishSpike) {
+                                      const multiple = avgBullishDelta > 0 ? currentBar.delta / avgBullishDelta : 0;
+                                      const triangleCount = multiple >= 3 ? 3 : multiple >= 2 ? 2 : 1;
+                                      const colorClass = bullishExchanges >= 5 ? 'text-green-400' : 
+                                                         bullishExchanges >= 3 ? 'text-blue-400' : 'text-gray-400';
+                                      return (
+                                        <span className={`${colorClass} text-xs font-bold`} 
+                                          title={`${multiple.toFixed(1)}x avg | ${bullishExchanges}/6 exchanges bullish`}>
+                                          {'▲'.repeat(triangleCount)}
+                                        </span>
+                                      );
+                                    }
+                                    
+                                    if (isBearishSpike) {
+                                      const multiple = avgBearishDelta !== 0 ? Math.abs(currentBar.delta / avgBearishDelta) : 0;
+                                      const triangleCount = multiple >= 3 ? 3 : multiple >= 2 ? 2 : 1;
+                                      const colorClass = bearishExchanges >= 5 ? 'text-red-400' : 
+                                                         bearishExchanges >= 3 ? 'text-yellow-400' : 'text-gray-400';
+                                      return (
+                                        <span className={`${colorClass} text-xs font-bold`} 
+                                          title={`${multiple.toFixed(1)}x avg | ${bearishExchanges}/6 exchanges bearish`}>
+                                          {'▼'.repeat(triangleCount)}
+                                        </span>
+                                      );
+                                    }
+                                    
+                                    if (currentBar.highValueDivergence) {
+                                      return <span className="text-orange-400 text-xs" title={`High-value divergence (${currentBar.volumeMultiple?.toFixed(1)}x volume)`}>🔥</span>;
+                                    }
+                                    if (hasDivergence) {
+                                      return <span className="text-yellow-400 text-xs" title="CVD/Delta divergence">⚠️</span>;
+                                    }
+                                    return null;
+                                  })()}
                                 </td>
                               </tr>
                             );
@@ -13572,8 +13611,8 @@ export default function CryptoIndicators() {
                               ? bearishBars.reduce((sum, h) => sum + h.delta, 0) / bearishBars.length 
                               : 0;
                             
-                            const isBullishSpike = item.delta > 0 && item.delta >= avgBullishDelta * 2;
-                            const isBearishSpike = item.delta < 0 && item.delta <= avgBearishDelta * 2;
+                            const isBullishSpike = item.delta > 0 && item.delta >= avgBullishDelta * 1.5;
+                            const isBearishSpike = item.delta < 0 && item.delta <= avgBearishDelta * 1.5;
                             const hasDivergence = useMultiExchange && item.divergence;
                             const cellBg = hasDivergence 
                               ? 'bg-yellow-900/20' 
@@ -13610,10 +13649,48 @@ export default function CryptoIndicators() {
                                 </>
                               )}
                               <td className="text-center py-1 px-1">
-                                {item.highValueDivergence && <span className="text-orange-400 text-xs" title={`High-value CVD divergence (${item.volumeMultiple?.toFixed(1)}x volume)`}>🔥</span>}
-                                {hasDivergence && !item.highValueDivergence && <span className="text-yellow-400 text-xs" title="CVD/Delta divergence">⚠️</span>}
-                                {isBullishSpike && !hasDivergence && <span className="text-green-400 text-xs" title="Bullish delta spike (2x avg)">📈</span>}
-                                {isBearishSpike && !hasDivergence && !isBullishSpike && <span className="text-red-400 text-xs" title="Bearish delta spike (2x avg)">📉</span>}
+                                {(() => {
+                                  // Calculate spike intensity and triangles
+                                  const bullishExchanges = item.bullishExchanges || 0;
+                                  const bearishExchanges = item.bearishExchanges || 0;
+                                  
+                                  if (isBullishSpike) {
+                                    const multiple = avgBullishDelta > 0 ? item.delta / avgBullishDelta : 0;
+                                    const triangleCount = multiple >= 3 ? 3 : multiple >= 2 ? 2 : 1;
+                                    // Color: green (5-6), blue (3-4), grey (1-2)
+                                    const colorClass = bullishExchanges >= 5 ? 'text-green-400' : 
+                                                       bullishExchanges >= 3 ? 'text-blue-400' : 'text-gray-400';
+                                    return (
+                                      <span className={`${colorClass} text-xs font-bold`} 
+                                        title={`${multiple.toFixed(1)}x avg | ${bullishExchanges}/6 exchanges bullish`}>
+                                        {'▲'.repeat(triangleCount)}
+                                      </span>
+                                    );
+                                  }
+                                  
+                                  if (isBearishSpike) {
+                                    const multiple = avgBearishDelta !== 0 ? Math.abs(item.delta / avgBearishDelta) : 0;
+                                    const triangleCount = multiple >= 3 ? 3 : multiple >= 2 ? 2 : 1;
+                                    // Color: red (5-6), yellow (3-4), grey (1-2)
+                                    const colorClass = bearishExchanges >= 5 ? 'text-red-400' : 
+                                                       bearishExchanges >= 3 ? 'text-yellow-400' : 'text-gray-400';
+                                    return (
+                                      <span className={`${colorClass} text-xs font-bold`} 
+                                        title={`${multiple.toFixed(1)}x avg | ${bearishExchanges}/6 exchanges bearish`}>
+                                        {'▼'.repeat(triangleCount)}
+                                      </span>
+                                    );
+                                  }
+                                  
+                                  // Show divergence indicators if no spike
+                                  if (item.highValueDivergence) {
+                                    return <span className="text-orange-400 text-xs" title={`High-value divergence (${item.volumeMultiple?.toFixed(1)}x volume)`}>🔥</span>;
+                                  }
+                                  if (hasDivergence) {
+                                    return <span className="text-yellow-400 text-xs" title="CVD/Delta divergence">⚠️</span>;
+                                  }
+                                  return null;
+                                })()}
                               </td>
                             </tr>
                           );
