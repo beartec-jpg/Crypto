@@ -1305,6 +1305,13 @@ export default function CryptoIndicators() {
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
   const [cvdBearishThreshold, setCvdBearishThreshold] = useState(200); // % of average bearish delta
   const [cvdBearishThresholdInput, setCvdBearishThresholdInput] = useState('200');
+  // CVD Spike Level Thresholds (percentage of average delta)
+  const [cvdSpikeLevel1, setCvdSpikeLevel1] = useState(175); // Level 1: ▲ (default 175%)
+  const [cvdSpikeLevel1Input, setCvdSpikeLevel1Input] = useState('175');
+  const [cvdSpikeLevel2, setCvdSpikeLevel2] = useState(250); // Level 2: ▲² (default 250%)
+  const [cvdSpikeLevel2Input, setCvdSpikeLevel2Input] = useState('250');
+  const [cvdSpikeLevel3, setCvdSpikeLevel3] = useState(400); // Level 3: ▲³ (default 400%)
+  const [cvdSpikeLevel3Input, setCvdSpikeLevel3Input] = useState('400');
 
   // AI Market Analysis state
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
@@ -12240,6 +12247,63 @@ export default function CryptoIndicators() {
                           <Label htmlFor="cvd-spike" className="text-sm text-white cursor-pointer">CVD Spikes {!isPaidTier && '🔒'}</Label>
                         </div>
                       </div>
+                      
+                      {/* CVD Spike Level Settings */}
+                      {cvdSpikeEnabled && (
+                        <div className="bg-slate-800/50 rounded-lg p-3 space-y-2">
+                          <div className="text-xs font-semibold text-blue-400 mb-2">CVD Spike Levels (% of avg delta)</div>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="flex flex-col items-center gap-1">
+                              <Label className="text-xs text-gray-300">Lvl 1 ▲</Label>
+                              <input
+                                type="number"
+                                min="100"
+                                max="500"
+                                value={cvdSpikeLevel1Input}
+                                onChange={(e) => {
+                                  setCvdSpikeLevel1Input(e.target.value);
+                                  const val = parseInt(e.target.value);
+                                  if (!isNaN(val) && val >= 100) setCvdSpikeLevel1(val);
+                                }}
+                                className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600 text-center"
+                                data-testid="input-cvd-spike-level1"
+                              />
+                            </div>
+                            <div className="flex flex-col items-center gap-1">
+                              <Label className="text-xs text-gray-300">Lvl 2 ▲²</Label>
+                              <input
+                                type="number"
+                                min="100"
+                                max="1000"
+                                value={cvdSpikeLevel2Input}
+                                onChange={(e) => {
+                                  setCvdSpikeLevel2Input(e.target.value);
+                                  const val = parseInt(e.target.value);
+                                  if (!isNaN(val) && val >= 100) setCvdSpikeLevel2(val);
+                                }}
+                                className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600 text-center"
+                                data-testid="input-cvd-spike-level2"
+                              />
+                            </div>
+                            <div className="flex flex-col items-center gap-1">
+                              <Label className="text-xs text-gray-300">Lvl 3 ▲³</Label>
+                              <input
+                                type="number"
+                                min="100"
+                                max="2000"
+                                value={cvdSpikeLevel3Input}
+                                onChange={(e) => {
+                                  setCvdSpikeLevel3Input(e.target.value);
+                                  const val = parseInt(e.target.value);
+                                  if (!isNaN(val) && val >= 100) setCvdSpikeLevel3(val);
+                                }}
+                                className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600 text-center"
+                                data-testid="input-cvd-spike-level3"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       
                       {/* FVG Settings */}
                       {showFVG && (
