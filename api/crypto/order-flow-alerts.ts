@@ -102,7 +102,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       swingHighs = [], swingLows = [],
       cci = 0, adx = 0, plusDI = 0, minusDI = 0,
       rsi = 50, macd = 0, macdSignal = 0, macdHistogram = 0,
-      obv: _obv = 0, obvTrend = 'neutral', mfi = 50
+      obv: _obv = 0, obvTrend = 'neutral', mfi = 50,
+      atr = 0, stochK = 50, stochD = 50,
+      bbMiddle = 0, bbUpper = 0, bbLower = 0, bbBandwidth = 0
     } = req.body;
     
     // Helper to format Unix timestamp to readable date/time
@@ -457,14 +459,14 @@ Return ONLY valid JSON in this exact format:
         momentum: macdHistogram > 0 ? 'bullish' : 'bearish'
       },
       cci: { value: cci, label: cci > 100 ? 'OVERBOUGHT' : cci < -100 ? 'OVERSOLD' : 'neutral' },
-      stochastic: { k: 50, d: 50, crossover: 'none', label: 'neutral' },
+      stochastic: { k: stochK, d: stochD, crossover: 'none', label: stochK > 80 ? 'OVERBOUGHT' : stochK < 20 ? 'OVERSOLD' : 'neutral' },
       mfi: { value: mfi, label: mfi > 80 ? 'OVERBOUGHT' : mfi < 20 ? 'OVERSOLD' : 'neutral', divergence: null },
       cmf: { value: 0, label: 'neutral' },
       // Trend & Volatility
       adx: { value: adx, label: adx > 25 ? 'STRONG TREND' : adx < 20 ? 'weak' : 'moderate' },
       diPlusMinus: { plusDI, minusDI, momentum: plusDI > minusDI ? 'bullish' : 'bearish' },
-      atr: { value: 0 },
-      bollingerBands: { middle: 0, upper: 0, lower: 0, bandwidth: 0, squeeze: false },
+      atr: { value: atr },
+      bollingerBands: { middle: bbMiddle, upper: bbUpper, lower: bbLower, bandwidth: bbBandwidth, squeeze: bbBandwidth < 4 },
       vwap: { value: poc || currentPrice, label: 'neutral' },
       // SMC/ICT Structure
       bos: 'none',

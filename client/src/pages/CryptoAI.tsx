@@ -1351,6 +1351,41 @@ export default function CryptoAI() {
       
       const mfiData = calculateMFI(data, mfiPeriod);
       const currentMFI = mfiData.length > 0 ? mfiData[mfiData.length - 1].value : 50;
+      
+      // Calculate ATR for volatility context
+      const atrData = calculateATR(data, 14);
+      const currentATR = atrData.length > 0 ? atrData[atrData.length - 1] : 0;
+      
+      // Calculate Stochastic
+      const stochPeriod = 14;
+      const stochData: { k: number; d: number }[] = [];
+      for (let i = stochPeriod - 1; i < data.length; i++) {
+        const slice = data.slice(i - stochPeriod + 1, i + 1);
+        const highest = Math.max(...slice.map(b => b.high));
+        const lowest = Math.min(...slice.map(b => b.low));
+        const k = highest !== lowest ? ((data[i].close - lowest) / (highest - lowest)) * 100 : 50;
+        stochData.push({ k, d: 0 });
+      }
+      // Calculate %D (3-period SMA of %K)
+      for (let i = 2; i < stochData.length; i++) {
+        stochData[i].d = (stochData[i].k + stochData[i-1].k + stochData[i-2].k) / 3;
+      }
+      const currentStochK = stochData.length > 0 ? stochData[stochData.length - 1].k : 50;
+      const currentStochD = stochData.length > 0 ? stochData[stochData.length - 1].d : 50;
+      
+      // Calculate Bollinger Bands
+      const bbPeriod = 20;
+      const bbStdDev = 2;
+      let bbMiddle = 0, bbUpper = 0, bbLower = 0, bbBandwidth = 0;
+      if (data.length >= bbPeriod) {
+        const closes = data.slice(-bbPeriod).map(d => d.close);
+        bbMiddle = closes.reduce((a, b) => a + b, 0) / bbPeriod;
+        const variance = closes.reduce((sum, c) => sum + Math.pow(c - bbMiddle, 2), 0) / bbPeriod;
+        const stdDev = Math.sqrt(variance);
+        bbUpper = bbMiddle + (stdDev * bbStdDev);
+        bbLower = bbMiddle - (stdDev * bbStdDev);
+        bbBandwidth = bbMiddle > 0 ? ((bbUpper - bbLower) / bbMiddle) * 100 : 0;
+      }
 
       // Fetch professional orderflow data (OI, Funding, L/S Ratio) and liquidation data
       let orderflowData = null;
@@ -1465,6 +1500,13 @@ export default function CryptoAI() {
           obv: currentOBV,
           obvTrend,
           mfi: currentMFI,
+          atr: currentATR,
+          stochK: currentStochK,
+          stochD: currentStochD,
+          bbMiddle,
+          bbUpper,
+          bbLower,
+          bbBandwidth,
         }),
       });
       
