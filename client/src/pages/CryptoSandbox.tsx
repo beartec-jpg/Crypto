@@ -36,6 +36,12 @@ export default function CryptoSandbox() {
   const yScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   
+  // Crosshair state
+  const [crosshairActive, setCrosshairActive] = useState(false);
+  const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressRef = useRef(false);
+  
   // Margins for the chart
   const margin = { top: 20, right: 80, bottom: 40, left: 20 };
   
@@ -431,13 +437,135 @@ export default function CryptoSandbox() {
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
           </div>
         ) : (
-          <svg 
-            ref={svgRef} 
-            width={dimensions.width} 
-            height={dimensions.height}
-            style={{ display: 'block' }}
-            data-testid="sandbox-chart"
-          />
+          <div className="relative w-full h-full">
+            <svg 
+              ref={svgRef} 
+              width={dimensions.width} 
+              height={dimensions.height}
+              style={{ display: 'block' }}
+              data-testid="sandbox-chart"
+            />
+            {/* Crosshair overlay */}
+            <div 
+              className="absolute inset-0"
+              style={{ pointerEvents: crosshairActive ? 'auto' : 'auto' }}
+              onMouseDown={(e) => {
+                // Start long press timer
+                isLongPressRef.current = false;
+                longPressTimerRef.current = setTimeout(() => {
+                  isLongPressRef.current = true;
+                  setCrosshairActive(true);
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                }, 500); // 500ms long press
+              }}
+              onMouseUp={() => {
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+                // If it wasn't a long press and crosshair is active, deactivate
+                if (!isLongPressRef.current && crosshairActive) {
+                  setCrosshairActive(false);
+                  setCrosshairPos(null);
+                }
+              }}
+              onMouseLeave={() => {
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+              }}
+              onMouseMove={(e) => {
+                if (crosshairActive) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                }
+              }}
+              onTouchStart={(e) => {
+                // Start long press timer for touch
+                isLongPressRef.current = false;
+                const touch = e.touches[0];
+                longPressTimerRef.current = setTimeout(() => {
+                  isLongPressRef.current = true;
+                  setCrosshairActive(true);
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setCrosshairPos({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
+                }, 500);
+              }}
+              onTouchEnd={() => {
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+                if (!isLongPressRef.current && crosshairActive) {
+                  setCrosshairActive(false);
+                  setCrosshairPos(null);
+                }
+              }}
+              onTouchMove={(e) => {
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+                if (crosshairActive && e.touches[0]) {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setCrosshairPos({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
+                }
+              }}
+            >
+              {/* Crosshair lines */}
+              {crosshairActive && crosshairPos && (
+                <>
+                  {/* Vertical line */}
+                  <div 
+                    className="absolute top-0 bottom-0 w-px bg-gray-400 pointer-events-none"
+                    style={{ left: crosshairPos.x }}
+                  />
+                  {/* Horizontal line */}
+                  <div 
+                    className="absolute left-0 right-0 h-px bg-gray-400 pointer-events-none"
+                    style={{ top: crosshairPos.y }}
+                  />
+                  {/* Price label */}
+                  {yScaleRef.current && crosshairPos.y > margin.top && crosshairPos.y < dimensions.height - margin.bottom && (
+                    <div 
+                      className="absolute bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none"
+                      style={{ 
+                        right: 4, 
+                        top: crosshairPos.y - 10,
+                      }}
+                    >
+                      {(() => {
+                        const price = yScaleRef.current?.invert(crosshairPos.y - margin.top);
+                        return price ? (price >= 1000 ? price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : price.toFixed(4)) : '';
+                      })()}
+                    </div>
+                  )}
+                  {/* Time label */}
+                  {xScaleRef.current && crosshairPos.x > margin.left && crosshairPos.x < dimensions.width - margin.right && (
+                    <div 
+                      className="absolute bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none"
+                      style={{ 
+                        left: crosshairPos.x - 40, 
+                        bottom: 4,
+                      }}
+                    >
+                      {(() => {
+                        const date = xScaleRef.current?.invert(crosshairPos.x - margin.left);
+                        return date ? d3.timeFormat('%b %d %H:%M')(date) : '';
+                      })()}
+                    </div>
+                  )}
+                  {/* Crosshair active indicator */}
+                  <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none">
+                    Crosshair Active (tap to dismiss)
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>
