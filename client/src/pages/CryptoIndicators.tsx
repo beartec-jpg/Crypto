@@ -436,6 +436,7 @@ export default function CryptoIndicators() {
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [drawings, setDrawings] = useState<any[]>([]);
+  const [drawingsVisible, setDrawingsVisible] = useState(true); // Toggle to hide/show all drawings
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   
@@ -631,6 +632,19 @@ export default function CryptoIndicators() {
     const currentPrimitives = drawingPrimitivesRef.current;
     const currentDrawingIds = new Set(drawings.map(d => d.id));
     
+    // If drawings are hidden, detach all primitives
+    if (!drawingsVisible) {
+      currentPrimitives.forEach((primitive) => {
+        try {
+          candleSeries.detachPrimitive(primitive);
+        } catch (e) {
+          // Already detached
+        }
+      });
+      currentPrimitives.clear();
+      return;
+    }
+    
     // Remove primitives for deleted drawings OR drawings being edited
     currentPrimitives.forEach((primitive, id) => {
       const isBeingEdited = activeEdit && activeEdit.drawingId === id;
@@ -695,7 +709,7 @@ export default function CryptoIndicators() {
       });
       currentPrimitives.clear();
     };
-  }, [chartReady, drawings, selectedDrawingId, activeEdit]);
+  }, [chartReady, drawings, selectedDrawingId, activeEdit, drawingsVisible]);
   
   // Save drawing mutation
   const saveDrawingMutation = useMutation({
@@ -11466,6 +11480,35 @@ export default function CryptoIndicators() {
                     data-testid="btn-fullscreen"
                   >
                     {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                  </button>
+                  
+                  {/* Hide/Show Drawings Toggle Button */}
+                  <button
+                    onClick={() => {
+                      setDrawingsVisible(prev => !prev);
+                      toast({ 
+                        title: drawingsVisible ? 'Drawings Hidden' : 'Drawings Visible',
+                        description: drawingsVisible ? 'All drawings are now hidden' : 'All drawings are now visible'
+                      });
+                    }}
+                    className={`p-2 rounded-lg transition-all ${
+                      drawingsVisible 
+                        ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700' 
+                        : 'bg-orange-500 text-white'
+                    }`}
+                    title={drawingsVisible ? 'Hide Drawings' : 'Show Drawings'}
+                    data-testid="btn-toggle-drawings"
+                  >
+                    {drawingsVisible ? (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      </svg>
+                    )}
                   </button>
                   
                   {/* Auto-Color Toggle Button (Palette Icon) */}

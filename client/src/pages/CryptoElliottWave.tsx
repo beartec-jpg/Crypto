@@ -2698,6 +2698,7 @@ export default function CryptoElliottWave() {
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null); // Timer for long-press activation
   const ignoreNextClickRef = useRef<boolean>(false); // Ignore the click from lifting the crosshair activation touch
   const markersDebounceRef = useRef<NodeJS.Timeout | null>(null); // Debounce marker updates during zoom
+  const fibLinesDebounceRef = useRef<NodeJS.Timeout | null>(null); // Debounce fib line updates during zoom/pan
   const waveSnapCircleRef = useRef<HTMLDivElement | null>(null); // Visual feedback circle for wave snapping
   const showWaveSnapCircleRef = useRef<((x: number, y: number, isSnapped: boolean) => void) | null>(null); // Ref to access snap circle function from chart callbacks
   
@@ -6285,6 +6286,12 @@ const aiAnalyze = useMutation({
     // ALWAYS clear existing lines first to prevent stacking/duplicates
     clearFibLines();
     fibProjectionPricesRef.current = []; // Clear projection prices too
+
+    // Cancel any pending debounced update
+    if (fibLinesDebounceRef.current) {
+      clearTimeout(fibLinesDebounceRef.current);
+      fibLinesDebounceRef.current = null;
+    }
 
     const candleSeries = candleSeriesRef.current;
     
