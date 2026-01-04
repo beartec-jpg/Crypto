@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { TrendingUp, TrendingDown, Activity, DollarSign, Loader2, Bell, ChevronDown, ChevronUp, Zap, Save, Settings, MessageSquare, Maximize2, Minimize2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -13654,78 +13654,64 @@ export default function CryptoIndicators() {
                     <thead className="sticky top-0 bg-slate-800">
                       <tr className="border-b border-slate-600">
                         <th className="text-left text-gray-400 py-1 px-1">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger className="cursor-help underline decoration-dotted">Time</TooltipTrigger>
-                              <TooltipContent className="max-w-[200px] text-xs">
-                                <p>Candle timestamp showing when each bar opened</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <Popover>
+                            <PopoverTrigger className="cursor-help underline decoration-dotted">Time</PopoverTrigger>
+                            <PopoverContent className="w-48 text-xs p-2">
+                              <p>Candle timestamp showing when each bar opened</p>
+                            </PopoverContent>
+                          </Popover>
                         </th>
                         <th className="text-right text-gray-400 py-1 px-1">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger className="cursor-help underline decoration-dotted">Delta</TooltipTrigger>
-                              <TooltipContent className="max-w-[220px] text-xs">
-                                <p>Net difference between buying and selling volume for this candle. Positive = more buyers, Negative = more sellers</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <Popover>
+                            <PopoverTrigger className="cursor-help underline decoration-dotted">Delta</PopoverTrigger>
+                            <PopoverContent className="w-56 text-xs p-2">
+                              <p>Net difference between buying and selling volume for this candle. Positive = more buyers, Negative = more sellers</p>
+                            </PopoverContent>
+                          </Popover>
                         </th>
                         <th className="text-right text-gray-400 py-1 px-1">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger className="cursor-help underline decoration-dotted">CVD</TooltipTrigger>
-                              <TooltipContent className="max-w-[220px] text-xs">
-                                <p>Cumulative Volume Delta - running total of all deltas. Shows overall buying/selling pressure over time</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <Popover>
+                            <PopoverTrigger className="cursor-help underline decoration-dotted">CVD</PopoverTrigger>
+                            <PopoverContent className="w-56 text-xs p-2">
+                              <p>Cumulative Volume Delta - running total of all deltas. Shows overall buying/selling pressure over time</p>
+                            </PopoverContent>
+                          </Popover>
                         </th>
                         {useMultiExchange && (
                           <>
                             <th className="text-center text-gray-400 py-1 px-1">
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger className="cursor-help underline decoration-dotted">Ex</TooltipTrigger>
-                                  <TooltipContent className="max-w-[200px] text-xs">
-                                    <p>Number of exchanges reporting data (out of 6: Binance, Coinbase, Kraken, KuCoin, OKX, Gate.io)</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                              <Popover>
+                                <PopoverTrigger className="cursor-help underline decoration-dotted">Ex</PopoverTrigger>
+                                <PopoverContent className="w-52 text-xs p-2">
+                                  <p>Number of exchanges reporting data (out of 6: Binance, Coinbase, Kraken, KuCoin, OKX, Gate.io)</p>
+                                </PopoverContent>
+                              </Popover>
                             </th>
                             <th className="text-center text-gray-400 py-1 px-1">
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger className="cursor-help underline decoration-dotted">B/S</TooltipTrigger>
-                                  <TooltipContent className="max-w-[220px] text-xs">
-                                    <p>Bullish/Bearish split - how many exchanges show positive delta vs negative. Higher agreement = stronger signal</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                              <Popover>
+                                <PopoverTrigger className="cursor-help underline decoration-dotted">B/S</PopoverTrigger>
+                                <PopoverContent className="w-56 text-xs p-2">
+                                  <p>Bullish/Bearish split - how many exchanges show positive delta vs negative. Higher agreement = stronger signal</p>
+                                </PopoverContent>
+                              </Popover>
                             </th>
                             <th className="text-center text-gray-400 py-1 px-1">
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger className="cursor-help underline decoration-dotted">Conf</TooltipTrigger>
-                                  <TooltipContent className="max-w-[220px] text-xs">
-                                    <p>Confidence level based on exchange agreement. 80%+ (green) = strong, 60%+ (yellow) = moderate, below (red) = weak</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                              <Popover>
+                                <PopoverTrigger className="cursor-help underline decoration-dotted">Conf</PopoverTrigger>
+                                <PopoverContent className="w-56 text-xs p-2">
+                                  <p>Confidence level based on exchange agreement. 80%+ (green) = strong, 60%+ (yellow) = moderate, below (red) = weak</p>
+                                </PopoverContent>
+                              </Popover>
                             </th>
                           </>
                         )}
                         <th className="text-center text-gray-400 py-1 px-1">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger className="cursor-help underline decoration-dotted">Vol</TooltipTrigger>
-                              <TooltipContent className="max-w-[220px] text-xs">
-                                <p>CVD spike indicator showing unusual volume. Colors: Green/Red (5-6 exchanges), Blue/Yellow (3-4), Grey (1-2). Superscript shows intensity level</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <Popover>
+                            <PopoverTrigger className="cursor-help underline decoration-dotted">Vol</PopoverTrigger>
+                            <PopoverContent className="w-60 text-xs p-2">
+                              <p>CVD spike indicator showing unusual volume. Colors: Green/Red (5-6 exchanges), Blue/Yellow (3-4), Grey (1-2). Superscript shows intensity level</p>
+                            </PopoverContent>
+                          </Popover>
                         </th>
                       </tr>
                     </thead>
