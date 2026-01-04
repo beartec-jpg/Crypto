@@ -9201,8 +9201,8 @@ export default function CryptoIndicators() {
               color = '#3b82f6'; // blue (3-4 exchanges - moderate)
             }
             
-            // Stack triangles vertically with newlines
-            const triangles = Array(triangleCount).fill('▲').join('\n');
+            // Use number indicator for intensity: ▲ (1.5x), ▲² (2x), ▲³ (3x+)
+            const superscript = triangleCount === 1 ? '' : triangleCount === 2 ? '²' : '³';
             spikeCount++;
             allMarkers.push({
               time: candle.time,
@@ -9210,7 +9210,7 @@ export default function CryptoIndicators() {
               color,
               shape: 'circle',
               size: 0,
-              text: triangles
+              text: `▲${superscript}`
             });
           }
         }
@@ -9232,8 +9232,8 @@ export default function CryptoIndicators() {
               color = '#eab308'; // yellow (3-4 exchanges - moderate)
             }
             
-            // Stack triangles vertically with newlines
-            const triangles = Array(triangleCount).fill('▼').join('\n');
+            // Use number indicator for intensity: ▼ (1.5x), ▼² (2x), ▼³ (3x+)
+            const superscript = triangleCount === 1 ? '' : triangleCount === 2 ? '²' : '³';
             spikeCount++;
             allMarkers.push({
               time: candle.time,
@@ -9241,7 +9241,7 @@ export default function CryptoIndicators() {
               color,
               shape: 'circle',
               size: 0,
-              text: triangles
+              text: `▼${superscript}`
             });
           }
         }
