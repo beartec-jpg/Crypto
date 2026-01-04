@@ -8563,29 +8563,42 @@ export default function CryptoIndicators() {
             element.style.display = 'none';
             return;
           }
-
-          element.style.display = 'block';
           
           // Get label dimensions
           const labelWidth = element.offsetWidth || 50;
           const labelHeight = element.offsetHeight || 20;
           
+          // Hide labels that are outside the visible viewport
+          // Left side: hide if the label would be mostly off-screen
+          if (xCoord < -labelWidth / 2) {
+            element.style.display = 'none';
+            return;
+          }
+          // Right side: hide if x coordinate is beyond chart width
+          if (xCoord > chartWidth) {
+            element.style.display = 'none';
+            return;
+          }
+          // Top/bottom: hide if outside visible price range
+          if (yCoord < -labelHeight || yCoord > chartHeight + labelHeight) {
+            element.style.display = 'none';
+            return;
+          }
+
+          element.style.display = 'block';
+          
           // Calculate position with offset
           let leftPos = xCoord + 5;
           let topPos = yCoord - 10;
           
-          // Constrain within chart boundaries
+          // Only constrain labels that are partially visible
           // Right boundary: ensure label doesn't extend beyond chart width
           if (leftPos + labelWidth > chartWidth) {
-            leftPos = Math.max(0, chartWidth - labelWidth - 5);
-          }
-          // Left boundary
-          if (leftPos < 0) {
-            leftPos = 5;
+            leftPos = chartWidth - labelWidth - 5;
           }
           // Bottom boundary
           if (topPos + labelHeight > chartHeight) {
-            topPos = Math.max(0, chartHeight - labelHeight - 5);
+            topPos = chartHeight - labelHeight - 5;
           }
           // Top boundary
           if (topPos < 0) {
