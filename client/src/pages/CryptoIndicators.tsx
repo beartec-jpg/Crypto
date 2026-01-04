@@ -1277,7 +1277,7 @@ export default function CryptoIndicators() {
   const [currentDelta, setCurrentDelta] = useState(0);
   const [cumDelta, setCumDelta] = useState(0);
   const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; confidence?: number; divergence?: boolean; highValueDivergence?: boolean; volumeMultiple?: number }>>([]);
-  const cvdSpikeEnabled = true; // Always enabled - shows graded markers on chart
+  const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(true); // Show CVD spike triangles on chart
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
   const [cvdBearishThreshold, setCvdBearishThreshold] = useState(200); // % of average bearish delta
@@ -9132,8 +9132,71 @@ export default function CryptoIndicators() {
       }
     });
     
+    // Add CVD spike markers if enabled
+    if (cvdSpikeEnabled && deltaHistory.length >= 10 && candles.length > 0) {
+      // Calculate average delta for bullish and bearish separately
+      const bullishDeltas = deltaHistory.filter(d => d.delta > 0).map(d => d.delta);
+      const bearishDeltas = deltaHistory.filter(d => d.delta < 0).map(d => Math.abs(d.delta));
+      
+      const avgBullishDelta = bullishDeltas.length > 0 
+        ? bullishDeltas.reduce((a, b) => a + b, 0) / bullishDeltas.length 
+        : 0;
+      const avgBearishDelta = bearishDeltas.length > 0 
+        ? bearishDeltas.reduce((a, b) => a + b, 0) / bearishDeltas.length 
+        : 0;
+      
+      // Check each delta bar for spikes
+      deltaHistory.forEach((bar) => {
+        const candle = candles.find(c => new Date(c.time * 1000).toLocaleTimeString() === bar.time);
+        if (!candle) return;
+        
+        // Bullish spike - green up triangles
+        if (bar.delta > 0 && avgBullishDelta > 0) {
+          const multiple = bar.delta / avgBullishDelta;
+          if (multiple >= 2) {
+            // 1 triangle for 2x, 2 triangles for 3x, 3 triangles for 5x+
+            let triangleCount = 1;
+            if (multiple >= 5) triangleCount = 3;
+            else if (multiple >= 3) triangleCount = 2;
+            
+            const triangles = '▲'.repeat(triangleCount);
+            allMarkers.push({
+              time: candle.time,
+              position: 'belowBar',
+              color: '#22c55e',
+              shape: 'arrowUp',
+              text: triangles
+            });
+          }
+        }
+        
+        // Bearish spike - red down triangles
+        if (bar.delta < 0 && avgBearishDelta > 0) {
+          const multiple = Math.abs(bar.delta) / avgBearishDelta;
+          if (multiple >= 2) {
+            // 1 triangle for 2x, 2 triangles for 3x, 3 triangles for 5x+
+            let triangleCount = 1;
+            if (multiple >= 5) triangleCount = 3;
+            else if (multiple >= 3) triangleCount = 2;
+            
+            const triangles = '▼'.repeat(triangleCount);
+            allMarkers.push({
+              time: candle.time,
+              position: 'aboveBar',
+              color: '#ef4444',
+              shape: 'arrowDown',
+              text: triangles
+            });
+          }
+        }
+      });
+    }
+    
+    // Sort markers by time (required by lightweight-charts)
+    allMarkers.sort((a, b) => (a.time as number) - (b.time as number));
+    
     // Set all markers at once on the candlestick series
-    if (candleSeriesRef.current && allMarkers.length > 0) {
+    if (candleSeriesRef.current) {
       try {
         const series = candleSeriesRef.current as any;
         if (series && typeof series.setMarkers === 'function') {
@@ -9143,7 +9206,7 @@ export default function CryptoIndicators() {
         console.error('Failed to set markers on candlestick series:', e);
       }
     }
-  }, [chartReady, backtestResults, candles, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, isReplayMode]);
+  }, [chartReady, backtestResults, candles, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, isReplayMode, cvdSpikeEnabled, deltaHistory]);
 
   // ========== DEBOUNCE EFFECTS FOR STRATEGY SETTINGS ==========
   
@@ -12061,6 +12124,10 @@ export default function CryptoIndicators() {
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
                           <Switch checked={showChartLabels} onCheckedChange={() => handleSMCToolToggle('Chart Labels', showChartLabels, setShowChartLabels)} id="show-labels" data-testid="switch-labels" disabled={!isPaidTier && !showChartLabels} />
                           <Label htmlFor="show-labels" className="text-sm text-white cursor-pointer">Chart Labels {!isPaidTier && '🔒'}</Label>
+                        </div>
+                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
+                          <Switch checked={cvdSpikeEnabled} onCheckedChange={() => handleSMCToolToggle('CVD Spikes', cvdSpikeEnabled, setCvdSpikeEnabled)} id="cvd-spike" data-testid="switch-cvd-spike" disabled={!isPaidTier && !cvdSpikeEnabled} />
+                          <Label htmlFor="cvd-spike" className="text-sm text-white cursor-pointer">CVD Spikes {!isPaidTier && '🔒'}</Label>
                         </div>
                       </div>
                       
