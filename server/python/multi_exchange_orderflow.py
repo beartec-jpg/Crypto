@@ -97,23 +97,27 @@ def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, sinc
             candles = []
             for candle in ohlcv:
                 timestamp = candle[0]
+                open_price = candle[1]
+                close_price = candle[4]
                 volume = candle[5] if len(candle) > 5 else 0
                 
-                # For exchanges without taker volume, estimate 50/50 split
-                # This is a reasonable approximation for delta calculation
-                buy_volume = volume * 0.5
-                sell_volume = volume * 0.5
+                # For exchanges without taker volume, estimate based on price movement
+                # If close > open (bullish candle), assume more buying pressure
+                # This provides directional signal even without real taker data
+                buy_ratio = 0.55 if close_price >= open_price else 0.45
+                buy_volume = volume * buy_ratio
+                sell_volume = volume * (1 - buy_ratio)
                 
                 candles.append({
                     'timestamp': timestamp,
-                    'open': candle[1],
+                    'open': open_price,
                     'high': candle[2],
                     'low': candle[3],
-                    'close': candle[4],
+                    'close': close_price,
                     'volume': volume,
                     'buy_volume': buy_volume,
                     'sell_volume': sell_volume,
-                    'delta': buy_volume - sell_volume  # Will be 0 for estimated, but volume contributes to weighting
+                    'delta': buy_volume - sell_volume  # Now provides directional estimate
                 })
             
             print(f"✅ {EXCHANGES[exchange_id]['name']}: {len(candles)} candles in {metadata['response_time_ms']}ms", file=sys.stderr)
@@ -322,9 +326,9 @@ def aggregate_multi_exchange_data(all_exchange_data: Dict[str, List[Dict]]) -> D
                 if candle_ts == timestamp:
                     delta = candle['delta']
                     volume = candle['volume']
-                    priority = EXCHANGES[exchange_id]['priority']
                     
-                    total_delta += delta * priority
+                    # Sum delta without priority weighting to get true volume magnitude
+                    total_delta += delta
                     total_volume += volume
                     total_buy_volume += candle['buy_volume']
                     total_sell_volume += candle['sell_volume']
@@ -338,15 +342,14 @@ def aggregate_multi_exchange_data(all_exchange_data: Dict[str, List[Dict]]) -> D
                     break
         
         if exchange_participation:
-            # Normalize delta by total priority weight
-            total_weight = sum(EXCHANGES[ep['exchange'].lower().replace(' ', '').replace('.', '')]['priority'] 
-                              for ep in exchange_participation 
-                              if ep['exchange'].lower().replace(' ', '').replace('.', '') in [e.replace('us', ' us') for e in EXCHANGES.keys()] or True)
-            
             # Calculate divergence
             deltas = [ep['delta'] for ep in exchange_participation]
             has_divergence = False
             variance = 0
+            
+            # Count bullish vs bearish exchanges
+            bullish_exchanges = sum(1 for ep in exchange_participation if ep['delta'] > 0)
+            bearish_exchanges = sum(1 for ep in exchange_participation if ep['delta'] < 0)
             
             if len(deltas) >= 2:
                 mean_delta = statistics.mean(deltas)
@@ -355,11 +358,13 @@ def aggregate_multi_exchange_data(all_exchange_data: Dict[str, List[Dict]]) -> D
                     has_divergence = variance > DIVERGENCE_THRESHOLD
             
             aggregated[timestamp] = {
-                'delta': total_delta / len(exchange_participation) if exchange_participation else 0,
+                'delta': total_delta,  # Use total sum, not average, to get real volume magnitude
                 'volume': total_volume,
                 'buy_volume': total_buy_volume,
                 'sell_volume': total_sell_volume,
                 'exchange_count': len(exchange_participation),
+                'bullish_exchanges': bullish_exchanges,
+                'bearish_exchanges': bearish_exchanges,
                 'exchanges': exchange_participation,
                 'confidence': len(exchange_participation) / len(EXCHANGES),
                 'divergence': {
@@ -463,6 +468,8 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
                 'delta': delta,
                 'volume': data['volume'],
                 'exchanges': data['exchange_count'],
+                'bullishExchanges': data.get('bullish_exchanges', 0),
+                'bearishExchanges': data.get('bearish_exchanges', 0),
                 'confidence': data['confidence'],
                 'divergence': has_divergence,
                 'highValueDivergence': is_high_value,
@@ -485,6 +492,8 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
                 'delta': delta,
                 'volume': data['volume'],
                 'exchanges': data['exchange_count'],
+                'bullishExchanges': data.get('bullish_exchanges', 0),
+                'bearishExchanges': data.get('bearish_exchanges', 0),
                 'confidence': data['confidence'],
                 'divergence': has_divergence,
                 'highValueDivergence': is_high_value,
