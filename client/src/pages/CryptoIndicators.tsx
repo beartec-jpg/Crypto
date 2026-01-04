@@ -2203,16 +2203,16 @@ export default function CryptoIndicators() {
     }
   }, [useMultiExchange, fetchMultiExchangeData, candles.length]);
 
-  // Auto-refresh multi-exchange data every 5 seconds
+  // Auto-refresh multi-exchange data every 60 seconds (matches minimum 1m candle timeframe)
   useEffect(() => {
     if (!useMultiExchange || candles.length === 0) return;
 
-    console.log('🔄 Auto-refresh started for multi-exchange data (every 5s)');
+    console.log('🔄 Auto-refresh started for multi-exchange data (every 60s)');
     
     const refreshInterval = setInterval(() => {
       console.log('⏰ Auto-refresh tick - fetching multi-exchange data...');
       fetchMultiExchangeData();
-    }, 5000);
+    }, 60000);
 
     return () => {
       console.log('🛑 Auto-refresh stopped');

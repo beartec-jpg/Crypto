@@ -116,28 +116,42 @@ AGGREGATION_MAP = {
     '30m': '15m', # 2 x 15m candles
 }
 
-# Rate limit tracking for Kraken (1 req/sec limit)
-KRAKEN_LAST_REQUEST_FILE = '/tmp/kraken_last_request.txt'
-KRAKEN_MIN_INTERVAL_SEC = 1.5  # Wait 1.5 seconds between Kraken requests
+# Rate limits per exchange (minimum seconds between requests)
+EXCHANGE_RATE_LIMITS = {
+    'kraken': 1.5,      # 1 req/sec - strictest, add buffer
+    'coinbase': 0.15,   # 10 req/sec
+    'kucoin': 0.15,     # 100 req/10sec = 10 req/sec
+    'okx': 0.15,        # 20 req/2sec = 10 req/sec
+    'gateio': 0.1,      # 900 req/min = 15 req/sec
+    'binanceus': 0.05,  # Very generous
+}
 
-def check_kraken_rate_limit():
-    """Check if we can make a Kraken request, wait if necessary"""
+def get_rate_limit_file(exchange_id: str) -> str:
+    """Get the rate limit tracking file path for an exchange"""
+    return f'/tmp/{exchange_id}_last_request.txt'
+
+def check_exchange_rate_limit(exchange_id: str):
+    """Check if we can make a request to this exchange, wait if necessary"""
+    min_interval = EXCHANGE_RATE_LIMITS.get(exchange_id, 0.1)
+    rate_file = get_rate_limit_file(exchange_id)
+    
     try:
-        if os.path.exists(KRAKEN_LAST_REQUEST_FILE):
-            with open(KRAKEN_LAST_REQUEST_FILE, 'r') as f:
+        if os.path.exists(rate_file):
+            with open(rate_file, 'r') as f:
                 last_request = float(f.read().strip())
             elapsed = time.time() - last_request
-            if elapsed < KRAKEN_MIN_INTERVAL_SEC:
-                wait_time = KRAKEN_MIN_INTERVAL_SEC - elapsed
-                print(f"⏳ Kraken rate limit: waiting {wait_time:.2f}s", file=sys.stderr)
+            if elapsed < min_interval:
+                wait_time = min_interval - elapsed
+                print(f"⏳ {exchange_id} rate limit: waiting {wait_time:.2f}s", file=sys.stderr)
                 time.sleep(wait_time)
     except Exception:
         pass  # If file doesn't exist or is corrupted, proceed
 
-def update_kraken_rate_limit():
-    """Update Kraken last request timestamp"""
+def update_exchange_rate_limit(exchange_id: str):
+    """Update last request timestamp for an exchange"""
+    rate_file = get_rate_limit_file(exchange_id)
     try:
-        with open(KRAKEN_LAST_REQUEST_FILE, 'w') as f:
+        with open(rate_file, 'w') as f:
             f.write(str(time.time()))
     except Exception:
         pass
@@ -175,9 +189,8 @@ def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, sinc
         since_ms = since_ms - (multiplier * source_ms)
     
     try:
-        # Apply rate limiting for Kraken (1 req/sec limit)
-        if exchange_id == 'kraken':
-            check_kraken_rate_limit()
+        # Apply rate limiting for all exchanges
+        check_exchange_rate_limit(exchange_id)
         
         normalized_symbol = normalize_symbol(symbol, exchange_id)
         exchange_class = getattr(ccxt, exchange_id)
@@ -197,9 +210,8 @@ def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, sinc
         # Fetch OHLCV data
         ohlcv = exchange.fetch_ohlcv(normalized_symbol, timeframe, since=since_ms, limit=fetch_limit)
         
-        # Update rate limit tracker after successful Kraken request
-        if exchange_id == 'kraken':
-            update_kraken_rate_limit()
+        # Update rate limit tracker after successful request
+        update_exchange_rate_limit(exchange_id)
         
         metadata['response_time_ms'] = int((time.time() - start_time) * 1000)
         metadata['candles_count'] = len(ohlcv)
