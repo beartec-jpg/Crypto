@@ -3,6 +3,7 @@ import ccxt
 import sys
 import json
 import time
+import os
 from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Dict, List, Any, Tuple
@@ -115,6 +116,32 @@ AGGREGATION_MAP = {
     '30m': '15m', # 2 x 15m candles
 }
 
+# Rate limit tracking for Kraken (1 req/sec limit)
+KRAKEN_LAST_REQUEST_FILE = '/tmp/kraken_last_request.txt'
+KRAKEN_MIN_INTERVAL_SEC = 1.5  # Wait 1.5 seconds between Kraken requests
+
+def check_kraken_rate_limit():
+    """Check if we can make a Kraken request, wait if necessary"""
+    try:
+        if os.path.exists(KRAKEN_LAST_REQUEST_FILE):
+            with open(KRAKEN_LAST_REQUEST_FILE, 'r') as f:
+                last_request = float(f.read().strip())
+            elapsed = time.time() - last_request
+            if elapsed < KRAKEN_MIN_INTERVAL_SEC:
+                wait_time = KRAKEN_MIN_INTERVAL_SEC - elapsed
+                print(f"⏳ Kraken rate limit: waiting {wait_time:.2f}s", file=sys.stderr)
+                time.sleep(wait_time)
+    except Exception:
+        pass  # If file doesn't exist or is corrupted, proceed
+
+def update_kraken_rate_limit():
+    """Update Kraken last request timestamp"""
+    try:
+        with open(KRAKEN_LAST_REQUEST_FILE, 'w') as f:
+            f.write(str(time.time()))
+    except Exception:
+        pass
+
 def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, since_ms: int, limit: int = 100) -> Tuple[List[Dict], Dict[str, Any]]:
     """Fetch OHLCV candlestick data from a single exchange"""
     metadata = {
@@ -148,6 +175,10 @@ def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, sinc
         since_ms = since_ms - (multiplier * source_ms)
     
     try:
+        # Apply rate limiting for Kraken (1 req/sec limit)
+        if exchange_id == 'kraken':
+            check_kraken_rate_limit()
+        
         normalized_symbol = normalize_symbol(symbol, exchange_id)
         exchange_class = getattr(ccxt, exchange_id)
         exchange = exchange_class({
@@ -165,6 +196,10 @@ def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, sinc
         
         # Fetch OHLCV data
         ohlcv = exchange.fetch_ohlcv(normalized_symbol, timeframe, since=since_ms, limit=fetch_limit)
+        
+        # Update rate limit tracker after successful Kraken request
+        if exchange_id == 'kraken':
+            update_kraken_rate_limit()
         
         metadata['response_time_ms'] = int((time.time() - start_time) * 1000)
         metadata['candles_count'] = len(ohlcv)
