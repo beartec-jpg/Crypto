@@ -2568,10 +2568,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Path to Python script
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'multi_exchange_orderflow.py');
 
+      // Determine how much data to fetch from Python
+      // If we have cached data, only fetch recent candles (live + small buffer)
+      // Otherwise, fetch full period
+      const LIVE_BUFFER_CANDLES = 15; // Number of recent candles to always fetch fresh
+      const useCachedData = cachedCompleteCount >= 10; // Only use cache if we have enough history
+      const fetchPeriod = useCachedData ? '1d' : period; // Fetch only last day if using cache
+
+      console.log(`📡 Fetch strategy: ${useCachedData ? 'CACHED + LIVE' : 'FULL FETCH'}, period: ${fetchPeriod}`);
+
       // Execute Python script with args array (prevents command injection)
       const { stdout, stderr } = await execFileAsync(
         'python3',
-        [scriptPath, symbol, period, interval],
+        [scriptPath, symbol, fetchPeriod, interval],
         { 
           timeout: 60000,  // 60 second timeout (multiple exchanges take longer)
           maxBuffer: 10 * 1024 * 1024 // 10MB buffer
@@ -2582,77 +2591,187 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('Python script warnings:', stderr);
       }
 
-      const data = JSON.parse(stdout);
+      const freshData = JSON.parse(stdout);
 
-      if (data.error) {
-        console.error('Multi-exchange analysis error:', data.error);
+      if (freshData.error) {
+        console.error('Multi-exchange analysis error:', freshData.error);
         return res.status(400).json({ 
           error: 'Multi-exchange analysis failed',
-          details: data.error,
-          metadata: data.metadata
+          details: freshData.error,
+          metadata: freshData.metadata
         });
       }
 
-      // Save newly fetched complete candles to cache (6/6 exchanges)
-      // Only save historical candles (not the live one)
-      const candlesToCache: any[] = [];
+      // Build merged response: cached historical + fresh live data
+      let mergedFootprint: any[] = [];
+      let mergedCvd: any[] = [];
+      const divergenceAlerts: any[] = [];
       const TOTAL_EXCHANGES = 6;
 
-      if (data.footprint && Array.isArray(data.footprint)) {
-        let cumulativeDelta = 0;
-        for (const fp of data.footprint) {
-          const timestampSec = fp.time;
-          cumulativeDelta += fp.delta || 0;
-          
-          // Skip live candle and already cached candles
-          if (timestampSec >= currentCandleTimestampSec) continue;
-          if (cachedTimestamps.has(timestampSec)) continue;
-          
-          // Only cache if all 6 exchanges responded
-          const exchangeCount = fp.exchanges || 0;
-          if (exchangeCount >= TOTAL_EXCHANGES) {
-            candlesToCache.push({
-              symbol,
-              interval,
-              timestamp: timestampSec,
-              delta: fp.delta || 0,
-              cvd: cumulativeDelta,
-              volume: fp.volume || 0,
-              buyVolume: fp.buyVolume || null,
-              sellVolume: fp.sellVolume || null,
-              exchangeCount,
-              exchangesResponded: null, // We don't track individual names currently
-              bullishExchanges: fp.bullishExchanges || 0,
-              bearishExchanges: fp.bearishExchanges || 0,
-              isComplete: true
-            });
+      // Calculate how far back user requested
+      const PERIOD_MS: Record<string, number> = {
+        '1d': 86400000, '3d': 259200000, '1w': 604800000, '2w': 1209600000,
+        '1mo': 2592000000, '3mo': 7776000000, '6mo': 15552000000, '1y': 31536000000
+      };
+      const periodMs = PERIOD_MS[period] || 2592000000;
+      const requestedStartTimeSec = Math.floor((now - periodMs) / 1000);
+
+      // Convert cached data to footprint/cvd format
+      if (useCachedData && cachedData.length > 0) {
+        // Filter cached data to requested period and sort by timestamp
+        const relevantCached = cachedData
+          .filter(c => c.timestamp >= requestedStartTimeSec && c.timestamp < currentCandleTimestampSec)
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        for (const cached of relevantCached) {
+          mergedFootprint.push({
+            time: cached.timestamp,
+            delta: cached.delta,
+            volume: cached.volume,
+            exchanges: cached.exchangeCount,
+            bullishExchanges: cached.bullishExchanges || 0,
+            bearishExchanges: cached.bearishExchanges || 0,
+            confidence: 1.0, // Full confidence for complete candles
+            divergence: false,
+            highValueDivergence: false,
+            volumeMultiple: 0
+          });
+        }
+        console.log(`📦 Using ${relevantCached.length} cached candles`);
+      }
+
+      // Add fresh data (deduplicating by timestamp)
+      const mergedTimestamps = new Set(mergedFootprint.map(fp => fp.time));
+      const newCandles: any[] = [];
+
+      if (freshData.footprint && Array.isArray(freshData.footprint)) {
+        for (const fp of freshData.footprint) {
+          if (!mergedTimestamps.has(fp.time) && fp.time >= requestedStartTimeSec) {
+            mergedFootprint.push(fp);
+            mergedTimestamps.add(fp.time);
+
+            // Track new complete candles for caching
+            if (fp.time < currentCandleTimestampSec && (fp.exchanges || 0) >= TOTAL_EXCHANGES && !cachedTimestamps.has(fp.time)) {
+              newCandles.push(fp);
+            }
           }
         }
       }
 
-      // Batch insert new complete candles
-      if (candlesToCache.length > 0) {
+      // Sort merged footprint by time
+      mergedFootprint.sort((a, b) => a.time - b.time);
+
+      // Recalculate CVD for merged data
+      let cumulativeDelta = 0;
+      let prevCvd = 0;
+      const avgVolume = mergedFootprint.length > 0 
+        ? mergedFootprint.reduce((sum, fp) => sum + (fp.volume || 0), 0) / mergedFootprint.length 
+        : 0;
+
+      for (const fp of mergedFootprint) {
+        cumulativeDelta += fp.delta || 0;
+        const isIncreasing = cumulativeDelta > prevCvd;
+
+        // Recalculate divergence based on merged data
+        const cvdRising = cumulativeDelta > prevCvd;
+        const cvdDropping = cumulativeDelta < prevCvd;
+        const deltaPositive = (fp.delta || 0) > 0;
+        const deltaNegative = (fp.delta || 0) < 0;
+        const hasDivergence = (cvdRising && deltaNegative) || (cvdDropping && deltaPositive);
+        const volumeMultiple = avgVolume > 0 ? (fp.volume || 0) / avgVolume : 0;
+        const isHighValue = hasDivergence && volumeMultiple >= 1.5;
+
+        // Update footprint with recalculated values
+        fp.divergence = hasDivergence;
+        fp.highValueDivergence = isHighValue;
+        fp.volumeMultiple = Math.round(volumeMultiple * 100) / 100;
+
+        mergedCvd.push({
+          time: fp.time,
+          value: cumulativeDelta,
+          delta: fp.delta,
+          color: isIncreasing ? 'green' : 'red',
+          confidence: fp.confidence || 1.0
+        });
+
+        if (hasDivergence) {
+          divergenceAlerts.push({
+            time: fp.time,
+            type: isHighValue ? 'high_value' : 'normal',
+            volumeMultiple: fp.volumeMultiple,
+            cvdDirection: cvdRising ? 'rising' : 'dropping',
+            deltaSign: deltaPositive ? 'positive' : 'negative'
+          });
+        }
+
+        prevCvd = cumulativeDelta;
+      }
+
+      // Cache new complete candles
+      if (newCandles.length > 0) {
         try {
-          // Use ON CONFLICT to upsert (update if exists)
-          for (const candle of candlesToCache) {
+          let cachedCvd = 0;
+          for (const candle of newCandles) {
+            cachedCvd += candle.delta || 0;
             await db.insert(multiExchangeCvdCache)
-              .values(candle)
-              .onConflictDoNothing(); // Skip if already exists
+              .values({
+                symbol,
+                interval,
+                timestamp: candle.time,
+                delta: candle.delta || 0,
+                cvd: cachedCvd,
+                volume: candle.volume || 0,
+                buyVolume: candle.buyVolume || null,
+                sellVolume: candle.sellVolume || null,
+                exchangeCount: candle.exchanges || 0,
+                exchangesResponded: null,
+                bullishExchanges: candle.bullishExchanges || 0,
+                bearishExchanges: candle.bearishExchanges || 0,
+                isComplete: true
+              })
+              .onConflictDoNothing();
           }
-          console.log(`💾 Cached ${candlesToCache.length} complete CVD candles for ${symbol}/${interval}`);
+          console.log(`💾 Cached ${newCandles.length} new complete CVD candles for ${symbol}/${interval}`);
         } catch (cacheError: any) {
           console.error('Cache insert error:', cacheError.message);
-          // Continue - caching is not critical
         }
       }
+
+      // Build response matching Python output format
+      const data = {
+        footprint: mergedFootprint,
+        cvd: mergedCvd,
+        orderflowTable: mergedFootprint.map(fp => ({
+          time: fp.time,
+          buyVol: 0, // Not available from cache
+          sellVol: 0,
+          delta: fp.delta,
+          volume: fp.volume,
+          exchanges: fp.exchanges,
+          bullishExchanges: fp.bullishExchanges || 0,
+          bearishExchanges: fp.bearishExchanges || 0,
+          confidence: fp.confidence || 1.0,
+          divergence: fp.divergence,
+          highValueDivergence: fp.highValueDivergence,
+          volumeMultiple: fp.volumeMultiple
+        })),
+        divergences: divergenceAlerts,
+        metadata: {
+          ...(freshData.metadata || {}),
+          cachedCandles: useCachedData ? cachedCompleteCount : 0,
+          freshCandles: freshData.footprint?.length || 0,
+          totalCandles: mergedFootprint.length,
+          cacheHit: useCachedData
+        }
+      };
 
       console.log(`✅ Multi-exchange analysis complete:`, {
         footprint: data.footprint?.length || 0,
         cvd: data.cvd?.length || 0,
         divergences: data.divergences?.length || 0,
-        successRate: data.metadata?.success_rate,
-        avgResponseTime: data.metadata?.avg_response_time_ms,
-        newlyCached: candlesToCache.length
+        cachedUsed: useCachedData ? cachedCompleteCount : 0,
+        freshFetched: freshData.footprint?.length || 0,
+        newlyCached: newCandles.length
       });
 
       res.json(data);

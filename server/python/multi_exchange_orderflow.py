@@ -385,10 +385,18 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
             '6h': 21600000, '12h': 43200000, '1d': 86400000
         }
         
-        interval_ms = interval_map.get(interval, 900000)
+        # Period in milliseconds
+        period_map = {
+            '1d': 86400000, '3d': 259200000, '1w': 604800000, '2w': 1209600000,
+            '1mo': 2592000000, '3mo': 7776000000, '6mo': 15552000000, '1y': 31536000000
+        }
         
-        # Calculate time range for last 50 candles
-        num_candles = 50
+        interval_ms = interval_map.get(interval, 900000)
+        period_ms = period_map.get(period, 2592000000)
+        
+        # Calculate number of candles based on period and interval
+        # Cap at 100 candles to avoid API rate limits
+        num_candles = min(100, max(10, int(period_ms / interval_ms)))
         lookback_ms = interval_ms * num_candles
         
         now = datetime.now()
