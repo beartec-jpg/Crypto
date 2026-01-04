@@ -4,7 +4,7 @@ import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Crosshair } from 'lucide-react';
 
 interface CandleData {
   time: number;
@@ -36,11 +36,9 @@ export default function CryptoSandbox() {
   const yScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   
-  // Crosshair state
-  const [crosshairActive, setCrosshairActive] = useState(false);
+  // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
+  const [crosshairMode, setCrosshairMode] = useState(false);
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isLongPressRef = useRef(false);
   
   // Margins for the chart
   const margin = { top: 20, right: 80, bottom: 40, left: 20 };
@@ -73,8 +71,8 @@ export default function CryptoSandbox() {
   const fetchCandles = useCallback(async () => {
     setLoading(true);
     try {
-      // First batch - most recent 999
-      const url1 = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999`;
+      // First batch - most recent 999 (using main Binance API for more history)
+      const url1 = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999`;
       const response1 = await fetch(url1);
       if (!response1.ok) throw new Error('Failed to fetch data');
       const data1 = await response1.json();
@@ -84,7 +82,7 @@ export default function CryptoSandbox() {
       // Second batch - 999 before that
       if (data1.length > 0) {
         const endTime2 = data1[0][0] - 1;
-        const url2 = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999&endTime=${endTime2}`;
+        const url2 = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999&endTime=${endTime2}`;
         const response2 = await fetch(url2);
         if (response2.ok) {
           const data2 = await response2.json();
@@ -93,7 +91,7 @@ export default function CryptoSandbox() {
           // Third batch - another 999
           if (data2.length > 0) {
             const endTime3 = data2[0][0] - 1;
-            const url3 = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999&endTime=${endTime3}`;
+            const url3 = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999&endTime=${endTime3}`;
             const response3 = await fetch(url3);
             if (response3.ok) {
               const data3 = await response3.json();
@@ -422,6 +420,19 @@ export default function CryptoSandbox() {
           Refresh
         </Button>
         
+        <Button 
+          onClick={() => {
+            setCrosshairMode(prev => !prev);
+            if (crosshairMode) setCrosshairPos(null);
+          }} 
+          variant="outline" 
+          className={`${crosshairMode ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800 border-slate-600 hover:bg-slate-700'}`}
+          data-testid="btn-crosshair"
+        >
+          <Crosshair className="w-4 h-4 mr-2" />
+          Crosshair
+        </Button>
+        
         <div className="ml-auto text-sm text-slate-400">
           {candles.length} candles loaded
         </div>
@@ -442,80 +453,37 @@ export default function CryptoSandbox() {
               ref={svgRef} 
               width={dimensions.width} 
               height={dimensions.height}
-              style={{ display: 'block', touchAction: crosshairActive ? 'none' : 'auto' }}
+              style={{ display: 'block' }}
               data-testid="sandbox-chart"
-              onMouseDown={(e) => {
-                if (crosshairActive) return; // Don't start new long press if already active
-                isLongPressRef.current = false;
-                longPressTimerRef.current = setTimeout(() => {
-                  isLongPressRef.current = true;
-                  setCrosshairActive(true);
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                }, 500);
-              }}
-              onMouseUp={() => {
-                if (longPressTimerRef.current) {
-                  clearTimeout(longPressTimerRef.current);
-                  longPressTimerRef.current = null;
-                }
-              }}
-              onTouchStart={(e) => {
-                if (crosshairActive) return;
-                isLongPressRef.current = false;
-                const touch = e.touches[0];
-                longPressTimerRef.current = setTimeout(() => {
-                  isLongPressRef.current = true;
-                  setCrosshairActive(true);
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setCrosshairPos({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
-                }, 500);
-              }}
-              onTouchEnd={() => {
-                if (longPressTimerRef.current) {
-                  clearTimeout(longPressTimerRef.current);
-                  longPressTimerRef.current = null;
-                }
-              }}
-              onTouchMove={() => {
-                // Cancel long press if user moves (they're trying to pan)
-                if (longPressTimerRef.current) {
-                  clearTimeout(longPressTimerRef.current);
-                  longPressTimerRef.current = null;
-                }
-              }}
             />
-            {/* Crosshair overlay - only captures events when crosshair active */}
+            {/* Crosshair overlay - only captures events when crosshair mode enabled */}
             <div 
               className="absolute inset-0"
-              style={{ pointerEvents: crosshairActive ? 'auto' : 'none' }}
-              onClick={() => {
-                // Tap to dismiss crosshair
-                setCrosshairActive(false);
-                setCrosshairPos(null);
-              }}
+              style={{ pointerEvents: crosshairMode ? 'auto' : 'none' }}
               onMouseMove={(e) => {
-                if (crosshairActive) {
+                if (crosshairMode) {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                 }
               }}
               onTouchMove={(e) => {
-                if (crosshairActive && e.touches[0]) {
-                  e.preventDefault(); // Prevent scroll while moving crosshair
+                if (crosshairMode && e.touches[0]) {
+                  e.preventDefault();
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
                   setCrosshairPos({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
                 }
               }}
-              onTouchEnd={() => {
-                // Tap to dismiss crosshair
-                setCrosshairActive(false);
-                setCrosshairPos(null);
+              onTouchStart={(e) => {
+                if (crosshairMode && e.touches[0]) {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setCrosshairPos({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
+                }
               }}
             >
               {/* Crosshair lines */}
-              {crosshairActive && crosshairPos && (
+              {crosshairMode && crosshairPos && (
                 <>
                   {/* Vertical line */}
                   <div 
@@ -559,7 +527,7 @@ export default function CryptoSandbox() {
                   )}
                   {/* Crosshair active indicator */}
                   <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none">
-                    Crosshair Active (tap to dismiss)
+                    Crosshair Mode (use button to exit)
                   </div>
                 </>
               )}
