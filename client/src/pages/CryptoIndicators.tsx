@@ -2119,9 +2119,11 @@ export default function CryptoIndicators() {
           let runningCVD = 0;
           const history = data.orderflowTable.map((row: any) => {
             runningCVD += row.delta;
+            // API returns timestamps in milliseconds, chart uses seconds
+            const timestampSeconds = row.time > 9999999999 ? Math.floor(row.time / 1000) : row.time;
             return {
-              time: new Date(row.time * 1000).toLocaleTimeString(),
-              timestamp: row.time, // Unix timestamp for chart matching
+              time: new Date(timestampSeconds * 1000).toLocaleTimeString(),
+              timestamp: timestampSeconds, // Unix timestamp in seconds for chart matching
               delta: row.delta,
               cumDelta: runningCVD,
               isBull: row.delta >= 0,
@@ -9460,9 +9462,11 @@ export default function CryptoIndicators() {
               // Save delta for this closed candle (use real delta if available)
               setDeltaHistory(prevHist => {
                 const delta = realDeltaData.get(bar.time) || currentDelta;
+                // API returns timestamps in milliseconds, chart uses seconds
+                const timestampSeconds = bar.time > 9999999999 ? Math.floor(bar.time / 1000) : bar.time;
                 const newHist = [...prevHist, {
-                  time: new Date(bar.time * 1000).toLocaleTimeString(),
-                  timestamp: bar.time, // Unix timestamp for chart matching
+                  time: new Date(timestampSeconds * 1000).toLocaleTimeString(),
+                  timestamp: timestampSeconds, // Unix timestamp in seconds for chart matching
                   delta,
                   cumDelta: cumDelta,
                   isBull: bar.close >= bar.open,
