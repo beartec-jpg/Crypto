@@ -63,16 +63,41 @@ export default function CryptoSandbox() {
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
   
-  // Fetch candle data
+  // Fetch candle data - up to 2997 candles (3 batches of 999)
   const fetchCandles = useCallback(async () => {
     setLoading(true);
     try {
-      const url = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=500`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch data');
+      // First batch - most recent 999
+      const url1 = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999`;
+      const response1 = await fetch(url1);
+      if (!response1.ok) throw new Error('Failed to fetch data');
+      const data1 = await response1.json();
       
-      const data = await response.json();
-      const formattedCandles: CandleData[] = data.map((k: any) => ({
+      let allData = [...data1];
+      
+      // Second batch - 999 before that
+      if (data1.length > 0) {
+        const endTime2 = data1[0][0] - 1;
+        const url2 = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999&endTime=${endTime2}`;
+        const response2 = await fetch(url2);
+        if (response2.ok) {
+          const data2 = await response2.json();
+          allData = [...data2, ...allData];
+          
+          // Third batch - another 999
+          if (data2.length > 0) {
+            const endTime3 = data2[0][0] - 1;
+            const url3 = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=999&endTime=${endTime3}`;
+            const response3 = await fetch(url3);
+            if (response3.ok) {
+              const data3 = await response3.json();
+              allData = [...data3, ...allData];
+            }
+          }
+        }
+      }
+      
+      const formattedCandles: CandleData[] = allData.map((k: any) => ({
         time: k[0],
         open: parseFloat(k[1]),
         high: parseFloat(k[2]),
@@ -206,9 +231,13 @@ export default function CryptoSandbox() {
     const xAxisGroup = g.append('g')
       .attr('class', 'x-axis')
       .attr('transform', `translate(0,${innerHeight})`)
-      .call(d3.axisBottom(xScale).ticks(10).tickFormat(d => {
+      .call(d3.axisBottom(xScale).ticks(8).tickFormat(d => {
         const date = d as Date;
-        return d3.timeFormat('%H:%M')(date);
+        // Show date and time for better readability
+        if (interval === '1d' || interval === '4h') {
+          return d3.timeFormat('%b %d')(date);
+        }
+        return d3.timeFormat('%b %d %H:%M')(date);
       }))
       .call(g => g.selectAll('text').attr('fill', '#94a3b8').attr('font-size', '11px'))
       .call(g => g.selectAll('line').attr('stroke', '#475569'))
@@ -257,9 +286,12 @@ export default function CryptoSandbox() {
           yScaleRef.current = newYScale;
           
           // Update axes
-          xAxisGroup.call(d3.axisBottom(newXScale).ticks(10).tickFormat(d => {
+          xAxisGroup.call(d3.axisBottom(newXScale).ticks(8).tickFormat(d => {
             const date = d as Date;
-            return d3.timeFormat('%H:%M')(date);
+            if (interval === '1d' || interval === '4h') {
+              return d3.timeFormat('%b %d')(date);
+            }
+            return d3.timeFormat('%b %d %H:%M')(date);
           }))
           .call(g => g.selectAll('text').attr('fill', '#94a3b8').attr('font-size', '11px'))
           .call(g => g.selectAll('line').attr('stroke', '#475569'))
@@ -331,7 +363,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval]);
   
   // Show loading while checking auth
   if (authLoading) {
@@ -348,9 +380,9 @@ export default function CryptoSandbox() {
   }
   
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
+    <div className="h-screen bg-slate-900 text-white overflow-hidden flex flex-col">
       {/* Header Controls */}
-      <div className="p-4 border-b border-slate-700 flex items-center gap-4">
+      <div className="p-4 border-b border-slate-700 flex items-center gap-4 flex-shrink-0">
         <h1 className="text-xl font-bold text-blue-400">Sandbox Chart</h1>
         
         <Select value={symbol} onValueChange={setSymbol}>
@@ -392,8 +424,7 @@ export default function CryptoSandbox() {
       {/* Chart Container */}
       <div 
         ref={containerRef} 
-        className="w-full"
-        style={{ height: 'calc(100vh - 73px)' }}
+        className="w-full flex-1 overflow-hidden"
       >
         {loading ? (
           <div className="h-full flex items-center justify-center">
