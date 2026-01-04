@@ -1276,7 +1276,7 @@ export default function CryptoIndicators() {
   const [backtesting, setBacktesting] = useState(false);
   const [currentDelta, setCurrentDelta] = useState(0);
   const [cumDelta, setCumDelta] = useState(0);
-  const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; confidence?: number; divergence?: boolean; highValueDivergence?: boolean; volumeMultiple?: number }>>([]);
+  const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; bullishExchanges?: number; bearishExchanges?: number; confidence?: number; divergence?: boolean; highValueDivergence?: boolean; volumeMultiple?: number }>>([]);
   const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(true); // Show CVD spike triangles on chart
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
@@ -2125,6 +2125,8 @@ export default function CryptoIndicators() {
               isBull: row.delta >= 0,
               volume: row.volume,
               exchanges: row.exchanges,
+              bullishExchanges: row.bullishExchanges || 0,
+              bearishExchanges: row.bearishExchanges || 0,
               confidence: row.confidence,
               divergence: row.divergence || false,
               highValueDivergence: row.highValueDivergence || false,
@@ -9150,40 +9152,60 @@ export default function CryptoIndicators() {
         const candle = candles.find(c => new Date(c.time * 1000).toLocaleTimeString() === bar.time);
         if (!candle) return;
         
-        // Bullish spike - green up triangles
+        // Get exchange consensus count for direction-specific coloring
+        const bullishExchanges = bar.bullishExchanges || 0;
+        const bearishExchanges = bar.bearishExchanges || 0;
+        
+        // Bullish spike detection with lower thresholds: 1.5x, 2x, 3x
         if (bar.delta > 0 && avgBullishDelta > 0) {
           const multiple = bar.delta / avgBullishDelta;
-          if (multiple >= 2) {
-            // 1 triangle for 2x, 2 triangles for 3x, 3 triangles for 5x+
+          if (multiple >= 1.5) {
+            // Triangle count: 1.5x=1, 2x=2, 3x+=3
             let triangleCount = 1;
-            if (multiple >= 5) triangleCount = 3;
-            else if (multiple >= 3) triangleCount = 2;
+            if (multiple >= 3) triangleCount = 3;
+            else if (multiple >= 2) triangleCount = 2;
+            
+            // Color based on exchange consensus: 5-6=green, 3-4=blue, 1-2=grey
+            let color = '#22c55e'; // green (5-6 exchanges)
+            if (bullishExchanges <= 2) {
+              color = '#9ca3af'; // grey (1-2 exchanges - weak signal)
+            } else if (bullishExchanges <= 4) {
+              color = '#3b82f6'; // blue (3-4 exchanges - moderate)
+            }
             
             const triangles = '▲'.repeat(triangleCount);
             allMarkers.push({
               time: candle.time,
               position: 'belowBar',
-              color: '#22c55e',
+              color,
               shape: 'arrowUp',
               text: triangles
             });
           }
         }
         
-        // Bearish spike - red down triangles
+        // Bearish spike detection with lower thresholds: 1.5x, 2x, 3x
         if (bar.delta < 0 && avgBearishDelta > 0) {
           const multiple = Math.abs(bar.delta) / avgBearishDelta;
-          if (multiple >= 2) {
-            // 1 triangle for 2x, 2 triangles for 3x, 3 triangles for 5x+
+          if (multiple >= 1.5) {
+            // Triangle count: 1.5x=1, 2x=2, 3x+=3
             let triangleCount = 1;
-            if (multiple >= 5) triangleCount = 3;
-            else if (multiple >= 3) triangleCount = 2;
+            if (multiple >= 3) triangleCount = 3;
+            else if (multiple >= 2) triangleCount = 2;
+            
+            // Color based on exchange consensus: 5-6=red, 3-4=yellow, 1-2=grey
+            let color = '#ef4444'; // red (5-6 exchanges)
+            if (bearishExchanges <= 2) {
+              color = '#9ca3af'; // grey (1-2 exchanges - weak signal)
+            } else if (bearishExchanges <= 4) {
+              color = '#eab308'; // yellow (3-4 exchanges - moderate)
+            }
             
             const triangles = '▼'.repeat(triangleCount);
             allMarkers.push({
               time: candle.time,
               position: 'aboveBar',
-              color: '#ef4444',
+              color,
               shape: 'arrowDown',
               text: triangles
             });
