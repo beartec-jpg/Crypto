@@ -80,6 +80,12 @@ export default function CryptoSandbox() {
   const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | null>(null);
   const [movingTrendline, setMovingTrendline] = useState<string | null>(null);
   
+  // Move mode state
+  const [moveMode, setMoveMode] = useState(false);
+  const [movingPoint, setMovingPoint] = useState<{ lineId: string; point: 'p1' | 'p2' } | null>(null);
+  const [moveModePopup, setMoveModePopup] = useState<{ x: number; y: number; lineId: string; point: 'p1' | 'p2' } | null>(null);
+  const [moveMethod, setMoveMethod] = useState<'magnet' | 'free'>('magnet');
+  
   // Color palette for trendlines
   const TRENDLINE_COLORS = ['#facc15', '#22c55e', '#ef4444', '#3b82f6', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#ffffff'];
   
@@ -343,7 +349,75 @@ export default function CryptoSandbox() {
     setTrendlineMenuPos(null);
     setActiveSubmenu(null);
     setMovingTrendline(null);
+    setMoveMode(false);
+    setMovingPoint(null);
+    setMoveModePopup(null);
   }, []);
+  
+  // Activate move mode
+  const activateMoveMode = useCallback((lineId: string) => {
+    setMoveMode(true);
+    setMovingTrendline(lineId);
+    setSelectedTrendline(lineId);
+    setTrendlineMenuPos(null);
+    setActiveSubmenu(null);
+  }, []);
+  
+  // Handle clicking an endpoint in move mode
+  const handleEndpointClick = useCallback((lineId: string, point: 'p1' | 'p2', clickX: number, clickY: number) => {
+    if (!moveMode) return;
+    setMoveModePopup({ x: clickX, y: clickY, lineId, point });
+  }, [moveMode]);
+  
+  // Start moving the point after selecting mode
+  const startMovingPoint = useCallback((method: 'magnet' | 'free') => {
+    if (!moveModePopup) return;
+    setMoveMethod(method);
+    setMovingPoint({ lineId: moveModePopup.lineId, point: moveModePopup.point });
+    setMoveModePopup(null);
+  }, [moveModePopup]);
+  
+  // Place the moving point at new location
+  const placeMovingPoint = useCallback((clickX: number, clickY: number) => {
+    if (!movingPoint || !xScaleRef.current || !yScaleRef.current) return;
+    
+    let newPoint: { time: number; price: number } | null = null;
+    
+    if (moveMethod === 'magnet') {
+      const magnetResult = findMagnetPoint(clickX, clickY);
+      if (!magnetResult) {
+        // Show pulse but don't place if no candle in range
+        setMagnetPulse({ x: clickX, y: clickY });
+        setTimeout(() => setMagnetPulse(null), 400);
+        return;
+      }
+      newPoint = { time: magnetResult.time, price: magnetResult.price };
+      setMagnetPulse({ x: clickX, y: clickY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      // Free mode
+      const time = xScaleRef.current.invert(clickX - margin.left).getTime();
+      const price = yScaleRef.current.invert(clickY - margin.top);
+      newPoint = { time, price };
+    }
+    
+    // Update the trendline
+    setDrawnTrendlines(prev => prev.map(l => {
+      if (l.id === movingPoint.lineId) {
+        return {
+          ...l,
+          [movingPoint.point]: newPoint
+        };
+      }
+      return l;
+    }));
+    
+    // Exit move mode
+    setMovingPoint(null);
+    setMoveMode(false);
+    setMovingTrendline(null);
+    setSelectedTrendline(null);
+  }, [movingPoint, moveMethod, findMagnetPoint, margin.left, margin.top]);
   
   // Render D3 chart
   useEffect(() => {
@@ -1304,11 +1378,33 @@ export default function CryptoSandbox() {
                       style={{ pointerEvents: 'none' }}
                     />
                     
-                    {/* Endpoint circles - only when selected */}
-                    {isSelected && (
+                    {/* Endpoint circles - clickable in move mode, visible when selected or in move mode */}
+                    {(isSelected || (moveMode && movingTrendline === line.id)) && (
                       <>
-                        <circle cx={x1} cy={y1} r="5" fill={line.color} stroke="white" strokeWidth="2" />
-                        <circle cx={x2} cy={y2} r="5" fill={line.color} stroke="white" strokeWidth="2" />
+                        <circle 
+                          cx={x1} cy={y1} r={moveMode ? 8 : 5} 
+                          fill={line.color} stroke="white" strokeWidth="2"
+                          style={{ cursor: moveMode ? 'pointer' : 'default' }}
+                          onClick={(e) => {
+                            if (moveMode) {
+                              e.stopPropagation();
+                              const rect = e.currentTarget.ownerSVGElement?.getBoundingClientRect();
+                              handleEndpointClick(line.id, 'p1', e.clientX - (rect?.left || 0), e.clientY - (rect?.top || 0));
+                            }
+                          }}
+                        />
+                        <circle 
+                          cx={x2} cy={y2} r={moveMode ? 8 : 5} 
+                          fill={line.color} stroke="white" strokeWidth="2"
+                          style={{ cursor: moveMode ? 'pointer' : 'default' }}
+                          onClick={(e) => {
+                            if (moveMode) {
+                              e.stopPropagation();
+                              const rect = e.currentTarget.ownerSVGElement?.getBoundingClientRect();
+                              handleEndpointClick(line.id, 'p2', e.clientX - (rect?.left || 0), e.clientY - (rect?.top || 0));
+                            }
+                          }}
+                        />
                       </>
                     )}
                     
@@ -1339,10 +1435,7 @@ export default function CryptoSandbox() {
               >
                 {/* Move */}
                 <button
-                  onClick={() => {
-                    setMovingTrendline(selectedTrendline);
-                    closeTrendlineMenu();
-                  }}
+                  onClick={() => activateMoveMode(selectedTrendline)}
                   className="p-2 hover:bg-slate-700 rounded text-white"
                   title="Move"
                 >
@@ -1547,6 +1640,52 @@ export default function CryptoSandbox() {
                 </div>
               );
             })()}
+            
+            {/* Move mode indicator */}
+            {moveMode && !movingPoint && (
+              <div className="absolute top-14 left-14 bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                Move Mode - Click an endpoint circle to move it
+              </div>
+            )}
+            
+            {/* Moving point indicator */}
+            {movingPoint && (
+              <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                Click to place point ({moveMethod === 'magnet' ? 'Magnet' : 'Free'} mode)
+              </div>
+            )}
+            
+            {/* Magnet/Free popup when clicking endpoint in move mode */}
+            {moveModePopup && (
+              <div 
+                className="absolute bg-slate-800 border border-slate-600 rounded p-1 z-50 flex gap-1"
+                style={{ left: moveModePopup.x + 10, top: moveModePopup.y - 15 }}
+              >
+                <button
+                  onClick={() => startMovingPoint('magnet')}
+                  className="px-3 py-1 text-sm rounded bg-yellow-600 hover:bg-yellow-500 text-white"
+                >
+                  Magnet
+                </button>
+                <button
+                  onClick={() => startMovingPoint('free')}
+                  className="px-3 py-1 text-sm rounded bg-slate-600 hover:bg-slate-500 text-white"
+                >
+                  Free
+                </button>
+              </div>
+            )}
+            
+            {/* Click overlay for placing moved point */}
+            {movingPoint && (
+              <div 
+                className="absolute inset-0 cursor-crosshair z-20"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  placeMovingPoint(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+              />
+            )}
           </div>
         )}
       </div>
