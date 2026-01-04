@@ -20,6 +20,7 @@ import CryptoAccount from '@/pages/CryptoAccount';
 import CryptoFeedbackBoard from '@/pages/CryptoFeedbackBoard';
 import CryptoElliottWaveLessons from '@/pages/CryptoElliottWaveLessons';
 import DevAnalytics from '@/pages/DevAnalytics';
+import CryptoSandbox from '@/pages/CryptoSandbox';
 import NotFound from '@/pages/not-found';
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -73,6 +74,9 @@ function App() {
             </Route>
             <Route path="/dev/analytics">
               <ProtectedRoute component={DevAnalytics} />
+            </Route>
+            <Route path="/dev/sandbox">
+              <ProtectedRoute component={CryptoSandbox} />
             </Route>
             
             <Route component={NotFound} />

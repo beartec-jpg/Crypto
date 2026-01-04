@@ -248,6 +248,12 @@ export default function CryptoAccount() {
                       Developer Analytics
                     </Button>
                   </Link>
+                  <Link href="/dev/sandbox">
+                    <Button className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700" data-testid="button-dev-sandbox">
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      Sandbox Chart
+                    </Button>
+                  </Link>
                 </div>
               </div>
             )}
