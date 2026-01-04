@@ -108,15 +108,25 @@ export function TickerSelector({ value, onChange, showSearch = true }: TickerSel
         </DropdownMenuTrigger>
         <DropdownMenuContent className="bg-[#1e222d] border-[#2a2e39] min-w-[150px]">
           {favorites.map(ticker => (
-            <DropdownMenuItem
+            <div
               key={ticker.value}
-              onClick={() => handleSelectTicker(ticker.value)}
-              className={`text-white hover:bg-[#2a2e39] cursor-pointer ${ticker.value === value ? 'bg-[#2a2e39]' : ''}`}
+              className={`flex items-center justify-between px-2 py-1.5 text-white hover:bg-[#2a2e39] cursor-pointer ${ticker.value === value ? 'bg-[#2a2e39]' : ''}`}
               data-testid={`favorite-ticker-${ticker.value}`}
             >
-              <Star className="w-3 h-3 mr-2 text-yellow-400 fill-yellow-400" />
-              {ticker.label}
-            </DropdownMenuItem>
+              <span 
+                onClick={() => handleSelectTicker(ticker.value)}
+                className="flex-1"
+              >
+                {ticker.label}
+              </span>
+              <button
+                onClick={(e) => handleToggleFavorite(ticker, e)}
+                className="p-1 hover:bg-[#3a3e49] rounded ml-2"
+                data-testid={`remove-favorite-${ticker.value}`}
+              >
+                <Star className="w-3 h-3 text-yellow-400 fill-yellow-400 hover:text-gray-400" />
+              </button>
+            </div>
           ))}
           {favorites.length === 0 && (
             <div className="text-gray-500 text-sm px-2 py-1">No favorites yet</div>

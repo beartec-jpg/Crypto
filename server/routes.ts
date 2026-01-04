@@ -5677,7 +5677,14 @@ Return ONLY valid JSON in this exact format:
 
       console.log('📊 Fetching Binance exchange info...');
       
-      const response = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+      // Try binance.us first (more reliable from Replit), fall back to binance.com
+      let response;
+      try {
+        response = await fetch('https://api.binance.us/api/v3/exchangeInfo');
+        if (!response.ok) throw new Error('binance.us failed');
+      } catch {
+        response = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+      }
       
       if (!response.ok) {
         throw new Error(`Binance API error: ${response.status}`);
