@@ -422,48 +422,64 @@ Return ONLY valid JSON in this exact format:
     const finalCreditsRemaining = isAdmin ? 999 : Math.max(0, aiLimit - aiCreditsUsed - 1);
     console.log(`📤 Sending response with ${result.alerts.length} alerts, credits remaining: ${finalCreditsRemaining}`);
     
-    // Build indicatorData for frontend display
+    // Build indicatorData for frontend display (matching server/routes.ts structure)
     const allPricesForRange = [...swingHighs.map((s: any) => s.price), ...swingLows.map((s: any) => s.price)].filter(Boolean);
     const rangeHighVal = allPricesForRange.length > 0 ? Math.max(...allPricesForRange) : currentPrice;
     const rangeLowVal = allPricesForRange.length > 0 ? Math.min(...allPricesForRange) : currentPrice;
     const priceChange = rangeLowVal > 0 ? ((currentPrice - rangeLowVal) / rangeLowVal * 100) : 0;
     
+    // Extract orderflow values
+    const oiData = orderflowData?.openInterest || {};
+    const fundingData = orderflowData?.fundingRate || {};
+    const lsData = orderflowData?.longShortRatio || {};
+    
+    const oiTrend = oiData.trend || 'neutral';
+    const oiDelta = oiData.delta || 0;
+    const fundingValue = fundingData.rate || fundingData.value || 0;
+    const fundingBias = fundingData.bias || 'neutral';
+    const lsRatio = lsData.ratio || lsData.value || 1.0;
+    
     const indicatorDataForResponse = {
+      // Market Data
       price: currentPrice,
       priceChange,
+      swingHighs: swingHighs.slice(-3),
+      swingLows: swingLows.slice(-3),
       volumeProfile: { poc, vah, val },
-      rsi: { value: rsi, label: rsi > 70 ? 'Overbought' : rsi < 30 ? 'Oversold' : 'Neutral' },
+      cvd: { value: cvd, trend: cvdTrend },
+      obv: { value: _obv, divergence: null },
+      // Oscillators & Momentum
+      rsi: { value: rsi, label: rsi > 70 ? 'OVERBOUGHT' : rsi < 30 ? 'OVERSOLD' : 'neutral' },
       macd: { 
-        value: macd, 
-        signal: macdSignal, 
         histogram: macdHistogram,
-        momentum: macdHistogram > 0 ? 'bullish' : 'bearish',
-        crossover: 'none'
+        crossover: 'none',
+        divergence: null,
+        momentum: macdHistogram > 0 ? 'bullish' : 'bearish'
       },
-      cci: { value: cci, label: cci > 100 ? 'Overbought' : cci < -100 ? 'Oversold' : 'Neutral' },
-      stochastic: { k: 50, d: 50 },
-      mfi: { value: mfi, label: mfi > 80 ? 'Overbought' : mfi < 20 ? 'Oversold' : 'Neutral' },
-      cmf: { value: 0, label: 'Neutral' },
-      adx: { value: adx, label: adx > 40 ? 'Strong Trend' : adx > 25 ? 'Trending' : 'Weak' },
+      cci: { value: cci, label: cci > 100 ? 'OVERBOUGHT' : cci < -100 ? 'OVERSOLD' : 'neutral' },
+      stochastic: { k: 50, d: 50, crossover: 'none', label: 'neutral' },
+      mfi: { value: mfi, label: mfi > 80 ? 'OVERBOUGHT' : mfi < 20 ? 'OVERSOLD' : 'neutral', divergence: null },
+      cmf: { value: 0, label: 'neutral' },
+      // Trend & Volatility
+      adx: { value: adx, label: adx > 25 ? 'STRONG TREND' : adx < 20 ? 'weak' : 'moderate' },
       diPlusMinus: { plusDI, minusDI, momentum: plusDI > minusDI ? 'bullish' : 'bearish' },
       atr: { value: 0 },
-      bollinger: { upper: 0, middle: 0, lower: 0, squeeze: false },
-      cvd: { value: cvd, trend: cvdTrend },
-      obv: { trend: obvTrend },
-      vwap: { daily: 0, deviation: 0 },
-      swingStructure: {
-        recentHighs: swingHighs.slice(-3),
-        recentLows: swingLows.slice(-3),
-        trend: plusDI > minusDI ? 'uptrend' : 'downtrend'
-      },
-      smcSignals: {
-        bullishOB: bullishOB.length,
-        bearishOB: bearishOB.length,
-        bullFVG: bullFVG.length,
-        bearFVG: bearFVG.length,
-        absorption: absorption.length,
-        liquidityGrabs: liquidityGrabs.length
-      }
+      bollingerBands: { middle: 0, upper: 0, lower: 0, bandwidth: 0, squeeze: false },
+      vwap: { value: poc || currentPrice, label: 'neutral' },
+      // SMC/ICT Structure
+      bos: 'none',
+      choch: 'none',
+      displacement: { active: false, direction: null },
+      // Orderflow Counts
+      orderBlocks: { bullish: bullishOB.length, bearish: bearishOB.length },
+      fvgs: { bullish: bullFVG.length, bearish: bearFVG.length },
+      imbalances: { buy: buyImbalancesCount || 0, sell: sellImbalancesCount || 0 },
+      absorption: absorption.length,
+      liquidityGrabs: liquidityGrabs.length,
+      // Institutional
+      openInterest: { trend: oiTrend, delta: oiDelta },
+      fundingRate: { value: fundingValue, bias: fundingBias },
+      longShortRatio: { value: lsRatio, label: lsRatio > 1.2 ? 'longs dominant' : lsRatio < 0.8 ? 'shorts dominant' : 'balanced' }
     };
     
     res.json({
