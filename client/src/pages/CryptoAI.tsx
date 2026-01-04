@@ -3327,7 +3327,7 @@ export default function CryptoAI() {
                     <span className="text-xs text-gray-300">
                       <span className="font-semibold text-white">{subscription.monthlyUsage.aiCredits}</span>
                       <span className="text-gray-500"> of {subscription.monthlyUsage.aiLimit}</span>
-                      <span className="ml-1 text-gray-400">remaining this month</span>
+                      <span className="ml-1 text-gray-400">used this month</span>
                     </span>
                   </div>
                   {/* Cached analysis timestamps */}
