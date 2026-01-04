@@ -425,7 +425,9 @@ def analyze_multi_exchange_orderflow(symbol: str = 'XRPUSDT', period: str = '1mo
         
         # Fetch from other exchanges using ccxt
         for exchange_id in ['gateio', 'kraken', 'kucoin', 'coinbase']:
-            candles, metadata = fetch_ohlcv_from_exchange(exchange_id, symbol, interval, since_ms, num_candles)
+            # Gate.io often returns 1 less candle than requested, so request extra
+            request_candles = num_candles + 2 if exchange_id == 'gateio' else num_candles
+            candles, metadata = fetch_ohlcv_from_exchange(exchange_id, symbol, interval, since_ms, request_candles)
             all_metadata.append(metadata)
             if metadata['success']:
                 all_exchange_data[exchange_id] = candles

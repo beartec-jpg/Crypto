@@ -2579,14 +2579,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const useCachedData = cachedCompleteCount >= 10; // Only use cache if we have enough complete history
       
       // Fetch period: shorter if we have good cache, longer if we need to fill gaps
+      // BUT if we have many partial candles, fetch more to try upgrading them
       let fetchPeriod = period;
-      if (useCachedData) {
-        fetchPeriod = '1d'; // Just get recent data
+      let fetchStrategy = 'FULL FETCH';
+      if (useCachedData && cachedPartialCount < 20) {
+        fetchPeriod = '1d'; // Just get recent data if few partials
+        fetchStrategy = 'CACHED + LIVE';
+      } else if (cachedPartialCount > 50) {
+        fetchPeriod = '1w'; // Fetch a week to try upgrading many partials
+        fetchStrategy = 'PARTIAL UPGRADE (1w)';
       } else if (cachedPartialCount > 0) {
         fetchPeriod = '3d'; // Get more to try filling in partials
+        fetchStrategy = 'PARTIAL CACHE + FILL';
       }
 
-      console.log(`📡 Fetch strategy: ${useCachedData ? 'CACHED + LIVE' : cachedPartialCount > 0 ? 'PARTIAL CACHE + FILL' : 'FULL FETCH'}, period: ${fetchPeriod}`);
+      console.log(`📡 Fetch strategy: ${fetchStrategy}, period: ${fetchPeriod}, partials: ${cachedPartialCount}`);
 
       // Execute Python script with args array (prevents command injection)
       const { stdout, stderr } = await execFileAsync(
