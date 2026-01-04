@@ -4,7 +4,10 @@ import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Crosshair } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Loader2, Crosshair, ChevronDown } from 'lucide-react';
 
 interface CandleData {
   time: number;
@@ -43,6 +46,32 @@ export default function CryptoSandbox() {
   // Drawing tool state
   type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | null;
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
+  
+  // Indicator states - Trend Tools
+  const [showEMA, setShowEMA] = useState(false);
+  const [showSMA, setShowSMA] = useState(false);
+  const [showSupertrend, setShowSupertrend] = useState(false);
+  const [showIchimoku, setShowIchimoku] = useState(false);
+  const [showBollingerBands, setShowBollingerBands] = useState(false);
+  
+  // Indicator states - SMC
+  const [showBOS, setShowBOS] = useState(false);
+  const [showCHoCH, setShowCHoCH] = useState(false);
+  const [showFVG, setShowFVG] = useState(false);
+  const [showOrderBlocks, setShowOrderBlocks] = useState(false);
+  const [showSwingPivots, setShowSwingPivots] = useState(false);
+  
+  // Indicator states - VWAP
+  const [showVWAPSession, setShowVWAPSession] = useState(false);
+  const [showVWAPDaily, setShowVWAPDaily] = useState(false);
+  const [showVWAPWeekly, setShowVWAPWeekly] = useState(false);
+  const [showVWAPBands, setShowVWAPBands] = useState(false);
+  
+  // Indicator states - Oscillators
+  const [showRSI, setShowRSI] = useState(false);
+  const [showMACD, setShowMACD] = useState(false);
+  const [showMFI, setShowMFI] = useState(false);
+  const [showADX, setShowADX] = useState(false);
   
   // Margins for the chart
   const margin = { top: 20, right: 80, bottom: 40, left: 20 };
@@ -450,6 +479,134 @@ export default function CryptoSandbox() {
               style={{ display: 'block' }}
               data-testid="sandbox-chart"
             />
+            
+            {/* Top indicator dropdowns */}
+            <div className="absolute top-2 left-14 flex gap-2 z-20">
+              {/* Trend Tools Dropdown */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-slate-700 text-sm font-medium transition-all" data-testid="dropdown-trend">
+                    Trend <ChevronDown className="w-4 h-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-2 bg-slate-900 border-slate-700" align="start">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">EMA</Label>
+                      <Switch checked={showEMA} onCheckedChange={setShowEMA} data-testid="switch-ema" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">SMA</Label>
+                      <Switch checked={showSMA} onCheckedChange={setShowSMA} data-testid="switch-sma" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">Supertrend</Label>
+                      <Switch checked={showSupertrend} onCheckedChange={setShowSupertrend} data-testid="switch-supertrend" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">Ichimoku</Label>
+                      <Switch checked={showIchimoku} onCheckedChange={setShowIchimoku} data-testid="switch-ichimoku" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">Bollinger Bands</Label>
+                      <Switch checked={showBollingerBands} onCheckedChange={setShowBollingerBands} data-testid="switch-bb" />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              
+              {/* SMC Dropdown */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-slate-700 text-sm font-medium transition-all" data-testid="dropdown-smc">
+                    SMC <ChevronDown className="w-4 h-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-2 bg-slate-900 border-slate-700" align="start">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">BOS</Label>
+                      <Switch checked={showBOS} onCheckedChange={setShowBOS} data-testid="switch-bos" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">CHoCH</Label>
+                      <Switch checked={showCHoCH} onCheckedChange={setShowCHoCH} data-testid="switch-choch" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">FVG</Label>
+                      <Switch checked={showFVG} onCheckedChange={setShowFVG} data-testid="switch-fvg" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">Order Blocks</Label>
+                      <Switch checked={showOrderBlocks} onCheckedChange={setShowOrderBlocks} data-testid="switch-ob" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">Swing Pivots</Label>
+                      <Switch checked={showSwingPivots} onCheckedChange={setShowSwingPivots} data-testid="switch-pivots" />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              
+              {/* VWAP Dropdown */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-slate-700 text-sm font-medium transition-all" data-testid="dropdown-vwap">
+                    VWAP <ChevronDown className="w-4 h-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-2 bg-slate-900 border-slate-700" align="start">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">Session VWAP</Label>
+                      <Switch checked={showVWAPSession} onCheckedChange={setShowVWAPSession} data-testid="switch-vwap-session" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">Daily VWAP</Label>
+                      <Switch checked={showVWAPDaily} onCheckedChange={setShowVWAPDaily} data-testid="switch-vwap-daily" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">Weekly VWAP</Label>
+                      <Switch checked={showVWAPWeekly} onCheckedChange={setShowVWAPWeekly} data-testid="switch-vwap-weekly" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">VWAP Bands</Label>
+                      <Switch checked={showVWAPBands} onCheckedChange={setShowVWAPBands} data-testid="switch-vwap-bands" />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              
+              {/* Oscillators Dropdown */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-slate-700 text-sm font-medium transition-all" data-testid="dropdown-osc">
+                    OSC <ChevronDown className="w-4 h-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-2 bg-slate-900 border-slate-700" align="start">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">RSI</Label>
+                      <Switch checked={showRSI} onCheckedChange={setShowRSI} data-testid="switch-rsi" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">MACD</Label>
+                      <Switch checked={showMACD} onCheckedChange={setShowMACD} data-testid="switch-macd" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">MFI</Label>
+                      <Switch checked={showMFI} onCheckedChange={setShowMFI} data-testid="switch-mfi" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-white cursor-pointer">ADX</Label>
+                      <Switch checked={showADX} onCheckedChange={setShowADX} data-testid="switch-adx" />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+            
             {/* Left toolbar - drawing tools */}
             <div className="absolute top-2 left-2 flex flex-col gap-1 z-20 bg-slate-900/80 rounded-lg p-1">
               {/* Crosshair toggle button */}
