@@ -1244,11 +1244,30 @@ export default function CryptoSandbox() {
                   const clickY = crosshairMode && crosshairPos ? crosshairPos.y : e.clientY - rect.top;
                   handleTrendlineClick(clickX, clickY);
                 }}
+                onTouchStart={(e) => {
+                  if (crosshairMode && crosshairPos) {
+                    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                    crosshairStartRef.current = { x: crosshairPos.x, y: crosshairPos.y };
+                  }
+                }}
+                onTouchMove={(e) => {
+                  if (crosshairMode && touchStartRef.current && crosshairStartRef.current) {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const deltaX = touch.clientX - touchStartRef.current.x;
+                    const deltaY = touch.clientY - touchStartRef.current.y;
+                    const newX = Math.max(margin.left, Math.min(dimensions.width - margin.right, crosshairStartRef.current.x + deltaX));
+                    const newY = Math.max(margin.top, Math.min(dimensions.height - margin.bottom, crosshairStartRef.current.y + deltaY));
+                    setCrosshairPos({ x: newX, y: newY });
+                  }
+                }}
                 onTouchEnd={(e) => {
                   if (crosshairMode && crosshairPos) {
                     e.preventDefault();
                     handleTrendlineClick(crosshairPos.x, crosshairPos.y);
                   }
+                  touchStartRef.current = null;
+                  crosshairStartRef.current = null;
                 }}
               >
                 {/* Magnet pulse animation */}
