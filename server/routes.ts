@@ -5662,6 +5662,53 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
+  // Binance exchange info - get all available USDT trading pairs
+  let cachedSymbols: { value: string; label: string }[] | null = null;
+  let symbolsCacheTime = 0;
+  const SYMBOLS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+  app.get("/api/binance/exchange-info", async (_req, res) => {
+    try {
+      const now = Date.now();
+      
+      if (cachedSymbols && (now - symbolsCacheTime) < SYMBOLS_CACHE_TTL) {
+        return res.json(cachedSymbols);
+      }
+
+      console.log('📊 Fetching Binance exchange info...');
+      
+      const response = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+      
+      if (!response.ok) {
+        throw new Error(`Binance API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      const usdtPairs = data.symbols
+        .filter((s: any) => 
+          s.quoteAsset === 'USDT' && 
+          s.status === 'TRADING' &&
+          s.isSpotTradingAllowed
+        )
+        .map((s: any) => ({
+          value: s.symbol,
+          label: `${s.baseAsset}/USDT`
+        }))
+        .sort((a: any, b: any) => a.label.localeCompare(b.label));
+      
+      cachedSymbols = usdtPairs;
+      symbolsCacheTime = now;
+      
+      console.log(`✅ Found ${usdtPairs.length} USDT trading pairs`);
+      
+      res.json(usdtPairs);
+    } catch (error: any) {
+      console.error('Error fetching exchange info:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ==================== ELLIOTT WAVE ROUTES (OPEN ACCESS) ====================
 
   // Get wave labels for a user/symbol/timeframe (or all timeframes with allTimeframes=true)
