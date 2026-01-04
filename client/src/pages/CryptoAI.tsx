@@ -74,7 +74,8 @@ interface Absorption {
   type: 'bullAbsorb' | 'bearAbsorb';
 }
 
-import { getSortedTickers, incrementTickerClick } from '@/lib/tickerUtils';
+import { incrementTickerClick, getFavorites } from '@/lib/tickerUtils';
+import { FavoritesOnlySelector } from '@/components/TickerSelector';
 const INTERVALS = [
   { label: '1m', value: '1m' },
   { label: '5m', value: '5m' },
@@ -82,8 +83,6 @@ const INTERVALS = [
   { label: '1h', value: '1h' },
   { label: '4h', value: '4h' },
 ];
-
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT', 'ADAUSDT', 'CRVUSDT', 'CVXUSDT'];
 
 export default function CryptoAI() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -2629,16 +2628,10 @@ export default function CryptoAI() {
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto">
             <div className="flex gap-2 w-full sm:w-auto">
-              <Select value={symbol} onValueChange={(val) => { incrementTickerClick(val); setSymbol(val); }}>
-                <SelectTrigger className="flex-1 sm:w-[140px] bg-[#1a1a1a] border-[#2a2e39]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {getSortedTickers().map(t => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FavoritesOnlySelector 
+                value={symbol} 
+                onChange={(val) => { incrementTickerClick(val); setSymbol(val); }}
+              />
 
               <Select value={interval} onValueChange={setInterval}>
                 <SelectTrigger className="w-[100px] bg-[#1a1a1a] border-[#2a2e39]">
@@ -2699,19 +2692,19 @@ export default function CryptoAI() {
               <div>
                 <div className="text-gray-400 mb-2">Select Tickers (Max 3)</div>
                 <div className="flex flex-wrap gap-2">
-                  {SYMBOLS.map(ticker => (
+                  {getFavorites().map(t => (
                     <Button
-                      key={ticker}
-                      onClick={() => toggleTickerSelection(ticker)}
+                      key={t.value}
+                      onClick={() => toggleTickerSelection(t.value)}
                       className={`${
-                        selectedTickers.includes(ticker)
+                        selectedTickers.includes(t.value)
                           ? 'bg-[#00c4b4] text-black hover:bg-[#00a89c]'
                           : 'bg-[#2a2e39] text-gray-400 hover:bg-[#3a3e49]'
                       }`}
-                      disabled={!selectedTickers.includes(ticker) && selectedTickers.length >= 3}
-                      data-testid={`ticker-${ticker}`}
+                      disabled={!selectedTickers.includes(t.value) && selectedTickers.length >= 3}
+                      data-testid={`ticker-${t.value}`}
                     >
-                      {ticker}
+                      {t.label}
                     </Button>
                   ))}
                 </div>
