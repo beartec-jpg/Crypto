@@ -1277,7 +1277,7 @@ export default function CryptoIndicators() {
   const [currentDelta, setCurrentDelta] = useState(0);
   const [cumDelta, setCumDelta] = useState(0);
   const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; confidence?: number; divergence?: boolean; highValueDivergence?: boolean; volumeMultiple?: number }>>([]);
-  const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(false);
+  const cvdSpikeEnabled = true; // Always enabled - shows graded markers on chart
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
   const [cvdBearishThreshold, setCvdBearishThreshold] = useState(200); // % of average bearish delta
@@ -4659,32 +4659,58 @@ export default function CryptoIndicators() {
         const candle = candles.find(c => new Date(c.time * 1000).toLocaleTimeString() === bar.time);
         if (!candle) return;
         
-        // Bullish spike detection (positive delta exceeds threshold % of average)
+        // Bullish spike detection - graded by multiple: 2x, 3x, 5x
         if (bar.delta > 0 && avgBullishDelta > 0) {
-          const percentageOfAvg = (bar.delta / avgBullishDelta) * 100;
-          if (percentageOfAvg >= cvdBullishThreshold) {
+          const multiple = bar.delta / avgBullishDelta;
+          if (multiple >= 2) {
+            // Determine grade symbol based on multiple
+            let gradeSymbol = '⚡'; // 2x
+            let gradeLabel = '2x';
+            if (multiple >= 5) {
+              gradeSymbol = '🔥🔥🔥'; // 5x - extreme
+              gradeLabel = '5x';
+            } else if (multiple >= 3) {
+              gradeSymbol = '🔥🔥'; // 3x - strong
+              gradeLabel = '3x';
+            } else {
+              gradeSymbol = '🔥'; // 2x - moderate
+            }
+            
             newAlerts.push({
               id: `alert_${candle.time}_CVD_SPIKE_BULL`,
               time: candle.time,
               type: 'CVD Spike',
               direction: 'bullish',
               price: candle.close,
-              description: `Bullish delta spike: ${bar.delta.toFixed(0)} (${percentageOfAvg.toFixed(0)}% of avg)`,
+              description: `${gradeSymbol} ${gradeLabel} Bullish delta: ${bar.delta.toFixed(0)} (${multiple.toFixed(1)}x avg)`,
             });
           }
         }
         
-        // Bearish spike detection (negative delta exceeds threshold % of average)
+        // Bearish spike detection - graded by multiple: 2x, 3x, 5x
         if (bar.delta < 0 && avgBearishDelta > 0) {
-          const percentageOfAvg = (Math.abs(bar.delta) / avgBearishDelta) * 100;
-          if (percentageOfAvg >= cvdBearishThreshold) {
+          const multiple = Math.abs(bar.delta) / avgBearishDelta;
+          if (multiple >= 2) {
+            // Determine grade symbol based on multiple
+            let gradeSymbol = '💧'; // 2x
+            let gradeLabel = '2x';
+            if (multiple >= 5) {
+              gradeSymbol = '🌊🌊🌊'; // 5x - extreme
+              gradeLabel = '5x';
+            } else if (multiple >= 3) {
+              gradeSymbol = '🌊🌊'; // 3x - strong
+              gradeLabel = '3x';
+            } else {
+              gradeSymbol = '🌊'; // 2x - moderate
+            }
+            
             newAlerts.push({
               id: `alert_${candle.time}_CVD_SPIKE_BEAR`,
               time: candle.time,
               type: 'CVD Spike',
               direction: 'bearish',
               price: candle.close,
-              description: `Bearish delta spike: ${bar.delta.toFixed(0)} (${percentageOfAvg.toFixed(0)}% of avg)`,
+              description: `${gradeSymbol} ${gradeLabel} Bearish delta: ${bar.delta.toFixed(0)} (${multiple.toFixed(1)}x avg)`,
             });
           }
         }
@@ -12036,10 +12062,6 @@ export default function CryptoIndicators() {
                           <Switch checked={showChartLabels} onCheckedChange={() => handleSMCToolToggle('Chart Labels', showChartLabels, setShowChartLabels)} id="show-labels" data-testid="switch-labels" disabled={!isPaidTier && !showChartLabels} />
                           <Label htmlFor="show-labels" className="text-sm text-white cursor-pointer">Chart Labels {!isPaidTier && '🔒'}</Label>
                         </div>
-                        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={cvdSpikeEnabled} onCheckedChange={() => handleSMCToolToggle('CVD Spike Alerts', cvdSpikeEnabled, setCvdSpikeEnabled)} id="cvd-spike" data-testid="switch-cvd-spike" disabled={!isPaidTier && !cvdSpikeEnabled} />
-                          <Label htmlFor="cvd-spike" className="text-sm text-white cursor-pointer">CVD Spike Alerts {!isPaidTier && '🔒'}</Label>
-                        </div>
                       </div>
                       
                       {/* FVG Settings */}
@@ -12153,48 +12175,6 @@ export default function CryptoIndicators() {
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                             />
                           </div>
-                        </div>
-                      )}
-                      
-                      {/* CVD Spike Settings */}
-                      {cvdSpikeEnabled && (
-                        <div className="bg-slate-800/50 rounded-lg p-3 space-y-2">
-                          <div className="text-xs font-semibold text-blue-400 mb-2">CVD Spike Alert Settings</div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="flex items-center justify-between">
-                              <Label className="text-xs text-gray-300">Bullish Threshold %</Label>
-                              <input
-                                type="number"
-                                min="100"
-                                max="500"
-                                step="50"
-                                value={cvdBullishThresholdInput}
-                                onChange={(e) => {
-                                  setCvdBullishThresholdInput(e.target.value);
-                                  const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 100) setCvdBullishThreshold(val);
-                                }}
-                                className="w-20 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
-                              />
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <Label className="text-xs text-gray-300">Bearish Threshold %</Label>
-                              <input
-                                type="number"
-                                min="100"
-                                max="500"
-                                step="50"
-                                value={cvdBearishThresholdInput}
-                                onChange={(e) => {
-                                  setCvdBearishThresholdInput(e.target.value);
-                                  const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 100) setCvdBearishThreshold(val);
-                                }}
-                                className="w-20 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
-                              />
-                            </div>
-                          </div>
-                          <p className="text-xs text-gray-500">Alert when delta exceeds this % of average</p>
                         </div>
                       )}
                       
