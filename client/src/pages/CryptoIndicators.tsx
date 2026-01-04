@@ -9201,13 +9201,15 @@ export default function CryptoIndicators() {
               color = '#3b82f6'; // blue (3-4 exchanges - moderate)
             }
             
-            const triangles = '▲'.repeat(triangleCount);
+            // Stack triangles vertically with newlines
+            const triangles = Array(triangleCount).fill('▲').join('\n');
             spikeCount++;
             allMarkers.push({
               time: candle.time,
               position: 'belowBar',
               color,
-              shape: 'arrowUp',
+              shape: 'circle',
+              size: 0,
               text: triangles
             });
           }
@@ -9230,13 +9232,15 @@ export default function CryptoIndicators() {
               color = '#eab308'; // yellow (3-4 exchanges - moderate)
             }
             
-            const triangles = '▼'.repeat(triangleCount);
+            // Stack triangles vertically with newlines
+            const triangles = Array(triangleCount).fill('▼').join('\n');
             spikeCount++;
             allMarkers.push({
               time: candle.time,
               position: 'aboveBar',
               color,
-              shape: 'arrowDown',
+              shape: 'circle',
+              size: 0,
               text: triangles
             });
           }
