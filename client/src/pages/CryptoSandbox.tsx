@@ -442,48 +442,26 @@ export default function CryptoSandbox() {
               ref={svgRef} 
               width={dimensions.width} 
               height={dimensions.height}
-              style={{ display: 'block' }}
+              style={{ display: 'block', touchAction: crosshairActive ? 'none' : 'auto' }}
               data-testid="sandbox-chart"
-            />
-            {/* Crosshair overlay */}
-            <div 
-              className="absolute inset-0"
-              style={{ pointerEvents: crosshairActive ? 'auto' : 'auto' }}
               onMouseDown={(e) => {
-                // Start long press timer
+                if (crosshairActive) return; // Don't start new long press if already active
                 isLongPressRef.current = false;
                 longPressTimerRef.current = setTimeout(() => {
                   isLongPressRef.current = true;
                   setCrosshairActive(true);
                   const rect = e.currentTarget.getBoundingClientRect();
                   setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                }, 500); // 500ms long press
+                }, 500);
               }}
               onMouseUp={() => {
                 if (longPressTimerRef.current) {
                   clearTimeout(longPressTimerRef.current);
                   longPressTimerRef.current = null;
                 }
-                // If it wasn't a long press and crosshair is active, deactivate
-                if (!isLongPressRef.current && crosshairActive) {
-                  setCrosshairActive(false);
-                  setCrosshairPos(null);
-                }
-              }}
-              onMouseLeave={() => {
-                if (longPressTimerRef.current) {
-                  clearTimeout(longPressTimerRef.current);
-                  longPressTimerRef.current = null;
-                }
-              }}
-              onMouseMove={(e) => {
-                if (crosshairActive) {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                }
               }}
               onTouchStart={(e) => {
-                // Start long press timer for touch
+                if (crosshairActive) return;
                 isLongPressRef.current = false;
                 const touch = e.touches[0];
                 longPressTimerRef.current = setTimeout(() => {
@@ -498,21 +476,42 @@ export default function CryptoSandbox() {
                   clearTimeout(longPressTimerRef.current);
                   longPressTimerRef.current = null;
                 }
-                if (!isLongPressRef.current && crosshairActive) {
-                  setCrosshairActive(false);
-                  setCrosshairPos(null);
-                }
               }}
-              onTouchMove={(e) => {
+              onTouchMove={() => {
+                // Cancel long press if user moves (they're trying to pan)
                 if (longPressTimerRef.current) {
                   clearTimeout(longPressTimerRef.current);
                   longPressTimerRef.current = null;
                 }
+              }}
+            />
+            {/* Crosshair overlay - only captures events when crosshair active */}
+            <div 
+              className="absolute inset-0"
+              style={{ pointerEvents: crosshairActive ? 'auto' : 'none' }}
+              onClick={() => {
+                // Tap to dismiss crosshair
+                setCrosshairActive(false);
+                setCrosshairPos(null);
+              }}
+              onMouseMove={(e) => {
+                if (crosshairActive) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                }
+              }}
+              onTouchMove={(e) => {
                 if (crosshairActive && e.touches[0]) {
+                  e.preventDefault(); // Prevent scroll while moving crosshair
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
                   setCrosshairPos({ x: touch.clientX - rect.left, y: touch.clientY - rect.top });
                 }
+              }}
+              onTouchEnd={() => {
+                // Tap to dismiss crosshair
+                setCrosshairActive(false);
+                setCrosshairPos(null);
               }}
             >
               {/* Crosshair lines */}
