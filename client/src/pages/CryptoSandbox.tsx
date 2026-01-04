@@ -420,19 +420,6 @@ export default function CryptoSandbox() {
           Refresh
         </Button>
         
-        <Button 
-          onClick={() => {
-            setCrosshairMode(prev => !prev);
-            if (crosshairMode) setCrosshairPos(null);
-          }} 
-          variant="outline" 
-          className={`${crosshairMode ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800 border-slate-600 hover:bg-slate-700'}`}
-          data-testid="btn-crosshair"
-        >
-          <Crosshair className="w-4 h-4 mr-2" />
-          Crosshair
-        </Button>
-        
         <div className="ml-auto text-sm text-slate-400">
           {candles.length} candles loaded
         </div>
@@ -456,6 +443,22 @@ export default function CryptoSandbox() {
               style={{ display: 'block' }}
               data-testid="sandbox-chart"
             />
+            {/* Crosshair toggle button - bottom left corner */}
+            <button
+              onClick={() => {
+                setCrosshairMode(prev => !prev);
+                if (crosshairMode) setCrosshairPos(null);
+              }}
+              className={`absolute bottom-4 left-4 p-2 rounded-lg z-20 transition-all ${
+                crosshairMode 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+              }`}
+              title={crosshairMode ? 'Disable Crosshair' : 'Enable Crosshair'}
+              data-testid="btn-crosshair"
+            >
+              <Crosshair className="w-5 h-5" />
+            </button>
             {/* Crosshair overlay - only captures events when crosshair mode enabled */}
             <div 
               className="absolute inset-0"
