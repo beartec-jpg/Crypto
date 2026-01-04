@@ -1295,6 +1295,7 @@ export default function CryptoIndicators() {
   // Collapsible panel states - default to minimized
   const [marketSummaryMinimized, setMarketSummaryMinimized] = useState(true);
   const [cvdTableMinimized, setCvdTableMinimized] = useState(true);
+  const [marketAlertsMinimized, setMarketAlertsMinimized] = useState(true);
   const [marketAlerts, setMarketAlerts] = useState<MarketAlert[]>([]);
   const [alertFilterMode, setAlertFilterMode] = useState<'all' | 'active'>('all');
   
@@ -13500,24 +13501,35 @@ export default function CryptoIndicators() {
         {/* Market Alerts */}
         {tier !== 'free' && (
           <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-3">
+            <CardHeader 
+              className="pb-3 cursor-pointer hover:bg-slate-700/50 transition-colors"
+              onClick={() => setMarketAlertsMinimized(!marketAlertsMinimized)}
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
+                  {marketAlertsMinimized ? (
+                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                  ) : (
+                    <ChevronUp className="h-4 w-4 text-gray-400" />
+                  )}
                   <CardTitle className="text-white text-lg flex items-center gap-2">
                     <Bell className="h-5 w-5" />
                     Market Alerts
+                    {marketAlertsMinimized && filteredMarketAlerts.length > 0 && (
+                      <span className="text-xs bg-blue-600 px-2 py-0.5 rounded-full">{filteredMarketAlerts.length}</span>
+                    )}
                   </CardTitle>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setShowAlertSettings(true)}
+                    onClick={(e) => { e.stopPropagation(); setShowAlertSettings(true); }}
                     className="text-gray-400 hover:text-white h-8 px-2"
                     data-testid="button-market-alerts-settings"
                   >
                     <Settings className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="flex items-center gap-1 bg-slate-700 rounded-md p-1">
+                <div className="flex items-center gap-1 bg-slate-700 rounded-md p-1" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => setAlertFilterMode('all')}
                     className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
@@ -13543,6 +13555,7 @@ export default function CryptoIndicators() {
                 </div>
               </div>
             </CardHeader>
+            {!marketAlertsMinimized && (
             <CardContent className="space-y-2">
               {filteredMarketAlerts.length === 0 ? (
                 <div className="text-gray-400 text-sm text-center py-4">
@@ -13606,6 +13619,7 @@ export default function CryptoIndicators() {
                 </div>
               )}
             </CardContent>
+            )}
           </Card>
         )}
 
