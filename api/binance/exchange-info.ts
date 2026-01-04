@@ -22,17 +22,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('📊 Fetching Binance exchange info...');
     
-    // Try binance.us first (works from US-based Vercel servers), fall back to binance.com
+    // Try binance.com first (has 1000+ pairs), fall back to binance.us (195 pairs) if blocked
     let response;
     try {
-      response = await fetch('https://api.binance.us/api/v3/exchangeInfo', { 
-        signal: AbortSignal.timeout(5000) 
-      });
-      if (!response.ok) throw new Error('binance.us failed');
-    } catch {
-      console.log('📊 Falling back to binance.com...');
       response = await fetch('https://api.binance.com/api/v3/exchangeInfo', { 
-        signal: AbortSignal.timeout(10000) 
+        signal: AbortSignal.timeout(8000) 
+      });
+      if (!response.ok) throw new Error('binance.com failed');
+    } catch {
+      console.log('📊 Falling back to binance.us...');
+      response = await fetch('https://api.binance.us/api/v3/exchangeInfo', { 
+        signal: AbortSignal.timeout(8000) 
       });
     }
     
