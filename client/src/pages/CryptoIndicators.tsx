@@ -7133,7 +7133,9 @@ export default function CryptoIndicators() {
         const alertPrefix = drawing.style?.alertActive ? '🔔 ' : '';
         const triggeredPrefix = drawing.style?.alertTriggered ? '✅ ' : '';
         const editPrefix = drawing.id === selectedDrawingId ? '✎ ' : '';
-        const displayLabel = `${alertPrefix}${triggeredPrefix}${editPrefix}${customLabel}`;
+        // Only show label if showLabel is not explicitly false
+        const showLabel = drawing.style?.showLabel !== false;
+        const displayLabel = showLabel ? `${alertPrefix}${triggeredPrefix}${editPrefix}${customLabel}` : '';
         const line = candleSeries.createPriceLine({
           price: drawing.points[0].price,
           color: drawing.style?.color || '#3b82f6',
@@ -11718,8 +11720,26 @@ export default function CryptoIndicators() {
                             />
                           </div>
                           
-                          {/* Label Position - only show if there's a label */}
-                          {selectedDrawing.style?.label && (
+                          {/* Show Label Toggle */}
+                          <div className="mb-3">
+                            <div className="flex items-center justify-between">
+                              <div className="text-xs text-gray-300">Show Label</div>
+                              <button
+                                onClick={() => updateDrawingSettings({ showLabel: !(selectedDrawing.style?.showLabel !== false) })}
+                                className={`relative w-10 h-5 rounded-full transition-colors ${
+                                  selectedDrawing.style?.showLabel !== false ? 'bg-blue-500' : 'bg-slate-600'
+                                }`}
+                                data-testid="toggle-show-label"
+                              >
+                                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                                  selectedDrawing.style?.showLabel !== false ? 'translate-x-5' : 'translate-x-0'
+                                }`} />
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Label Position - only show if showLabel is enabled and there's a label */}
+                          {selectedDrawing.style?.showLabel !== false && selectedDrawing.style?.label && (
                             <div className="mb-3">
                               <div className="text-xs text-gray-300 mb-2">Label Position</div>
                               <div className="flex gap-2">
