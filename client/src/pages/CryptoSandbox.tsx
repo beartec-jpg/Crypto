@@ -40,6 +40,10 @@ export default function CryptoSandbox() {
   const [crosshairMode, setCrosshairMode] = useState(false);
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null);
   
+  // Drawing tool state
+  type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | null;
+  const [activeTool, setActiveTool] = useState<DrawingTool>(null);
+  
   // Margins for the chart
   const margin = { top: 20, right: 80, bottom: 40, left: 20 };
   
@@ -446,23 +450,197 @@ export default function CryptoSandbox() {
               style={{ display: 'block' }}
               data-testid="sandbox-chart"
             />
-            {/* Left toolbar - drawing tools will go here */}
-            <div className="absolute top-2 left-2 flex flex-col gap-1 z-20">
+            {/* Left toolbar - drawing tools */}
+            <div className="absolute top-2 left-2 flex flex-col gap-1 z-20 bg-slate-900/80 rounded-lg p-1">
               {/* Crosshair toggle button */}
               <button
                 onClick={() => {
                   setCrosshairMode(prev => !prev);
                   if (crosshairMode) setCrosshairPos(null);
+                  setActiveTool(null);
                 }}
-                className={`p-2 rounded-lg transition-all ${
+                className={`p-2 rounded transition-all ${
                   crosshairMode 
                     ? 'bg-blue-600 text-white' 
-                    : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                    : 'bg-transparent text-gray-300 hover:bg-slate-700'
                 }`}
-                title={crosshairMode ? 'Disable Crosshair' : 'Enable Crosshair'}
+                title="Crosshair"
                 data-testid="btn-crosshair"
               >
                 <Crosshair className="w-5 h-5" />
+              </button>
+              
+              <div className="h-px bg-slate-600 my-1" />
+              
+              {/* Trend Line */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'trendline' ? null : 'trendline')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'trendline' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Trend Line"
+                data-testid="btn-trendline"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="3" y1="17" x2="17" y2="3" />
+                </svg>
+              </button>
+              
+              {/* Horizontal Line */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'horizontal' ? null : 'horizontal')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'horizontal' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Horizontal Line"
+                data-testid="btn-horizontal"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="2" y1="10" x2="18" y2="10" />
+                </svg>
+              </button>
+              
+              {/* Channel */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'channel' ? null : 'channel')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'channel' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Channel"
+                data-testid="btn-channel"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <line x1="2" y1="14" x2="18" y2="6" />
+                  <line x1="2" y1="18" x2="18" y2="10" strokeDasharray="2,2" />
+                </svg>
+              </button>
+              
+              {/* Fib Retracement */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'fibretracement' ? null : 'fibretracement')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'fibretracement' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Fib Retracement"
+                data-testid="btn-fibretracement"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <line x1="2" y1="3" x2="18" y2="3" />
+                  <line x1="2" y1="7" x2="18" y2="7" strokeOpacity="0.7" />
+                  <line x1="2" y1="10" x2="18" y2="10" strokeOpacity="0.5" />
+                  <line x1="2" y1="13" x2="18" y2="13" strokeOpacity="0.7" />
+                  <line x1="2" y1="17" x2="18" y2="17" />
+                </svg>
+              </button>
+              
+              {/* Trend-based Fib */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'trendfib' ? null : 'trendfib')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'trendfib' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Trend-based Fib"
+                data-testid="btn-trendfib"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <line x1="3" y1="17" x2="10" y2="3" strokeWidth="2" />
+                  <line x1="10" y1="3" x2="17" y2="12" strokeWidth="2" />
+                  <line x1="3" y1="8" x2="17" y2="8" strokeOpacity="0.5" strokeDasharray="2,1" />
+                  <line x1="3" y1="12" x2="17" y2="12" strokeOpacity="0.5" strokeDasharray="2,1" />
+                </svg>
+              </button>
+              
+              {/* Label/Text */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'label' ? null : 'label')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'label' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Label/Text"
+                data-testid="btn-label"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                  <text x="3" y="15" fontSize="12" fontWeight="bold">T</text>
+                </svg>
+              </button>
+              
+              <div className="h-px bg-slate-600 my-1" />
+              
+              {/* Impulse (12345) */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'impulse' ? null : 'impulse')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'impulse' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Impulse (12345)"
+                data-testid="btn-impulse"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <polyline points="2,16 5,10 7,12 12,3 15,8 18,4" strokeLinejoin="round" />
+                  <circle cx="5" cy="10" r="1.5" fill="currentColor" />
+                  <circle cx="12" cy="3" r="1.5" fill="currentColor" />
+                </svg>
+              </button>
+              
+              {/* ABC */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'abc' ? null : 'abc')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'abc' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="ABC Correction"
+                data-testid="btn-abc"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <polyline points="2,5 10,15 18,3" strokeLinejoin="round" />
+                  <text x="1" y="4" fontSize="5" fill="currentColor" stroke="none">A</text>
+                  <text x="8" y="18" fontSize="5" fill="currentColor" stroke="none">B</text>
+                  <text x="15" y="4" fontSize="5" fill="currentColor" stroke="none">C</text>
+                </svg>
+              </button>
+              
+              {/* WXY */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'wxy' ? null : 'wxy')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'wxy' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="WXY"
+                data-testid="btn-wxy"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                  <text x="1" y="14" fontSize="7" fontWeight="bold">WXY</text>
+                </svg>
+              </button>
+              
+              {/* ABCDE */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'abcde' ? null : 'abcde')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'abcde' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="ABCDE Triangle"
+                data-testid="btn-abcde"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <polygon points="10,2 2,16 18,16" strokeLinejoin="round" />
+                  <line x1="4" y1="12" x2="16" y2="12" strokeOpacity="0.5" />
+                </svg>
+              </button>
+              
+              {/* WXYXZ */}
+              <button
+                onClick={() => setActiveTool(activeTool === 'wxyxz' ? null : 'wxyxz')}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'wxyxz' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="WXYXZ"
+                data-testid="btn-wxyxz"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                  <text x="0" y="8" fontSize="5" fontWeight="bold">WXY</text>
+                  <text x="3" y="15" fontSize="5" fontWeight="bold">XZ</text>
+                </svg>
               </button>
             </div>
             {/* Crosshair overlay - only captures events when crosshair mode enabled */}
