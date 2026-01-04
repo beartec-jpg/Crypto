@@ -13355,7 +13355,7 @@ export default function CryptoIndicators() {
             <CardHeader className="pb-2 cursor-pointer" onClick={() => setMarketSummaryMinimized(!marketSummaryMinimized)}>
               <div className="flex items-center gap-2">
                 <CardTitle className="text-white text-sm flex items-center gap-2">
-                  <span className={`transition-transform ${marketSummaryMinimized ? '' : 'rotate-90'}`}>▶</span>
+                  <span className={`transition-transform duration-200 ${marketSummaryMinimized ? '' : 'rotate-90'}`}>▶</span>
                   <span className="text-lg">🤖</span>
                   Market Summary
                 </CardTitle>
@@ -13453,8 +13453,9 @@ export default function CryptoIndicators() {
           <CardHeader className="pb-2 cursor-pointer" onClick={() => setCvdTableMinimized(!cvdTableMinimized)}>
             <div className="flex items-center justify-between">
               <CardTitle className="text-white text-sm flex items-center gap-2">
-                <span className={`transition-transform ${cvdTableMinimized ? '' : 'rotate-90'}`}>▶</span>
-                Footprint Delta vs CVD
+                <span className={`transition-transform duration-200 ${cvdTableMinimized ? '' : 'rotate-90'}`}>▶</span>
+                <span className="text-lg">📊</span>
+                Delta Vs CVD
               </CardTitle>
               <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 {multiExchangeLoading && (
@@ -13771,18 +13772,14 @@ export default function CryptoIndicators() {
         {tier !== 'free' && (
           <Card className="bg-slate-800 border-slate-700">
             <CardHeader 
-              className="pb-3 cursor-pointer hover:bg-slate-700/50 transition-colors"
+              className="pb-2 cursor-pointer"
               onClick={() => setMarketAlertsMinimized(!marketAlertsMinimized)}
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  {marketAlertsMinimized ? (
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                  ) : (
-                    <ChevronUp className="h-4 w-4 text-gray-400" />
-                  )}
-                  <CardTitle className="text-white text-lg flex items-center gap-2">
-                    <Bell className="h-5 w-5" />
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-white text-sm flex items-center gap-2">
+                    <span className={`transition-transform duration-200 ${marketAlertsMinimized ? '' : 'rotate-90'}`}>▶</span>
+                    <span className="text-lg">🔔</span>
                     Market Alerts
                     {marketAlertsMinimized && filteredMarketAlerts.length > 0 && (
                       <span className="text-xs bg-blue-600 px-2 py-0.5 rounded-full">{filteredMarketAlerts.length}</span>
