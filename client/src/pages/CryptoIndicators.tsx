@@ -4701,10 +4701,14 @@ export default function CryptoIndicators() {
         const bullishExchanges = bar.bullishExchanges || 0;
         const bearishExchanges = bar.bearishExchanges || 0;
         
-        // Bullish spike detection with lower thresholds: 1.5x, 2x, 3x
+        // Bullish spike detection with configurable thresholds
+        const level1Mult = cvdSpikeLevel1 / 100;
+        const level2Mult = cvdSpikeLevel2 / 100;
+        const level3Mult = cvdSpikeLevel3 / 100;
+        
         if (bar.delta > 0 && avgBullishDelta > 0) {
           const multiple = bar.delta / avgBullishDelta;
-          if (multiple >= 1.5) {
+          if (multiple >= level1Mult) {
             // Determine grade symbol based on multiple and exchange consensus
             // Color code: 5-6 exchanges = 🟢, 3-4 = 🔵, 1-2 = ⚪
             let consensusEmoji = '🟢'; // 5-6 exchanges (strong)
@@ -4714,14 +4718,14 @@ export default function CryptoIndicators() {
               consensusEmoji = '🔵'; // 3-4 exchanges (moderate)
             }
             
-            let gradeLabel = '1.5x';
+            let gradeLabel = `${cvdSpikeLevel1}%`;
             let gradeEmoji = '▲';
-            if (multiple >= 3) {
-              gradeLabel = '3x';
-              gradeEmoji = '▲▲▲';
-            } else if (multiple >= 2) {
-              gradeLabel = '2x';
-              gradeEmoji = '▲▲';
+            if (multiple >= level3Mult) {
+              gradeLabel = `${cvdSpikeLevel3}%`;
+              gradeEmoji = '▲³';
+            } else if (multiple >= level2Mult) {
+              gradeLabel = `${cvdSpikeLevel2}%`;
+              gradeEmoji = '▲²';
             }
             
             newAlerts.push({
@@ -4735,10 +4739,10 @@ export default function CryptoIndicators() {
           }
         }
         
-        // Bearish spike detection with lower thresholds: 1.5x, 2x, 3x
+        // Bearish spike detection with configurable thresholds
         if (bar.delta < 0 && avgBearishDelta > 0) {
           const multiple = Math.abs(bar.delta) / avgBearishDelta;
-          if (multiple >= 1.5) {
+          if (multiple >= level1Mult) {
             // Determine grade symbol based on multiple and exchange consensus
             // Color code: 5-6 exchanges = 🔴, 3-4 = 🟡, 1-2 = ⚪
             let consensusEmoji = '🔴'; // 5-6 exchanges (strong)
@@ -4748,14 +4752,14 @@ export default function CryptoIndicators() {
               consensusEmoji = '🟡'; // 3-4 exchanges (moderate)
             }
             
-            let gradeLabel = '1.5x';
+            let gradeLabel = `${cvdSpikeLevel1}%`;
             let gradeEmoji = '▼';
-            if (multiple >= 3) {
-              gradeLabel = '3x';
-              gradeEmoji = '▼▼▼';
-            } else if (multiple >= 2) {
-              gradeLabel = '2x';
-              gradeEmoji = '▼▼';
+            if (multiple >= level3Mult) {
+              gradeLabel = `${cvdSpikeLevel3}%`;
+              gradeEmoji = '▼³';
+            } else if (multiple >= level2Mult) {
+              gradeLabel = `${cvdSpikeLevel2}%`;
+              gradeEmoji = '▼²';
             }
             
             newAlerts.push({
@@ -9215,14 +9219,18 @@ export default function CryptoIndicators() {
         const bullishExchanges = bar.bullishExchanges || 0;
         const bearishExchanges = bar.bearishExchanges || 0;
         
-        // Bullish spike detection with thresholds: 1.5x, 2x, 3x
+        // Bullish spike detection with configurable thresholds
+        const level1Mult = cvdSpikeLevel1 / 100; // e.g., 175% = 1.75x
+        const level2Mult = cvdSpikeLevel2 / 100; // e.g., 250% = 2.5x
+        const level3Mult = cvdSpikeLevel3 / 100; // e.g., 400% = 4.0x
+        
         if (bar.delta > 0 && avgBullishDelta > 0) {
           const multiple = bar.delta / avgBullishDelta;
-          if (multiple >= 1.5) {
-            // Triangle count: 1.5x=1, 2x=2, 3x+=3
+          if (multiple >= level1Mult) {
+            // Triangle count based on configurable levels
             let triangleCount = 1;
-            if (multiple >= 3) triangleCount = 3;
-            else if (multiple >= 2) triangleCount = 2;
+            if (multiple >= level3Mult) triangleCount = 3;
+            else if (multiple >= level2Mult) triangleCount = 2;
             
             // Color based on exchange consensus: 5-6=green, 3-4=blue, 1-2=grey
             let color = '#22c55e'; // green (5-6 exchanges)
@@ -9246,14 +9254,14 @@ export default function CryptoIndicators() {
           }
         }
         
-        // Bearish spike detection with thresholds: 1.5x, 2x, 3x
+        // Bearish spike detection with configurable thresholds
         if (bar.delta < 0 && avgBearishDelta > 0) {
           const multiple = Math.abs(bar.delta) / avgBearishDelta;
-          if (multiple >= 1.5) {
-            // Triangle count: 1.5x=1, 2x=2, 3x+=3
+          if (multiple >= level1Mult) {
+            // Triangle count based on configurable levels
             let triangleCount = 1;
-            if (multiple >= 3) triangleCount = 3;
-            else if (multiple >= 2) triangleCount = 2;
+            if (multiple >= level3Mult) triangleCount = 3;
+            else if (multiple >= level2Mult) triangleCount = 2;
             
             // Color based on exchange consensus: 5-6=red, 3-4=yellow, 1-2=grey
             let color = '#ef4444'; // red (5-6 exchanges)
