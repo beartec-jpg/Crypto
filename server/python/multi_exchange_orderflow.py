@@ -52,6 +52,69 @@ def normalize_symbol(symbol: str, exchange_id: str) -> str:
     
     return f"{base}{quote}"
 
+def aggregate_candles_to_higher_timeframe(candles: List[Dict], source_interval: str, target_interval: str) -> List[Dict]:
+    """Aggregate smaller timeframe candles into larger timeframe candles"""
+    if not candles:
+        return []
+    
+    # Calculate how many source candles make one target candle
+    interval_ms = {
+        '1m': 60000, '3m': 180000, '5m': 300000, '15m': 900000,
+        '30m': 1800000, '1h': 3600000, '2h': 7200000, '4h': 14400000,
+        '6h': 21600000, '12h': 43200000, '1d': 86400000
+    }
+    
+    source_ms = interval_ms.get(source_interval, 3600000)
+    target_ms = interval_ms.get(target_interval, 14400000)
+    candles_per_period = target_ms // source_ms
+    
+    # Group candles by target timeframe bucket
+    buckets = {}
+    for candle in candles:
+        ts = candle['timestamp']
+        if ts > 10000000000:  # Convert ms to seconds
+            ts = ts // 1000
+        # Round down to target timeframe boundary
+        bucket_ts = (ts // (target_ms // 1000)) * (target_ms // 1000)
+        
+        if bucket_ts not in buckets:
+            buckets[bucket_ts] = []
+        buckets[bucket_ts].append(candle)
+    
+    # Aggregate each bucket
+    aggregated = []
+    for bucket_ts in sorted(buckets.keys()):
+        bucket_candles = buckets[bucket_ts]
+        if not bucket_candles:
+            continue
+        
+        # Aggregate OHLCV data
+        aggregated.append({
+            'timestamp': bucket_ts * 1000,  # Back to ms
+            'open': bucket_candles[0]['open'],
+            'high': max(c['high'] for c in bucket_candles),
+            'low': min(c['low'] for c in bucket_candles),
+            'close': bucket_candles[-1]['close'],
+            'volume': sum(c['volume'] for c in bucket_candles),
+            'buy_volume': sum(c['buy_volume'] for c in bucket_candles),
+            'sell_volume': sum(c['sell_volume'] for c in bucket_candles),
+            'delta': sum(c['delta'] for c in bucket_candles)
+        })
+    
+    return aggregated
+
+# Coinbase supported granularities - others need aggregation
+COINBASE_SUPPORTED = {'1m', '5m', '15m', '1h', '6h', '1d'}
+
+# Map unsupported intervals to their aggregation source
+AGGREGATION_MAP = {
+    '2h': '1h',   # 2 x 1h candles
+    '3m': '1m',   # 3 x 1m candles  
+    '4h': '1h',   # 4 x 1h candles
+    '12h': '6h',  # 2 x 6h candles
+    '30m': '15m', # 2 x 15m candles
+}
+
 def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, since_ms: int, limit: int = 100) -> Tuple[List[Dict], Dict[str, Any]]:
     """Fetch OHLCV candlestick data from a single exchange"""
     metadata = {
@@ -65,6 +128,24 @@ def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, sinc
     }
     
     start_time = time.time()
+    
+    # Check if Coinbase needs aggregation for this interval
+    needs_aggregation = exchange_id == 'coinbase' and interval not in COINBASE_SUPPORTED
+    source_interval = interval
+    fetch_limit = limit
+    
+    if needs_aggregation and interval in AGGREGATION_MAP:
+        source_interval = AGGREGATION_MAP[interval]
+        # Calculate how many source candles we need
+        interval_ms = {'1m': 60000, '3m': 180000, '5m': 300000, '15m': 900000,
+                       '30m': 1800000, '1h': 3600000, '2h': 7200000, '4h': 14400000,
+                       '6h': 21600000, '12h': 43200000, '1d': 86400000}
+        source_ms = interval_ms.get(source_interval, 3600000)
+        target_ms = interval_ms.get(interval, 14400000)
+        multiplier = target_ms // source_ms
+        fetch_limit = limit * multiplier + multiplier  # Extra for boundary alignment
+        # Adjust since_ms to fetch enough history
+        since_ms = since_ms - (multiplier * source_ms)
     
     try:
         normalized_symbol = normalize_symbol(symbol, exchange_id)
@@ -80,10 +161,10 @@ def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, sinc
             '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
             '6h': '6h', '12h': '12h', '1d': '1d'
         }
-        timeframe = timeframe_map.get(interval, '15m')
+        timeframe = timeframe_map.get(source_interval, '15m')
         
         # Fetch OHLCV data
-        ohlcv = exchange.fetch_ohlcv(normalized_symbol, timeframe, since=since_ms, limit=limit)
+        ohlcv = exchange.fetch_ohlcv(normalized_symbol, timeframe, since=since_ms, limit=fetch_limit)
         
         metadata['response_time_ms'] = int((time.time() - start_time) * 1000)
         metadata['candles_count'] = len(ohlcv)
@@ -120,7 +201,14 @@ def fetch_ohlcv_from_exchange(exchange_id: str, symbol: str, interval: str, sinc
                     'delta': buy_volume - sell_volume  # Now provides directional estimate
                 })
             
-            print(f"✅ {EXCHANGES[exchange_id]['name']}: {len(candles)} candles in {metadata['response_time_ms']}ms", file=sys.stderr)
+            # Aggregate if needed (e.g., Coinbase 1h -> 4h)
+            if needs_aggregation and interval in AGGREGATION_MAP:
+                candles = aggregate_candles_to_higher_timeframe(candles, source_interval, interval)
+                print(f"✅ {EXCHANGES[exchange_id]['name']}: {len(candles)} candles (aggregated from {source_interval}) in {metadata['response_time_ms']}ms", file=sys.stderr)
+            else:
+                print(f"✅ {EXCHANGES[exchange_id]['name']}: {len(candles)} candles in {metadata['response_time_ms']}ms", file=sys.stderr)
+            
+            metadata['candles_count'] = len(candles)
             return candles, metadata
         else:
             metadata['error'] = 'No candles returned'
