@@ -2870,6 +2870,16 @@ export default function CryptoIndicators() {
             if (breakIdx !== -1) {
               const breakCandle = data[breakIdx];
               
+              // Check for liquidity grab: price breaks high but then closes back below it
+              // Look at candles after the break to see if price reversed
+              let isLiqGrab = false;
+              for (let j = breakIdx + 1; j < Math.min(breakIdx + 5, data.length); j++) {
+                if (data[j].close < previousHigh.value) {
+                  isLiqGrab = true;
+                  break;
+                }
+              }
+              
               // If we were in a bearish trend, this is CHoCH (reversal to bullish)
               // Otherwise it's BOS (continuation)
               if (currentTrend === 'bearish') {
@@ -2880,7 +2890,7 @@ export default function CryptoIndicators() {
                   breakIndex: breakIdx,
                   type: 'bullish',
                   sweptLevel: 'high',
-                  isLiquidityGrab: false
+                  isLiquidityGrab: isLiqGrab
                 });
                 currentTrend = 'bullish'; // Trend reversed
               } else {
@@ -2891,7 +2901,7 @@ export default function CryptoIndicators() {
                   breakIndex: breakIdx,
                   type: 'bullish',
                   sweptLevel: 'high',
-                  isLiquidityGrab: false
+                  isLiquidityGrab: isLiqGrab
                 });
                 currentTrend = 'bullish'; // Trend continuing or starting
               }
@@ -2916,6 +2926,16 @@ export default function CryptoIndicators() {
             if (breakIdx !== -1) {
               const breakCandle = data[breakIdx];
               
+              // Check for liquidity grab: price breaks low but then closes back above it
+              // Look at candles after the break to see if price reversed
+              let isLiqGrab = false;
+              for (let j = breakIdx + 1; j < Math.min(breakIdx + 5, data.length); j++) {
+                if (data[j].close > previousLow.value) {
+                  isLiqGrab = true;
+                  break;
+                }
+              }
+              
               // If we were in a bullish trend, this is CHoCH (reversal to bearish)
               // Otherwise it's BOS (continuation)
               if (currentTrend === 'bullish') {
@@ -2926,7 +2946,7 @@ export default function CryptoIndicators() {
                   breakIndex: breakIdx,
                   type: 'bearish',
                   sweptLevel: 'low',
-                  isLiquidityGrab: false
+                  isLiquidityGrab: isLiqGrab
                 });
                 currentTrend = 'bearish'; // Trend reversed
               } else {
@@ -2937,7 +2957,7 @@ export default function CryptoIndicators() {
                   breakIndex: breakIdx,
                   type: 'bearish',
                   sweptLevel: 'low',
-                  isLiquidityGrab: false
+                  isLiquidityGrab: isLiqGrab
                 });
                 currentTrend = 'bearish'; // Trend continuing or starting
               }
