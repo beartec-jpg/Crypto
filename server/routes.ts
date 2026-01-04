@@ -2573,27 +2573,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const scriptPath = path.join(process.cwd(), 'server', 'python', 'multi_exchange_orderflow.py');
 
       // Determine how much data to fetch from Python
-      // If we have complete cached data, only fetch recent candles
-      // If we have partial cached data, fetch more to try to fill in gaps
-      const totalCachedCandles = allCachedData.length;
-      const useCachedData = cachedCompleteCount >= 10; // Only use cache if we have enough complete history
+      // Strategy: Always fetch full requested period to get continuous refresh
+      // We only cache complete 6/6 data, so partial timestamps keep fetching fresh
+      const useCachedData = cachedCompleteCount >= 10;
       
-      // Fetch period: shorter if we have good cache, longer if we need to fill gaps
-      // BUT if we have many partial candles, fetch more to try upgrading them
-      let fetchPeriod = period;
-      let fetchStrategy = 'FULL FETCH';
-      if (useCachedData && cachedPartialCount < 20) {
-        fetchPeriod = '1d'; // Just get recent data if few partials
-        fetchStrategy = 'CACHED + LIVE';
-      } else if (cachedPartialCount > 50) {
-        fetchPeriod = '1w'; // Fetch a week to try upgrading many partials
-        fetchStrategy = 'PARTIAL UPGRADE (1w)';
-      } else if (cachedPartialCount > 0) {
-        fetchPeriod = '3d'; // Get more to try filling in partials
-        fetchStrategy = 'PARTIAL CACHE + FILL';
-      }
+      // Always use requested period - continuous refresh to accumulate 6/6 data
+      const fetchPeriod = period;
+      const fetchStrategy = useCachedData ? 'CACHED + CONTINUOUS REFRESH' : 'FULL FETCH';
 
-      console.log(`📡 Fetch strategy: ${fetchStrategy}, period: ${fetchPeriod}, partials: ${cachedPartialCount}`);
+      console.log(`📡 Fetch strategy: ${fetchStrategy}, period: ${fetchPeriod}, complete: ${cachedCompleteCount}`);
 
       // Execute Python script with args array (prevents command injection)
       const { stdout, stderr } = await execFileAsync(
@@ -2706,8 +2694,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               volumeMultiple: fp.volumeMultiple || 0
             });
             
-            // Add to cache if not live candle and has at least 1 exchange
-            if (fp.time < currentCandleTimestampSec && freshExchangeCount > 0) {
+            // ONLY cache if complete 6/6 - partial data should keep fetching fresh
+            if (fp.time < currentCandleTimestampSec && freshExchangeCount >= TOTAL_EXCHANGES) {
               candlesToInsert.push(fp);
             }
           }
