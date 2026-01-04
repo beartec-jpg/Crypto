@@ -52,14 +52,35 @@ export default function CryptoSandbox() {
   
   // Trendline specific state
   type TrendlineMode = 'magnet' | 'free' | null;
+  type LineStyle = 'solid' | 'dashed' | 'dotted';
+  interface TrendlineData {
+    id: string;
+    p1: { time: number; price: number };
+    p2: { time: number; price: number };
+    color: string;
+    opacity: number;
+    lineStyle: LineStyle;
+    extendLeft: boolean;
+    extendRight: boolean;
+    label?: { text: string; position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' };
+  }
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
   const [showTrendlineModeSelector, setShowTrendlineModeSelector] = useState(false);
   const [trendlinePoints, setTrendlinePoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
-  const [drawnTrendlines, setDrawnTrendlines] = useState<{ p1: { x: number; y: number; time: number; price: number }; p2: { x: number; y: number; time: number; price: number } }[]>([]);
+  const [drawnTrendlines, setDrawnTrendlines] = useState<TrendlineData[]>([]);
   const [magnetPulse, setMagnetPulse] = useState<{ x: number; y: number } | null>(null);
   const MAGNET_RADIUS = 30; // pixels
   // Zoom counter to trigger re-renders for trendlines during zoom/pan
   const [zoomVersion, setZoomVersion] = useState(0);
+  
+  // Trendline selection and menu state
+  const [selectedTrendline, setSelectedTrendline] = useState<string | null>(null);
+  const [trendlineMenuPos, setTrendlineMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | null>(null);
+  const [movingTrendline, setMovingTrendline] = useState<string | null>(null);
+  
+  // Color palette for trendlines
+  const TRENDLINE_COLORS = ['#facc15', '#22c55e', '#ef4444', '#3b82f6', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#ffffff'];
   
   // Indicator states - Trend Tools
   const [showEMA, setShowEMA] = useState(false);
@@ -258,12 +279,69 @@ export default function CryptoSandbox() {
       // First point
       setTrendlinePoints([point]);
     } else {
-      // Second point - complete the trendline
-      setDrawnTrendlines(prev => [...prev, { p1: trendlinePoints[0], p2: point! }]);
+      // Second point - complete the trendline with full properties
+      const newTrendline: TrendlineData = {
+        id: `tl-${Date.now()}`,
+        p1: { time: trendlinePoints[0].time, price: trendlinePoints[0].price },
+        p2: { time: point!.time, price: point!.price },
+        color: '#facc15',
+        opacity: 1,
+        lineStyle: 'solid',
+        extendLeft: false,
+        extendRight: false,
+      };
+      setDrawnTrendlines(prev => [...prev, newTrendline]);
       setTrendlinePoints([]);
       // Keep tool active for drawing more lines
     }
   }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top]);
+  
+  // Handle click on trendline to select it
+  const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
+    setSelectedTrendline(lineId);
+    // Calculate menu position with edge detection
+    let menuX = clickX + 10;
+    let menuY = clickY;
+    const menuHeight = 200; // Approximate menu height
+    const menuWidth = 40;
+    
+    // Keep menu within chart bounds
+    if (menuX + menuWidth > dimensions.width - margin.right) {
+      menuX = clickX - menuWidth - 10;
+    }
+    if (menuY + menuHeight > dimensions.height - margin.bottom) {
+      menuY = dimensions.height - margin.bottom - menuHeight;
+    }
+    if (menuY < margin.top) {
+      menuY = margin.top;
+    }
+    
+    setTrendlineMenuPos({ x: menuX, y: menuY });
+    setActiveSubmenu(null);
+  }, [dimensions, margin]);
+  
+  // Delete selected trendline
+  const deleteTrendline = useCallback(() => {
+    if (selectedTrendline) {
+      setDrawnTrendlines(prev => prev.filter(l => l.id !== selectedTrendline));
+      setSelectedTrendline(null);
+      setTrendlineMenuPos(null);
+      setActiveSubmenu(null);
+    }
+  }, [selectedTrendline]);
+  
+  // Update trendline property
+  const updateTrendline = useCallback((id: string, updates: Partial<TrendlineData>) => {
+    setDrawnTrendlines(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+  }, []);
+  
+  // Close trendline menu when clicking elsewhere
+  const closeTrendlineMenu = useCallback(() => {
+    setSelectedTrendline(null);
+    setTrendlineMenuPos(null);
+    setActiveSubmenu(null);
+    setMovingTrendline(null);
+  }, []);
   
   // Render D3 chart
   useEffect(() => {
@@ -1143,26 +1221,317 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Render drawn trendlines - no end circles, just lines */}
+            {/* Render drawn trendlines - clickable with selection */}
             {/* zoomVersion ensures re-render on zoom/pan */}
-            <svg className="absolute inset-0 pointer-events-none overflow-visible" data-zoom={zoomVersion}>
-              {drawnTrendlines.map((line, i) => {
-                // Recalculate positions based on current scale (for zoom/pan)
+            <svg 
+              className="absolute inset-0 overflow-visible" 
+              data-zoom={zoomVersion}
+              style={{ pointerEvents: activeTool === 'trendline' ? 'none' : 'auto' }}
+              onClick={(e) => {
+                // Click on empty space closes menu
+                if (e.target === e.currentTarget) {
+                  closeTrendlineMenu();
+                }
+              }}
+            >
+              {drawnTrendlines.map((line) => {
                 if (!xScaleRef.current || !yScaleRef.current) return null;
-                const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
-                const y1 = yScaleRef.current(line.p1.price) + margin.top;
-                const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
-                const y2 = yScaleRef.current(line.p2.price) + margin.top;
+                let x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
+                let y1 = yScaleRef.current(line.p1.price) + margin.top;
+                let x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
+                let y2 = yScaleRef.current(line.p2.price) + margin.top;
+                
+                // Calculate extended line coordinates
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const extendAmount = 2000; // pixels to extend
+                let extX1 = x1, extY1 = y1, extX2 = x2, extY2 = y2;
+                if (line.extendLeft && dx !== 0) {
+                  const ratio = extendAmount / Math.sqrt(dx * dx + dy * dy);
+                  extX1 = x1 - dx * ratio;
+                  extY1 = y1 - dy * ratio;
+                }
+                if (line.extendRight && dx !== 0) {
+                  const ratio = extendAmount / Math.sqrt(dx * dx + dy * dy);
+                  extX2 = x2 + dx * ratio;
+                  extY2 = y2 + dy * ratio;
+                }
+                
+                const isSelected = selectedTrendline === line.id;
+                const strokeDash = line.lineStyle === 'dashed' ? '8,4' : line.lineStyle === 'dotted' ? '2,4' : 'none';
+                
                 return (
-                  <line 
-                    key={i}
-                    x1={x1} y1={y1} x2={x2} y2={y2}
-                    stroke="#facc15"
-                    strokeWidth="2"
-                  />
+                  <g key={line.id}>
+                    {/* Extended line parts (dimmer) */}
+                    {line.extendLeft && (
+                      <line 
+                        x1={extX1} y1={extY1} x2={x1} y2={y1}
+                        stroke={line.color}
+                        strokeWidth="1"
+                        strokeOpacity={line.opacity * 0.5}
+                        strokeDasharray={strokeDash}
+                      />
+                    )}
+                    {line.extendRight && (
+                      <line 
+                        x1={x2} y1={y2} x2={extX2} y2={extY2}
+                        stroke={line.color}
+                        strokeWidth="1"
+                        strokeOpacity={line.opacity * 0.5}
+                        strokeDasharray={strokeDash}
+                      />
+                    )}
+                    
+                    {/* Main line - clickable with invisible wider hit area */}
+                    <line 
+                      x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke="transparent"
+                      strokeWidth="12"
+                      style={{ cursor: 'pointer' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleTrendlineSelect(line.id, e.clientX - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().left || 0), e.clientY - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().top || 0));
+                      }}
+                    />
+                    <line 
+                      x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke={line.color}
+                      strokeWidth="2"
+                      strokeOpacity={line.opacity}
+                      strokeDasharray={strokeDash}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                    
+                    {/* Endpoint circles - only when selected */}
+                    {isSelected && (
+                      <>
+                        <circle cx={x1} cy={y1} r="5" fill={line.color} stroke="white" strokeWidth="2" />
+                        <circle cx={x2} cy={y2} r="5" fill={line.color} stroke="white" strokeWidth="2" />
+                      </>
+                    )}
+                    
+                    {/* Label if set */}
+                    {line.label && (
+                      <text
+                        x={line.label.position.includes('left') ? x1 : x2}
+                        y={line.label.position.includes('top') 
+                          ? (line.label.position.includes('left') ? y1 : y2) - 10 
+                          : (line.label.position.includes('left') ? y1 : y2) + 20}
+                        fill={line.color}
+                        fontSize="12"
+                        textAnchor="middle"
+                      >
+                        {line.label.text}
+                      </text>
+                    )}
+                  </g>
                 );
               })}
             </svg>
+            
+            {/* Trendline action menu */}
+            {trendlineMenuPos && selectedTrendline && (
+              <div 
+                className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded p-1 z-50"
+                style={{ left: trendlineMenuPos.x, top: trendlineMenuPos.y }}
+              >
+                {/* Move */}
+                <button
+                  onClick={() => {
+                    setMovingTrendline(selectedTrendline);
+                    closeTrendlineMenu();
+                  }}
+                  className="p-2 hover:bg-slate-700 rounded text-white"
+                  title="Move"
+                >
+                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
+                  </svg>
+                </button>
+                
+                {/* Delete */}
+                <button
+                  onClick={deleteTrendline}
+                  className="p-2 hover:bg-slate-700 rounded text-red-400"
+                  title="Delete"
+                >
+                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                  </svg>
+                </button>
+                
+                {/* Colour */}
+                <button
+                  onClick={() => setActiveSubmenu(activeSubmenu === 'color' ? null : 'color')}
+                  className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'color' ? 'bg-slate-600' : ''}`}
+                  title="Colour"
+                >
+                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="10" cy="10" r="7" />
+                    <circle cx="10" cy="10" r="3" fill="currentColor" />
+                  </svg>
+                </button>
+                
+                {/* Extend */}
+                <button
+                  onClick={() => setActiveSubmenu(activeSubmenu === 'extend' ? null : 'extend')}
+                  className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'extend' ? 'bg-slate-600' : ''}`}
+                  title="Extend"
+                >
+                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 10h12M16 10l-4-4M16 10l-4 4" />
+                  </svg>
+                </button>
+                
+                {/* Label */}
+                <button
+                  onClick={() => setActiveSubmenu(activeSubmenu === 'label' ? null : 'label')}
+                  className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'label' ? 'bg-slate-600' : ''}`}
+                  title="Label"
+                >
+                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                    <text x="5" y="15" fontSize="14" fontWeight="bold">T</text>
+                  </svg>
+                </button>
+              </div>
+            )}
+            
+            {/* Submenu for Color */}
+            {activeSubmenu === 'color' && trendlineMenuPos && selectedTrendline && (() => {
+              const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
+              const submenuX = trendlineMenuPos.x + 50 < dimensions.width - 150 ? trendlineMenuPos.x + 50 : trendlineMenuPos.x - 160;
+              return (
+                <div 
+                  className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50"
+                  style={{ left: submenuX, top: trendlineMenuPos.y }}
+                >
+                  <div className="text-xs text-gray-400 mb-2">Colors</div>
+                  <div className="flex flex-wrap gap-1 mb-3 w-32">
+                    {TRENDLINE_COLORS.map(color => (
+                      <button
+                        key={color}
+                        onClick={() => updateTrendline(selectedTrendline, { color })}
+                        className={`w-6 h-6 rounded border-2 ${selectedLine?.color === color ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                  
+                  <div className="text-xs text-gray-400 mb-1">Opacity</div>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="1"
+                    step="0.1"
+                    value={selectedLine?.opacity || 1}
+                    onChange={(e) => updateTrendline(selectedTrendline, { opacity: parseFloat(e.target.value) })}
+                    className="w-full mb-3"
+                  />
+                  
+                  <div className="text-xs text-gray-400 mb-1">Line Style</div>
+                  <div className="flex gap-1">
+                    {(['solid', 'dashed', 'dotted'] as LineStyle[]).map(style => (
+                      <button
+                        key={style}
+                        onClick={() => updateTrendline(selectedTrendline, { lineStyle: style })}
+                        className={`px-2 py-1 text-xs rounded ${selectedLine?.lineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                      >
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Submenu for Extend */}
+            {activeSubmenu === 'extend' && trendlineMenuPos && selectedTrendline && (() => {
+              const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
+              const submenuX = trendlineMenuPos.x + 50 < dimensions.width - 100 ? trendlineMenuPos.x + 50 : trendlineMenuPos.x - 110;
+              return (
+                <div 
+                  className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50"
+                  style={{ left: submenuX, top: trendlineMenuPos.y }}
+                >
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedLine?.extendLeft || false}
+                        onChange={(e) => updateTrendline(selectedTrendline, { extendLeft: e.target.checked })}
+                        className="w-4 h-4"
+                      />
+                      Extend Left
+                    </label>
+                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedLine?.extendRight || false}
+                        onChange={(e) => updateTrendline(selectedTrendline, { extendRight: e.target.checked })}
+                        className="w-4 h-4"
+                      />
+                      Extend Right
+                    </label>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Submenu for Label */}
+            {activeSubmenu === 'label' && trendlineMenuPos && selectedTrendline && (() => {
+              const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
+              const submenuX = trendlineMenuPos.x + 50 < dimensions.width - 160 ? trendlineMenuPos.x + 50 : trendlineMenuPos.x - 170;
+              return (
+                <div 
+                  className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50 w-40"
+                  style={{ left: submenuX, top: trendlineMenuPos.y }}
+                >
+                  <div className="text-xs text-gray-400 mb-1">Text</div>
+                  <input
+                    type="text"
+                    placeholder="Label text..."
+                    value={selectedLine?.label?.text || ''}
+                    onChange={(e) => updateTrendline(selectedTrendline, { 
+                      label: { 
+                        text: e.target.value, 
+                        position: selectedLine?.label?.position || 'top-right' 
+                      } 
+                    })}
+                    className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-2"
+                  />
+                  
+                  <div className="text-xs text-gray-400 mb-1">Position</div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map(pos => (
+                      <button
+                        key={pos}
+                        onClick={() => updateTrendline(selectedTrendline, { 
+                          label: { 
+                            text: selectedLine?.label?.text || '', 
+                            position: pos 
+                          } 
+                        })}
+                        className={`px-1 py-1 text-xs rounded ${selectedLine?.label?.position === pos ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                      >
+                        {pos.replace('-', ' ')}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {selectedLine?.label?.text && (
+                    <button
+                      onClick={() => {
+                        const { label, ...rest } = drawnTrendlines.find(l => l.id === selectedTrendline) || {};
+                        if (rest.id) setDrawnTrendlines(prev => prev.map(l => l.id === selectedTrendline ? { ...l, label: undefined } : l));
+                      }}
+                      className="w-full mt-2 px-2 py-1 text-xs bg-red-600 text-white rounded"
+                    >
+                      Remove Label
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
