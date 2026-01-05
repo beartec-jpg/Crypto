@@ -1119,6 +1119,16 @@ export default function CryptoSandbox() {
   useEffect(() => {
     console.log('Axis handlers mounted');
     
+    const triggerZoomUpdate = () => {
+      // Trigger D3 zoom callback with current transform to redraw chart
+      if (svgRef.current && zoomRef.current) {
+        const svg = d3.select(svgRef.current);
+        const currentTransform = d3.zoomTransform(svgRef.current);
+        // Dispatch zoom event with same transform to trigger redraw
+        zoomRef.current.transform(svg, currentTransform);
+      }
+    };
+    
     const handleMove = (clientX: number, clientY: number) => {
       const yDrag = yAxisDragRef.current;
       const xDrag = xAxisDragRef.current;
@@ -1132,8 +1142,10 @@ export default function CryptoSandbox() {
         const halfRange = (maxPrice - minPrice) / 2;
         const newHalfRange = halfRange * Math.max(0.1, factor);
         const newDomain: [number, number] = [midPrice - newHalfRange, midPrice + newHalfRange];
+        // Update ref first for D3 callback to read
+        manualYDomainRef.current = newDomain;
         setManualYDomain(newDomain);
-        // Don't trigger full rebuild - just store domain for next D3 zoom event
+        triggerZoomUpdate();
       }
       
       if (xDrag) {
@@ -1148,8 +1160,9 @@ export default function CryptoSandbox() {
           new Date(midTime.getTime() - newHalfRange),
           new Date(midTime.getTime() + newHalfRange)
         ];
+        manualXDomainRef.current = newDomain;
         setManualXDomain(newDomain);
-        // Don't trigger full rebuild - just store domain for next D3 zoom event
+        triggerZoomUpdate();
       }
     };
     
