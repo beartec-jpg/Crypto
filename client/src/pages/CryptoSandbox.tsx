@@ -227,6 +227,7 @@ export default function CryptoSandbox() {
   type SelectionCandidate = { id: string; type: 'trendline' | 'horizontal' | 'channel' | 'hchannel' | 'schannel' | 'label' };
   const [selectionCandidates, setSelectionCandidates] = useState<SelectionCandidate[]>([]);
   const [selectionPickerPos, setSelectionPickerPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectionPickerClickPos, setSelectionPickerClickPos] = useState<{ x: number; y: number } | null>(null); // Original click position
   
   // Undo/redo history for ALL drawing types (unified)
   type DrawingState = {
@@ -583,6 +584,10 @@ export default function CryptoSandbox() {
       setChannelPoints([]);
       setHChannelPoints([]);
       setSChannelPoints([]);
+      // Close selection picker
+      setSelectionCandidates([]);
+      setSelectionPickerPos(null);
+      setSelectionPickerClickPos(null);
     }
   }, []);
   
@@ -1542,10 +1547,13 @@ export default function CryptoSandbox() {
   const closeSelectionPicker = useCallback(() => {
     setSelectionCandidates([]);
     setSelectionPickerPos(null);
+    setSelectionPickerClickPos(null);
   }, []);
   
-  // Handle selection from picker
-  const handlePickerSelect = useCallback((candidate: SelectionCandidate, clickX: number, clickY: number) => {
+  // Handle selection from picker - uses original click position for correct menu placement
+  const handlePickerSelect = useCallback((candidate: SelectionCandidate) => {
+    const clickX = selectionPickerClickPos?.x ?? 0;
+    const clickY = selectionPickerClickPos?.y ?? 0;
     closeSelectionPicker();
     switch (candidate.type) {
       case 'trendline':
@@ -1567,7 +1575,7 @@ export default function CryptoSandbox() {
         handleTextLabelSelect(candidate.id, clickX, clickY);
         break;
     }
-  }, [closeSelectionPicker, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
+  }, [closeSelectionPicker, selectionPickerClickPos, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
   
   // Find if crosshair is near an endpoint of the moving trendline
   const findNearbyEndpoint = useCallback((clickX: number, clickY: number): 'p1' | 'p2' | null => {
@@ -3068,9 +3076,32 @@ export default function CryptoSandbox() {
                       const pickerY = Math.min(Math.max(crosshairPos.y, 50), dimensions.height - 150);
                       setSelectionCandidates(candidates);
                       setSelectionPickerPos({ x: pickerX, y: pickerY });
+                      setSelectionPickerClickPos({ x: crosshairPos.x, y: crosshairPos.y }); // Store original click
                     } else if (candidates.length === 1) {
-                      // Single element - select directly
-                      handlePickerSelect(candidates[0], crosshairPos.x, crosshairPos.y);
+                      // Single element - select directly using stored click pos
+                      setSelectionPickerClickPos({ x: crosshairPos.x, y: crosshairPos.y });
+                      // Direct selection - call the handler directly with original position
+                      const candidate = candidates[0];
+                      switch (candidate.type) {
+                        case 'trendline':
+                          handleTrendlineSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'horizontal':
+                          handleHorizontalSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'channel':
+                          handleChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'hchannel':
+                          handleHChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'schannel':
+                          handleSChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'label':
+                          handleTextLabelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                      }
                     } else {
                       // Tap on empty space - close any open menu
                       closeSelectionPicker();
@@ -4100,7 +4131,7 @@ export default function CryptoSandbox() {
                     return (
                       <button
                         key={`${candidate.type}-${candidate.id}-${idx}`}
-                        onClick={() => handlePickerSelect(candidate, selectionPickerPos.x, selectionPickerPos.y)}
+                        onClick={() => handlePickerSelect(candidate)}
                         className="flex items-center gap-2 px-3 py-2 text-white hover:bg-slate-700 rounded transition-colors text-sm"
                         data-testid={`picker-${candidate.type}-${idx}`}
                       >
