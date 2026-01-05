@@ -409,12 +409,13 @@ export default function CryptoSandbox() {
   
   // Click-off handler: deselect tool and close menus when clicking on chart background
   const handleChartBackgroundClick = useCallback((e: React.MouseEvent) => {
-    // Check if clicking on a menu or its children - if so, don't close
+    // Check if clicking on a menu, toolbar, or drawing overlay - if so, don't close
     const target = e.target as HTMLElement;
     const isMenuClick = target.closest('[data-menu]') !== null;
     const isToolbarClick = target.closest('[data-toolbar]') !== null;
+    const isDrawingOverlay = target.closest('[data-drawing-overlay]') !== null;
     
-    if (!isMenuClick && !isToolbarClick) {
+    if (!isMenuClick && !isToolbarClick && !isDrawingOverlay) {
       // Deselect active tool
       setActiveTool(null);
       // Close all menus
@@ -1954,6 +1955,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
                 style={{ pointerEvents: 'auto' }}
+                data-drawing-overlay
                 onClick={(e) => {
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -2426,6 +2428,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
                 style={{ pointerEvents: 'auto' }}
+                data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -2458,6 +2461,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
                 style={{ pointerEvents: 'auto' }}
+                data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -2506,6 +2510,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
                 style={{ pointerEvents: 'auto' }}
+                data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
                     const rect = e.currentTarget.getBoundingClientRect();
