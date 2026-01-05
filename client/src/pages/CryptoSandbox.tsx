@@ -80,6 +80,8 @@ export default function CryptoSandbox() {
   const [trendlineMenuPos, setTrendlineMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | null>(null);
   const [movingTrendline, setMovingTrendline] = useState<string | null>(null);
+  const [draggingMenu, setDraggingMenu] = useState(false);
+  const menuDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   
   // Move mode state
   const [moveMode, setMoveMode] = useState(false);
@@ -1673,9 +1675,32 @@ export default function CryptoSandbox() {
             {/* Trendline action menu */}
             {trendlineMenuPos && selectedTrendline && (
               <div 
-                className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded p-1 z-50"
+                className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
                 style={{ left: trendlineMenuPos.x, top: trendlineMenuPos.y }}
               >
+                {/* Drag handle */}
+                <div 
+                  className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setDraggingMenu(true);
+                    menuDragOffset.current = {
+                      x: e.clientX - trendlineMenuPos.x,
+                      y: e.clientY - trendlineMenuPos.y
+                    };
+                  }}
+                  onTouchStart={(e) => {
+                    const touch = e.touches[0];
+                    setDraggingMenu(true);
+                    menuDragOffset.current = {
+                      x: touch.clientX - trendlineMenuPos.x,
+                      y: touch.clientY - trendlineMenuPos.y
+                    };
+                  }}
+                >
+                  <div className="w-6 h-0.5 bg-slate-400 rounded" />
+                </div>
+                <div className="p-1 flex flex-col gap-1">
                 {/* Delete */}
                 <button
                   onClick={deleteTrendline}
@@ -1720,7 +1745,30 @@ export default function CryptoSandbox() {
                     <text x="5" y="15" fontSize="14" fontWeight="bold">T</text>
                   </svg>
                 </button>
+                </div>
               </div>
+            )}
+            
+            {/* Drag overlay for menu */}
+            {draggingMenu && trendlineMenuPos && (
+              <div 
+                className="fixed inset-0 z-[100] cursor-grabbing"
+                onMouseMove={(e) => {
+                  setTrendlineMenuPos({
+                    x: e.clientX - menuDragOffset.current.x,
+                    y: e.clientY - menuDragOffset.current.y
+                  });
+                }}
+                onMouseUp={() => setDraggingMenu(false)}
+                onTouchMove={(e) => {
+                  const touch = e.touches[0];
+                  setTrendlineMenuPos({
+                    x: touch.clientX - menuDragOffset.current.x,
+                    y: touch.clientY - menuDragOffset.current.y
+                  });
+                }}
+                onTouchEnd={() => setDraggingMenu(false)}
+              />
             )}
             
             {/* Submenu for Color */}
