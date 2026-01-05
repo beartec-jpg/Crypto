@@ -1229,17 +1229,17 @@ export default function CryptoSandbox() {
       d3.max(candles, d => d.high) as number * 1.001
     ];
     
-    // X Scale (time) - preserve manual domain if set
+    // X Scale (time) - preserve manual domain if set (use refs for latest value)
     const xScale = d3.scaleTime()
-      .domain(xAxisManual && manualXDomain ? manualXDomain : [new Date(timeExtent[0]), new Date(timeExtent[1])])
+      .domain(xAxisManualRef.current && manualXDomainRef.current ? manualXDomainRef.current : [new Date(timeExtent[0]), new Date(timeExtent[1])])
       .range([0, innerWidth]);
     xScaleRef.current = xScale;
     
-    // Y Scale (price) - use manual domain if set
+    // Y Scale (price) - use manual domain if set (use refs for latest value)
     const yScale = d3.scaleLinear()
-      .domain(yAxisManual && manualYDomain ? manualYDomain : priceExtent)
+      .domain(yAxisManualRef.current && manualYDomainRef.current ? manualYDomainRef.current : priceExtent)
       .range([innerHeight, 0]);
-    if (!yAxisManual) yScale.nice();
+    if (!yAxisManualRef.current) yScale.nice();
     yScaleRef.current = yScale;
     
     // Background
@@ -1465,7 +1465,9 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion, xAxisManual, yAxisManual]);
+  // Note: xAxisManual/yAxisManual removed from deps - refs are used in D3 callbacks
+  // Chart only rebuilds on data/dimension changes or zoomVersion (reset)
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion]);
   
   // Show loading while checking auth
   if (authLoading) {
