@@ -117,7 +117,7 @@ export default function CryptoSandbox() {
     bottomLineThickness: number;
     bottomLineStyle: LineStyle;
     bottomLabel?: string;
-    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string }[]; // 25, 50, 75%
+    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string; bgColor?: string }[]; // 25, 50, 75%
     label?: { text: string; value?: string };
     showLabelLeft?: boolean;
     showLabelCenter?: boolean;
@@ -145,7 +145,7 @@ export default function CryptoSandbox() {
     bottomLineThickness: number;
     bottomLineStyle: LineStyle;
     bottomLabel?: string;
-    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string }[]; // 25, 50, 75%
+    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string; bgColor?: string }[]; // 25, 50, 75%
     label?: { text: string; value?: string };
     showLabelLeft?: boolean;
     showLabelCenter?: boolean;
@@ -1889,23 +1889,24 @@ export default function CryptoSandbox() {
         const centerX = Math.max(chartLeft, Math.min(chartRight, (x1 + x2) / 2));
         const rightX = Math.min(Math.max(x1, x2) - 5, chartRight);
         
-        // Helper to render label at multiple positions
-        const renderHLabel = (text: string, yPos: number, yOffset: number, color: string, fontSize: string = '11px', bold: boolean = true) => {
-          if (hchannel.showLabelLeft) {
-            hchannelGroup.append('text').attr('x', leftX).attr('y', yPos + yOffset)
+        // Helper to render label at multiple positions with optional background
+        const renderHLabel = (text: string, yPos: number, yOffset: number, color: string, fontSize: string = '11px', bold: boolean = true, bgColor?: string) => {
+          const renderWithBg = (x: number, anchor: string) => {
+            const textEl = hchannelGroup.append('text').attr('x', x).attr('y', yPos + yOffset)
               .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
-              .attr('text-anchor', 'start').text(text);
-          }
-          if (hchannel.showLabelCenter) {
-            hchannelGroup.append('text').attr('x', centerX).attr('y', yPos + yOffset)
-              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
-              .attr('text-anchor', 'middle').text(text);
-          }
-          if (hchannel.showLabelRight) {
-            hchannelGroup.append('text').attr('x', rightX).attr('y', yPos + yOffset)
-              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
-              .attr('text-anchor', 'end').text(text);
-          }
+              .attr('text-anchor', anchor).text(text);
+            if (bgColor && bgColor !== 'transparent') {
+              const bbox = (textEl.node() as SVGTextElement)?.getBBox();
+              if (bbox) {
+                hchannelGroup.insert('rect', 'text').attr('x', bbox.x - 2).attr('y', bbox.y - 1)
+                  .attr('width', bbox.width + 4).attr('height', bbox.height + 2)
+                  .attr('fill', bgColor).attr('rx', 2);
+              }
+            }
+          };
+          if (hchannel.showLabelLeft) renderWithBg(leftX, 'start');
+          if (hchannel.showLabelCenter) renderWithBg(centerX, 'middle');
+          if (hchannel.showLabelRight) renderWithBg(rightX, 'end');
         };
         
         // Top line label
@@ -1943,7 +1944,7 @@ export default function CryptoSandbox() {
             
             // Internal line label
             if (line.label) {
-              renderHLabel(line.label, yInternal, 4, line.color || hchannel.color, '10px', false);
+              renderHLabel(line.label, yInternal, 4, line.color || hchannel.color, '10px', false, line.bgColor);
             }
           }
         });
@@ -2020,28 +2021,35 @@ export default function CryptoSandbox() {
         const sChartLeft = margin.left + 50;
         const sChartRight = dimensions.width - margin.right - 60;
         
-        // Helper to render sloped channel labels at multiple positions
-        const renderSLabel = (text: string, lx1: number, ly1: number, lx2: number, ly2: number, yOffset: number, color: string, fontSize: string = '11px', bold: boolean = true) => {
+        // Helper to render sloped channel labels at multiple positions with optional background
+        const renderSLabel = (text: string, lx1: number, ly1: number, lx2: number, ly2: number, yOffset: number, color: string, fontSize: string = '11px', bold: boolean = true, bgColor?: string) => {
+          const renderWithBg = (x: number, y: number, anchor: string) => {
+            const textEl = schannelGroup.append('text').attr('x', x).attr('y', y + yOffset)
+              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
+              .attr('text-anchor', anchor).text(text);
+            if (bgColor && bgColor !== 'transparent') {
+              const bbox = (textEl.node() as SVGTextElement)?.getBBox();
+              if (bbox) {
+                schannelGroup.insert('rect', 'text').attr('x', bbox.x - 2).attr('y', bbox.y - 1)
+                  .attr('width', bbox.width + 4).attr('height', bbox.height + 2)
+                  .attr('fill', bgColor).attr('rx', 2);
+              }
+            }
+          };
           if (schannel.showLabelLeft) {
             const lX = Math.max(Math.min(lx1, lx2) + 5, sChartLeft);
             const lY = lx1 < lx2 ? ly1 : ly2;
-            schannelGroup.append('text').attr('x', lX).attr('y', lY + yOffset)
-              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
-              .attr('text-anchor', 'start').text(text);
+            renderWithBg(lX, lY, 'start');
           }
           if (schannel.showLabelCenter) {
             const cX = Math.max(sChartLeft, Math.min(sChartRight, (lx1 + lx2) / 2));
             const cY = (ly1 + ly2) / 2;
-            schannelGroup.append('text').attr('x', cX).attr('y', cY + yOffset)
-              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
-              .attr('text-anchor', 'middle').text(text);
+            renderWithBg(cX, cY, 'middle');
           }
           if (schannel.showLabelRight) {
             const rX = Math.min(Math.max(lx1, lx2) - 5, sChartRight);
             const rY = lx1 > lx2 ? ly1 : ly2;
-            schannelGroup.append('text').attr('x', rX).attr('y', rY + yOffset)
-              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
-              .attr('text-anchor', 'end').text(text);
+            renderWithBg(rX, rY, 'end');
           }
         };
         
@@ -2084,7 +2092,7 @@ export default function CryptoSandbox() {
             
             // Internal line label
             if (line.label) {
-              renderSLabel(line.label, intX1, intY1, intX2, intY2, 4, line.color || schannel.color, '10px', false);
+              renderSLabel(line.label, intX1, intY1, intX2, intY2, 4, line.color || schannel.color, '10px', false, line.bgColor);
             }
           }
         });
@@ -4004,13 +4012,13 @@ export default function CryptoSandbox() {
             {/* HChannel Internal Lines submenu */}
             {activeSubmenu === 'hch-internal' && hchannelMenuPos && selectedHChannel && (() => {
               const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
-              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 160 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 170;
+              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 200 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 210;
               const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 200);
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '160px' }}>
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '195px' }}>
                   <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
                   {hchannel?.internalLines.map((line, idx) => (
-                    <div key={idx} className="flex items-center gap-1 mb-1">
+                    <div key={idx} className="flex items-center gap-1 mb-2">
                       <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={line.visible} 
                         data-testid={`checkbox-hchannel-internal-${idx}`}
                         onChange={e => {
@@ -4019,16 +4027,32 @@ export default function CryptoSandbox() {
                           updateHChannel(selectedHChannel, { internalLines: newLines });
                         }} />
                       <span className="text-white text-xs w-8">{line.percent}%</span>
-                      <div className="flex gap-0.5">
-                        {['#facc15', '#ef4444', '#22c55e', '#3b82f6', '#a855f7'].map(color => (
-                          <button key={color} onClick={() => {
-                            const newLines = [...(hchannel?.internalLines || [])];
-                            newLines[idx] = { ...newLines[idx], color };
-                            updateHChannel(selectedHChannel, { internalLines: newLines });
-                          }}
-                            className={`w-4 h-4 rounded ${line.color === color ? 'ring-1 ring-white' : ''}`}
-                            style={{ backgroundColor: color }} data-testid={`btn-hchannel-internal-${idx}-color-${color.replace('#', '')}`} />
-                        ))}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-0.5 items-center">
+                          <span className="text-gray-500 text-[9px] w-6">Line</span>
+                          {['#facc15', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ffffff'].map(color => (
+                            <button key={color} onClick={() => {
+                              const newLines = [...(hchannel?.internalLines || [])];
+                              newLines[idx] = { ...newLines[idx], color };
+                              updateHChannel(selectedHChannel, { internalLines: newLines });
+                            }}
+                              className={`w-4 h-4 rounded ${line.color === color ? 'ring-1 ring-blue-400' : ''} ${color === '#ffffff' ? 'border border-gray-400' : ''}`}
+                              style={{ backgroundColor: color }} data-testid={`btn-hchannel-internal-${idx}-color-${color.replace('#', '')}`} />
+                          ))}
+                        </div>
+                        <div className="flex gap-0.5 items-center">
+                          <span className="text-gray-500 text-[9px] w-6">BG</span>
+                          {['transparent', '#1e293b', '#0f172a', '#000000', '#ffffff'].map((bgColor, bgIdx) => (
+                            <button key={bgIdx} onClick={() => {
+                              const newLines = [...(hchannel?.internalLines || [])];
+                              newLines[idx] = { ...newLines[idx], bgColor };
+                              updateHChannel(selectedHChannel, { internalLines: newLines });
+                            }}
+                              className={`w-4 h-4 rounded ${line.bgColor === bgColor ? 'ring-1 ring-blue-400' : ''} ${bgColor === '#ffffff' || bgColor === 'transparent' ? 'border border-gray-400' : ''}`}
+                              style={{ backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor, backgroundImage: bgColor === 'transparent' ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)' : 'none', backgroundSize: '4px 4px', backgroundPosition: '0 0, 0 2px, 2px -2px, -2px 0px' }}
+                              data-testid={`btn-hchannel-internal-${idx}-bg-${bgIdx}`} />
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -4305,10 +4329,10 @@ export default function CryptoSandbox() {
               const submenuX = schannelMenuPos.x + 50 < dimensions.width - 160 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 170;
               const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 200);
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '160px' }}>
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '195px' }}>
                   <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
                   {schannel?.internalLines.map((line, idx) => (
-                    <div key={idx} className="flex items-center gap-1 mb-1">
+                    <div key={idx} className="flex items-center gap-1 mb-2">
                       <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={line.visible} 
                         data-testid={`checkbox-schannel-internal-${idx}`}
                         onChange={e => {
@@ -4317,16 +4341,32 @@ export default function CryptoSandbox() {
                           updateSChannel(selectedSChannel, { internalLines: newLines });
                         }} />
                       <span className="text-white text-xs w-8">{line.percent}%</span>
-                      <div className="flex gap-0.5">
-                        {['#facc15', '#ef4444', '#22c55e', '#3b82f6', '#a855f7'].map(color => (
-                          <button key={color} onClick={() => {
-                            const newLines = [...(schannel?.internalLines || [])];
-                            newLines[idx] = { ...newLines[idx], color };
-                            updateSChannel(selectedSChannel, { internalLines: newLines });
-                          }}
-                            className={`w-4 h-4 rounded ${line.color === color ? 'ring-1 ring-white' : ''}`}
-                            style={{ backgroundColor: color }} data-testid={`btn-schannel-internal-${idx}-color-${color.replace('#', '')}`} />
-                        ))}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-0.5 items-center">
+                          <span className="text-gray-500 text-[9px] w-6">Line</span>
+                          {['#facc15', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ffffff'].map(color => (
+                            <button key={color} onClick={() => {
+                              const newLines = [...(schannel?.internalLines || [])];
+                              newLines[idx] = { ...newLines[idx], color };
+                              updateSChannel(selectedSChannel, { internalLines: newLines });
+                            }}
+                              className={`w-4 h-4 rounded ${line.color === color ? 'ring-1 ring-blue-400' : ''} ${color === '#ffffff' ? 'border border-gray-400' : ''}`}
+                              style={{ backgroundColor: color }} data-testid={`btn-schannel-internal-${idx}-color-${color.replace('#', '')}`} />
+                          ))}
+                        </div>
+                        <div className="flex gap-0.5 items-center">
+                          <span className="text-gray-500 text-[9px] w-6">BG</span>
+                          {['transparent', '#1e293b', '#0f172a', '#000000', '#ffffff'].map((bgColor, bgIdx) => (
+                            <button key={bgIdx} onClick={() => {
+                              const newLines = [...(schannel?.internalLines || [])];
+                              newLines[idx] = { ...newLines[idx], bgColor };
+                              updateSChannel(selectedSChannel, { internalLines: newLines });
+                            }}
+                              className={`w-4 h-4 rounded ${line.bgColor === bgColor ? 'ring-1 ring-blue-400' : ''} ${bgColor === '#ffffff' || bgColor === 'transparent' ? 'border border-gray-400' : ''}`}
+                              style={{ backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor, backgroundImage: bgColor === 'transparent' ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)' : 'none', backgroundSize: '4px 4px', backgroundPosition: '0 0, 0 2px, 2px -2px, -2px 0px' }}
+                              data-testid={`btn-schannel-internal-${idx}-bg-${bgIdx}`} />
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ))}
