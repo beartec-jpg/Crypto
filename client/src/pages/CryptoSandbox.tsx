@@ -106,6 +106,8 @@ export default function CryptoSandbox() {
     topPrice: number; // Top external line price
     bottomPrice: number; // Bottom external line price
     color: string;
+    fillColor?: string;
+    fillOpacity?: number;
     opacity: number;
     lineStyle: LineStyle;
     thickness: number;
@@ -134,6 +136,8 @@ export default function CryptoSandbox() {
     topLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
     bottomLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
     color: string;
+    fillColor?: string;
+    fillOpacity?: number;
     opacity: number;
     lineStyle: LineStyle;
     thickness: number;
@@ -1861,8 +1865,8 @@ export default function CryptoSandbox() {
           .attr('y', yMin)
           .attr('width', Math.abs(x2 - x1))
           .attr('height', Math.max(1, yMax - yMin))
-          .attr('fill', hchannel.color)
-          .attr('fill-opacity', 0.1)
+          .attr('fill', hchannel.fillColor || hchannel.color)
+          .attr('fill-opacity', hchannel.fillOpacity ?? 0.1)
           .style('cursor', 'pointer')
           .on('click', function(event) {
             event.stopPropagation();
@@ -1996,8 +2000,8 @@ export default function CryptoSandbox() {
         // Fill area (polygon between the two lines)
         schannelGroup.append('polygon')
           .attr('points', `${topX1},${topY1} ${topX2},${topY2} ${botX2},${botY2} ${botX1},${botY1}`)
-          .attr('fill', schannel.color)
-          .attr('fill-opacity', 0.1)
+          .attr('fill', schannel.fillColor || schannel.color)
+          .attr('fill-opacity', schannel.fillOpacity ?? 0.1)
           .style('cursor', 'pointer')
           .on('click', function(event) {
             event.stopPropagation();
@@ -4013,9 +4017,25 @@ export default function CryptoSandbox() {
             {activeSubmenu === 'hch-internal' && hchannelMenuPos && selectedHChannel && (() => {
               const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
               const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 200 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 210;
-              const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 200);
+              const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 250);
               return (
                 <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '195px' }}>
+                  <div className="text-xs text-gray-400 mb-1">Channel Fill</div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <button onClick={() => updateHChannel(selectedHChannel, { fillOpacity: 0 })}
+                      className={`w-5 h-5 rounded border border-gray-400 ${(hchannel?.fillOpacity ?? 0.1) === 0 ? 'ring-1 ring-blue-400' : ''}`}
+                      style={{ backgroundImage: 'linear-gradient(45deg, #666 25%, transparent 25%), linear-gradient(-45deg, #666 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #666 75%), linear-gradient(-45deg, transparent 75%, #666 75%)', backgroundSize: '6px 6px', backgroundPosition: '0 0, 0 3px, 3px -3px, -3px 0px' }}
+                      title="Off" data-testid="btn-hchannel-fill-off" />
+                    {[{ color: '#ef4444', name: 'Red' }, { color: '#22c55e', name: 'Green' }, { color: '#ffffff', name: 'White' }].map(({ color, name }) => (
+                      <button key={color} onClick={() => updateHChannel(selectedHChannel, { fillColor: color, fillOpacity: hchannel?.fillOpacity || 0.1 })}
+                        className={`w-5 h-5 rounded ${hchannel?.fillColor === color && (hchannel?.fillOpacity ?? 0.1) > 0 ? 'ring-1 ring-blue-400' : ''} ${color === '#ffffff' ? 'border border-gray-400' : ''}`}
+                        style={{ backgroundColor: color }} title={name} data-testid={`btn-hchannel-fill-${name.toLowerCase()}`} />
+                    ))}
+                    <input type="range" min="5" max="50" value={Math.round((hchannel?.fillOpacity ?? 0.1) * 100)}
+                      className="w-16 h-3 accent-blue-500" title={`Opacity: ${Math.round((hchannel?.fillOpacity ?? 0.1) * 100)}%`}
+                      onChange={e => updateHChannel(selectedHChannel, { fillOpacity: parseInt(e.target.value) / 100 })} />
+                    <span className="text-gray-400 text-[9px]">{Math.round((hchannel?.fillOpacity ?? 0.1) * 100)}%</span>
+                  </div>
                   <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
                   {hchannel?.internalLines.map((line, idx) => (
                     <div key={idx} className="flex items-center gap-1 mb-2">
@@ -4326,10 +4346,26 @@ export default function CryptoSandbox() {
             {/* SChannel Internal Lines submenu */}
             {activeSubmenu === 'sch-internal' && schannelMenuPos && selectedSChannel && (() => {
               const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
-              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 160 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 170;
-              const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 200);
+              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 200 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 210;
+              const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 250);
               return (
                 <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '195px' }}>
+                  <div className="text-xs text-gray-400 mb-1">Channel Fill</div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <button onClick={() => updateSChannel(selectedSChannel, { fillOpacity: 0 })}
+                      className={`w-5 h-5 rounded border border-gray-400 ${(schannel?.fillOpacity ?? 0.1) === 0 ? 'ring-1 ring-blue-400' : ''}`}
+                      style={{ backgroundImage: 'linear-gradient(45deg, #666 25%, transparent 25%), linear-gradient(-45deg, #666 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #666 75%), linear-gradient(-45deg, transparent 75%, #666 75%)', backgroundSize: '6px 6px', backgroundPosition: '0 0, 0 3px, 3px -3px, -3px 0px' }}
+                      title="Off" data-testid="btn-schannel-fill-off" />
+                    {[{ color: '#ef4444', name: 'Red' }, { color: '#22c55e', name: 'Green' }, { color: '#ffffff', name: 'White' }].map(({ color, name }) => (
+                      <button key={color} onClick={() => updateSChannel(selectedSChannel, { fillColor: color, fillOpacity: schannel?.fillOpacity || 0.1 })}
+                        className={`w-5 h-5 rounded ${schannel?.fillColor === color && (schannel?.fillOpacity ?? 0.1) > 0 ? 'ring-1 ring-blue-400' : ''} ${color === '#ffffff' ? 'border border-gray-400' : ''}`}
+                        style={{ backgroundColor: color }} title={name} data-testid={`btn-schannel-fill-${name.toLowerCase()}`} />
+                    ))}
+                    <input type="range" min="5" max="50" value={Math.round((schannel?.fillOpacity ?? 0.1) * 100)}
+                      className="w-16 h-3 accent-blue-500" title={`Opacity: ${Math.round((schannel?.fillOpacity ?? 0.1) * 100)}%`}
+                      onChange={e => updateSChannel(selectedSChannel, { fillOpacity: parseInt(e.target.value) / 100 })} />
+                    <span className="text-gray-400 text-[9px]">{Math.round((schannel?.fillOpacity ?? 0.1) * 100)}%</span>
+                  </div>
                   <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
                   {schannel?.internalLines.map((line, idx) => (
                     <div key={idx} className="flex items-center gap-1 mb-2">
