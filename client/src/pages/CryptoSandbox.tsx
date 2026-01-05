@@ -2029,11 +2029,11 @@ export default function CryptoSandbox() {
                   
                   // Check if click is near any endpoint of the selected trendline
                   const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
-                  if (selectedLine && xScale && yScale) {
-                    const x1 = xScale(selectedLine.x1);
-                    const y1 = yScale(selectedLine.y1);
-                    const x2 = xScale(selectedLine.x2);
-                    const y2 = yScale(selectedLine.y2);
+                  if (selectedLine && xScaleRef.current && yScaleRef.current) {
+                    const x1 = xScaleRef.current(new Date(selectedLine.p1.time)) + margin.left;
+                    const y1 = yScaleRef.current(selectedLine.p1.price);
+                    const x2 = xScaleRef.current(new Date(selectedLine.p2.time)) + margin.left;
+                    const y2 = yScaleRef.current(selectedLine.p2.price);
                     const centerX = (x1 + x2) / 2;
                     const centerY = (y1 + y2) / 2;
                     
