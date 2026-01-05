@@ -1672,10 +1672,10 @@ export default function CryptoSandbox() {
                     {/* Endpoint circles and center point - visible when selected */}
                     {(isSelected || (moveMode && movingTrendline === line.id)) && (
                       <>
-                        {/* Endpoint 1 */}
+                        {/* Endpoint 1 - larger invisible hit area + visible circle */}
                         <circle 
-                          cx={x1} cy={y1} r={moveMode ? 8 : 5} 
-                          fill={line.color} stroke="white" strokeWidth="2"
+                          cx={x1} cy={y1} r={moveMode ? 20 : 5} 
+                          fill="transparent"
                           style={{ cursor: moveMode ? 'pointer' : 'default' }}
                           onClick={(e) => {
                             if (moveMode) {
@@ -1685,28 +1685,36 @@ export default function CryptoSandbox() {
                             }
                           }}
                         />
-                        {/* Center point - click to move whole line */}
                         <circle 
-                          cx={(x1 + x2) / 2} cy={(y1 + y2) / 2} r={movingWholeLine === line.id ? 8 : 6}
-                          fill={movingWholeLine === line.id ? '#22c55e' : 'white'} 
-                          stroke={line.color} strokeWidth="2"
+                          cx={x1} cy={y1} r={moveMode ? 8 : 5} 
+                          fill={line.color} stroke="white" strokeWidth="2"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                        {/* Center point - larger invisible hit area + visible circle */}
+                        <circle 
+                          cx={(x1 + x2) / 2} cy={(y1 + y2) / 2} r={18}
+                          fill="transparent"
                           style={{ cursor: 'pointer' }}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (movingWholeLine === line.id) {
-                              // Cancel move mode
                               setMovingWholeLine(null);
                             } else {
-                              // Start moving whole line
                               setMovingWholeLine(line.id);
                               setTrendlineMenuPos(null);
                             }
                           }}
                         />
-                        {/* Endpoint 2 */}
                         <circle 
-                          cx={x2} cy={y2} r={moveMode ? 8 : 5} 
-                          fill={line.color} stroke="white" strokeWidth="2"
+                          cx={(x1 + x2) / 2} cy={(y1 + y2) / 2} r={movingWholeLine === line.id ? 8 : 6}
+                          fill={movingWholeLine === line.id ? '#22c55e' : 'white'} 
+                          stroke={line.color} strokeWidth="2"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                        {/* Endpoint 2 - larger invisible hit area + visible circle */}
+                        <circle 
+                          cx={x2} cy={y2} r={moveMode ? 20 : 5} 
+                          fill="transparent"
                           style={{ cursor: moveMode ? 'pointer' : 'default' }}
                           onClick={(e) => {
                             if (moveMode) {
@@ -1715,6 +1723,11 @@ export default function CryptoSandbox() {
                               handleEndpointClick(line.id, 'p2', e.clientX - (rect?.left || 0), e.clientY - (rect?.top || 0));
                             }
                           }}
+                        />
+                        <circle 
+                          cx={x2} cy={y2} r={moveMode ? 8 : 5} 
+                          fill={line.color} stroke="white" strokeWidth="2"
+                          style={{ pointerEvents: 'none' }}
                         />
                       </>
                     )}
