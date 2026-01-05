@@ -2227,11 +2227,12 @@ export default function CryptoSandbox() {
                 className="absolute inset-0 cursor-crosshair"
                 style={{ pointerEvents: 'auto' }}
                 onMouseMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  if (!crosshairMode) setCrosshairMode(true);
+                  if (crosshairMode) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }
                 }}
-                onMouseLeave={() => { setCrosshairMode(false); setCrosshairPos(null); }}
+                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   handleHorizontalClick(e.clientX - rect.left, e.clientY - rect.top);
@@ -2254,11 +2255,12 @@ export default function CryptoSandbox() {
                 className="absolute inset-0 cursor-crosshair"
                 style={{ pointerEvents: 'auto' }}
                 onMouseMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  if (!crosshairMode) setCrosshairMode(true);
+                  if (crosshairMode) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }
                 }}
-                onMouseLeave={() => { setCrosshairMode(false); setCrosshairPos(null); }}
+                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   handleChannelClick(e.clientX - rect.left, e.clientY - rect.top);
@@ -2297,11 +2299,12 @@ export default function CryptoSandbox() {
                 className="absolute inset-0 cursor-crosshair"
                 style={{ pointerEvents: 'auto' }}
                 onMouseMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  if (!crosshairMode) setCrosshairMode(true);
+                  if (crosshairMode) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }
                 }}
-                onMouseLeave={() => { setCrosshairMode(false); setCrosshairPos(null); }}
+                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   handleTextLabelClick(e.clientX - rect.left, e.clientY - rect.top);
