@@ -1107,13 +1107,20 @@ export default function CryptoSandbox() {
   
   // Global mouse handlers for axis drag
   useEffect(() => {
+    console.log('Axis handlers mounted');
     const handleMouseMove = (e: MouseEvent) => {
+      // Check if axis drag is active
+      const yDrag = yAxisDragRef.current;
+      const xDrag = xAxisDragRef.current;
+      if (yDrag || xDrag) {
+        console.log('Axis mousemove, yDrag:', !!yDrag, 'xDrag:', !!xDrag);
+      }
       // Y-axis drag (vertical = zoom price)
-      if (yAxisDragRef.current) {
-        const deltaY = e.clientY - yAxisDragRef.current.startY;
+      if (yDrag) {
+        const deltaY = e.clientY - yDrag.startY;
         const sensitivity = 0.005;
         const factor = 1 + deltaY * sensitivity;
-        const [minPrice, maxPrice] = yAxisDragRef.current.startDomain;
+        const [minPrice, maxPrice] = yDrag.startDomain;
         const midPrice = (minPrice + maxPrice) / 2;
         const halfRange = (maxPrice - minPrice) / 2;
         const newHalfRange = halfRange * Math.max(0.1, factor);
@@ -1141,6 +1148,9 @@ export default function CryptoSandbox() {
     };
     
     const handleMouseUp = () => {
+      if (yAxisDragRef.current || xAxisDragRef.current) {
+        console.log('Axis drag ended');
+      }
       yAxisDragRef.current = null;
       xAxisDragRef.current = null;
     };
@@ -1508,6 +1518,7 @@ export default function CryptoSandbox() {
                 console.log('Y-axis mouseDown', yScaleRef.current);
                 if (!yScaleRef.current) return;
                 e.preventDefault();
+                e.stopPropagation();
                 const domain = yScaleRef.current.domain() as [number, number];
                 console.log('Y-axis drag start, domain:', domain);
                 yAxisDragRef.current = { startY: e.clientY, startDomain: domain };
