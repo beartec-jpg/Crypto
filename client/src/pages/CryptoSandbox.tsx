@@ -110,8 +110,14 @@ export default function CryptoSandbox() {
     lineStyle: LineStyle;
     thickness: number;
     topLineColor: string;
+    topLineThickness: number;
+    topLineStyle: LineStyle;
+    topLabel?: string;
     bottomLineColor: string;
-    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle }[]; // 25, 50, 75%
+    bottomLineThickness: number;
+    bottomLineStyle: LineStyle;
+    bottomLabel?: string;
+    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string }[]; // 25, 50, 75%
     label?: { text: string; value?: string };
     isFavorite?: boolean;
   }
@@ -127,8 +133,14 @@ export default function CryptoSandbox() {
     lineStyle: LineStyle;
     thickness: number;
     topLineColor: string;
+    topLineThickness: number;
+    topLineStyle: LineStyle;
+    topLabel?: string;
     bottomLineColor: string;
-    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle }[]; // 25, 50, 75%
+    bottomLineThickness: number;
+    bottomLineStyle: LineStyle;
+    bottomLabel?: string;
+    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string }[]; // 25, 50, 75%
     label?: { text: string; value?: string };
     isFavorite?: boolean;
   }
@@ -913,12 +925,16 @@ export default function CryptoSandbox() {
         opacity: channelDefaults.opacity,
         lineStyle: channelDefaults.lineStyle,
         thickness: channelDefaults.thickness,
-        topLineColor: channelDefaults.color,
-        bottomLineColor: channelDefaults.color,
+        topLineColor: '#22c55e',
+        topLineThickness: 2,
+        topLineStyle: 'solid',
+        bottomLineColor: '#ef4444',
+        bottomLineThickness: 2,
+        bottomLineStyle: 'solid',
         internalLines: [
-          { percent: 25, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
-          { percent: 50, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
-          { percent: 75, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
+          { percent: 25, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+          { percent: 50, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+          { percent: 75, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
         ],
       };
       const newHChannels = [...drawnHChannels, newHChannel];
@@ -1037,12 +1053,16 @@ export default function CryptoSandbox() {
         opacity: channelDefaults.opacity,
         lineStyle: channelDefaults.lineStyle,
         thickness: channelDefaults.thickness,
-        topLineColor: channelDefaults.color,
-        bottomLineColor: channelDefaults.color,
+        topLineColor: '#22c55e',
+        topLineThickness: 2,
+        topLineStyle: 'solid',
+        bottomLineColor: '#ef4444',
+        bottomLineThickness: 2,
+        bottomLineStyle: 'solid',
         internalLines: [
-          { percent: 25, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
-          { percent: 50, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
-          { percent: 75, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
+          { percent: 25, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+          { percent: 50, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+          { percent: 75, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
         ],
       };
       const newSChannels = [...drawnSChannels, newSChannel];
@@ -1837,21 +1857,43 @@ export default function CryptoSandbox() {
             }
           });
         
-        // Top external line (solid)
+        // Top external line
+        const topStrokeDash = hchannel.topLineStyle === 'dashed' ? '8,4' : hchannel.topLineStyle === 'dotted' ? '2,4' : '';
         hchannelGroup.append('line')
           .attr('x1', x1).attr('y1', yTop).attr('x2', x2).attr('y2', yTop)
           .attr('stroke', hchannel.topLineColor || hchannel.color)
-          .attr('stroke-width', hchannel.thickness || 2)
+          .attr('stroke-width', hchannel.topLineThickness || 2)
           .attr('stroke-opacity', hchannel.opacity)
+          .attr('stroke-dasharray', topStrokeDash)
           .style('pointer-events', 'none');
         
-        // Bottom external line (solid)
+        // Top line label
+        if (hchannel.topLabel) {
+          hchannelGroup.append('text')
+            .attr('x', x2 + 5).attr('y', yTop + 4)
+            .attr('fill', hchannel.topLineColor || hchannel.color)
+            .attr('font-size', '11px').attr('font-weight', 'bold')
+            .text(hchannel.topLabel);
+        }
+        
+        // Bottom external line
+        const bottomStrokeDash = hchannel.bottomLineStyle === 'dashed' ? '8,4' : hchannel.bottomLineStyle === 'dotted' ? '2,4' : '';
         hchannelGroup.append('line')
           .attr('x1', x1).attr('y1', yBottom).attr('x2', x2).attr('y2', yBottom)
           .attr('stroke', hchannel.bottomLineColor || hchannel.color)
-          .attr('stroke-width', hchannel.thickness || 2)
+          .attr('stroke-width', hchannel.bottomLineThickness || 2)
           .attr('stroke-opacity', hchannel.opacity)
+          .attr('stroke-dasharray', bottomStrokeDash)
           .style('pointer-events', 'none');
+        
+        // Bottom line label
+        if (hchannel.bottomLabel) {
+          hchannelGroup.append('text')
+            .attr('x', x2 + 5).attr('y', yBottom + 4)
+            .attr('fill', hchannel.bottomLineColor || hchannel.color)
+            .attr('font-size', '11px').attr('font-weight', 'bold')
+            .text(hchannel.bottomLabel);
+        }
         
         // Internal lines (25%, 50%, 75% - dashed)
         hchannel.internalLines.forEach(line => {
@@ -1865,6 +1907,15 @@ export default function CryptoSandbox() {
               .attr('stroke-opacity', hchannel.opacity * 0.7)
               .attr('stroke-dasharray', strokeDash)
               .style('pointer-events', 'none');
+            
+            // Internal line label
+            if (line.label) {
+              hchannelGroup.append('text')
+                .attr('x', x2 + 5).attr('y', yInternal + 4)
+                .attr('fill', line.color || hchannel.color)
+                .attr('font-size', '10px')
+                .text(line.label);
+            }
           }
         });
         
@@ -1906,21 +1957,43 @@ export default function CryptoSandbox() {
             }
           });
         
-        // Top external line (solid)
+        // Top external line
+        const sTopStrokeDash = schannel.topLineStyle === 'dashed' ? '8,4' : schannel.topLineStyle === 'dotted' ? '2,4' : '';
         schannelGroup.append('line')
           .attr('x1', topX1).attr('y1', topY1).attr('x2', topX2).attr('y2', topY2)
           .attr('stroke', schannel.topLineColor || schannel.color)
-          .attr('stroke-width', schannel.thickness || 2)
+          .attr('stroke-width', schannel.topLineThickness || 2)
           .attr('stroke-opacity', schannel.opacity)
+          .attr('stroke-dasharray', sTopStrokeDash)
           .style('pointer-events', 'none');
         
-        // Bottom external line (solid)
+        // Top line label
+        if (schannel.topLabel) {
+          schannelGroup.append('text')
+            .attr('x', topX2 + 5).attr('y', topY2 + 4)
+            .attr('fill', schannel.topLineColor || schannel.color)
+            .attr('font-size', '11px').attr('font-weight', 'bold')
+            .text(schannel.topLabel);
+        }
+        
+        // Bottom external line
+        const sBottomStrokeDash = schannel.bottomLineStyle === 'dashed' ? '8,4' : schannel.bottomLineStyle === 'dotted' ? '2,4' : '';
         schannelGroup.append('line')
           .attr('x1', botX1).attr('y1', botY1).attr('x2', botX2).attr('y2', botY2)
           .attr('stroke', schannel.bottomLineColor || schannel.color)
-          .attr('stroke-width', schannel.thickness || 2)
+          .attr('stroke-width', schannel.bottomLineThickness || 2)
           .attr('stroke-opacity', schannel.opacity)
+          .attr('stroke-dasharray', sBottomStrokeDash)
           .style('pointer-events', 'none');
+        
+        // Bottom line label
+        if (schannel.bottomLabel) {
+          schannelGroup.append('text')
+            .attr('x', botX2 + 5).attr('y', botY2 + 4)
+            .attr('fill', schannel.bottomLineColor || schannel.color)
+            .attr('font-size', '11px').attr('font-weight', 'bold')
+            .text(schannel.bottomLabel);
+        }
         
         // Internal lines (25%, 50%, 75% - interpolated between top and bottom)
         schannel.internalLines.forEach(line => {
@@ -1938,6 +2011,15 @@ export default function CryptoSandbox() {
               .attr('stroke-opacity', schannel.opacity * 0.7)
               .attr('stroke-dasharray', strokeDash)
               .style('pointer-events', 'none');
+            
+            // Internal line label
+            if (line.label) {
+              schannelGroup.append('text')
+                .attr('x', intX2 + 5).attr('y', intY2 + 4)
+                .attr('fill', line.color || schannel.color)
+                .attr('font-size', '10px')
+                .text(line.label);
+            }
           }
         });
         
@@ -3653,13 +3735,17 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* Horizontal Channel action menu */}
+            {/* Horizontal Channel action menu - compact redesign */}
             {hchannelMenuPos && selectedHChannel && (() => {
               const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
+              const menuWidth = 48;
+              const menuHeight = 200;
+              const autoX = Math.min(Math.max(hchannelMenuPos.x, 10), dimensions.width - menuWidth - 10);
+              const autoY = Math.min(Math.max(hchannelMenuPos.y, 10), dimensions.height - menuHeight - 10);
               return (
                 <div 
                   className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
-                  style={{ left: hchannelMenuPos.x, top: hchannelMenuPos.y }}
+                  style={{ left: autoX, top: autoY }}
                   data-menu="hchannel"
                 >
                   {/* Drag handle */}
@@ -3668,7 +3754,7 @@ export default function CryptoSandbox() {
                     onMouseDown={(e) => {
                       e.preventDefault();
                       setDraggingMenu(true);
-                      menuDragOffset.current = { x: e.clientX - hchannelMenuPos.x, y: e.clientY - hchannelMenuPos.y };
+                      menuDragOffset.current = { x: e.clientX - autoX, y: e.clientY - autoY };
                     }}
                   >
                     <div className="w-6 h-0.5 bg-slate-400 rounded" />
@@ -3680,32 +3766,51 @@ export default function CryptoSandbox() {
                         <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
                       </svg>
                     </button>
-                    {/* Lines/Colors submenu */}
+                    {/* Top Line Color - dot button */}
                     <button
-                      onClick={() => setActiveSubmenu(activeSubmenu === 'hch-lines' ? null : 'hch-lines')}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'hch-lines' ? 'bg-slate-600' : ''}`}
-                      title="Line Settings"
-                      data-testid="btn-hchannel-lines"
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'hch-top' ? null : 'hch-top')}
+                      className={`p-2 hover:bg-slate-700 rounded ${activeSubmenu === 'hch-top' ? 'bg-slate-600' : ''}`}
+                      title="Top Line"
+                      data-testid="btn-hchannel-top"
                     >
-                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="3" y1="5" x2="17" y2="5" />
-                        <line x1="3" y1="10" x2="17" y2="10" strokeDasharray="4,2" />
-                        <line x1="3" y1="15" x2="17" y2="15" />
+                      <svg viewBox="0 0 20 20" className="w-5 h-5">
+                        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+                        <circle cx="10" cy="10" r="4" fill={hchannel?.topLineColor || '#22c55e'} stroke="none" />
                       </svg>
                     </button>
-                    {/* Move */}
+                    {/* Bottom Line Color - dot button */}
                     <button
-                      onClick={() => {
-                        setMovingHChannel(selectedHChannel);
-                        setHChannelMenuPos(null);
-                        setActiveSubmenu(null);
-                      }}
-                      className="p-2 hover:bg-slate-700 rounded text-white"
-                      title="Move"
-                      data-testid="btn-hchannel-move"
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'hch-bottom' ? null : 'hch-bottom')}
+                      className={`p-2 hover:bg-slate-700 rounded ${activeSubmenu === 'hch-bottom' ? 'bg-slate-600' : ''}`}
+                      title="Bottom Line"
+                      data-testid="btn-hchannel-bottom"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5">
+                        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+                        <circle cx="10" cy="10" r="4" fill={hchannel?.bottomLineColor || '#ef4444'} stroke="none" />
+                      </svg>
+                    </button>
+                    {/* Internal Lines - dot button */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'hch-internal' ? null : 'hch-internal')}
+                      className={`p-2 hover:bg-slate-700 rounded ${activeSubmenu === 'hch-internal' ? 'bg-slate-600' : ''}`}
+                      title="Internal Lines"
+                      data-testid="btn-hchannel-internal"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5">
+                        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="3,2" />
+                        <circle cx="10" cy="10" r="4" fill={hchannel?.internalLines?.[0]?.color || '#facc15'} stroke="none" />
+                      </svg>
+                    </button>
+                    {/* Label */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'hch-label' ? null : 'hch-label')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'hch-label' ? 'bg-slate-600' : ''}`}
+                      title="Labels"
+                      data-testid="btn-hchannel-label"
                     >
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
+                        <path d="M3 5h14M3 10h10M3 15h6" />
                       </svg>
                     </button>
                     {/* Favorite */}
@@ -3724,34 +3829,84 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* HChannel lines submenu */}
-            {activeSubmenu === 'hch-lines' && hchannelMenuPos && selectedHChannel && (() => {
+            {/* HChannel Top Line submenu - color grid + size/style */}
+            {activeSubmenu === 'hch-top' && hchannelMenuPos && selectedHChannel && (() => {
               const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
-              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 220 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 230;
+              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 160 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 170;
+              const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 180);
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: hchannelMenuPos.y, minWidth: '200px' }}>
-                  {/* Top Line Color */}
-                  <div className="text-xs text-gray-400 mb-1">Top Line</div>
-                  <div className="flex flex-wrap gap-1 mb-2">
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '140px' }}>
+                  <div className="text-xs text-gray-400 mb-1">Top Line Color</div>
+                  <div className="flex flex-wrap gap-1 mb-2 w-32">
                     {TRENDLINE_COLORS.map(color => (
                       <button key={color} onClick={() => updateHChannel(selectedHChannel, { topLineColor: color })}
                         className={`w-5 h-5 rounded border-2 ${hchannel?.topLineColor === color ? 'border-white' : 'border-transparent'}`}
                         style={{ backgroundColor: color }} data-testid={`btn-hchannel-top-color-${color.replace('#', '')}`} />
                     ))}
                   </div>
-                  
-                  {/* Bottom Line Color */}
-                  <div className="text-xs text-gray-400 mb-1">Bottom Line</div>
-                  <div className="flex flex-wrap gap-1 mb-2">
+                  <div className="text-xs text-gray-400 mb-1">Thickness</div>
+                  <div className="flex gap-1 mb-2">
+                    {[1, 2, 3, 4].map(size => (
+                      <button key={size} onClick={() => updateHChannel(selectedHChannel, { topLineThickness: size })}
+                        className={`px-2 py-1 text-xs rounded ${hchannel?.topLineThickness === size ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                        data-testid={`btn-hchannel-top-thickness-${size}`}>{size}</button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Style</div>
+                  <div className="flex gap-1">
+                    {(['solid', 'dashed', 'dotted'] as const).map(style => (
+                      <button key={style} onClick={() => updateHChannel(selectedHChannel, { topLineStyle: style })}
+                        className={`px-2 py-1 text-xs rounded ${hchannel?.topLineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                        data-testid={`btn-hchannel-top-style-${style}`}>{style}</button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* HChannel Bottom Line submenu - color grid + size/style */}
+            {activeSubmenu === 'hch-bottom' && hchannelMenuPos && selectedHChannel && (() => {
+              const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
+              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 160 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 170;
+              const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 180);
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '140px' }}>
+                  <div className="text-xs text-gray-400 mb-1">Bottom Line Color</div>
+                  <div className="flex flex-wrap gap-1 mb-2 w-32">
                     {TRENDLINE_COLORS.map(color => (
                       <button key={color} onClick={() => updateHChannel(selectedHChannel, { bottomLineColor: color })}
                         className={`w-5 h-5 rounded border-2 ${hchannel?.bottomLineColor === color ? 'border-white' : 'border-transparent'}`}
                         style={{ backgroundColor: color }} data-testid={`btn-hchannel-bottom-color-${color.replace('#', '')}`} />
                     ))}
                   </div>
-                  
-                  {/* Internal Lines */}
-                  <div className="text-xs text-gray-400 mb-1 mt-2">Internal Lines</div>
+                  <div className="text-xs text-gray-400 mb-1">Thickness</div>
+                  <div className="flex gap-1 mb-2">
+                    {[1, 2, 3, 4].map(size => (
+                      <button key={size} onClick={() => updateHChannel(selectedHChannel, { bottomLineThickness: size })}
+                        className={`px-2 py-1 text-xs rounded ${hchannel?.bottomLineThickness === size ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                        data-testid={`btn-hchannel-bottom-thickness-${size}`}>{size}</button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Style</div>
+                  <div className="flex gap-1">
+                    {(['solid', 'dashed', 'dotted'] as const).map(style => (
+                      <button key={style} onClick={() => updateHChannel(selectedHChannel, { bottomLineStyle: style })}
+                        className={`px-2 py-1 text-xs rounded ${hchannel?.bottomLineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                        data-testid={`btn-hchannel-bottom-style-${style}`}>{style}</button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* HChannel Internal Lines submenu */}
+            {activeSubmenu === 'hch-internal' && hchannelMenuPos && selectedHChannel && (() => {
+              const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
+              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 160 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 170;
+              const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 200);
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '160px' }}>
+                  <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
                   {hchannel?.internalLines.map((line, idx) => (
                     <div key={idx} className="flex items-center gap-1 mb-1">
                       <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={line.visible} 
@@ -3779,13 +3934,59 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* Sloped Channel action menu */}
+            {/* HChannel Label submenu */}
+            {activeSubmenu === 'hch-label' && hchannelMenuPos && selectedHChannel && (() => {
+              const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
+              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 180 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 190;
+              const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 200);
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '170px' }}>
+                  <div className="text-xs text-gray-400 mb-2">Line Labels</div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 rounded" style={{ backgroundColor: hchannel?.topLineColor || '#22c55e' }} />
+                    <span className="text-xs text-gray-300 w-12">Top:</span>
+                    <input type="text" value={hchannel?.topLabel || ''} placeholder="Label" maxLength={10}
+                      className="flex-1 bg-slate-700 text-white px-1 py-0.5 text-xs rounded"
+                      onChange={e => updateHChannel(selectedHChannel, { topLabel: e.target.value })}
+                      data-testid="input-hchannel-top-label" />
+                  </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 rounded" style={{ backgroundColor: hchannel?.bottomLineColor || '#ef4444' }} />
+                    <span className="text-xs text-gray-300 w-12">Bottom:</span>
+                    <input type="text" value={hchannel?.bottomLabel || ''} placeholder="Label" maxLength={10}
+                      className="flex-1 bg-slate-700 text-white px-1 py-0.5 text-xs rounded"
+                      onChange={e => updateHChannel(selectedHChannel, { bottomLabel: e.target.value })}
+                      data-testid="input-hchannel-bottom-label" />
+                  </div>
+                  {hchannel?.internalLines.map((line, idx) => (
+                    <div key={idx} className="flex items-center gap-2 mb-1">
+                      <div className="w-3 h-3 rounded" style={{ backgroundColor: line.color }} />
+                      <span className="text-xs text-gray-300 w-12">{line.percent}%:</span>
+                      <input type="text" value={line.label || ''} placeholder="Label" maxLength={10}
+                        className="flex-1 bg-slate-700 text-white px-1 py-0.5 text-xs rounded"
+                        onChange={e => {
+                          const newLines = [...(hchannel?.internalLines || [])];
+                          newLines[idx] = { ...newLines[idx], label: e.target.value };
+                          updateHChannel(selectedHChannel, { internalLines: newLines });
+                        }}
+                        data-testid={`input-hchannel-internal-${idx}-label`} />
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            
+            {/* Sloped Channel action menu - compact redesign */}
             {schannelMenuPos && selectedSChannel && (() => {
               const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
+              const menuWidth = 48;
+              const menuHeight = 200;
+              const autoX = Math.min(Math.max(schannelMenuPos.x, 10), dimensions.width - menuWidth - 10);
+              const autoY = Math.min(Math.max(schannelMenuPos.y, 10), dimensions.height - menuHeight - 10);
               return (
                 <div 
                   className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
-                  style={{ left: schannelMenuPos.x, top: schannelMenuPos.y }}
+                  style={{ left: autoX, top: autoY }}
                   data-menu="schannel"
                 >
                   {/* Drag handle */}
@@ -3794,7 +3995,7 @@ export default function CryptoSandbox() {
                     onMouseDown={(e) => {
                       e.preventDefault();
                       setDraggingMenu(true);
-                      menuDragOffset.current = { x: e.clientX - schannelMenuPos.x, y: e.clientY - schannelMenuPos.y };
+                      menuDragOffset.current = { x: e.clientX - autoX, y: e.clientY - autoY };
                     }}
                   >
                     <div className="w-6 h-0.5 bg-slate-400 rounded" />
@@ -3806,32 +4007,51 @@ export default function CryptoSandbox() {
                         <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
                       </svg>
                     </button>
-                    {/* Lines/Colors submenu */}
+                    {/* Top Line Color - dot button */}
                     <button
-                      onClick={() => setActiveSubmenu(activeSubmenu === 'sch-lines' ? null : 'sch-lines')}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'sch-lines' ? 'bg-slate-600' : ''}`}
-                      title="Line Settings"
-                      data-testid="btn-schannel-lines"
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'sch-top' ? null : 'sch-top')}
+                      className={`p-2 hover:bg-slate-700 rounded ${activeSubmenu === 'sch-top' ? 'bg-slate-600' : ''}`}
+                      title="Top Line"
+                      data-testid="btn-schannel-top"
                     >
-                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="3" y1="5" x2="17" y2="5" />
-                        <line x1="3" y1="10" x2="17" y2="10" strokeDasharray="4,2" />
-                        <line x1="3" y1="15" x2="17" y2="15" />
+                      <svg viewBox="0 0 20 20" className="w-5 h-5">
+                        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+                        <circle cx="10" cy="10" r="4" fill={schannel?.topLineColor || '#22c55e'} stroke="none" />
                       </svg>
                     </button>
-                    {/* Move */}
+                    {/* Bottom Line Color - dot button */}
                     <button
-                      onClick={() => {
-                        setMovingSChannel(selectedSChannel);
-                        setSChannelMenuPos(null);
-                        setActiveSubmenu(null);
-                      }}
-                      className="p-2 hover:bg-slate-700 rounded text-white"
-                      title="Move"
-                      data-testid="btn-schannel-move"
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'sch-bottom' ? null : 'sch-bottom')}
+                      className={`p-2 hover:bg-slate-700 rounded ${activeSubmenu === 'sch-bottom' ? 'bg-slate-600' : ''}`}
+                      title="Bottom Line"
+                      data-testid="btn-schannel-bottom"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5">
+                        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+                        <circle cx="10" cy="10" r="4" fill={schannel?.bottomLineColor || '#ef4444'} stroke="none" />
+                      </svg>
+                    </button>
+                    {/* Internal Lines - dot button */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'sch-internal' ? null : 'sch-internal')}
+                      className={`p-2 hover:bg-slate-700 rounded ${activeSubmenu === 'sch-internal' ? 'bg-slate-600' : ''}`}
+                      title="Internal Lines"
+                      data-testid="btn-schannel-internal"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5">
+                        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="3,2" />
+                        <circle cx="10" cy="10" r="4" fill={schannel?.internalLines?.[0]?.color || '#facc15'} stroke="none" />
+                      </svg>
+                    </button>
+                    {/* Label */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'sch-label' ? null : 'sch-label')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'sch-label' ? 'bg-slate-600' : ''}`}
+                      title="Labels"
+                      data-testid="btn-schannel-label"
                     >
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
+                        <path d="M3 5h14M3 10h10M3 15h6" />
                       </svg>
                     </button>
                     {/* Favorite */}
@@ -3850,34 +4070,84 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* SChannel lines submenu */}
-            {activeSubmenu === 'sch-lines' && schannelMenuPos && selectedSChannel && (() => {
+            {/* SChannel Top Line submenu - color grid + size/style */}
+            {activeSubmenu === 'sch-top' && schannelMenuPos && selectedSChannel && (() => {
               const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
-              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 220 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 230;
+              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 160 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 170;
+              const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 180);
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: schannelMenuPos.y, minWidth: '200px' }}>
-                  {/* Top Line Color */}
-                  <div className="text-xs text-gray-400 mb-1">Top Line</div>
-                  <div className="flex flex-wrap gap-1 mb-2">
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '140px' }}>
+                  <div className="text-xs text-gray-400 mb-1">Top Line Color</div>
+                  <div className="flex flex-wrap gap-1 mb-2 w-32">
                     {TRENDLINE_COLORS.map(color => (
                       <button key={color} onClick={() => updateSChannel(selectedSChannel, { topLineColor: color })}
                         className={`w-5 h-5 rounded border-2 ${schannel?.topLineColor === color ? 'border-white' : 'border-transparent'}`}
                         style={{ backgroundColor: color }} data-testid={`btn-schannel-top-color-${color.replace('#', '')}`} />
                     ))}
                   </div>
-                  
-                  {/* Bottom Line Color */}
-                  <div className="text-xs text-gray-400 mb-1">Bottom Line</div>
-                  <div className="flex flex-wrap gap-1 mb-2">
+                  <div className="text-xs text-gray-400 mb-1">Thickness</div>
+                  <div className="flex gap-1 mb-2">
+                    {[1, 2, 3, 4].map(size => (
+                      <button key={size} onClick={() => updateSChannel(selectedSChannel, { topLineThickness: size })}
+                        className={`px-2 py-1 text-xs rounded ${schannel?.topLineThickness === size ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                        data-testid={`btn-schannel-top-thickness-${size}`}>{size}</button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Style</div>
+                  <div className="flex gap-1">
+                    {(['solid', 'dashed', 'dotted'] as const).map(style => (
+                      <button key={style} onClick={() => updateSChannel(selectedSChannel, { topLineStyle: style })}
+                        className={`px-2 py-1 text-xs rounded ${schannel?.topLineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                        data-testid={`btn-schannel-top-style-${style}`}>{style}</button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* SChannel Bottom Line submenu - color grid + size/style */}
+            {activeSubmenu === 'sch-bottom' && schannelMenuPos && selectedSChannel && (() => {
+              const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
+              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 160 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 170;
+              const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 180);
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '140px' }}>
+                  <div className="text-xs text-gray-400 mb-1">Bottom Line Color</div>
+                  <div className="flex flex-wrap gap-1 mb-2 w-32">
                     {TRENDLINE_COLORS.map(color => (
                       <button key={color} onClick={() => updateSChannel(selectedSChannel, { bottomLineColor: color })}
                         className={`w-5 h-5 rounded border-2 ${schannel?.bottomLineColor === color ? 'border-white' : 'border-transparent'}`}
                         style={{ backgroundColor: color }} data-testid={`btn-schannel-bottom-color-${color.replace('#', '')}`} />
                     ))}
                   </div>
-                  
-                  {/* Internal Lines */}
-                  <div className="text-xs text-gray-400 mb-1 mt-2">Internal Lines</div>
+                  <div className="text-xs text-gray-400 mb-1">Thickness</div>
+                  <div className="flex gap-1 mb-2">
+                    {[1, 2, 3, 4].map(size => (
+                      <button key={size} onClick={() => updateSChannel(selectedSChannel, { bottomLineThickness: size })}
+                        className={`px-2 py-1 text-xs rounded ${schannel?.bottomLineThickness === size ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                        data-testid={`btn-schannel-bottom-thickness-${size}`}>{size}</button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Style</div>
+                  <div className="flex gap-1">
+                    {(['solid', 'dashed', 'dotted'] as const).map(style => (
+                      <button key={style} onClick={() => updateSChannel(selectedSChannel, { bottomLineStyle: style })}
+                        className={`px-2 py-1 text-xs rounded ${schannel?.bottomLineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                        data-testid={`btn-schannel-bottom-style-${style}`}>{style}</button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* SChannel Internal Lines submenu */}
+            {activeSubmenu === 'sch-internal' && schannelMenuPos && selectedSChannel && (() => {
+              const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
+              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 160 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 170;
+              const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 200);
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '160px' }}>
+                  <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
                   {schannel?.internalLines.map((line, idx) => (
                     <div key={idx} className="flex items-center gap-1 mb-1">
                       <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={line.visible} 
@@ -3899,6 +4169,48 @@ export default function CryptoSandbox() {
                             style={{ backgroundColor: color }} data-testid={`btn-schannel-internal-${idx}-color-${color.replace('#', '')}`} />
                         ))}
                       </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            
+            {/* SChannel Label submenu */}
+            {activeSubmenu === 'sch-label' && schannelMenuPos && selectedSChannel && (() => {
+              const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
+              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 180 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 190;
+              const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 200);
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '170px' }}>
+                  <div className="text-xs text-gray-400 mb-2">Line Labels</div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 rounded" style={{ backgroundColor: schannel?.topLineColor || '#22c55e' }} />
+                    <span className="text-xs text-gray-300 w-12">Top:</span>
+                    <input type="text" value={schannel?.topLabel || ''} placeholder="Label" maxLength={10}
+                      className="flex-1 bg-slate-700 text-white px-1 py-0.5 text-xs rounded"
+                      onChange={e => updateSChannel(selectedSChannel, { topLabel: e.target.value })}
+                      data-testid="input-schannel-top-label" />
+                  </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 rounded" style={{ backgroundColor: schannel?.bottomLineColor || '#ef4444' }} />
+                    <span className="text-xs text-gray-300 w-12">Bottom:</span>
+                    <input type="text" value={schannel?.bottomLabel || ''} placeholder="Label" maxLength={10}
+                      className="flex-1 bg-slate-700 text-white px-1 py-0.5 text-xs rounded"
+                      onChange={e => updateSChannel(selectedSChannel, { bottomLabel: e.target.value })}
+                      data-testid="input-schannel-bottom-label" />
+                  </div>
+                  {schannel?.internalLines.map((line, idx) => (
+                    <div key={idx} className="flex items-center gap-2 mb-1">
+                      <div className="w-3 h-3 rounded" style={{ backgroundColor: line.color }} />
+                      <span className="text-xs text-gray-300 w-12">{line.percent}%:</span>
+                      <input type="text" value={line.label || ''} placeholder="Label" maxLength={10}
+                        className="flex-1 bg-slate-700 text-white px-1 py-0.5 text-xs rounded"
+                        onChange={e => {
+                          const newLines = [...(schannel?.internalLines || [])];
+                          newLines[idx] = { ...newLines[idx], label: e.target.value };
+                          updateSChannel(selectedSChannel, { internalLines: newLines });
+                        }}
+                        data-testid={`input-schannel-internal-${idx}-label`} />
                     </div>
                   ))}
                 </div>
