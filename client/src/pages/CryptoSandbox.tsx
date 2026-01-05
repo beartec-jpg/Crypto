@@ -119,7 +119,9 @@ export default function CryptoSandbox() {
     bottomLabel?: string;
     internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string }[]; // 25, 50, 75%
     label?: { text: string; value?: string };
-    labelPosition?: 'left' | 'center' | 'right';
+    showLabelLeft?: boolean;
+    showLabelCenter?: boolean;
+    showLabelRight?: boolean;
     isFavorite?: boolean;
     extendLeft?: boolean;
     extendRight?: boolean;
@@ -145,7 +147,9 @@ export default function CryptoSandbox() {
     bottomLabel?: string;
     internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string }[]; // 25, 50, 75%
     label?: { text: string; value?: string };
-    labelPosition?: 'left' | 'center' | 'right';
+    showLabelLeft?: boolean;
+    showLabelCenter?: boolean;
+    showLabelRight?: boolean;
     isFavorite?: boolean;
     extendLeft?: boolean;
     extendRight?: boolean;
@@ -1878,25 +1882,35 @@ export default function CryptoSandbox() {
           .attr('stroke-dasharray', topStrokeDash)
           .style('pointer-events', 'none');
         
-        // Calculate label X position based on setting, keeping on screen
-        const labelPos = hchannel.labelPosition || 'right';
+        // Calculate label positions, keeping on screen
         const chartLeft = margin.left + 5;
         const chartRight = dimensions.width - margin.right - 5;
-        const getLabelX = (lineX1: number, lineX2: number) => {
-          if (labelPos === 'left') return Math.max(Math.min(lineX1, lineX2) + 5, chartLeft);
-          if (labelPos === 'center') return (lineX1 + lineX2) / 2;
-          return Math.min(Math.max(lineX1, lineX2) - 5, chartRight);
+        const leftX = Math.max(Math.min(x1, x2) + 5, chartLeft);
+        const centerX = Math.max(chartLeft, Math.min(chartRight, (x1 + x2) / 2));
+        const rightX = Math.min(Math.max(x1, x2) - 5, chartRight);
+        
+        // Helper to render label at multiple positions
+        const renderHLabel = (text: string, yPos: number, yOffset: number, color: string, fontSize: string = '11px', bold: boolean = true) => {
+          if (hchannel.showLabelLeft) {
+            hchannelGroup.append('text').attr('x', leftX).attr('y', yPos + yOffset)
+              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
+              .attr('text-anchor', 'start').text(text);
+          }
+          if (hchannel.showLabelCenter) {
+            hchannelGroup.append('text').attr('x', centerX).attr('y', yPos + yOffset)
+              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
+              .attr('text-anchor', 'middle').text(text);
+          }
+          if (hchannel.showLabelRight) {
+            hchannelGroup.append('text').attr('x', rightX).attr('y', yPos + yOffset)
+              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
+              .attr('text-anchor', 'end').text(text);
+          }
         };
-        const getLabelAnchor = () => labelPos === 'center' ? 'middle' : labelPos === 'left' ? 'start' : 'end';
         
         // Top line label
         if (hchannel.topLabel) {
-          hchannelGroup.append('text')
-            .attr('x', getLabelX(x1, x2)).attr('y', yTop - 3)
-            .attr('fill', hchannel.topLineColor || hchannel.color)
-            .attr('font-size', '11px').attr('font-weight', 'bold')
-            .attr('text-anchor', getLabelAnchor())
-            .text(hchannel.topLabel);
+          renderHLabel(hchannel.topLabel, yTop, -3, hchannel.topLineColor || hchannel.color);
         }
         
         // Bottom external line
@@ -1911,12 +1925,7 @@ export default function CryptoSandbox() {
         
         // Bottom line label
         if (hchannel.bottomLabel) {
-          hchannelGroup.append('text')
-            .attr('x', getLabelX(x1, x2)).attr('y', yBottom + 12)
-            .attr('fill', hchannel.bottomLineColor || hchannel.color)
-            .attr('font-size', '11px').attr('font-weight', 'bold')
-            .attr('text-anchor', getLabelAnchor())
-            .text(hchannel.bottomLabel);
+          renderHLabel(hchannel.bottomLabel, yBottom, 12, hchannel.bottomLineColor || hchannel.color);
         }
         
         // Internal lines (25%, 50%, 75% - dashed)
@@ -1934,12 +1943,7 @@ export default function CryptoSandbox() {
             
             // Internal line label
             if (line.label) {
-              hchannelGroup.append('text')
-                .attr('x', getLabelX(x1, x2)).attr('y', yInternal + 4)
-                .attr('fill', line.color || hchannel.color)
-                .attr('font-size', '10px')
-                .attr('text-anchor', getLabelAnchor())
-                .text(line.label);
+              renderHLabel(line.label, yInternal, 4, line.color || hchannel.color, '10px', false);
             }
           }
         });
@@ -2012,30 +2016,38 @@ export default function CryptoSandbox() {
           .attr('stroke-dasharray', sTopStrokeDash)
           .style('pointer-events', 'none');
         
-        // Calculate label position based on setting, keeping on screen
-        const sLabelPos = schannel.labelPosition || 'right';
+        // Calculate label positions for sloped channel, keeping on screen
         const sChartLeft = margin.left + 5;
         const sChartRight = dimensions.width - margin.right - 5;
-        const getSLabelX = (lx1: number, ly1: number, lx2: number, ly2: number) => {
-          if (sLabelPos === 'left') return Math.max(Math.min(lx1, lx2) + 5, sChartLeft);
-          if (sLabelPos === 'center') return (lx1 + lx2) / 2;
-          return Math.min(Math.max(lx1, lx2) - 5, sChartRight);
+        
+        // Helper to render sloped channel labels at multiple positions
+        const renderSLabel = (text: string, lx1: number, ly1: number, lx2: number, ly2: number, yOffset: number, color: string, fontSize: string = '11px', bold: boolean = true) => {
+          if (schannel.showLabelLeft) {
+            const lX = Math.max(Math.min(lx1, lx2) + 5, sChartLeft);
+            const lY = lx1 < lx2 ? ly1 : ly2;
+            schannelGroup.append('text').attr('x', lX).attr('y', lY + yOffset)
+              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
+              .attr('text-anchor', 'start').text(text);
+          }
+          if (schannel.showLabelCenter) {
+            const cX = Math.max(sChartLeft, Math.min(sChartRight, (lx1 + lx2) / 2));
+            const cY = (ly1 + ly2) / 2;
+            schannelGroup.append('text').attr('x', cX).attr('y', cY + yOffset)
+              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
+              .attr('text-anchor', 'middle').text(text);
+          }
+          if (schannel.showLabelRight) {
+            const rX = Math.min(Math.max(lx1, lx2) - 5, sChartRight);
+            const rY = lx1 > lx2 ? ly1 : ly2;
+            schannelGroup.append('text').attr('x', rX).attr('y', rY + yOffset)
+              .attr('fill', color).attr('font-size', fontSize).attr('font-weight', bold ? 'bold' : 'normal')
+              .attr('text-anchor', 'end').text(text);
+          }
         };
-        const getSLabelY = (lx1: number, ly1: number, lx2: number, ly2: number) => {
-          if (sLabelPos === 'left') return lx1 < lx2 ? ly1 : ly2;
-          if (sLabelPos === 'center') return (ly1 + ly2) / 2;
-          return lx1 > lx2 ? ly1 : ly2;
-        };
-        const getSLabelAnchor = () => sLabelPos === 'center' ? 'middle' : sLabelPos === 'left' ? 'start' : 'end';
         
         // Top line label
         if (schannel.topLabel) {
-          schannelGroup.append('text')
-            .attr('x', getSLabelX(topX1, topY1, topX2, topY2)).attr('y', getSLabelY(topX1, topY1, topX2, topY2) - 5)
-            .attr('fill', schannel.topLineColor || schannel.color)
-            .attr('font-size', '11px').attr('font-weight', 'bold')
-            .attr('text-anchor', getSLabelAnchor())
-            .text(schannel.topLabel);
+          renderSLabel(schannel.topLabel, topX1, topY1, topX2, topY2, -5, schannel.topLineColor || schannel.color);
         }
         
         // Bottom external line
@@ -2050,12 +2062,7 @@ export default function CryptoSandbox() {
         
         // Bottom line label
         if (schannel.bottomLabel) {
-          schannelGroup.append('text')
-            .attr('x', getSLabelX(botX1, botY1, botX2, botY2)).attr('y', getSLabelY(botX1, botY1, botX2, botY2) + 14)
-            .attr('fill', schannel.bottomLineColor || schannel.color)
-            .attr('font-size', '11px').attr('font-weight', 'bold')
-            .attr('text-anchor', getSLabelAnchor())
-            .text(schannel.bottomLabel);
+          renderSLabel(schannel.bottomLabel, botX1, botY1, botX2, botY2, 14, schannel.bottomLineColor || schannel.color);
         }
         
         // Internal lines (25%, 50%, 75% - interpolated between top and bottom)
@@ -2077,12 +2084,7 @@ export default function CryptoSandbox() {
             
             // Internal line label
             if (line.label) {
-              schannelGroup.append('text')
-                .attr('x', getSLabelX(intX1, intY1, intX2, intY2)).attr('y', getSLabelY(intX1, intY1, intX2, intY2) + 4)
-                .attr('fill', line.color || schannel.color)
-                .attr('font-size', '10px')
-                .attr('text-anchor', getSLabelAnchor())
-                .text(line.label);
+              renderSLabel(line.label, intX1, intY1, intX2, intY2, 4, line.color || schannel.color, '10px', false);
             }
           }
         });
@@ -4039,25 +4041,24 @@ export default function CryptoSandbox() {
               const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
               const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 180 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 190;
               const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 220);
-              const pos = hchannel?.labelPosition || 'right';
               return (
                 <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '170px' }}>
-                  <div className="text-xs text-gray-400 mb-1">Label Position</div>
+                  <div className="text-xs text-gray-400 mb-1">Show Labels At</div>
                   <div className="flex gap-1 mb-3">
-                    <button onClick={() => updateHChannel(selectedHChannel, { labelPosition: 'left' })}
-                      className={`flex-1 p-1.5 rounded ${pos === 'left' ? 'bg-blue-600' : 'bg-slate-700'}`} title="Left" data-testid="btn-hchannel-label-left">
+                    <button onClick={() => updateHChannel(selectedHChannel, { showLabelLeft: !hchannel?.showLabelLeft })}
+                      className={`flex-1 p-1.5 rounded ${hchannel?.showLabelLeft ? 'bg-blue-600' : 'bg-slate-700'}`} title="Left" data-testid="btn-hchannel-label-left">
                       <svg viewBox="0 0 20 20" className="w-4 h-4 mx-auto" fill="none" stroke="white" strokeWidth="2">
                         <path d="M12 4L6 10L12 16" />
                       </svg>
                     </button>
-                    <button onClick={() => updateHChannel(selectedHChannel, { labelPosition: 'center' })}
-                      className={`flex-1 p-1.5 rounded ${pos === 'center' ? 'bg-blue-600' : 'bg-slate-700'}`} title="Center" data-testid="btn-hchannel-label-center">
+                    <button onClick={() => updateHChannel(selectedHChannel, { showLabelCenter: !hchannel?.showLabelCenter })}
+                      className={`flex-1 p-1.5 rounded ${hchannel?.showLabelCenter ? 'bg-blue-600' : 'bg-slate-700'}`} title="Center" data-testid="btn-hchannel-label-center">
                       <svg viewBox="0 0 20 20" className="w-4 h-4 mx-auto" fill="white" stroke="none">
                         <circle cx="10" cy="10" r="4" />
                       </svg>
                     </button>
-                    <button onClick={() => updateHChannel(selectedHChannel, { labelPosition: 'right' })}
-                      className={`flex-1 p-1.5 rounded ${pos === 'right' ? 'bg-blue-600' : 'bg-slate-700'}`} title="Right" data-testid="btn-hchannel-label-right">
+                    <button onClick={() => updateHChannel(selectedHChannel, { showLabelRight: !hchannel?.showLabelRight })}
+                      className={`flex-1 p-1.5 rounded ${hchannel?.showLabelRight ? 'bg-blue-600' : 'bg-slate-700'}`} title="Right" data-testid="btn-hchannel-label-right">
                       <svg viewBox="0 0 20 20" className="w-4 h-4 mx-auto" fill="none" stroke="white" strokeWidth="2">
                         <path d="M8 4L14 10L8 16" />
                       </svg>
@@ -4338,25 +4339,24 @@ export default function CryptoSandbox() {
               const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
               const submenuX = schannelMenuPos.x + 50 < dimensions.width - 180 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 190;
               const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 220);
-              const pos = schannel?.labelPosition || 'right';
               return (
                 <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY, minWidth: '170px' }}>
-                  <div className="text-xs text-gray-400 mb-1">Label Position</div>
+                  <div className="text-xs text-gray-400 mb-1">Show Labels At</div>
                   <div className="flex gap-1 mb-3">
-                    <button onClick={() => updateSChannel(selectedSChannel, { labelPosition: 'left' })}
-                      className={`flex-1 p-1.5 rounded ${pos === 'left' ? 'bg-blue-600' : 'bg-slate-700'}`} title="Left" data-testid="btn-schannel-label-left">
+                    <button onClick={() => updateSChannel(selectedSChannel, { showLabelLeft: !schannel?.showLabelLeft })}
+                      className={`flex-1 p-1.5 rounded ${schannel?.showLabelLeft ? 'bg-blue-600' : 'bg-slate-700'}`} title="Left" data-testid="btn-schannel-label-left">
                       <svg viewBox="0 0 20 20" className="w-4 h-4 mx-auto" fill="none" stroke="white" strokeWidth="2">
                         <path d="M12 4L6 10L12 16" />
                       </svg>
                     </button>
-                    <button onClick={() => updateSChannel(selectedSChannel, { labelPosition: 'center' })}
-                      className={`flex-1 p-1.5 rounded ${pos === 'center' ? 'bg-blue-600' : 'bg-slate-700'}`} title="Center" data-testid="btn-schannel-label-center">
+                    <button onClick={() => updateSChannel(selectedSChannel, { showLabelCenter: !schannel?.showLabelCenter })}
+                      className={`flex-1 p-1.5 rounded ${schannel?.showLabelCenter ? 'bg-blue-600' : 'bg-slate-700'}`} title="Center" data-testid="btn-schannel-label-center">
                       <svg viewBox="0 0 20 20" className="w-4 h-4 mx-auto" fill="white" stroke="none">
                         <circle cx="10" cy="10" r="4" />
                       </svg>
                     </button>
-                    <button onClick={() => updateSChannel(selectedSChannel, { labelPosition: 'right' })}
-                      className={`flex-1 p-1.5 rounded ${pos === 'right' ? 'bg-blue-600' : 'bg-slate-700'}`} title="Right" data-testid="btn-schannel-label-right">
+                    <button onClick={() => updateSChannel(selectedSChannel, { showLabelRight: !schannel?.showLabelRight })}
+                      className={`flex-1 p-1.5 rounded ${schannel?.showLabelRight ? 'bg-blue-600' : 'bg-slate-700'}`} title="Right" data-testid="btn-schannel-label-right">
                       <svg viewBox="0 0 20 20" className="w-4 h-4 mx-auto" fill="none" stroke="white" strokeWidth="2">
                         <path d="M8 4L14 10L8 16" />
                       </svg>
