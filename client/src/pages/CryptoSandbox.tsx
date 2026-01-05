@@ -2004,6 +2004,14 @@ export default function CryptoSandbox() {
                 }}
               />
             )}
+            
+            {/* Click overlay for exiting move mode when clicking chart */}
+            {moveMode && !movingPoint && !moveModePopup && (
+              <div 
+                className="absolute inset-0 z-20"
+                onClick={() => closeTrendlineMenu()}
+              />
+            )}
           </div>
         )}
       </div>
