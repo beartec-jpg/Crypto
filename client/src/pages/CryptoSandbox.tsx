@@ -1142,9 +1142,10 @@ export default function CryptoSandbox() {
         const halfRange = (maxPrice - minPrice) / 2;
         const newHalfRange = halfRange * Math.max(0.1, factor);
         const newDomain: [number, number] = [midPrice - newHalfRange, midPrice + newHalfRange];
-        // Update ref first for D3 callback to read
+        // Update refs for D3 zoom callback to read
         manualYDomainRef.current = newDomain;
         setManualYDomain(newDomain);
+        // Trigger D3 zoom to redraw with new domain
         triggerZoomUpdate();
       }
       
@@ -1162,6 +1163,7 @@ export default function CryptoSandbox() {
         ];
         manualXDomainRef.current = newDomain;
         setManualXDomain(newDomain);
+        // Trigger D3 zoom to redraw with new domain
         triggerZoomUpdate();
       }
     };
@@ -1342,8 +1344,17 @@ export default function CryptoSandbox() {
       .on('zoom', (event) => {
         const transform = event.transform;
         
-        // Update x scale based on zoom
-        const newXScale = transform.rescaleX(xScale);
+        // Update x scale - use manual domain if axis was zoomed, otherwise use D3 transform
+        let newXScale: d3.ScaleTime<number, number>;
+        if (xAxisManualRef.current && manualXDomainRef.current) {
+          // Axis zoom mode: use the manual domain directly
+          newXScale = d3.scaleTime()
+            .domain(manualXDomainRef.current)
+            .range([0, innerWidth]);
+        } else {
+          // Normal D3 pan/zoom: use transform
+          newXScale = transform.rescaleX(xScale);
+        }
         xScaleRef.current = newXScale;
         
         // Recalculate y scale based on visible candles
