@@ -1152,19 +1152,22 @@ export default function CryptoSandbox() {
       if (xDrag) {
         const deltaX = clientX - xDrag.startX;
         const sensitivity = 0.003;
-        const factor = 1 - deltaX * sensitivity;
-        const [minTime, maxTime] = xDrag.startDomain;
-        const midTime = new Date((minTime.getTime() + maxTime.getTime()) / 2);
-        const halfRange = (maxTime.getTime() - minTime.getTime()) / 2;
-        const newHalfRange = halfRange * Math.max(0.1, factor);
-        const newDomain: [Date, Date] = [
-          new Date(midTime.getTime() - newHalfRange),
-          new Date(midTime.getTime() + newHalfRange)
-        ];
-        manualXDomainRef.current = newDomain;
-        setManualXDomain(newDomain);
-        // Trigger D3 zoom to redraw with new domain
-        triggerZoomUpdate();
+        const zoomFactor = 1 - deltaX * sensitivity;
+        
+        // Update D3 zoom transform directly for X-axis zoom
+        if (svgRef.current && zoomRef.current) {
+          const svg = d3.select(svgRef.current);
+          const currentTransform = d3.zoomTransform(svgRef.current);
+          // Scale the transform's k value to zoom X
+          const newK = Math.max(0.5, Math.min(20, currentTransform.k * zoomFactor));
+          // Create new transform with adjusted scale
+          const newTransform = d3.zoomIdentity
+            .translate(currentTransform.x, currentTransform.y)
+            .scale(newK);
+          zoomRef.current.transform(svg, newTransform);
+          // Update drag ref to track from current position
+          xDrag.startX = clientX;
+        }
       }
     };
     
@@ -1344,17 +1347,9 @@ export default function CryptoSandbox() {
       .on('zoom', (event) => {
         const transform = event.transform;
         
-        // Update x scale - use manual domain if axis was zoomed, otherwise use D3 transform
-        let newXScale: d3.ScaleTime<number, number>;
-        if (xAxisManualRef.current && manualXDomainRef.current) {
-          // Axis zoom mode: use the manual domain directly
-          newXScale = d3.scaleTime()
-            .domain(manualXDomainRef.current)
-            .range([0, innerWidth]);
-        } else {
-          // Normal D3 pan/zoom: use transform
-          newXScale = transform.rescaleX(xScale);
-        }
+        // X scale always uses D3 transform for normal pan/zoom
+        // (X-axis drag updates the transform itself, doesn't lock)
+        const newXScale = transform.rescaleX(xScale);
         xScaleRef.current = newXScale;
         
         // Recalculate y scale based on visible candles
@@ -1617,11 +1612,6 @@ export default function CryptoSandbox() {
                 e.preventDefault();
                 const domain = xScaleRef.current.domain() as [Date, Date];
                 xAxisDragRef.current = { startX: e.clientX, startDomain: domain };
-                // Update refs immediately so D3 callbacks see the new values
-                manualXDomainRef.current = domain;
-                xAxisManualRef.current = true;
-                setManualXDomain(domain);
-                setXAxisManual(true);
               }}
               onTouchStart={(e) => {
                 if (!xScaleRef.current) return;
@@ -1631,11 +1621,6 @@ export default function CryptoSandbox() {
                 const domain = xScaleRef.current.domain() as [Date, Date];
                 console.log('X-axis touchStart, domain:', domain);
                 xAxisDragRef.current = { startX: touch.clientX, startDomain: domain };
-                // Update refs immediately so D3 callbacks see the new values
-                manualXDomainRef.current = domain;
-                xAxisManualRef.current = true;
-                setManualXDomain(domain);
-                setXAxisManual(true);
               }}
               onDoubleClick={() => {
                 setXAxisManual(false);
