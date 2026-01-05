@@ -65,7 +65,7 @@ export default function CryptoSandbox() {
     thickness: number;
     extendLeft: boolean;
     extendRight: boolean;
-    label?: { text: string; position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' };
+    label?: { text: string; positions: ('top-left' | 'top-right' | 'bottom-left' | 'bottom-right')[] };
   }
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
   const [trendlinePoints, setTrendlinePoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
@@ -1653,20 +1653,21 @@ export default function CryptoSandbox() {
                       </>
                     )}
                     
-                    {/* Label if set */}
-                    {line.label && (
+                    {/* Labels if set - render at each selected position */}
+                    {line.label?.positions?.map(pos => (
                       <text
-                        x={line.label.position.includes('left') ? x1 : x2}
-                        y={line.label.position.includes('top') 
-                          ? (line.label.position.includes('left') ? y1 : y2) - 10 
-                          : (line.label.position.includes('left') ? y1 : y2) + 20}
+                        key={pos}
+                        x={pos.includes('left') ? x1 : x2}
+                        y={pos.includes('top') 
+                          ? (pos.includes('left') ? y1 : y2) - 10 
+                          : (pos.includes('left') ? y1 : y2) + 20}
                         fill={line.color}
                         fontSize="12"
                         textAnchor="middle"
                       >
                         {line.label.text}
                       </text>
-                    )}
+                    ))}
                   </g>
                 );
               })}
@@ -1718,10 +1719,15 @@ export default function CryptoSandbox() {
                   className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'color' ? 'bg-slate-600' : ''}`}
                   title="Colour"
                 >
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="10" cy="10" r="7" />
-                    <circle cx="10" cy="10" r="3" fill="currentColor" />
-                  </svg>
+                  {(() => {
+                    const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
+                    return (
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="10" cy="10" r="7" />
+                        <circle cx="10" cy="10" r="3" fill={selectedLine?.color || 'currentColor'} stroke="none" />
+                      </svg>
+                    );
+                  })()}
                 </button>
                 
                 {/* Extend */}
@@ -1882,28 +1888,37 @@ export default function CryptoSandbox() {
                     onChange={(e) => updateTrendline(selectedTrendline, { 
                       label: { 
                         text: e.target.value, 
-                        position: selectedLine?.label?.position || 'top-right' 
+                        positions: selectedLine?.label?.positions || ['top-right'] 
                       } 
                     })}
                     className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-2"
                   />
                   
-                  <div className="text-xs text-gray-400 mb-1">Position</div>
+                  <div className="text-xs text-gray-400 mb-1">Position (toggle multiple)</div>
                   <div className="grid grid-cols-2 gap-1">
-                    {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map(pos => (
-                      <button
-                        key={pos}
-                        onClick={() => updateTrendline(selectedTrendline, { 
-                          label: { 
-                            text: selectedLine?.label?.text || '', 
-                            position: pos 
-                          } 
-                        })}
-                        className={`px-1 py-1 text-xs rounded ${selectedLine?.label?.position === pos ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
-                      >
-                        {pos.replace('-', ' ')}
-                      </button>
-                    ))}
+                    {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map(pos => {
+                      const currentPositions = selectedLine?.label?.positions || [];
+                      const isSelected = currentPositions.includes(pos);
+                      return (
+                        <button
+                          key={pos}
+                          onClick={() => {
+                            const newPositions = isSelected 
+                              ? currentPositions.filter(p => p !== pos)
+                              : [...currentPositions, pos];
+                            updateTrendline(selectedTrendline, { 
+                              label: { 
+                                text: selectedLine?.label?.text || '', 
+                                positions: newPositions.length > 0 ? newPositions : ['top-right']
+                              } 
+                            });
+                          }}
+                          className={`px-1 py-1 text-xs rounded ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                        >
+                          {pos.replace('-', ' ')}
+                        </button>
+                      );
+                    })}
                   </div>
                   
                   {selectedLine?.label?.text && (
