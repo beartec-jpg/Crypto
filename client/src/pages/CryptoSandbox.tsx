@@ -88,6 +88,41 @@ export default function CryptoSandbox() {
   const [moveModePopup, setMoveModePopup] = useState<{ x: number; y: number; lineId: string; point: 'p1' | 'p2' } | null>(null);
   const [moveMethod, setMoveMethod] = useState<'magnet' | 'free'>('magnet');
   
+  // Undo/redo history for trendlines
+  const [trendlineHistory, setTrendlineHistory] = useState<TrendlineData[][]>([[]]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  
+  // Save current state to history (call after any trendline modification)
+  const saveToHistory = (newTrendlines: TrendlineData[]) => {
+    const newHistory = trendlineHistory.slice(0, historyIndex + 1);
+    newHistory.push(newTrendlines);
+    // Keep last 50 states
+    if (newHistory.length > 50) newHistory.shift();
+    setTrendlineHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  };
+  
+  const undo = () => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      setDrawnTrendlines(trendlineHistory[newIndex]);
+      closeTrendlineMenu();
+    }
+  };
+  
+  const redo = () => {
+    if (historyIndex < trendlineHistory.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setDrawnTrendlines(trendlineHistory[newIndex]);
+      closeTrendlineMenu();
+    }
+  };
+  
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < trendlineHistory.length - 1;
+  
   
   // Color palette for trendlines
   const TRENDLINE_COLORS = ['#facc15', '#22c55e', '#ef4444', '#3b82f6', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#ffffff'];
@@ -301,11 +336,13 @@ export default function CryptoSandbox() {
         extendLeft: false,
         extendRight: false,
       };
-      setDrawnTrendlines(prev => [...prev, newTrendline]);
+      const newTrendlines = [...drawnTrendlines, newTrendline];
+      setDrawnTrendlines(newTrendlines);
+      saveToHistory(newTrendlines);
       setTrendlinePoints([]);
       // Keep tool active for drawing more lines
     }
-  }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top]);
+  }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top, drawnTrendlines, saveToHistory]);
   
   // Handle click on trendline to select it
   const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
@@ -334,17 +371,21 @@ export default function CryptoSandbox() {
   // Delete selected trendline
   const deleteTrendline = useCallback(() => {
     if (selectedTrendline) {
-      setDrawnTrendlines(prev => prev.filter(l => l.id !== selectedTrendline));
+      const newTrendlines = drawnTrendlines.filter(l => l.id !== selectedTrendline);
+      setDrawnTrendlines(newTrendlines);
+      saveToHistory(newTrendlines);
       setSelectedTrendline(null);
       setTrendlineMenuPos(null);
       setActiveSubmenu(null);
     }
-  }, [selectedTrendline]);
+  }, [selectedTrendline, drawnTrendlines, saveToHistory]);
   
   // Update trendline property
   const updateTrendline = useCallback((id: string, updates: Partial<TrendlineData>) => {
-    setDrawnTrendlines(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
-  }, []);
+    const newTrendlines = drawnTrendlines.map(l => l.id === id ? { ...l, ...updates } : l);
+    setDrawnTrendlines(newTrendlines);
+    saveToHistory(newTrendlines);
+  }, [drawnTrendlines, saveToHistory]);
   
   // Close trendline menu when clicking elsewhere
   const closeTrendlineMenu = useCallback(() => {
@@ -452,7 +493,7 @@ export default function CryptoSandbox() {
     }
     
     // Update the trendline
-    setDrawnTrendlines(prev => prev.map(l => {
+    const newTrendlines = drawnTrendlines.map(l => {
       if (l.id === movingPoint.lineId) {
         return {
           ...l,
@@ -460,14 +501,16 @@ export default function CryptoSandbox() {
         };
       }
       return l;
-    }));
+    });
+    setDrawnTrendlines(newTrendlines);
+    saveToHistory(newTrendlines);
     
     // Exit move mode
     setMovingPoint(null);
     setMoveMode(false);
     setMovingTrendline(null);
     setSelectedTrendline(null);
-  }, [movingPoint, moveMethod, findMagnetPoint, margin.left, margin.top]);
+  }, [movingPoint, moveMethod, findMagnetPoint, margin.left, margin.top, drawnTrendlines, saveToHistory]);
   
   // Render D3 chart
   useEffect(() => {
@@ -938,14 +981,14 @@ export default function CryptoSandbox() {
             
             {/* Left toolbar - drawing tools */}
             <div className="absolute top-2 left-2 flex flex-col gap-1 z-20 bg-slate-900/80 rounded-lg p-1">
-              {/* Crosshair toggle button */}
+              {/* Crosshair toggle button - mobile only */}
               <button
                 onClick={() => {
                   setCrosshairMode(prev => !prev);
                   if (crosshairMode) setCrosshairPos(null);
                   setActiveTool(null);
                 }}
-                className={`p-2 rounded transition-all ${
+                className={`p-2 rounded transition-all md:hidden ${
                   crosshairMode 
                     ? 'bg-blue-600 text-white' 
                     : 'bg-transparent text-gray-300 hover:bg-slate-700'
@@ -954,6 +997,40 @@ export default function CryptoSandbox() {
                 data-testid="btn-crosshair"
               >
                 <Crosshair className="w-5 h-5" />
+              </button>
+              
+              {/* Undo button */}
+              <button
+                onClick={undo}
+                disabled={!canUndo}
+                className={`p-2 rounded transition-all ${
+                  canUndo 
+                    ? 'bg-transparent text-gray-300 hover:bg-slate-700' 
+                    : 'bg-transparent text-gray-600 cursor-not-allowed'
+                }`}
+                title="Undo"
+                data-testid="btn-undo"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 8h9a4 4 0 014 4v0a4 4 0 01-4 4H9M4 8l3-3M4 8l3 3" />
+                </svg>
+              </button>
+              
+              {/* Redo button */}
+              <button
+                onClick={redo}
+                disabled={!canRedo}
+                className={`p-2 rounded transition-all ${
+                  canRedo 
+                    ? 'bg-transparent text-gray-300 hover:bg-slate-700' 
+                    : 'bg-transparent text-gray-600 cursor-not-allowed'
+                }`}
+                title="Redo"
+                data-testid="btn-redo"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M16 8H7a4 4 0 00-4 4v0a4 4 0 004 4h4M16 8l-3-3M16 8l-3 3" />
+                </svg>
               </button>
               
               <div className="h-px bg-slate-600 my-1" />
