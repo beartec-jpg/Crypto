@@ -1848,6 +1848,7 @@ export default function CryptoSandbox() {
                 className="absolute inset-0 cursor-crosshair"
                 style={{ pointerEvents: 'auto' }}
                 onClick={(e) => {
+                  e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = crosshairMode && crosshairPos ? crosshairPos.x : e.clientX - rect.left;
                   const clickY = crosshairMode && crosshairPos ? crosshairPos.y : e.clientY - rect.top;
@@ -2325,6 +2326,7 @@ export default function CryptoSandbox() {
                 }}
                 onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
+                  e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   handleHorizontalClick(e.clientX - rect.left, e.clientY - rect.top);
                 }}
@@ -2353,6 +2355,7 @@ export default function CryptoSandbox() {
                 }}
                 onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
+                  e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   handleChannelClick(e.clientX - rect.left, e.clientY - rect.top);
                 }}
@@ -2397,6 +2400,7 @@ export default function CryptoSandbox() {
                 }}
                 onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
+                  e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   handleTextLabelClick(e.clientX - rect.left, e.clientY - rect.top);
                 }}
