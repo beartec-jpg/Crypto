@@ -134,7 +134,7 @@ export default function CryptoSandbox() {
   // Trendline selection and menu state
   const [selectedTrendline, setSelectedTrendline] = useState<string | null>(null);
   const [trendlineMenuPos, setTrendlineMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | 'h-color' | 'ch-color' | 'tl-color' | 'tl-text' | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | 'h-color' | 'h-label' | 'ch-color' | 'ch-lines' | 'tl-color' | 'tl-text' | null>(null);
   const [movingTrendline, setMovingTrendline] = useState<string | null>(null);
   const [draggingMenu, setDraggingMenu] = useState(false);
   const menuDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -369,6 +369,57 @@ export default function CryptoSandbox() {
     fetchCandles();
   }, [fetchCandles]);
   
+  // Document-level handlers for menu dragging and click-off to deselect
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (draggingMenu) {
+        const newX = e.clientX - menuDragOffset.current.x;
+        const newY = e.clientY - menuDragOffset.current.y;
+        // Update whichever menu is being dragged
+        if (trendlineMenuPos) setTrendlineMenuPos({ x: newX, y: newY });
+        if (horizontalMenuPos) setHorizontalMenuPos({ x: newX, y: newY });
+        if (channelMenuPos) setChannelMenuPos({ x: newX, y: newY });
+        if (textLabelMenuPos) setTextLabelMenuPos({ x: newX, y: newY });
+      }
+    };
+    
+    const handleMouseUp = () => {
+      if (draggingMenu) setDraggingMenu(false);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingMenu, trendlineMenuPos, horizontalMenuPos, channelMenuPos, textLabelMenuPos]);
+  
+  // Click-off handler: deselect tool and close menus when clicking on chart background
+  const handleChartBackgroundClick = useCallback((e: React.MouseEvent) => {
+    // Only fire if clicking directly on the chart container, not on drawn objects
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('chart-background')) {
+      // Deselect active tool
+      setActiveTool(null);
+      // Close all menus
+      setSelectedTrendline(null);
+      setTrendlineMenuPos(null);
+      setSelectedHorizontal(null);
+      setHorizontalMenuPos(null);
+      setSelectedChannel(null);
+      setChannelMenuPos(null);
+      setSelectedTextLabel(null);
+      setTextLabelMenuPos(null);
+      setActiveSubmenu(null);
+      // Clear any in-progress drawing
+      setTrendlineMode(null);
+      setTrendlinePoints([]);
+      setChannelPoints([]);
+    }
+  }, []);
+  
   // Magnet snap logic - find high/low within circle radius
   const findMagnetPoint = useCallback((clickX: number, clickY: number): { x: number; y: number; time: number; price: number } | null => {
     if (!xScaleRef.current || !yScaleRef.current || candles.length === 0) return null;
@@ -593,7 +644,7 @@ export default function CryptoSandbox() {
     setHorizontalMenuPos(null);
   }, []);
 
-  // === CHANNEL HANDLERS ===
+  // === CHANNEL HANDLERS === (3-click: start, height, direction)
   const handleChannelClick = useCallback((clickX: number, clickY: number) => {
     if (!xScaleRef.current || !yScaleRef.current) return;
     
@@ -611,15 +662,21 @@ export default function CryptoSandbox() {
     }
     
     if (channelPoints.length === 0) {
+      // First click: start point
       setChannelPoints([point]);
-    } else {
+    } else if (channelPoints.length === 1) {
+      // Second click: defines height (vertical distance from start)
+      setChannelPoints([channelPoints[0], point]);
+    } else if (channelPoints.length === 2) {
+      // Third click: defines direction/end point
       const p1 = channelPoints[0];
-      const priceRange = Math.abs(p1.price - point.price);
+      const p2 = channelPoints[1];
+      const channelHeight = Math.abs(p1.price - p2.price);
       const newChannel: ChannelData = {
         id: `ch-${Date.now()}`,
         p1: { time: p1.time, price: p1.price },
         p2: { time: point.time, price: point.price },
-        width: priceRange * 0.5,
+        width: channelHeight,
         color: channelDefaults.color,
         opacity: channelDefaults.opacity,
         lineStyle: channelDefaults.lineStyle,
@@ -1191,12 +1248,13 @@ export default function CryptoSandbox() {
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
           </div>
         ) : (
-          <div className="relative w-full h-full">
+          <div className="relative w-full h-full chart-background" onClick={handleChartBackgroundClick}>
             <svg 
               ref={svgRef} 
               width={dimensions.width} 
               height={dimensions.height}
               style={{ display: 'block' }}
+              className="chart-background"
               data-testid="sandbox-chart"
             />
             
@@ -2208,16 +2266,24 @@ export default function CryptoSandbox() {
                     <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
                   </div>
                 )}
-                {channelPoints.length === 1 && (
+                {channelPoints.length >= 1 && (
                   <div className="absolute w-3 h-3 bg-green-400 rounded-full pointer-events-none" style={{ left: channelPoints[0].x - 6, top: channelPoints[0].y - 6 }} />
                 )}
-                {channelPoints.length === 1 && crosshairMode && crosshairPos && (
+                {channelPoints.length === 2 && (
+                  <div className="absolute w-3 h-3 bg-green-400 rounded-full pointer-events-none" style={{ left: channelPoints[1].x - 6, top: channelPoints[1].y - 6 }} />
+                )}
+                {channelPoints.length >= 1 && crosshairMode && crosshairPos && (
                   <svg className="absolute inset-0 pointer-events-none overflow-visible">
-                    <line x1={channelPoints[0].x} y1={channelPoints[0].y} x2={crosshairPos.x} y2={crosshairPos.y} stroke="#22c55e" strokeWidth="2" strokeDasharray="5,5" />
+                    {channelPoints.length === 1 && (
+                      <line x1={channelPoints[0].x} y1={channelPoints[0].y} x2={channelPoints[0].x} y2={crosshairPos.y} stroke="#22c55e" strokeWidth="2" strokeDasharray="5,5" />
+                    )}
+                    {channelPoints.length === 2 && (
+                      <line x1={channelPoints[0].x} y1={channelPoints[0].y} x2={crosshairPos.x} y2={crosshairPos.y} stroke="#22c55e" strokeWidth="2" strokeDasharray="5,5" />
+                    )}
                   </svg>
                 )}
                 <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
-                  {channelPoints.length === 0 ? 'Click for 1st point' : 'Click for 2nd point'}
+                  {channelPoints.length === 0 ? 'Click for start point' : channelPoints.length === 1 ? 'Click for height' : 'Click for direction'}
                 </div>
               </div>
             )}
@@ -2558,6 +2624,16 @@ export default function CryptoSandbox() {
                       <circle cx="10" cy="10" r="3" fill={drawnHorizontals.find(l => l.id === selectedHorizontal)?.color || '#facc15'} stroke="none" />
                     </svg>
                   </button>
+                  {/* Label */}
+                  <button
+                    onClick={() => setActiveSubmenu(activeSubmenu === 'h-label' ? null : 'h-label')}
+                    className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'h-label' ? 'bg-slate-600' : ''}`}
+                    title="Label"
+                  >
+                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                      <text x="5" y="15" fontSize="14" fontWeight="bold">T</text>
+                    </svg>
+                  </button>
                   {/* Save as Favorite */}
                   <button onClick={saveHorizontalAsFavorite} className="p-2 hover:bg-slate-700 rounded text-yellow-400" title="Save as Default">
                     <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
@@ -2607,27 +2683,134 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* Channel action menu - matches reference image layout */}
+            {/* Horizontal line label submenu */}
+            {activeSubmenu === 'h-label' && horizontalMenuPos && selectedHorizontal && (() => {
+              const selectedLine = drawnHorizontals.find(l => l.id === selectedHorizontal);
+              const submenuX = horizontalMenuPos.x + 50 < dimensions.width - 150 ? horizontalMenuPos.x + 50 : horizontalMenuPos.x - 160;
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: horizontalMenuPos.y }}>
+                  <div className="text-xs text-gray-400 mb-1">Label Text</div>
+                  <input type="text" value={selectedLine?.label?.text || ''} placeholder="Enter label..."
+                    onChange={e => updateHorizontal(selectedHorizontal, { label: { text: e.target.value, position: selectedLine?.label?.position || 'right' } })}
+                    className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-3" />
+                  <div className="text-xs text-gray-400 mb-1">Position</div>
+                  <div className="flex gap-1">
+                    {(['left', 'right'] as const).map(pos => (
+                      <button key={pos} onClick={() => updateHorizontal(selectedHorizontal, { label: { text: selectedLine?.label?.text || '', position: pos } })}
+                        className={`px-3 py-1 text-xs rounded ${selectedLine?.label?.position === pos ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
+                        {pos}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedLine?.label?.text && (
+                    <button onClick={() => updateHorizontal(selectedHorizontal, { label: undefined })}
+                      className="w-full mt-2 px-2 py-1 text-xs bg-red-600 text-white rounded">
+                      Remove Label
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            
+            {/* Channel action menu - vertical icon bar structure */}
             {channelMenuPos && selectedChannel && (() => {
               const channel = drawnChannels.find(c => c.id === selectedChannel);
               return (
                 <div 
-                  className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50"
-                  style={{ left: channelMenuPos.x, top: channelMenuPos.y, minWidth: '180px' }}
+                  className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
+                  style={{ left: channelMenuPos.x, top: channelMenuPos.y }}
                 >
-                  {/* Top row: delete and color */}
-                  <div className="flex gap-1 mb-3">
+                  {/* Drag handle */}
+                  <div 
+                    className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setDraggingMenu(true);
+                      menuDragOffset.current = { x: e.clientX - channelMenuPos.x, y: e.clientY - channelMenuPos.y };
+                    }}
+                  >
+                    <div className="w-6 h-0.5 bg-slate-400 rounded" />
+                  </div>
+                  <div className="p-1 flex flex-col gap-1">
+                    {/* Delete */}
                     <button onClick={deleteChannel} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
                       </svg>
                     </button>
-                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'ch-color' ? null : 'ch-color')}
-                      className={`p-2 hover:bg-slate-700 rounded ${activeSubmenu === 'ch-color' ? 'bg-slate-600' : ''}`} title="Color">
-                      <div className="w-5 h-5 rounded" style={{ backgroundColor: channel?.color }} />
+                    {/* Color - circle with colored dot */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'ch-color' ? null : 'ch-color')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'ch-color' ? 'bg-slate-600' : ''}`}
+                      title="Colour"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="10" cy="10" r="7" />
+                        <circle cx="10" cy="10" r="3" fill={channel?.color || '#22c55e'} stroke="none" />
+                      </svg>
+                    </button>
+                    {/* Labels/Lines */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'ch-lines' ? null : 'ch-lines')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'ch-lines' ? 'bg-slate-600' : ''}`}
+                      title="Lines"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M2 5h16M2 10h16M2 15h16" />
+                      </svg>
+                    </button>
+                    {/* Save as Favorite */}
+                    <button onClick={() => {
+                      if (channel) {
+                        const defaults = { color: channel.color, opacity: channel.opacity, lineStyle: channel.lineStyle, thickness: channel.thickness, internalLineStyle: channel.internalLineStyle, internalLineColor: channel.internalLineColor };
+                        localStorage.setItem('channelDefaults', JSON.stringify(defaults));
+                      }
+                    }} className="p-2 hover:bg-slate-700 rounded text-yellow-400" title="Save as Default">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                        <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
+                      </svg>
                     </button>
                   </div>
-                  
+                </div>
+              );
+            })()}
+            
+            {/* Channel color submenu */}
+            {activeSubmenu === 'ch-color' && channelMenuPos && selectedChannel && (() => {
+              const channel = drawnChannels.find(c => c.id === selectedChannel);
+              const submenuX = channelMenuPos.x + 200;
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: channelMenuPos.y }}>
+                  <div className="text-xs text-gray-400 mb-2">Colors</div>
+                  <div className="flex flex-wrap gap-1 mb-3 w-32">
+                    {TRENDLINE_COLORS.map(color => (
+                      <button key={color} onClick={() => updateChannel(selectedChannel, { color })}
+                        className={`w-6 h-6 rounded border-2 ${channel?.color === color ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }} />
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Opacity</div>
+                  <input type="range" min="0.2" max="1" step="0.1" value={channel?.opacity || 1}
+                    onChange={(e) => updateChannel(selectedChannel, { opacity: parseFloat(e.target.value) })} className="w-full mb-3" />
+                  <div className="text-xs text-gray-400 mb-1">Line Style</div>
+                  <div className="flex gap-1">
+                    {(['solid', 'dashed', 'dotted'] as LineStyle[]).map(style => (
+                      <button key={style} onClick={() => updateChannel(selectedChannel, { lineStyle: style })}
+                        className={`px-2 py-1 text-xs rounded ${channel?.lineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Channel lines submenu */}
+            {activeSubmenu === 'ch-lines' && channelMenuPos && selectedChannel && (() => {
+              const channel = drawnChannels.find(c => c.id === selectedChannel);
+              const submenuX = channelMenuPos.x + 50 < dimensions.width - 200 ? channelMenuPos.x + 50 : channelMenuPos.x - 210;
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: channelMenuPos.y, minWidth: '180px' }}>
                   {/* External Lines */}
                   <div className="text-xs text-gray-400 mb-1">External Lines</div>
                   <label className="flex items-center gap-2 text-white text-sm mb-3 cursor-pointer">
@@ -2671,37 +2854,7 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* Channel color submenu */}
-            {activeSubmenu === 'ch-color' && channelMenuPos && selectedChannel && (() => {
-              const channel = drawnChannels.find(c => c.id === selectedChannel);
-              const submenuX = channelMenuPos.x + 200;
-              return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: channelMenuPos.y }}>
-                  <div className="text-xs text-gray-400 mb-2">Colors</div>
-                  <div className="flex flex-wrap gap-1 mb-3 w-32">
-                    {TRENDLINE_COLORS.map(color => (
-                      <button key={color} onClick={() => updateChannel(selectedChannel, { color })}
-                        className={`w-6 h-6 rounded border-2 ${channel?.color === color ? 'border-white' : 'border-transparent'}`}
-                        style={{ backgroundColor: color }} />
-                    ))}
-                  </div>
-                  <div className="text-xs text-gray-400 mb-1">Opacity</div>
-                  <input type="range" min="0.2" max="1" step="0.1" value={channel?.opacity || 1}
-                    onChange={(e) => updateChannel(selectedChannel, { opacity: parseFloat(e.target.value) })} className="w-full mb-3" />
-                  <div className="text-xs text-gray-400 mb-1">Line Style</div>
-                  <div className="flex gap-1">
-                    {(['solid', 'dashed', 'dotted'] as LineStyle[]).map(style => (
-                      <button key={style} onClick={() => updateChannel(selectedChannel, { lineStyle: style })}
-                        className={`px-2 py-1 text-xs rounded ${channel?.lineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
-                        {style}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-            
-            {/* Text label action menu - matches trendline menu structure */}
+            {/* Text label action menu - simplified: delete, color, text */}
             {textLabelMenuPos && selectedTextLabel && (() => {
               const label = drawnTextLabels.find(l => l.id === selectedTextLabel);
               return (
@@ -2802,25 +2955,16 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* Text label text submenu */}
+            {/* Text label text submenu - just text input */}
             {activeSubmenu === 'tl-text' && textLabelMenuPos && selectedTextLabel && (() => {
               const label = drawnTextLabels.find(l => l.id === selectedTextLabel);
               const submenuX = textLabelMenuPos.x + 50 < dimensions.width - 150 ? textLabelMenuPos.x + 50 : textLabelMenuPos.x - 160;
               return (
                 <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: textLabelMenuPos.y }}>
-                  <div className="text-xs text-gray-400 mb-1">Text</div>
-                  <input type="text" value={label?.text || ''} placeholder="Label text..."
+                  <div className="text-xs text-gray-400 mb-1">Label Text</div>
+                  <input type="text" value={label?.text || ''} placeholder="Enter label text..."
                     onChange={e => updateTextLabel(selectedTextLabel, { text: e.target.value })}
-                    className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-3" />
-                  <div className="text-xs text-gray-400 mb-1">Position (toggle multiple)</div>
-                  <div className="grid grid-cols-2 gap-1">
-                    {(['top left', 'top right', 'bottom left', 'bottom right'] as const).map(pos => (
-                      <button key={pos}
-                        className="px-2 py-1 text-xs rounded bg-slate-700 text-gray-300 hover:bg-slate-600">
-                        {pos}
-                      </button>
-                    ))}
-                  </div>
+                    className="w-32 bg-slate-700 text-white px-2 py-1 rounded text-sm" />
                 </div>
               );
             })()}
