@@ -144,6 +144,11 @@ export default function CryptoSandbox() {
   const [movingPoint, setMovingPoint] = useState<{ lineId: string; point: 'p1' | 'p2' } | null>(null);
   const [movingWholeLine, setMovingWholeLine] = useState<string | null>(null);
   
+  // Move states for other drawing types
+  const [movingHorizontal, setMovingHorizontal] = useState<string | null>(null);
+  const [movingChannel, setMovingChannel] = useState<string | null>(null);
+  const [movingTextLabel, setMovingTextLabel] = useState<string | null>(null);
+  
   // Undo/redo history for trendlines
   const [trendlineHistory, setTrendlineHistory] = useState<TrendlineData[][]>([[]]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -828,6 +833,92 @@ export default function CryptoSandbox() {
     setMovingWholeLine(null);
     setSelectedTrendline(null);
   }, [movingWholeLine, drawnTrendlines, margin.left, margin.top, saveToHistory]);
+  
+  // Move horizontal line to new position
+  const placeMovingHorizontal = useCallback((clickX: number, clickY: number) => {
+    if (!movingHorizontal || !yScaleRef.current) return;
+    
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    let newPrice: number;
+    if (magnetPoint) {
+      newPrice = magnetPoint.price;
+      setMagnetPulse({ x: clickX, y: clickY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      newPrice = yScaleRef.current.invert(clickY - margin.top);
+    }
+    
+    setDrawnHorizontals(prev => prev.map(l => 
+      l.id === movingHorizontal ? { ...l, price: newPrice } : l
+    ));
+    setMovingHorizontal(null);
+    setSelectedHorizontal(null);
+    setHorizontalMenuPos(null);
+  }, [movingHorizontal, margin.top, findMagnetPoint]);
+  
+  // Move text label to new position
+  const placeMovingTextLabel = useCallback((clickX: number, clickY: number) => {
+    if (!movingTextLabel || !xScaleRef.current || !yScaleRef.current) return;
+    
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    let time: number, price: number;
+    if (magnetPoint) {
+      time = magnetPoint.time;
+      price = magnetPoint.price;
+      setMagnetPulse({ x: clickX, y: clickY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      time = xScaleRef.current.invert(clickX - margin.left).getTime();
+      price = yScaleRef.current.invert(clickY - margin.top);
+    }
+    
+    setDrawnTextLabels(prev => prev.map(l => 
+      l.id === movingTextLabel ? { ...l, time, price, x: clickX, y: clickY } : l
+    ));
+    setMovingTextLabel(null);
+    setSelectedTextLabel(null);
+    setTextLabelMenuPos(null);
+  }, [movingTextLabel, margin.left, margin.top, findMagnetPoint]);
+  
+  // Move channel to new position (translates the whole channel)
+  const placeMovingChannel = useCallback((clickX: number, clickY: number) => {
+    if (!movingChannel || !xScaleRef.current || !yScaleRef.current) return;
+    
+    const channel = drawnChannels.find(c => c.id === movingChannel);
+    if (!channel) return;
+    
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    let newTime: number, newPrice: number;
+    if (magnetPoint) {
+      newTime = magnetPoint.time;
+      newPrice = magnetPoint.price;
+      setMagnetPulse({ x: clickX, y: clickY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      newTime = xScaleRef.current.invert(clickX - margin.left).getTime();
+      newPrice = yScaleRef.current.invert(clickY - margin.top);
+    }
+    
+    // Calculate center of current channel
+    const oldCenterTime = (channel.p1.time + channel.p2.time) / 2;
+    const oldCenterPrice = (channel.p1.price + channel.p2.price) / 2;
+    
+    // Calculate offset
+    const timeDelta = newTime - oldCenterTime;
+    const priceDelta = newPrice - oldCenterPrice;
+    
+    // Apply offset to both points
+    setDrawnChannels(prev => prev.map(c => 
+      c.id === movingChannel ? {
+        ...c,
+        p1: { time: c.p1.time + timeDelta, price: c.p1.price + priceDelta },
+        p2: { time: c.p2.time + timeDelta, price: c.p2.price + priceDelta }
+      } : c
+    ));
+    setMovingChannel(null);
+    setSelectedChannel(null);
+    setChannelMenuPos(null);
+  }, [movingChannel, drawnChannels, margin.left, margin.top, findMagnetPoint]);
   
   // Handle clicking an endpoint in move mode - immediately start moving
   const handleEndpointClick = useCallback((lineId: string, point: 'p1' | 'p2') => {
@@ -2624,6 +2715,20 @@ export default function CryptoSandbox() {
                       <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
                     </svg>
                   </button>
+                  {/* Move */}
+                  <button 
+                    onClick={() => {
+                      setMovingHorizontal(selectedHorizontal);
+                      setHorizontalMenuPos(null);
+                      setActiveSubmenu(null);
+                    }} 
+                    className="p-2 hover:bg-slate-700 rounded text-white" 
+                    title="Move"
+                  >
+                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
+                    </svg>
+                  </button>
                   {/* Color - circle with colored dot */}
                   <button
                     onClick={() => setActiveSubmenu(activeSubmenu === 'h-color' ? null : 'h-color')}
@@ -2748,6 +2853,20 @@ export default function CryptoSandbox() {
                     <button onClick={deleteChannel} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                      </svg>
+                    </button>
+                    {/* Move */}
+                    <button 
+                      onClick={() => {
+                        setMovingChannel(selectedChannel);
+                        setChannelMenuPos(null);
+                        setActiveSubmenu(null);
+                      }} 
+                      className="p-2 hover:bg-slate-700 rounded text-white" 
+                      title="Move"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
                       </svg>
                     </button>
                     {/* Color - circle with colored dot */}
@@ -2907,13 +3026,15 @@ export default function CryptoSandbox() {
                     {/* Move/Arrow icon */}
                     <button
                       onClick={() => {
-                        // Toggle move mode for text label
+                        setMovingTextLabel(selectedTextLabel);
+                        setTextLabelMenuPos(null);
+                        setActiveSubmenu(null);
                       }}
                       className="p-2 hover:bg-slate-700 rounded text-white"
                       title="Move"
                     >
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M4 10h12M16 10l-4-4M16 10l-4 4" />
+                        <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
                       </svg>
                     </button>
                     {/* Text/Label */}
@@ -3003,6 +3124,27 @@ export default function CryptoSandbox() {
               </div>
             )}
             
+            {/* Moving horizontal indicator */}
+            {movingHorizontal && (
+              <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                Click to place horizontal line
+              </div>
+            )}
+            
+            {/* Moving text label indicator */}
+            {movingTextLabel && (
+              <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                Click to place label
+              </div>
+            )}
+            
+            {/* Moving channel indicator */}
+            {movingChannel && (
+              <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                Click to place channel
+              </div>
+            )}
+            
             {/* Click overlay for placing moved point */}
             {movingPoint && (
               <div 
@@ -3013,6 +3155,60 @@ export default function CryptoSandbox() {
                   placeMovingPoint(e.clientX - rect.left + 40, e.clientY - rect.top);
                 }}
               />
+            )}
+            
+            {/* Click overlay for placing moved horizontal line */}
+            {movingHorizontal && (
+              <div 
+                className="absolute top-0 right-0 bottom-0 cursor-crosshair z-20"
+                style={{ left: 40 }}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  placeMovingHorizontal(e.clientX - rect.left + 40, e.clientY - rect.top);
+                }}
+              >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Click overlay for placing moved text label */}
+            {movingTextLabel && (
+              <div 
+                className="absolute top-0 right-0 bottom-0 cursor-crosshair z-20"
+                style={{ left: 40 }}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  placeMovingTextLabel(e.clientX - rect.left + 40, e.clientY - rect.top);
+                }}
+              >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Click overlay for placing moved channel */}
+            {movingChannel && (
+              <div 
+                className="absolute top-0 right-0 bottom-0 cursor-crosshair z-20"
+                style={{ left: 40 }}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  placeMovingChannel(e.clientX - rect.left + 40, e.clientY - rect.top);
+                }}
+              >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
+              </div>
             )}
             
             {/* Click overlay for exiting move mode when clicking chart */}
