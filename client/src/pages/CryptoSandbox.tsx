@@ -182,7 +182,7 @@ export default function CryptoSandbox() {
   // Trendline selection and menu state
   const [selectedTrendline, setSelectedTrendline] = useState<string | null>(null);
   const [trendlineMenuPos, setTrendlineMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | 'h-color' | 'h-label' | 'ch-color' | 'ch-lines' | 'tl-color' | 'tl-text' | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | 'h-color' | 'h-label' | 'ch-color' | 'ch-lines' | 'hch-lines' | 'sch-lines' | 'tl-color' | 'tl-text' | null>(null);
   const [movingTrendline, setMovingTrendline] = useState<string | null>(null);
   const [draggingMenu, setDraggingMenu] = useState(false);
   const menuDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -202,12 +202,16 @@ export default function CryptoSandbox() {
     trendlines: TrendlineData[];
     horizontals: HorizontalLineData[];
     channels: ChannelData[];
+    hchannels: HorizontalChannelData[];
+    schannels: SlopedChannelData[];
     labels: TextLabelData[];
   };
   const [drawingHistory, setDrawingHistory] = useState<DrawingState[]>([{
     trendlines: [],
     horizontals: [],
     channels: [],
+    hchannels: [],
+    schannels: [],
     labels: []
   }]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -235,9 +239,11 @@ export default function CryptoSandbox() {
       trendlines: drawnTrendlines,
       horizontals: drawnHorizontals,
       channels: drawnChannels,
+      hchannels: drawnHChannels,
+      schannels: drawnSChannels,
       labels: drawnTextLabels
     });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   const undo = useCallback(() => {
     if (historyIndex > 0) {
@@ -248,6 +254,8 @@ export default function CryptoSandbox() {
       setDrawnTrendlines(state.trendlines);
       setDrawnHorizontals(state.horizontals);
       setDrawnChannels(state.channels);
+      setDrawnHChannels(state.hchannels || []);
+      setDrawnSChannels(state.schannels || []);
       setDrawnTextLabels(state.labels);
       // Close all menus
       setSelectedTrendline(null);
@@ -256,6 +264,10 @@ export default function CryptoSandbox() {
       setHorizontalMenuPos(null);
       setSelectedChannel(null);
       setChannelMenuPos(null);
+      setSelectedHChannel(null);
+      setHChannelMenuPos(null);
+      setSelectedSChannel(null);
+      setSChannelMenuPos(null);
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
     }
@@ -270,6 +282,8 @@ export default function CryptoSandbox() {
       setDrawnTrendlines(state.trendlines);
       setDrawnHorizontals(state.horizontals);
       setDrawnChannels(state.channels);
+      setDrawnHChannels(state.hchannels || []);
+      setDrawnSChannels(state.schannels || []);
       setDrawnTextLabels(state.labels);
       // Close all menus
       setSelectedTrendline(null);
@@ -278,6 +292,10 @@ export default function CryptoSandbox() {
       setHorizontalMenuPos(null);
       setSelectedChannel(null);
       setChannelMenuPos(null);
+      setSelectedHChannel(null);
+      setHChannelMenuPos(null);
+      setSelectedSChannel(null);
+      setSChannelMenuPos(null);
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
     }
@@ -636,11 +654,11 @@ export default function CryptoSandbox() {
       };
       const newTrendlines = [...drawnTrendlines, newTrendline];
       setDrawnTrendlines(newTrendlines);
-      saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, labels: drawnTextLabels });
+      saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
       setTrendlinePoints([]);
       // Keep tool active for drawing more lines
     }
-  }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory, trendlineDefaults]);
+  }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory, trendlineDefaults]);
   
   // Handle click on trendline to select it - auto enters move mode
   const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
@@ -674,19 +692,19 @@ export default function CryptoSandbox() {
     if (selectedTrendline) {
       const newTrendlines = drawnTrendlines.filter(l => l.id !== selectedTrendline);
       setDrawnTrendlines(newTrendlines);
-      saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, labels: drawnTextLabels });
+      saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
       setSelectedTrendline(null);
       setTrendlineMenuPos(null);
       setActiveSubmenu(null);
     }
-  }, [selectedTrendline, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedTrendline, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   // Update trendline property
   const updateTrendline = useCallback((id: string, updates: Partial<TrendlineData>) => {
     const newTrendlines = drawnTrendlines.map(l => l.id === id ? { ...l, ...updates } : l);
     setDrawnTrendlines(newTrendlines);
-    saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+    saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   // Close trendline menu when clicking elsewhere
   const closeTrendlineMenu = useCallback(() => {
@@ -725,8 +743,8 @@ export default function CryptoSandbox() {
     };
     const newHorizontals = [...drawnHorizontals, newLine];
     setDrawnHorizontals(newHorizontals);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, labels: drawnTextLabels });
-  }, [margin.top, horizontalDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
+  }, [margin.top, horizontalDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Handle click on horizontal line to select it
   const handleHorizontalSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
@@ -748,18 +766,18 @@ export default function CryptoSandbox() {
     if (selectedHorizontal) {
       const newHorizontals = drawnHorizontals.filter(l => l.id !== selectedHorizontal);
       setDrawnHorizontals(newHorizontals);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, labels: drawnTextLabels });
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
       setSelectedHorizontal(null);
       setHorizontalMenuPos(null);
     }
-  }, [selectedHorizontal, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedHorizontal, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Update horizontal line property
   const updateHorizontal = useCallback((id: string, updates: Partial<HorizontalLineData>) => {
     const newHorizontals = drawnHorizontals.map(l => l.id === id ? { ...l, ...updates } : l);
     setDrawnHorizontals(newHorizontals);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Close horizontal menu
   const closeHorizontalMenu = useCallback(() => {
@@ -815,10 +833,10 @@ export default function CryptoSandbox() {
       };
       const newChannels = [...drawnChannels, newChannel];
       setDrawnChannels(newChannels);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, labels: drawnTextLabels });
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
       setChannelPoints([]);
     }
-  }, [channelPoints, margin, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+  }, [channelPoints, margin, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Handle click on channel to select it
   const handleChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
@@ -839,18 +857,18 @@ export default function CryptoSandbox() {
     if (selectedChannel) {
       const newChannels = drawnChannels.filter(c => c.id !== selectedChannel);
       setDrawnChannels(newChannels);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, labels: drawnTextLabels });
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
       setSelectedChannel(null);
       setChannelMenuPos(null);
     }
-  }, [selectedChannel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedChannel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Update channel property
   const updateChannel = useCallback((id: string, updates: Partial<ChannelData>) => {
     const newChannels = drawnChannels.map(c => c.id === id ? { ...c, ...updates } : c);
     setDrawnChannels(newChannels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Close channel menu
   const closeChannelMenu = useCallback(() => {
@@ -903,11 +921,13 @@ export default function CryptoSandbox() {
           { percent: 75, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
         ],
       };
-      setDrawnHChannels(prev => [...prev, newHChannel]);
+      const newHChannels = [...drawnHChannels, newHChannel];
+      setDrawnHChannels(newHChannels);
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: newHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
       setHChannelPoints([]);
       // Keep tool active for drawing more
     }
-  }, [hchannelPoints, margin, channelDefaults, findMagnetPoint]);
+  }, [hchannelPoints, margin, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Handle click on horizontal channel to select it
   const handleHChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
@@ -930,17 +950,21 @@ export default function CryptoSandbox() {
   // Delete selected horizontal channel
   const deleteHChannel = useCallback(() => {
     if (selectedHChannel) {
-      setDrawnHChannels(prev => prev.filter(c => c.id !== selectedHChannel));
+      const newHChannels = drawnHChannels.filter(c => c.id !== selectedHChannel);
+      setDrawnHChannels(newHChannels);
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: newHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
       setSelectedHChannel(null);
       setHChannelMenuPos(null);
       setMovingHChannel(null);
     }
-  }, [selectedHChannel]);
+  }, [selectedHChannel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Update horizontal channel property
   const updateHChannel = useCallback((id: string, updates: Partial<HorizontalChannelData>) => {
-    setDrawnHChannels(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-  }, []);
+    const newHChannels = drawnHChannels.map(c => c.id === id ? { ...c, ...updates } : c);
+    setDrawnHChannels(newHChannels);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: newHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Close horizontal channel menu
   const closeHChannelMenu = useCallback(() => {
@@ -1021,11 +1045,13 @@ export default function CryptoSandbox() {
           { percent: 75, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
         ],
       };
-      setDrawnSChannels(prev => [...prev, newSChannel]);
+      const newSChannels = [...drawnSChannels, newSChannel];
+      setDrawnSChannels(newSChannels);
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: newSChannels, labels: drawnTextLabels });
       setSChannelPoints([]);
       // Keep tool active for drawing more
     }
-  }, [schannelPoints, margin, channelDefaults, findMagnetPoint]);
+  }, [schannelPoints, margin, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Handle click on sloped channel to select it
   const handleSChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
@@ -1048,17 +1074,21 @@ export default function CryptoSandbox() {
   // Delete selected sloped channel
   const deleteSChannel = useCallback(() => {
     if (selectedSChannel) {
-      setDrawnSChannels(prev => prev.filter(c => c.id !== selectedSChannel));
+      const newSChannels = drawnSChannels.filter(c => c.id !== selectedSChannel);
+      setDrawnSChannels(newSChannels);
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: newSChannels, labels: drawnTextLabels });
       setSelectedSChannel(null);
       setSChannelMenuPos(null);
       setMovingSChannel(null);
     }
-  }, [selectedSChannel]);
+  }, [selectedSChannel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Update sloped channel property
   const updateSChannel = useCallback((id: string, updates: Partial<SlopedChannelData>) => {
-    setDrawnSChannels(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-  }, []);
+    const newSChannels = drawnSChannels.map(c => c.id === id ? { ...c, ...updates } : c);
+    setDrawnSChannels(newSChannels);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: newSChannels, labels: drawnTextLabels });
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Close sloped channel menu
   const closeSChannelMenu = useCallback(() => {
@@ -1098,8 +1128,8 @@ export default function CryptoSandbox() {
     };
     const newLabels = [...drawnTextLabels, newLabel];
     setDrawnTextLabels(newLabels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, labels: newLabels });
-  }, [margin, textLabelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: newLabels });
+  }, [margin, textLabelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Handle click on text label to select it
   const handleTextLabelSelect = useCallback((labelId: string, clickX: number, clickY: number) => {
@@ -1119,18 +1149,18 @@ export default function CryptoSandbox() {
     if (selectedTextLabel) {
       const newLabels = drawnTextLabels.filter(l => l.id !== selectedTextLabel);
       setDrawnTextLabels(newLabels);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, labels: newLabels });
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: newLabels });
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
     }
-  }, [selectedTextLabel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedTextLabel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Update text label property
   const updateTextLabel = useCallback((id: string, updates: Partial<TextLabelData>) => {
     const newLabels = drawnTextLabels.map(l => l.id === id ? { ...l, ...updates } : l);
     setDrawnTextLabels(newLabels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, labels: newLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: newLabels });
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   // Move whole line - places center at click position
   const moveWholeLine = useCallback((clickX: number, clickY: number) => {
@@ -1165,10 +1195,10 @@ export default function CryptoSandbox() {
     });
     
     setDrawnTrendlines(newTrendlines);
-    saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, labels: drawnTextLabels });
+    saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
     setMovingWholeLine(null);
     setSelectedTrendline(null);
-  }, [movingWholeLine, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, margin.left, margin.top, saveToHistory]);
+  }, [movingWholeLine, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, margin.left, margin.top, saveToHistory]);
   
   // Move horizontal line to new position
   const placeMovingHorizontal = useCallback((clickX: number, clickY: number) => {
@@ -1188,11 +1218,11 @@ export default function CryptoSandbox() {
       l.id === movingHorizontal ? { ...l, price: newPrice } : l
     );
     setDrawnHorizontals(newHorizontals);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, labels: drawnTextLabels });
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
     setMovingHorizontal(null);
     setSelectedHorizontal(null);
     setHorizontalMenuPos(null);
-  }, [movingHorizontal, margin.top, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+  }, [movingHorizontal, margin.top, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   // Move text label to new position
   const placeMovingTextLabel = useCallback((clickX: number, clickY: number) => {
@@ -1214,11 +1244,11 @@ export default function CryptoSandbox() {
       l.id === movingTextLabel ? { ...l, time, price, x: clickX, y: clickY } : l
     );
     setDrawnTextLabels(newLabels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, labels: newLabels });
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: newLabels });
     setMovingTextLabel(null);
     setSelectedTextLabel(null);
     setTextLabelMenuPos(null);
-  }, [movingTextLabel, margin.left, margin.top, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+  }, [movingTextLabel, margin.left, margin.top, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   // Move channel to new position (translates the whole channel)
   const placeMovingChannel = useCallback((clickX: number, clickY: number) => {
@@ -1256,11 +1286,11 @@ export default function CryptoSandbox() {
       } : c
     );
     setDrawnChannels(newChannels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, labels: drawnTextLabels });
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
     setMovingChannel(null);
     setSelectedChannel(null);
     setChannelMenuPos(null);
-  }, [movingChannel, drawnChannels, drawnTrendlines, drawnHorizontals, drawnTextLabels, margin.left, margin.top, findMagnetPoint, saveToHistory]);
+  }, [movingChannel, drawnChannels, drawnTrendlines, drawnHorizontals, drawnHChannels, drawnSChannels, drawnTextLabels, margin.left, margin.top, findMagnetPoint, saveToHistory]);
   
   // Handle clicking an endpoint in move mode - immediately start moving
   const handleEndpointClick = useCallback((lineId: string, point: 'p1' | 'p2') => {
@@ -1347,11 +1377,11 @@ export default function CryptoSandbox() {
       return l;
     });
     setDrawnTrendlines(newTrendlines);
-    saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, labels: drawnTextLabels });
+    saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
     
     // Stay in move mode, just clear the moving point
     setMovingPoint(null);
-  }, [movingPoint, findMagnetPoint, margin.left, margin.top, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, saveToHistory]);
+  }, [movingPoint, findMagnetPoint, margin.left, margin.top, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   // Universal click pulse - show on any placement/move/selection
   const [clickPulse, setClickPulse] = useState<{ x: number; y: number } | null>(null);
@@ -1788,12 +1818,14 @@ export default function CryptoSandbox() {
         
         const hchannelGroup = drawingsGroup.append('g').attr('class', `hchannel-${hchannel.id}`);
         
-        // Fill area
+        // Fill area - use min/max to handle any draw direction
+        const yMin = Math.min(yTop, yBottom);
+        const yMax = Math.max(yTop, yBottom);
         hchannelGroup.append('rect')
           .attr('x', Math.min(x1, x2))
-          .attr('y', yTop)
+          .attr('y', yMin)
           .attr('width', Math.abs(x2 - x1))
-          .attr('height', yBottom - yTop)
+          .attr('height', Math.max(1, yMax - yMin))
           .attr('fill', hchannel.color)
           .attr('fill-opacity', 0.1)
           .style('cursor', 'pointer')
@@ -3523,6 +3555,258 @@ export default function CryptoSandbox() {
                     const newLines = [...(channel?.internalLines || []), { percent: 50, visible: true, label: '50%' }];
                     updateChannel(selectedChannel, { internalLines: newLines });
                   }} className="text-xs text-blue-400 hover:underline mt-1">+ Add line</button>
+                </div>
+              );
+            })()}
+            
+            {/* Horizontal Channel action menu */}
+            {hchannelMenuPos && selectedHChannel && (() => {
+              const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
+              return (
+                <div 
+                  className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
+                  style={{ left: hchannelMenuPos.x, top: hchannelMenuPos.y }}
+                  data-menu="hchannel"
+                >
+                  {/* Drag handle */}
+                  <div 
+                    className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setDraggingMenu(true);
+                      menuDragOffset.current = { x: e.clientX - hchannelMenuPos.x, y: e.clientY - hchannelMenuPos.y };
+                    }}
+                  >
+                    <div className="w-6 h-0.5 bg-slate-400 rounded" />
+                  </div>
+                  <div className="p-1 flex flex-col gap-1">
+                    {/* Delete */}
+                    <button onClick={deleteHChannel} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete" data-testid="btn-hchannel-delete">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                      </svg>
+                    </button>
+                    {/* Lines/Colors submenu */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'hch-lines' ? null : 'hch-lines')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'hch-lines' ? 'bg-slate-600' : ''}`}
+                      title="Line Settings"
+                      data-testid="btn-hchannel-lines"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="3" y1="5" x2="17" y2="5" />
+                        <line x1="3" y1="10" x2="17" y2="10" strokeDasharray="4,2" />
+                        <line x1="3" y1="15" x2="17" y2="15" />
+                      </svg>
+                    </button>
+                    {/* Move */}
+                    <button
+                      onClick={() => {
+                        setMovingHChannel(selectedHChannel);
+                        setHChannelMenuPos(null);
+                        setActiveSubmenu(null);
+                      }}
+                      className="p-2 hover:bg-slate-700 rounded text-white"
+                      title="Move"
+                      data-testid="btn-hchannel-move"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
+                      </svg>
+                    </button>
+                    {/* Favorite */}
+                    <button 
+                      onClick={() => updateHChannel(selectedHChannel, { isFavorite: !hchannel?.isFavorite })} 
+                      className={`p-2 hover:bg-slate-700 rounded ${hchannel?.isFavorite ? 'text-yellow-400' : 'text-gray-400'}`} 
+                      title="Save as Default"
+                      data-testid="btn-hchannel-favorite"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                        <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* HChannel lines submenu */}
+            {activeSubmenu === 'hch-lines' && hchannelMenuPos && selectedHChannel && (() => {
+              const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
+              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 220 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 230;
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: hchannelMenuPos.y, minWidth: '200px' }}>
+                  {/* Top Line Color */}
+                  <div className="text-xs text-gray-400 mb-1">Top Line</div>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {TRENDLINE_COLORS.map(color => (
+                      <button key={color} onClick={() => updateHChannel(selectedHChannel, { topLineColor: color })}
+                        className={`w-5 h-5 rounded border-2 ${hchannel?.topLineColor === color ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }} data-testid={`btn-hchannel-top-color-${color.replace('#', '')}`} />
+                    ))}
+                  </div>
+                  
+                  {/* Bottom Line Color */}
+                  <div className="text-xs text-gray-400 mb-1">Bottom Line</div>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {TRENDLINE_COLORS.map(color => (
+                      <button key={color} onClick={() => updateHChannel(selectedHChannel, { bottomLineColor: color })}
+                        className={`w-5 h-5 rounded border-2 ${hchannel?.bottomLineColor === color ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }} data-testid={`btn-hchannel-bottom-color-${color.replace('#', '')}`} />
+                    ))}
+                  </div>
+                  
+                  {/* Internal Lines */}
+                  <div className="text-xs text-gray-400 mb-1 mt-2">Internal Lines</div>
+                  {hchannel?.internalLines.map((line, idx) => (
+                    <div key={idx} className="flex items-center gap-1 mb-1">
+                      <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={line.visible} 
+                        data-testid={`checkbox-hchannel-internal-${idx}`}
+                        onChange={e => {
+                          const newLines = [...(hchannel?.internalLines || [])];
+                          newLines[idx] = { ...newLines[idx], visible: e.target.checked };
+                          updateHChannel(selectedHChannel, { internalLines: newLines });
+                        }} />
+                      <span className="text-white text-xs w-8">{line.percent}%</span>
+                      <div className="flex gap-0.5">
+                        {['#facc15', '#ef4444', '#22c55e', '#3b82f6', '#a855f7'].map(color => (
+                          <button key={color} onClick={() => {
+                            const newLines = [...(hchannel?.internalLines || [])];
+                            newLines[idx] = { ...newLines[idx], color };
+                            updateHChannel(selectedHChannel, { internalLines: newLines });
+                          }}
+                            className={`w-4 h-4 rounded ${line.color === color ? 'ring-1 ring-white' : ''}`}
+                            style={{ backgroundColor: color }} data-testid={`btn-hchannel-internal-${idx}-color-${color.replace('#', '')}`} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            
+            {/* Sloped Channel action menu */}
+            {schannelMenuPos && selectedSChannel && (() => {
+              const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
+              return (
+                <div 
+                  className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
+                  style={{ left: schannelMenuPos.x, top: schannelMenuPos.y }}
+                  data-menu="schannel"
+                >
+                  {/* Drag handle */}
+                  <div 
+                    className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setDraggingMenu(true);
+                      menuDragOffset.current = { x: e.clientX - schannelMenuPos.x, y: e.clientY - schannelMenuPos.y };
+                    }}
+                  >
+                    <div className="w-6 h-0.5 bg-slate-400 rounded" />
+                  </div>
+                  <div className="p-1 flex flex-col gap-1">
+                    {/* Delete */}
+                    <button onClick={deleteSChannel} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete" data-testid="btn-schannel-delete">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                      </svg>
+                    </button>
+                    {/* Lines/Colors submenu */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'sch-lines' ? null : 'sch-lines')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'sch-lines' ? 'bg-slate-600' : ''}`}
+                      title="Line Settings"
+                      data-testid="btn-schannel-lines"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="3" y1="5" x2="17" y2="5" />
+                        <line x1="3" y1="10" x2="17" y2="10" strokeDasharray="4,2" />
+                        <line x1="3" y1="15" x2="17" y2="15" />
+                      </svg>
+                    </button>
+                    {/* Move */}
+                    <button
+                      onClick={() => {
+                        setMovingSChannel(selectedSChannel);
+                        setSChannelMenuPos(null);
+                        setActiveSubmenu(null);
+                      }}
+                      className="p-2 hover:bg-slate-700 rounded text-white"
+                      title="Move"
+                      data-testid="btn-schannel-move"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
+                      </svg>
+                    </button>
+                    {/* Favorite */}
+                    <button 
+                      onClick={() => updateSChannel(selectedSChannel, { isFavorite: !schannel?.isFavorite })} 
+                      className={`p-2 hover:bg-slate-700 rounded ${schannel?.isFavorite ? 'text-yellow-400' : 'text-gray-400'}`} 
+                      title="Save as Default"
+                      data-testid="btn-schannel-favorite"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                        <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* SChannel lines submenu */}
+            {activeSubmenu === 'sch-lines' && schannelMenuPos && selectedSChannel && (() => {
+              const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
+              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 220 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 230;
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: schannelMenuPos.y, minWidth: '200px' }}>
+                  {/* Top Line Color */}
+                  <div className="text-xs text-gray-400 mb-1">Top Line</div>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {TRENDLINE_COLORS.map(color => (
+                      <button key={color} onClick={() => updateSChannel(selectedSChannel, { topLineColor: color })}
+                        className={`w-5 h-5 rounded border-2 ${schannel?.topLineColor === color ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }} data-testid={`btn-schannel-top-color-${color.replace('#', '')}`} />
+                    ))}
+                  </div>
+                  
+                  {/* Bottom Line Color */}
+                  <div className="text-xs text-gray-400 mb-1">Bottom Line</div>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {TRENDLINE_COLORS.map(color => (
+                      <button key={color} onClick={() => updateSChannel(selectedSChannel, { bottomLineColor: color })}
+                        className={`w-5 h-5 rounded border-2 ${schannel?.bottomLineColor === color ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }} data-testid={`btn-schannel-bottom-color-${color.replace('#', '')}`} />
+                    ))}
+                  </div>
+                  
+                  {/* Internal Lines */}
+                  <div className="text-xs text-gray-400 mb-1 mt-2">Internal Lines</div>
+                  {schannel?.internalLines.map((line, idx) => (
+                    <div key={idx} className="flex items-center gap-1 mb-1">
+                      <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={line.visible} 
+                        data-testid={`checkbox-schannel-internal-${idx}`}
+                        onChange={e => {
+                          const newLines = [...(schannel?.internalLines || [])];
+                          newLines[idx] = { ...newLines[idx], visible: e.target.checked };
+                          updateSChannel(selectedSChannel, { internalLines: newLines });
+                        }} />
+                      <span className="text-white text-xs w-8">{line.percent}%</span>
+                      <div className="flex gap-0.5">
+                        {['#facc15', '#ef4444', '#22c55e', '#3b82f6', '#a855f7'].map(color => (
+                          <button key={color} onClick={() => {
+                            const newLines = [...(schannel?.internalLines || [])];
+                            newLines[idx] = { ...newLines[idx], color };
+                            updateSChannel(selectedSChannel, { internalLines: newLines });
+                          }}
+                            className={`w-4 h-4 rounded ${line.color === color ? 'ring-1 ring-white' : ''}`}
+                            style={{ backgroundColor: color }} data-testid={`btn-schannel-internal-${idx}-color-${color.replace('#', '')}`} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               );
             })()}
