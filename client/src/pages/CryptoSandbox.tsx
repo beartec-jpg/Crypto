@@ -4038,7 +4038,7 @@ export default function CryptoSandbox() {
                   </div>
                   <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
                   {hchannel?.internalLines.map((line, idx) => (
-                    <div key={idx} className="flex items-center gap-1 mb-2">
+                    <div key={idx} className="flex items-center gap-2 mb-2">
                       <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={line.visible} 
                         data-testid={`checkbox-hchannel-internal-${idx}`}
                         onChange={e => {
@@ -4047,33 +4047,15 @@ export default function CryptoSandbox() {
                           updateHChannel(selectedHChannel, { internalLines: newLines });
                         }} />
                       <span className="text-white text-xs w-8">{line.percent}%</span>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex gap-0.5 items-center">
-                          <span className="text-gray-500 text-[9px] w-6">Line</span>
-                          {['#facc15', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ffffff'].map(color => (
-                            <button key={color} onClick={() => {
-                              const newLines = [...(hchannel?.internalLines || [])];
-                              newLines[idx] = { ...newLines[idx], color };
-                              updateHChannel(selectedHChannel, { internalLines: newLines });
-                            }}
-                              className={`w-4 h-4 rounded ${line.color === color ? 'ring-1 ring-blue-400' : ''} ${color === '#ffffff' ? 'border border-gray-400' : ''}`}
-                              style={{ backgroundColor: color }} data-testid={`btn-hchannel-internal-${idx}-color-${color.replace('#', '')}`} />
-                          ))}
-                        </div>
-                        <div className="flex gap-0.5 items-center">
-                          <span className="text-gray-500 text-[9px] w-6">BG</span>
-                          {['transparent', '#1e293b', '#0f172a', '#000000', '#ffffff'].map((bgColor, bgIdx) => (
-                            <button key={bgIdx} onClick={() => {
-                              const newLines = [...(hchannel?.internalLines || [])];
-                              newLines[idx] = { ...newLines[idx], bgColor };
-                              updateHChannel(selectedHChannel, { internalLines: newLines });
-                            }}
-                              className={`w-4 h-4 rounded ${line.bgColor === bgColor ? 'ring-1 ring-blue-400' : ''} ${bgColor === '#ffffff' || bgColor === 'transparent' ? 'border border-gray-400' : ''}`}
-                              style={{ backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor, backgroundImage: bgColor === 'transparent' ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)' : 'none', backgroundSize: '4px 4px', backgroundPosition: '0 0, 0 2px, 2px -2px, -2px 0px' }}
-                              data-testid={`btn-hchannel-internal-${idx}-bg-${bgIdx}`} />
-                          ))}
-                        </div>
-                      </div>
+                      {['#ef4444', '#22c55e', '#ffffff'].map(color => (
+                        <button key={color} onClick={() => {
+                          const newLines = [...(hchannel?.internalLines || [])];
+                          newLines[idx] = { ...newLines[idx], color };
+                          updateHChannel(selectedHChannel, { internalLines: newLines });
+                        }}
+                          className={`w-5 h-5 rounded ${line.color === color ? 'ring-1 ring-blue-400' : ''} ${color === '#ffffff' ? 'border border-gray-400' : ''}`}
+                          style={{ backgroundColor: color }} data-testid={`btn-hchannel-internal-${idx}-color-${color.replace('#', '')}`} />
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -4368,7 +4350,7 @@ export default function CryptoSandbox() {
                   </div>
                   <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
                   {schannel?.internalLines.map((line, idx) => (
-                    <div key={idx} className="flex items-center gap-1 mb-2">
+                    <div key={idx} className="flex items-center gap-2 mb-2">
                       <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={line.visible} 
                         data-testid={`checkbox-schannel-internal-${idx}`}
                         onChange={e => {
@@ -4377,33 +4359,15 @@ export default function CryptoSandbox() {
                           updateSChannel(selectedSChannel, { internalLines: newLines });
                         }} />
                       <span className="text-white text-xs w-8">{line.percent}%</span>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex gap-0.5 items-center">
-                          <span className="text-gray-500 text-[9px] w-6">Line</span>
-                          {['#facc15', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ffffff'].map(color => (
-                            <button key={color} onClick={() => {
-                              const newLines = [...(schannel?.internalLines || [])];
-                              newLines[idx] = { ...newLines[idx], color };
-                              updateSChannel(selectedSChannel, { internalLines: newLines });
-                            }}
-                              className={`w-4 h-4 rounded ${line.color === color ? 'ring-1 ring-blue-400' : ''} ${color === '#ffffff' ? 'border border-gray-400' : ''}`}
-                              style={{ backgroundColor: color }} data-testid={`btn-schannel-internal-${idx}-color-${color.replace('#', '')}`} />
-                          ))}
-                        </div>
-                        <div className="flex gap-0.5 items-center">
-                          <span className="text-gray-500 text-[9px] w-6">BG</span>
-                          {['transparent', '#1e293b', '#0f172a', '#000000', '#ffffff'].map((bgColor, bgIdx) => (
-                            <button key={bgIdx} onClick={() => {
-                              const newLines = [...(schannel?.internalLines || [])];
-                              newLines[idx] = { ...newLines[idx], bgColor };
-                              updateSChannel(selectedSChannel, { internalLines: newLines });
-                            }}
-                              className={`w-4 h-4 rounded ${line.bgColor === bgColor ? 'ring-1 ring-blue-400' : ''} ${bgColor === '#ffffff' || bgColor === 'transparent' ? 'border border-gray-400' : ''}`}
-                              style={{ backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor, backgroundImage: bgColor === 'transparent' ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)' : 'none', backgroundSize: '4px 4px', backgroundPosition: '0 0, 0 2px, 2px -2px, -2px 0px' }}
-                              data-testid={`btn-schannel-internal-${idx}-bg-${bgIdx}`} />
-                          ))}
-                        </div>
-                      </div>
+                      {['#ef4444', '#22c55e', '#ffffff'].map(color => (
+                        <button key={color} onClick={() => {
+                          const newLines = [...(schannel?.internalLines || [])];
+                          newLines[idx] = { ...newLines[idx], color };
+                          updateSChannel(selectedSChannel, { internalLines: newLines });
+                        }}
+                          className={`w-5 h-5 rounded ${line.color === color ? 'ring-1 ring-blue-400' : ''} ${color === '#ffffff' ? 'border border-gray-400' : ''}`}
+                          style={{ backgroundColor: color }} data-testid={`btn-schannel-internal-${idx}-color-${color.replace('#', '')}`} />
+                      ))}
                     </div>
                   ))}
                 </div>
