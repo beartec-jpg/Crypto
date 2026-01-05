@@ -1412,13 +1412,14 @@ export default function CryptoSandbox() {
               className="absolute inset-0 overflow-visible" 
               data-zoom={zoomVersion}
               style={{ pointerEvents: activeTool === 'trendline' ? 'none' : 'auto' }}
-              onClick={(e) => {
-                // Click on empty space closes menu
-                if (e.target === e.currentTarget) {
-                  closeTrendlineMenu();
-                }
-              }}
             >
+              {/* Background rect to catch clicks on empty space */}
+              <rect 
+                x={0} y={0} 
+                width={dimensions.width} height={dimensions.height} 
+                fill="transparent"
+                onClick={() => closeTrendlineMenu()}
+              />
               {drawnTrendlines.map((line) => {
                 if (!xScaleRef.current || !yScaleRef.current) return null;
                 let x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
