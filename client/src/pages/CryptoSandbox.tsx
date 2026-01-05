@@ -1118,6 +1118,7 @@ export default function CryptoSandbox() {
         const halfRange = (maxPrice - minPrice) / 2;
         const newHalfRange = halfRange * Math.max(0.1, factor);
         const newDomain: [number, number] = [midPrice - newHalfRange, midPrice + newHalfRange];
+        console.log('Y-axis dragging, newDomain:', newDomain);
         setManualYDomain(newDomain);
         setZoomVersion(v => v + 1);
       }
@@ -1504,9 +1505,11 @@ export default function CryptoSandbox() {
                 background: yAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
               }}
               onMouseDown={(e) => {
+                console.log('Y-axis mouseDown', yScaleRef.current);
                 if (!yScaleRef.current) return;
                 e.preventDefault();
                 const domain = yScaleRef.current.domain() as [number, number];
+                console.log('Y-axis drag start, domain:', domain);
                 yAxisDragRef.current = { startY: e.clientY, startDomain: domain };
                 setManualYDomain(domain);
                 setYAxisManual(true);
