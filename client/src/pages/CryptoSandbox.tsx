@@ -3018,6 +3018,60 @@ export default function CryptoSandbox() {
                   setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
                 }
               }}
+              onClick={(e) => {
+                // Mouse click in crosshair mode - same logic as touch tap
+                if (crosshairMode && crosshairPos && !activeTool) {
+                  // Check for move mode - place point or pick endpoint
+                  if (movingPoint) {
+                    placeMovingPoint(crosshairPos.x, crosshairPos.y);
+                  } else if (moveMode && movingTrendline) {
+                    // Find nearby endpoint to pick up
+                    const endpoint = findNearbyEndpoint(crosshairPos.x, crosshairPos.y);
+                    if (endpoint) {
+                      handleEndpointClick(movingTrendline, endpoint);
+                    }
+                  } else {
+                    // Check for any drawing elements at click location
+                    const candidates = collectHitCandidates(crosshairPos.x, crosshairPos.y);
+                    console.log('Selection candidates:', candidates.length, candidates);
+                    if (candidates.length > 1) {
+                      // Multiple overlapping elements - show picker
+                      const pickerX = Math.min(Math.max(crosshairPos.x + 12, 60), dimensions.width - margin.right - 60);
+                      const pickerY = Math.min(Math.max(crosshairPos.y, 50), dimensions.height - 150);
+                      setSelectionCandidates(candidates);
+                      setSelectionPickerPos({ x: pickerX, y: pickerY });
+                      setSelectionPickerClickPos({ x: crosshairPos.x, y: crosshairPos.y });
+                    } else if (candidates.length === 1) {
+                      // Single element - select directly
+                      const candidate = candidates[0];
+                      switch (candidate.type) {
+                        case 'trendline':
+                          handleTrendlineSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'horizontal':
+                          handleHorizontalSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'channel':
+                          handleChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'hchannel':
+                          handleHChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'schannel':
+                          handleSChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                        case 'label':
+                          handleTextLabelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
+                          break;
+                      }
+                    } else {
+                      // Click on empty space - close any open menu
+                      closeSelectionPicker();
+                      closeTrendlineMenu();
+                    }
+                  }
+                }
+              }}
               onTouchStart={(e) => {
                 if (crosshairMode && e.touches[0]) {
                   e.preventDefault();
