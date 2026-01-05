@@ -1882,9 +1882,9 @@ export default function CryptoSandbox() {
           .attr('stroke-dasharray', topStrokeDash)
           .style('pointer-events', 'none');
         
-        // Calculate label positions, keeping on screen
-        const chartLeft = margin.left + 5;
-        const chartRight = dimensions.width - margin.right - 5;
+        // Calculate label positions, keeping on screen (avoid toolbar ~50px and axis ~60px)
+        const chartLeft = margin.left + 50;
+        const chartRight = dimensions.width - margin.right - 60;
         const leftX = Math.max(Math.min(x1, x2) + 5, chartLeft);
         const centerX = Math.max(chartLeft, Math.min(chartRight, (x1 + x2) / 2));
         const rightX = Math.min(Math.max(x1, x2) - 5, chartRight);
@@ -2016,9 +2016,9 @@ export default function CryptoSandbox() {
           .attr('stroke-dasharray', sTopStrokeDash)
           .style('pointer-events', 'none');
         
-        // Calculate label positions for sloped channel, keeping on screen
-        const sChartLeft = margin.left + 5;
-        const sChartRight = dimensions.width - margin.right - 5;
+        // Calculate label positions for sloped channel, keeping on screen (avoid toolbar ~50px and axis ~60px)
+        const sChartLeft = margin.left + 50;
+        const sChartRight = dimensions.width - margin.right - 60;
         
         // Helper to render sloped channel labels at multiple positions
         const renderSLabel = (text: string, lx1: number, ly1: number, lx2: number, ly2: number, yOffset: number, color: string, fontSize: string = '11px', bold: boolean = true) => {
