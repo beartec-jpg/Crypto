@@ -1331,15 +1331,18 @@ export default function CryptoSandbox() {
         });
         
         if (visibleCandles.length > 0) {
-          const newPriceExtent = [
-            d3.min(visibleCandles, d => d.low) as number * 0.999,
-            d3.max(visibleCandles, d => d.high) as number * 1.001
-          ];
+          // Use manual Y domain if set, otherwise auto-calculate from visible candles
+          const newPriceExtent = (yAxisManual && manualYDomain) 
+            ? manualYDomain
+            : [
+                d3.min(visibleCandles, d => d.low) as number * 0.999,
+                d3.max(visibleCandles, d => d.high) as number * 1.001
+              ];
           
           const newYScale = d3.scaleLinear()
             .domain(newPriceExtent)
-            .range([innerHeight, 0])
-            .nice();
+            .range([innerHeight, 0]);
+          if (!yAxisManual) newYScale.nice();
           yScaleRef.current = newYScale;
           
           // Update axes
