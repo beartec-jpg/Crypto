@@ -47,6 +47,7 @@ export default function CryptoSandbox() {
   const yAxisDragRef = useRef<{ startY: number; startDomain: [number, number] } | null>(null);
   const xAxisDragRef = useRef<{ startX: number; startDomain: [Date, Date] } | null>(null);
   const panDragRef = useRef<{ startX: number; startY: number; startXDomain: [Date, Date]; startYDomain: [number, number] } | null>(null);
+  const touchRef = useRef<{ touches: { x: number; y: number }[]; startXDomain: [Date, Date]; startYDomain: [number, number]; startDistance?: number } | null>(null);
   
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
   const [crosshairMode, setCrosshairMode] = useState(false);
@@ -1582,6 +1583,107 @@ export default function CryptoSandbox() {
                 };
               }}
               onWheel={handleChartWheel}
+              onTouchStart={(e) => {
+                if (activeTool) return;
+                if (!xScaleRef.current || !yScaleRef.current) return;
+                
+                const rect = e.currentTarget.getBoundingClientRect();
+                const touches = Array.from(e.touches).map(t => ({
+                  x: t.clientX - rect.left,
+                  y: t.clientY - rect.top
+                }));
+                
+                // Check if first touch is in chart area
+                if (touches[0].x < margin.left || touches[0].x > dimensions.width - margin.right) return;
+                if (touches[0].y < margin.top || touches[0].y > dimensions.height - margin.bottom) return;
+                
+                const xDomain = (manualXDomain || xScaleRef.current.domain()) as [Date, Date];
+                const yDomain = (manualYDomain || yScaleRef.current.domain()) as [number, number];
+                
+                // Calculate distance for pinch zoom
+                let startDistance: number | undefined;
+                if (touches.length >= 2) {
+                  const dx = touches[1].x - touches[0].x;
+                  const dy = touches[1].y - touches[0].y;
+                  startDistance = Math.sqrt(dx * dx + dy * dy);
+                }
+                
+                touchRef.current = {
+                  touches: touches.map(t => ({ x: t.x + rect.left, y: t.y + rect.top })),
+                  startXDomain: xDomain,
+                  startYDomain: yDomain,
+                  startDistance
+                };
+              }}
+              onTouchMove={(e) => {
+                if (!touchRef.current || !xScaleRef.current || !yScaleRef.current) return;
+                e.preventDefault();
+                
+                const rect = e.currentTarget.getBoundingClientRect();
+                const currentTouches = Array.from(e.touches).map(t => ({
+                  x: t.clientX,
+                  y: t.clientY
+                }));
+                
+                if (currentTouches.length === 1 && touchRef.current.touches.length >= 1) {
+                  // Single finger pan
+                  const deltaX = currentTouches[0].x - touchRef.current.touches[0].x;
+                  const deltaY = currentTouches[0].y - touchRef.current.touches[0].y;
+                  
+                  const [startMinTime, startMaxTime] = touchRef.current.startXDomain;
+                  const timeRange = startMaxTime.getTime() - startMinTime.getTime();
+                  const chartWidth = dimensions.width - margin.left - margin.right;
+                  const timeDelta = (deltaX / chartWidth) * timeRange;
+                  
+                  const [startMinPrice, startMaxPrice] = touchRef.current.startYDomain;
+                  const priceRange = startMaxPrice - startMinPrice;
+                  const chartHeight = dimensions.height - margin.top - margin.bottom;
+                  const priceDelta = (deltaY / chartHeight) * priceRange;
+                  
+                  const newXDomain: [Date, Date] = [
+                    new Date(startMinTime.getTime() - timeDelta),
+                    new Date(startMaxTime.getTime() - timeDelta)
+                  ];
+                  const newYDomain: [number, number] = [
+                    startMinPrice + priceDelta,
+                    startMaxPrice + priceDelta
+                  ];
+                  
+                  setManualXDomain(newXDomain);
+                  setManualYDomain(newYDomain);
+                  setXAxisManual(true);
+                  setYAxisManual(true);
+                  setZoomVersion(v => v + 1);
+                } else if (currentTouches.length >= 2 && touchRef.current.startDistance) {
+                  // Pinch zoom
+                  const dx = currentTouches[1].x - currentTouches[0].x;
+                  const dy = currentTouches[1].y - currentTouches[0].y;
+                  const currentDistance = Math.sqrt(dx * dx + dy * dy);
+                  const zoomFactor = touchRef.current.startDistance / currentDistance;
+                  
+                  const [startMinTime, startMaxTime] = touchRef.current.startXDomain;
+                  const midTime = new Date((startMinTime.getTime() + startMaxTime.getTime()) / 2);
+                  const halfTimeRange = (startMaxTime.getTime() - startMinTime.getTime()) / 2;
+                  const newHalfTimeRange = halfTimeRange * zoomFactor;
+                  
+                  const [startMinPrice, startMaxPrice] = touchRef.current.startYDomain;
+                  const midPrice = (startMinPrice + startMaxPrice) / 2;
+                  const halfPriceRange = (startMaxPrice - startMinPrice) / 2;
+                  const newHalfPriceRange = halfPriceRange * zoomFactor;
+                  
+                  setManualXDomain([
+                    new Date(midTime.getTime() - newHalfTimeRange),
+                    new Date(midTime.getTime() + newHalfTimeRange)
+                  ]);
+                  setManualYDomain([midPrice - newHalfPriceRange, midPrice + newHalfPriceRange]);
+                  setXAxisManual(true);
+                  setYAxisManual(true);
+                  setZoomVersion(v => v + 1);
+                }
+              }}
+              onTouchEnd={() => {
+                touchRef.current = null;
+              }}
             />
             
             {/* Y-axis drag zone (right side) for zoom control */}
