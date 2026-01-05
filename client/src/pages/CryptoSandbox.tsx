@@ -163,10 +163,10 @@ export default function CryptoSandbox() {
   const saveToHistory = (newTrendlines: TrendlineData[]) => {
     const newHistory = trendlineHistory.slice(0, historyIndex + 1);
     newHistory.push(newTrendlines);
-    // Keep last 50 states
-    if (newHistory.length > 50) newHistory.shift();
+    // Keep last 20 states
+    if (newHistory.length > 20) newHistory.shift();
     setTrendlineHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
+    setHistoryIndex(Math.min(historyIndex + 1, newHistory.length - 1));
   };
   
   const undo = () => {
