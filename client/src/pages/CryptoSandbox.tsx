@@ -120,6 +120,8 @@ export default function CryptoSandbox() {
     internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string }[]; // 25, 50, 75%
     label?: { text: string; value?: string };
     isFavorite?: boolean;
+    extendLeft?: boolean;
+    extendRight?: boolean;
   }
 
   // Sloped Channel - 3 click mode
@@ -143,6 +145,8 @@ export default function CryptoSandbox() {
     internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string }[]; // 25, 50, 75%
     label?: { text: string; value?: string };
     isFavorite?: boolean;
+    extendLeft?: boolean;
+    extendRight?: boolean;
   }
   
   // Text label data
@@ -1830,11 +1834,16 @@ export default function CryptoSandbox() {
       
       // Draw horizontal channels (new - 2 click mode)
       drawnHChannels.forEach(hchannel => {
-        const x1 = xS(new Date(hchannel.x1));
-        const x2 = xS(new Date(hchannel.x2));
+        let x1 = xS(new Date(hchannel.x1));
+        let x2 = xS(new Date(hchannel.x2));
         const yTop = yS(hchannel.topPrice);
         const yBottom = yS(hchannel.bottomPrice);
         const isSelected = selectedHChannel === hchannel.id;
+        
+        // Extend left/right for horizontal channels
+        const origX1 = x1, origX2 = x2;
+        if (hchannel.extendLeft) x1 = margin.left;
+        if (hchannel.extendRight) x2 = dimensions.width - margin.right;
         
         const hchannelGroup = drawingsGroup.append('g').attr('class', `hchannel-${hchannel.id}`);
         
@@ -1931,15 +1940,35 @@ export default function CryptoSandbox() {
       
       // Draw sloped channels (new - 3 click mode)
       drawnSChannels.forEach(schannel => {
-        const topX1 = xS(new Date(schannel.topLine.p1.time));
-        const topY1 = yS(schannel.topLine.p1.price);
-        const topX2 = xS(new Date(schannel.topLine.p2.time));
-        const topY2 = yS(schannel.topLine.p2.price);
-        const botX1 = xS(new Date(schannel.bottomLine.p1.time));
-        const botY1 = yS(schannel.bottomLine.p1.price);
-        const botX2 = xS(new Date(schannel.bottomLine.p2.time));
-        const botY2 = yS(schannel.bottomLine.p2.price);
+        let topX1 = xS(new Date(schannel.topLine.p1.time));
+        let topY1 = yS(schannel.topLine.p1.price);
+        let topX2 = xS(new Date(schannel.topLine.p2.time));
+        let topY2 = yS(schannel.topLine.p2.price);
+        let botX1 = xS(new Date(schannel.bottomLine.p1.time));
+        let botY1 = yS(schannel.bottomLine.p1.price);
+        let botX2 = xS(new Date(schannel.bottomLine.p2.time));
+        let botY2 = yS(schannel.bottomLine.p2.price);
         const isSelected = selectedSChannel === schannel.id;
+        
+        // Extend left/right for sloped channels (calculate slope and extend)
+        if (schannel.extendLeft || schannel.extendRight) {
+          const topSlope = topX2 !== topX1 ? (topY2 - topY1) / (topX2 - topX1) : 0;
+          const botSlope = botX2 !== botX1 ? (botY2 - botY1) / (botX2 - botX1) : 0;
+          if (schannel.extendLeft) {
+            const leftX = margin.left;
+            topY1 = topY1 + topSlope * (leftX - topX1);
+            topX1 = leftX;
+            botY1 = botY1 + botSlope * (leftX - botX1);
+            botX1 = leftX;
+          }
+          if (schannel.extendRight) {
+            const rightX = dimensions.width - margin.right;
+            topY2 = topY2 + topSlope * (rightX - topX2);
+            topX2 = rightX;
+            botY2 = botY2 + botSlope * (rightX - botX2);
+            botX2 = rightX;
+          }
+        }
         
         const schannelGroup = drawingsGroup.append('g').attr('class', `schannel-${schannel.id}`);
         
@@ -3813,6 +3842,17 @@ export default function CryptoSandbox() {
                         <path d="M3 5h14M3 10h10M3 15h6" />
                       </svg>
                     </button>
+                    {/* Extend */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'hch-extend' ? null : 'hch-extend')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'hch-extend' ? 'bg-slate-600' : ''}`}
+                      title="Extend"
+                      data-testid="btn-hchannel-extend"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 10h12M16 10l-4-4M16 10l-4 4" />
+                      </svg>
+                    </button>
                     {/* Favorite */}
                     <button 
                       onClick={() => updateHChannel(selectedHChannel, { isFavorite: !hchannel?.isFavorite })} 
@@ -3824,6 +3864,31 @@ export default function CryptoSandbox() {
                         <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
                       </svg>
                     </button>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* HChannel Extend submenu */}
+            {activeSubmenu === 'hch-extend' && hchannelMenuPos && selectedHChannel && (() => {
+              const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
+              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 120 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 130;
+              const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 100);
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY }}>
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
+                      <input type="checkbox" checked={hchannel?.extendLeft || false}
+                        onChange={(e) => updateHChannel(selectedHChannel, { extendLeft: e.target.checked })}
+                        className="w-4 h-4" data-testid="checkbox-hchannel-extend-left" />
+                      Extend Left
+                    </label>
+                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
+                      <input type="checkbox" checked={hchannel?.extendRight || false}
+                        onChange={(e) => updateHChannel(selectedHChannel, { extendRight: e.target.checked })}
+                        className="w-4 h-4" data-testid="checkbox-hchannel-extend-right" />
+                      Extend Right
+                    </label>
                   </div>
                 </div>
               );
@@ -4054,6 +4119,17 @@ export default function CryptoSandbox() {
                         <path d="M3 5h14M3 10h10M3 15h6" />
                       </svg>
                     </button>
+                    {/* Extend */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'sch-extend' ? null : 'sch-extend')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'sch-extend' ? 'bg-slate-600' : ''}`}
+                      title="Extend"
+                      data-testid="btn-schannel-extend"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 10h12M16 10l-4-4M16 10l-4 4" />
+                      </svg>
+                    </button>
                     {/* Favorite */}
                     <button 
                       onClick={() => updateSChannel(selectedSChannel, { isFavorite: !schannel?.isFavorite })} 
@@ -4065,6 +4141,31 @@ export default function CryptoSandbox() {
                         <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
                       </svg>
                     </button>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* SChannel Extend submenu */}
+            {activeSubmenu === 'sch-extend' && schannelMenuPos && selectedSChannel && (() => {
+              const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
+              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 120 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 130;
+              const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 100);
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY }}>
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
+                      <input type="checkbox" checked={schannel?.extendLeft || false}
+                        onChange={(e) => updateSChannel(selectedSChannel, { extendLeft: e.target.checked })}
+                        className="w-4 h-4" data-testid="checkbox-schannel-extend-left" />
+                      Extend Left
+                    </label>
+                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
+                      <input type="checkbox" checked={schannel?.extendRight || false}
+                        onChange={(e) => updateSChannel(selectedSChannel, { extendRight: e.target.checked })}
+                        className="w-4 h-4" data-testid="checkbox-schannel-extend-right" />
+                      Extend Right
+                    </label>
                   </div>
                 </div>
               );
