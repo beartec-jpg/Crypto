@@ -2953,6 +2953,100 @@ export default function CryptoSandbox() {
               </div>
             )}
             
+            {/* Horizontal Channel drawing overlay (2-click) */}
+            {activeTool === 'hchannel' && (
+              <div 
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ pointerEvents: 'auto' }}
+                data-drawing-overlay
+                onMouseMove={(e) => {
+                  if (crosshairMode) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }
+                }}
+                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickX = e.clientX - rect.left;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  handleHChannelClick(clickX, clickY);
+                }}
+              >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
+                {hchannelPoints.length === 1 && (
+                  <div className="absolute w-3 h-3 bg-cyan-400 rounded-full pointer-events-none" style={{ left: hchannelPoints[0].x - 6, top: hchannelPoints[0].y - 6 }} />
+                )}
+                {hchannelPoints.length === 1 && crosshairMode && crosshairPos && (
+                  <svg className="absolute inset-0 pointer-events-none overflow-visible">
+                    <line x1={0} y1={hchannelPoints[0].y} x2={dimensions.width} y2={hchannelPoints[0].y} stroke="#22d3ee" strokeWidth="1" strokeDasharray="5,5" />
+                    <line x1={0} y1={crosshairPos.y} x2={dimensions.width} y2={crosshairPos.y} stroke="#22d3ee" strokeWidth="1" strokeDasharray="5,5" />
+                  </svg>
+                )}
+                <div className="absolute top-14 left-14 bg-cyan-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                  {hchannelPoints.length === 0 ? 'Click for top line' : 'Click for bottom line'}
+                </div>
+              </div>
+            )}
+            
+            {/* Sloped Channel drawing overlay (3-click) */}
+            {activeTool === 'schannel' && (
+              <div 
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ pointerEvents: 'auto' }}
+                data-drawing-overlay
+                onMouseMove={(e) => {
+                  if (crosshairMode) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  }
+                }}
+                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickX = e.clientX - rect.left;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  handleSChannelClick(clickX, clickY);
+                }}
+              >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
+                {schannelPoints.length >= 1 && (
+                  <div className="absolute w-3 h-3 bg-amber-400 rounded-full pointer-events-none" style={{ left: schannelPoints[0].x - 6, top: schannelPoints[0].y - 6 }} />
+                )}
+                {schannelPoints.length >= 2 && (
+                  <div className="absolute w-3 h-3 bg-amber-400 rounded-full pointer-events-none" style={{ left: schannelPoints[1].x - 6, top: schannelPoints[1].y - 6 }} />
+                )}
+                {schannelPoints.length >= 1 && crosshairMode && crosshairPos && (
+                  <svg className="absolute inset-0 pointer-events-none overflow-visible">
+                    {schannelPoints.length === 1 && (
+                      <line x1={schannelPoints[0].x} y1={schannelPoints[0].y} x2={crosshairPos.x} y2={crosshairPos.y} stroke="#fbbf24" strokeWidth="2" strokeDasharray="5,5" />
+                    )}
+                    {schannelPoints.length === 2 && (
+                      <>
+                        <line x1={schannelPoints[0].x} y1={schannelPoints[0].y} x2={schannelPoints[1].x} y2={schannelPoints[1].y} stroke="#fbbf24" strokeWidth="2" />
+                        <line x1={crosshairPos.x} y1={crosshairPos.y} x2={crosshairPos.x + (schannelPoints[1].x - schannelPoints[0].x)} y2={crosshairPos.y + (schannelPoints[1].y - schannelPoints[0].y)} stroke="#fbbf24" strokeWidth="2" strokeDasharray="5,5" />
+                      </>
+                    )}
+                  </svg>
+                )}
+                <div className="absolute top-14 left-14 bg-amber-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                  {schannelPoints.length === 0 ? 'Click for first edge point' : schannelPoints.length === 1 ? 'Click for second edge point' : 'Click for parallel edge'}
+                </div>
+              </div>
+            )}
+            
             {/* Text label drawing overlay - magnet mode handled by handler */}
             {activeTool === 'label' && (
               <div 
