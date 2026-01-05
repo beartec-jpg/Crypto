@@ -2022,7 +2022,46 @@ export default function CryptoSandbox() {
             {moveMode && !movingPoint && !moveModePopup && (
               <div 
                 className="absolute inset-0 z-20"
-                onClick={() => closeTrendlineMenu()}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickX = e.clientX - rect.left;
+                  const clickY = e.clientY - rect.top;
+                  
+                  // Check if click is near any endpoint of the selected trendline
+                  const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
+                  if (selectedLine && xScale && yScale) {
+                    const x1 = xScale(selectedLine.x1);
+                    const y1 = yScale(selectedLine.y1);
+                    const x2 = xScale(selectedLine.x2);
+                    const y2 = yScale(selectedLine.y2);
+                    const centerX = (x1 + x2) / 2;
+                    const centerY = (y1 + y2) / 2;
+                    
+                    const hitRadius = 25; // Generous hit radius
+                    const distToP1 = Math.sqrt((clickX - x1) ** 2 + (clickY - y1) ** 2);
+                    const distToP2 = Math.sqrt((clickX - x2) ** 2 + (clickY - y2) ** 2);
+                    const distToCenter = Math.sqrt((clickX - centerX) ** 2 + (clickY - centerY) ** 2);
+                    
+                    // If near endpoint, trigger the endpoint click
+                    if (distToP1 < hitRadius) {
+                      handleEndpointClick(selectedLine.id, 'p1', clickX, clickY);
+                      return;
+                    }
+                    if (distToP2 < hitRadius) {
+                      handleEndpointClick(selectedLine.id, 'p2', clickX, clickY);
+                      return;
+                    }
+                    // If near center, trigger whole line move
+                    if (distToCenter < hitRadius) {
+                      setMovingWholeLine(selectedLine.id);
+                      setTrendlineMenuPos(null);
+                      return;
+                    }
+                  }
+                  
+                  // Otherwise exit move mode
+                  closeTrendlineMenu();
+                }}
               />
             )}
           </div>
