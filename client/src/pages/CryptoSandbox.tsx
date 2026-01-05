@@ -1778,6 +1778,147 @@ export default function CryptoSandbox() {
         }
       });
       
+      // Draw horizontal channels (new - 2 click mode)
+      drawnHChannels.forEach(hchannel => {
+        const x1 = xS(new Date(hchannel.x1));
+        const x2 = xS(new Date(hchannel.x2));
+        const yTop = yS(hchannel.topPrice);
+        const yBottom = yS(hchannel.bottomPrice);
+        const isSelected = selectedHChannel === hchannel.id;
+        
+        const hchannelGroup = drawingsGroup.append('g').attr('class', `hchannel-${hchannel.id}`);
+        
+        // Fill area
+        hchannelGroup.append('rect')
+          .attr('x', Math.min(x1, x2))
+          .attr('y', yTop)
+          .attr('width', Math.abs(x2 - x1))
+          .attr('height', yBottom - yTop)
+          .attr('fill', hchannel.color)
+          .attr('fill-opacity', 0.1)
+          .style('cursor', 'pointer')
+          .on('click', function(event) {
+            event.stopPropagation();
+            const rect = svgRef.current?.getBoundingClientRect();
+            if (rect) {
+              handleHChannelSelect(hchannel.id, event.clientX - rect.left, event.clientY - rect.top);
+            }
+          });
+        
+        // Top external line (solid)
+        hchannelGroup.append('line')
+          .attr('x1', x1).attr('y1', yTop).attr('x2', x2).attr('y2', yTop)
+          .attr('stroke', hchannel.topLineColor || hchannel.color)
+          .attr('stroke-width', hchannel.thickness || 2)
+          .attr('stroke-opacity', hchannel.opacity)
+          .style('pointer-events', 'none');
+        
+        // Bottom external line (solid)
+        hchannelGroup.append('line')
+          .attr('x1', x1).attr('y1', yBottom).attr('x2', x2).attr('y2', yBottom)
+          .attr('stroke', hchannel.bottomLineColor || hchannel.color)
+          .attr('stroke-width', hchannel.thickness || 2)
+          .attr('stroke-opacity', hchannel.opacity)
+          .style('pointer-events', 'none');
+        
+        // Internal lines (25%, 50%, 75% - dashed)
+        hchannel.internalLines.forEach(line => {
+          if (line.visible) {
+            const yInternal = yTop + (yBottom - yTop) * (line.percent / 100);
+            const strokeDash = line.style === 'dashed' ? '8,4' : line.style === 'dotted' ? '2,4' : '';
+            hchannelGroup.append('line')
+              .attr('x1', x1).attr('y1', yInternal).attr('x2', x2).attr('y2', yInternal)
+              .attr('stroke', line.color || hchannel.color)
+              .attr('stroke-width', 1)
+              .attr('stroke-opacity', hchannel.opacity * 0.7)
+              .attr('stroke-dasharray', strokeDash)
+              .style('pointer-events', 'none');
+          }
+        });
+        
+        // Selection indicators
+        if (isSelected) {
+          [{ x: x1, y: yTop }, { x: x2, y: yTop }, { x: x1, y: yBottom }, { x: x2, y: yBottom }].forEach(pt => {
+            hchannelGroup.append('circle')
+              .attr('cx', pt.x).attr('cy', pt.y).attr('r', 5)
+              .attr('fill', hchannel.color).attr('stroke', 'white').attr('stroke-width', 2);
+          });
+        }
+      });
+      
+      // Draw sloped channels (new - 3 click mode)
+      drawnSChannels.forEach(schannel => {
+        const topX1 = xS(new Date(schannel.topLine.p1.time));
+        const topY1 = yS(schannel.topLine.p1.price);
+        const topX2 = xS(new Date(schannel.topLine.p2.time));
+        const topY2 = yS(schannel.topLine.p2.price);
+        const botX1 = xS(new Date(schannel.bottomLine.p1.time));
+        const botY1 = yS(schannel.bottomLine.p1.price);
+        const botX2 = xS(new Date(schannel.bottomLine.p2.time));
+        const botY2 = yS(schannel.bottomLine.p2.price);
+        const isSelected = selectedSChannel === schannel.id;
+        
+        const schannelGroup = drawingsGroup.append('g').attr('class', `schannel-${schannel.id}`);
+        
+        // Fill area (polygon between the two lines)
+        schannelGroup.append('polygon')
+          .attr('points', `${topX1},${topY1} ${topX2},${topY2} ${botX2},${botY2} ${botX1},${botY1}`)
+          .attr('fill', schannel.color)
+          .attr('fill-opacity', 0.1)
+          .style('cursor', 'pointer')
+          .on('click', function(event) {
+            event.stopPropagation();
+            const rect = svgRef.current?.getBoundingClientRect();
+            if (rect) {
+              handleSChannelSelect(schannel.id, event.clientX - rect.left, event.clientY - rect.top);
+            }
+          });
+        
+        // Top external line (solid)
+        schannelGroup.append('line')
+          .attr('x1', topX1).attr('y1', topY1).attr('x2', topX2).attr('y2', topY2)
+          .attr('stroke', schannel.topLineColor || schannel.color)
+          .attr('stroke-width', schannel.thickness || 2)
+          .attr('stroke-opacity', schannel.opacity)
+          .style('pointer-events', 'none');
+        
+        // Bottom external line (solid)
+        schannelGroup.append('line')
+          .attr('x1', botX1).attr('y1', botY1).attr('x2', botX2).attr('y2', botY2)
+          .attr('stroke', schannel.bottomLineColor || schannel.color)
+          .attr('stroke-width', schannel.thickness || 2)
+          .attr('stroke-opacity', schannel.opacity)
+          .style('pointer-events', 'none');
+        
+        // Internal lines (25%, 50%, 75% - interpolated between top and bottom)
+        schannel.internalLines.forEach(line => {
+          if (line.visible) {
+            const t = line.percent / 100;
+            const intX1 = topX1 + (botX1 - topX1) * t;
+            const intY1 = topY1 + (botY1 - topY1) * t;
+            const intX2 = topX2 + (botX2 - topX2) * t;
+            const intY2 = topY2 + (botY2 - topY2) * t;
+            const strokeDash = line.style === 'dashed' ? '8,4' : line.style === 'dotted' ? '2,4' : '';
+            schannelGroup.append('line')
+              .attr('x1', intX1).attr('y1', intY1).attr('x2', intX2).attr('y2', intY2)
+              .attr('stroke', line.color || schannel.color)
+              .attr('stroke-width', 1)
+              .attr('stroke-opacity', schannel.opacity * 0.7)
+              .attr('stroke-dasharray', strokeDash)
+              .style('pointer-events', 'none');
+          }
+        });
+        
+        // Selection indicators (4 corner points)
+        if (isSelected) {
+          [{ x: topX1, y: topY1 }, { x: topX2, y: topY2 }, { x: botX1, y: botY1 }, { x: botX2, y: botY2 }].forEach(pt => {
+            schannelGroup.append('circle')
+              .attr('cx', pt.x).attr('cy', pt.y).attr('r', 5)
+              .attr('fill', schannel.color).attr('stroke', 'white').attr('stroke-width', 2);
+          });
+        }
+      });
+      
       // Draw text labels
       drawnTextLabels.forEach(label => {
         const x = xS(new Date(label.time));
@@ -1987,7 +2128,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleTextLabelSelect, handleEndpointClick]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect, handleEndpointClick]);
   
   // Show loading while checking auth
   if (authLoading) {
