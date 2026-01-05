@@ -50,7 +50,7 @@ export default function CryptoSandbox() {
   const TOUCH_THRESHOLD = 15; // pixels - movement above this is a drag, not a tap
   
   // Drawing tool state
-  type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | null;
+  type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | 'hchannel' | 'schannel' | null;
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   
   // Shared types
@@ -82,7 +82,7 @@ export default function CryptoSandbox() {
     label?: { text: string; position: 'left' | 'right' };
   }
   
-  // Channel data
+  // Channel data (legacy - kept for backward compatibility)
   interface ChannelData {
     id: string;
     p1: { time: number; price: number };
@@ -96,6 +96,41 @@ export default function CryptoSandbox() {
     internalLineStyle: LineStyle;
     internalLineColor: string;
     showExternalLines: boolean;
+  }
+  
+  // Horizontal Channel - 2 click mode
+  interface HorizontalChannelData {
+    id: string;
+    x1: number; // First click x position (time)
+    x2: number; // Second click x position (time)
+    topPrice: number; // Top external line price
+    bottomPrice: number; // Bottom external line price
+    color: string;
+    opacity: number;
+    lineStyle: LineStyle;
+    thickness: number;
+    topLineColor: string;
+    bottomLineColor: string;
+    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle }[]; // 25, 50, 75%
+    label?: { text: string; value?: string };
+    isFavorite?: boolean;
+  }
+
+  // Sloped Channel - 3 click mode
+  interface SlopedChannelData {
+    id: string;
+    // First two clicks define external lines and height
+    topLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
+    bottomLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
+    color: string;
+    opacity: number;
+    lineStyle: LineStyle;
+    thickness: number;
+    topLineColor: string;
+    bottomLineColor: string;
+    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle }[]; // 25, 50, 75%
+    label?: { text: string; value?: string };
+    isFavorite?: boolean;
   }
   
   // Text label data
@@ -121,6 +156,20 @@ export default function CryptoSandbox() {
   const [channelPoints, setChannelPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [magnetPulse, setMagnetPulse] = useState<{ x: number; y: number } | null>(null);
   const MAGNET_RADIUS = 30; // pixels
+  
+  // Horizontal Channel state (2-click)
+  const [drawnHChannels, setDrawnHChannels] = useState<HorizontalChannelData[]>([]);
+  const [hchannelPoints, setHChannelPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
+  const [selectedHChannel, setSelectedHChannel] = useState<string | null>(null);
+  const [hchannelMenuPos, setHChannelMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [movingHChannel, setMovingHChannel] = useState<string | null>(null);
+  
+  // Sloped Channel state (3-click)
+  const [drawnSChannels, setDrawnSChannels] = useState<SlopedChannelData[]>([]);
+  const [schannelPoints, setSChannelPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
+  const [selectedSChannel, setSelectedSChannel] = useState<string | null>(null);
+  const [schannelMenuPos, setSChannelMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [movingSChannel, setMovingSChannel] = useState<string | null>(null);
   
   // Selection state for all drawing types
   const [selectedHorizontal, setSelectedHorizontal] = useState<string | null>(null);
@@ -474,11 +523,17 @@ export default function CryptoSandbox() {
       setChannelMenuPos(null);
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
+      setSelectedHChannel(null);
+      setHChannelMenuPos(null);
+      setSelectedSChannel(null);
+      setSChannelMenuPos(null);
       setActiveSubmenu(null);
       // Clear any in-progress drawing
       setTrendlineMode(null);
       setTrendlinePoints([]);
       setChannelPoints([]);
+      setHChannelPoints([]);
+      setSChannelPoints([]);
     }
   }, []);
   
@@ -801,6 +856,215 @@ export default function CryptoSandbox() {
   const closeChannelMenu = useCallback(() => {
     setSelectedChannel(null);
     setChannelMenuPos(null);
+  }, []);
+
+  // === HORIZONTAL CHANNEL HANDLERS === (2-click)
+  const handleHChannelClick = useCallback((clickX: number, clickY: number) => {
+    if (!xScaleRef.current || !yScaleRef.current) return;
+    
+    // Try magnet mode first
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    let point: { x: number; y: number; time: number; price: number };
+    if (magnetPoint) {
+      point = magnetPoint;
+      setMagnetPulse({ x: clickX, y: clickY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      const time = xScaleRef.current.invert(clickX - margin.left).getTime();
+      const price = yScaleRef.current.invert(clickY - margin.top);
+      point = { x: clickX, y: clickY, time, price };
+    }
+    
+    if (hchannelPoints.length === 0) {
+      // First click: first external line
+      setHChannelPoints([point]);
+    } else {
+      // Second click: second external line - complete horizontal channel
+      const click1 = hchannelPoints[0];
+      const click2 = point;
+      const topPrice = Math.max(click1.price, click2.price);
+      const bottomPrice = Math.min(click1.price, click2.price);
+      
+      const newHChannel: HorizontalChannelData = {
+        id: `hch-${Date.now()}`,
+        x1: click1.time,
+        x2: click2.time,
+        topPrice,
+        bottomPrice,
+        color: channelDefaults.color,
+        opacity: channelDefaults.opacity,
+        lineStyle: channelDefaults.lineStyle,
+        thickness: channelDefaults.thickness,
+        topLineColor: channelDefaults.color,
+        bottomLineColor: channelDefaults.color,
+        internalLines: [
+          { percent: 25, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
+          { percent: 50, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
+          { percent: 75, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
+        ],
+      };
+      setDrawnHChannels(prev => [...prev, newHChannel]);
+      setHChannelPoints([]);
+      // Keep tool active for drawing more
+    }
+  }, [hchannelPoints, margin, channelDefaults, findMagnetPoint]);
+
+  // Handle click on horizontal channel to select it
+  const handleHChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
+    setSelectedHChannel(channelId);
+    setMovingHChannel(channelId); // Auto enter move mode
+    closeTrendlineMenu();
+    closeHorizontalMenu();
+    closeChannelMenu();
+    setSelectedTextLabel(null);
+    setTextLabelMenuPos(null);
+    setSelectedSChannel(null);
+    setSChannelMenuPos(null);
+    let menuX = clickX + 10;
+    let menuY = clickY - 50;
+    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
+    if (menuY < margin.top) menuY = margin.top;
+    setHChannelMenuPos({ x: menuX, y: menuY });
+  }, [dimensions, margin, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu]);
+
+  // Delete selected horizontal channel
+  const deleteHChannel = useCallback(() => {
+    if (selectedHChannel) {
+      setDrawnHChannels(prev => prev.filter(c => c.id !== selectedHChannel));
+      setSelectedHChannel(null);
+      setHChannelMenuPos(null);
+      setMovingHChannel(null);
+    }
+  }, [selectedHChannel]);
+
+  // Update horizontal channel property
+  const updateHChannel = useCallback((id: string, updates: Partial<HorizontalChannelData>) => {
+    setDrawnHChannels(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  }, []);
+
+  // Close horizontal channel menu
+  const closeHChannelMenu = useCallback(() => {
+    setSelectedHChannel(null);
+    setHChannelMenuPos(null);
+    setMovingHChannel(null);
+  }, []);
+
+  // === SLOPED CHANNEL HANDLERS === (3-click)
+  const handleSChannelClick = useCallback((clickX: number, clickY: number) => {
+    if (!xScaleRef.current || !yScaleRef.current) return;
+    
+    // Try magnet mode first
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    let point: { x: number; y: number; time: number; price: number };
+    if (magnetPoint) {
+      point = magnetPoint;
+      setMagnetPulse({ x: clickX, y: clickY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      const time = xScaleRef.current.invert(clickX - margin.left).getTime();
+      const price = yScaleRef.current.invert(clickY - margin.top);
+      point = { x: clickX, y: clickY, time, price };
+    }
+    
+    if (schannelPoints.length === 0) {
+      // First click: first point of first external line
+      setSChannelPoints([point]);
+    } else if (schannelPoints.length === 1) {
+      // Second click: first point of second external line (determines height)
+      setSChannelPoints([schannelPoints[0], point]);
+    } else if (schannelPoints.length === 2) {
+      // Third click: determines slope/end points
+      const click1 = schannelPoints[0];
+      const click2 = schannelPoints[1];
+      const click3 = point;
+      
+      const channelHeight = click2.price - click1.price; // Positive = click2 is higher
+      
+      let topLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
+      let bottomLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
+      
+      if (click1.price > click2.price) {
+        // Top first, then bottom: third click sets p2 for BOTTOM line
+        topLine = {
+          p1: { time: click1.time, price: click1.price },
+          p2: { time: click3.time, price: click3.price - channelHeight } // Parallel to bottom
+        };
+        bottomLine = {
+          p1: { time: click2.time, price: click2.price },
+          p2: { time: click3.time, price: click3.price }
+        };
+      } else {
+        // Bottom first, then top: third click sets p2 for TOP line
+        topLine = {
+          p1: { time: click2.time, price: click2.price },
+          p2: { time: click3.time, price: click3.price }
+        };
+        bottomLine = {
+          p1: { time: click1.time, price: click1.price },
+          p2: { time: click3.time, price: click3.price - channelHeight } // Parallel to top
+        };
+      }
+      
+      const newSChannel: SlopedChannelData = {
+        id: `sch-${Date.now()}`,
+        topLine,
+        bottomLine,
+        color: channelDefaults.color,
+        opacity: channelDefaults.opacity,
+        lineStyle: channelDefaults.lineStyle,
+        thickness: channelDefaults.thickness,
+        topLineColor: channelDefaults.color,
+        bottomLineColor: channelDefaults.color,
+        internalLines: [
+          { percent: 25, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
+          { percent: 50, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
+          { percent: 75, visible: true, color: channelDefaults.internalLineColor, style: 'dashed' as LineStyle },
+        ],
+      };
+      setDrawnSChannels(prev => [...prev, newSChannel]);
+      setSChannelPoints([]);
+      // Keep tool active for drawing more
+    }
+  }, [schannelPoints, margin, channelDefaults, findMagnetPoint]);
+
+  // Handle click on sloped channel to select it
+  const handleSChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
+    setSelectedSChannel(channelId);
+    setMovingSChannel(channelId); // Auto enter move mode
+    closeTrendlineMenu();
+    closeHorizontalMenu();
+    closeChannelMenu();
+    setSelectedTextLabel(null);
+    setTextLabelMenuPos(null);
+    setSelectedHChannel(null);
+    setHChannelMenuPos(null);
+    let menuX = clickX + 10;
+    let menuY = clickY - 50;
+    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
+    if (menuY < margin.top) menuY = margin.top;
+    setSChannelMenuPos({ x: menuX, y: menuY });
+  }, [dimensions, margin, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu]);
+
+  // Delete selected sloped channel
+  const deleteSChannel = useCallback(() => {
+    if (selectedSChannel) {
+      setDrawnSChannels(prev => prev.filter(c => c.id !== selectedSChannel));
+      setSelectedSChannel(null);
+      setSChannelMenuPos(null);
+      setMovingSChannel(null);
+    }
+  }, [selectedSChannel]);
+
+  // Update sloped channel property
+  const updateSChannel = useCallback((id: string, updates: Partial<SlopedChannelData>) => {
+    setDrawnSChannels(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  }, []);
+
+  // Close sloped channel menu
+  const closeSChannelMenu = useCallback(() => {
+    setSelectedSChannel(null);
+    setSChannelMenuPos(null);
+    setMovingSChannel(null);
   }, []);
 
   // === TEXT LABEL HANDLERS ===
@@ -2021,18 +2285,49 @@ export default function CryptoSandbox() {
                 </svg>
               </button>
               
-              {/* Channel */}
+              {/* Horizontal Channel */}
               <button
-                onClick={() => setActiveTool(activeTool === 'channel' ? null : 'channel')}
+                onClick={() => {
+                  if (activeTool === 'hchannel') {
+                    setActiveTool(null);
+                    setHChannelPoints([]);
+                  } else {
+                    setActiveTool('hchannel');
+                  }
+                }}
                 className={`p-2 rounded transition-all ${
-                  activeTool === 'channel' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                  activeTool === 'hchannel' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
                 }`}
-                title="Channel"
-                data-testid="btn-channel"
+                title="Horizontal Channel (2-click)"
+                data-testid="btn-hchannel"
               >
                 <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <line x1="2" y1="14" x2="18" y2="6" />
-                  <line x1="2" y1="18" x2="18" y2="10" strokeDasharray="2,2" />
+                  <line x1="2" y1="5" x2="18" y2="5" />
+                  <line x1="2" y1="10" x2="18" y2="10" strokeDasharray="2,2" />
+                  <line x1="2" y1="15" x2="18" y2="15" />
+                </svg>
+              </button>
+              
+              {/* Sloped Channel */}
+              <button
+                onClick={() => {
+                  if (activeTool === 'schannel') {
+                    setActiveTool(null);
+                    setSChannelPoints([]);
+                  } else {
+                    setActiveTool('schannel');
+                  }
+                }}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'schannel' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Sloped Channel (3-click)"
+                data-testid="btn-schannel"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <line x1="2" y1="10" x2="18" y2="2" />
+                  <line x1="2" y1="14" x2="18" y2="6" strokeDasharray="2,2" />
+                  <line x1="2" y1="18" x2="18" y2="10" />
                 </svg>
               </button>
               
