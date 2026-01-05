@@ -1316,11 +1316,8 @@ export default function CryptoSandbox() {
               .attr('y', newYScale(lastCandle.close) + 4);
           }
           
-          // Force React overlay update without triggering full re-render
-          // Use a ref-based approach to update trendlines
-          if (drawingOverlayRef.current) {
-            drawingOverlayRef.current.style.transform = 'translateZ(0)';
-          }
+          // Trigger React overlay re-render for drawings
+          setZoomVersion(v => v + 1);
         }
       });
     
