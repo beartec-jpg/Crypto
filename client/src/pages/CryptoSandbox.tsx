@@ -1495,7 +1495,7 @@ export default function CryptoSandbox() {
             
             {/* Y-axis drag zone (right side) for zoom control */}
             <div
-              className="absolute cursor-ns-resize z-10"
+              className="absolute cursor-ns-resize z-[50]"
               style={{ 
                 right: 0, 
                 top: margin.top, 
@@ -1522,7 +1522,7 @@ export default function CryptoSandbox() {
             
             {/* X-axis drag zone (bottom) for zoom control */}
             <div
-              className="absolute cursor-ew-resize z-10"
+              className="absolute cursor-ew-resize z-[50]"
               style={{ 
                 left: margin.left, 
                 bottom: 0, 
