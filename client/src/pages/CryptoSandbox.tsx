@@ -27,6 +27,7 @@ export default function CryptoSandbox() {
   
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const drawingOverlayRef = useRef<HTMLDivElement>(null);
   
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [interval, setInterval] = useState('1h');
@@ -39,18 +40,6 @@ export default function CryptoSandbox() {
   const yScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   
-  // Auto/manual scale mode (double-click axis to reset to auto)
-  const [yAxisManual, setYAxisManual] = useState(false);
-  const [xAxisManual, setXAxisManual] = useState(false);
-  const [manualYDomain, setManualYDomain] = useState<[number, number] | null>(null);
-  const [manualXDomain, setManualXDomain] = useState<[Date, Date] | null>(null);
-  const yAxisDragRef = useRef<{ startY: number; startDomain: [number, number] } | null>(null);
-  const xAxisDragRef = useRef<{ startX: number; startDomain: [Date, Date] } | null>(null);
-  const panDragRef = useRef<{ startX: number; startY: number; startXDomain: [Date, Date]; startYDomain: [number, number] } | null>(null);
-  const touchRef = useRef<{ touches: { x: number; y: number }[]; startXDomain: [Date, Date]; startYDomain: [number, number]; startDistance?: number } | null>(null);
-  const lastUpdateRef = useRef<number>(0);
-  const pendingDomainRef = useRef<{ x: [Date, Date] | null; y: [number, number] | null }>({ x: null, y: null });
-  const rafRef = useRef<number | null>(null);
   
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
   const [crosshairMode, setCrosshairMode] = useState(false);
@@ -1110,146 +1099,7 @@ export default function CryptoSandbox() {
     setTimeout(() => setClickPulse(null), 400);
   }, []);
   
-  // Global mouse handlers for axis drag and pan
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      // Y-axis drag (vertical = zoom price)
-      if (yAxisDragRef.current) {
-        const deltaY = e.clientY - yAxisDragRef.current.startY;
-        const sensitivity = 0.005;
-        const factor = 1 + deltaY * sensitivity;
-        const [minPrice, maxPrice] = yAxisDragRef.current.startDomain;
-        const midPrice = (minPrice + maxPrice) / 2;
-        const halfRange = (maxPrice - minPrice) / 2;
-        const newHalfRange = halfRange * Math.max(0.1, factor);
-        const newDomain: [number, number] = [midPrice - newHalfRange, midPrice + newHalfRange];
-        setManualYDomain(newDomain);
-        setZoomVersion(v => v + 1);
-      }
-      // X-axis drag (horizontal = zoom time)
-      if (xAxisDragRef.current) {
-        const deltaX = e.clientX - xAxisDragRef.current.startX;
-        const sensitivity = 0.003;
-        const factor = 1 - deltaX * sensitivity;
-        const [minTime, maxTime] = xAxisDragRef.current.startDomain;
-        const midTime = new Date((minTime.getTime() + maxTime.getTime()) / 2);
-        const halfRange = (maxTime.getTime() - minTime.getTime()) / 2;
-        const newHalfRange = halfRange * Math.max(0.1, factor);
-        const newDomain: [Date, Date] = [
-          new Date(midTime.getTime() - newHalfRange),
-          new Date(midTime.getTime() + newHalfRange)
-        ];
-        setManualXDomain(newDomain);
-        setZoomVersion(v => v + 1);
-      }
-      // Pan (drag on chart area) - using requestAnimationFrame for smooth updates
-      if (panDragRef.current && xScaleRef.current && yScaleRef.current) {
-        const deltaX = e.clientX - panDragRef.current.startX;
-        const deltaY = e.clientY - panDragRef.current.startY;
-        
-        // Convert pixel delta to domain delta
-        const [startMinTime, startMaxTime] = panDragRef.current.startXDomain;
-        const timeRange = startMaxTime.getTime() - startMinTime.getTime();
-        const chartWidth = dimensions.width - margin.left - margin.right;
-        const timeDelta = (deltaX / chartWidth) * timeRange;
-        
-        const [startMinPrice, startMaxPrice] = panDragRef.current.startYDomain;
-        const priceRange = startMaxPrice - startMinPrice;
-        const chartHeight = dimensions.height - margin.top - margin.bottom;
-        const priceDelta = (deltaY / chartHeight) * priceRange;
-        
-        const newXDomain: [Date, Date] = [
-          new Date(startMinTime.getTime() - timeDelta),
-          new Date(startMaxTime.getTime() - timeDelta)
-        ];
-        const newYDomain: [number, number] = [
-          startMinPrice + priceDelta,
-          startMaxPrice + priceDelta
-        ];
-        
-        // Store pending domain updates
-        pendingDomainRef.current = { x: newXDomain, y: newYDomain };
-        
-        // Schedule update via requestAnimationFrame (batches multiple moves)
-        if (!rafRef.current) {
-          rafRef.current = requestAnimationFrame(() => {
-            rafRef.current = null;
-            if (pendingDomainRef.current.x && pendingDomainRef.current.y) {
-              setManualXDomain(pendingDomainRef.current.x);
-              setManualYDomain(pendingDomainRef.current.y);
-              setXAxisManual(true);
-              setYAxisManual(true);
-              setZoomVersion(v => v + 1);
-            }
-          });
-        }
-      }
-    };
-    
-    const handleMouseUp = () => {
-      // Cancel any pending RAF
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-      // Commit any pending domain updates
-      if (panDragRef.current && pendingDomainRef.current.x && pendingDomainRef.current.y) {
-        setManualXDomain(pendingDomainRef.current.x);
-        setManualYDomain(pendingDomainRef.current.y);
-        setXAxisManual(true);
-        setYAxisManual(true);
-        setZoomVersion(v => v + 1);
-      }
-      pendingDomainRef.current = { x: null, y: null };
-      yAxisDragRef.current = null;
-      xAxisDragRef.current = null;
-      panDragRef.current = null;
-    };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [dimensions.width, dimensions.height, margin.left, margin.right, margin.top, margin.bottom]);
-  
-  // Wheel zoom handler
-  const handleChartWheel = useCallback((e: React.WheelEvent) => {
-    if (!xScaleRef.current || !yScaleRef.current) return;
-    e.preventDefault();
-    
-    const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9; // Scroll down = zoom out, scroll up = zoom in
-    
-    // Get current domains
-    const currentXDomain = manualXDomain || (xScaleRef.current.domain() as [Date, Date]);
-    const currentYDomain = manualYDomain || (yScaleRef.current.domain() as [number, number]);
-    
-    // Zoom X axis (time)
-    const [minTime, maxTime] = currentXDomain;
-    const midTime = new Date((minTime.getTime() + maxTime.getTime()) / 2);
-    const halfTimeRange = (maxTime.getTime() - minTime.getTime()) / 2;
-    const newHalfTimeRange = halfTimeRange * zoomFactor;
-    const newXDomain: [Date, Date] = [
-      new Date(midTime.getTime() - newHalfTimeRange),
-      new Date(midTime.getTime() + newHalfTimeRange)
-    ];
-    
-    // Zoom Y axis (price)
-    const [minPrice, maxPrice] = currentYDomain;
-    const midPrice = (minPrice + maxPrice) / 2;
-    const halfPriceRange = (maxPrice - minPrice) / 2;
-    const newHalfPriceRange = halfPriceRange * zoomFactor;
-    const newYDomain: [number, number] = [midPrice - newHalfPriceRange, midPrice + newHalfPriceRange];
-    
-    setManualXDomain(newXDomain);
-    setManualYDomain(newYDomain);
-    setXAxisManual(true);
-    setYAxisManual(true);
-    setZoomVersion(v => v + 1);
-  }, [manualXDomain, manualYDomain]);
-  
-  // Render D3 chart
+  // Render D3 chart - D3's built-in zoom handles pan/zoom
   useEffect(() => {
     if (!svgRef.current || candles.length === 0 || dimensions.width === 0) return;
     
@@ -1466,8 +1316,11 @@ export default function CryptoSandbox() {
               .attr('y', newYScale(lastCandle.close) + 4);
           }
           
-          // Trigger React re-render for trendlines
-          setZoomVersion(v => v + 1);
+          // Force React overlay update without triggering full re-render
+          // Use a ref-based approach to update trendlines
+          if (drawingOverlayRef.current) {
+            drawingOverlayRef.current.style.transform = 'translateZ(0)';
+          }
         }
       });
     
@@ -1512,7 +1365,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion, xAxisManual, yAxisManual, manualXDomain, manualYDomain]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval]);
   
   // Show loading while checking auth
   if (authLoading) {
