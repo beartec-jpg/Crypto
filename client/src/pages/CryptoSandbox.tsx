@@ -997,7 +997,7 @@ export default function CryptoSandbox() {
             </div>
             
             {/* Left toolbar - drawing tools */}
-            <div className="absolute top-2 left-2 flex flex-col gap-1 z-20 bg-slate-900/80 rounded-lg p-1">
+            <div className="absolute top-2 left-2 flex flex-col gap-1 z-[60] bg-slate-900/80 rounded-lg p-1">
               {/* Crosshair toggle button - mobile only */}
               <button
                 onClick={() => {
@@ -1945,10 +1945,11 @@ export default function CryptoSandbox() {
             {/* Click overlay for placing moved point */}
             {movingPoint && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-20"
+                className="absolute top-0 right-0 bottom-0 cursor-crosshair z-20"
+                style={{ left: 40 }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  placeMovingPoint(e.clientX - rect.left, e.clientY - rect.top);
+                  placeMovingPoint(e.clientX - rect.left + 40, e.clientY - rect.top);
                 }}
               />
             )}
@@ -1956,10 +1957,11 @@ export default function CryptoSandbox() {
             {/* Click overlay for exiting move mode when clicking chart */}
             {moveMode && !movingPoint && !movingWholeLine && (
               <div 
-                className="absolute inset-0 z-20"
+                className="absolute top-0 right-0 bottom-0 z-20"
+                style={{ left: 40 }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left;
+                  const clickX = e.clientX - rect.left + 40; // Offset for toolbar
                   const clickY = e.clientY - rect.top;
                   
                   // Check if click is near any endpoint of the selected trendline
