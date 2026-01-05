@@ -68,7 +68,6 @@ export default function CryptoSandbox() {
     label?: { text: string; position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' };
   }
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
-  const [showTrendlineModeSelector, setShowTrendlineModeSelector] = useState(false);
   const [trendlinePoints, setTrendlinePoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [drawnTrendlines, setDrawnTrendlines] = useState<TrendlineData[]>([]);
   const [magnetPulse, setMagnetPulse] = useState<{ x: number; y: number } | null>(null);
@@ -297,21 +296,20 @@ export default function CryptoSandbox() {
     return { x: finalX, y: finalY, time: bestCandle.time, price: bestPrice };
   }, [candles, margin.left, margin.top, MAGNET_RADIUS]);
   
-  // Handle trendline point placement
+  // Handle trendline point placement - combined mode (magnet with free fallback)
   const handleTrendlineClick = useCallback((clickX: number, clickY: number) => {
     if (!trendlineMode || !xScaleRef.current || !yScaleRef.current) return;
     
-    let point: { x: number; y: number; time: number; price: number } | null = null;
+    let point: { x: number; y: number; time: number; price: number };
     
-    if (trendlineMode === 'magnet') {
-      // Show pulse animation
+    // Try magnet first, fallback to free if no candle nearby
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    if (magnetPoint) {
+      point = magnetPoint;
       setMagnetPulse({ x: clickX, y: clickY });
       setTimeout(() => setMagnetPulse(null), 400);
-      
-      point = findMagnetPoint(clickX, clickY);
-      if (!point) return; // No candles in radius, don't place point
     } else {
-      // Free mode - place anywhere
+      // Free placement if no candle in radius
       const xScale = xScaleRef.current;
       const yScale = yScaleRef.current;
       const time = xScale.invert(clickX - margin.left).getTime();
@@ -327,7 +325,7 @@ export default function CryptoSandbox() {
       const newTrendline: TrendlineData = {
         id: `tl-${Date.now()}`,
         p1: { time: trendlinePoints[0].time, price: trendlinePoints[0].price },
-        p2: { time: point!.time, price: point!.price },
+        p2: { time: point.time, price: point.price },
         color: '#facc15',
         opacity: 1,
         lineStyle: 'solid',
@@ -1052,74 +1050,28 @@ export default function CryptoSandbox() {
               
               <div className="h-px bg-slate-600 my-1" />
               
-              {/* Trend Line with Mode Selector */}
-              <Popover open={showTrendlineModeSelector} onOpenChange={(open) => {
-                // Only allow opening if not already in trendline mode
-                if (open && activeTool === 'trendline') return;
-                setShowTrendlineModeSelector(open);
-              }}>
-                <PopoverTrigger asChild>
-                  <button
-                    onClick={(e) => {
-                      if (activeTool === 'trendline') {
-                        // Deactivate tool - prevent popover from opening
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setActiveTool(null);
-                        setTrendlineMode(null);
-                        setTrendlinePoints([]);
-                        setShowTrendlineModeSelector(false);
-                      } else {
-                        // Show mode selector
-                        setShowTrendlineModeSelector(true);
-                      }
-                    }}
-                    className={`p-2 rounded transition-all ${
-                      activeTool === 'trendline' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
-                    }`}
-                    title="Trend Line"
-                    data-testid="btn-trendline"
-                  >
-                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="3" y1="17" x2="17" y2="3" />
-                    </svg>
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent side="right" className="w-32 p-2 bg-slate-800 border-slate-700">
-                  <div className="flex flex-col gap-1">
-                    <button
-                      onClick={() => {
-                        setTrendlineMode('magnet');
-                        setActiveTool('trendline');
-                        setShowTrendlineModeSelector(false);
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 rounded hover:bg-slate-700 text-white text-sm"
-                      data-testid="btn-trendline-magnet"
-                    >
-                      <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="10" cy="10" r="6" />
-                        <circle cx="10" cy="10" r="2" fill="currentColor" />
-                      </svg>
-                      Magnet
-                    </button>
-                    <button
-                      onClick={() => {
-                        setTrendlineMode('free');
-                        setActiveTool('trendline');
-                        setShowTrendlineModeSelector(false);
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 rounded hover:bg-slate-700 text-white text-sm"
-                      data-testid="btn-trendline-free"
-                    >
-                      <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="3" y1="17" x2="17" y2="3" />
-                        <circle cx="17" cy="3" r="2" fill="currentColor" />
-                      </svg>
-                      Free
-                    </button>
-                  </div>
-                </PopoverContent>
-              </Popover>
+              {/* Trend Line - single click to activate */}
+              <button
+                onClick={() => {
+                  if (activeTool === 'trendline') {
+                    setActiveTool(null);
+                    setTrendlineMode(null);
+                    setTrendlinePoints([]);
+                  } else {
+                    setActiveTool('trendline');
+                    setTrendlineMode('magnet'); // Always use combined mode
+                  }
+                }}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'trendline' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Trend Line"
+                data-testid="btn-trendline"
+              >
+                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="3" y1="17" x2="17" y2="3" />
+                </svg>
+              </button>
               
               {/* Horizontal Line */}
               <button
@@ -1495,8 +1447,7 @@ export default function CryptoSandbox() {
                 
                 {/* Mode indicator */}
                 <div className="absolute top-14 left-14 bg-yellow-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
-                  Trendline: {trendlineMode === 'magnet' ? 'Magnet' : 'Free'} Mode
-                  {trendlinePoints.length === 1 && ' - Click for 2nd point'}
+                  {trendlinePoints.length === 0 ? 'Click for 1st point' : 'Click for 2nd point'}
                 </div>
               </div>
             )}
