@@ -223,6 +223,11 @@ export default function CryptoSandbox() {
   const [movingChannel, setMovingChannel] = useState<string | null>(null);
   const [movingTextLabel, setMovingTextLabel] = useState<string | null>(null);
   
+  // Selection picker state for overlapping elements
+  type SelectionCandidate = { id: string; type: 'trendline' | 'horizontal' | 'channel' | 'hchannel' | 'schannel' | 'label' };
+  const [selectionCandidates, setSelectionCandidates] = useState<SelectionCandidate[]>([]);
+  const [selectionPickerPos, setSelectionPickerPos] = useState<{ x: number; y: number } | null>(null);
+  
   // Undo/redo history for ALL drawing types (unified)
   type DrawingState = {
     trendlines: TrendlineData[];
@@ -929,6 +934,39 @@ export default function CryptoSandbox() {
       const topPrice = Math.max(click1.price, click2.price);
       const bottomPrice = Math.min(click1.price, click2.price);
       
+      // Load saved defaults from localStorage
+      let hchDefaults = {
+        topLineColor: '#22c55e',
+        topLineThickness: 2,
+        topLineStyle: 'solid' as LineStyle,
+        bottomLineColor: '#ef4444',
+        bottomLineThickness: 2,
+        bottomLineStyle: 'solid' as LineStyle,
+        fillColor: 'transparent' as string,
+        fillOpacity: 0.1,
+        internalLines: [
+          { percent: 25, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+          { percent: 50, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+          { percent: 75, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+        ],
+        showLabelLeft: false,
+        showLabelCenter: false,
+        showLabelRight: false,
+        extendLeft: false,
+        extendRight: false,
+      };
+      try {
+        const saved = localStorage.getItem('hchannelDefaults');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          hchDefaults = { 
+            ...hchDefaults, 
+            ...parsed, 
+            internalLines: parsed.internalLines ? JSON.parse(JSON.stringify(parsed.internalLines)) : hchDefaults.internalLines 
+          };
+        }
+      } catch {}
+      
       const newHChannel: HorizontalChannelData = {
         id: `hch-${Date.now()}`,
         x1: click1.time,
@@ -939,17 +977,20 @@ export default function CryptoSandbox() {
         opacity: channelDefaults.opacity,
         lineStyle: channelDefaults.lineStyle,
         thickness: channelDefaults.thickness,
-        topLineColor: '#22c55e',
-        topLineThickness: 2,
-        topLineStyle: 'solid',
-        bottomLineColor: '#ef4444',
-        bottomLineThickness: 2,
-        bottomLineStyle: 'solid',
-        internalLines: [
-          { percent: 25, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
-          { percent: 50, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
-          { percent: 75, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
-        ],
+        topLineColor: hchDefaults.topLineColor,
+        topLineThickness: hchDefaults.topLineThickness,
+        topLineStyle: hchDefaults.topLineStyle,
+        bottomLineColor: hchDefaults.bottomLineColor,
+        bottomLineThickness: hchDefaults.bottomLineThickness,
+        bottomLineStyle: hchDefaults.bottomLineStyle,
+        fillColor: hchDefaults.fillColor,
+        fillOpacity: hchDefaults.fillOpacity,
+        internalLines: hchDefaults.internalLines,
+        showLabelLeft: hchDefaults.showLabelLeft,
+        showLabelCenter: hchDefaults.showLabelCenter,
+        showLabelRight: hchDefaults.showLabelRight,
+        extendLeft: hchDefaults.extendLeft,
+        extendRight: hchDefaults.extendRight,
       };
       const newHChannels = [...drawnHChannels, newHChannel];
       setDrawnHChannels(newHChannels);
@@ -1059,6 +1100,39 @@ export default function CryptoSandbox() {
         };
       }
       
+      // Load saved defaults from localStorage
+      let schDefaults = {
+        topLineColor: '#22c55e',
+        topLineThickness: 2,
+        topLineStyle: 'solid' as LineStyle,
+        bottomLineColor: '#ef4444',
+        bottomLineThickness: 2,
+        bottomLineStyle: 'solid' as LineStyle,
+        fillColor: 'transparent' as string,
+        fillOpacity: 0.1,
+        internalLines: [
+          { percent: 25, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+          { percent: 50, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+          { percent: 75, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
+        ],
+        showLabelLeft: false,
+        showLabelCenter: false,
+        showLabelRight: false,
+        extendLeft: false,
+        extendRight: false,
+      };
+      try {
+        const saved = localStorage.getItem('schannelDefaults');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          schDefaults = { 
+            ...schDefaults, 
+            ...parsed, 
+            internalLines: parsed.internalLines ? JSON.parse(JSON.stringify(parsed.internalLines)) : schDefaults.internalLines 
+          };
+        }
+      } catch {}
+      
       const newSChannel: SlopedChannelData = {
         id: `sch-${Date.now()}`,
         topLine,
@@ -1067,17 +1141,20 @@ export default function CryptoSandbox() {
         opacity: channelDefaults.opacity,
         lineStyle: channelDefaults.lineStyle,
         thickness: channelDefaults.thickness,
-        topLineColor: '#22c55e',
-        topLineThickness: 2,
-        topLineStyle: 'solid',
-        bottomLineColor: '#ef4444',
-        bottomLineThickness: 2,
-        bottomLineStyle: 'solid',
-        internalLines: [
-          { percent: 25, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
-          { percent: 50, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
-          { percent: 75, visible: true, color: '#facc15', style: 'dashed' as LineStyle },
-        ],
+        topLineColor: schDefaults.topLineColor,
+        topLineThickness: schDefaults.topLineThickness,
+        topLineStyle: schDefaults.topLineStyle,
+        bottomLineColor: schDefaults.bottomLineColor,
+        bottomLineThickness: schDefaults.bottomLineThickness,
+        bottomLineStyle: schDefaults.bottomLineStyle,
+        fillColor: schDefaults.fillColor,
+        fillOpacity: schDefaults.fillOpacity,
+        internalLines: schDefaults.internalLines,
+        showLabelLeft: schDefaults.showLabelLeft,
+        showLabelCenter: schDefaults.showLabelCenter,
+        showLabelRight: schDefaults.showLabelRight,
+        extendLeft: schDefaults.extendLeft,
+        extendRight: schDefaults.extendRight,
       };
       const newSChannels = [...drawnSChannels, newSChannel];
       setDrawnSChannels(newSChannels);
@@ -1360,6 +1437,137 @@ export default function CryptoSandbox() {
     }
     return null;
   }, [drawnTrendlines, margin.left, margin.top]);
+  
+  // Collect all drawing elements within the hit radius (for selection picker)
+  const collectHitCandidates = useCallback((clickX: number, clickY: number): SelectionCandidate[] => {
+    if (!xScaleRef.current || !yScaleRef.current) return [];
+    const threshold = MAGNET_RADIUS; // Use magnet radius for hit detection
+    const candidates: SelectionCandidate[] = [];
+    
+    // Helper to calculate distance from point to line segment
+    const distToSegment = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+      const lineLen = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+      if (lineLen === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+      const t = Math.max(0, Math.min(1, ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / (lineLen * lineLen)));
+      const nearestX = x1 + t * (x2 - x1);
+      const nearestY = y1 + t * (y2 - y1);
+      return Math.sqrt((px - nearestX) ** 2 + (py - nearestY) ** 2);
+    };
+    
+    // Check trendlines
+    for (const line of drawnTrendlines) {
+      const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
+      const y1 = yScaleRef.current(line.p1.price) + margin.top;
+      const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
+      const y2 = yScaleRef.current(line.p2.price) + margin.top;
+      if (distToSegment(clickX, clickY, x1, y1, x2, y2) <= threshold) {
+        candidates.push({ id: line.id, type: 'trendline' });
+      }
+    }
+    
+    // Check horizontals
+    for (const h of drawnHorizontals) {
+      const y = yScaleRef.current(h.price) + margin.top;
+      if (Math.abs(clickY - y) <= threshold) {
+        candidates.push({ id: h.id, type: 'horizontal' });
+      }
+    }
+    
+    // Check legacy channels (top and bottom lines)
+    for (const ch of drawnChannels) {
+      const x1Top = xScaleRef.current(new Date(ch.topLine.p1.time)) + margin.left;
+      const y1Top = yScaleRef.current(ch.topLine.p1.price) + margin.top;
+      const x2Top = xScaleRef.current(new Date(ch.topLine.p2.time)) + margin.left;
+      const y2Top = yScaleRef.current(ch.topLine.p2.price) + margin.top;
+      const x1Bot = xScaleRef.current(new Date(ch.bottomLine.p1.time)) + margin.left;
+      const y1Bot = yScaleRef.current(ch.bottomLine.p1.price) + margin.top;
+      const x2Bot = xScaleRef.current(new Date(ch.bottomLine.p2.time)) + margin.left;
+      const y2Bot = yScaleRef.current(ch.bottomLine.p2.price) + margin.top;
+      if (distToSegment(clickX, clickY, x1Top, y1Top, x2Top, y2Top) <= threshold ||
+          distToSegment(clickX, clickY, x1Bot, y1Bot, x2Bot, y2Bot) <= threshold) {
+        candidates.push({ id: ch.id, type: 'channel' });
+      }
+    }
+    
+    // Check horizontal channels (top and bottom horizontal lines)
+    for (const hch of drawnHChannels) {
+      const topY = yScaleRef.current(hch.topPrice) + margin.top;
+      const botY = yScaleRef.current(hch.bottomPrice) + margin.top;
+      const leftX = xScaleRef.current(new Date(Math.min(hch.x1, hch.x2))) + margin.left;
+      const rightX = xScaleRef.current(new Date(Math.max(hch.x1, hch.x2))) + margin.left;
+      // Check if click is within x-range and near top or bottom line
+      if (clickX >= leftX - threshold && clickX <= rightX + threshold) {
+        if (Math.abs(clickY - topY) <= threshold || Math.abs(clickY - botY) <= threshold) {
+          candidates.push({ id: hch.id, type: 'hchannel' });
+        }
+      }
+      // Also check if click is inside the channel fill area
+      if (clickX >= leftX && clickX <= rightX && clickY >= topY && clickY <= botY) {
+        if (!candidates.find(c => c.id === hch.id)) {
+          candidates.push({ id: hch.id, type: 'hchannel' });
+        }
+      }
+    }
+    
+    // Check sloped channels (top and bottom sloped lines)
+    for (const sch of drawnSChannels) {
+      const x1Top = xScaleRef.current(new Date(sch.topLine.p1.time)) + margin.left;
+      const y1Top = yScaleRef.current(sch.topLine.p1.price) + margin.top;
+      const x2Top = xScaleRef.current(new Date(sch.topLine.p2.time)) + margin.left;
+      const y2Top = yScaleRef.current(sch.topLine.p2.price) + margin.top;
+      const x1Bot = xScaleRef.current(new Date(sch.bottomLine.p1.time)) + margin.left;
+      const y1Bot = yScaleRef.current(sch.bottomLine.p1.price) + margin.top;
+      const x2Bot = xScaleRef.current(new Date(sch.bottomLine.p2.time)) + margin.left;
+      const y2Bot = yScaleRef.current(sch.bottomLine.p2.price) + margin.top;
+      if (distToSegment(clickX, clickY, x1Top, y1Top, x2Top, y2Top) <= threshold ||
+          distToSegment(clickX, clickY, x1Bot, y1Bot, x2Bot, y2Bot) <= threshold) {
+        candidates.push({ id: sch.id, type: 'schannel' });
+      }
+    }
+    
+    // Check text labels
+    for (const lbl of drawnTextLabels) {
+      const x = xScaleRef.current(new Date(lbl.time)) + margin.left;
+      const y = yScaleRef.current(lbl.price) + margin.top;
+      // Labels have a wider hit area
+      if (Math.abs(clickX - x) <= threshold && Math.abs(clickY - y) <= threshold) {
+        candidates.push({ id: lbl.id, type: 'label' });
+      }
+    }
+    
+    return candidates;
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, margin.left, margin.top, MAGNET_RADIUS]);
+  
+  // Close selection picker
+  const closeSelectionPicker = useCallback(() => {
+    setSelectionCandidates([]);
+    setSelectionPickerPos(null);
+  }, []);
+  
+  // Handle selection from picker
+  const handlePickerSelect = useCallback((candidate: SelectionCandidate, clickX: number, clickY: number) => {
+    closeSelectionPicker();
+    switch (candidate.type) {
+      case 'trendline':
+        handleTrendlineSelect(candidate.id, clickX, clickY);
+        break;
+      case 'horizontal':
+        handleHorizontalSelect(candidate.id, clickX, clickY);
+        break;
+      case 'channel':
+        handleChannelSelect(candidate.id, clickX, clickY);
+        break;
+      case 'hchannel':
+        handleHChannelSelect(candidate.id, clickX, clickY);
+        break;
+      case 'schannel':
+        handleSChannelSelect(candidate.id, clickX, clickY);
+        break;
+      case 'label':
+        handleTextLabelSelect(candidate.id, clickX, clickY);
+        break;
+    }
+  }, [closeSelectionPicker, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
   
   // Find if crosshair is near an endpoint of the moving trendline
   const findNearbyEndpoint = useCallback((clickX: number, clickY: number): 'p1' | 'p2' | null => {
@@ -3818,7 +4026,7 @@ export default function CryptoSandbox() {
               const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
               const menuWidth = 48;
               const menuHeight = 200;
-              const autoX = Math.min(Math.max(hchannelMenuPos.x, 10), dimensions.width - menuWidth - 10);
+              const autoX = Math.min(Math.max(hchannelMenuPos.x, 10), dimensions.width - margin.right - menuWidth - 10);
               const autoY = Math.min(Math.max(hchannelMenuPos.y, 10), dimensions.height - menuHeight - 10);
               return (
                 <div 
@@ -3902,9 +4110,30 @@ export default function CryptoSandbox() {
                         <path d="M4 10h12M16 10l-4-4M16 10l-4 4" />
                       </svg>
                     </button>
-                    {/* Favorite */}
+                    {/* Favorite - Save as Default */}
                     <button 
-                      onClick={() => updateHChannel(selectedHChannel, { isFavorite: !hchannel?.isFavorite })} 
+                      onClick={() => {
+                        if (hchannel) {
+                          const defaults = {
+                            topLineColor: hchannel.topLineColor,
+                            topLineThickness: hchannel.topLineThickness,
+                            topLineStyle: hchannel.topLineStyle,
+                            bottomLineColor: hchannel.bottomLineColor,
+                            bottomLineThickness: hchannel.bottomLineThickness,
+                            bottomLineStyle: hchannel.bottomLineStyle,
+                            fillColor: hchannel.fillColor,
+                            fillOpacity: hchannel.fillOpacity,
+                            internalLines: JSON.parse(JSON.stringify(hchannel.internalLines || [])),
+                            showLabelLeft: hchannel.showLabelLeft,
+                            showLabelCenter: hchannel.showLabelCenter,
+                            showLabelRight: hchannel.showLabelRight,
+                            extendLeft: hchannel.extendLeft,
+                            extendRight: hchannel.extendRight,
+                          };
+                          localStorage.setItem('hchannelDefaults', JSON.stringify(defaults));
+                          updateHChannel(selectedHChannel, { isFavorite: true });
+                        }
+                      }} 
                       className={`p-2 hover:bg-slate-700 rounded ${hchannel?.isFavorite ? 'text-yellow-400' : 'text-gray-400'}`} 
                       title="Save as Default"
                       data-testid="btn-hchannel-favorite"
@@ -4130,7 +4359,7 @@ export default function CryptoSandbox() {
               const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
               const menuWidth = 48;
               const menuHeight = 200;
-              const autoX = Math.min(Math.max(schannelMenuPos.x, 10), dimensions.width - menuWidth - 10);
+              const autoX = Math.min(Math.max(schannelMenuPos.x, 10), dimensions.width - margin.right - menuWidth - 10);
               const autoY = Math.min(Math.max(schannelMenuPos.y, 10), dimensions.height - menuHeight - 10);
               return (
                 <div 
@@ -4214,9 +4443,30 @@ export default function CryptoSandbox() {
                         <path d="M4 10h12M16 10l-4-4M16 10l-4 4" />
                       </svg>
                     </button>
-                    {/* Favorite */}
+                    {/* Favorite - Save as Default */}
                     <button 
-                      onClick={() => updateSChannel(selectedSChannel, { isFavorite: !schannel?.isFavorite })} 
+                      onClick={() => {
+                        if (schannel) {
+                          const defaults = {
+                            topLineColor: schannel.topLineColor,
+                            topLineThickness: schannel.topLineThickness,
+                            topLineStyle: schannel.topLineStyle,
+                            bottomLineColor: schannel.bottomLineColor,
+                            bottomLineThickness: schannel.bottomLineThickness,
+                            bottomLineStyle: schannel.bottomLineStyle,
+                            fillColor: schannel.fillColor,
+                            fillOpacity: schannel.fillOpacity,
+                            internalLines: JSON.parse(JSON.stringify(schannel.internalLines || [])),
+                            showLabelLeft: schannel.showLabelLeft,
+                            showLabelCenter: schannel.showLabelCenter,
+                            showLabelRight: schannel.showLabelRight,
+                            extendLeft: schannel.extendLeft,
+                            extendRight: schannel.extendRight,
+                          };
+                          localStorage.setItem('schannelDefaults', JSON.stringify(defaults));
+                          updateSChannel(selectedSChannel, { isFavorite: true });
+                        }
+                      }} 
                       className={`p-2 hover:bg-slate-700 rounded ${schannel?.isFavorite ? 'text-yellow-400' : 'text-gray-400'}`} 
                       title="Save as Default"
                       data-testid="btn-schannel-favorite"
