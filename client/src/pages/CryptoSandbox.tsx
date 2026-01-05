@@ -52,9 +52,11 @@ export default function CryptoSandbox() {
   type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | null;
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   
-  // Trendline specific state
-  type TrendlineMode = 'magnet' | 'free' | null;
+  // Shared types
   type LineStyle = 'solid' | 'dashed' | 'dotted';
+  type TrendlineMode = 'magnet' | 'free' | null;
+  
+  // Trendline data
   interface TrendlineData {
     id: string;
     p1: { time: number; price: number };
@@ -67,11 +69,65 @@ export default function CryptoSandbox() {
     extendRight: boolean;
     label?: { text: string; positions: ('top-left' | 'top-right' | 'bottom-left' | 'bottom-right')[] };
   }
+  
+  // Horizontal line data
+  interface HorizontalLineData {
+    id: string;
+    price: number;
+    color: string;
+    opacity: number;
+    lineStyle: LineStyle;
+    thickness: number;
+    label?: { text: string; position: 'left' | 'right' };
+  }
+  
+  // Channel data
+  interface ChannelData {
+    id: string;
+    p1: { time: number; price: number };
+    p2: { time: number; price: number };
+    width: number; // Distance in price units
+    color: string;
+    opacity: number;
+    lineStyle: LineStyle;
+    thickness: number;
+    internalLines: { percent: number; visible: boolean; label: string }[];
+    internalLineStyle: LineStyle;
+    internalLineColor: string;
+    showExternalLines: boolean;
+  }
+  
+  // Text label data
+  interface TextLabelData {
+    id: string;
+    x: number; // screen x (updated on pan/zoom)
+    y: number; // screen y
+    time: number; // anchor time for repositioning
+    price: number; // anchor price
+    text: string;
+    color: string;
+    opacity: number;
+    backgroundColor: string;
+    fontSize: number;
+  }
+  
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
   const [trendlinePoints, setTrendlinePoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [drawnTrendlines, setDrawnTrendlines] = useState<TrendlineData[]>([]);
+  const [drawnHorizontals, setDrawnHorizontals] = useState<HorizontalLineData[]>([]);
+  const [drawnChannels, setDrawnChannels] = useState<ChannelData[]>([]);
+  const [drawnTextLabels, setDrawnTextLabels] = useState<TextLabelData[]>([]);
+  const [channelPoints, setChannelPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [magnetPulse, setMagnetPulse] = useState<{ x: number; y: number } | null>(null);
   const MAGNET_RADIUS = 30; // pixels
+  
+  // Selection state for all drawing types
+  const [selectedHorizontal, setSelectedHorizontal] = useState<string | null>(null);
+  const [horizontalMenuPos, setHorizontalMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [channelMenuPos, setChannelMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectedTextLabel, setSelectedTextLabel] = useState<string | null>(null);
+  const [textLabelMenuPos, setTextLabelMenuPos] = useState<{ x: number; y: number } | null>(null);
   // Zoom counter to trigger re-renders for trendlines during zoom/pan
   const [zoomVersion, setZoomVersion] = useState(0);
   
@@ -151,6 +207,46 @@ export default function CryptoSandbox() {
       localStorage.setItem('trendlineDefaults', JSON.stringify(defaults));
     }
   }, [drawnTrendlines, selectedTrendline]);
+
+  // Default horizontal line settings (loaded from localStorage)
+  const [horizontalDefaults, setHorizontalDefaults] = useState(() => {
+    try {
+      const saved = localStorage.getItem('horizontalDefaults');
+      return saved ? JSON.parse(saved) : { color: '#3b82f6', opacity: 1, lineStyle: 'solid' as LineStyle, thickness: 2 };
+    } catch {
+      return { color: '#3b82f6', opacity: 1, lineStyle: 'solid' as LineStyle, thickness: 2 };
+    }
+  });
+
+  // Save horizontal as favorite
+  const saveHorizontalAsFavorite = useCallback(() => {
+    const selectedLine = drawnHorizontals.find(l => l.id === selectedHorizontal);
+    if (selectedLine) {
+      const defaults = { color: selectedLine.color, opacity: selectedLine.opacity, lineStyle: selectedLine.lineStyle, thickness: selectedLine.thickness };
+      setHorizontalDefaults(defaults);
+      localStorage.setItem('horizontalDefaults', JSON.stringify(defaults));
+    }
+  }, [drawnHorizontals, selectedHorizontal]);
+
+  // Default channel settings
+  const [channelDefaults, setChannelDefaults] = useState(() => {
+    try {
+      const saved = localStorage.getItem('channelDefaults');
+      return saved ? JSON.parse(saved) : { color: '#22c55e', opacity: 0.8, lineStyle: 'solid' as LineStyle, thickness: 2, internalLineStyle: 'dashed' as LineStyle, internalLineColor: '#22c55e' };
+    } catch {
+      return { color: '#22c55e', opacity: 0.8, lineStyle: 'solid' as LineStyle, thickness: 2, internalLineStyle: 'dashed' as LineStyle, internalLineColor: '#22c55e' };
+    }
+  });
+
+  // Default text label settings
+  const [textLabelDefaults, setTextLabelDefaults] = useState(() => {
+    try {
+      const saved = localStorage.getItem('textLabelDefaults');
+      return saved ? JSON.parse(saved) : { color: '#ffffff', opacity: 1, backgroundColor: 'transparent', fontSize: 14 };
+    } catch {
+      return { color: '#ffffff', opacity: 1, backgroundColor: 'transparent', fontSize: 14 };
+    }
+  });
   
   // Indicator states - Trend Tools
   const [showEMA, setShowEMA] = useState(false);
@@ -423,6 +519,173 @@ export default function CryptoSandbox() {
     setMoveMode(false);
     setMovingPoint(null);
     setMovingWholeLine(null);
+  }, []);
+
+  // === HORIZONTAL LINE HANDLERS ===
+  // Handle click to place horizontal line
+  const handleHorizontalClick = useCallback((clickX: number, clickY: number) => {
+    if (!yScaleRef.current) return;
+    const price = yScaleRef.current.invert(clickY - margin.top);
+    const newLine: HorizontalLineData = {
+      id: `hl-${Date.now()}`,
+      price,
+      color: horizontalDefaults.color,
+      opacity: horizontalDefaults.opacity,
+      lineStyle: horizontalDefaults.lineStyle,
+      thickness: horizontalDefaults.thickness,
+    };
+    setDrawnHorizontals(prev => [...prev, newLine]);
+  }, [margin.top, horizontalDefaults]);
+
+  // Handle click on horizontal line to select it
+  const handleHorizontalSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
+    setSelectedHorizontal(lineId);
+    closeTrendlineMenu();
+    setSelectedChannel(null);
+    setChannelMenuPos(null);
+    setSelectedTextLabel(null);
+    setTextLabelMenuPos(null);
+    let menuX = clickX + 10;
+    let menuY = clickY - 50;
+    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
+    if (menuY < margin.top) menuY = margin.top;
+    setHorizontalMenuPos({ x: menuX, y: menuY });
+  }, [dimensions, margin, closeTrendlineMenu]);
+
+  // Delete selected horizontal line
+  const deleteHorizontal = useCallback(() => {
+    if (selectedHorizontal) {
+      setDrawnHorizontals(prev => prev.filter(l => l.id !== selectedHorizontal));
+      setSelectedHorizontal(null);
+      setHorizontalMenuPos(null);
+    }
+  }, [selectedHorizontal]);
+
+  // Update horizontal line property
+  const updateHorizontal = useCallback((id: string, updates: Partial<HorizontalLineData>) => {
+    setDrawnHorizontals(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+  }, []);
+
+  // Close horizontal menu
+  const closeHorizontalMenu = useCallback(() => {
+    setSelectedHorizontal(null);
+    setHorizontalMenuPos(null);
+  }, []);
+
+  // === CHANNEL HANDLERS ===
+  const handleChannelClick = useCallback((clickX: number, clickY: number) => {
+    if (!xScaleRef.current || !yScaleRef.current) return;
+    const time = xScaleRef.current.invert(clickX - margin.left).getTime();
+    const price = yScaleRef.current.invert(clickY - margin.top);
+    const point = { x: clickX, y: clickY, time, price };
+    
+    if (channelPoints.length === 0) {
+      setChannelPoints([point]);
+    } else {
+      const p1 = channelPoints[0];
+      const priceRange = Math.abs(p1.price - point.price);
+      const newChannel: ChannelData = {
+        id: `ch-${Date.now()}`,
+        p1: { time: p1.time, price: p1.price },
+        p2: { time: point.time, price: point.price },
+        width: priceRange * 0.5,
+        color: channelDefaults.color,
+        opacity: channelDefaults.opacity,
+        lineStyle: channelDefaults.lineStyle,
+        thickness: channelDefaults.thickness,
+        internalLines: [
+          { percent: 25, visible: true, label: '25%' },
+          { percent: 50, visible: true, label: '50%' },
+          { percent: 75, visible: true, label: '75%' },
+        ],
+        internalLineStyle: channelDefaults.internalLineStyle,
+        internalLineColor: channelDefaults.internalLineColor,
+        showExternalLines: true,
+      };
+      setDrawnChannels(prev => [...prev, newChannel]);
+      setChannelPoints([]);
+    }
+  }, [channelPoints, margin, channelDefaults]);
+
+  // Handle click on channel to select it
+  const handleChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
+    setSelectedChannel(channelId);
+    closeTrendlineMenu();
+    closeHorizontalMenu();
+    setSelectedTextLabel(null);
+    setTextLabelMenuPos(null);
+    let menuX = clickX + 10;
+    let menuY = clickY - 50;
+    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
+    if (menuY < margin.top) menuY = margin.top;
+    setChannelMenuPos({ x: menuX, y: menuY });
+  }, [dimensions, margin, closeTrendlineMenu, closeHorizontalMenu]);
+
+  // Delete selected channel
+  const deleteChannel = useCallback(() => {
+    if (selectedChannel) {
+      setDrawnChannels(prev => prev.filter(c => c.id !== selectedChannel));
+      setSelectedChannel(null);
+      setChannelMenuPos(null);
+    }
+  }, [selectedChannel]);
+
+  // Update channel property
+  const updateChannel = useCallback((id: string, updates: Partial<ChannelData>) => {
+    setDrawnChannels(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  }, []);
+
+  // Close channel menu
+  const closeChannelMenu = useCallback(() => {
+    setSelectedChannel(null);
+    setChannelMenuPos(null);
+  }, []);
+
+  // === TEXT LABEL HANDLERS ===
+  const handleTextLabelClick = useCallback((clickX: number, clickY: number) => {
+    if (!xScaleRef.current || !yScaleRef.current) return;
+    const time = xScaleRef.current.invert(clickX - margin.left).getTime();
+    const price = yScaleRef.current.invert(clickY - margin.top);
+    const newLabel: TextLabelData = {
+      id: `txt-${Date.now()}`,
+      x: clickX,
+      y: clickY,
+      time,
+      price,
+      text: 'Label',
+      color: textLabelDefaults.color,
+      opacity: textLabelDefaults.opacity,
+      backgroundColor: textLabelDefaults.backgroundColor,
+      fontSize: textLabelDefaults.fontSize,
+    };
+    setDrawnTextLabels(prev => [...prev, newLabel]);
+  }, [margin, textLabelDefaults]);
+
+  // Handle click on text label to select it
+  const handleTextLabelSelect = useCallback((labelId: string, clickX: number, clickY: number) => {
+    setSelectedTextLabel(labelId);
+    closeTrendlineMenu();
+    closeHorizontalMenu();
+    closeChannelMenu();
+    let menuX = clickX + 10;
+    let menuY = clickY - 50;
+    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
+    if (menuY < margin.top) menuY = margin.top;
+    setTextLabelMenuPos({ x: menuX, y: menuY });
+  }, [dimensions, margin, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu]);
+
+  // Delete selected text label
+  const deleteTextLabel = useCallback(() => {
+    if (selectedTextLabel) {
+      setDrawnTextLabels(prev => prev.filter(l => l.id !== selectedTextLabel));
+      setSelectedTextLabel(null);
+      setTextLabelMenuPos(null);
+    }
+  }, [selectedTextLabel]);
+
+  // Update text label property
+  const updateTextLabel = useCallback((id: string, updates: Partial<TextLabelData>) => {
+    setDrawnTextLabels(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
   }, []);
   
   // Move whole line - places center at click position
@@ -1696,7 +1959,217 @@ export default function CryptoSandbox() {
                   </g>
                 );
               })}
+              
+              {/* Render horizontal lines */}
+              {drawnHorizontals.map((line) => {
+                if (!yScaleRef.current) return null;
+                const y = yScaleRef.current(line.price) + margin.top;
+                const isSelected = selectedHorizontal === line.id;
+                const strokeDash = line.lineStyle === 'dashed' ? '8,4' : line.lineStyle === 'dotted' ? '2,4' : 'none';
+                
+                return (
+                  <g key={line.id}>
+                    {/* Invisible hit area */}
+                    <line 
+                      x1={margin.left} y1={y} x2={dimensions.width - margin.right} y2={y}
+                      stroke="transparent"
+                      strokeWidth="12"
+                      style={{ cursor: 'pointer' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleHorizontalSelect(line.id, e.clientX - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().left || 0), e.clientY - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().top || 0));
+                      }}
+                    />
+                    {/* Visible line */}
+                    <line 
+                      x1={margin.left} y1={y} x2={dimensions.width - margin.right} y2={y}
+                      stroke={line.color}
+                      strokeWidth={line.thickness || 2}
+                      strokeOpacity={line.opacity}
+                      strokeDasharray={strokeDash}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                    {/* Selection indicator */}
+                    {isSelected && (
+                      <>
+                        <circle cx={margin.left + 20} cy={y} r={5} fill={line.color} stroke="white" strokeWidth="2" />
+                        <circle cx={dimensions.width - margin.right - 20} cy={y} r={5} fill={line.color} stroke="white" strokeWidth="2" />
+                      </>
+                    )}
+                    {/* Label if set */}
+                    {line.label && (
+                      <text
+                        x={line.label.position === 'left' ? margin.left + 5 : dimensions.width - margin.right - 5}
+                        y={y - 5}
+                        fill={line.color}
+                        fontSize="11"
+                        textAnchor={line.label.position === 'left' ? 'start' : 'end'}
+                      >
+                        {line.label.text}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+              
+              {/* Render channels */}
+              {drawnChannels.map((channel) => {
+                if (!xScaleRef.current || !yScaleRef.current) return null;
+                const x1 = xScaleRef.current(new Date(channel.p1.time)) + margin.left;
+                const y1 = yScaleRef.current(channel.p1.price) + margin.top;
+                const x2 = xScaleRef.current(new Date(channel.p2.time)) + margin.left;
+                const y2 = yScaleRef.current(channel.p2.price) + margin.top;
+                
+                const isSelected = selectedChannel === channel.id;
+                const strokeDash = channel.lineStyle === 'dashed' ? '8,4' : channel.lineStyle === 'dotted' ? '2,4' : 'none';
+                const internalDash = channel.internalLineStyle === 'dashed' ? '8,4' : channel.internalLineStyle === 'dotted' ? '2,4' : 'none';
+                
+                // Calculate perpendicular offset for channel width
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                const perpX = len > 0 ? (-dy / len) * 50 : 0;
+                const perpY = len > 0 ? (dx / len) * 50 : 50;
+                
+                return (
+                  <g key={channel.id}>
+                    {/* Top line */}
+                    {channel.showExternalLines && (
+                      <line x1={x1 + perpX} y1={y1 + perpY} x2={x2 + perpX} y2={y2 + perpY}
+                        stroke={channel.color} strokeWidth={channel.thickness} strokeOpacity={channel.opacity} strokeDasharray={strokeDash}
+                      />
+                    )}
+                    {/* Bottom line */}
+                    {channel.showExternalLines && (
+                      <line x1={x1 - perpX} y1={y1 - perpY} x2={x2 - perpX} y2={y2 - perpY}
+                        stroke={channel.color} strokeWidth={channel.thickness} strokeOpacity={channel.opacity} strokeDasharray={strokeDash}
+                      />
+                    )}
+                    {/* Center line (main) */}
+                    <line x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke={channel.color} strokeWidth={channel.thickness} strokeOpacity={channel.opacity} strokeDasharray={strokeDash}
+                    />
+                    {/* Internal lines */}
+                    {channel.internalLines.filter(il => il.visible).map((il, idx) => {
+                      const ratio = il.percent / 100;
+                      return (
+                        <g key={idx}>
+                          <line 
+                            x1={x1 + perpX * ratio} y1={y1 + perpY * ratio} 
+                            x2={x2 + perpX * ratio} y2={y2 + perpY * ratio}
+                            stroke={channel.internalLineColor} strokeWidth={1} strokeOpacity={channel.opacity * 0.7} strokeDasharray={internalDash}
+                          />
+                          <line 
+                            x1={x1 - perpX * ratio} y1={y1 - perpY * ratio} 
+                            x2={x2 - perpX * ratio} y2={y2 - perpY * ratio}
+                            stroke={channel.internalLineColor} strokeWidth={1} strokeOpacity={channel.opacity * 0.7} strokeDasharray={internalDash}
+                          />
+                        </g>
+                      );
+                    })}
+                    {/* Hit area */}
+                    <line x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke="transparent" strokeWidth="20" style={{ cursor: 'pointer' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleChannelSelect(channel.id, e.clientX - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().left || 0), e.clientY - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().top || 0));
+                      }}
+                    />
+                    {isSelected && (
+                      <>
+                        <circle cx={x1} cy={y1} r={6} fill={channel.color} stroke="white" strokeWidth="2" />
+                        <circle cx={x2} cy={y2} r={6} fill={channel.color} stroke="white" strokeWidth="2" />
+                      </>
+                    )}
+                  </g>
+                );
+              })}
+              
+              {/* Render text labels */}
+              {drawnTextLabels.map((label) => {
+                if (!xScaleRef.current || !yScaleRef.current) return null;
+                const x = xScaleRef.current(new Date(label.time)) + margin.left;
+                const y = yScaleRef.current(label.price) + margin.top;
+                const isSelected = selectedTextLabel === label.id;
+                
+                return (
+                  <g key={label.id} style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleTextLabelSelect(label.id, e.clientX - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().left || 0), e.clientY - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().top || 0));
+                    }}
+                  >
+                    {label.backgroundColor !== 'transparent' && (
+                      <rect x={x - 5} y={y - label.fontSize} width={label.text.length * label.fontSize * 0.6 + 10} height={label.fontSize + 6}
+                        fill={label.backgroundColor} rx="3" opacity={label.opacity}
+                      />
+                    )}
+                    <text x={x} y={y} fill={label.color} fontSize={label.fontSize} opacity={label.opacity}>
+                      {label.text}
+                    </text>
+                    {isSelected && (
+                      <rect x={x - 8} y={y - label.fontSize - 3} width={label.text.length * label.fontSize * 0.6 + 16} height={label.fontSize + 12}
+                        fill="none" stroke="#3b82f6" strokeWidth="2" strokeDasharray="4,2" rx="3"
+                      />
+                    )}
+                  </g>
+                );
+              })}
             </svg>
+            
+            {/* Horizontal line drawing overlay */}
+            {activeTool === 'horizontal' && (
+              <div 
+                className="absolute inset-0 cursor-crosshair"
+                style={{ pointerEvents: 'auto' }}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  handleHorizontalClick(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+              >
+                <div className="absolute top-14 left-14 bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                  Click to place horizontal line
+                </div>
+              </div>
+            )}
+            
+            {/* Channel drawing overlay */}
+            {activeTool === 'channel' && (
+              <div 
+                className="absolute inset-0 cursor-crosshair"
+                style={{ pointerEvents: 'auto' }}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  handleChannelClick(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+              >
+                {channelPoints.length === 1 && (
+                  <div 
+                    className="absolute w-3 h-3 bg-green-400 rounded-full pointer-events-none"
+                    style={{ left: channelPoints[0].x - 6, top: channelPoints[0].y - 6 }}
+                  />
+                )}
+                <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                  {channelPoints.length === 0 ? 'Click for 1st point' : 'Click for 2nd point'}
+                </div>
+              </div>
+            )}
+            
+            {/* Text label drawing overlay */}
+            {activeTool === 'label' && (
+              <div 
+                className="absolute inset-0 cursor-crosshair"
+                style={{ pointerEvents: 'auto' }}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  handleTextLabelClick(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+              >
+                <div className="absolute top-14 left-14 bg-purple-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                  Click to place text label
+                </div>
+              </div>
+            )}
             
             {/* Trendline action menu */}
             {trendlineMenuPos && selectedTrendline && (
@@ -1968,6 +2441,152 @@ export default function CryptoSandbox() {
                       Remove Label
                     </button>
                   )}
+                </div>
+              );
+            })()}
+            
+            {/* Horizontal line action menu */}
+            {horizontalMenuPos && selectedHorizontal && (
+              <div 
+                className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded p-1 z-50"
+                style={{ left: horizontalMenuPos.x, top: horizontalMenuPos.y }}
+              >
+                <button onClick={deleteHorizontal} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
+                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                  </svg>
+                </button>
+                <button onClick={() => {
+                  const colors = TRENDLINE_COLORS;
+                  const line = drawnHorizontals.find(l => l.id === selectedHorizontal);
+                  const idx = colors.indexOf(line?.color || '');
+                  updateHorizontal(selectedHorizontal, { color: colors[(idx + 1) % colors.length] });
+                }} className="p-2 hover:bg-slate-700 rounded" title="Color">
+                  <div className="w-5 h-5 rounded" style={{ backgroundColor: drawnHorizontals.find(l => l.id === selectedHorizontal)?.color }} />
+                </button>
+                <button onClick={() => {
+                  const styles: LineStyle[] = ['solid', 'dashed', 'dotted'];
+                  const line = drawnHorizontals.find(l => l.id === selectedHorizontal);
+                  const idx = styles.indexOf(line?.lineStyle || 'solid');
+                  updateHorizontal(selectedHorizontal, { lineStyle: styles[(idx + 1) % 3] });
+                }} className="p-2 hover:bg-slate-700 rounded text-white" title="Style">
+                  <svg viewBox="0 0 20 20" className="w-5 h-5">
+                    <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="2" 
+                      strokeDasharray={drawnHorizontals.find(l => l.id === selectedHorizontal)?.lineStyle === 'dashed' ? '4,2' : drawnHorizontals.find(l => l.id === selectedHorizontal)?.lineStyle === 'dotted' ? '1,2' : '0'} 
+                    />
+                  </svg>
+                </button>
+                <button onClick={saveHorizontalAsFavorite} className="p-2 hover:bg-slate-700 rounded text-yellow-400" title="Save as Default">
+                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                    <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            
+            {/* Channel action menu */}
+            {channelMenuPos && selectedChannel && (() => {
+              const channel = drawnChannels.find(c => c.id === selectedChannel);
+              return (
+                <div 
+                  className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50 w-48"
+                  style={{ left: channelMenuPos.x, top: channelMenuPos.y }}
+                >
+                  <div className="flex gap-1 mb-2">
+                    <button onClick={deleteChannel} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
+                      <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                      </svg>
+                    </button>
+                    <button onClick={() => {
+                      const colors = TRENDLINE_COLORS;
+                      const idx = colors.indexOf(channel?.color || '');
+                      updateChannel(selectedChannel, { color: colors[(idx + 1) % colors.length] });
+                    }} className="p-2 hover:bg-slate-700 rounded" title="Color">
+                      <div className="w-4 h-4 rounded" style={{ backgroundColor: channel?.color }} />
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">External Lines</div>
+                  <label className="flex items-center gap-2 text-white text-xs mb-2">
+                    <input type="checkbox" checked={channel?.showExternalLines} onChange={e => updateChannel(selectedChannel, { showExternalLines: e.target.checked })} />
+                    Show
+                  </label>
+                  <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
+                  {channel?.internalLines.map((il, idx) => (
+                    <div key={idx} className="flex items-center gap-1 mb-1">
+                      <input type="checkbox" checked={il.visible} onChange={e => {
+                        const newLines = [...(channel?.internalLines || [])];
+                        newLines[idx] = { ...newLines[idx], visible: e.target.checked };
+                        updateChannel(selectedChannel, { internalLines: newLines });
+                      }} />
+                      <input type="number" value={il.percent} min="1" max="99" className="w-12 bg-slate-700 text-white px-1 text-xs rounded"
+                        onChange={e => {
+                          const newLines = [...(channel?.internalLines || [])];
+                          newLines[idx] = { ...newLines[idx], percent: parseInt(e.target.value) || 25 };
+                          updateChannel(selectedChannel, { internalLines: newLines });
+                        }}
+                      />
+                      <span className="text-white text-xs">%</span>
+                      <input type="text" value={il.label} className="flex-1 bg-slate-700 text-white px-1 text-xs rounded"
+                        onChange={e => {
+                          const newLines = [...(channel?.internalLines || [])];
+                          newLines[idx] = { ...newLines[idx], label: e.target.value };
+                          updateChannel(selectedChannel, { internalLines: newLines });
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <button onClick={() => {
+                    const newLines = [...(channel?.internalLines || []), { percent: 50, visible: true, label: '50%' }];
+                    updateChannel(selectedChannel, { internalLines: newLines });
+                  }} className="text-xs text-blue-400 hover:underline">+ Add line</button>
+                </div>
+              );
+            })()}
+            
+            {/* Text label action menu */}
+            {textLabelMenuPos && selectedTextLabel && (() => {
+              const label = drawnTextLabels.find(l => l.id === selectedTextLabel);
+              return (
+                <div 
+                  className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50 w-40"
+                  style={{ left: textLabelMenuPos.x, top: textLabelMenuPos.y }}
+                >
+                  <div className="flex gap-1 mb-2">
+                    <button onClick={deleteTextLabel} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
+                      <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                      </svg>
+                    </button>
+                    <button onClick={() => {
+                      const colors = TRENDLINE_COLORS;
+                      const idx = colors.indexOf(label?.color || '');
+                      updateTextLabel(selectedTextLabel, { color: colors[(idx + 1) % colors.length] });
+                    }} className="p-2 hover:bg-slate-700 rounded" title="Color">
+                      <div className="w-4 h-4 rounded" style={{ backgroundColor: label?.color }} />
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Text</div>
+                  <input type="text" value={label?.text || ''} 
+                    onChange={e => updateTextLabel(selectedTextLabel, { text: e.target.value })}
+                    className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-2"
+                  />
+                  <div className="text-xs text-gray-400 mb-1">Font Size</div>
+                  <input type="range" min="10" max="24" value={label?.fontSize || 14}
+                    onChange={e => updateTextLabel(selectedTextLabel, { fontSize: parseInt(e.target.value) })}
+                    className="w-full mb-2"
+                  />
+                  <div className="text-xs text-gray-400 mb-1">Background</div>
+                  <div className="flex gap-1 flex-wrap">
+                    {['transparent', '#000000', '#1e293b', '#374151', '#ffffff'].map(bg => (
+                      <button key={bg} onClick={() => updateTextLabel(selectedTextLabel, { backgroundColor: bg })}
+                        className={`w-5 h-5 rounded border ${label?.backgroundColor === bg ? 'border-blue-500' : 'border-slate-500'}`}
+                        style={{ backgroundColor: bg === 'transparent' ? 'transparent' : bg }}
+                      >
+                        {bg === 'transparent' && <span className="text-xs">∅</span>}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               );
             })()}
