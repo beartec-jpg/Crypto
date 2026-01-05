@@ -42,6 +42,8 @@ export default function CryptoSandbox() {
   // Auto/manual scale mode (double-click axis to reset to auto)
   const [yAxisManual, setYAxisManual] = useState(false);
   const [xAxisManual, setXAxisManual] = useState(false);
+  const [manualYDomain, setManualYDomain] = useState<[number, number] | null>(null);
+  const [manualXDomain, setManualXDomain] = useState<[Date, Date] | null>(null);
   const yAxisDragRef = useRef<{ startY: number; startDomain: [number, number] } | null>(null);
   const xAxisDragRef = useRef<{ startX: number; startDomain: [Date, Date] } | null>(null);
   
@@ -1107,7 +1109,7 @@ export default function CryptoSandbox() {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       // Y-axis drag (vertical = zoom price)
-      if (yAxisDragRef.current && yScaleRef.current) {
+      if (yAxisDragRef.current) {
         const deltaY = e.clientY - yAxisDragRef.current.startY;
         const sensitivity = 0.005;
         const factor = 1 + deltaY * sensitivity;
@@ -1115,11 +1117,12 @@ export default function CryptoSandbox() {
         const midPrice = (minPrice + maxPrice) / 2;
         const halfRange = (maxPrice - minPrice) / 2;
         const newHalfRange = halfRange * Math.max(0.1, factor);
-        yScaleRef.current.domain([midPrice - newHalfRange, midPrice + newHalfRange]);
+        const newDomain: [number, number] = [midPrice - newHalfRange, midPrice + newHalfRange];
+        setManualYDomain(newDomain);
         setZoomVersion(v => v + 1);
       }
       // X-axis drag (horizontal = zoom time)
-      if (xAxisDragRef.current && xScaleRef.current) {
+      if (xAxisDragRef.current) {
         const deltaX = e.clientX - xAxisDragRef.current.startX;
         const sensitivity = 0.003;
         const factor = 1 - deltaX * sensitivity;
@@ -1127,10 +1130,11 @@ export default function CryptoSandbox() {
         const midTime = new Date((minTime.getTime() + maxTime.getTime()) / 2);
         const halfRange = (maxTime.getTime() - minTime.getTime()) / 2;
         const newHalfRange = halfRange * Math.max(0.1, factor);
-        xScaleRef.current.domain([
+        const newDomain: [Date, Date] = [
           new Date(midTime.getTime() - newHalfRange),
           new Date(midTime.getTime() + newHalfRange)
-        ]);
+        ];
+        setManualXDomain(newDomain);
         setZoomVersion(v => v + 1);
       }
     };
@@ -1181,13 +1185,13 @@ export default function CryptoSandbox() {
     
     // X Scale (time) - preserve manual domain if set
     const xScale = d3.scaleTime()
-      .domain(xAxisManual && xScaleRef.current ? xScaleRef.current.domain() : [new Date(timeExtent[0]), new Date(timeExtent[1])])
+      .domain(xAxisManual && manualXDomain ? manualXDomain : [new Date(timeExtent[0]), new Date(timeExtent[1])])
       .range([0, innerWidth]);
     xScaleRef.current = xScale;
     
-    // Y Scale (price) - preserve manual domain if set
+    // Y Scale (price) - use manual domain if set
     const yScale = d3.scaleLinear()
-      .domain(yAxisManual && yScaleRef.current ? yScaleRef.current.domain() : priceExtent)
+      .domain(yAxisManual && manualYDomain ? manualYDomain : priceExtent)
       .range([innerHeight, 0]);
     if (!yAxisManual) yScale.nice();
     yScaleRef.current = yScale;
@@ -1411,7 +1415,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion, xAxisManual, yAxisManual]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion, xAxisManual, yAxisManual, manualXDomain, manualYDomain]);
   
   // Show loading while checking auth
   if (authLoading) {
@@ -1504,10 +1508,12 @@ export default function CryptoSandbox() {
                 e.preventDefault();
                 const domain = yScaleRef.current.domain() as [number, number];
                 yAxisDragRef.current = { startY: e.clientY, startDomain: domain };
+                setManualYDomain(domain);
                 setYAxisManual(true);
               }}
               onDoubleClick={() => {
                 setYAxisManual(false);
+                setManualYDomain(null);
                 // Trigger a redraw with auto-scale
                 setZoomVersion(v => v + 1);
               }}
@@ -1529,10 +1535,12 @@ export default function CryptoSandbox() {
                 e.preventDefault();
                 const domain = xScaleRef.current.domain() as [Date, Date];
                 xAxisDragRef.current = { startX: e.clientX, startDomain: domain };
+                setManualXDomain(domain);
                 setXAxisManual(true);
               }}
               onDoubleClick={() => {
                 setXAxisManual(false);
+                setManualXDomain(null);
                 setZoomVersion(v => v + 1);
               }}
               title={xAxisManual ? "Drag to zoom, double-click to auto-scale" : "Drag to zoom"}
