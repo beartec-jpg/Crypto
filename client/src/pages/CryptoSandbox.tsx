@@ -1130,17 +1130,17 @@ export default function CryptoSandbox() {
       d3.max(candles, d => d.high) as number * 1.001
     ];
     
-    // X Scale (time) - preserve manual domain if set
+    // X Scale (time) - D3 zoom handles transforms
     const xScale = d3.scaleTime()
-      .domain(xAxisManual && manualXDomain ? manualXDomain : [new Date(timeExtent[0]), new Date(timeExtent[1])])
+      .domain([new Date(timeExtent[0]), new Date(timeExtent[1])])
       .range([0, innerWidth]);
     xScaleRef.current = xScale;
     
-    // Y Scale (price) - use manual domain if set
+    // Y Scale (price) - D3 zoom recalculates based on visible candles
     const yScale = d3.scaleLinear()
-      .domain(yAxisManual && manualYDomain ? manualYDomain : priceExtent)
-      .range([innerHeight, 0]);
-    if (!yAxisManual) yScale.nice();
+      .domain(priceExtent)
+      .range([innerHeight, 0])
+      .nice();
     yScaleRef.current = yScale;
     
     // Background
