@@ -1105,19 +1105,16 @@ export default function CryptoSandbox() {
     setTimeout(() => setClickPulse(null), 400);
   }, []);
   
-  // Global mouse handlers for axis drag
+  // Global mouse/touch handlers for axis drag
   useEffect(() => {
     console.log('Axis handlers mounted');
-    const handleMouseMove = (e: MouseEvent) => {
-      // Check if axis drag is active
+    
+    const handleMove = (clientX: number, clientY: number) => {
       const yDrag = yAxisDragRef.current;
       const xDrag = xAxisDragRef.current;
-      if (yDrag || xDrag) {
-        console.log('Axis mousemove, yDrag:', !!yDrag, 'xDrag:', !!xDrag);
-      }
-      // Y-axis drag (vertical = zoom price)
+      
       if (yDrag) {
-        const deltaY = e.clientY - yDrag.startY;
+        const deltaY = clientY - yDrag.startY;
         const sensitivity = 0.005;
         const factor = 1 + deltaY * sensitivity;
         const [minPrice, maxPrice] = yDrag.startDomain;
@@ -1125,16 +1122,15 @@ export default function CryptoSandbox() {
         const halfRange = (maxPrice - minPrice) / 2;
         const newHalfRange = halfRange * Math.max(0.1, factor);
         const newDomain: [number, number] = [midPrice - newHalfRange, midPrice + newHalfRange];
-        console.log('Y-axis dragging, newDomain:', newDomain);
         setManualYDomain(newDomain);
         setZoomVersion(v => v + 1);
       }
-      // X-axis drag (horizontal = zoom time)
-      if (xAxisDragRef.current) {
-        const deltaX = e.clientX - xAxisDragRef.current.startX;
+      
+      if (xDrag) {
+        const deltaX = clientX - xDrag.startX;
         const sensitivity = 0.003;
         const factor = 1 - deltaX * sensitivity;
-        const [minTime, maxTime] = xAxisDragRef.current.startDomain;
+        const [minTime, maxTime] = xDrag.startDomain;
         const midTime = new Date((minTime.getTime() + maxTime.getTime()) / 2);
         const halfRange = (maxTime.getTime() - minTime.getTime()) / 2;
         const newHalfRange = halfRange * Math.max(0.1, factor);
@@ -1147,7 +1143,16 @@ export default function CryptoSandbox() {
       }
     };
     
-    const handleMouseUp = () => {
+    const handleMouseMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY);
+    const handleTouchMove = (e: TouchEvent) => {
+      if (yAxisDragRef.current || xAxisDragRef.current) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        handleMove(touch.clientX, touch.clientY);
+      }
+    };
+    
+    const handleEnd = () => {
       if (yAxisDragRef.current || xAxisDragRef.current) {
         console.log('Axis drag ended');
       }
@@ -1156,10 +1161,17 @@ export default function CryptoSandbox() {
     };
     
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', handleEnd);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleEnd);
+    document.addEventListener('touchcancel', handleEnd);
+    
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleEnd);
+      document.removeEventListener('touchcancel', handleEnd);
     };
   }, []);
   
@@ -1512,23 +1524,32 @@ export default function CryptoSandbox() {
                 top: margin.top, 
                 width: margin.right, 
                 height: dimensions.height - margin.top - margin.bottom,
-                background: yAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
+                background: yAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                touchAction: 'none'
               }}
               onMouseDown={(e) => {
-                console.log('Y-axis mouseDown', yScaleRef.current);
                 if (!yScaleRef.current) return;
                 e.preventDefault();
                 e.stopPropagation();
                 const domain = yScaleRef.current.domain() as [number, number];
-                console.log('Y-axis drag start, domain:', domain);
                 yAxisDragRef.current = { startY: e.clientY, startDomain: domain };
+                setManualYDomain(domain);
+                setYAxisManual(true);
+              }}
+              onTouchStart={(e) => {
+                if (!yScaleRef.current) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const touch = e.touches[0];
+                const domain = yScaleRef.current.domain() as [number, number];
+                console.log('Y-axis touchStart, domain:', domain);
+                yAxisDragRef.current = { startY: touch.clientY, startDomain: domain };
                 setManualYDomain(domain);
                 setYAxisManual(true);
               }}
               onDoubleClick={() => {
                 setYAxisManual(false);
                 setManualYDomain(null);
-                // Trigger a redraw with auto-scale
                 setZoomVersion(v => v + 1);
               }}
               title={yAxisManual ? "Drag to zoom, double-click to auto-scale" : "Drag to zoom"}
@@ -1542,13 +1563,25 @@ export default function CryptoSandbox() {
                 bottom: 0, 
                 width: dimensions.width - margin.left - margin.right, 
                 height: margin.bottom,
-                background: xAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
+                background: xAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                touchAction: 'none'
               }}
               onMouseDown={(e) => {
                 if (!xScaleRef.current) return;
                 e.preventDefault();
                 const domain = xScaleRef.current.domain() as [Date, Date];
                 xAxisDragRef.current = { startX: e.clientX, startDomain: domain };
+                setManualXDomain(domain);
+                setXAxisManual(true);
+              }}
+              onTouchStart={(e) => {
+                if (!xScaleRef.current) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const touch = e.touches[0];
+                const domain = xScaleRef.current.domain() as [Date, Date];
+                console.log('X-axis touchStart, domain:', domain);
+                xAxisDragRef.current = { startX: touch.clientX, startDomain: domain };
                 setManualXDomain(domain);
                 setXAxisManual(true);
               }}
