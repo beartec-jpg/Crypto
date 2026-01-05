@@ -87,6 +87,7 @@ export default function CryptoSandbox() {
   const [movingPoint, setMovingPoint] = useState<{ lineId: string; point: 'p1' | 'p2' } | null>(null);
   const [moveModePopup, setMoveModePopup] = useState<{ x: number; y: number; lineId: string; point: 'p1' | 'p2' } | null>(null);
   const [moveMethod, setMoveMethod] = useState<'magnet' | 'free'>('magnet');
+  const [movingWholeLine, setMovingWholeLine] = useState<string | null>(null);
   
   // Undo/redo history for trendlines
   const [trendlineHistory, setTrendlineHistory] = useState<TrendlineData[][]>([[]]);
@@ -396,7 +397,46 @@ export default function CryptoSandbox() {
     setMoveMode(false);
     setMovingPoint(null);
     setMoveModePopup(null);
+    setMovingWholeLine(null);
   }, []);
+  
+  // Move whole line - places center at click position
+  const moveWholeLine = useCallback((clickX: number, clickY: number) => {
+    if (!movingWholeLine || !xScaleRef.current || !yScaleRef.current) return;
+    
+    const line = drawnTrendlines.find(l => l.id === movingWholeLine);
+    if (!line) return;
+    
+    // Get current center in screen coords
+    const oldCenterX = (xScaleRef.current(new Date(line.p1.time)) + xScaleRef.current(new Date(line.p2.time))) / 2 + margin.left;
+    const oldCenterY = (yScaleRef.current(line.p1.price) + yScaleRef.current(line.p2.price)) / 2 + margin.top;
+    
+    // Calculate offset
+    const offsetX = clickX - oldCenterX;
+    const offsetY = clickY - oldCenterY;
+    
+    // Convert back to time/price
+    const newP1Time = xScaleRef.current.invert(xScaleRef.current(new Date(line.p1.time)) + offsetX).getTime();
+    const newP2Time = xScaleRef.current.invert(xScaleRef.current(new Date(line.p2.time)) + offsetX).getTime();
+    const newP1Price = yScaleRef.current.invert(yScaleRef.current(line.p1.price) + offsetY);
+    const newP2Price = yScaleRef.current.invert(yScaleRef.current(line.p2.price) + offsetY);
+    
+    const newTrendlines = drawnTrendlines.map(l => {
+      if (l.id === movingWholeLine) {
+        return {
+          ...l,
+          p1: { time: newP1Time, price: newP1Price },
+          p2: { time: newP2Time, price: newP2Price }
+        };
+      }
+      return l;
+    });
+    
+    setDrawnTrendlines(newTrendlines);
+    saveToHistory(newTrendlines);
+    setMovingWholeLine(null);
+    setSelectedTrendline(null);
+  }, [movingWholeLine, drawnTrendlines, margin.left, margin.top, saveToHistory]);
   
   // Activate move mode
   const activateMoveMode = useCallback((lineId: string) => {
@@ -1492,6 +1532,17 @@ export default function CryptoSandbox() {
               />
             )}
             
+            {/* Overlay for whole-line move mode - click to place line */}
+            {movingWholeLine && (
+              <div 
+                className="absolute inset-0 z-40 cursor-crosshair"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  moveWholeLine(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+              />
+            )}
+            
             {/* Render drawn trendlines - clickable with selection */}
             {/* zoomVersion ensures re-render on zoom/pan */}
             <svg 
@@ -1618,9 +1669,10 @@ export default function CryptoSandbox() {
                       style={{ pointerEvents: 'none' }}
                     />
                     
-                    {/* Endpoint circles - clickable in move mode, visible when selected or in move mode */}
+                    {/* Endpoint circles and center point - visible when selected */}
                     {(isSelected || (moveMode && movingTrendline === line.id)) && (
                       <>
+                        {/* Endpoint 1 */}
                         <circle 
                           cx={x1} cy={y1} r={moveMode ? 8 : 5} 
                           fill={line.color} stroke="white" strokeWidth="2"
@@ -1633,6 +1685,25 @@ export default function CryptoSandbox() {
                             }
                           }}
                         />
+                        {/* Center point - click to move whole line */}
+                        <circle 
+                          cx={(x1 + x2) / 2} cy={(y1 + y2) / 2} r={movingWholeLine === line.id ? 8 : 6}
+                          fill={movingWholeLine === line.id ? '#22c55e' : 'white'} 
+                          stroke={line.color} strokeWidth="2"
+                          style={{ cursor: 'pointer' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (movingWholeLine === line.id) {
+                              // Cancel move mode
+                              setMovingWholeLine(null);
+                            } else {
+                              // Start moving whole line
+                              setMovingWholeLine(line.id);
+                              setTrendlineMenuPos(null);
+                            }
+                          }}
+                        />
+                        {/* Endpoint 2 */}
                         <circle 
                           cx={x2} cy={y2} r={moveMode ? 8 : 5} 
                           fill={line.color} stroke="white" strokeWidth="2"
@@ -1885,6 +1956,13 @@ export default function CryptoSandbox() {
             {moveMode && !movingPoint && (
               <div className="absolute top-14 left-14 bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
                 Move Mode - Click an endpoint circle to move it
+              </div>
+            )}
+            
+            {/* Whole line move indicator */}
+            {movingWholeLine && (
+              <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-50">
+                Click anywhere to place line center
               </div>
             )}
             
