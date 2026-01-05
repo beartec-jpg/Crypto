@@ -1506,20 +1506,71 @@ export default function CryptoSandbox() {
                 let x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
                 let y2 = yScaleRef.current(line.p2.price) + margin.top;
                 
+                // Chart boundaries
+                const chartLeft = margin.left;
+                const chartRight = dimensions.width - margin.right;
+                const chartTop = margin.top;
+                const chartBottom = dimensions.height - margin.bottom;
+                
+                // Function to clip line to chart boundaries
+                const clipToChart = (px1: number, py1: number, px2: number, py2: number) => {
+                  const dx = px2 - px1;
+                  const dy = py2 - py1;
+                  let t0 = 0, t1 = 1;
+                  
+                  // Clip against each boundary
+                  const clip = (p: number, q: number) => {
+                    if (p === 0) return q >= 0;
+                    const r = q / p;
+                    if (p < 0) {
+                      if (r > t1) return false;
+                      if (r > t0) t0 = r;
+                    } else {
+                      if (r < t0) return false;
+                      if (r < t1) t1 = r;
+                    }
+                    return true;
+                  };
+                  
+                  if (!clip(-dx, px1 - chartLeft)) return null;
+                  if (!clip(dx, chartRight - px1)) return null;
+                  if (!clip(-dy, py1 - chartTop)) return null;
+                  if (!clip(dy, chartBottom - py1)) return null;
+                  
+                  return {
+                    x1: px1 + t0 * dx,
+                    y1: py1 + t0 * dy,
+                    x2: px1 + t1 * dx,
+                    y2: py1 + t1 * dy
+                  };
+                };
+                
                 // Calculate extended line coordinates
                 const dx = x2 - x1;
                 const dy = y2 - y1;
                 const extendAmount = 2000; // pixels to extend
                 let extX1 = x1, extY1 = y1, extX2 = x2, extY2 = y2;
-                if (line.extendLeft && dx !== 0) {
+                if (line.extendLeft && (dx !== 0 || dy !== 0)) {
                   const ratio = extendAmount / Math.sqrt(dx * dx + dy * dy);
                   extX1 = x1 - dx * ratio;
                   extY1 = y1 - dy * ratio;
+                  // Clip to chart boundaries
+                  const clipped = clipToChart(extX1, extY1, x1, y1);
+                  if (clipped) {
+                    extX1 = clipped.x1;
+                    extY1 = clipped.y1;
+                  }
                 }
-                if (line.extendRight && dx !== 0) {
+                if (line.extendRight && (dx !== 0 || dy !== 0)) {
                   const ratio = extendAmount / Math.sqrt(dx * dx + dy * dy);
                   extX2 = x2 + dx * ratio;
                   extY2 = y2 + dy * ratio;
+                  // Clip to chart boundaries
+                  const clipped = clipToChart(x2, y2, extX2, extY2);
+                  if (clipped) {
+                    extX2 = clipped.x2;
+                    extY2 = clipped.y2;
+                  }
                 }
                 
                 const isSelected = selectedTrendline === line.id;
