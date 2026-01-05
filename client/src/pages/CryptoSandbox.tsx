@@ -44,6 +44,16 @@ export default function CryptoSandbox() {
   const [xAxisManual, setXAxisManual] = useState(false);
   const [manualYDomain, setManualYDomain] = useState<[number, number] | null>(null);
   const [manualXDomain, setManualXDomain] = useState<[Date, Date] | null>(null);
+  // Refs to access latest domain values inside D3 callbacks
+  const manualYDomainRef = useRef<[number, number] | null>(null);
+  const manualXDomainRef = useRef<[Date, Date] | null>(null);
+  const yAxisManualRef = useRef(false);
+  const xAxisManualRef = useRef(false);
+  // Keep refs in sync with state
+  manualYDomainRef.current = manualYDomain;
+  manualXDomainRef.current = manualXDomain;
+  yAxisManualRef.current = yAxisManual;
+  xAxisManualRef.current = xAxisManual;
   const yAxisDragRef = useRef<{ startY: number; startDomain: [number, number] } | null>(null);
   const xAxisDragRef = useRef<{ startX: number; startDomain: [Date, Date] } | null>(null);
   
@@ -1123,7 +1133,7 @@ export default function CryptoSandbox() {
         const newHalfRange = halfRange * Math.max(0.1, factor);
         const newDomain: [number, number] = [midPrice - newHalfRange, midPrice + newHalfRange];
         setManualYDomain(newDomain);
-        setZoomVersion(v => v + 1);
+        // Don't trigger full rebuild - just store domain for next D3 zoom event
       }
       
       if (xDrag) {
@@ -1139,7 +1149,7 @@ export default function CryptoSandbox() {
           new Date(midTime.getTime() + newHalfRange)
         ];
         setManualXDomain(newDomain);
-        setZoomVersion(v => v + 1);
+        // Don't trigger full rebuild - just store domain for next D3 zoom event
       }
     };
     
@@ -1331,9 +1341,10 @@ export default function CryptoSandbox() {
         });
         
         if (visibleCandles.length > 0) {
-          // Use manual Y domain if set, otherwise auto-calculate from visible candles
-          const newPriceExtent = (yAxisManual && manualYDomain) 
-            ? manualYDomain
+          // Use manual Y domain if set (via refs for latest value), otherwise auto-calculate
+          const useManualY = yAxisManualRef.current && manualYDomainRef.current;
+          const newPriceExtent = useManualY 
+            ? manualYDomainRef.current!
             : [
                 d3.min(visibleCandles, d => d.low) as number * 0.999,
                 d3.max(visibleCandles, d => d.high) as number * 1.001
@@ -1342,7 +1353,7 @@ export default function CryptoSandbox() {
           const newYScale = d3.scaleLinear()
             .domain(newPriceExtent)
             .range([innerHeight, 0]);
-          if (!yAxisManual) newYScale.nice();
+          if (!useManualY) newYScale.nice();
           yScaleRef.current = newYScale;
           
           // Update axes
@@ -1441,7 +1452,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion, xAxisManual, yAxisManual, manualXDomain, manualYDomain]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion, xAxisManual, yAxisManual]);
   
   // Show loading while checking auth
   if (authLoading) {
