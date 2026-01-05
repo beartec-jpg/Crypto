@@ -1560,6 +1560,9 @@ export default function CryptoSandbox() {
                 e.stopPropagation();
                 const domain = yScaleRef.current.domain() as [number, number];
                 yAxisDragRef.current = { startY: e.clientY, startDomain: domain };
+                // Update refs immediately so D3 callbacks see the new values
+                manualYDomainRef.current = domain;
+                yAxisManualRef.current = true;
                 setManualYDomain(domain);
                 setYAxisManual(true);
               }}
@@ -1571,6 +1574,9 @@ export default function CryptoSandbox() {
                 const domain = yScaleRef.current.domain() as [number, number];
                 console.log('Y-axis touchStart, domain:', domain);
                 yAxisDragRef.current = { startY: touch.clientY, startDomain: domain };
+                // Update refs immediately so D3 callbacks see the new values
+                manualYDomainRef.current = domain;
+                yAxisManualRef.current = true;
                 setManualYDomain(domain);
                 setYAxisManual(true);
               }}
@@ -1598,6 +1604,9 @@ export default function CryptoSandbox() {
                 e.preventDefault();
                 const domain = xScaleRef.current.domain() as [Date, Date];
                 xAxisDragRef.current = { startX: e.clientX, startDomain: domain };
+                // Update refs immediately so D3 callbacks see the new values
+                manualXDomainRef.current = domain;
+                xAxisManualRef.current = true;
                 setManualXDomain(domain);
                 setXAxisManual(true);
               }}
@@ -1609,6 +1618,9 @@ export default function CryptoSandbox() {
                 const domain = xScaleRef.current.domain() as [Date, Date];
                 console.log('X-axis touchStart, domain:', domain);
                 xAxisDragRef.current = { startX: touch.clientX, startDomain: domain };
+                // Update refs immediately so D3 callbacks see the new values
+                manualXDomainRef.current = domain;
+                xAxisManualRef.current = true;
                 setManualXDomain(domain);
                 setXAxisManual(true);
               }}
