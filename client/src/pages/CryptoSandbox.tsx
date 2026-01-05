@@ -48,6 +48,9 @@ export default function CryptoSandbox() {
   const xAxisDragRef = useRef<{ startX: number; startDomain: [Date, Date] } | null>(null);
   const panDragRef = useRef<{ startX: number; startY: number; startXDomain: [Date, Date]; startYDomain: [number, number] } | null>(null);
   const touchRef = useRef<{ touches: { x: number; y: number }[]; startXDomain: [Date, Date]; startYDomain: [number, number]; startDistance?: number } | null>(null);
+  const lastUpdateRef = useRef<number>(0);
+  const pendingDomainRef = useRef<{ x: [Date, Date] | null; y: [number, number] | null }>({ x: null, y: null });
+  const rafRef = useRef<number | null>(null);
   
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
   const [crosshairMode, setCrosshairMode] = useState(false);
@@ -1139,7 +1142,7 @@ export default function CryptoSandbox() {
         setManualXDomain(newDomain);
         setZoomVersion(v => v + 1);
       }
-      // Pan (drag on chart area)
+      // Pan (drag on chart area) - using requestAnimationFrame for smooth updates
       if (panDragRef.current && xScaleRef.current && yScaleRef.current) {
         const deltaX = e.clientX - panDragRef.current.startX;
         const deltaY = e.clientY - panDragRef.current.startY;
@@ -1164,15 +1167,40 @@ export default function CryptoSandbox() {
           startMaxPrice + priceDelta
         ];
         
-        setManualXDomain(newXDomain);
-        setManualYDomain(newYDomain);
-        setXAxisManual(true);
-        setYAxisManual(true);
-        setZoomVersion(v => v + 1);
+        // Store pending domain updates
+        pendingDomainRef.current = { x: newXDomain, y: newYDomain };
+        
+        // Schedule update via requestAnimationFrame (batches multiple moves)
+        if (!rafRef.current) {
+          rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            if (pendingDomainRef.current.x && pendingDomainRef.current.y) {
+              setManualXDomain(pendingDomainRef.current.x);
+              setManualYDomain(pendingDomainRef.current.y);
+              setXAxisManual(true);
+              setYAxisManual(true);
+              setZoomVersion(v => v + 1);
+            }
+          });
+        }
       }
     };
     
     const handleMouseUp = () => {
+      // Cancel any pending RAF
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      // Commit any pending domain updates
+      if (panDragRef.current && pendingDomainRef.current.x && pendingDomainRef.current.y) {
+        setManualXDomain(pendingDomainRef.current.x);
+        setManualYDomain(pendingDomainRef.current.y);
+        setXAxisManual(true);
+        setYAxisManual(true);
+        setZoomVersion(v => v + 1);
+      }
+      pendingDomainRef.current = { x: null, y: null };
       yAxisDragRef.current = null;
       xAxisDragRef.current = null;
       panDragRef.current = null;
