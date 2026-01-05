@@ -46,6 +46,7 @@ export default function CryptoSandbox() {
   const [manualXDomain, setManualXDomain] = useState<[Date, Date] | null>(null);
   const yAxisDragRef = useRef<{ startY: number; startDomain: [number, number] } | null>(null);
   const xAxisDragRef = useRef<{ startX: number; startDomain: [Date, Date] } | null>(null);
+  const panDragRef = useRef<{ startX: number; startY: number; startXDomain: [Date, Date]; startYDomain: [number, number] } | null>(null);
   
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
   const [crosshairMode, setCrosshairMode] = useState(false);
@@ -1105,7 +1106,7 @@ export default function CryptoSandbox() {
     setTimeout(() => setClickPulse(null), 400);
   }, []);
   
-  // Global mouse handlers for axis drag
+  // Global mouse handlers for axis drag and pan
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       // Y-axis drag (vertical = zoom price)
@@ -1137,11 +1138,43 @@ export default function CryptoSandbox() {
         setManualXDomain(newDomain);
         setZoomVersion(v => v + 1);
       }
+      // Pan (drag on chart area)
+      if (panDragRef.current && xScaleRef.current && yScaleRef.current) {
+        const deltaX = e.clientX - panDragRef.current.startX;
+        const deltaY = e.clientY - panDragRef.current.startY;
+        
+        // Convert pixel delta to domain delta
+        const [startMinTime, startMaxTime] = panDragRef.current.startXDomain;
+        const timeRange = startMaxTime.getTime() - startMinTime.getTime();
+        const chartWidth = dimensions.width - margin.left - margin.right;
+        const timeDelta = (deltaX / chartWidth) * timeRange;
+        
+        const [startMinPrice, startMaxPrice] = panDragRef.current.startYDomain;
+        const priceRange = startMaxPrice - startMinPrice;
+        const chartHeight = dimensions.height - margin.top - margin.bottom;
+        const priceDelta = (deltaY / chartHeight) * priceRange;
+        
+        const newXDomain: [Date, Date] = [
+          new Date(startMinTime.getTime() - timeDelta),
+          new Date(startMaxTime.getTime() - timeDelta)
+        ];
+        const newYDomain: [number, number] = [
+          startMinPrice + priceDelta,
+          startMaxPrice + priceDelta
+        ];
+        
+        setManualXDomain(newXDomain);
+        setManualYDomain(newYDomain);
+        setXAxisManual(true);
+        setYAxisManual(true);
+        setZoomVersion(v => v + 1);
+      }
     };
     
     const handleMouseUp = () => {
       yAxisDragRef.current = null;
       xAxisDragRef.current = null;
+      panDragRef.current = null;
     };
     
     document.addEventListener('mousemove', handleMouseMove);
@@ -1150,7 +1183,42 @@ export default function CryptoSandbox() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, []);
+  }, [dimensions.width, dimensions.height, margin.left, margin.right, margin.top, margin.bottom]);
+  
+  // Wheel zoom handler
+  const handleChartWheel = useCallback((e: React.WheelEvent) => {
+    if (!xScaleRef.current || !yScaleRef.current) return;
+    e.preventDefault();
+    
+    const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9; // Scroll down = zoom out, scroll up = zoom in
+    
+    // Get current domains
+    const currentXDomain = manualXDomain || (xScaleRef.current.domain() as [Date, Date]);
+    const currentYDomain = manualYDomain || (yScaleRef.current.domain() as [number, number]);
+    
+    // Zoom X axis (time)
+    const [minTime, maxTime] = currentXDomain;
+    const midTime = new Date((minTime.getTime() + maxTime.getTime()) / 2);
+    const halfTimeRange = (maxTime.getTime() - minTime.getTime()) / 2;
+    const newHalfTimeRange = halfTimeRange * zoomFactor;
+    const newXDomain: [Date, Date] = [
+      new Date(midTime.getTime() - newHalfTimeRange),
+      new Date(midTime.getTime() + newHalfTimeRange)
+    ];
+    
+    // Zoom Y axis (price)
+    const [minPrice, maxPrice] = currentYDomain;
+    const midPrice = (minPrice + maxPrice) / 2;
+    const halfPriceRange = (maxPrice - minPrice) / 2;
+    const newHalfPriceRange = halfPriceRange * zoomFactor;
+    const newYDomain: [number, number] = [midPrice - newHalfPriceRange, midPrice + newHalfPriceRange];
+    
+    setManualXDomain(newXDomain);
+    setManualYDomain(newYDomain);
+    setXAxisManual(true);
+    setYAxisManual(true);
+    setZoomVersion(v => v + 1);
+  }, [manualXDomain, manualYDomain]);
   
   // Render D3 chart
   useEffect(() => {
@@ -1488,9 +1556,32 @@ export default function CryptoSandbox() {
               ref={svgRef} 
               width={dimensions.width} 
               height={dimensions.height}
-              style={{ display: 'block' }}
+              style={{ display: 'block', cursor: activeTool ? 'crosshair' : 'grab' }}
               className="chart-background"
               data-testid="sandbox-chart"
+              onMouseDown={(e) => {
+                // Don't start pan if a drawing tool is active or clicking on axis zones
+                if (activeTool) return;
+                if (!xScaleRef.current || !yScaleRef.current) return;
+                
+                // Check if click is in chart area (not on axes)
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                if (x < margin.left || x > dimensions.width - margin.right) return;
+                if (y < margin.top || y > dimensions.height - margin.bottom) return;
+                
+                e.preventDefault();
+                const xDomain = (manualXDomain || xScaleRef.current.domain()) as [Date, Date];
+                const yDomain = (manualYDomain || yScaleRef.current.domain()) as [number, number];
+                panDragRef.current = {
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  startXDomain: xDomain,
+                  startYDomain: yDomain
+                };
+              }}
+              onWheel={handleChartWheel}
             />
             
             {/* Y-axis drag zone (right side) for zoom control */}
