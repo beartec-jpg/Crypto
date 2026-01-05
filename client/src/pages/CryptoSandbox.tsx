@@ -45,6 +45,8 @@ export default function CryptoSandbox() {
   // For mobile "push" behavior - track touch start position
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const crosshairStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchMovedRef = useRef(false); // Track if touch moved significantly
+  const TOUCH_THRESHOLD = 15; // pixels - movement above this is a drag, not a tap
   
   // Drawing tool state
   type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | null;
@@ -377,6 +379,53 @@ export default function CryptoSandbox() {
     setMoveModePopup(null);
   }, [moveModePopup]);
   
+  // Find if a point is near any trendline (for crosshair-based selection)
+  const findNearbyTrendline = useCallback((clickX: number, clickY: number): string | null => {
+    if (!xScaleRef.current || !yScaleRef.current) return null;
+    const threshold = 15; // pixels distance to consider "near" a line
+    
+    for (const line of drawnTrendlines) {
+      const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
+      const y1 = yScaleRef.current(line.p1.price) + margin.top;
+      const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
+      const y2 = yScaleRef.current(line.p2.price) + margin.top;
+      
+      // Calculate distance from point to line segment
+      const lineLen = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+      if (lineLen === 0) continue;
+      
+      const t = Math.max(0, Math.min(1, ((clickX - x1) * (x2 - x1) + (clickY - y1) * (y2 - y1)) / (lineLen * lineLen)));
+      const nearestX = x1 + t * (x2 - x1);
+      const nearestY = y1 + t * (y2 - y1);
+      const distance = Math.sqrt((clickX - nearestX) ** 2 + (clickY - nearestY) ** 2);
+      
+      if (distance <= threshold) {
+        return line.id;
+      }
+    }
+    return null;
+  }, [drawnTrendlines, margin.left, margin.top]);
+  
+  // Find if crosshair is near an endpoint of the moving trendline
+  const findNearbyEndpoint = useCallback((clickX: number, clickY: number): 'p1' | 'p2' | null => {
+    if (!xScaleRef.current || !yScaleRef.current || !movingTrendline) return null;
+    const line = drawnTrendlines.find(l => l.id === movingTrendline);
+    if (!line) return null;
+    
+    const threshold = 20; // pixels
+    const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
+    const y1 = yScaleRef.current(line.p1.price) + margin.top;
+    const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
+    const y2 = yScaleRef.current(line.p2.price) + margin.top;
+    
+    const dist1 = Math.sqrt((clickX - x1) ** 2 + (clickY - y1) ** 2);
+    const dist2 = Math.sqrt((clickX - x2) ** 2 + (clickY - y2) ** 2);
+    
+    if (dist1 <= threshold && dist1 < dist2) return 'p1';
+    if (dist2 <= threshold) return 'p2';
+    return null;
+  }, [drawnTrendlines, movingTrendline, margin.left, margin.top]);
+
   // Place the moving point at new location
   const placeMovingPoint = useCallback((clickX: number, clickY: number) => {
     if (!movingPoint || !xScaleRef.current || !yScaleRef.current) return;
@@ -1156,6 +1205,7 @@ export default function CryptoSandbox() {
                     x: dimensions.width / 2, 
                     y: dimensions.height / 2 
                   };
+                  touchMovedRef.current = false;
                   // If no crosshair yet, initialize at center
                   if (!crosshairPos) {
                     setCrosshairPos({ x: dimensions.width / 2, y: dimensions.height / 2 });
@@ -1170,6 +1220,10 @@ export default function CryptoSandbox() {
                   // Calculate how much the finger moved
                   const deltaX = (touch.clientX - rect.left) - touchStartRef.current.x;
                   const deltaY = (touch.clientY - rect.top) - touchStartRef.current.y;
+                  // Check if moved beyond threshold
+                  if (Math.abs(deltaX) > TOUCH_THRESHOLD || Math.abs(deltaY) > TOUCH_THRESHOLD) {
+                    touchMovedRef.current = true;
+                  }
                   // Move crosshair by that delta from its starting position
                   const newX = Math.max(margin.left, Math.min(dimensions.width - margin.right, crosshairStartRef.current.x + deltaX));
                   const newY = Math.max(margin.top, Math.min(dimensions.height - margin.bottom, crosshairStartRef.current.y + deltaY));
@@ -1177,9 +1231,32 @@ export default function CryptoSandbox() {
                 }
               }}
               onTouchEnd={() => {
+                // Only handle as tap if didn't move significantly
+                if (crosshairMode && crosshairPos && !touchMovedRef.current && !activeTool) {
+                  // Check for move mode - place point or pick endpoint
+                  if (movingPoint) {
+                    placeMovingPoint(crosshairPos.x, crosshairPos.y);
+                  } else if (moveMode && movingTrendline) {
+                    // Find nearby endpoint to pick up
+                    const endpoint = findNearbyEndpoint(crosshairPos.x, crosshairPos.y);
+                    if (endpoint) {
+                      setMoveModePopup({ x: crosshairPos.x, y: crosshairPos.y, lineId: movingTrendline, point: endpoint });
+                    }
+                  } else {
+                    // Try to select a trendline
+                    const nearbyLine = findNearbyTrendline(crosshairPos.x, crosshairPos.y);
+                    if (nearbyLine) {
+                      handleTrendlineSelect(nearbyLine, crosshairPos.x, crosshairPos.y);
+                    } else {
+                      // Tap on empty space - close any open menu
+                      closeTrendlineMenu();
+                    }
+                  }
+                }
                 // Clear touch tracking on end
                 touchStartRef.current = null;
                 crosshairStartRef.current = null;
+                touchMovedRef.current = false;
               }}
             >
               {/* Crosshair lines */}
@@ -1248,6 +1325,7 @@ export default function CryptoSandbox() {
                   if (crosshairMode && crosshairPos) {
                     touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
                     crosshairStartRef.current = { x: crosshairPos.x, y: crosshairPos.y };
+                    touchMovedRef.current = false;
                   }
                 }}
                 onTouchMove={(e) => {
@@ -1256,18 +1334,24 @@ export default function CryptoSandbox() {
                     const touch = e.touches[0];
                     const deltaX = touch.clientX - touchStartRef.current.x;
                     const deltaY = touch.clientY - touchStartRef.current.y;
+                    // Check if moved beyond threshold
+                    if (Math.abs(deltaX) > TOUCH_THRESHOLD || Math.abs(deltaY) > TOUCH_THRESHOLD) {
+                      touchMovedRef.current = true;
+                    }
                     const newX = Math.max(margin.left, Math.min(dimensions.width - margin.right, crosshairStartRef.current.x + deltaX));
                     const newY = Math.max(margin.top, Math.min(dimensions.height - margin.bottom, crosshairStartRef.current.y + deltaY));
                     setCrosshairPos({ x: newX, y: newY });
                   }
                 }}
                 onTouchEnd={(e) => {
-                  if (crosshairMode && crosshairPos) {
+                  // Only trigger click if touch didn't move significantly (was a tap)
+                  if (crosshairMode && crosshairPos && !touchMovedRef.current) {
                     e.preventDefault();
                     handleTrendlineClick(crosshairPos.x, crosshairPos.y);
                   }
                   touchStartRef.current = null;
                   crosshairStartRef.current = null;
+                  touchMovedRef.current = false;
                 }}
               >
                 {/* Magnet pulse animation */}
