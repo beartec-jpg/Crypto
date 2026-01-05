@@ -134,7 +134,7 @@ export default function CryptoSandbox() {
   // Trendline selection and menu state
   const [selectedTrendline, setSelectedTrendline] = useState<string | null>(null);
   const [trendlineMenuPos, setTrendlineMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | 'h-color' | 'ch-color' | 'tl-color' | 'tl-text' | null>(null);
   const [movingTrendline, setMovingTrendline] = useState<string | null>(null);
   const [draggingMenu, setDraggingMenu] = useState(false);
   const menuDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -247,6 +247,16 @@ export default function CryptoSandbox() {
       return { color: '#ffffff', opacity: 1, backgroundColor: 'transparent', fontSize: 14 };
     }
   });
+
+  // Save text label as favorite
+  const saveTextLabelAsFavorite = useCallback(() => {
+    const label = drawnTextLabels.find(l => l.id === selectedTextLabel);
+    if (label) {
+      const defaults = { color: label.color, opacity: label.opacity, backgroundColor: label.backgroundColor, fontSize: label.fontSize };
+      setTextLabelDefaults(defaults);
+      localStorage.setItem('textLabelDefaults', JSON.stringify(defaults));
+    }
+  }, [drawnTextLabels, selectedTextLabel]);
   
   // Indicator states - Trend Tools
   const [showEMA, setShowEMA] = useState(false);
@@ -522,10 +532,21 @@ export default function CryptoSandbox() {
   }, []);
 
   // === HORIZONTAL LINE HANDLERS ===
-  // Handle click to place horizontal line
+  // Handle click to place horizontal line - uses magnet mode
   const handleHorizontalClick = useCallback((clickX: number, clickY: number) => {
     if (!yScaleRef.current) return;
-    const price = yScaleRef.current.invert(clickY - margin.top);
+    
+    // Try magnet mode first
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    let price: number;
+    if (magnetPoint) {
+      price = magnetPoint.price;
+      setMagnetPulse({ x: clickX, y: clickY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      price = yScaleRef.current.invert(clickY - margin.top);
+    }
+    
     const newLine: HorizontalLineData = {
       id: `hl-${Date.now()}`,
       price,
@@ -535,7 +556,7 @@ export default function CryptoSandbox() {
       thickness: horizontalDefaults.thickness,
     };
     setDrawnHorizontals(prev => [...prev, newLine]);
-  }, [margin.top, horizontalDefaults]);
+  }, [margin.top, horizontalDefaults, findMagnetPoint]);
 
   // Handle click on horizontal line to select it
   const handleHorizontalSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
@@ -575,9 +596,19 @@ export default function CryptoSandbox() {
   // === CHANNEL HANDLERS ===
   const handleChannelClick = useCallback((clickX: number, clickY: number) => {
     if (!xScaleRef.current || !yScaleRef.current) return;
-    const time = xScaleRef.current.invert(clickX - margin.left).getTime();
-    const price = yScaleRef.current.invert(clickY - margin.top);
-    const point = { x: clickX, y: clickY, time, price };
+    
+    // Try magnet mode first
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    let point: { x: number; y: number; time: number; price: number };
+    if (magnetPoint) {
+      point = magnetPoint;
+      setMagnetPulse({ x: clickX, y: clickY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      const time = xScaleRef.current.invert(clickX - margin.left).getTime();
+      const price = yScaleRef.current.invert(clickY - margin.top);
+      point = { x: clickX, y: clickY, time, price };
+    }
     
     if (channelPoints.length === 0) {
       setChannelPoints([point]);
@@ -605,7 +636,7 @@ export default function CryptoSandbox() {
       setDrawnChannels(prev => [...prev, newChannel]);
       setChannelPoints([]);
     }
-  }, [channelPoints, margin, channelDefaults]);
+  }, [channelPoints, margin, channelDefaults, findMagnetPoint]);
 
   // Handle click on channel to select it
   const handleChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
@@ -644,8 +675,20 @@ export default function CryptoSandbox() {
   // === TEXT LABEL HANDLERS ===
   const handleTextLabelClick = useCallback((clickX: number, clickY: number) => {
     if (!xScaleRef.current || !yScaleRef.current) return;
-    const time = xScaleRef.current.invert(clickX - margin.left).getTime();
-    const price = yScaleRef.current.invert(clickY - margin.top);
+    
+    // Try magnet mode first
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    let time: number, price: number;
+    if (magnetPoint) {
+      time = magnetPoint.time;
+      price = magnetPoint.price;
+      setMagnetPulse({ x: clickX, y: clickY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      time = xScaleRef.current.invert(clickX - margin.left).getTime();
+      price = yScaleRef.current.invert(clickY - margin.top);
+    }
+    
     const newLabel: TextLabelData = {
       id: `txt-${Date.now()}`,
       x: clickX,
@@ -659,7 +702,7 @@ export default function CryptoSandbox() {
       fontSize: textLabelDefaults.fontSize,
     };
     setDrawnTextLabels(prev => [...prev, newLabel]);
-  }, [margin, textLabelDefaults]);
+  }, [margin, textLabelDefaults, findMagnetPoint]);
 
   // Handle click on text label to select it
   const handleTextLabelSelect = useCallback((labelId: string, clickX: number, clickY: number) => {
@@ -2117,37 +2160,61 @@ export default function CryptoSandbox() {
               })}
             </svg>
             
-            {/* Horizontal line drawing overlay */}
+            {/* Horizontal line drawing overlay - magnet mode handled by handler */}
             {activeTool === 'horizontal' && (
               <div 
                 className="absolute inset-0 cursor-crosshair"
                 style={{ pointerEvents: 'auto' }}
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  if (!crosshairMode) setCrosshairMode(true);
+                }}
+                onMouseLeave={() => { setCrosshairMode(false); setCrosshairPos(null); }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   handleHorizontalClick(e.clientX - rect.left, e.clientY - rect.top);
                 }}
               >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
                 <div className="absolute top-14 left-14 bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
                   Click to place horizontal line
                 </div>
               </div>
             )}
             
-            {/* Channel drawing overlay */}
+            {/* Channel drawing overlay - magnet mode handled by handler */}
             {activeTool === 'channel' && (
               <div 
                 className="absolute inset-0 cursor-crosshair"
                 style={{ pointerEvents: 'auto' }}
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  if (!crosshairMode) setCrosshairMode(true);
+                }}
+                onMouseLeave={() => { setCrosshairMode(false); setCrosshairPos(null); }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   handleChannelClick(e.clientX - rect.left, e.clientY - rect.top);
                 }}
               >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
                 {channelPoints.length === 1 && (
-                  <div 
-                    className="absolute w-3 h-3 bg-green-400 rounded-full pointer-events-none"
-                    style={{ left: channelPoints[0].x - 6, top: channelPoints[0].y - 6 }}
-                  />
+                  <div className="absolute w-3 h-3 bg-green-400 rounded-full pointer-events-none" style={{ left: channelPoints[0].x - 6, top: channelPoints[0].y - 6 }} />
+                )}
+                {channelPoints.length === 1 && crosshairMode && crosshairPos && (
+                  <svg className="absolute inset-0 pointer-events-none overflow-visible">
+                    <line x1={channelPoints[0].x} y1={channelPoints[0].y} x2={crosshairPos.x} y2={crosshairPos.y} stroke="#22c55e" strokeWidth="2" strokeDasharray="5,5" />
+                  </svg>
                 )}
                 <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
                   {channelPoints.length === 0 ? 'Click for 1st point' : 'Click for 2nd point'}
@@ -2155,16 +2222,27 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Text label drawing overlay */}
+            {/* Text label drawing overlay - magnet mode handled by handler */}
             {activeTool === 'label' && (
               <div 
                 className="absolute inset-0 cursor-crosshair"
                 style={{ pointerEvents: 'auto' }}
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                  if (!crosshairMode) setCrosshairMode(true);
+                }}
+                onMouseLeave={() => { setCrosshairMode(false); setCrosshairPos(null); }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   handleTextLabelClick(e.clientX - rect.left, e.clientY - rect.top);
                 }}
               >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
                 <div className="absolute top-14 left-14 bg-purple-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
                   Click to place text label
                 </div>
@@ -2445,145 +2523,301 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* Horizontal line action menu */}
+            {/* Horizontal line action menu - matches trendline menu structure */}
             {horizontalMenuPos && selectedHorizontal && (
               <div 
-                className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded p-1 z-50"
+                className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
                 style={{ left: horizontalMenuPos.x, top: horizontalMenuPos.y }}
               >
-                <button onClick={deleteHorizontal} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
-                  </svg>
-                </button>
-                <button onClick={() => {
-                  const colors = TRENDLINE_COLORS;
-                  const line = drawnHorizontals.find(l => l.id === selectedHorizontal);
-                  const idx = colors.indexOf(line?.color || '');
-                  updateHorizontal(selectedHorizontal, { color: colors[(idx + 1) % colors.length] });
-                }} className="p-2 hover:bg-slate-700 rounded" title="Color">
-                  <div className="w-5 h-5 rounded" style={{ backgroundColor: drawnHorizontals.find(l => l.id === selectedHorizontal)?.color }} />
-                </button>
-                <button onClick={() => {
-                  const styles: LineStyle[] = ['solid', 'dashed', 'dotted'];
-                  const line = drawnHorizontals.find(l => l.id === selectedHorizontal);
-                  const idx = styles.indexOf(line?.lineStyle || 'solid');
-                  updateHorizontal(selectedHorizontal, { lineStyle: styles[(idx + 1) % 3] });
-                }} className="p-2 hover:bg-slate-700 rounded text-white" title="Style">
-                  <svg viewBox="0 0 20 20" className="w-5 h-5">
-                    <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="2" 
-                      strokeDasharray={drawnHorizontals.find(l => l.id === selectedHorizontal)?.lineStyle === 'dashed' ? '4,2' : drawnHorizontals.find(l => l.id === selectedHorizontal)?.lineStyle === 'dotted' ? '1,2' : '0'} 
-                    />
-                  </svg>
-                </button>
-                <button onClick={saveHorizontalAsFavorite} className="p-2 hover:bg-slate-700 rounded text-yellow-400" title="Save as Default">
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
-                    <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
-                  </svg>
-                </button>
+                {/* Drag handle */}
+                <div 
+                  className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setDraggingMenu(true);
+                    menuDragOffset.current = { x: e.clientX - horizontalMenuPos.x, y: e.clientY - horizontalMenuPos.y };
+                  }}
+                >
+                  <div className="w-6 h-0.5 bg-slate-400 rounded" />
+                </div>
+                <div className="p-1 flex flex-col gap-1">
+                  {/* Delete */}
+                  <button onClick={deleteHorizontal} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
+                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                    </svg>
+                  </button>
+                  {/* Color - circle with colored dot */}
+                  <button
+                    onClick={() => setActiveSubmenu(activeSubmenu === 'h-color' ? null : 'h-color')}
+                    className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'h-color' ? 'bg-slate-600' : ''}`}
+                    title="Colour"
+                  >
+                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="10" cy="10" r="7" />
+                      <circle cx="10" cy="10" r="3" fill={drawnHorizontals.find(l => l.id === selectedHorizontal)?.color || '#facc15'} stroke="none" />
+                    </svg>
+                  </button>
+                  {/* Save as Favorite */}
+                  <button onClick={saveHorizontalAsFavorite} className="p-2 hover:bg-slate-700 rounded text-yellow-400" title="Save as Default">
+                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                      <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             )}
             
-            {/* Channel action menu */}
+            {/* Horizontal line color submenu */}
+            {activeSubmenu === 'h-color' && horizontalMenuPos && selectedHorizontal && (() => {
+              const selectedLine = drawnHorizontals.find(l => l.id === selectedHorizontal);
+              const submenuX = horizontalMenuPos.x + 50 < dimensions.width - 150 ? horizontalMenuPos.x + 50 : horizontalMenuPos.x - 160;
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: horizontalMenuPos.y }}>
+                  <div className="text-xs text-gray-400 mb-2">Colors</div>
+                  <div className="flex flex-wrap gap-1 mb-3 w-32">
+                    {TRENDLINE_COLORS.map(color => (
+                      <button key={color} onClick={() => updateHorizontal(selectedHorizontal, { color })}
+                        className={`w-6 h-6 rounded border-2 ${selectedLine?.color === color ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }} />
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Opacity</div>
+                  <input type="range" min="0.2" max="1" step="0.1" value={selectedLine?.opacity || 1}
+                    onChange={(e) => updateHorizontal(selectedHorizontal, { opacity: parseFloat(e.target.value) })} className="w-full mb-3" />
+                  <div className="text-xs text-gray-400 mb-1">Line Style</div>
+                  <div className="flex gap-1 mb-3">
+                    {(['solid', 'dashed', 'dotted'] as LineStyle[]).map(style => (
+                      <button key={style} onClick={() => updateHorizontal(selectedHorizontal, { lineStyle: style })}
+                        className={`px-2 py-1 text-xs rounded ${selectedLine?.lineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Thickness</div>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map(t => (
+                      <button key={t} onClick={() => updateHorizontal(selectedHorizontal, { thickness: t })}
+                        className={`w-8 h-6 flex items-center justify-center rounded ${(selectedLine?.thickness || 2) === t ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
+                        <div style={{ width: 16, height: t, backgroundColor: 'currentColor', borderRadius: 1 }} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Channel action menu - matches reference image layout */}
             {channelMenuPos && selectedChannel && (() => {
               const channel = drawnChannels.find(c => c.id === selectedChannel);
               return (
                 <div 
-                  className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50 w-48"
-                  style={{ left: channelMenuPos.x, top: channelMenuPos.y }}
+                  className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50"
+                  style={{ left: channelMenuPos.x, top: channelMenuPos.y, minWidth: '180px' }}
                 >
-                  <div className="flex gap-1 mb-2">
+                  {/* Top row: delete and color */}
+                  <div className="flex gap-1 mb-3">
                     <button onClick={deleteChannel} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
-                      <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
                       </svg>
                     </button>
-                    <button onClick={() => {
-                      const colors = TRENDLINE_COLORS;
-                      const idx = colors.indexOf(channel?.color || '');
-                      updateChannel(selectedChannel, { color: colors[(idx + 1) % colors.length] });
-                    }} className="p-2 hover:bg-slate-700 rounded" title="Color">
-                      <div className="w-4 h-4 rounded" style={{ backgroundColor: channel?.color }} />
+                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'ch-color' ? null : 'ch-color')}
+                      className={`p-2 hover:bg-slate-700 rounded ${activeSubmenu === 'ch-color' ? 'bg-slate-600' : ''}`} title="Color">
+                      <div className="w-5 h-5 rounded" style={{ backgroundColor: channel?.color }} />
                     </button>
                   </div>
+                  
+                  {/* External Lines */}
                   <div className="text-xs text-gray-400 mb-1">External Lines</div>
-                  <label className="flex items-center gap-2 text-white text-xs mb-2">
-                    <input type="checkbox" checked={channel?.showExternalLines} onChange={e => updateChannel(selectedChannel, { showExternalLines: e.target.checked })} />
+                  <label className="flex items-center gap-2 text-white text-sm mb-3 cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={channel?.showExternalLines} 
+                      onChange={e => updateChannel(selectedChannel, { showExternalLines: e.target.checked })} />
                     Show
                   </label>
+                  
+                  {/* Internal Lines */}
                   <div className="text-xs text-gray-400 mb-1">Internal Lines</div>
                   {channel?.internalLines.map((il, idx) => (
                     <div key={idx} className="flex items-center gap-1 mb-1">
-                      <input type="checkbox" checked={il.visible} onChange={e => {
-                        const newLines = [...(channel?.internalLines || [])];
-                        newLines[idx] = { ...newLines[idx], visible: e.target.checked };
-                        updateChannel(selectedChannel, { internalLines: newLines });
-                      }} />
-                      <input type="number" value={il.percent} min="1" max="99" className="w-12 bg-slate-700 text-white px-1 text-xs rounded"
+                      <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={il.visible} 
+                        onChange={e => {
+                          const newLines = [...(channel?.internalLines || [])];
+                          newLines[idx] = { ...newLines[idx], visible: e.target.checked };
+                          updateChannel(selectedChannel, { internalLines: newLines });
+                        }} />
+                      <input type="number" value={il.percent} min="1" max="99" 
+                        className="w-10 bg-slate-700 text-white px-1 py-0.5 text-xs rounded text-center"
                         onChange={e => {
                           const newLines = [...(channel?.internalLines || [])];
                           newLines[idx] = { ...newLines[idx], percent: parseInt(e.target.value) || 25 };
                           updateChannel(selectedChannel, { internalLines: newLines });
-                        }}
-                      />
+                        }} />
                       <span className="text-white text-xs">%</span>
-                      <input type="text" value={il.label} className="flex-1 bg-slate-700 text-white px-1 text-xs rounded"
+                      <input type="text" value={il.label} placeholder="Label"
+                        className="w-14 bg-slate-700 text-white px-1 py-0.5 text-xs rounded"
                         onChange={e => {
                           const newLines = [...(channel?.internalLines || [])];
                           newLines[idx] = { ...newLines[idx], label: e.target.value };
                           updateChannel(selectedChannel, { internalLines: newLines });
-                        }}
-                      />
+                        }} />
                     </div>
                   ))}
                   <button onClick={() => {
                     const newLines = [...(channel?.internalLines || []), { percent: 50, visible: true, label: '50%' }];
                     updateChannel(selectedChannel, { internalLines: newLines });
-                  }} className="text-xs text-blue-400 hover:underline">+ Add line</button>
+                  }} className="text-xs text-blue-400 hover:underline mt-1">+ Add line</button>
                 </div>
               );
             })()}
             
-            {/* Text label action menu */}
+            {/* Channel color submenu */}
+            {activeSubmenu === 'ch-color' && channelMenuPos && selectedChannel && (() => {
+              const channel = drawnChannels.find(c => c.id === selectedChannel);
+              const submenuX = channelMenuPos.x + 200;
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: channelMenuPos.y }}>
+                  <div className="text-xs text-gray-400 mb-2">Colors</div>
+                  <div className="flex flex-wrap gap-1 mb-3 w-32">
+                    {TRENDLINE_COLORS.map(color => (
+                      <button key={color} onClick={() => updateChannel(selectedChannel, { color })}
+                        className={`w-6 h-6 rounded border-2 ${channel?.color === color ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }} />
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Opacity</div>
+                  <input type="range" min="0.2" max="1" step="0.1" value={channel?.opacity || 1}
+                    onChange={(e) => updateChannel(selectedChannel, { opacity: parseFloat(e.target.value) })} className="w-full mb-3" />
+                  <div className="text-xs text-gray-400 mb-1">Line Style</div>
+                  <div className="flex gap-1">
+                    {(['solid', 'dashed', 'dotted'] as LineStyle[]).map(style => (
+                      <button key={style} onClick={() => updateChannel(selectedChannel, { lineStyle: style })}
+                        className={`px-2 py-1 text-xs rounded ${channel?.lineStyle === style ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Text label action menu - matches trendline menu structure */}
             {textLabelMenuPos && selectedTextLabel && (() => {
               const label = drawnTextLabels.find(l => l.id === selectedTextLabel);
               return (
                 <div 
-                  className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50 w-40"
+                  className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
                   style={{ left: textLabelMenuPos.x, top: textLabelMenuPos.y }}
                 >
-                  <div className="flex gap-1 mb-2">
+                  {/* Drag handle */}
+                  <div 
+                    className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setDraggingMenu(true);
+                      menuDragOffset.current = { x: e.clientX - textLabelMenuPos.x, y: e.clientY - textLabelMenuPos.y };
+                    }}
+                  >
+                    <div className="w-6 h-0.5 bg-slate-400 rounded" />
+                  </div>
+                  <div className="p-1 flex flex-col gap-1">
+                    {/* Delete */}
                     <button onClick={deleteTextLabel} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
-                      <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
                       </svg>
                     </button>
-                    <button onClick={() => {
-                      const colors = TRENDLINE_COLORS;
-                      const idx = colors.indexOf(label?.color || '');
-                      updateTextLabel(selectedTextLabel, { color: colors[(idx + 1) % colors.length] });
-                    }} className="p-2 hover:bg-slate-700 rounded" title="Color">
-                      <div className="w-4 h-4 rounded" style={{ backgroundColor: label?.color }} />
+                    {/* Color - circle with colored dot */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'tl-color' ? null : 'tl-color')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'tl-color' ? 'bg-slate-600' : ''}`}
+                      title="Colour"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="10" cy="10" r="7" />
+                        <circle cx="10" cy="10" r="3" fill={label?.color || '#facc15'} stroke="none" />
+                      </svg>
+                    </button>
+                    {/* Move/Arrow icon */}
+                    <button
+                      onClick={() => {
+                        // Toggle move mode for text label
+                      }}
+                      className="p-2 hover:bg-slate-700 rounded text-white"
+                      title="Move"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 10h12M16 10l-4-4M16 10l-4 4" />
+                      </svg>
+                    </button>
+                    {/* Text/Label */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'tl-text' ? null : 'tl-text')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'tl-text' ? 'bg-slate-600' : ''}`}
+                      title="Text"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                        <text x="5" y="15" fontSize="14" fontWeight="bold">T</text>
+                      </svg>
+                    </button>
+                    {/* Save as Favorite */}
+                    <button onClick={saveTextLabelAsFavorite} className="p-2 hover:bg-slate-700 rounded text-yellow-400" title="Save as Default">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                        <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
+                      </svg>
                     </button>
                   </div>
-                  <div className="text-xs text-gray-400 mb-1">Text</div>
-                  <input type="text" value={label?.text || ''} 
-                    onChange={e => updateTextLabel(selectedTextLabel, { text: e.target.value })}
-                    className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-2"
-                  />
-                  <div className="text-xs text-gray-400 mb-1">Font Size</div>
-                  <input type="range" min="10" max="24" value={label?.fontSize || 14}
-                    onChange={e => updateTextLabel(selectedTextLabel, { fontSize: parseInt(e.target.value) })}
-                    className="w-full mb-2"
-                  />
+                </div>
+              );
+            })()}
+            
+            {/* Text label color submenu */}
+            {activeSubmenu === 'tl-color' && textLabelMenuPos && selectedTextLabel && (() => {
+              const label = drawnTextLabels.find(l => l.id === selectedTextLabel);
+              const submenuX = textLabelMenuPos.x + 50 < dimensions.width - 150 ? textLabelMenuPos.x + 50 : textLabelMenuPos.x - 160;
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: textLabelMenuPos.y }}>
+                  <div className="text-xs text-gray-400 mb-2">Colors</div>
+                  <div className="flex flex-wrap gap-1 mb-3 w-32">
+                    {TRENDLINE_COLORS.map(color => (
+                      <button key={color} onClick={() => updateTextLabel(selectedTextLabel, { color })}
+                        className={`w-6 h-6 rounded border-2 ${label?.color === color ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }} />
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">Opacity</div>
+                  <input type="range" min="0.2" max="1" step="0.1" value={label?.opacity || 1}
+                    onChange={(e) => updateTextLabel(selectedTextLabel, { opacity: parseFloat(e.target.value) })} className="w-full mb-3" />
                   <div className="text-xs text-gray-400 mb-1">Background</div>
                   <div className="flex gap-1 flex-wrap">
                     {['transparent', '#000000', '#1e293b', '#374151', '#ffffff'].map(bg => (
                       <button key={bg} onClick={() => updateTextLabel(selectedTextLabel, { backgroundColor: bg })}
-                        className={`w-5 h-5 rounded border ${label?.backgroundColor === bg ? 'border-blue-500' : 'border-slate-500'}`}
-                        style={{ backgroundColor: bg === 'transparent' ? 'transparent' : bg }}
-                      >
-                        {bg === 'transparent' && <span className="text-xs">∅</span>}
+                        className={`w-6 h-6 rounded border-2 ${label?.backgroundColor === bg ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: bg === 'transparent' ? 'transparent' : bg }}>
+                        {bg === 'transparent' && <span className="text-white text-xs">∅</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Text label text submenu */}
+            {activeSubmenu === 'tl-text' && textLabelMenuPos && selectedTextLabel && (() => {
+              const label = drawnTextLabels.find(l => l.id === selectedTextLabel);
+              const submenuX = textLabelMenuPos.x + 50 < dimensions.width - 150 ? textLabelMenuPos.x + 50 : textLabelMenuPos.x - 160;
+              return (
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: textLabelMenuPos.y }}>
+                  <div className="text-xs text-gray-400 mb-1">Text</div>
+                  <input type="text" value={label?.text || ''} placeholder="Label text..."
+                    onChange={e => updateTextLabel(selectedTextLabel, { text: e.target.value })}
+                    className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-3" />
+                  <div className="text-xs text-gray-400 mb-1">Position (toggle multiple)</div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {(['top left', 'top right', 'bottom left', 'bottom right'] as const).map(pos => (
+                      <button key={pos}
+                        className="px-2 py-1 text-xs rounded bg-slate-700 text-gray-300 hover:bg-slate-600">
+                        {pos}
                       </button>
                     ))}
                   </div>
