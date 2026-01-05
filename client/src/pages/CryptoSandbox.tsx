@@ -398,9 +398,12 @@ export default function CryptoSandbox() {
   
   // Click-off handler: deselect tool and close menus when clicking on chart background
   const handleChartBackgroundClick = useCallback((e: React.MouseEvent) => {
-    // Only fire if clicking directly on the chart container, not on drawn objects
+    // Check if clicking on a menu or its children - if so, don't close
     const target = e.target as HTMLElement;
-    if (target.classList.contains('chart-background')) {
+    const isMenuClick = target.closest('[data-menu]') !== null;
+    const isToolbarClick = target.closest('[data-toolbar]') !== null;
+    
+    if (!isMenuClick && !isToolbarClick) {
       // Deselect active tool
       setActiveTool(null);
       // Close all menus
@@ -1386,7 +1389,7 @@ export default function CryptoSandbox() {
             </div>
             
             {/* Left toolbar - drawing tools */}
-            <div className="absolute top-2 left-2 flex flex-col gap-1 z-[60] bg-slate-900/80 rounded-lg p-1">
+            <div className="absolute top-2 left-2 flex flex-col gap-1 z-[60] bg-slate-900/80 rounded-lg p-1" data-toolbar="drawing">
               {/* Crosshair toggle button - mobile only */}
               <button
                 onClick={() => {
@@ -2320,6 +2323,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
                 style={{ left: trendlineMenuPos.x, top: trendlineMenuPos.y }}
+                data-menu="trendline"
               >
                 {/* Drag handle */}
                 <div 
@@ -2437,6 +2441,7 @@ export default function CryptoSandbox() {
               return (
                 <div 
                   className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50"
+                  data-menu="submenu"
                   style={{ left: submenuX, top: trendlineMenuPos.y }}
                 >
                   <div className="text-xs text-gray-400 mb-2">Colors</div>
@@ -2498,6 +2503,7 @@ export default function CryptoSandbox() {
               return (
                 <div 
                   className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50"
+                  data-menu="submenu"
                   style={{ left: submenuX, top: trendlineMenuPos.y }}
                 >
                   <div className="flex flex-col gap-2">
@@ -2531,6 +2537,7 @@ export default function CryptoSandbox() {
               return (
                 <div 
                   className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50 w-40"
+                  data-menu="submenu"
                   style={{ left: submenuX, top: trendlineMenuPos.y }}
                 >
                   <div className="text-xs text-gray-400 mb-1">Text</div>
@@ -2594,6 +2601,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
                 style={{ left: horizontalMenuPos.x, top: horizontalMenuPos.y }}
+                data-menu="horizontal"
               >
                 {/* Drag handle */}
                 <div 
@@ -2649,7 +2657,7 @@ export default function CryptoSandbox() {
               const selectedLine = drawnHorizontals.find(l => l.id === selectedHorizontal);
               const submenuX = horizontalMenuPos.x + 50 < dimensions.width - 150 ? horizontalMenuPos.x + 50 : horizontalMenuPos.x - 160;
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: horizontalMenuPos.y }}>
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: horizontalMenuPos.y }}>
                   <div className="text-xs text-gray-400 mb-2">Colors</div>
                   <div className="flex flex-wrap gap-1 mb-3 w-32">
                     {TRENDLINE_COLORS.map(color => (
@@ -2688,7 +2696,7 @@ export default function CryptoSandbox() {
               const selectedLine = drawnHorizontals.find(l => l.id === selectedHorizontal);
               const submenuX = horizontalMenuPos.x + 50 < dimensions.width - 150 ? horizontalMenuPos.x + 50 : horizontalMenuPos.x - 160;
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: horizontalMenuPos.y }}>
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: horizontalMenuPos.y }}>
                   <div className="text-xs text-gray-400 mb-1">Label Text</div>
                   <input type="text" value={selectedLine?.label?.text || ''} placeholder="Enter label..."
                     onChange={e => updateHorizontal(selectedHorizontal, { label: { text: e.target.value, position: selectedLine?.label?.position || 'right' } })}
@@ -2719,6 +2727,7 @@ export default function CryptoSandbox() {
                 <div 
                   className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
                   style={{ left: channelMenuPos.x, top: channelMenuPos.y }}
+                  data-menu="channel"
                 >
                   {/* Drag handle */}
                   <div 
@@ -2780,7 +2789,7 @@ export default function CryptoSandbox() {
               const channel = drawnChannels.find(c => c.id === selectedChannel);
               const submenuX = channelMenuPos.x + 200;
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: channelMenuPos.y }}>
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: channelMenuPos.y }}>
                   <div className="text-xs text-gray-400 mb-2">Colors</div>
                   <div className="flex flex-wrap gap-1 mb-3 w-32">
                     {TRENDLINE_COLORS.map(color => (
@@ -2810,7 +2819,7 @@ export default function CryptoSandbox() {
               const channel = drawnChannels.find(c => c.id === selectedChannel);
               const submenuX = channelMenuPos.x + 50 < dimensions.width - 200 ? channelMenuPos.x + 50 : channelMenuPos.x - 210;
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: channelMenuPos.y, minWidth: '180px' }}>
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: channelMenuPos.y, minWidth: '180px' }}>
                   {/* External Lines */}
                   <div className="text-xs text-gray-400 mb-1">External Lines</div>
                   <label className="flex items-center gap-2 text-white text-sm mb-3 cursor-pointer">
@@ -2861,6 +2870,7 @@ export default function CryptoSandbox() {
                 <div 
                   className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
                   style={{ left: textLabelMenuPos.x, top: textLabelMenuPos.y }}
+                  data-menu="textlabel"
                 >
                   {/* Drag handle */}
                   <div 
@@ -2929,7 +2939,7 @@ export default function CryptoSandbox() {
               const label = drawnTextLabels.find(l => l.id === selectedTextLabel);
               const submenuX = textLabelMenuPos.x + 50 < dimensions.width - 150 ? textLabelMenuPos.x + 50 : textLabelMenuPos.x - 160;
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: textLabelMenuPos.y }}>
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: textLabelMenuPos.y }}>
                   <div className="text-xs text-gray-400 mb-2">Colors</div>
                   <div className="flex flex-wrap gap-1 mb-3 w-32">
                     {TRENDLINE_COLORS.map(color => (
@@ -2960,7 +2970,7 @@ export default function CryptoSandbox() {
               const label = drawnTextLabels.find(l => l.id === selectedTextLabel);
               const submenuX = textLabelMenuPos.x + 50 < dimensions.width - 150 ? textLabelMenuPos.x + 50 : textLabelMenuPos.x - 160;
               return (
-                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" style={{ left: submenuX, top: textLabelMenuPos.y }}>
+                <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: textLabelMenuPos.y }}>
                   <div className="text-xs text-gray-400 mb-1">Label Text</div>
                   <input type="text" value={label?.text || ''} placeholder="Enter label text..."
                     onChange={e => updateTextLabel(selectedTextLabel, { text: e.target.value })}
