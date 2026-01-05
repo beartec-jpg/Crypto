@@ -44,16 +44,6 @@ export default function CryptoSandbox() {
   const [xAxisManual, setXAxisManual] = useState(false);
   const [manualYDomain, setManualYDomain] = useState<[number, number] | null>(null);
   const [manualXDomain, setManualXDomain] = useState<[Date, Date] | null>(null);
-  // Refs to access latest domain values inside D3 callbacks
-  const manualYDomainRef = useRef<[number, number] | null>(null);
-  const manualXDomainRef = useRef<[Date, Date] | null>(null);
-  const yAxisManualRef = useRef(false);
-  const xAxisManualRef = useRef(false);
-  // Keep refs in sync with state
-  manualYDomainRef.current = manualYDomain;
-  manualXDomainRef.current = manualXDomain;
-  yAxisManualRef.current = yAxisManual;
-  xAxisManualRef.current = xAxisManual;
   const yAxisDragRef = useRef<{ startY: number; startDomain: [number, number] } | null>(null);
   const xAxisDragRef = useRef<{ startX: number; startDomain: [Date, Date] } | null>(null);
   
@@ -1115,91 +1105,50 @@ export default function CryptoSandbox() {
     setTimeout(() => setClickPulse(null), 400);
   }, []);
   
-  // Global mouse/touch handlers for axis drag
+  // Global mouse handlers for axis drag
   useEffect(() => {
-    console.log('Axis handlers mounted');
-    
-    const triggerZoomUpdate = () => {
-      // Trigger D3 zoom callback with current transform to redraw chart
-      if (svgRef.current && zoomRef.current) {
-        const svg = d3.select(svgRef.current);
-        const currentTransform = d3.zoomTransform(svgRef.current);
-        // Dispatch zoom event with same transform to trigger redraw
-        zoomRef.current.transform(svg, currentTransform);
-      }
-    };
-    
-    const handleMove = (clientX: number, clientY: number) => {
-      const yDrag = yAxisDragRef.current;
-      const xDrag = xAxisDragRef.current;
-      
-      if (yDrag) {
-        const deltaY = clientY - yDrag.startY;
+    const handleMouseMove = (e: MouseEvent) => {
+      // Y-axis drag (vertical = zoom price)
+      if (yAxisDragRef.current) {
+        const deltaY = e.clientY - yAxisDragRef.current.startY;
         const sensitivity = 0.005;
         const factor = 1 + deltaY * sensitivity;
-        const [minPrice, maxPrice] = yDrag.startDomain;
+        const [minPrice, maxPrice] = yAxisDragRef.current.startDomain;
         const midPrice = (minPrice + maxPrice) / 2;
         const halfRange = (maxPrice - minPrice) / 2;
         const newHalfRange = halfRange * Math.max(0.1, factor);
         const newDomain: [number, number] = [midPrice - newHalfRange, midPrice + newHalfRange];
-        // Update refs for D3 zoom callback to read
-        manualYDomainRef.current = newDomain;
         setManualYDomain(newDomain);
-        // Trigger D3 zoom to redraw with new domain
-        triggerZoomUpdate();
+        setZoomVersion(v => v + 1);
       }
-      
-      if (xDrag) {
-        const deltaX = clientX - xDrag.startX;
+      // X-axis drag (horizontal = zoom time)
+      if (xAxisDragRef.current) {
+        const deltaX = e.clientX - xAxisDragRef.current.startX;
         const sensitivity = 0.003;
-        const zoomFactor = 1 - deltaX * sensitivity;
-        
-        // Update D3 zoom transform directly for X-axis zoom
-        if (svgRef.current && zoomRef.current) {
-          const svg = d3.select(svgRef.current);
-          const currentTransform = d3.zoomTransform(svgRef.current);
-          // Scale the transform's k value to zoom X
-          const newK = Math.max(0.5, Math.min(20, currentTransform.k * zoomFactor));
-          // Create new transform with adjusted scale
-          const newTransform = d3.zoomIdentity
-            .translate(currentTransform.x, currentTransform.y)
-            .scale(newK);
-          zoomRef.current.transform(svg, newTransform);
-          // Update drag ref to track from current position
-          xDrag.startX = clientX;
-        }
+        const factor = 1 - deltaX * sensitivity;
+        const [minTime, maxTime] = xAxisDragRef.current.startDomain;
+        const midTime = new Date((minTime.getTime() + maxTime.getTime()) / 2);
+        const halfRange = (maxTime.getTime() - minTime.getTime()) / 2;
+        const newHalfRange = halfRange * Math.max(0.1, factor);
+        const newDomain: [Date, Date] = [
+          new Date(midTime.getTime() - newHalfRange),
+          new Date(midTime.getTime() + newHalfRange)
+        ];
+        setManualXDomain(newDomain);
+        setZoomVersion(v => v + 1);
       }
     };
     
-    const handleMouseMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY);
-    const handleTouchMove = (e: TouchEvent) => {
-      if (yAxisDragRef.current || xAxisDragRef.current) {
-        e.preventDefault();
-        const touch = e.touches[0];
-        handleMove(touch.clientX, touch.clientY);
-      }
-    };
-    
-    const handleEnd = () => {
-      if (yAxisDragRef.current || xAxisDragRef.current) {
-        console.log('Axis drag ended');
-      }
+    const handleMouseUp = () => {
       yAxisDragRef.current = null;
       xAxisDragRef.current = null;
     };
     
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleEnd);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleEnd);
-    document.addEventListener('touchcancel', handleEnd);
-    
+    document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleEnd);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleEnd);
-      document.removeEventListener('touchcancel', handleEnd);
+      document.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
   
@@ -1234,17 +1183,17 @@ export default function CryptoSandbox() {
       d3.max(candles, d => d.high) as number * 1.001
     ];
     
-    // X Scale (time) - preserve manual domain if set (use refs for latest value)
+    // X Scale (time) - preserve manual domain if set
     const xScale = d3.scaleTime()
-      .domain(xAxisManualRef.current && manualXDomainRef.current ? manualXDomainRef.current : [new Date(timeExtent[0]), new Date(timeExtent[1])])
+      .domain(xAxisManual && manualXDomain ? manualXDomain : [new Date(timeExtent[0]), new Date(timeExtent[1])])
       .range([0, innerWidth]);
     xScaleRef.current = xScale;
     
-    // Y Scale (price) - use manual domain if set (use refs for latest value)
+    // Y Scale (price) - use manual domain if set
     const yScale = d3.scaleLinear()
-      .domain(yAxisManualRef.current && manualYDomainRef.current ? manualYDomainRef.current : priceExtent)
+      .domain(yAxisManual && manualYDomain ? manualYDomain : priceExtent)
       .range([innerHeight, 0]);
-    if (!yAxisManualRef.current) yScale.nice();
+    if (!yAxisManual) yScale.nice();
     yScaleRef.current = yScale;
     
     // Background
@@ -1347,8 +1296,7 @@ export default function CryptoSandbox() {
       .on('zoom', (event) => {
         const transform = event.transform;
         
-        // X scale always uses D3 transform for normal pan/zoom
-        // (X-axis drag updates the transform itself, doesn't lock)
+        // Update x scale based on zoom
         const newXScale = transform.rescaleX(xScale);
         xScaleRef.current = newXScale;
         
@@ -1360,19 +1308,15 @@ export default function CryptoSandbox() {
         });
         
         if (visibleCandles.length > 0) {
-          // Use manual Y domain if set (via refs for latest value), otherwise auto-calculate
-          const useManualY = yAxisManualRef.current && manualYDomainRef.current;
-          const newPriceExtent = useManualY 
-            ? manualYDomainRef.current!
-            : [
-                d3.min(visibleCandles, d => d.low) as number * 0.999,
-                d3.max(visibleCandles, d => d.high) as number * 1.001
-              ];
+          const newPriceExtent = [
+            d3.min(visibleCandles, d => d.low) as number * 0.999,
+            d3.max(visibleCandles, d => d.high) as number * 1.001
+          ];
           
           const newYScale = d3.scaleLinear()
             .domain(newPriceExtent)
-            .range([innerHeight, 0]);
-          if (!useManualY) newYScale.nice();
+            .range([innerHeight, 0])
+            .nice();
           yScaleRef.current = newYScale;
           
           // Update axes
@@ -1471,9 +1415,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  // Note: xAxisManual/yAxisManual removed from deps - refs are used in D3 callbacks
-  // Chart only rebuilds on data/dimension changes or zoomVersion (reset)
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion, xAxisManual, yAxisManual, manualXDomain, manualYDomain]);
   
   // Show loading while checking auth
   if (authLoading) {
@@ -1553,44 +1495,26 @@ export default function CryptoSandbox() {
             
             {/* Y-axis drag zone (right side) for zoom control */}
             <div
-              className="absolute cursor-ns-resize z-[50]"
+              className="absolute cursor-ns-resize z-10"
               style={{ 
                 right: 0, 
                 top: margin.top, 
                 width: margin.right, 
                 height: dimensions.height - margin.top - margin.bottom,
-                background: yAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                touchAction: 'none'
+                background: yAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
               }}
               onMouseDown={(e) => {
                 if (!yScaleRef.current) return;
                 e.preventDefault();
-                e.stopPropagation();
                 const domain = yScaleRef.current.domain() as [number, number];
                 yAxisDragRef.current = { startY: e.clientY, startDomain: domain };
-                // Update refs immediately so D3 callbacks see the new values
-                manualYDomainRef.current = domain;
-                yAxisManualRef.current = true;
-                setManualYDomain(domain);
-                setYAxisManual(true);
-              }}
-              onTouchStart={(e) => {
-                if (!yScaleRef.current) return;
-                e.preventDefault();
-                e.stopPropagation();
-                const touch = e.touches[0];
-                const domain = yScaleRef.current.domain() as [number, number];
-                console.log('Y-axis touchStart, domain:', domain);
-                yAxisDragRef.current = { startY: touch.clientY, startDomain: domain };
-                // Update refs immediately so D3 callbacks see the new values
-                manualYDomainRef.current = domain;
-                yAxisManualRef.current = true;
                 setManualYDomain(domain);
                 setYAxisManual(true);
               }}
               onDoubleClick={() => {
                 setYAxisManual(false);
                 setManualYDomain(null);
+                // Trigger a redraw with auto-scale
                 setZoomVersion(v => v + 1);
               }}
               title={yAxisManual ? "Drag to zoom, double-click to auto-scale" : "Drag to zoom"}
@@ -1598,29 +1522,21 @@ export default function CryptoSandbox() {
             
             {/* X-axis drag zone (bottom) for zoom control */}
             <div
-              className="absolute cursor-ew-resize z-[50]"
+              className="absolute cursor-ew-resize z-10"
               style={{ 
                 left: margin.left, 
                 bottom: 0, 
                 width: dimensions.width - margin.left - margin.right, 
                 height: margin.bottom,
-                background: xAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                touchAction: 'none'
+                background: xAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
               }}
               onMouseDown={(e) => {
                 if (!xScaleRef.current) return;
                 e.preventDefault();
                 const domain = xScaleRef.current.domain() as [Date, Date];
                 xAxisDragRef.current = { startX: e.clientX, startDomain: domain };
-              }}
-              onTouchStart={(e) => {
-                if (!xScaleRef.current) return;
-                e.preventDefault();
-                e.stopPropagation();
-                const touch = e.touches[0];
-                const domain = xScaleRef.current.domain() as [Date, Date];
-                console.log('X-axis touchStart, domain:', domain);
-                xAxisDragRef.current = { startX: touch.clientX, startDomain: domain };
+                setManualXDomain(domain);
+                setXAxisManual(true);
               }}
               onDoubleClick={() => {
                 setXAxisManual(false);
