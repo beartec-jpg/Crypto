@@ -3060,12 +3060,20 @@ export default function CryptoSandbox() {
                       handleEndpointClick(movingTrendline, endpoint);
                     }
                   } else {
-                    // Try to select a trendline
-                    const nearbyLine = findNearbyTrendline(crosshairPos.x, crosshairPos.y);
-                    if (nearbyLine) {
-                      handleTrendlineSelect(nearbyLine, crosshairPos.x, crosshairPos.y);
+                    // Check for any drawing elements at click location
+                    const candidates = collectHitCandidates(crosshairPos.x, crosshairPos.y);
+                    if (candidates.length > 1) {
+                      // Multiple overlapping elements - show picker
+                      const pickerX = Math.min(Math.max(crosshairPos.x + 12, 60), dimensions.width - margin.right - 60);
+                      const pickerY = Math.min(Math.max(crosshairPos.y, 50), dimensions.height - 150);
+                      setSelectionCandidates(candidates);
+                      setSelectionPickerPos({ x: pickerX, y: pickerY });
+                    } else if (candidates.length === 1) {
+                      // Single element - select directly
+                      handlePickerSelect(candidates[0], crosshairPos.x, crosshairPos.y);
                     } else {
                       // Tap on empty space - close any open menu
+                      closeSelectionPicker();
                       closeTrendlineMenu();
                     }
                   }
@@ -4020,6 +4028,97 @@ export default function CryptoSandbox() {
                 </div>
               );
             })()}
+            
+            {/* Selection Picker - shows when multiple overlapping elements */}
+            {selectionPickerPos && selectionCandidates.length > 1 && (
+              <div 
+                className="absolute bg-slate-800 border border-slate-500 rounded-lg shadow-lg z-50 p-2"
+                style={{ left: selectionPickerPos.x, top: selectionPickerPos.y }}
+                data-testid="selection-picker"
+              >
+                <div className="text-xs text-gray-400 mb-2 font-medium">Select element:</div>
+                <div className="flex flex-col gap-1">
+                  {selectionCandidates.map((candidate, idx) => {
+                    // Icons for each type
+                    const getIcon = () => {
+                      switch (candidate.type) {
+                        case 'trendline':
+                          return (
+                            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 20L20 4" />
+                            </svg>
+                          );
+                        case 'horizontal':
+                          return (
+                            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 12h16" />
+                            </svg>
+                          );
+                        case 'channel':
+                          return (
+                            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 8L20 4M4 16L20 12" />
+                            </svg>
+                          );
+                        case 'hchannel':
+                          return (
+                            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 6h16M4 18h16" />
+                              <rect x="4" y="6" width="16" height="12" fill="currentColor" fillOpacity="0.2" stroke="none" />
+                            </svg>
+                          );
+                        case 'schannel':
+                          return (
+                            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 8L20 4M4 20L20 16" />
+                              <path d="M4 8L4 20M20 4L20 16" strokeOpacity="0.3" />
+                            </svg>
+                          );
+                        case 'label':
+                          return (
+                            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                              <text x="6" y="17" fontSize="14" fill="currentColor" stroke="none">T</text>
+                            </svg>
+                          );
+                        default:
+                          return null;
+                      }
+                    };
+                    
+                    const getLabel = () => {
+                      switch (candidate.type) {
+                        case 'trendline': return 'Trendline';
+                        case 'horizontal': return 'Horizontal';
+                        case 'channel': return 'Channel';
+                        case 'hchannel': return 'H-Channel';
+                        case 'schannel': return 'S-Channel';
+                        case 'label': return 'Label';
+                        default: return 'Element';
+                      }
+                    };
+                    
+                    return (
+                      <button
+                        key={`${candidate.type}-${candidate.id}-${idx}`}
+                        onClick={() => handlePickerSelect(candidate, selectionPickerPos.x, selectionPickerPos.y)}
+                        className="flex items-center gap-2 px-3 py-2 text-white hover:bg-slate-700 rounded transition-colors text-sm"
+                        data-testid={`picker-${candidate.type}-${idx}`}
+                      >
+                        {getIcon()}
+                        <span>{getLabel()}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={closeSelectionPicker}
+                  className="mt-2 w-full text-xs text-gray-500 hover:text-gray-300 py-1"
+                  data-testid="picker-close"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             
             {/* Horizontal Channel action menu - compact redesign */}
             {hchannelMenuPos && selectedHChannel && (() => {
