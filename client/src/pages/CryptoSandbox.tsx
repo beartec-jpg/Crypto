@@ -88,6 +88,7 @@ export default function CryptoSandbox() {
   const [moveModePopup, setMoveModePopup] = useState<{ x: number; y: number; lineId: string; point: 'p1' | 'p2' } | null>(null);
   const [moveMethod, setMoveMethod] = useState<'magnet' | 'free'>('magnet');
   
+  
   // Color palette for trendlines
   const TRENDLINE_COLORS = ['#facc15', '#22c55e', '#ef4444', '#3b82f6', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#ffffff'];
   
@@ -1412,14 +1413,13 @@ export default function CryptoSandbox() {
               className="absolute inset-0 overflow-visible" 
               data-zoom={zoomVersion}
               style={{ pointerEvents: activeTool === 'trendline' ? 'none' : 'auto' }}
+              onClick={(e) => {
+                // Close menu when clicking empty space (not on trendline elements)
+                if (e.target === e.currentTarget) {
+                  closeTrendlineMenu();
+                }
+              }}
             >
-              {/* Background rect to catch clicks on empty space */}
-              <rect 
-                x={0} y={0} 
-                width={dimensions.width} height={dimensions.height} 
-                fill="transparent"
-                onClick={() => closeTrendlineMenu()}
-              />
               {drawnTrendlines.map((line) => {
                 if (!xScaleRef.current || !yScaleRef.current) return null;
                 let x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
