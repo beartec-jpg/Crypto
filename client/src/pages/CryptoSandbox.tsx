@@ -2501,6 +2501,29 @@ export default function CryptoSandbox() {
               })}
             </svg>
             
+            {/* React hit layer for horizontal lines - above drawing overlays so always clickable */}
+            {drawnHorizontals.map((line) => {
+              if (!yScaleRef.current) return null;
+              const y = yScaleRef.current(line.price) + margin.top;
+              return (
+                <div
+                  key={`hit-${line.id}`}
+                  className="absolute cursor-pointer z-[30]"
+                  style={{
+                    left: margin.left,
+                    top: y - 6,
+                    width: dimensions.width - margin.left - margin.right,
+                    height: 12,
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    showClickPulse(e.clientX - (e.currentTarget.parentElement?.getBoundingClientRect().left || 0), y);
+                    handleHorizontalSelect(line.id, e.clientX - (e.currentTarget.parentElement?.getBoundingClientRect().left || 0), y);
+                  }}
+                />
+              );
+            })}
+            
             {/* Horizontal line drawing overlay - magnet mode handled by handler */}
             {activeTool === 'horizontal' && (
               <div 
