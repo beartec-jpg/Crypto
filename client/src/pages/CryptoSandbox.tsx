@@ -39,6 +39,12 @@ export default function CryptoSandbox() {
   const yScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   
+  // Auto/manual scale mode (double-click axis to reset to auto)
+  const [yAxisManual, setYAxisManual] = useState(false);
+  const [xAxisManual, setXAxisManual] = useState(false);
+  const yAxisDragRef = useRef<{ startY: number; startDomain: [number, number] } | null>(null);
+  const xAxisDragRef = useRef<{ startX: number; startDomain: [Date, Date] } | null>(null);
+  
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
   const [crosshairMode, setCrosshairMode] = useState(false);
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null);
@@ -1011,6 +1017,58 @@ export default function CryptoSandbox() {
     setMovingPoint(null);
   }, [movingPoint, findMagnetPoint, margin.left, margin.top, drawnTrendlines, saveToHistory]);
   
+  // Universal click pulse - show on any placement/move/selection
+  const [clickPulse, setClickPulse] = useState<{ x: number; y: number } | null>(null);
+  const showClickPulse = useCallback((x: number, y: number) => {
+    setClickPulse({ x, y });
+    setTimeout(() => setClickPulse(null), 400);
+  }, []);
+  
+  // Global mouse handlers for axis drag
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      // Y-axis drag (vertical = zoom price)
+      if (yAxisDragRef.current && yScaleRef.current) {
+        const deltaY = e.clientY - yAxisDragRef.current.startY;
+        const sensitivity = 0.005;
+        const factor = 1 + deltaY * sensitivity;
+        const [minPrice, maxPrice] = yAxisDragRef.current.startDomain;
+        const midPrice = (minPrice + maxPrice) / 2;
+        const halfRange = (maxPrice - minPrice) / 2;
+        const newHalfRange = halfRange * Math.max(0.1, factor);
+        yScaleRef.current.domain([midPrice - newHalfRange, midPrice + newHalfRange]);
+        setZoomVersion(v => v + 1);
+      }
+      // X-axis drag (horizontal = zoom time)
+      if (xAxisDragRef.current && xScaleRef.current) {
+        const deltaX = e.clientX - xAxisDragRef.current.startX;
+        const sensitivity = 0.003;
+        const factor = 1 - deltaX * sensitivity;
+        const [minTime, maxTime] = xAxisDragRef.current.startDomain;
+        const midTime = new Date((minTime.getTime() + maxTime.getTime()) / 2);
+        const halfRange = (maxTime.getTime() - minTime.getTime()) / 2;
+        const newHalfRange = halfRange * Math.max(0.1, factor);
+        xScaleRef.current.domain([
+          new Date(midTime.getTime() - newHalfRange),
+          new Date(midTime.getTime() + newHalfRange)
+        ]);
+        setZoomVersion(v => v + 1);
+      }
+    };
+    
+    const handleMouseUp = () => {
+      yAxisDragRef.current = null;
+      xAxisDragRef.current = null;
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+  
   // Render D3 chart
   useEffect(() => {
     if (!svgRef.current || candles.length === 0 || dimensions.width === 0) return;
@@ -1350,6 +1408,55 @@ export default function CryptoSandbox() {
               style={{ display: 'block' }}
               className="chart-background"
               data-testid="sandbox-chart"
+            />
+            
+            {/* Y-axis drag zone (right side) for zoom control */}
+            <div
+              className="absolute cursor-ns-resize z-10"
+              style={{ 
+                right: 0, 
+                top: margin.top, 
+                width: margin.right, 
+                height: dimensions.height - margin.top - margin.bottom,
+                background: yAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
+              }}
+              onMouseDown={(e) => {
+                if (!yScaleRef.current) return;
+                e.preventDefault();
+                const domain = yScaleRef.current.domain() as [number, number];
+                yAxisDragRef.current = { startY: e.clientY, startDomain: domain };
+                setYAxisManual(true);
+              }}
+              onDoubleClick={() => {
+                setYAxisManual(false);
+                // Trigger a redraw with auto-scale
+                setZoomVersion(v => v + 1);
+              }}
+              title={yAxisManual ? "Drag to zoom, double-click to auto-scale" : "Drag to zoom"}
+            />
+            
+            {/* X-axis drag zone (bottom) for zoom control */}
+            <div
+              className="absolute cursor-ew-resize z-10"
+              style={{ 
+                left: margin.left, 
+                bottom: 0, 
+                width: dimensions.width - margin.left - margin.right, 
+                height: margin.bottom,
+                background: xAxisManual ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
+              }}
+              onMouseDown={(e) => {
+                if (!xScaleRef.current) return;
+                e.preventDefault();
+                const domain = xScaleRef.current.domain() as [Date, Date];
+                xAxisDragRef.current = { startX: e.clientX, startDomain: domain };
+                setXAxisManual(true);
+              }}
+              onDoubleClick={() => {
+                setXAxisManual(false);
+                setZoomVersion(v => v + 1);
+              }}
+              title={xAxisManual ? "Drag to zoom, double-click to auto-scale" : "Drag to zoom"}
             />
             
             {/* Top indicator dropdowns */}
@@ -1845,13 +1952,14 @@ export default function CryptoSandbox() {
             {/* Trendline drawing overlay */}
             {activeTool === 'trendline' && trendlineMode && (
               <div 
-                className="absolute inset-0 cursor-crosshair"
+                className="absolute inset-0 cursor-crosshair z-[25]"
                 style={{ pointerEvents: 'auto' }}
                 onClick={(e) => {
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = crosshairMode && crosshairPos ? crosshairPos.x : e.clientX - rect.left;
                   const clickY = crosshairMode && crosshairPos ? crosshairPos.y : e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
                   handleTrendlineClick(clickX, clickY);
                 }}
                 onTouchStart={(e) => {
@@ -2316,7 +2424,7 @@ export default function CryptoSandbox() {
             {/* Horizontal line drawing overlay - magnet mode handled by handler */}
             {activeTool === 'horizontal' && (
               <div 
-                className="absolute inset-0 cursor-crosshair"
+                className="absolute inset-0 cursor-crosshair z-[25]"
                 style={{ pointerEvents: 'auto' }}
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -2328,7 +2436,10 @@ export default function CryptoSandbox() {
                 onClick={(e) => {
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
-                  handleHorizontalClick(e.clientX - rect.left, e.clientY - rect.top);
+                  const clickX = e.clientX - rect.left;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  handleHorizontalClick(clickX, clickY);
                 }}
               >
                 {magnetPulse && (
@@ -2345,7 +2456,7 @@ export default function CryptoSandbox() {
             {/* Channel drawing overlay - magnet mode handled by handler */}
             {activeTool === 'channel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair"
+                className="absolute inset-0 cursor-crosshair z-[25]"
                 style={{ pointerEvents: 'auto' }}
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -2357,7 +2468,10 @@ export default function CryptoSandbox() {
                 onClick={(e) => {
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
-                  handleChannelClick(e.clientX - rect.left, e.clientY - rect.top);
+                  const clickX = e.clientX - rect.left;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  handleChannelClick(clickX, clickY);
                 }}
               >
                 {magnetPulse && (
@@ -2390,7 +2504,7 @@ export default function CryptoSandbox() {
             {/* Text label drawing overlay - magnet mode handled by handler */}
             {activeTool === 'label' && (
               <div 
-                className="absolute inset-0 cursor-crosshair"
+                className="absolute inset-0 cursor-crosshair z-[25]"
                 style={{ pointerEvents: 'auto' }}
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -2402,7 +2516,10 @@ export default function CryptoSandbox() {
                 onClick={(e) => {
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
-                  handleTextLabelClick(e.clientX - rect.left, e.clientY - rect.top);
+                  const clickX = e.clientX - rect.left;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  handleTextLabelClick(clickX, clickY);
                 }}
               >
                 {magnetPulse && (
@@ -3149,6 +3266,28 @@ export default function CryptoSandbox() {
               </div>
             )}
             
+            {/* Universal click pulse - visual feedback for all clicks */}
+            {clickPulse && (
+              <div 
+                className="absolute pointer-events-none z-[100]"
+                style={{ 
+                  left: clickPulse.x - 20, 
+                  top: clickPulse.y - 20,
+                  width: 40,
+                  height: 40,
+                }}
+              >
+                <div 
+                  className="w-full h-full rounded-full border-2 border-cyan-400 animate-ping"
+                  style={{ animationDuration: '0.4s' }}
+                />
+                <div 
+                  className="absolute inset-0 w-full h-full rounded-full border-2 border-cyan-400 opacity-50"
+                  style={{ transform: 'scale(0.5)' }}
+                />
+              </div>
+            )}
+            
             {/* Click overlay for placing moved point */}
             {movingPoint && (
               <div 
@@ -3156,7 +3295,10 @@ export default function CryptoSandbox() {
                 style={{ left: 40 }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  placeMovingPoint(e.clientX - rect.left + 40, e.clientY - rect.top);
+                  const clickX = e.clientX - rect.left + 40;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  placeMovingPoint(clickX, clickY);
                 }}
               />
             )}
@@ -3168,7 +3310,10 @@ export default function CryptoSandbox() {
                 style={{ left: 40 }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  placeMovingHorizontal(e.clientX - rect.left + 40, e.clientY - rect.top);
+                  const clickX = e.clientX - rect.left + 40;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  placeMovingHorizontal(clickX, clickY);
                 }}
               >
                 {magnetPulse && (
@@ -3186,7 +3331,10 @@ export default function CryptoSandbox() {
                 style={{ left: 40 }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  placeMovingTextLabel(e.clientX - rect.left + 40, e.clientY - rect.top);
+                  const clickX = e.clientX - rect.left + 40;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  placeMovingTextLabel(clickX, clickY);
                 }}
               >
                 {magnetPulse && (
@@ -3204,7 +3352,10 @@ export default function CryptoSandbox() {
                 style={{ left: 40 }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  placeMovingChannel(e.clientX - rect.left + 40, e.clientY - rect.top);
+                  const clickX = e.clientX - rect.left + 40;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  placeMovingChannel(clickX, clickY);
                 }}
               >
                 {magnetPulse && (
