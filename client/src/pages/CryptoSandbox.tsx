@@ -1452,13 +1452,6 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Invisible overlay to close menu when clicking away */}
-            {trendlineMenuPos && (
-              <div 
-                className="absolute inset-0 z-40"
-                onClick={() => closeTrendlineMenu()}
-              />
-            )}
             
             {/* Overlay for whole-line move mode - click to place line */}
             {movingWholeLine && (
@@ -1474,7 +1467,7 @@ export default function CryptoSandbox() {
             {/* Render drawn trendlines - clickable with selection */}
             {/* zoomVersion ensures re-render on zoom/pan */}
             <svg 
-              className="absolute inset-0 overflow-visible" 
+              className="absolute inset-0 overflow-visible z-30" 
               data-zoom={zoomVersion}
               style={{ pointerEvents: activeTool === 'trendline' ? 'none' : 'auto' }}
             >
