@@ -127,6 +127,31 @@ export default function CryptoSandbox() {
   // Color palette for trendlines
   const TRENDLINE_COLORS = ['#facc15', '#22c55e', '#ef4444', '#3b82f6', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#ffffff'];
   
+  // Default trendline settings (loaded from localStorage)
+  const [trendlineDefaults, setTrendlineDefaults] = useState(() => {
+    try {
+      const saved = localStorage.getItem('trendlineDefaults');
+      return saved ? JSON.parse(saved) : { color: '#facc15', opacity: 1, lineStyle: 'solid' as LineStyle, thickness: 2 };
+    } catch {
+      return { color: '#facc15', opacity: 1, lineStyle: 'solid' as LineStyle, thickness: 2 };
+    }
+  });
+  
+  // Save as favorite function
+  const saveAsFavorite = useCallback(() => {
+    const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
+    if (selectedLine) {
+      const defaults = {
+        color: selectedLine.color,
+        opacity: selectedLine.opacity,
+        lineStyle: selectedLine.lineStyle,
+        thickness: selectedLine.thickness
+      };
+      setTrendlineDefaults(defaults);
+      localStorage.setItem('trendlineDefaults', JSON.stringify(defaults));
+    }
+  }, [drawnTrendlines, selectedTrendline]);
+  
   // Indicator states - Trend Tools
   const [showEMA, setShowEMA] = useState(false);
   const [showSMA, setShowSMA] = useState(false);
@@ -328,10 +353,10 @@ export default function CryptoSandbox() {
         id: `tl-${Date.now()}`,
         p1: { time: trendlinePoints[0].time, price: trendlinePoints[0].price },
         p2: { time: point.time, price: point.price },
-        color: '#facc15',
-        opacity: 1,
-        lineStyle: 'solid',
-        thickness: 2,
+        color: trendlineDefaults.color,
+        opacity: trendlineDefaults.opacity,
+        lineStyle: trendlineDefaults.lineStyle,
+        thickness: trendlineDefaults.thickness,
         extendLeft: false,
         extendRight: false,
       };
@@ -341,7 +366,7 @@ export default function CryptoSandbox() {
       setTrendlinePoints([]);
       // Keep tool active for drawing more lines
     }
-  }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top, drawnTrendlines, saveToHistory]);
+  }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top, drawnTrendlines, saveToHistory, trendlineDefaults]);
   
   // Handle click on trendline to select it - auto enters move mode
   const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
@@ -1749,6 +1774,17 @@ export default function CryptoSandbox() {
                 >
                   <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
                     <text x="5" y="15" fontSize="14" fontWeight="bold">T</text>
+                  </svg>
+                </button>
+                
+                {/* Save as Favorite */}
+                <button
+                  onClick={saveAsFavorite}
+                  className="p-2 hover:bg-slate-700 rounded text-yellow-400"
+                  title="Save as Default"
+                >
+                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                    <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
                   </svg>
                 </button>
                 </div>
