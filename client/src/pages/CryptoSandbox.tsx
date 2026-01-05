@@ -27,7 +27,6 @@ export default function CryptoSandbox() {
   
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const drawingOverlayRef = useRef<HTMLDivElement>(null);
   
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [interval, setInterval] = useState('1h');
@@ -130,8 +129,6 @@ export default function CryptoSandbox() {
   const [channelMenuPos, setChannelMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [selectedTextLabel, setSelectedTextLabel] = useState<string | null>(null);
   const [textLabelMenuPos, setTextLabelMenuPos] = useState<{ x: number; y: number } | null>(null);
-  // Zoom counter to trigger re-renders for trendlines during zoom/pan
-  const [zoomVersion, setZoomVersion] = useState(0);
   
   // Trendline selection and menu state
   const [selectedTrendline, setSelectedTrendline] = useState<string | null>(null);
@@ -1208,6 +1205,371 @@ export default function CryptoSandbox() {
     
     drawCandles(xScale, yScale);
     
+    // Drawings group (above candles, below axes overlays)
+    const drawingsGroup = g.append('g')
+      .attr('class', 'drawings')
+      .attr('clip-path', 'url(#chart-clip)');
+    
+    // Function to draw all drawings with current scales
+    const drawDrawings = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+      drawingsGroup.selectAll('*').remove();
+      
+      // Helper: clip line to chart boundaries
+      const clipToChart = (px1: number, py1: number, px2: number, py2: number) => {
+        const dx = px2 - px1;
+        const dy = py2 - py1;
+        let t0 = 0, t1 = 1;
+        
+        const clip = (p: number, q: number) => {
+          if (p === 0) return q >= 0;
+          const r = q / p;
+          if (p < 0) {
+            if (r > t1) return false;
+            if (r > t0) t0 = r;
+          } else {
+            if (r < t0) return false;
+            if (r < t1) t1 = r;
+          }
+          return true;
+        };
+        
+        if (!clip(-dx, px1)) return null;
+        if (!clip(dx, innerWidth - px1)) return null;
+        if (!clip(-dy, py1)) return null;
+        if (!clip(dy, innerHeight - py1)) return null;
+        
+        return {
+          x1: px1 + t0 * dx,
+          y1: py1 + t0 * dy,
+          x2: px1 + t1 * dx,
+          y2: py1 + t1 * dy
+        };
+      };
+      
+      // Draw trendlines
+      drawnTrendlines.forEach(line => {
+        const x1 = xS(new Date(line.p1.time));
+        const y1 = yS(line.p1.price);
+        const x2 = xS(new Date(line.p2.time));
+        const y2 = yS(line.p2.price);
+        const strokeDash = line.lineStyle === 'dashed' ? '8,4' : line.lineStyle === 'dotted' ? '2,4' : '';
+        const isSelected = selectedTrendline === line.id;
+        
+        const lineGroup = drawingsGroup.append('g').attr('class', `trendline-${line.id}`);
+        
+        // Calculate extensions
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const extendAmount = 2000;
+        
+        if (line.extendLeft && (dx !== 0 || dy !== 0)) {
+          const ratio = extendAmount / Math.sqrt(dx * dx + dy * dy);
+          let extX1 = x1 - dx * ratio;
+          let extY1 = y1 - dy * ratio;
+          const clipped = clipToChart(extX1, extY1, x1, y1);
+          if (clipped) {
+            lineGroup.append('line')
+              .attr('x1', clipped.x1).attr('y1', clipped.y1)
+              .attr('x2', x1).attr('y2', y1)
+              .attr('stroke', line.color)
+              .attr('stroke-width', line.thickness || 2)
+              .attr('stroke-opacity', line.opacity)
+              .attr('stroke-dasharray', strokeDash);
+          }
+        }
+        
+        if (line.extendRight && (dx !== 0 || dy !== 0)) {
+          const ratio = extendAmount / Math.sqrt(dx * dx + dy * dy);
+          let extX2 = x2 + dx * ratio;
+          let extY2 = y2 + dy * ratio;
+          const clipped = clipToChart(x2, y2, extX2, extY2);
+          if (clipped) {
+            lineGroup.append('line')
+              .attr('x1', x2).attr('y1', y2)
+              .attr('x2', clipped.x2).attr('y2', clipped.y2)
+              .attr('stroke', line.color)
+              .attr('stroke-width', line.thickness || 2)
+              .attr('stroke-opacity', line.opacity)
+              .attr('stroke-dasharray', strokeDash);
+          }
+        }
+        
+        // Invisible hit area
+        lineGroup.append('line')
+          .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+          .attr('stroke', 'transparent')
+          .attr('stroke-width', 12)
+          .style('cursor', 'pointer')
+          .on('click', function(event) {
+            event.stopPropagation();
+            const rect = svgRef.current?.getBoundingClientRect();
+            if (rect) {
+              handleTrendlineSelect(line.id, event.clientX - rect.left, event.clientY - rect.top);
+            }
+          });
+        
+        // Visible line
+        lineGroup.append('line')
+          .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+          .attr('stroke', line.color)
+          .attr('stroke-width', line.thickness || 2)
+          .attr('stroke-opacity', line.opacity)
+          .attr('stroke-dasharray', strokeDash)
+          .style('pointer-events', 'none');
+        
+        // Selection indicators
+        if (isSelected || (moveMode && movingTrendline === line.id)) {
+          // Endpoint 1
+          lineGroup.append('circle')
+            .attr('cx', x1).attr('cy', y1).attr('r', moveMode ? 20 : 5)
+            .attr('fill', 'transparent')
+            .style('cursor', moveMode ? 'pointer' : 'default')
+            .on('click', function(event) {
+              if (moveMode) {
+                event.stopPropagation();
+                handleEndpointClick(line.id, 'p1');
+              }
+            });
+          lineGroup.append('circle')
+            .attr('cx', x1).attr('cy', y1).attr('r', moveMode ? 8 : 5)
+            .attr('fill', line.color).attr('stroke', 'white').attr('stroke-width', 2)
+            .style('pointer-events', 'none');
+          
+          // Center point
+          lineGroup.append('circle')
+            .attr('cx', (x1 + x2) / 2).attr('cy', (y1 + y2) / 2).attr('r', 18)
+            .attr('fill', 'transparent')
+            .style('cursor', 'pointer')
+            .on('click', function(event) {
+              event.stopPropagation();
+              if (movingWholeLine === line.id) {
+                setMovingWholeLine(null);
+              } else {
+                setMovingWholeLine(line.id);
+                setTrendlineMenuPos(null);
+              }
+            });
+          lineGroup.append('circle')
+            .attr('cx', (x1 + x2) / 2).attr('cy', (y1 + y2) / 2)
+            .attr('r', movingWholeLine === line.id ? 8 : 6)
+            .attr('fill', movingWholeLine === line.id ? '#22c55e' : 'white')
+            .attr('stroke', line.color).attr('stroke-width', 2)
+            .style('pointer-events', 'none');
+          
+          // Endpoint 2
+          lineGroup.append('circle')
+            .attr('cx', x2).attr('cy', y2).attr('r', moveMode ? 20 : 5)
+            .attr('fill', 'transparent')
+            .style('cursor', moveMode ? 'pointer' : 'default')
+            .on('click', function(event) {
+              if (moveMode) {
+                event.stopPropagation();
+                handleEndpointClick(line.id, 'p2');
+              }
+            });
+          lineGroup.append('circle')
+            .attr('cx', x2).attr('cy', y2).attr('r', moveMode ? 8 : 5)
+            .attr('fill', line.color).attr('stroke', 'white').attr('stroke-width', 2)
+            .style('pointer-events', 'none');
+        }
+        
+        // Labels
+        if (line.label && line.label.positions) {
+          line.label.positions.forEach(pos => {
+            lineGroup.append('text')
+              .attr('x', pos.includes('left') ? x1 : x2)
+              .attr('y', pos.includes('top') 
+                ? (pos.includes('left') ? y1 : y2) - 10 
+                : (pos.includes('left') ? y1 : y2) + 20)
+              .attr('fill', line.color)
+              .attr('font-size', '12px')
+              .attr('text-anchor', 'middle')
+              .text(line.label.text);
+          });
+        }
+      });
+      
+      // Draw horizontal lines
+      drawnHorizontals.forEach(line => {
+        const y = yS(line.price);
+        const strokeDash = line.lineStyle === 'dashed' ? '8,4' : line.lineStyle === 'dotted' ? '2,4' : '';
+        const isSelected = selectedHorizontal === line.id;
+        
+        const lineGroup = drawingsGroup.append('g').attr('class', `horizontal-${line.id}`);
+        
+        // Invisible hit area
+        lineGroup.append('line')
+          .attr('x1', 0).attr('y1', y).attr('x2', innerWidth).attr('y2', y)
+          .attr('stroke', 'transparent')
+          .attr('stroke-width', 12)
+          .style('cursor', 'pointer')
+          .on('click', function(event) {
+            event.stopPropagation();
+            const rect = svgRef.current?.getBoundingClientRect();
+            if (rect) {
+              handleHorizontalSelect(line.id, event.clientX - rect.left, event.clientY - rect.top);
+            }
+          });
+        
+        // Visible line
+        lineGroup.append('line')
+          .attr('x1', 0).attr('y1', y).attr('x2', innerWidth).attr('y2', y)
+          .attr('stroke', line.color)
+          .attr('stroke-width', line.thickness || 2)
+          .attr('stroke-opacity', line.opacity)
+          .attr('stroke-dasharray', strokeDash)
+          .style('pointer-events', 'none');
+        
+        // Selection indicators
+        if (isSelected) {
+          lineGroup.append('circle')
+            .attr('cx', 20).attr('cy', y).attr('r', 5)
+            .attr('fill', line.color).attr('stroke', 'white').attr('stroke-width', 2);
+          lineGroup.append('circle')
+            .attr('cx', innerWidth - 20).attr('cy', y).attr('r', 5)
+            .attr('fill', line.color).attr('stroke', 'white').attr('stroke-width', 2);
+        }
+        
+        // Price label - always show for horizontal lines
+        const priceText = line.price >= 1000 ? line.price.toFixed(2) : line.price.toFixed(4);
+        lineGroup.append('rect')
+          .attr('x', innerWidth + 2).attr('y', y - 10)
+          .attr('width', 60).attr('height', 20)
+          .attr('fill', line.color).attr('rx', 3);
+        lineGroup.append('text')
+          .attr('x', innerWidth + 32).attr('y', y + 4)
+          .attr('text-anchor', 'middle')
+          .attr('fill', 'white').attr('font-size', '10px')
+          .text(priceText);
+      });
+      
+      // Draw channels (parallel lines offset by width)
+      drawnChannels.forEach(channel => {
+        const x1 = xS(new Date(channel.p1.time));
+        const y1 = yS(channel.p1.price);
+        const x2 = xS(new Date(channel.p2.time));
+        const y2 = yS(channel.p2.price);
+        // Channel width is in price units, convert to screen
+        const widthPx = Math.abs(yS(0) - yS(channel.width));
+        const isSelected = selectedChannel === channel.id;
+        
+        const channelGroup = drawingsGroup.append('g').attr('class', `channel-${channel.id}`);
+        
+        // Calculate perpendicular offset for parallel lines
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const nx = len > 0 ? -dy / len * widthPx / 2 : 0;
+        const ny = len > 0 ? dx / len * widthPx / 2 : widthPx / 2;
+        
+        // Top line (offset up)
+        const y1Top = y1 - ny;
+        const y2Top = y2 - ny;
+        const x1Top = x1 - nx;
+        const x2Top = x2 - nx;
+        
+        // Bottom line (offset down)
+        const y1Bot = y1 + ny;
+        const y2Bot = y2 + ny;
+        const x1Bot = x1 + nx;
+        const x2Bot = x2 + nx;
+        
+        // Fill
+        channelGroup.append('polygon')
+          .attr('points', `${x1Top},${y1Top} ${x2Top},${y2Top} ${x2Bot},${y2Bot} ${x1Bot},${y1Bot}`)
+          .attr('fill', channel.color)
+          .attr('fill-opacity', 0.1)
+          .style('cursor', 'pointer')
+          .on('click', function(event) {
+            event.stopPropagation();
+            const rect = svgRef.current?.getBoundingClientRect();
+            if (rect) {
+              handleChannelSelect(channel.id, event.clientX - rect.left, event.clientY - rect.top);
+            }
+          });
+        
+        // Top line
+        channelGroup.append('line')
+          .attr('x1', x1Top).attr('y1', y1Top).attr('x2', x2Top).attr('y2', y2Top)
+          .attr('stroke', channel.color)
+          .attr('stroke-width', channel.thickness || 2)
+          .attr('stroke-opacity', channel.opacity)
+          .style('pointer-events', 'none');
+        
+        // Bottom line
+        channelGroup.append('line')
+          .attr('x1', x1Bot).attr('y1', y1Bot).attr('x2', x2Bot).attr('y2', y2Bot)
+          .attr('stroke', channel.color)
+          .attr('stroke-width', channel.thickness || 2)
+          .attr('stroke-opacity', channel.opacity)
+          .style('pointer-events', 'none');
+        
+        // Selection indicators
+        if (isSelected) {
+          [{ x: x1Top, y: y1Top }, { x: x1Bot, y: y1Bot }, { x: x2Top, y: y2Top }, { x: x2Bot, y: y2Bot }].forEach(pt => {
+            channelGroup.append('circle')
+              .attr('cx', pt.x).attr('cy', pt.y).attr('r', 5)
+              .attr('fill', channel.color).attr('stroke', 'white').attr('stroke-width', 2);
+          });
+        }
+      });
+      
+      // Draw text labels
+      drawnTextLabels.forEach(label => {
+        const x = xS(new Date(label.time));
+        const y = yS(label.price);
+        const isSelected = selectedTextLabel === label.id;
+        
+        const labelGroup = drawingsGroup.append('g').attr('class', `textlabel-${label.id}`);
+        
+        // Background if set
+        if (label.backgroundColor !== 'transparent') {
+          labelGroup.append('rect')
+            .attr('x', x - 5).attr('y', y - label.fontSize)
+            .attr('width', label.text.length * label.fontSize * 0.6 + 10)
+            .attr('height', label.fontSize + 6)
+            .attr('fill', label.backgroundColor)
+            .attr('rx', 3)
+            .attr('opacity', label.opacity);
+        }
+        
+        // Text
+        labelGroup.append('text')
+          .attr('x', x).attr('y', y)
+          .attr('fill', label.color)
+          .attr('font-size', `${label.fontSize}px`)
+          .attr('opacity', label.opacity)
+          .style('cursor', 'pointer')
+          .text(label.text)
+          .on('click', function(event) {
+            event.stopPropagation();
+            const rect = svgRef.current?.getBoundingClientRect();
+            if (rect) {
+              handleTextLabelSelect(label.id, event.clientX - rect.left, event.clientY - rect.top);
+            }
+          });
+        
+        // Selection indicator
+        if (isSelected) {
+          labelGroup.append('rect')
+            .attr('x', x - 8).attr('y', y - label.fontSize - 3)
+            .attr('width', label.text.length * label.fontSize * 0.6 + 16)
+            .attr('height', label.fontSize + 12)
+            .attr('fill', 'none')
+            .attr('stroke', '#3b82f6')
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', '4,2')
+            .attr('rx', 3);
+        }
+      });
+    };
+    
+    // Initial draw
+    drawDrawings(xScale, yScale);
+    
+    // Store drawDrawings for zoom handler
+    const drawDrawingsRef = drawDrawings;
+    
     // X Axis (bottom)
     const xAxisGroup = g.append('g')
       .attr('class', 'x-axis')
@@ -1306,7 +1668,6 @@ export default function CryptoSandbox() {
           // Update current price line and label
           const lastCandle = candles[candles.length - 1];
           if (lastCandle) {
-            const priceLineColor = lastCandle.close >= lastCandle.open ? '#22c55e' : '#ef4444';
             g.select('.current-price-line')
               .attr('y1', newYScale(lastCandle.close))
               .attr('y2', newYScale(lastCandle.close));
@@ -1316,8 +1677,8 @@ export default function CryptoSandbox() {
               .attr('y', newYScale(lastCandle.close) + 4);
           }
           
-          // Trigger React overlay re-render for drawings
-          setZoomVersion(v => v + 1);
+          // Redraw drawings with new scales (D3 native, no React re-render needed)
+          drawDrawingsRef(newXScale, newYScale);
         }
       });
     
@@ -1362,7 +1723,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleTextLabelSelect, handleEndpointClick]);
   
   // Show loading while checking auth
   if (authLoading) {
@@ -2040,391 +2401,7 @@ export default function CryptoSandbox() {
               />
             )}
             
-            {/* Render drawn trendlines - clickable with selection */}
-            {/* zoomVersion ensures re-render on zoom/pan */}
-            <svg 
-              className="absolute inset-0 overflow-visible z-30" 
-              data-zoom={zoomVersion}
-              style={{ pointerEvents: activeTool === 'trendline' ? 'none' : 'auto' }}
-            >
-              {drawnTrendlines.map((line) => {
-                if (!xScaleRef.current || !yScaleRef.current) return null;
-                let x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
-                let y1 = yScaleRef.current(line.p1.price) + margin.top;
-                let x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
-                let y2 = yScaleRef.current(line.p2.price) + margin.top;
-                
-                // Chart boundaries
-                const chartLeft = margin.left;
-                const chartRight = dimensions.width - margin.right;
-                const chartTop = margin.top;
-                const chartBottom = dimensions.height - margin.bottom;
-                
-                // Function to clip line to chart boundaries
-                const clipToChart = (px1: number, py1: number, px2: number, py2: number) => {
-                  const dx = px2 - px1;
-                  const dy = py2 - py1;
-                  let t0 = 0, t1 = 1;
-                  
-                  // Clip against each boundary
-                  const clip = (p: number, q: number) => {
-                    if (p === 0) return q >= 0;
-                    const r = q / p;
-                    if (p < 0) {
-                      if (r > t1) return false;
-                      if (r > t0) t0 = r;
-                    } else {
-                      if (r < t0) return false;
-                      if (r < t1) t1 = r;
-                    }
-                    return true;
-                  };
-                  
-                  if (!clip(-dx, px1 - chartLeft)) return null;
-                  if (!clip(dx, chartRight - px1)) return null;
-                  if (!clip(-dy, py1 - chartTop)) return null;
-                  if (!clip(dy, chartBottom - py1)) return null;
-                  
-                  return {
-                    x1: px1 + t0 * dx,
-                    y1: py1 + t0 * dy,
-                    x2: px1 + t1 * dx,
-                    y2: py1 + t1 * dy
-                  };
-                };
-                
-                // Calculate extended line coordinates
-                const dx = x2 - x1;
-                const dy = y2 - y1;
-                const extendAmount = 2000; // pixels to extend
-                let extX1 = x1, extY1 = y1, extX2 = x2, extY2 = y2;
-                if (line.extendLeft && (dx !== 0 || dy !== 0)) {
-                  const ratio = extendAmount / Math.sqrt(dx * dx + dy * dy);
-                  extX1 = x1 - dx * ratio;
-                  extY1 = y1 - dy * ratio;
-                  // Clip to chart boundaries
-                  const clipped = clipToChart(extX1, extY1, x1, y1);
-                  if (clipped) {
-                    extX1 = clipped.x1;
-                    extY1 = clipped.y1;
-                  }
-                }
-                if (line.extendRight && (dx !== 0 || dy !== 0)) {
-                  const ratio = extendAmount / Math.sqrt(dx * dx + dy * dy);
-                  extX2 = x2 + dx * ratio;
-                  extY2 = y2 + dy * ratio;
-                  // Clip to chart boundaries
-                  const clipped = clipToChart(x2, y2, extX2, extY2);
-                  if (clipped) {
-                    extX2 = clipped.x2;
-                    extY2 = clipped.y2;
-                  }
-                }
-                
-                const isSelected = selectedTrendline === line.id;
-                const strokeDash = line.lineStyle === 'dashed' ? '8,4' : line.lineStyle === 'dotted' ? '2,4' : 'none';
-                
-                return (
-                  <g key={line.id}>
-                    {/* Extended line parts - matches main line style exactly */}
-                    {line.extendLeft && (
-                      <line 
-                        x1={extX1} y1={extY1} x2={x1} y2={y1}
-                        stroke={line.color}
-                        strokeWidth={line.thickness || 2}
-                        strokeOpacity={line.opacity}
-                        strokeDasharray={strokeDash}
-                      />
-                    )}
-                    {line.extendRight && (
-                      <line 
-                        x1={x2} y1={y2} x2={extX2} y2={extY2}
-                        stroke={line.color}
-                        strokeWidth={line.thickness || 2}
-                        strokeOpacity={line.opacity}
-                        strokeDasharray={strokeDash}
-                      />
-                    )}
-                    
-                    {/* Main line - clickable with invisible wider hit area */}
-                    <line 
-                      x1={x1} y1={y1} x2={x2} y2={y2}
-                      stroke="transparent"
-                      strokeWidth="12"
-                      style={{ cursor: 'pointer' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTrendlineSelect(line.id, e.clientX - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().left || 0), e.clientY - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().top || 0));
-                      }}
-                    />
-                    <line 
-                      x1={x1} y1={y1} x2={x2} y2={y2}
-                      stroke={line.color}
-                      strokeWidth={line.thickness || 2}
-                      strokeOpacity={line.opacity}
-                      strokeDasharray={strokeDash}
-                      style={{ pointerEvents: 'none' }}
-                    />
-                    
-                    {/* Endpoint circles and center point - visible when selected */}
-                    {(isSelected || (moveMode && movingTrendline === line.id)) && (
-                      <>
-                        {/* Endpoint 1 - larger invisible hit area + visible circle */}
-                        <circle 
-                          cx={x1} cy={y1} r={moveMode ? 20 : 5} 
-                          fill="transparent"
-                          style={{ cursor: moveMode ? 'pointer' : 'default' }}
-                          onClick={(e) => {
-                            if (moveMode) {
-                              e.stopPropagation();
-                              handleEndpointClick(line.id, 'p1');
-                            }
-                          }}
-                        />
-                        <circle 
-                          cx={x1} cy={y1} r={moveMode ? 8 : 5} 
-                          fill={line.color} stroke="white" strokeWidth="2"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                        {/* Center point - larger invisible hit area + visible circle */}
-                        <circle 
-                          cx={(x1 + x2) / 2} cy={(y1 + y2) / 2} r={18}
-                          fill="transparent"
-                          style={{ cursor: 'pointer' }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (movingWholeLine === line.id) {
-                              setMovingWholeLine(null);
-                            } else {
-                              setMovingWholeLine(line.id);
-                              setTrendlineMenuPos(null);
-                            }
-                          }}
-                        />
-                        <circle 
-                          cx={(x1 + x2) / 2} cy={(y1 + y2) / 2} r={movingWholeLine === line.id ? 8 : 6}
-                          fill={movingWholeLine === line.id ? '#22c55e' : 'white'} 
-                          stroke={line.color} strokeWidth="2"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                        {/* Endpoint 2 - larger invisible hit area + visible circle */}
-                        <circle 
-                          cx={x2} cy={y2} r={moveMode ? 20 : 5} 
-                          fill="transparent"
-                          style={{ cursor: moveMode ? 'pointer' : 'default' }}
-                          onClick={(e) => {
-                            if (moveMode) {
-                              e.stopPropagation();
-                              handleEndpointClick(line.id, 'p2');
-                            }
-                          }}
-                        />
-                        <circle 
-                          cx={x2} cy={y2} r={moveMode ? 8 : 5} 
-                          fill={line.color} stroke="white" strokeWidth="2"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                      </>
-                    )}
-                    
-                    {/* Labels if set - render at each selected position */}
-                    {line.label?.positions?.map(pos => (
-                      <text
-                        key={pos}
-                        x={pos.includes('left') ? x1 : x2}
-                        y={pos.includes('top') 
-                          ? (pos.includes('left') ? y1 : y2) - 10 
-                          : (pos.includes('left') ? y1 : y2) + 20}
-                        fill={line.color}
-                        fontSize="12"
-                        textAnchor="middle"
-                      >
-                        {line.label.text}
-                      </text>
-                    ))}
-                  </g>
-                );
-              })}
-              
-              {/* Render horizontal lines */}
-              {drawnHorizontals.map((line) => {
-                if (!yScaleRef.current) return null;
-                const y = yScaleRef.current(line.price) + margin.top;
-                const isSelected = selectedHorizontal === line.id;
-                const strokeDash = line.lineStyle === 'dashed' ? '8,4' : line.lineStyle === 'dotted' ? '2,4' : 'none';
-                
-                return (
-                  <g key={line.id}>
-                    {/* Invisible hit area */}
-                    <line 
-                      x1={margin.left} y1={y} x2={dimensions.width - margin.right} y2={y}
-                      stroke="transparent"
-                      strokeWidth="12"
-                      style={{ cursor: 'pointer' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleHorizontalSelect(line.id, e.clientX - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().left || 0), e.clientY - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().top || 0));
-                      }}
-                    />
-                    {/* Visible line */}
-                    <line 
-                      x1={margin.left} y1={y} x2={dimensions.width - margin.right} y2={y}
-                      stroke={line.color}
-                      strokeWidth={line.thickness || 2}
-                      strokeOpacity={line.opacity}
-                      strokeDasharray={strokeDash}
-                      style={{ pointerEvents: 'none' }}
-                    />
-                    {/* Selection indicator */}
-                    {isSelected && (
-                      <>
-                        <circle cx={margin.left + 20} cy={y} r={5} fill={line.color} stroke="white" strokeWidth="2" />
-                        <circle cx={dimensions.width - margin.right - 20} cy={y} r={5} fill={line.color} stroke="white" strokeWidth="2" />
-                      </>
-                    )}
-                    {/* Label if set */}
-                    {line.label && (
-                      <text
-                        x={line.label.position === 'left' ? margin.left + 5 : dimensions.width - margin.right - 5}
-                        y={y - 5}
-                        fill={line.color}
-                        fontSize="11"
-                        textAnchor={line.label.position === 'left' ? 'start' : 'end'}
-                      >
-                        {line.label.text}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-              
-              {/* Render channels */}
-              {drawnChannels.map((channel) => {
-                if (!xScaleRef.current || !yScaleRef.current) return null;
-                const x1 = xScaleRef.current(new Date(channel.p1.time)) + margin.left;
-                const y1 = yScaleRef.current(channel.p1.price) + margin.top;
-                const x2 = xScaleRef.current(new Date(channel.p2.time)) + margin.left;
-                const y2 = yScaleRef.current(channel.p2.price) + margin.top;
-                
-                const isSelected = selectedChannel === channel.id;
-                const strokeDash = channel.lineStyle === 'dashed' ? '8,4' : channel.lineStyle === 'dotted' ? '2,4' : 'none';
-                const internalDash = channel.internalLineStyle === 'dashed' ? '8,4' : channel.internalLineStyle === 'dotted' ? '2,4' : 'none';
-                
-                // Calculate perpendicular offset for channel width
-                const dx = x2 - x1;
-                const dy = y2 - y1;
-                const len = Math.sqrt(dx * dx + dy * dy);
-                const perpX = len > 0 ? (-dy / len) * 50 : 0;
-                const perpY = len > 0 ? (dx / len) * 50 : 50;
-                
-                return (
-                  <g key={channel.id}>
-                    {/* Top line */}
-                    {channel.showExternalLines && (
-                      <line x1={x1 + perpX} y1={y1 + perpY} x2={x2 + perpX} y2={y2 + perpY}
-                        stroke={channel.color} strokeWidth={channel.thickness} strokeOpacity={channel.opacity} strokeDasharray={strokeDash}
-                      />
-                    )}
-                    {/* Bottom line */}
-                    {channel.showExternalLines && (
-                      <line x1={x1 - perpX} y1={y1 - perpY} x2={x2 - perpX} y2={y2 - perpY}
-                        stroke={channel.color} strokeWidth={channel.thickness} strokeOpacity={channel.opacity} strokeDasharray={strokeDash}
-                      />
-                    )}
-                    {/* Center line (main) */}
-                    <line x1={x1} y1={y1} x2={x2} y2={y2}
-                      stroke={channel.color} strokeWidth={channel.thickness} strokeOpacity={channel.opacity} strokeDasharray={strokeDash}
-                    />
-                    {/* Internal lines */}
-                    {channel.internalLines.filter(il => il.visible).map((il, idx) => {
-                      const ratio = il.percent / 100;
-                      return (
-                        <g key={idx}>
-                          <line 
-                            x1={x1 + perpX * ratio} y1={y1 + perpY * ratio} 
-                            x2={x2 + perpX * ratio} y2={y2 + perpY * ratio}
-                            stroke={channel.internalLineColor} strokeWidth={1} strokeOpacity={channel.opacity * 0.7} strokeDasharray={internalDash}
-                          />
-                          <line 
-                            x1={x1 - perpX * ratio} y1={y1 - perpY * ratio} 
-                            x2={x2 - perpX * ratio} y2={y2 - perpY * ratio}
-                            stroke={channel.internalLineColor} strokeWidth={1} strokeOpacity={channel.opacity * 0.7} strokeDasharray={internalDash}
-                          />
-                        </g>
-                      );
-                    })}
-                    {/* Hit area */}
-                    <line x1={x1} y1={y1} x2={x2} y2={y2}
-                      stroke="transparent" strokeWidth="20" style={{ cursor: 'pointer' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleChannelSelect(channel.id, e.clientX - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().left || 0), e.clientY - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().top || 0));
-                      }}
-                    />
-                    {isSelected && (
-                      <>
-                        <circle cx={x1} cy={y1} r={6} fill={channel.color} stroke="white" strokeWidth="2" />
-                        <circle cx={x2} cy={y2} r={6} fill={channel.color} stroke="white" strokeWidth="2" />
-                      </>
-                    )}
-                  </g>
-                );
-              })}
-              
-              {/* Render text labels */}
-              {drawnTextLabels.map((label) => {
-                if (!xScaleRef.current || !yScaleRef.current) return null;
-                const x = xScaleRef.current(new Date(label.time)) + margin.left;
-                const y = yScaleRef.current(label.price) + margin.top;
-                const isSelected = selectedTextLabel === label.id;
-                
-                return (
-                  <g key={label.id} style={{ cursor: 'pointer' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleTextLabelSelect(label.id, e.clientX - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().left || 0), e.clientY - (e.currentTarget.ownerSVGElement?.getBoundingClientRect().top || 0));
-                    }}
-                  >
-                    {label.backgroundColor !== 'transparent' && (
-                      <rect x={x - 5} y={y - label.fontSize} width={label.text.length * label.fontSize * 0.6 + 10} height={label.fontSize + 6}
-                        fill={label.backgroundColor} rx="3" opacity={label.opacity}
-                      />
-                    )}
-                    <text x={x} y={y} fill={label.color} fontSize={label.fontSize} opacity={label.opacity}>
-                      {label.text}
-                    </text>
-                    {isSelected && (
-                      <rect x={x - 8} y={y - label.fontSize - 3} width={label.text.length * label.fontSize * 0.6 + 16} height={label.fontSize + 12}
-                        fill="none" stroke="#3b82f6" strokeWidth="2" strokeDasharray="4,2" rx="3"
-                      />
-                    )}
-                  </g>
-                );
-              })}
-            </svg>
-            
-            {/* React hit layer for horizontal lines - above drawing overlays so always clickable */}
-            {drawnHorizontals.map((line) => {
-              if (!yScaleRef.current) return null;
-              const y = yScaleRef.current(line.price) + margin.top;
-              return (
-                <div
-                  key={`hit-${line.id}`}
-                  className="absolute cursor-pointer z-[30]"
-                  style={{
-                    left: margin.left,
-                    top: y - 6,
-                    width: dimensions.width - margin.left - margin.right,
-                    height: 12,
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    showClickPulse(e.clientX - (e.currentTarget.parentElement?.getBoundingClientRect().left || 0), y);
-                    handleHorizontalSelect(line.id, e.clientX - (e.currentTarget.parentElement?.getBoundingClientRect().left || 0), y);
-                  }}
-                />
-              );
-            })}
+            {/* Drawings are now rendered by D3 directly in the chart effect */}
             
             {/* Horizontal line drawing overlay - magnet mode handled by handler */}
             {activeTool === 'horizontal' && (
