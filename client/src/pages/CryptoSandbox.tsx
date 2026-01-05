@@ -1179,17 +1179,17 @@ export default function CryptoSandbox() {
       d3.max(candles, d => d.high) as number * 1.001
     ];
     
-    // X Scale (time)
+    // X Scale (time) - preserve manual domain if set
     const xScale = d3.scaleTime()
-      .domain([new Date(timeExtent[0]), new Date(timeExtent[1])])
+      .domain(xAxisManual && xScaleRef.current ? xScaleRef.current.domain() : [new Date(timeExtent[0]), new Date(timeExtent[1])])
       .range([0, innerWidth]);
     xScaleRef.current = xScale;
     
-    // Y Scale (price) - right side
+    // Y Scale (price) - preserve manual domain if set
     const yScale = d3.scaleLinear()
-      .domain(priceExtent)
-      .range([innerHeight, 0])
-      .nice();
+      .domain(yAxisManual && yScaleRef.current ? yScaleRef.current.domain() : priceExtent)
+      .range([innerHeight, 0]);
+    if (!yAxisManual) yScale.nice();
     yScaleRef.current = yScale;
     
     // Background
@@ -1411,7 +1411,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, zoomVersion, xAxisManual, yAxisManual]);
   
   // Show loading while checking auth
   if (authLoading) {
@@ -3354,19 +3354,15 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute pointer-events-none z-[100]"
                 style={{ 
-                  left: clickPulse.x - 20, 
-                  top: clickPulse.y - 20,
-                  width: 40,
-                  height: 40,
+                  left: clickPulse.x - 10, 
+                  top: clickPulse.y - 10,
+                  width: 20,
+                  height: 20,
                 }}
               >
                 <div 
                   className="w-full h-full rounded-full border-2 border-cyan-400 animate-ping"
                   style={{ animationDuration: '0.4s' }}
-                />
-                <div 
-                  className="absolute inset-0 w-full h-full rounded-full border-2 border-cyan-400 opacity-50"
-                  style={{ transform: 'scale(0.5)' }}
                 />
               </div>
             )}
