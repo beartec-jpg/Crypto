@@ -85,8 +85,6 @@ export default function CryptoSandbox() {
   // Move mode state
   const [moveMode, setMoveMode] = useState(false);
   const [movingPoint, setMovingPoint] = useState<{ lineId: string; point: 'p1' | 'p2' } | null>(null);
-  const [moveModePopup, setMoveModePopup] = useState<{ x: number; y: number; lineId: string; point: 'p1' | 'p2' } | null>(null);
-  const [moveMethod, setMoveMethod] = useState<'magnet' | 'free'>('magnet');
   const [movingWholeLine, setMovingWholeLine] = useState<string | null>(null);
   
   // Undo/redo history for trendlines
@@ -345,13 +343,16 @@ export default function CryptoSandbox() {
     }
   }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top, drawnTrendlines, saveToHistory]);
   
-  // Handle click on trendline to select it
+  // Handle click on trendline to select it - auto enters move mode
   const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
     setSelectedTrendline(lineId);
+    setMoveMode(true);
+    setMovingTrendline(lineId);
+    
     // Calculate menu position with edge detection
     let menuX = clickX + 10;
     let menuY = clickY;
-    const menuHeight = 200; // Approximate menu height
+    const menuHeight = 180; // Approximate menu height (reduced, no Move button)
     const menuWidth = 40;
     
     // Keep menu within chart bounds
@@ -396,7 +397,6 @@ export default function CryptoSandbox() {
     setMovingTrendline(null);
     setMoveMode(false);
     setMovingPoint(null);
-    setMoveModePopup(null);
     setMovingWholeLine(null);
   }, []);
   
@@ -438,28 +438,13 @@ export default function CryptoSandbox() {
     setSelectedTrendline(null);
   }, [movingWholeLine, drawnTrendlines, margin.left, margin.top, saveToHistory]);
   
-  // Activate move mode
-  const activateMoveMode = useCallback((lineId: string) => {
-    setMoveMode(true);
-    setMovingTrendline(lineId);
-    setSelectedTrendline(lineId);
-    setTrendlineMenuPos(null);
-    setActiveSubmenu(null);
-  }, []);
-  
-  // Handle clicking an endpoint in move mode
-  const handleEndpointClick = useCallback((lineId: string, point: 'p1' | 'p2', clickX: number, clickY: number) => {
+  // Handle clicking an endpoint in move mode - immediately start moving
+  const handleEndpointClick = useCallback((lineId: string, point: 'p1' | 'p2') => {
     if (!moveMode) return;
-    setMoveModePopup({ x: clickX, y: clickY, lineId, point });
+    // Immediately start moving the point (magnet with free fallback)
+    setMovingPoint({ lineId, point });
+    setTrendlineMenuPos(null);
   }, [moveMode]);
-  
-  // Start moving the point after selecting mode
-  const startMovingPoint = useCallback((method: 'magnet' | 'free') => {
-    if (!moveModePopup) return;
-    setMoveMethod(method);
-    setMovingPoint({ lineId: moveModePopup.lineId, point: moveModePopup.point });
-    setMoveModePopup(null);
-  }, [moveModePopup]);
   
   // Find if a point is near any trendline (for crosshair-based selection)
   const findNearbyTrendline = useCallback((clickX: number, clickY: number): string | null => {
@@ -508,25 +493,20 @@ export default function CryptoSandbox() {
     return null;
   }, [drawnTrendlines, movingTrendline, margin.left, margin.top]);
 
-  // Place the moving point at new location
+  // Place the moving point at new location - magnet with free fallback
   const placeMovingPoint = useCallback((clickX: number, clickY: number) => {
     if (!movingPoint || !xScaleRef.current || !yScaleRef.current) return;
     
-    let newPoint: { time: number; price: number } | null = null;
+    let newPoint: { time: number; price: number };
     
-    if (moveMethod === 'magnet') {
-      const magnetResult = findMagnetPoint(clickX, clickY);
-      if (!magnetResult) {
-        // Show pulse but don't place if no candle in range
-        setMagnetPulse({ x: clickX, y: clickY });
-        setTimeout(() => setMagnetPulse(null), 400);
-        return;
-      }
+    // Try magnet first, fallback to free if no candle nearby
+    const magnetResult = findMagnetPoint(clickX, clickY);
+    if (magnetResult) {
       newPoint = { time: magnetResult.time, price: magnetResult.price };
       setMagnetPulse({ x: clickX, y: clickY });
       setTimeout(() => setMagnetPulse(null), 400);
     } else {
-      // Free mode
+      // Free mode fallback
       const time = xScaleRef.current.invert(clickX - margin.left).getTime();
       const price = yScaleRef.current.invert(clickY - margin.top);
       newPoint = { time, price };
@@ -545,12 +525,9 @@ export default function CryptoSandbox() {
     setDrawnTrendlines(newTrendlines);
     saveToHistory(newTrendlines);
     
-    // Exit move mode
+    // Stay in move mode, just clear the moving point
     setMovingPoint(null);
-    setMoveMode(false);
-    setMovingTrendline(null);
-    setSelectedTrendline(null);
-  }, [movingPoint, moveMethod, findMagnetPoint, margin.left, margin.top, drawnTrendlines, saveToHistory]);
+  }, [movingPoint, findMagnetPoint, margin.left, margin.top, drawnTrendlines, saveToHistory]);
   
   // Render D3 chart
   useEffect(() => {
@@ -1358,7 +1335,7 @@ export default function CryptoSandbox() {
                     // Find nearby endpoint to pick up
                     const endpoint = findNearbyEndpoint(crosshairPos.x, crosshairPos.y);
                     if (endpoint) {
-                      setMoveModePopup({ x: crosshairPos.x, y: crosshairPos.y, lineId: movingTrendline, point: endpoint });
+                      handleEndpointClick(movingTrendline, endpoint);
                     }
                   } else {
                     // Try to select a trendline
@@ -1680,8 +1657,7 @@ export default function CryptoSandbox() {
                           onClick={(e) => {
                             if (moveMode) {
                               e.stopPropagation();
-                              const rect = e.currentTarget.ownerSVGElement?.getBoundingClientRect();
-                              handleEndpointClick(line.id, 'p1', e.clientX - (rect?.left || 0), e.clientY - (rect?.top || 0));
+                              handleEndpointClick(line.id, 'p1');
                             }
                           }}
                         />
@@ -1719,8 +1695,7 @@ export default function CryptoSandbox() {
                           onClick={(e) => {
                             if (moveMode) {
                               e.stopPropagation();
-                              const rect = e.currentTarget.ownerSVGElement?.getBoundingClientRect();
-                              handleEndpointClick(line.id, 'p2', e.clientX - (rect?.left || 0), e.clientY - (rect?.top || 0));
+                              handleEndpointClick(line.id, 'p2');
                             }
                           }}
                         />
@@ -1757,17 +1732,6 @@ export default function CryptoSandbox() {
                 className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded p-1 z-50"
                 style={{ left: trendlineMenuPos.x, top: trendlineMenuPos.y }}
               >
-                {/* Move */}
-                <button
-                  onClick={() => activateMoveMode(selectedTrendline)}
-                  className="p-2 hover:bg-slate-700 rounded text-white"
-                  title="Move"
-                >
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
-                  </svg>
-                </button>
-                
                 {/* Delete */}
                 <button
                   onClick={deleteTrendline}
@@ -1966,44 +1930,23 @@ export default function CryptoSandbox() {
             })()}
             
             {/* Move mode indicator */}
-            {moveMode && !movingPoint && (
+            {moveMode && !movingPoint && !movingWholeLine && (
               <div className="absolute top-14 left-14 bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
-                Move Mode - Click an endpoint circle to move it
+                Click endpoint or center to move
               </div>
             )}
             
             {/* Whole line move indicator */}
             {movingWholeLine && (
               <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-50">
-                Click anywhere to place line center
+                Click to place line
               </div>
             )}
             
             {/* Moving point indicator */}
             {movingPoint && (
               <div className="absolute top-14 left-14 bg-green-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
-                Click to place point ({moveMethod === 'magnet' ? 'Magnet' : 'Free'} mode)
-              </div>
-            )}
-            
-            {/* Magnet/Free popup when clicking endpoint in move mode */}
-            {moveModePopup && (
-              <div 
-                className="absolute bg-slate-800 border border-slate-600 rounded p-1 z-50 flex gap-1"
-                style={{ left: moveModePopup.x + 10, top: moveModePopup.y - 15 }}
-              >
-                <button
-                  onClick={() => startMovingPoint('magnet')}
-                  className="px-3 py-1 text-sm rounded bg-yellow-600 hover:bg-yellow-500 text-white"
-                >
-                  Magnet
-                </button>
-                <button
-                  onClick={() => startMovingPoint('free')}
-                  className="px-3 py-1 text-sm rounded bg-slate-600 hover:bg-slate-500 text-white"
-                >
-                  Free
-                </button>
+                Click to place point
               </div>
             )}
             
@@ -2019,7 +1962,7 @@ export default function CryptoSandbox() {
             )}
             
             {/* Click overlay for exiting move mode when clicking chart */}
-            {moveMode && !movingPoint && !moveModePopup && (
+            {moveMode && !movingPoint && !movingWholeLine && (
               <div 
                 className="absolute inset-0 z-20"
                 onClick={(e) => {
@@ -2044,11 +1987,11 @@ export default function CryptoSandbox() {
                     
                     // If near endpoint, trigger the endpoint click
                     if (distToP1 < hitRadius) {
-                      handleEndpointClick(selectedLine.id, 'p1', clickX, clickY);
+                      handleEndpointClick(selectedLine.id, 'p1');
                       return;
                     }
                     if (distToP2 < hitRadius) {
-                      handleEndpointClick(selectedLine.id, 'p2', clickX, clickY);
+                      handleEndpointClick(selectedLine.id, 'p2');
                       return;
                     }
                     // If near center, trigger whole line move
