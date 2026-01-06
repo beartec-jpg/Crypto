@@ -1074,6 +1074,8 @@ export default function CryptoSandbox() {
   }, []);
 
   // === SLOPED CHANNEL HANDLERS === (3-click)
+  // Click 1 & 2: Establish baseline direction and length
+  // Click 3: Set channel height (perpendicular offset for parallel line)
   const handleSChannelClick = useCallback((clickX: number, clickY: number) => {
     if (!xScaleRef.current || !yScaleRef.current) return;
     
@@ -1091,41 +1093,48 @@ export default function CryptoSandbox() {
     }
     
     if (schannelPoints.length === 0) {
-      // First click: first point of first external line
+      // First click: start of baseline
       setSChannelPoints([point]);
     } else if (schannelPoints.length === 1) {
-      // Second click: first point of second external line (determines height)
+      // Second click: end of baseline (establishes direction and length)
       setSChannelPoints([schannelPoints[0], point]);
     } else if (schannelPoints.length === 2) {
-      // Third click: determines slope/end points
-      const click1 = schannelPoints[0];
-      const click2 = schannelPoints[1];
-      const click3 = point;
+      // Third click: sets the parallel offset (channel height)
+      const baseP1 = schannelPoints[0];
+      const baseP2 = schannelPoints[1];
+      const offsetPoint = point;
       
-      const channelHeight = click2.price - click1.price; // Positive = click2 is higher
+      // Calculate perpendicular price offset from baseline to click3
+      // Project click3 onto the baseline to get the perpendicular distance in price terms
+      const baseSlope = (baseP2.price - baseP1.price) / (baseP2.time - baseP1.time);
       
+      // Find price on baseline at the same time as offsetPoint
+      const baselinePriceAtOffset = baseP1.price + baseSlope * (offsetPoint.time - baseP1.time);
+      const priceOffset = offsetPoint.price - baselinePriceAtOffset;
+      
+      // Create parallel lines - baseline becomes one line, offset line is parallel
       let topLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
       let bottomLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
       
-      if (click1.price > click2.price) {
-        // Top first, then bottom: third click sets p2 for BOTTOM line
-        topLine = {
-          p1: { time: click1.time, price: click1.price },
-          p2: { time: click3.time, price: click3.price - channelHeight } // Parallel to bottom
-        };
+      if (priceOffset >= 0) {
+        // Click3 is above baseline - baseline is bottom, parallel is top
         bottomLine = {
-          p1: { time: click2.time, price: click2.price },
-          p2: { time: click3.time, price: click3.price }
+          p1: { time: baseP1.time, price: baseP1.price },
+          p2: { time: baseP2.time, price: baseP2.price }
+        };
+        topLine = {
+          p1: { time: baseP1.time, price: baseP1.price + priceOffset },
+          p2: { time: baseP2.time, price: baseP2.price + priceOffset }
         };
       } else {
-        // Bottom first, then top: third click sets p2 for TOP line
+        // Click3 is below baseline - baseline is top, parallel is bottom
         topLine = {
-          p1: { time: click2.time, price: click2.price },
-          p2: { time: click3.time, price: click3.price }
+          p1: { time: baseP1.time, price: baseP1.price },
+          p2: { time: baseP2.time, price: baseP2.price }
         };
         bottomLine = {
-          p1: { time: click1.time, price: click1.price },
-          p2: { time: click3.time, price: click3.price - channelHeight } // Parallel to top
+          p1: { time: baseP1.time, price: baseP1.price + priceOffset },
+          p2: { time: baseP2.time, price: baseP2.price + priceOffset }
         };
       }
       
@@ -3585,16 +3594,37 @@ export default function CryptoSandbox() {
                     {schannelPoints.length === 1 && (
                       <line x1={schannelPoints[0].x} y1={schannelPoints[0].y} x2={crosshairPos.x} y2={crosshairPos.y} stroke="#fbbf24" strokeWidth="2" strokeDasharray="5,5" />
                     )}
-                    {schannelPoints.length === 2 && (
-                      <>
-                        <line x1={schannelPoints[0].x} y1={schannelPoints[0].y} x2={schannelPoints[1].x} y2={schannelPoints[1].y} stroke="#fbbf24" strokeWidth="2" />
-                        <line x1={crosshairPos.x} y1={crosshairPos.y} x2={crosshairPos.x + (schannelPoints[1].x - schannelPoints[0].x)} y2={crosshairPos.y + (schannelPoints[1].y - schannelPoints[0].y)} stroke="#fbbf24" strokeWidth="2" strokeDasharray="5,5" />
-                      </>
-                    )}
+                    {schannelPoints.length === 2 && (() => {
+                      // Calculate perpendicular offset from baseline to cursor
+                      const baseP1 = schannelPoints[0];
+                      const baseP2 = schannelPoints[1];
+                      const dx = baseP2.x - baseP1.x;
+                      const dy = baseP2.y - baseP1.y;
+                      
+                      // Find y offset from baseline at cursor x position (for vertical offset)
+                      const slope = dy / dx;
+                      const baselineYAtCursor = baseP1.y + slope * (crosshairPos.x - baseP1.x);
+                      const yOffset = crosshairPos.y - baselineYAtCursor;
+                      
+                      return (
+                        <>
+                          {/* Solid baseline */}
+                          <line x1={baseP1.x} y1={baseP1.y} x2={baseP2.x} y2={baseP2.y} stroke="#fbbf24" strokeWidth="2" />
+                          {/* Dashed parallel line preview */}
+                          <line x1={baseP1.x} y1={baseP1.y + yOffset} x2={baseP2.x} y2={baseP2.y + yOffset} stroke="#fbbf24" strokeWidth="2" strokeDasharray="5,5" />
+                          {/* Fill preview */}
+                          <polygon 
+                            points={`${baseP1.x},${baseP1.y} ${baseP2.x},${baseP2.y} ${baseP2.x},${baseP2.y + yOffset} ${baseP1.x},${baseP1.y + yOffset}`}
+                            fill="#fbbf24"
+                            fillOpacity="0.1"
+                          />
+                        </>
+                      );
+                    })()}
                   </svg>
                 )}
                 <div className="absolute top-14 left-14 bg-amber-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
-                  {schannelPoints.length === 0 ? 'Click for first edge point' : schannelPoints.length === 1 ? 'Click for second edge point' : 'Click for parallel edge'}
+                  {schannelPoints.length === 0 ? 'Click start of baseline' : schannelPoints.length === 1 ? 'Click end of baseline' : 'Click to set channel height'}
                 </div>
               </div>
             )}
