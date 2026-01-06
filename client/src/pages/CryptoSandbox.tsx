@@ -213,6 +213,36 @@ export default function CryptoSandbox() {
     { ratio: 1.618, visible: false },
     { ratio: 2.618, visible: false },
   ];
+
+  // Trend-Based Fibonacci Extension data (3-click)
+  interface TrendFibExtensionData {
+    id: string;
+    p1: { time: number; price: number }; // Start of impulse move
+    p2: { time: number; price: number }; // End of impulse move
+    p3: { time: number; price: number }; // End of retracement (projection base)
+    color: string;
+    opacity: number;
+    lineStyle: LineStyle;
+    thickness: number;
+    labelPosition: 'left' | 'right';
+    showPrices: boolean;
+    showExtensions: boolean;
+    levels: { ratio: number; visible: boolean }[];
+    createdAtZoomScale?: number;
+  }
+
+  const DEFAULT_TRENDFIB_LEVELS = [
+    { ratio: 0, visible: true },
+    { ratio: 0.236, visible: true },
+    { ratio: 0.382, visible: true },
+    { ratio: 0.5, visible: true },
+    { ratio: 0.618, visible: true },
+    { ratio: 0.786, visible: true },
+    { ratio: 1, visible: true },
+    { ratio: 1.272, visible: true },
+    { ratio: 1.618, visible: true },
+    { ratio: 2.618, visible: false },
+  ];
   
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
   const [trendlinePoints, setTrendlinePoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
@@ -245,6 +275,13 @@ export default function CryptoSandbox() {
   const [fibMenuPos, setFibMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [movingFibAnchor, setMovingFibAnchor] = useState<'anchor1' | 'anchor2' | 'whole' | null>(null);
   
+  // Trend-Based Fib Extension state (3-click)
+  const [drawnTrendFibs, setDrawnTrendFibs] = useState<TrendFibExtensionData[]>([]);
+  const [trendFibPoints, setTrendFibPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
+  const [selectedTrendFib, setSelectedTrendFib] = useState<string | null>(null);
+  const [trendFibMenuPos, setTrendFibMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [movingTrendFibPoint, setMovingTrendFibPoint] = useState<{ tfibId: string; point: 'p1' | 'p2' | 'p3' } | null>(null);
+  
   // Selection state for all drawing types
   const [selectedHorizontal, setSelectedHorizontal] = useState<string | null>(null);
   const [horizontalMenuPos, setHorizontalMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -272,7 +309,7 @@ export default function CryptoSandbox() {
   const [movingTextLabel, setMovingTextLabel] = useState<string | null>(null);
   
   // Selection picker state for overlapping elements
-  type SelectionCandidate = { id: string; type: 'trendline' | 'horizontal' | 'channel' | 'hchannel' | 'schannel' | 'label' };
+  type SelectionCandidate = { id: string; type: 'trendline' | 'horizontal' | 'channel' | 'hchannel' | 'schannel' | 'fib' | 'trendfib' | 'label' };
   const [selectionCandidates, setSelectionCandidates] = useState<SelectionCandidate[]>([]);
   const [selectionPickerPos, setSelectionPickerPos] = useState<{ x: number; y: number } | null>(null);
   const [selectionPickerClickPos, setSelectionPickerClickPos] = useState<{ x: number; y: number } | null>(null); // Original click position
@@ -634,6 +671,7 @@ export default function CryptoSandbox() {
         if (horizontalMenuPos) setHorizontalMenuPos({ x: newX, y: newY });
         if (channelMenuPos) setChannelMenuPos({ x: newX, y: newY });
         if (fibMenuPos) setFibMenuPos({ x: newX, y: newY });
+        if (trendFibMenuPos) setTrendFibMenuPos({ x: newX, y: newY });
         if (textLabelMenuPos) setTextLabelMenuPos({ x: newX, y: newY });
       }
     };
@@ -649,7 +687,7 @@ export default function CryptoSandbox() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingMenu, trendlineMenuPos, horizontalMenuPos, channelMenuPos, fibMenuPos, textLabelMenuPos]);
+  }, [draggingMenu, trendlineMenuPos, horizontalMenuPos, channelMenuPos, fibMenuPos, trendFibMenuPos, textLabelMenuPos]);
   
   // Click-off handler: deselect tool and close menus when clicking on chart background
   const handleChartBackgroundClick = useCallback((e: React.MouseEvent) => {
@@ -693,6 +731,7 @@ export default function CryptoSandbox() {
       setHChannelPoints([]);
       setSChannelPoints([]);
       setFibPoints([]);
+      setTrendFibPoints([]);
       // Close selection picker
       setSelectionCandidates([]);
       setSelectionPickerPos(null);
@@ -1511,6 +1550,98 @@ export default function CryptoSandbox() {
     setMovingFibAnchor(null);
   }, []);
 
+  // === TREND-BASED FIB EXTENSION HANDLERS (3-click) ===
+  const handleTrendFibPlacement = useCallback((clickX: number, clickY: number) => {
+    const now = Date.now();
+    if (now - lastClickTimeRef.current < CLICK_DEBOUNCE) return;
+    lastClickTimeRef.current = now;
+
+    if (!xScaleRef.current || !yScaleRef.current) return;
+
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    const point = magnetPoint || {
+      x: clickX,
+      y: clickY,
+      time: xScaleRef.current.invert(clickX - margin.left).getTime(),
+      price: yScaleRef.current.invert(clickY - margin.top),
+    };
+
+    setMagnetPulse({ x: point.x, y: point.y });
+    setTimeout(() => setMagnetPulse(null), 400);
+
+    if (trendFibPoints.length < 2) {
+      setTrendFibPoints(prev => [...prev, point]);
+    } else {
+      const [pt1, pt2] = trendFibPoints;
+      const p3 = point;
+
+      const newTrendFib: TrendFibExtensionData = {
+        id: `trendfib-${Date.now()}`,
+        p1: { time: pt1.time, price: pt1.price },
+        p2: { time: pt2.time, price: pt2.price },
+        p3: { time: p3.time, price: p3.price },
+        color: '#FFD700',
+        opacity: 0.8,
+        lineStyle: 'dashed',
+        thickness: 1,
+        labelPosition: 'right',
+        showPrices: true,
+        showExtensions: true,
+        levels: DEFAULT_TRENDFIB_LEVELS.map(l => ({ ...l })),
+        createdAtZoomScale: zoomTransformRef.current?.k ?? 1,
+      };
+
+      const newTrendFibs = [...drawnTrendFibs, newTrendFib];
+      setDrawnTrendFibs(newTrendFibs);
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: newTrendFibs, labels: drawnTextLabels });
+      setTrendFibPoints([]);
+    }
+  }, [trendFibPoints, margin, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, saveToHistory]);
+
+  const handleTrendFibSelect = useCallback((tfibId: string, clickX: number, clickY: number) => {
+    const now = Date.now();
+    if (now - lastSelectionTimeRef.current < CLICK_DEBOUNCE) return;
+    lastSelectionTimeRef.current = now;
+    selectionTimeRef.current = now;
+
+    setSelectedTrendFib(tfibId);
+    setMovingTrendFibPoint(null);
+    closeTrendlineMenu();
+    closeHorizontalMenu();
+    closeChannelMenu();
+    closeSChannelMenu();
+    closeFibMenu();
+    setSelectedTextLabel(null);
+    setTextLabelMenuPos(null);
+    setSelectedHChannel(null);
+    setHChannelMenuPos(null);
+    const menuPos = constrainMenuPosition(clickX, clickY, 200, 350);
+    setTrendFibMenuPos(menuPos);
+  }, [constrainMenuPosition, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu, closeSChannelMenu, closeFibMenu]);
+
+  const deleteTrendFib = useCallback(() => {
+    if (selectedTrendFib) {
+      const newTrendFibs = drawnTrendFibs.filter(t => t.id !== selectedTrendFib);
+      setDrawnTrendFibs(newTrendFibs);
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: newTrendFibs, labels: drawnTextLabels });
+      setSelectedTrendFib(null);
+      setTrendFibMenuPos(null);
+      setMovingTrendFibPoint(null);
+    }
+  }, [selectedTrendFib, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, saveToHistory]);
+
+  const updateTrendFib = useCallback((id: string, updates: Partial<TrendFibExtensionData>) => {
+    const newTrendFibs = drawnTrendFibs.map(t => t.id === id ? { ...t, ...updates } : t);
+    setDrawnTrendFibs(newTrendFibs);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: newTrendFibs, labels: drawnTextLabels });
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, saveToHistory]);
+
+  const closeTrendFibMenu = useCallback(() => {
+    setSelectedTrendFib(null);
+    setTrendFibMenuPos(null);
+    setMovingTrendFibPoint(null);
+  }, []);
+
   // === TEXT LABEL HANDLERS ===
   const handleTextLabelClick = useCallback((clickX: number, clickY: number) => {
     if (!xScaleRef.current || !yScaleRef.current) return;
@@ -1977,8 +2108,27 @@ export default function CryptoSandbox() {
       }
     }
     
+    // Check trend-based fib extensions (3-point)
+    for (const tfib of drawnTrendFibs) {
+      const height = Math.abs(tfib.p2.price - tfib.p1.price);
+      const direction = tfib.p2.price > tfib.p1.price ? 1 : -1;
+      const basePrice = tfib.p3.price;
+      
+      for (const level of tfib.levels) {
+        if (!level.visible) continue;
+        if (level.ratio > 1 && !tfib.showExtensions) continue;
+        
+        const levelPrice = basePrice + level.ratio * height * direction;
+        const y = yScaleRef.current(levelPrice) + margin.top;
+        if (Math.abs(clickY - y) <= threshold) {
+          candidates.push({ id: tfib.id, type: 'trendfib' });
+          break;
+        }
+      }
+    }
+    
     return candidates;
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, margin.left, margin.top, margin.right, dimensions.width, MAGNET_RADIUS]);
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, margin.left, margin.top, margin.right, dimensions.width, MAGNET_RADIUS]);
   
   // Close selection picker
   const closeSelectionPicker = useCallback(() => {
@@ -2012,11 +2162,14 @@ export default function CryptoSandbox() {
       case 'fib':
         handleFibSelect(candidate.id, clickX, clickY);
         break;
+      case 'trendfib':
+        handleTrendFibSelect(candidate.id, clickX, clickY);
+        break;
       case 'label':
         handleTextLabelSelect(candidate.id, clickX, clickY);
         break;
     }
-  }, [closeSelectionPicker, selectionPickerClickPos, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTextLabelSelect]);
+  }, [closeSelectionPicker, selectionPickerClickPos, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTrendFibSelect, handleTextLabelSelect]);
 
     // Unified drawing click handler - legacy support for direct element clicks
     const handleDrawingClick = useCallback((clickedId: string, clickedType: SelectionCandidate['type'], clickX: number, clickY: number) => {
@@ -2046,11 +2199,14 @@ export default function CryptoSandbox() {
         case 'fib':
           handleFibSelect(clickedId, clickX, clickY);
           break;
+        case 'trendfib':
+          handleTrendFibSelect(clickedId, clickX, clickY);
+          break;
         case 'label':
           handleTextLabelSelect(clickedId, clickX, clickY);
           break;
       }
-    }, [activeTool, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTextLabelSelect]);
+    }, [activeTool, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTrendFibSelect, handleTextLabelSelect]);
   
   // Main selection dispatcher for tap events
   const handleSvgTapSelection = useCallback((clickX: number, clickY: number) => {
@@ -2100,6 +2256,9 @@ export default function CryptoSandbox() {
         case 'fib':
           handleFibSelect(candidate.id, clickX, clickY);
           break;
+        case 'trendfib':
+          handleTrendFibSelect(candidate.id, clickX, clickY);
+          break;
         case 'label':
           handleTextLabelSelect(candidate.id, clickX, clickY);
           break;
@@ -2119,13 +2278,16 @@ export default function CryptoSandbox() {
       setSelectedFib(null);
       setFibMenuPos(null);
       setMovingFibAnchor(null);
+      setSelectedTrendFib(null);
+      setTrendFibMenuPos(null);
+      setMovingTrendFibPoint(null);
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
       setMovingWholeLine(null);
       setSelectionPickerPos(null);
       setSelectionCandidates([]);
     }
-  }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTextLabelSelect, closeTrendlineMenu, closeHorizontalMenu]);
+  }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTrendFibSelect, handleTextLabelSelect, closeTrendlineMenu, closeHorizontalMenu]);
   
   // Find if crosshair is near an endpoint of the moving trendline
   const findNearbyEndpoint = useCallback((clickX: number, clickY: number): 'p1' | 'p2' | null => {
@@ -3004,6 +3166,91 @@ export default function CryptoSandbox() {
           fibGroup.append('circle')
             .attr('cx', anchor2X).attr('cy', anchor2Y).attr('r', 8)
             .attr('fill', 'white').attr('stroke', fib.color).attr('stroke-width', 2);
+        }
+      });
+      
+      // Draw Trend-Based Fib Extensions (3-point)
+      drawnTrendFibs.forEach(tfib => {
+        const height = Math.abs(tfib.p2.price - tfib.p1.price);
+        const direction = tfib.p2.price > tfib.p1.price ? 1 : -1;
+        const basePrice = tfib.p3.price;
+        const isSelected = selectedTrendFib === tfib.id;
+        
+        const tfibGroup = drawingsGroup.append('g').attr('class', `trendfib-${tfib.id}`);
+        
+        // Get anchor screen positions
+        const p1X = xS(new Date(tfib.p1.time));
+        const p1Y = yS(tfib.p1.price);
+        const p2X = xS(new Date(tfib.p2.time));
+        const p2Y = yS(tfib.p2.price);
+        const p3X = xS(new Date(tfib.p3.time));
+        const p3Y = yS(tfib.p3.price);
+        
+        // Draw impulse line (p1 to p2)
+        tfibGroup.append('line')
+          .attr('x1', p1X).attr('y1', p1Y)
+          .attr('x2', p2X).attr('y2', p2Y)
+          .attr('stroke', tfib.color)
+          .attr('stroke-width', 2)
+          .attr('stroke-opacity', tfib.opacity * 0.5)
+          .style('pointer-events', 'none');
+        
+        // Draw retracement line (p2 to p3)
+        tfibGroup.append('line')
+          .attr('x1', p2X).attr('y1', p2Y)
+          .attr('x2', p3X).attr('y2', p3Y)
+          .attr('stroke', tfib.color)
+          .attr('stroke-width', 2)
+          .attr('stroke-opacity', tfib.opacity * 0.5)
+          .attr('stroke-dasharray', '3,3')
+          .style('pointer-events', 'none');
+        
+        // Draw each extension level
+        tfib.levels.forEach(level => {
+          if (!level.visible) return;
+          if (level.ratio > 1 && !tfib.showExtensions) return;
+          
+          const levelPrice = basePrice + level.ratio * height * direction;
+          const y = yS(levelPrice);
+          const isMain = level.ratio === 0 || level.ratio === 1 || level.ratio === 1.618;
+          const strokeDash = tfib.lineStyle === 'dashed' ? '5,5' : tfib.lineStyle === 'dotted' ? '2,4' : '';
+          
+          tfibGroup.append('line')
+            .attr('x1', margin.left)
+            .attr('x2', dimensions.width - margin.right)
+            .attr('y1', y)
+            .attr('y2', y)
+            .attr('stroke', tfib.color)
+            .attr('stroke-width', isMain ? tfib.thickness + 1 : tfib.thickness)
+            .attr('stroke-opacity', tfib.opacity)
+            .attr('stroke-dasharray', isMain ? '' : strokeDash)
+            .style('pointer-events', 'none');
+          
+          // Label
+          const labelX = tfib.labelPosition === 'right' ? dimensions.width - margin.right - 10 : margin.left + 10;
+          const labelText = `${(level.ratio * 100).toFixed(1)}%${tfib.showPrices ? ` (${levelPrice.toFixed(2)})` : ''}`;
+          tfibGroup.append('text')
+            .attr('x', labelX)
+            .attr('y', y + 4)
+            .attr('fill', tfib.color)
+            .attr('font-size', '11px')
+            .attr('text-anchor', tfib.labelPosition === 'right' ? 'end' : 'start')
+            .attr('fill-opacity', tfib.opacity)
+            .text(labelText);
+        });
+        
+        // Selection indicators (3 anchor circles)
+        if (isSelected) {
+          [{ x: p1X, y: p1Y }, { x: p2X, y: p2Y }, { x: p3X, y: p3Y }].forEach((pt, idx) => {
+            tfibGroup.append('circle')
+              .attr('cx', pt.x).attr('cy', pt.y).attr('r', 8)
+              .attr('fill', 'white').attr('stroke', tfib.color).attr('stroke-width', 2);
+            // Label the points
+            tfibGroup.append('text')
+              .attr('x', pt.x + 12).attr('y', pt.y + 4)
+              .attr('fill', tfib.color).attr('font-size', '10px')
+              .text(['1', '2', '3'][idx]);
+          });
         }
       });
       
@@ -4607,6 +4854,113 @@ export default function CryptoSandbox() {
               </div>
             )}
             
+            {/* Trend-Based Fib Extension drawing overlay (3-click) */}
+            {activeTool === 'trendfib' && (
+              <div 
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ touchAction: 'none' }}
+                data-drawing-overlay
+                onClick={(e) => {
+                  if (touchHandledRef.current) {
+                    touchHandledRef.current = false;
+                    return;
+                  }
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  handleTrendFibPlacement(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+                onTouchStart={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    const x = touch.clientX - rect.left;
+                    const y = touch.clientY - rect.top;
+                    touchStartRef.current = { x, y, time: Date.now(), initX: x, initY: y };
+                    touchMovedRef.current = false;
+                  } else if (e.touches.length >= 2) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    if (!touchStartRef.current) {
+                      touchStartRef.current = { x: 0, y: 0, time: Date.now() };
+                    }
+                    touchStartRef.current.pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    touchStartRef.current.pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length >= 2 && touchStartRef.current) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const scale = newDist / (touchStartRef.current.pinchDist || newDist);
+                    if (Math.abs(scale - 1) > 0.02 && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const midX = touchStartRef.current.pinchMidX || 0;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      const newK = Math.max(0.5, Math.min(20, ct.k * scale));
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      touchStartRef.current.pinchDist = newDist;
+                    }
+                  } else if (e.touches.length === 1 && touchStartRef.current) {
+                    const touch = e.touches[0];
+                    const currentX = touch.clientX - rect.left;
+                    const currentY = touch.clientY - rect.top;
+                    const initX = touchStartRef.current.initX ?? touchStartRef.current.x;
+                    const initY = touchStartRef.current.initY ?? touchStartRef.current.y;
+                    const dist = Math.hypot(currentX - initX, currentY - initY);
+                    if (dist > TOUCH_THRESHOLD) {
+                      if (!touchMovedRef.current) touchMovedRef.current = true;
+                      if (zoomRef.current && svgRef.current) {
+                        const dx = currentX - touchStartRef.current.x;
+                        const ct = d3.zoomTransform(svgRef.current);
+                        d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      }
+                    }
+                    touchStartRef.current.x = currentX;
+                    touchStartRef.current.y = currentY;
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault();
+                  if (touchStartRef.current && !touchMovedRef.current) {
+                    const tapDuration = Date.now() - touchStartRef.current.time;
+                    if (tapDuration < TAP_TIME_LIMIT) {
+                      touchHandledRef.current = true;
+                      handleTrendFibPlacement(touchStartRef.current.x, touchStartRef.current.y);
+                    }
+                  }
+                  touchStartRef.current = null; touchMovedRef.current = false;
+                }}
+              >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
+                {trendFibPoints.map((pt, idx) => (
+                  <div key={idx} className="absolute w-3 h-3 bg-yellow-500 rounded-full pointer-events-none" style={{ left: pt.x - 6, top: pt.y - 6 }}>
+                    <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-xs text-yellow-400">{idx + 1}</span>
+                  </div>
+                ))}
+                {trendFibPoints.length >= 1 && crosshairMode && crosshairPos && (
+                  <svg className="absolute inset-0 pointer-events-none overflow-visible">
+                    {/* Line from last point to cursor */}
+                    <line 
+                      x1={trendFibPoints[trendFibPoints.length - 1].x} 
+                      y1={trendFibPoints[trendFibPoints.length - 1].y} 
+                      x2={crosshairPos.x} 
+                      y2={crosshairPos.y} 
+                      stroke="#FFD700" 
+                      strokeWidth="1" 
+                      strokeDasharray="5,5" 
+                    />
+                  </svg>
+                )}
+                <div className="absolute top-14 left-14 bg-yellow-700 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                  {trendFibPoints.length === 0 ? 'Click impulse start (1)' : trendFibPoints.length === 1 ? 'Click impulse end (2)' : 'Click retracement end (3)'}
+                </div>
+              </div>
+            )}
+            
             {/* Text label drawing overlay - handles all events when tool is active */}
             {activeTool === 'label' && (
               <div 
@@ -5358,6 +5712,13 @@ export default function CryptoSandbox() {
                               <path d="M4 6h16M4 10h16M4 14h16M4 18h16" strokeOpacity="0.7" />
                             </svg>
                           );
+                        case 'trendfib':
+                          return (
+                            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 20L12 6L20 14" />
+                              <path d="M4 10h16M4 14h16" strokeOpacity="0.5" />
+                            </svg>
+                          );
                         case 'label':
                           return (
                             <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
@@ -5377,6 +5738,7 @@ export default function CryptoSandbox() {
                         case 'hchannel': return 'H-Channel';
                         case 'schannel': return 'S-Channel';
                         case 'fib': return 'Fib Retrace';
+                        case 'trendfib': return 'Trend Fib';
                         case 'label': return 'Label';
                         default: return 'Element';
                       }
@@ -6192,6 +6554,88 @@ export default function CryptoSandbox() {
                       style={{ backgroundColor: c }}
                       onClick={() => { updateFib(selectedFib, { color: c }); setActiveSubmenu(null); }}
                       data-testid={`button-fib-color-${c.replace('#', '')}`}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+            
+            {/* Trend-Based Fib Extension menu */}
+            {trendFibMenuPos && selectedTrendFib && (() => {
+              const tfib = drawnTrendFibs.find(t => t.id === selectedTrendFib);
+              return (
+                <div 
+                  className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
+                  style={{ left: trendFibMenuPos.x, top: trendFibMenuPos.y }}
+                  data-menu="trendfib"
+                >
+                  <div 
+                    className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setDraggingMenu(true);
+                      menuDragOffset.current = { x: e.clientX - trendFibMenuPos.x, y: e.clientY - trendFibMenuPos.y };
+                    }}
+                  >
+                    <div className="w-6 h-0.5 bg-slate-400 rounded" />
+                  </div>
+                  <div className="p-1 flex flex-col gap-1">
+                    <button onClick={deleteTrendFib} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete" data-testid="button-delete-trendfib">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'trendfib-color' ? null : 'trendfib-color')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'trendfib-color' ? 'bg-slate-600' : ''}`}
+                      title="Colour"
+                      data-testid="button-trendfib-color"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="10" cy="10" r="7" />
+                        <circle cx="10" cy="10" r="3" fill={tfib?.color || '#FFD700'} stroke="none" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => updateTrendFib(selectedTrendFib, { showExtensions: !tfib?.showExtensions })}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${tfib?.showExtensions ? 'bg-slate-600' : ''}`}
+                      title="Toggle Extensions"
+                      data-testid="button-trendfib-extensions"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 4v12M16 4v12M4 16h12M4 4h12" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => updateTrendFib(selectedTrendFib, { showPrices: !tfib?.showPrices })}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${tfib?.showPrices ? 'bg-slate-600' : ''}`}
+                      title="Toggle Prices"
+                      data-testid="button-trendfib-prices"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <text x="5" y="14" fontSize="10" fill="currentColor" stroke="none">$</text>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Trend Fib color submenu */}
+            {activeSubmenu === 'trendfib-color' && trendFibMenuPos && selectedTrendFib && (() => {
+              const colors = ['#FFD700', '#22c55e', '#3b82f6', '#ef4444', '#a855f7', '#06b6d4', '#f97316', '#ffffff'];
+              return (
+                <div 
+                  className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 flex flex-wrap gap-1"
+                  style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}
+                >
+                  {colors.map(c => (
+                    <button 
+                      key={c} 
+                      className="w-6 h-6 rounded border border-slate-400 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: c }}
+                      onClick={() => { updateTrendFib(selectedTrendFib, { color: c }); setActiveSubmenu(null); }}
+                      data-testid={`button-trendfib-color-${c.replace('#', '')}`}
                     />
                   ))}
                 </div>
