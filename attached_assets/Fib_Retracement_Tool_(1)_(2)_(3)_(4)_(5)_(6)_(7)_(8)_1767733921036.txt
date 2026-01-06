@@ -1,0 +1,252 @@
+interface FibRetracementData {
+  id: string;
+  anchor1: { time: number; price: number }; // Lower price anchor (0%)
+  anchor2: { time: number; price: number }; // Higher price anchor (100%)
+  color: string;
+  opacity: number;
+  lineStyle: LineStyle;
+  thickness: number;
+  labelPosition: 'left' | 'right';
+  showPrices: boolean;
+  showExtensions: boolean;
+  levels: {
+    ratio: number;
+    visible: boolean;
+  }[];
+  createdAtZoomScale?: number;
+}
+
+const DEFAULT_FIB_LEVELS = [
+  { ratio: 0, visible: true },
+  { ratio: 0.236, visible: true },
+  { ratio: 0.382, visible: true },
+  { ratio: 0.5, visible: true },
+  { ratio: 0.618, visible: true },
+  { ratio: 0.786, visible: true },
+  { ratio: 1, visible: true },
+  { ratio: 1.272, visible: false },
+  { ratio: 1.618, visible: false },
+  { ratio: 2.618, visible: false },
+];
+
+
+
+const [fibPoints, setFibPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
+const [drawnFibRetraces, setDrawnFibRetraces] = useState<FibRetracementData[]>([]);
+const [selectedFib, setSelectedFib] = useState<string | null>(null);
+const [fibMenuPos, setFibMenuPos] = useState<{ x: number; y: number } | null>(null);
+const [movingFibAnchor, setMovingFibAnchor] = useState<'anchor1' | 'anchor2' | 'whole' | null>(null);
+
+
+const handleFibPlacement = useCallback((clickX: number, clickY: number) => {
+  const now = Date.now();
+  if (now - lastClickTimeRef.current < CLICK_DEBOUNCE) return;
+  lastClickTimeRef.current = now;
+
+  if (!xScaleRef.current || !yScaleRef.current) return;
+
+  const magnetPoint = findMagnetPoint(clickX, clickY);
+  const point = magnetPoint || {
+    x: clickX,
+    y: clickY,
+    time: xScaleRef.current.invert(clickX - margin.left).getTime(),
+    price: yScaleRef.current.invert(clickY - margin.top),
+  };
+
+  setMagnetPulse({ x: point.x, y: point.y });
+  setTimeout(() => setMagnetPulse(null), 400);
+
+  if (fibPoints.length === 0) {
+    setFibPoints([point]);
+  } else {
+    const p1 = fibPoints[0];
+    const p2 = point;
+    const lowPrice = Math.min(p1.price, p2.price);
+    const highPrice = Math.max(p1.price, p2.price);
+    const anchor1 = p1.price === lowPrice ? p1 : p2;
+    const anchor2 = p1.price === highPrice ? p1 : p2;
+
+    const newFib: FibRetracementData = {
+      id: `fib-${Date.now()}`,
+      anchor1,
+      anchor2,
+      color: '#FFFFFF',
+      opacity: 0.8,
+      lineStyle: 'dashed',
+      thickness: 1,
+      labelPosition: 'right',
+      showPrices: true,
+      showExtensions: false,
+      levels: DEFAULT_FIB_LEVELS,
+      createdAtZoomScale: zoomTransformRef.current?.k ?? 1,
+    };
+
+    setDrawnFibRetraces(prev => {
+      const updated = [...prev, newFib];
+      saveToHistory({ /* ... your existing fields */, fibs: updated });
+      return updated;
+    });
+    setFibPoints([]);
+  }
+}, [fibPoints, findMagnetPoint, margin, saveToHistory]);
+
+
+{activeTool === 'fibretracement' && (
+  <div
+    className="absolute inset-0 cursor-crosshair z-[25]"
+    style={{ touchAction: 'none' }}
+    onClick={(e) => {
+      if (touchHandledRef.current) {
+        touchHandledRef.current = false;
+        return;
+      }
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      handleFibPlacement(clickX, clickY);
+    }}
+    onTouchStart={/* copy your trendline onTouchStart logic */}
+    onTouchMove={/* copy your trendline onTouchMove (pan/pinch) */}
+    onTouchEnd={(e) => {
+      e.preventDefault();
+      if (!touchMovedRef.current && touchStartRef.current) {
+        touchHandledRef.current = true;
+        handleFibPlacement(touchStartRef.current.x, touchStartRef.current.y);
+      }
+      touchStartRef.current = null;
+      touchMovedRef.current = false;
+    }}
+  />
+)}
+
+
+
+
+{drawnFibRetraces.map(fib => {
+  const lowPrice = Math.min(fib.anchor1.price, fib.anchor2.price);
+  const highPrice = Math.max(fib.anchor1.price, fib.anchor2.price);
+  const range = highPrice - lowPrice;
+
+  const visibleLevels = fib.levels.filter(l => l.visible && (l.ratio <= 1 || fib.showExtensions));
+
+  return (
+    <g key={fib.id} opacity={fib.opacity}>
+      {visibleLevels.map(level => {
+        const levelPrice = lowPrice + level.ratio * range;
+        const y = yScale(levelPrice) + margin.top;
+        const isMain = level.ratio === 0 || level.ratio === 1;
+
+        return (
+          <g key={level.ratio}>
+            <line
+              x1={margin.left}
+              x2={dimensions.width - margin.right}
+              y1={y}
+              y2={y}
+              stroke={fib.color}
+              strokeWidth={isMain ? fib.thickness + 1 : fib.thickness}
+              strokeDasharray={isMain ? 'none' : '5,5'}
+            />
+            <text
+              x={fib.labelPosition === 'right' ? dimensions.width - 10 : 10}
+              y={y + 4}
+              fill={fib.color}
+              fontSize={12}
+              textAnchor={fib.labelPosition === 'right' ? 'end' : 'start'}
+            >
+              {`\( {(level.ratio * 100).toFixed(1)}% \){fib.showPrices ? ` (${levelPrice.toFixed(2)})` : ''}`}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Move handles when selected */}
+      {selectedFib === fib.id && moveMode && (
+        <>
+          <circle cx={xScale(fib.anchor1.time) + margin.left} cy={yScale(fib.anchor1.price) + margin.top} r={10} fill="white" stroke="black" strokeWidth={2} />
+          <circle cx={xScale(fib.anchor2.time) + margin.left} cy={yScale(fib.anchor2.price) + margin.top} r={10} fill="white" stroke="black" strokeWidth={2} />
+          {/* Center handle */}
+          <circle cx={(xScale(fib.anchor1.time) + xScale(fib.anchor2.time)) / 2 + margin.left} cy={(yScale(fib.anchor1.price) + yScale(fib.anchor2.price)) / 2 + margin.top} r={8} fill="transparent" stroke="white" strokeWidth={2} />
+        </>
+      )}
+    </g>
+  );
+})}
+
+
+
+
+drawnFibRetraces.forEach(fib => {
+  const lowPrice = Math.min(fib.anchor1.price, fib.anchor2.price);
+  const highPrice = Math.max(fib.anchor1.price, fib.anchor2.price);
+  const range = highPrice - lowPrice;
+  let minDist = Infinity;
+
+  fib.levels.forEach(level => {
+    if (!level.visible || (level.ratio > 1 && !fib.showExtensions)) return;
+    const levelPrice = lowPrice + level.ratio * range;
+    const levelY = yScale(levelPrice) + margin.top;
+    const dist = Math.abs(clickY - levelY);
+    if (dist < MAGNET_RADIUS * 1.5) { // Generous for touch
+      minDist = Math.min(minDist, dist);
+    }
+  });
+
+  if (minDist < Infinity) {
+    candidates.push({ type: 'fibretracement', id: fib.id, distance: minDist });
+  }
+});
+
+
+
+const handleFibSelect = useCallback((fibId: string, clickX: number, clickY: number) => {
+  // Close other menus
+  // ... your existing close calls
+  setSelectedFib(fibId);
+  setMoveMode(true);
+  setMovingFibAnchor(null);
+  const menuPos = constrainMenuPosition(clickX, clickY, 200, 350);
+  setFibMenuPos(menuPos);
+}, [constrainMenuPosition]);
+
+
+
+{fibMenuPos && selectedFib && (
+  <div className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50" style={{ left: fibMenuPos.x, top: fibMenuPos.y }}>
+    {/* Drag handle - copy your existing */}
+    {/* Buttons */}
+    <div className="p-1 flex flex-col gap-1">
+      <button onClick={() => { setDrawnFibRetraces(prev => prev.filter(f => f.id !== selectedFib)); setSelectedFib(null); setFibMenuPos(null); }}>Delete</button>
+      <button onClick={() => setActiveSubmenu(activeSubmenu === 'color' ? null : 'color')}>Color</button>
+      <button onClick={() => setActiveSubmenu(activeSubmenu === 'style' ? null : 'style')}>Style & Thickness</button>
+      <button onClick={() => setActiveSubmenu(activeSubmenu === 'labels' ? null : 'labels')}>Labels</button>
+      <button onClick={() => updateFib(selectedFib, { showExtensions: !findFib(selectedFib)?.showExtensions })}>Toggle Extensions</button>
+      {/* Add favorite save, etc. */}
+    </div>
+
+    {/* Submenus - copy/adapt your color/style submenus */}
+    {activeSubmenu === 'labels' && (
+      <div className="absolute bg-slate-800 border border-slate-600 rounded p-2" style={{ left: submenuX, top: submenuY }}>
+        <button onClick={() => updateFib(selectedFib, { labelPosition: labelPosition === 'right' ? 'left' : 'right' })}>Toggle Left/Right</button>
+        <button onClick={() => updateFib(selectedFib, { showPrices: !showPrices })}>Toggle Prices</button>
+      </div>
+    )}
+  </div>
+)}
+
+
+
+
+const updateFib = (id: string, changes: Partial<FibRetracementData>) => {
+  setDrawnFibRetraces(prev => prev.map(f => f.id === id ? { ...f, ...changes } : f));
+};
+
+
+
+
+Move Logic (basic - expand with your existing move overlays/listeners)
+Add touch/move detection in SVG or separate overlay when moveMode && selectedFib. Use your trendline move pattern:
+Detect which handle tapped (distance < 20px).
+Set movingFibAnchor.
+On drag → update anchor(s) price/time, recompute.
+This gives you a fully professional fib tool that integrates seamlessly. Test placement first, then move handles. Let me know what breaks or if you want 'trendfib' (sloped) next!
