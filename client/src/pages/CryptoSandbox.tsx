@@ -2120,6 +2120,9 @@ export default function CryptoSandbox() {
             .on('click', function(event) {
               if (moveMode) {
                 event.stopPropagation();
+                // Prevent phantom clicks from activating move mode right after selection
+                const timeSinceSelection = Date.now() - selectionTimeRef.current;
+                if (timeSinceSelection < 300) return;
                 handleEndpointClick(line.id, 'p1');
               }
             });
@@ -2135,6 +2138,12 @@ export default function CryptoSandbox() {
             .style('cursor', 'pointer')
             .on('click', function(event) {
               event.stopPropagation();
+              // Prevent phantom clicks from activating move mode right after selection
+              const timeSinceSelection = Date.now() - selectionTimeRef.current;
+              if (timeSinceSelection < 300) {
+                console.log('⏭️ Ignoring phantom click on center point');
+                return;
+              }
               if (movingWholeLine === line.id) {
                 setMovingWholeLine(null);
               } else {
@@ -2157,6 +2166,9 @@ export default function CryptoSandbox() {
             .on('click', function(event) {
               if (moveMode) {
                 event.stopPropagation();
+                // Prevent phantom clicks from activating move mode right after selection
+                const timeSinceSelection = Date.now() - selectionTimeRef.current;
+                if (timeSinceSelection < 300) return;
                 handleEndpointClick(line.id, 'p2');
               }
             });
