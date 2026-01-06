@@ -765,7 +765,7 @@ export default function CryptoSandbox() {
     
     setSelectedTrendline(lineId);
     setMoveMode(true);
-    setMovingTrendline(lineId);
+    // Don't set movingTrendline yet - that happens when user taps a pickup point (endpoint/center)
     
     // Calculate menu position with edge detection
     const menuPos = constrainMenuPosition(clickX, clickY, 50, 200);
@@ -835,13 +835,24 @@ export default function CryptoSandbox() {
 
   // Handle click on horizontal line to select it
   const handleHorizontalSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
-    setSelectedHorizontal(lineId);
+    console.log('✅ handleHorizontalSelect called:', { lineId, clickX, clickY });
+    
+    // Track when selection occurred to prevent immediate close
+    selectionTimeRef.current = Date.now();
+    
+    // Close all other menus
     closeTrendlineMenu();
     setSelectedChannel(null);
     setChannelMenuPos(null);
     setSelectedTextLabel(null);
     setTextLabelMenuPos(null);
+    
+    setSelectedHorizontal(lineId);
+    setMoveMode(true);
+    // Don't set movingHorizontal yet - that happens when user taps the pickup point
+    
     const menuPos = constrainMenuPosition(clickX, clickY, 180, 200);
+    console.log('📍 Horizontal menu position set:', menuPos);
     setHorizontalMenuPos(menuPos);
   }, [constrainMenuPosition, closeTrendlineMenu]);
 
@@ -5570,8 +5581,8 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Click overlay for exiting move mode when clicking chart */}
-            {moveMode && !movingPoint && !movingWholeLine && (
+            {/* Click overlay for move mode - handles trendline endpoints and horizontal moves */}
+            {moveMode && !movingPoint && !movingWholeLine && !movingHorizontal && (
               <div 
                 className="absolute top-0 right-0 bottom-0 z-20"
                 style={{ left: 40 }}
@@ -5586,41 +5597,71 @@ export default function CryptoSandbox() {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left + 40; // Offset for toolbar
                   const clickY = e.clientY - rect.top;
+                  const hitRadius = 25; // Generous hit radius
                   
-                  // Check if click is near any endpoint of the selected trendline
-                  const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
-                  if (selectedLine && xScaleRef.current && yScaleRef.current) {
-                    const x1 = xScaleRef.current(new Date(selectedLine.p1.time)) + margin.left;
-                    const y1 = yScaleRef.current(selectedLine.p1.price);
-                    const x2 = xScaleRef.current(new Date(selectedLine.p2.time)) + margin.left;
-                    const y2 = yScaleRef.current(selectedLine.p2.price);
-                    const centerX = (x1 + x2) / 2;
-                    const centerY = (y1 + y2) / 2;
-                    
-                    const hitRadius = 25; // Generous hit radius
-                    const distToP1 = Math.sqrt((clickX - x1) ** 2 + (clickY - y1) ** 2);
-                    const distToP2 = Math.sqrt((clickX - x2) ** 2 + (clickY - y2) ** 2);
-                    const distToCenter = Math.sqrt((clickX - centerX) ** 2 + (clickY - centerY) ** 2);
-                    
-                    // If near endpoint, trigger the endpoint click
-                    if (distToP1 < hitRadius) {
-                      handleEndpointClick(selectedLine.id, 'p1');
-                      return;
+                  // Handle trendline endpoint/center clicks
+                  if (selectedTrendline) {
+                    const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
+                    if (selectedLine && xScaleRef.current && yScaleRef.current) {
+                      const x1 = xScaleRef.current(new Date(selectedLine.p1.time)) + margin.left;
+                      const y1 = yScaleRef.current(selectedLine.p1.price);
+                      const x2 = xScaleRef.current(new Date(selectedLine.p2.time)) + margin.left;
+                      const y2 = yScaleRef.current(selectedLine.p2.price);
+                      const centerX = (x1 + x2) / 2;
+                      const centerY = (y1 + y2) / 2;
+                      
+                      const distToP1 = Math.sqrt((clickX - x1) ** 2 + (clickY - y1) ** 2);
+                      const distToP2 = Math.sqrt((clickX - x2) ** 2 + (clickY - y2) ** 2);
+                      const distToCenter = Math.sqrt((clickX - centerX) ** 2 + (clickY - centerY) ** 2);
+                      
+                      // If near endpoint, trigger the endpoint click
+                      if (distToP1 < hitRadius) {
+                        handleEndpointClick(selectedLine.id, 'p1');
+                        return;
+                      }
+                      if (distToP2 < hitRadius) {
+                        handleEndpointClick(selectedLine.id, 'p2');
+                        return;
+                      }
+                      // If near center, trigger whole line move
+                      if (distToCenter < hitRadius) {
+                        setMovingWholeLine(selectedLine.id);
+                        setTrendlineMenuPos(null);
+                        return;
+                      }
                     }
-                    if (distToP2 < hitRadius) {
-                      handleEndpointClick(selectedLine.id, 'p2');
-                      return;
-                    }
-                    // If near center, trigger whole line move
-                    if (distToCenter < hitRadius) {
-                      setMovingWholeLine(selectedLine.id);
-                      setTrendlineMenuPos(null);
-                      return;
-                    }
+                    // Click away from trendline - exit move mode
+                    closeTrendlineMenu();
+                    return;
                   }
                   
-                  // Otherwise exit move mode
+                  // Handle horizontal line clicks - click anywhere on it to start moving
+                  if (selectedHorizontal && yScaleRef.current) {
+                    const hLine = drawnHorizontals.find(h => h.id === selectedHorizontal);
+                    if (hLine) {
+                      const lineY = yScaleRef.current(hLine.price) + margin.top;
+                      const distToLine = Math.abs(clickY - lineY);
+                      
+                      // If near the line, start moving it
+                      if (distToLine < hitRadius) {
+                        // Store offset for smooth move
+                        setMovingHorizontal(selectedHorizontal);
+                        setHorizontalMenuPos(null);
+                        return;
+                      }
+                    }
+                    // Click away from horizontal - close menu and exit move mode
+                    setSelectedHorizontal(null);
+                    setHorizontalMenuPos(null);
+                    setMoveMode(false);
+                    return;
+                  }
+                  
+                  // Fallback - close all menus
                   closeTrendlineMenu();
+                  setSelectedHorizontal(null);
+                  setHorizontalMenuPos(null);
+                  setMoveMode(false);
                 }}
               />
             )}
