@@ -85,7 +85,7 @@ export default function CryptoSandbox() {
     opacity: number;
     lineStyle: LineStyle;
     thickness: number;
-    label?: { text: string; position: 'left' | 'right' };
+    label?: { text: string; positions: ('left' | 'center' | 'right')[] };
   }
   
   // Channel data (legacy - kept for backward compatibility)
@@ -2326,6 +2326,31 @@ export default function CryptoSandbox() {
           .attr('text-anchor', 'middle')
           .attr('fill', 'white').attr('font-size', '10px')
           .text(priceText);
+        
+        // Custom text labels at specified positions
+        if (line.label && line.label.positions && line.label.text) {
+          line.label.positions.forEach(pos => {
+            let labelX: number;
+            let textAnchor: string;
+            if (pos === 'left') {
+              labelX = 10;
+              textAnchor = 'start';
+            } else if (pos === 'center') {
+              labelX = innerWidth / 2;
+              textAnchor = 'middle';
+            } else {
+              labelX = innerWidth - 70; // Offset from price label
+              textAnchor = 'end';
+            }
+            lineGroup.append('text')
+              .attr('x', labelX).attr('y', y - 8)
+              .attr('fill', line.color)
+              .attr('font-size', '11px')
+              .attr('font-weight', 'bold')
+              .attr('text-anchor', textAnchor)
+              .text(line.label!.text);
+          });
+        }
       });
       
       // Draw channels (parallel lines offset by width)
@@ -4349,16 +4374,30 @@ export default function CryptoSandbox() {
                 <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: horizontalMenuPos.y }}>
                   <div className="text-xs text-gray-400 mb-1">Label Text</div>
                   <input type="text" value={selectedLine?.label?.text || ''} placeholder="Enter label..."
-                    onChange={e => updateHorizontal(selectedHorizontal, { label: { text: e.target.value, position: selectedLine?.label?.position || 'right' } })}
+                    onChange={e => updateHorizontal(selectedHorizontal, { label: { text: e.target.value, positions: selectedLine?.label?.positions || ['right'] } })}
                     className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-3" />
-                  <div className="text-xs text-gray-400 mb-1">Position</div>
+                  <div className="text-xs text-gray-400 mb-1">Position (toggle multiple)</div>
                   <div className="flex gap-1">
-                    {(['left', 'right'] as const).map(pos => (
-                      <button key={pos} onClick={() => updateHorizontal(selectedHorizontal, { label: { text: selectedLine?.label?.text || '', position: pos } })}
-                        className={`px-3 py-1 text-xs rounded ${selectedLine?.label?.position === pos ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
-                        {pos}
-                      </button>
-                    ))}
+                    {(['left', 'center', 'right'] as const).map(pos => {
+                      const currentPositions = selectedLine?.label?.positions || [];
+                      const isSelected = currentPositions.includes(pos);
+                      return (
+                        <button key={pos} onClick={() => {
+                          const newPositions = isSelected 
+                            ? currentPositions.filter(p => p !== pos)
+                            : [...currentPositions, pos];
+                          updateHorizontal(selectedHorizontal, { 
+                            label: { 
+                              text: selectedLine?.label?.text || '', 
+                              positions: newPositions.length > 0 ? newPositions : ['right']
+                            } 
+                          });
+                        }}
+                          className={`px-3 py-1 text-xs rounded ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
+                          {pos}
+                        </button>
+                      );
+                    })}
                   </div>
                   {selectedLine?.label?.text && (
                     <button onClick={() => updateHorizontal(selectedHorizontal, { label: undefined })}
