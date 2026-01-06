@@ -1149,33 +1149,40 @@ export default function CryptoSandbox() {
   // === SLOPED CHANNEL HANDLERS === (3-click)
   // Click 1 & 2: Establish baseline direction and length
   // Click 3: Set channel height (perpendicular offset for parallel line)
-  const handleSChannelClick = useCallback((clickX: number, clickY: number) => {
+  const handleSChannelPlacement = useCallback((clickX: number, clickY: number) => {
+    const now = Date.now();
+    // Debounce rapid clicks
+    if (now - lastClickTimeRef.current < CLICK_DEBOUNCE) {
+      return;
+    }
+    lastClickTimeRef.current = now;
+    
     if (!xScaleRef.current || !yScaleRef.current) return;
     
-    // Try magnet mode first
+    // Try magnet first, fallback to free
     const magnetPoint = findMagnetPoint(clickX, clickY);
-    let point: { x: number; y: number; time: number; price: number };
-    if (magnetPoint) {
-      point = magnetPoint;
-      setMagnetPulse({ x: clickX, y: clickY });
-      setTimeout(() => setMagnetPulse(null), 400);
-    } else {
-      const time = xScaleRef.current.invert(clickX - margin.left).getTime();
-      const price = yScaleRef.current.invert(clickY - margin.top);
-      point = { x: clickX, y: clickY, time, price };
-    }
+    const finalPoint = magnetPoint || {
+      x: clickX,
+      y: clickY,
+      time: xScaleRef.current.invert(clickX - margin.left).getTime(),
+      price: yScaleRef.current.invert(clickY - margin.top)
+    };
+    
+    // Single pulse at FINAL placement position
+    setMagnetPulse({ x: finalPoint.x, y: finalPoint.y });
+    setTimeout(() => setMagnetPulse(null), 400);
     
     if (schannelPoints.length === 0) {
       // First click: start of baseline
-      setSChannelPoints([point]);
+      setSChannelPoints([finalPoint]);
     } else if (schannelPoints.length === 1) {
       // Second click: end of baseline (establishes direction and length)
-      setSChannelPoints([schannelPoints[0], point]);
+      setSChannelPoints([schannelPoints[0], finalPoint]);
     } else if (schannelPoints.length === 2) {
       // Third click: sets the parallel offset (channel height)
       const baseP1 = schannelPoints[0];
       const baseP2 = schannelPoints[1];
-      const offsetPoint = point;
+      const offsetPoint = finalPoint;
       
       // Calculate perpendicular price offset from baseline to click3
       // Project click3 onto the baseline to get the perpendicular distance in price terms
@@ -4099,19 +4106,28 @@ export default function CryptoSandbox() {
                 style={{ touchAction: 'none' }}
                 data-drawing-overlay
                 onClick={(e) => {
+                  if (touchHandledRef.current) {
+                    touchHandledRef.current = false;
+                    return;
+                  }
                   const rect = e.currentTarget.getBoundingClientRect();
-                  showClickPulse(e.clientX - rect.left, e.clientY - rect.top);
-                  handleSChannelClick(e.clientX - rect.left, e.clientY - rect.top);
+                  handleSChannelPlacement(e.clientX - rect.left, e.clientY - rect.top);
                 }}
                 onTouchStart={(e) => {
-                  const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-                  touchMovedRef.current = false;
-                  if (e.touches.length >= 2) {
+                  if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    const x = touch.clientX - rect.left;
+                    const y = touch.clientY - rect.top;
+                    touchStartRef.current = { x, y, time: Date.now(), initX: x, initY: y };
+                    touchMovedRef.current = false;
+                  } else if (e.touches.length >= 2) {
                     const t1 = e.touches[0]; const t2 = e.touches[1];
-                    (touchStartRef.current as any).pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-                    (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                    if (!touchStartRef.current) {
+                      touchStartRef.current = { x: 0, y: 0, time: Date.now() };
+                    }
+                    touchStartRef.current.pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    touchStartRef.current.pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
                   }
                 }}
                 onTouchMove={(e) => {
@@ -4120,29 +4136,42 @@ export default function CryptoSandbox() {
                   if (e.touches.length >= 2 && touchStartRef.current) {
                     const t1 = e.touches[0]; const t2 = e.touches[1];
                     const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-                    const scale = newDist / ((touchStartRef.current as any).pinchDist || newDist);
+                    const scale = newDist / (touchStartRef.current.pinchDist || newDist);
                     if (Math.abs(scale - 1) > 0.02 && zoomRef.current && svgRef.current) {
                       touchMovedRef.current = true;
-                      const midX = (touchStartRef.current as any).pinchMidX;
+                      const midX = touchStartRef.current.pinchMidX || 0;
                       const ct = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, ct.k * scale));
                       d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
-                      (touchStartRef.current as any).pinchDist = newDist;
+                      touchStartRef.current.pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
-                    const dx = (e.touches[0].clientX - rect.left) - touchStartRef.current.x;
-                    if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
-                      touchMovedRef.current = true;
-                      const ct = d3.zoomTransform(svgRef.current);
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
-                      touchStartRef.current.x = e.touches[0].clientX - rect.left;
+                    const touch = e.touches[0];
+                    const currentX = touch.clientX - rect.left;
+                    const currentY = touch.clientY - rect.top;
+                    const initX = touchStartRef.current.initX ?? touchStartRef.current.x;
+                    const initY = touchStartRef.current.initY ?? touchStartRef.current.y;
+                    const dist = Math.hypot(currentX - initX, currentY - initY);
+                    if (dist > TOUCH_THRESHOLD) {
+                      if (!touchMovedRef.current) touchMovedRef.current = true;
+                      if (zoomRef.current && svgRef.current) {
+                        const dx = currentX - touchStartRef.current.x;
+                        const ct = d3.zoomTransform(svgRef.current);
+                        d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      }
                     }
+                    touchStartRef.current.x = currentX;
+                    touchStartRef.current.y = currentY;
                   }
                 }}
-                onTouchEnd={() => {
-                  if (!touchMovedRef.current && touchStartRef.current) {
-                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
-                    handleSChannelClick(touchStartRef.current.x, touchStartRef.current.y);
+                onTouchEnd={(e) => {
+                  e.preventDefault();
+                  if (touchStartRef.current && !touchMovedRef.current) {
+                    const tapDuration = Date.now() - touchStartRef.current.time;
+                    if (tapDuration < TAP_TIME_LIMIT) {
+                      touchHandledRef.current = true;
+                      handleSChannelPlacement(touchStartRef.current.x, touchStartRef.current.y);
+                    }
                   }
                   touchStartRef.current = null; touchMovedRef.current = false;
                 }}
