@@ -1518,19 +1518,25 @@ export default function CryptoSandbox() {
     // Check trendlines - use infinite line distance since lines can be extended
     // Also check visibility based on zoom level
     const currentK = zoomTransformRef.current?.k ?? 1;
+    console.log('🎯 Hit detection:', { clickX, clickY, currentK, trendlineCount: drawnTrendlines.length });
     for (const line of drawnTrendlines) {
       // Calculate visibility based on zoom level when created
       const createdK = line.createdAtZoomScale ?? 1;
       const zoomRatio = currentK / createdK;
       // Skip if invisible (zoomed out too far from creation level)
-      if (zoomRatio < 0.2) continue;
+      if (zoomRatio < 0.2) {
+        console.log('🚫 Skipping invisible trendline:', line.id, { currentK, createdK, zoomRatio });
+        continue;
+      }
       
       const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
       const y1 = yScaleRef.current(line.p1.price) + margin.top;
       const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
       const y2 = yScaleRef.current(line.p2.price) + margin.top;
+      const dist = distToLine(clickX, clickY, x1, y1, x2, y2);
+      console.log('📏 Trendline distance:', { id: line.id, dist, threshold, x1, y1, x2, y2 });
       // Use line distance (not segment) so we can detect hits anywhere along the line
-      if (distToLine(clickX, clickY, x1, y1, x2, y2) <= threshold) {
+      if (dist <= threshold) {
         candidates.push({ id: line.id, type: 'trendline' });
       }
     }
