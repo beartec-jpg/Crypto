@@ -73,7 +73,7 @@ export default function CryptoSandbox() {
     thickness: number;
     extendLeft: boolean;
     extendRight: boolean;
-    label?: { text: string; positions: ('top-left' | 'top-right' | 'bottom-left' | 'bottom-right')[] };
+    label?: { text: string; positions: ('top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right')[] };
     createdAtZoomScale?: number; // Zoom level when trendline was created for dynamic visibility
   }
   
@@ -2265,17 +2265,38 @@ export default function CryptoSandbox() {
             .style('pointer-events', 'none');
         }
         
-        // Labels
+        // Labels - 6 position support (top-left, top-center, top-right, bottom-left, bottom-center, bottom-right)
         if (line.label && line.label.positions) {
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2;
           line.label.positions.forEach(pos => {
+            let labelX: number;
+            let labelY: number;
+            let textAnchor: string;
+            
+            // Horizontal position
+            if (pos.includes('left')) {
+              labelX = x1;
+              textAnchor = 'start';
+            } else if (pos.includes('center')) {
+              labelX = midX;
+              textAnchor = 'middle';
+            } else {
+              labelX = x2;
+              textAnchor = 'end';
+            }
+            
+            // Vertical position - get the Y at that X point
+            const baseY = pos.includes('left') ? y1 : pos.includes('center') ? midY : y2;
+            labelY = pos.includes('top') ? baseY - 10 : baseY + 18;
+            
             lineGroup.append('text')
-              .attr('x', pos.includes('left') ? x1 : x2)
-              .attr('y', pos.includes('top') 
-                ? (pos.includes('left') ? y1 : y2) - 10 
-                : (pos.includes('left') ? y1 : y2) + 20)
+              .attr('x', labelX)
+              .attr('y', labelY)
               .attr('fill', line.color)
-              .attr('font-size', '12px')
-              .attr('text-anchor', 'middle')
+              .attr('font-size', '11px')
+              .attr('font-weight', 'bold')
+              .attr('text-anchor', textAnchor)
               .text(line.label.text);
           });
         }
@@ -2327,25 +2348,32 @@ export default function CryptoSandbox() {
           .attr('fill', 'white').attr('font-size', '10px')
           .text(priceText);
         
-        // Custom text labels at specified positions (with backward compatibility for old single 'position')
+        // Custom text labels at 6 positions (with backward compatibility for old formats)
         if (line.label && line.label.text) {
-          // Support both old 'position' (single) and new 'positions' (array) formats
-          const positions = line.label.positions || ((line.label as any).position ? [(line.label as any).position] : ['right']);
+          // Support old formats and new 6-position format
+          const positions = line.label.positions || ((line.label as any).position ? [(line.label as any).position] : ['top-right']);
           positions.forEach(pos => {
             let labelX: number;
+            let labelY: number;
             let textAnchor: string;
-            if (pos === 'left') {
+            
+            // Horizontal position
+            if (pos.includes('left')) {
               labelX = 10;
               textAnchor = 'start';
-            } else if (pos === 'center') {
+            } else if (pos.includes('center')) {
               labelX = innerWidth / 2;
               textAnchor = 'middle';
             } else {
               labelX = innerWidth - 70; // Offset from price label
               textAnchor = 'end';
             }
+            
+            // Vertical position
+            labelY = pos.includes('top') ? y - 8 : y + 18;
+            
             lineGroup.append('text')
-              .attr('x', labelX).attr('y', y - 8)
+              .attr('x', labelX).attr('y', labelY)
               .attr('fill', line.color)
               .attr('font-size', '11px')
               .attr('font-weight', 'bold')
@@ -3642,7 +3670,7 @@ export default function CryptoSandbox() {
             {activeTool === 'trendline' && trendlineMode && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto' }}
+                style={{ pointerEvents: 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onClick={(e) => {
                   e.stopPropagation();
@@ -3653,13 +3681,25 @@ export default function CryptoSandbox() {
                   handleTrendlineClick(clickX, clickY);
                 }}
                 onTouchStart={(e) => {
+                  // Allow 2+ finger gestures (pan/zoom) to pass through to d3
+                  if (e.touches.length >= 2) return;
+                  
                   if (crosshairMode && crosshairPos) {
                     touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
                     crosshairStartRef.current = { x: crosshairPos.x, y: crosshairPos.y };
                     touchMovedRef.current = false;
+                  } else {
+                    // Non-crosshair mode: track single tap for drawing
+                    const touch = e.touches[0];
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                    touchMovedRef.current = false;
                   }
                 }}
                 onTouchMove={(e) => {
+                  // Allow 2+ finger gestures to pass through
+                  if (e.touches.length >= 2) return;
+                  
                   if (crosshairMode && touchStartRef.current && crosshairStartRef.current) {
                     e.preventDefault();
                     const touch = e.touches[0];
@@ -3672,6 +3712,15 @@ export default function CryptoSandbox() {
                     const newX = Math.max(margin.left, Math.min(dimensions.width - margin.right, crosshairStartRef.current.x + deltaX));
                     const newY = Math.max(margin.top, Math.min(dimensions.height - margin.bottom, crosshairStartRef.current.y + deltaY));
                     setCrosshairPos({ x: newX, y: newY });
+                  } else if (touchStartRef.current) {
+                    // Non-crosshair: track if moved
+                    const touch = e.touches[0];
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
+                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) {
+                      touchMovedRef.current = true;
+                    }
                   }
                 }}
                 onTouchEnd={(e) => {
@@ -3679,6 +3728,11 @@ export default function CryptoSandbox() {
                   if (crosshairMode && crosshairPos && !touchMovedRef.current) {
                     e.preventDefault();
                     handleTrendlineClick(crosshairPos.x, crosshairPos.y);
+                  } else if (!crosshairMode && touchStartRef.current && !touchMovedRef.current) {
+                    // Non-crosshair tap - place point
+                    e.preventDefault();
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleTrendlineClick(touchStartRef.current.x, touchStartRef.current.y);
                   }
                   touchStartRef.current = null;
                   crosshairStartRef.current = null;
@@ -3754,7 +3808,7 @@ export default function CryptoSandbox() {
             {activeTool === 'horizontal' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto' }}
+                style={{ pointerEvents: 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -3770,6 +3824,35 @@ export default function CryptoSandbox() {
                   const clickY = e.clientY - rect.top;
                   showClickPulse(clickX, clickY);
                   handleHorizontalClick(clickX, clickY);
+                }}
+                onTouchStart={(e) => {
+                  // Allow 2+ finger gestures (pan/zoom) to pass through
+                  if (e.touches.length >= 2) return;
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                }}
+                onTouchMove={(e) => {
+                  if (e.touches.length >= 2) return;
+                  if (touchStartRef.current) {
+                    const touch = e.touches[0];
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
+                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) {
+                      touchMovedRef.current = true;
+                    }
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  if (touchStartRef.current && !touchMovedRef.current) {
+                    e.preventDefault();
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleHorizontalClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null;
+                  touchMovedRef.current = false;
                 }}
               >
                 {magnetPulse && (
@@ -3787,7 +3870,7 @@ export default function CryptoSandbox() {
             {activeTool === 'channel' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto' }}
+                style={{ pointerEvents: 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -3803,6 +3886,32 @@ export default function CryptoSandbox() {
                   const clickY = e.clientY - rect.top;
                   showClickPulse(clickX, clickY);
                   handleChannelClick(clickX, clickY);
+                }}
+                onTouchStart={(e) => {
+                  if (e.touches.length >= 2) return;
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                }}
+                onTouchMove={(e) => {
+                  if (e.touches.length >= 2) return;
+                  if (touchStartRef.current) {
+                    const touch = e.touches[0];
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
+                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  if (touchStartRef.current && !touchMovedRef.current) {
+                    e.preventDefault();
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleChannelClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null;
+                  touchMovedRef.current = false;
                 }}
               >
                 {magnetPulse && (
@@ -3836,7 +3945,7 @@ export default function CryptoSandbox() {
             {activeTool === 'hchannel' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto' }}
+                style={{ pointerEvents: 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -3852,6 +3961,32 @@ export default function CryptoSandbox() {
                   const clickY = e.clientY - rect.top;
                   showClickPulse(clickX, clickY);
                   handleHChannelClick(clickX, clickY);
+                }}
+                onTouchStart={(e) => {
+                  if (e.touches.length >= 2) return;
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                }}
+                onTouchMove={(e) => {
+                  if (e.touches.length >= 2) return;
+                  if (touchStartRef.current) {
+                    const touch = e.touches[0];
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
+                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  if (touchStartRef.current && !touchMovedRef.current) {
+                    e.preventDefault();
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleHChannelClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null;
+                  touchMovedRef.current = false;
                 }}
               >
                 {magnetPulse && (
@@ -3878,7 +4013,7 @@ export default function CryptoSandbox() {
             {activeTool === 'schannel' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto' }}
+                style={{ pointerEvents: 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -3894,6 +4029,32 @@ export default function CryptoSandbox() {
                   const clickY = e.clientY - rect.top;
                   showClickPulse(clickX, clickY);
                   handleSChannelClick(clickX, clickY);
+                }}
+                onTouchStart={(e) => {
+                  if (e.touches.length >= 2) return;
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                }}
+                onTouchMove={(e) => {
+                  if (e.touches.length >= 2) return;
+                  if (touchStartRef.current) {
+                    const touch = e.touches[0];
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
+                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  if (touchStartRef.current && !touchMovedRef.current) {
+                    e.preventDefault();
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleSChannelClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null;
+                  touchMovedRef.current = false;
                 }}
               >
                 {magnetPulse && (
@@ -3951,7 +4112,7 @@ export default function CryptoSandbox() {
             {activeTool === 'label' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto' }}
+                style={{ pointerEvents: 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -3967,6 +4128,32 @@ export default function CryptoSandbox() {
                   const clickY = e.clientY - rect.top;
                   showClickPulse(clickX, clickY);
                   handleTextLabelClick(clickX, clickY);
+                }}
+                onTouchStart={(e) => {
+                  if (e.touches.length >= 2) return;
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                }}
+                onTouchMove={(e) => {
+                  if (e.touches.length >= 2) return;
+                  if (touchStartRef.current) {
+                    const touch = e.touches[0];
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
+                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  if (touchStartRef.current && !touchMovedRef.current) {
+                    e.preventDefault();
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleTextLabelClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null;
+                  touchMovedRef.current = false;
                 }}
               >
                 {magnetPulse && (
@@ -4218,8 +4405,15 @@ export default function CryptoSandbox() {
                   />
                   
                   <div className="text-xs text-gray-400 mb-1">Position (toggle multiple)</div>
-                  <div className="grid grid-cols-2 gap-1">
-                    {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map(pos => {
+                  <div className="grid grid-cols-3 gap-1">
+                    {([
+                      { pos: 'top-left', icon: '↖' },
+                      { pos: 'top-center', icon: '↑' },
+                      { pos: 'top-right', icon: '↗' },
+                      { pos: 'bottom-left', icon: '↙' },
+                      { pos: 'bottom-center', icon: '↓' },
+                      { pos: 'bottom-right', icon: '↘' }
+                    ] as const).map(({ pos, icon }) => {
                       const currentPositions = selectedLine?.label?.positions || [];
                       const isSelected = currentPositions.includes(pos);
                       return (
@@ -4236,9 +4430,9 @@ export default function CryptoSandbox() {
                               } 
                             });
                           }}
-                          className={`px-1 py-1 text-xs rounded ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
+                          className={`px-2 py-2 text-base rounded ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}
                         >
-                          {pos.replace('-', ' ')}
+                          {icon}
                         </button>
                       );
                     })}
@@ -4383,9 +4577,16 @@ export default function CryptoSandbox() {
                     }}
                     className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-3" />
                   <div className="text-xs text-gray-400 mb-1">Position (toggle multiple)</div>
-                  <div className="flex gap-1">
-                    {(['left', 'center', 'right'] as const).map(pos => {
-                      // Support both old 'position' (single) and new 'positions' (array) formats
+                  <div className="grid grid-cols-3 gap-1">
+                    {([
+                      { pos: 'top-left', icon: '↖' },
+                      { pos: 'top-center', icon: '↑' },
+                      { pos: 'top-right', icon: '↗' },
+                      { pos: 'bottom-left', icon: '↙' },
+                      { pos: 'bottom-center', icon: '↓' },
+                      { pos: 'bottom-right', icon: '↘' }
+                    ] as const).map(({ pos, icon }) => {
+                      // Support both old formats and new 6-position format
                       const currentPositions = selectedLine?.label?.positions || 
                         ((selectedLine?.label as any)?.position ? [(selectedLine?.label as any).position] : []);
                       const isSelected = currentPositions.includes(pos);
@@ -4397,12 +4598,12 @@ export default function CryptoSandbox() {
                           updateHorizontal(selectedHorizontal, { 
                             label: { 
                               text: selectedLine?.label?.text || '', 
-                              positions: newPositions.length > 0 ? newPositions : ['right']
+                              positions: newPositions.length > 0 ? newPositions : ['top-right']
                             } 
                           });
                         }}
-                          className={`px-3 py-1 text-xs rounded ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
-                          {pos}
+                          className={`px-2 py-2 text-base rounded ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-300'}`}>
+                          {icon}
                         </button>
                       );
                     })}
