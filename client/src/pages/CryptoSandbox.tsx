@@ -44,14 +44,15 @@ export default function CryptoSandbox() {
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
   const [crosshairMode, setCrosshairMode] = useState(false);
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null);
-  // For mobile "push" behavior - track touch start position
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  // For mobile "push" behavior - track touch start position with time for tap detection
+  const touchStartRef = useRef<{ x: number; y: number; time: number; initX?: number; initY?: number; pinchDist?: number; pinchMidX?: number } | null>(null);
   const crosshairStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMovedRef = useRef(false); // Track if touch moved significantly
   const touchHandledRef = useRef(false); // Prevent duplicate calls from touch+click
   const lastClickTimeRef = useRef(0); // Debounce rapid clicks
-  const TOUCH_THRESHOLD = 15; // pixels - movement above this is a drag, not a tap
+  const TOUCH_THRESHOLD = 35; // pixels - movement above this is a drag, not a tap (increased for mobile)
   const CLICK_DEBOUNCE = 100; // ms - ignore clicks within this time of each other
+  const TAP_TIME_LIMIT = 300; // ms - max time for a tap
   
   // SVG-level tap detection for selection when crosshair is OFF
   const svgTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -708,63 +709,53 @@ export default function CryptoSandbox() {
     return { x: finalX, y: finalY, time: bestCandle.time, price: bestPrice };
   }, [candles, margin.left, margin.top, MAGNET_RADIUS]);
   
-  // Handle trendline point placement - combined mode (magnet with free fallback)
-  const handleTrendlineClick = useCallback((clickX: number, clickY: number) => {
+  // Handle trendline point placement - unified handler with single pulse at final position
+  const handleTrendlinePlacement = useCallback((clickX: number, clickY: number) => {
     const now = Date.now();
     // Debounce rapid clicks (touch often fires multiple events)
     if (now - lastClickTimeRef.current < CLICK_DEBOUNCE) {
-      console.log('⏭️ handleTrendlineClick debounced (too fast)');
       return;
     }
     lastClickTimeRef.current = now;
     
-    console.log('🎯 handleTrendlineClick called:', { clickX, clickY, trendlineMode, hasXScale: !!xScaleRef.current, hasYScale: !!yScaleRef.current });
     if (!trendlineMode || !xScaleRef.current || !yScaleRef.current) {
-      console.log('⚠️ handleTrendlineClick early return - missing:', { trendlineMode, hasXScale: !!xScaleRef.current, hasYScale: !!yScaleRef.current });
       return;
     }
     
-    let point: { x: number; y: number; time: number; price: number };
-    
     // Try magnet first, fallback to free if no candle nearby
     const magnetPoint = findMagnetPoint(clickX, clickY);
-    if (magnetPoint) {
-      point = magnetPoint;
-      setMagnetPulse({ x: clickX, y: clickY });
-      setTimeout(() => setMagnetPulse(null), 400);
-    } else {
-      // Free placement if no candle in radius
-      const xScale = xScaleRef.current;
-      const yScale = yScaleRef.current;
-      const time = xScale.invert(clickX - margin.left).getTime();
-      const price = yScale.invert(clickY - margin.top);
-      point = { x: clickX, y: clickY, time, price };
-    }
+    const finalPoint = magnetPoint || {
+      x: clickX,
+      y: clickY,
+      time: xScaleRef.current.invert(clickX - margin.left).getTime(),
+      price: yScaleRef.current.invert(clickY - margin.top)
+    };
+    
+    // Single pulse at FINAL placement position (snapped if magnet hit)
+    setMagnetPulse({ x: finalPoint.x, y: finalPoint.y });
+    setTimeout(() => setMagnetPulse(null), 400);
     
     if (trendlinePoints.length === 0) {
       // First point
-      console.log('📍 Setting FIRST point:', point);
-      setTrendlinePoints([point]);
+      setTrendlinePoints([finalPoint]);
     } else {
       // Second point - complete the trendline with full properties
-      console.log('📍 Setting SECOND point and creating trendline:', point);
       const newTrendline: TrendlineData = {
         id: `tl-${Date.now()}`,
         p1: { time: trendlinePoints[0].time, price: trendlinePoints[0].price },
-        p2: { time: point.time, price: point.price },
+        p2: { time: finalPoint.time, price: finalPoint.price },
         color: trendlineDefaults.color,
         opacity: trendlineDefaults.opacity,
         lineStyle: trendlineDefaults.lineStyle,
         thickness: trendlineDefaults.thickness,
         extendLeft: false,
         extendRight: false,
-        createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Store zoom level for dynamic visibility
+        createdAtZoomScale: zoomTransformRef.current?.k ?? 1,
       };
       const newTrendlines = [...drawnTrendlines, newTrendline];
       setDrawnTrendlines(newTrendlines);
       saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: drawnTextLabels });
       setTrendlinePoints([]);
-      // Keep tool active for drawing more lines
     }
   }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory, trendlineDefaults]);
   
@@ -3686,28 +3677,37 @@ export default function CryptoSandbox() {
                 onClick={(e) => {
                   // Skip if touch was recently handled (prevents touch+click double-fire)
                   if (touchHandledRef.current) {
-                    console.log('⏭️ onClick skipped - touch already handled');
                     touchHandledRef.current = false;
                     return;
                   }
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
                   const clickY = e.clientY - rect.top;
-                  showClickPulse(clickX, clickY);
-                  handleTrendlineClick(clickX, clickY);
+                  handleTrendlinePlacement(clickX, clickY);
                 }}
                 onTouchStart={(e) => {
-                  const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-                  touchMovedRef.current = false;
-                  if (e.touches.length >= 2) {
-                    // Store initial pinch distance for zoom
+                  if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    const x = touch.clientX - rect.left;
+                    const y = touch.clientY - rect.top;
+                    touchStartRef.current = { 
+                      x, y, 
+                      time: Date.now(),
+                      initX: x, 
+                      initY: y 
+                    };
+                    touchMovedRef.current = false;
+                  } else if (e.touches.length >= 2) {
+                    // Pinch setup
                     const t1 = e.touches[0];
                     const t2 = e.touches[1];
                     const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-                    (touchStartRef.current as any).pinchDist = dist;
-                    (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                    if (!touchStartRef.current) {
+                      touchStartRef.current = { x: 0, y: 0, time: Date.now() };
+                    }
+                    touchStartRef.current.pinchDist = dist;
+                    touchStartRef.current.pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
                   }
                 }}
                 onTouchMove={(e) => {
@@ -3719,42 +3719,57 @@ export default function CryptoSandbox() {
                     const t1 = e.touches[0];
                     const t2 = e.touches[1];
                     const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-                    const startDist = (touchStartRef.current as any).pinchDist || newDist;
+                    const startDist = touchStartRef.current.pinchDist || newDist;
                     const scale = newDist / startDist;
                     
                     if (Math.abs(scale - 1) > 0.02 && xScaleRef.current && zoomRef.current && svgRef.current) {
                       touchMovedRef.current = true;
-                      const midX = (touchStartRef.current as any).pinchMidX || (t1.clientX + t2.clientX) / 2 - rect.left;
+                      const midX = touchStartRef.current.pinchMidX || 0;
                       const currentTransform = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, currentTransform.k * scale));
-                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / currentTransform.k) + currentTransform.x * (newK / currentTransform.k), 0).scale(newK);
+                      const newX = midX - midX * (newK / currentTransform.k) + currentTransform.x * (newK / currentTransform.k);
+                      const newTransform = d3.zoomIdentity.translate(newX, 0).scale(newK);
                       d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
-                      (touchStartRef.current as any).pinchDist = newDist;
+                      touchStartRef.current.pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
-                    // Single finger pan
+                    // Single finger - track position, check for drag
                     const touch = e.touches[0];
                     const currentX = touch.clientX - rect.left;
-                    const dx = currentX - touchStartRef.current.x;
+                    const currentY = touch.clientY - rect.top;
                     
-                    if (Math.abs(dx) > TOUCH_THRESHOLD) {
-                      touchMovedRef.current = true;
+                    // Check total distance from initial touch point
+                    const initX = touchStartRef.current.initX ?? touchStartRef.current.x;
+                    const initY = touchStartRef.current.initY ?? touchStartRef.current.y;
+                    const dist = Math.hypot(currentX - initX, currentY - initY);
+                    
+                    if (dist > TOUCH_THRESHOLD) {
+                      // Significant movement - this is a pan, not a tap
+                      if (!touchMovedRef.current) {
+                        touchMovedRef.current = true;
+                      }
+                      // Pan the chart
                       if (xScaleRef.current && zoomRef.current && svgRef.current) {
+                        const dx = currentX - touchStartRef.current.x;
                         const currentTransform = d3.zoomTransform(svgRef.current);
                         const newTransform = d3.zoomIdentity.translate(currentTransform.x + dx, 0).scale(currentTransform.k);
                         d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
-                        touchStartRef.current.x = currentX;
                       }
                     }
+                    // Always update current position (for lift placement)
+                    touchStartRef.current.x = currentX;
+                    touchStartRef.current.y = currentY;
                   }
                 }}
                 onTouchEnd={(e) => {
                   e.preventDefault(); // Prevent synthetic click event
-                  if (!touchMovedRef.current && touchStartRef.current) {
-                    // Was a tap, not a drag - place point
-                    touchHandledRef.current = true; // Mark that touch handled this
-                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
-                    handleTrendlineClick(touchStartRef.current.x, touchStartRef.current.y);
+                  if (touchStartRef.current && !touchMovedRef.current) {
+                    // Quick tap without significant movement - place point at lift position
+                    const tapDuration = Date.now() - touchStartRef.current.time;
+                    if (tapDuration < TAP_TIME_LIMIT) {
+                      touchHandledRef.current = true;
+                      handleTrendlinePlacement(touchStartRef.current.x, touchStartRef.current.y);
+                    }
                   }
                   touchStartRef.current = null;
                   touchMovedRef.current = false;
