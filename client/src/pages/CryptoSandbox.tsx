@@ -2808,47 +2808,46 @@ export default function CryptoSandbox() {
       .call(g => g.selectAll('line').attr('stroke', '#475569'))
       .call(g => g.select('.domain').attr('stroke', '#475569'));
     
-    // Track zoom start for tap detection
+    // Track zoom start for tap detection (selection only - drawing handled by overlay)
     let zoomStartTime = 0;
     let zoomStartX = 0;
     let zoomStartY = 0;
     let zoomStartK = 1;
     
-    // Zoom behavior
+    // Zoom behavior - DISABLED when drawing tool is active
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.5, 20])
       .translateExtent([[-100, 0], [width + 100, height]])
+      .filter((event) => {
+        // Disable d3 zoom when a drawing tool is active - overlay handles everything
+        if (activeTool) return false;
+        // Default d3 filter behavior
+        return (!event.ctrlKey || event.type === 'wheel') && !event.button;
+      })
       .on('start', (event) => {
         zoomStartTime = Date.now();
-        // Handle both mouse and touch events
         const sourceEvent = event.sourceEvent;
         if (sourceEvent) {
           if (sourceEvent.touches && sourceEvent.touches[0]) {
-            // Touch event
             zoomStartX = sourceEvent.touches[0].clientX;
             zoomStartY = sourceEvent.touches[0].clientY;
           } else if (sourceEvent.clientX !== undefined) {
-            // Mouse event
             zoomStartX = sourceEvent.clientX;
             zoomStartY = sourceEvent.clientY;
           }
         }
         zoomStartK = event.transform.k;
-        console.log('🔍 Zoom start:', { zoomStartTime, zoomStartX, zoomStartY, zoomStartK });
       })
       .on('end', (event) => {
         const elapsed = Date.now() - zoomStartTime;
-        // Handle both mouse and touch events for end position
         const sourceEvent = event.sourceEvent;
         let endX = zoomStartX;
         let endY = zoomStartY;
         if (sourceEvent) {
           if (sourceEvent.changedTouches && sourceEvent.changedTouches[0]) {
-            // Touch event - use changedTouches for touchend
             endX = sourceEvent.changedTouches[0].clientX;
             endY = sourceEvent.changedTouches[0].clientY;
           } else if (sourceEvent.clientX !== undefined) {
-            // Mouse event
             endX = sourceEvent.clientX;
             endY = sourceEvent.clientY;
           }
@@ -2857,48 +2856,15 @@ export default function CryptoSandbox() {
         const dy = Math.abs(endY - zoomStartY);
         const scaleChanged = Math.abs(event.transform.k - zoomStartK) > 0.01;
         
-        console.log('🔍 Zoom end:', { elapsed, dx, dy, scaleChanged, activeTool, crosshairMode, endX, endY });
-        
-        // If this was a quick tap with minimal movement and no scale change
-        if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD && !scaleChanged) {
-          // Get position relative to SVG
+        // Selection tap only (no tool active) - drawing taps handled by overlay
+        if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD && !scaleChanged && !activeTool && !crosshairMode) {
           const svgElement = svgRef.current;
           if (svgElement && endX > 0 && endY > 0) {
             const rect = svgElement.getBoundingClientRect();
             const clickX = endX - rect.left;
             const clickY = endY - rect.top;
-            // Skip clearly invalid coordinates (outside chart area)
             if (clickX > 0 && clickY > 0 && clickX < rect.width && clickY < rect.height) {
-              // Handle drawing tool taps
-              if (activeTool === 'trendline' && trendlineMode) {
-                console.log('👆 Trendline tap at:', clickX, clickY);
-                showClickPulse(clickX, clickY);
-                handleTrendlineClick(clickX, clickY);
-              } else if (activeTool === 'horizontal') {
-                console.log('👆 Horizontal line tap at:', clickX, clickY);
-                showClickPulse(clickX, clickY);
-                handleHorizontalClick(clickX, clickY);
-              } else if (activeTool === 'channel') {
-                console.log('👆 Channel tap at:', clickX, clickY);
-                showClickPulse(clickX, clickY);
-                handleChannelClick(clickX, clickY);
-              } else if (activeTool === 'hchannel') {
-                console.log('👆 HChannel tap at:', clickX, clickY);
-                showClickPulse(clickX, clickY);
-                handleHChannelClick(clickX, clickY);
-              } else if (activeTool === 'schannel') {
-                console.log('👆 SChannel tap at:', clickX, clickY);
-                showClickPulse(clickX, clickY);
-                handleSChannelClick(clickX, clickY);
-              } else if (activeTool === 'label') {
-                console.log('👆 Label tap at:', clickX, clickY);
-                showClickPulse(clickX, clickY);
-                handleTextLabelClick(clickX, clickY);
-              } else if (!activeTool && !crosshairMode) {
-                // Selection tap (no tool active)
-                console.log('👆 Selection tap at:', clickX, clickY);
-                handleSvgTapSelection(clickX, clickY);
-              }
+              handleSvgTapSelection(clickX, clickY);
             }
           }
         }
@@ -3694,11 +3660,80 @@ export default function CryptoSandbox() {
               )}
             </div>
             
-            {/* Trendline drawing overlay - display only, events handled by d3 zoom */}
+            {/* Trendline drawing overlay - handles all events when tool is active */}
             {activeTool === 'trendline' && trendlineMode && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ touchAction: 'none' }}
                 data-drawing-overlay
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickX = e.clientX - rect.left;
+                  const clickY = e.clientY - rect.top;
+                  showClickPulse(clickX, clickY);
+                  handleTrendlineClick(clickX, clickY);
+                }}
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                  if (e.touches.length >= 2) {
+                    // Store initial pinch distance for zoom
+                    const t1 = e.touches[0];
+                    const t2 = e.touches[1];
+                    const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    (touchStartRef.current as any).pinchDist = dist;
+                    (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  
+                  if (e.touches.length >= 2 && touchStartRef.current) {
+                    // Pinch zoom
+                    const t1 = e.touches[0];
+                    const t2 = e.touches[1];
+                    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const startDist = (touchStartRef.current as any).pinchDist || newDist;
+                    const scale = newDist / startDist;
+                    
+                    if (Math.abs(scale - 1) > 0.02 && xScaleRef.current && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const midX = (touchStartRef.current as any).pinchMidX || (t1.clientX + t2.clientX) / 2 - rect.left;
+                      const currentTransform = d3.zoomTransform(svgRef.current);
+                      const newK = Math.max(0.5, Math.min(20, currentTransform.k * scale));
+                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / currentTransform.k) + currentTransform.x * (newK / currentTransform.k), 0).scale(newK);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      (touchStartRef.current as any).pinchDist = newDist;
+                    }
+                  } else if (e.touches.length === 1 && touchStartRef.current) {
+                    // Single finger pan
+                    const touch = e.touches[0];
+                    const currentX = touch.clientX - rect.left;
+                    const dx = currentX - touchStartRef.current.x;
+                    
+                    if (Math.abs(dx) > TOUCH_THRESHOLD) {
+                      touchMovedRef.current = true;
+                      if (xScaleRef.current && zoomRef.current && svgRef.current) {
+                        const currentTransform = d3.zoomTransform(svgRef.current);
+                        const newTransform = d3.zoomIdentity.translate(currentTransform.x + dx, 0).scale(currentTransform.k);
+                        d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                        touchStartRef.current.x = currentX;
+                      }
+                    }
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  if (!touchMovedRef.current && touchStartRef.current) {
+                    // Was a tap, not a drag - place point
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleTrendlineClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null;
+                  touchMovedRef.current = false;
+                }}
               >
                 {/* Magnet pulse animation */}
                 {magnetPulse && (
@@ -3765,11 +3800,60 @@ export default function CryptoSandbox() {
             
             {/* Drawings are now rendered by D3 directly in the chart effect */}
             
-            {/* Horizontal line drawing overlay - display only, events handled by d3 zoom */}
+            {/* Horizontal line drawing overlay - handles all events when tool is active */}
             {activeTool === 'horizontal' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ touchAction: 'none' }}
                 data-drawing-overlay
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  showClickPulse(e.clientX - rect.left, e.clientY - rect.top);
+                  handleHorizontalClick(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                  if (e.touches.length >= 2) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    (touchStartRef.current as any).pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length >= 2 && touchStartRef.current) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const scale = newDist / ((touchStartRef.current as any).pinchDist || newDist);
+                    if (Math.abs(scale - 1) > 0.02 && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const midX = (touchStartRef.current as any).pinchMidX;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      const newK = Math.max(0.5, Math.min(20, ct.k * scale));
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      (touchStartRef.current as any).pinchDist = newDist;
+                    }
+                  } else if (e.touches.length === 1 && touchStartRef.current) {
+                    const dx = (e.touches[0].clientX - rect.left) - touchStartRef.current.x;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      touchStartRef.current.x = e.touches[0].clientX - rect.left;
+                    }
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (!touchMovedRef.current && touchStartRef.current) {
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleHorizontalClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null; touchMovedRef.current = false;
+                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
@@ -3782,11 +3866,60 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Channel drawing overlay - display only, events handled by d3 zoom */}
+            {/* Channel drawing overlay - handles all events when tool is active */}
             {activeTool === 'channel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ touchAction: 'none' }}
                 data-drawing-overlay
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  showClickPulse(e.clientX - rect.left, e.clientY - rect.top);
+                  handleChannelClick(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                  if (e.touches.length >= 2) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    (touchStartRef.current as any).pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length >= 2 && touchStartRef.current) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const scale = newDist / ((touchStartRef.current as any).pinchDist || newDist);
+                    if (Math.abs(scale - 1) > 0.02 && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const midX = (touchStartRef.current as any).pinchMidX;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      const newK = Math.max(0.5, Math.min(20, ct.k * scale));
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      (touchStartRef.current as any).pinchDist = newDist;
+                    }
+                  } else if (e.touches.length === 1 && touchStartRef.current) {
+                    const dx = (e.touches[0].clientX - rect.left) - touchStartRef.current.x;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      touchStartRef.current.x = e.touches[0].clientX - rect.left;
+                    }
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (!touchMovedRef.current && touchStartRef.current) {
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleChannelClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null; touchMovedRef.current = false;
+                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
@@ -3815,11 +3948,60 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Horizontal Channel drawing overlay - display only, events handled by d3 zoom */}
+            {/* Horizontal Channel drawing overlay - handles all events when tool is active */}
             {activeTool === 'hchannel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ touchAction: 'none' }}
                 data-drawing-overlay
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  showClickPulse(e.clientX - rect.left, e.clientY - rect.top);
+                  handleHChannelClick(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                  if (e.touches.length >= 2) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    (touchStartRef.current as any).pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length >= 2 && touchStartRef.current) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const scale = newDist / ((touchStartRef.current as any).pinchDist || newDist);
+                    if (Math.abs(scale - 1) > 0.02 && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const midX = (touchStartRef.current as any).pinchMidX;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      const newK = Math.max(0.5, Math.min(20, ct.k * scale));
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      (touchStartRef.current as any).pinchDist = newDist;
+                    }
+                  } else if (e.touches.length === 1 && touchStartRef.current) {
+                    const dx = (e.touches[0].clientX - rect.left) - touchStartRef.current.x;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      touchStartRef.current.x = e.touches[0].clientX - rect.left;
+                    }
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (!touchMovedRef.current && touchStartRef.current) {
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleHChannelClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null; touchMovedRef.current = false;
+                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
@@ -3841,11 +4023,60 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Sloped Channel drawing overlay - display only, events handled by d3 zoom */}
+            {/* Sloped Channel drawing overlay - handles all events when tool is active */}
             {activeTool === 'schannel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ touchAction: 'none' }}
                 data-drawing-overlay
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  showClickPulse(e.clientX - rect.left, e.clientY - rect.top);
+                  handleSChannelClick(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                  if (e.touches.length >= 2) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    (touchStartRef.current as any).pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length >= 2 && touchStartRef.current) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const scale = newDist / ((touchStartRef.current as any).pinchDist || newDist);
+                    if (Math.abs(scale - 1) > 0.02 && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const midX = (touchStartRef.current as any).pinchMidX;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      const newK = Math.max(0.5, Math.min(20, ct.k * scale));
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      (touchStartRef.current as any).pinchDist = newDist;
+                    }
+                  } else if (e.touches.length === 1 && touchStartRef.current) {
+                    const dx = (e.touches[0].clientX - rect.left) - touchStartRef.current.x;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      touchStartRef.current.x = e.touches[0].clientX - rect.left;
+                    }
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (!touchMovedRef.current && touchStartRef.current) {
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleSChannelClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null; touchMovedRef.current = false;
+                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
@@ -3898,11 +4129,60 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Text label drawing overlay - display only, events handled by d3 zoom */}
+            {/* Text label drawing overlay - handles all events when tool is active */}
             {activeTool === 'label' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ touchAction: 'none' }}
                 data-drawing-overlay
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  showClickPulse(e.clientX - rect.left, e.clientY - rect.top);
+                  handleTextLabelClick(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchMovedRef.current = false;
+                  if (e.touches.length >= 2) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    (touchStartRef.current as any).pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length >= 2 && touchStartRef.current) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const scale = newDist / ((touchStartRef.current as any).pinchDist || newDist);
+                    if (Math.abs(scale - 1) > 0.02 && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const midX = (touchStartRef.current as any).pinchMidX;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      const newK = Math.max(0.5, Math.min(20, ct.k * scale));
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      (touchStartRef.current as any).pinchDist = newDist;
+                    }
+                  } else if (e.touches.length === 1 && touchStartRef.current) {
+                    const dx = (e.touches[0].clientX - rect.left) - touchStartRef.current.x;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      touchStartRef.current.x = e.touches[0].clientX - rect.left;
+                    }
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (!touchMovedRef.current && touchStartRef.current) {
+                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
+                    handleTextLabelClick(touchStartRef.current.x, touchStartRef.current.y);
+                  }
+                  touchStartRef.current = null; touchMovedRef.current = false;
+                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
