@@ -603,7 +603,7 @@ export default function CryptoSandbox() {
   const handleChartBackgroundClick = useCallback((e: React.MouseEvent) => {
     // Don't close immediately after selection (prevents touch event propagation issues)
     const timeSinceSelection = Date.now() - selectionTimeRef.current;
-    if (timeSinceSelection < 300) {
+    if (timeSinceSelection < 150) {
       console.log('⏭️ handleChartBackgroundClick ignored - selection just occurred', timeSinceSelection);
       return;
     }
@@ -1571,9 +1571,9 @@ export default function CryptoSandbox() {
       const y1 = yScaleRef.current(line.p1.price) + margin.top;
       const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
       const y2 = yScaleRef.current(line.p2.price) + margin.top;
-      const dist = distToLine(clickX, clickY, x1, y1, x2, y2);
+      const dist = distToSegment(clickX, clickY, x1, y1, x2, y2);
       console.log('📏 Trendline distance:', { id: line.id, dist, threshold, x1, y1, x2, y2 });
-      // Use line distance (not segment) so we can detect hits anywhere along the line
+      // Use segment distance for better accuracy along the line
       if (dist <= threshold) {
         candidates.push({ id: line.id, type: 'trendline' });
       }
@@ -1717,21 +1717,15 @@ export default function CryptoSandbox() {
     }
   }, [closeSelectionPicker, selectionPickerClickPos, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
 
-  // Unified drawing click handler - checks for overlapping elements and shows picker if needed
-  const handleDrawingClick = useCallback((clickedId: string, clickedType: SelectionCandidate['type'], clickX: number, clickY: number) => {
-    // Check for overlapping elements at this location
-    const candidates = collectHitCandidates(clickX, clickY);
-    console.log('🎯 handleDrawingClick:', { clickedId, clickedType, clickX, clickY, candidatesFound: candidates.length, candidates });
-    
-    if (candidates.length > 1) {
-      // Multiple overlapping elements - show picker
-      const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - margin.right - 60);
-      const pickerY = Math.min(Math.max(clickY, 50), dimensions.height - 150);
-      setSelectionCandidates(candidates);
-      setSelectionPickerPos({ x: pickerX, y: pickerY });
-      setSelectionPickerClickPos({ x: clickX, y: clickY });
-    } else {
-      // Single element or none - select directly (fallback to clicked element)
+    // Unified drawing click handler - legacy support for direct element clicks
+    const handleDrawingClick = useCallback((clickedId: string, clickedType: SelectionCandidate['type'], clickX: number, clickY: number) => {
+      // Don't select if in drawing mode
+      if (activeTool) return;
+      
+      // Since we now use handleSvgTapSelection for most interactions, 
+      // this is mainly a fallback for desktop mouse clicks on specific elements.
+      console.log('🎯 handleDrawingClick:', { clickedId, clickedType, clickX, clickY });
+      
       switch (clickedType) {
         case 'trendline':
           handleTrendlineSelect(clickedId, clickX, clickY);
@@ -1752,8 +1746,7 @@ export default function CryptoSandbox() {
           handleTextLabelSelect(clickedId, clickX, clickY);
           break;
       }
-    }
-  }, [collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
+    }, [activeTool, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
   
   // Main selection dispatcher for tap events
   const handleSvgTapSelection = useCallback((clickX: number, clickY: number): boolean => {
@@ -1792,9 +1785,40 @@ export default function CryptoSandbox() {
         const candidate = candidates[0];
         switch (candidate.type) {
           case 'trendline':
+            // If already selected, check for endpoint/center clicks to start moving
+            if (selectedTrendline === candidate.id) {
+              const endpoint = findNearbyEndpoint(clickX, clickY);
+              if (endpoint) {
+                handleEndpointClick(candidate.id, endpoint);
+                return true;
+              }
+              
+              // Check for center click to move the whole line
+              const line = drawnTrendlines.find(l => l.id === candidate.id);
+              if (line && xScaleRef.current && yScaleRef.current) {
+                const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
+                const y1 = yScaleRef.current(line.p1.price) + margin.top;
+                const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
+                const y2 = yScaleRef.current(line.p2.price) + margin.top;
+                const centerX = (x1 + x2) / 2;
+                const centerY = (y1 + y2) / 2;
+                const distToCenter = Math.sqrt((clickX - centerX) ** 2 + (clickY - centerY) ** 2);
+                if (distToCenter < 30) {
+                  setMovingWholeLine(candidate.id);
+                  setTrendlineMenuPos(null);
+                  return true;
+                }
+              }
+            }
             handleTrendlineSelect(candidate.id, clickX, clickY);
             break;
           case 'horizontal':
+            // If already selected, clicking it again enters move mode
+            if (selectedHorizontal === candidate.id) {
+              setMovingHorizontal(candidate.id);
+              setHorizontalMenuPos(null);
+              return true;
+            }
             handleHorizontalSelect(candidate.id, clickX, clickY);
             break;
           case 'channel':
@@ -5549,87 +5573,12 @@ export default function CryptoSandbox() {
             {/* Click overlay for move mode - handles trendline endpoints and horizontal moves */}
             {moveMode && !movingPoint && !movingWholeLine && !movingHorizontal && (
               <div 
-                className="absolute top-0 right-0 bottom-0 z-20"
+                className="absolute top-0 right-0 bottom-0 z-20 pointer-events-none"
                 style={{ left: 40 }}
-                data-drawing-overlay
-                onClick={(e) => {
-                  // Don't close immediately after selection (prevents touch event propagation issues)
-                  const timeSinceSelection = Date.now() - selectionTimeRef.current;
-                  if (timeSinceSelection < 300) {
-                    console.log('⏭️ Ignoring click - selection just occurred', timeSinceSelection);
-                    return;
-                  }
-                  
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left + 40; // Offset for toolbar
-                  const clickY = e.clientY - rect.top;
-                  const hitRadius = 25; // Generous hit radius
-                  
-                  // Handle trendline endpoint/center clicks
-                  if (selectedTrendline) {
-                    const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
-                    if (selectedLine && xScaleRef.current && yScaleRef.current) {
-                      const x1 = xScaleRef.current(new Date(selectedLine.p1.time)) + margin.left;
-                      const y1 = yScaleRef.current(selectedLine.p1.price);
-                      const x2 = xScaleRef.current(new Date(selectedLine.p2.time)) + margin.left;
-                      const y2 = yScaleRef.current(selectedLine.p2.price);
-                      const centerX = (x1 + x2) / 2;
-                      const centerY = (y1 + y2) / 2;
-                      
-                      const distToP1 = Math.sqrt((clickX - x1) ** 2 + (clickY - y1) ** 2);
-                      const distToP2 = Math.sqrt((clickX - x2) ** 2 + (clickY - y2) ** 2);
-                      const distToCenter = Math.sqrt((clickX - centerX) ** 2 + (clickY - centerY) ** 2);
-                      
-                      // If near endpoint, trigger the endpoint click
-                      if (distToP1 < hitRadius) {
-                        handleEndpointClick(selectedLine.id, 'p1');
-                        return;
-                      }
-                      if (distToP2 < hitRadius) {
-                        handleEndpointClick(selectedLine.id, 'p2');
-                        return;
-                      }
-                      // If near center, trigger whole line move
-                      if (distToCenter < hitRadius) {
-                        setMovingWholeLine(selectedLine.id);
-                        setTrendlineMenuPos(null);
-                        return;
-                      }
-                    }
-                    // Click away from trendline - exit move mode
-                    closeTrendlineMenu();
-                    return;
-                  }
-                  
-                  // Handle horizontal line clicks - click anywhere on it to start moving
-                  if (selectedHorizontal && yScaleRef.current) {
-                    const hLine = drawnHorizontals.find(h => h.id === selectedHorizontal);
-                    if (hLine) {
-                      const lineY = yScaleRef.current(hLine.price) + margin.top;
-                      const distToLine = Math.abs(clickY - lineY);
-                      
-                      // If near the line, start moving it
-                      if (distToLine < hitRadius) {
-                        // Store offset for smooth move
-                        setMovingHorizontal(selectedHorizontal);
-                        setHorizontalMenuPos(null);
-                        return;
-                      }
-                    }
-                    // Click away from horizontal - close menu and exit move mode
-                    setSelectedHorizontal(null);
-                    setHorizontalMenuPos(null);
-                    setMoveMode(false);
-                    return;
-                  }
-                  
-                  // Fallback - close all menus
-                  closeTrendlineMenu();
-                  setSelectedHorizontal(null);
-                  setHorizontalMenuPos(null);
-                  setMoveMode(false);
-                }}
-              />
+              >
+                {/* Visual feedback handles - these could be made clickable if needed, 
+                    but for now we let handleSvgTapSelection handle the clicks via the main SVG layer */}
+              </div>
             )}
           </div>
         )}
