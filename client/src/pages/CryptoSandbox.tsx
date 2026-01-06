@@ -74,6 +74,7 @@ export default function CryptoSandbox() {
     extendLeft: boolean;
     extendRight: boolean;
     label?: { text: string; positions: ('top-left' | 'top-right' | 'bottom-left' | 'bottom-right')[] };
+    createdAtZoomScale?: number; // Zoom level when trendline was created for dynamic visibility
   }
   
   // Horizontal line data
@@ -727,6 +728,7 @@ export default function CryptoSandbox() {
         thickness: trendlineDefaults.thickness,
         extendLeft: false,
         extendRight: false,
+        createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Store zoom level for dynamic visibility
       };
       const newTrendlines = [...drawnTrendlines, newTrendline];
       setDrawnTrendlines(newTrendlines);
@@ -1961,14 +1963,34 @@ export default function CryptoSandbox() {
         };
       };
       
-      // Draw trendlines
+      // Draw trendlines with dynamic zoom visibility
       drawnTrendlines.forEach(line => {
+        // Calculate visibility based on zoom level when created
+        const createdK = line.createdAtZoomScale ?? 1;
+        const zoomRatio = currentZoomK / createdK;
+        // Visibility: fully visible when zoomed in more than creation level (ratio >= 1)
+        // Fades out when zooming out: starts fading at ratio 0.5, invisible at ratio 0.2
+        let visibilityFactor = 1;
+        if (zoomRatio < 1) {
+          if (zoomRatio <= 0.2) {
+            visibilityFactor = 0;
+          } else if (zoomRatio < 0.5) {
+            visibilityFactor = (zoomRatio - 0.2) / 0.3; // Linear fade from 0.2 to 0.5
+          }
+        }
+        
+        // Skip rendering if completely invisible
+        if (visibilityFactor <= 0) return;
+        
         const x1 = xS(new Date(line.p1.time));
         const y1 = yS(line.p1.price);
         const x2 = xS(new Date(line.p2.time));
         const y2 = yS(line.p2.price);
         const strokeDash = line.lineStyle === 'dashed' ? '8,4' : line.lineStyle === 'dotted' ? '2,4' : '';
         const isSelected = selectedTrendline === line.id;
+        
+        // Apply visibility factor to opacity
+        const effectiveOpacity = line.opacity * visibilityFactor;
         
         const lineGroup = drawingsGroup.append('g').attr('class', `trendline-${line.id}`);
         
@@ -1988,7 +2010,7 @@ export default function CryptoSandbox() {
               .attr('x2', x1).attr('y2', y1)
               .attr('stroke', line.color)
               .attr('stroke-width', line.thickness || 2)
-              .attr('stroke-opacity', line.opacity)
+              .attr('stroke-opacity', effectiveOpacity)
               .attr('stroke-dasharray', strokeDash);
           }
         }
@@ -2004,7 +2026,7 @@ export default function CryptoSandbox() {
               .attr('x2', clipped.x2).attr('y2', clipped.y2)
               .attr('stroke', line.color)
               .attr('stroke-width', line.thickness || 2)
-              .attr('stroke-opacity', line.opacity)
+              .attr('stroke-opacity', effectiveOpacity)
               .attr('stroke-dasharray', strokeDash);
           }
         }
@@ -2021,7 +2043,7 @@ export default function CryptoSandbox() {
           .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
           .attr('stroke', line.color)
           .attr('stroke-width', line.thickness || 2)
-          .attr('stroke-opacity', line.opacity)
+          .attr('stroke-opacity', effectiveOpacity)
           .attr('stroke-dasharray', strokeDash)
           .style('pointer-events', 'none');
         
