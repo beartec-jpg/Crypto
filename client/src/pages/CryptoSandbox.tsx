@@ -1931,6 +1931,9 @@ export default function CryptoSandbox() {
     const drawDrawings = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>, zoomK: number = 1) => {
       drawingsGroup.selectAll('*').remove();
       
+      // Current zoom scale for dynamic visibility calculations
+      const currentZoomK = zoomK;
+      
       // Helper: clip line to chart boundaries
       const clipToChart = (px1: number, py1: number, px2: number, py2: number) => {
         const dx = px2 - px1;
@@ -2486,9 +2489,6 @@ export default function CryptoSandbox() {
       });
       
       // Draw text labels with dynamic zoom visibility
-      // Use the zoomK parameter passed to this function for accurate real-time zoom level
-      const currentZoomK = zoomK;
-      
       drawnTextLabels.forEach(label => {
         const x = xS(new Date(label.time));
         const y = yS(label.price);
