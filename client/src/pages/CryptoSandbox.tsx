@@ -50,6 +50,7 @@ export default function CryptoSandbox() {
   const touchMovedRef = useRef(false); // Track if touch moved significantly
   const touchHandledRef = useRef(false); // Prevent duplicate calls from touch+click
   const lastClickTimeRef = useRef(0); // Debounce rapid clicks
+  const lastSelectionTimeRef = useRef(0); // Debounce rapid selection events
   const TOUCH_THRESHOLD = 35; // pixels - movement above this is a drag, not a tap (increased for mobile)
   const CLICK_DEBOUNCE = 100; // ms - ignore clicks within this time of each other
   const TAP_TIME_LIMIT = 300; // ms - max time for a tap
@@ -761,6 +762,13 @@ export default function CryptoSandbox() {
   
   // Handle click on trendline to select it - auto enters move mode
   const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
+    const now = Date.now();
+    // Debounce rapid selection events (prevents duplicate touch+click)
+    if (now - lastSelectionTimeRef.current < CLICK_DEBOUNCE) {
+      return;
+    }
+    lastSelectionTimeRef.current = now;
+    
     console.log('✅ handleTrendlineSelect called:', { lineId, clickX, clickY, alreadySelected: selectedTrendline === lineId });
     
     // If already selected, don't re-select (let pickup point handlers work)
@@ -770,7 +778,7 @@ export default function CryptoSandbox() {
     }
     
     // Track when selection occurred to prevent immediate close
-    selectionTimeRef.current = Date.now();
+    selectionTimeRef.current = now;
     
     // Close all other menus first
     setHorizontalMenuPos(null);
@@ -857,10 +865,16 @@ export default function CryptoSandbox() {
 
   // Handle click on horizontal line to select it
   const handleHorizontalSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
+    const now = Date.now();
+    // Debounce rapid selection events (prevents duplicate touch+click)
+    if (now - lastSelectionTimeRef.current < CLICK_DEBOUNCE) {
+      return;
+    }
+    lastSelectionTimeRef.current = now;
+    
     console.log('✅ handleHorizontalSelect called:', { lineId, clickX, clickY });
     
     // Track when selection occurred to prevent immediate close
-    const now = Date.now();
     selectionTimeRef.current = now;
     
     // Close all other menus
@@ -959,8 +973,15 @@ export default function CryptoSandbox() {
 
   // Handle click on channel to select it
   const handleChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
+    const now = Date.now();
+    // Debounce rapid selection events (prevents duplicate touch+click)
+    if (now - lastSelectionTimeRef.current < CLICK_DEBOUNCE) {
+      return;
+    }
+    lastSelectionTimeRef.current = now;
+    
     // Track when selection occurred to prevent immediate close
-    selectionTimeRef.current = Date.now();
+    selectionTimeRef.current = now;
     
     setSelectedChannel(channelId);
     closeTrendlineMenu();
@@ -1097,6 +1118,13 @@ export default function CryptoSandbox() {
 
   // Handle click on horizontal channel to select it
   const handleHChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
+    const now = Date.now();
+    // Debounce rapid selection events (prevents duplicate touch+click)
+    if (now - lastSelectionTimeRef.current < CLICK_DEBOUNCE) {
+      return;
+    }
+    lastSelectionTimeRef.current = now;
+    
     // Close all other menus first
     setSelectedTrendline(null);
     setTrendlineMenuPos(null);
@@ -1284,8 +1312,15 @@ export default function CryptoSandbox() {
 
   // Handle click on sloped channel to select it
   const handleSChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
+    const now = Date.now();
+    // Debounce rapid selection events (prevents duplicate touch+click)
+    if (now - lastSelectionTimeRef.current < CLICK_DEBOUNCE) {
+      return;
+    }
+    lastSelectionTimeRef.current = now;
+    
     // Track when selection occurred to prevent immediate close
-    selectionTimeRef.current = Date.now();
+    selectionTimeRef.current = now;
     
     setSelectedSChannel(channelId);
     setMovingSChannel(channelId); // Auto enter move mode
@@ -1366,8 +1401,15 @@ export default function CryptoSandbox() {
 
   // Handle click on text label to select it
   const handleTextLabelSelect = useCallback((labelId: string, clickX: number, clickY: number) => {
+    const now = Date.now();
+    // Debounce rapid selection events (prevents duplicate touch+click)
+    if (now - lastSelectionTimeRef.current < CLICK_DEBOUNCE) {
+      return;
+    }
+    lastSelectionTimeRef.current = now;
+    
     // Track when selection occurred to prevent immediate close
-    selectionTimeRef.current = Date.now();
+    selectionTimeRef.current = now;
     
     setSelectedTextLabel(labelId);
     closeTrendlineMenu();
