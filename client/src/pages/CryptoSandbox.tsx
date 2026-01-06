@@ -633,6 +633,7 @@ export default function CryptoSandbox() {
         if (trendlineMenuPos) setTrendlineMenuPos({ x: newX, y: newY });
         if (horizontalMenuPos) setHorizontalMenuPos({ x: newX, y: newY });
         if (channelMenuPos) setChannelMenuPos({ x: newX, y: newY });
+        if (fibMenuPos) setFibMenuPos({ x: newX, y: newY });
         if (textLabelMenuPos) setTextLabelMenuPos({ x: newX, y: newY });
       }
     };
@@ -648,7 +649,7 @@ export default function CryptoSandbox() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingMenu, trendlineMenuPos, horizontalMenuPos, channelMenuPos, textLabelMenuPos]);
+  }, [draggingMenu, trendlineMenuPos, horizontalMenuPos, channelMenuPos, fibMenuPos, textLabelMenuPos]);
   
   // Click-off handler: deselect tool and close menus when clicking on chart background
   const handleChartBackgroundClick = useCallback((e: React.MouseEvent) => {
@@ -681,6 +682,9 @@ export default function CryptoSandbox() {
       setHChannelMenuPos(null);
       setSelectedSChannel(null);
       setSChannelMenuPos(null);
+      setSelectedFib(null);
+      setFibMenuPos(null);
+      setMovingFibAnchor(null);
       setActiveSubmenu(null);
       // Clear any in-progress drawing
       setTrendlineMode(null);
@@ -688,6 +692,7 @@ export default function CryptoSandbox() {
       setChannelPoints([]);
       setHChannelPoints([]);
       setSChannelPoints([]);
+      setFibPoints([]);
       // Close selection picker
       setSelectionCandidates([]);
       setSelectionPickerPos(null);
@@ -5347,6 +5352,12 @@ export default function CryptoSandbox() {
                               <path d="M4 8L4 20M20 4L20 16" strokeOpacity="0.3" />
                             </svg>
                           );
+                        case 'fib':
+                          return (
+                            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 6h16M4 10h16M4 14h16M4 18h16" strokeOpacity="0.7" />
+                            </svg>
+                          );
                         case 'label':
                           return (
                             <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
@@ -5365,6 +5376,7 @@ export default function CryptoSandbox() {
                         case 'channel': return 'Channel';
                         case 'hchannel': return 'H-Channel';
                         case 'schannel': return 'S-Channel';
+                        case 'fib': return 'Fib Retrace';
                         case 'label': return 'Label';
                         default: return 'Element';
                       }
@@ -6079,6 +6091,108 @@ export default function CryptoSandbox() {
                         }}
                         data-testid={`input-schannel-internal-${idx}-label`} />
                     </div>
+                  ))}
+                </div>
+              );
+            })()}
+            
+            {/* Fibonacci retracement menu */}
+            {fibMenuPos && selectedFib && (() => {
+              const fib = drawnFibRetraces.find(f => f.id === selectedFib);
+              return (
+                <div 
+                  className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
+                  style={{ left: fibMenuPos.x, top: fibMenuPos.y }}
+                  data-menu="fib"
+                >
+                  {/* Drag handle */}
+                  <div 
+                    className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setDraggingMenu(true);
+                      menuDragOffset.current = { x: e.clientX - fibMenuPos.x, y: e.clientY - fibMenuPos.y };
+                    }}
+                  >
+                    <div className="w-6 h-0.5 bg-slate-400 rounded" />
+                  </div>
+                  <div className="p-1 flex flex-col gap-1">
+                    {/* Delete */}
+                    <button onClick={deleteFib} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete" data-testid="button-delete-fib">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
+                      </svg>
+                    </button>
+                    {/* Color picker */}
+                    <button
+                      onClick={() => setActiveSubmenu(activeSubmenu === 'fib-color' ? null : 'fib-color')}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'fib-color' ? 'bg-slate-600' : ''}`}
+                      title="Colour"
+                      data-testid="button-fib-color"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="10" cy="10" r="7" />
+                        <circle cx="10" cy="10" r="3" fill={fib?.color || '#facc15'} stroke="none" />
+                      </svg>
+                    </button>
+                    {/* Toggle extensions */}
+                    <button
+                      onClick={() => updateFib(selectedFib, { showExtensions: !fib?.showExtensions })}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${fib?.showExtensions ? 'bg-slate-600' : ''}`}
+                      title="Toggle Extensions"
+                      data-testid="button-fib-extensions"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 4v12M16 4v12M4 16h12M4 4h12" />
+                      </svg>
+                    </button>
+                    {/* Toggle prices */}
+                    <button
+                      onClick={() => updateFib(selectedFib, { showPrices: !fib?.showPrices })}
+                      className={`p-2 hover:bg-slate-700 rounded text-white ${fib?.showPrices ? 'bg-slate-600' : ''}`}
+                      title="Toggle Prices"
+                      data-testid="button-fib-prices"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <text x="5" y="14" fontSize="10" fill="currentColor" stroke="none">$</text>
+                      </svg>
+                    </button>
+                    {/* Move anchor */}
+                    <button
+                      onClick={() => {
+                        setMovingFibAnchor({ fibId: selectedFib, anchor: 'anchor1' });
+                        setFibMenuPos(null);
+                        setActiveSubmenu(null);
+                      }}
+                      className="p-2 hover:bg-slate-700 rounded text-white"
+                      title="Move Anchors"
+                      data-testid="button-fib-move"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M10 2v16M2 10h16M5 5l5-3 5 3M5 15l5 3 5-3M15 5l3 5-3 5M5 5l-3 5 3 5" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Fib color submenu */}
+            {activeSubmenu === 'fib-color' && fibMenuPos && selectedFib && (() => {
+              const colors = ['#facc15', '#22c55e', '#3b82f6', '#ef4444', '#a855f7', '#06b6d4', '#f97316', '#ffffff'];
+              return (
+                <div 
+                  className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 flex flex-wrap gap-1"
+                  style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}
+                >
+                  {colors.map(c => (
+                    <button 
+                      key={c} 
+                      className="w-6 h-6 rounded border border-slate-400 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: c }}
+                      onClick={() => { updateFib(selectedFib, { color: c }); setActiveSubmenu(null); }}
+                      data-testid={`button-fib-color-${c.replace('#', '')}`}
+                    />
                   ))}
                 </div>
               );
