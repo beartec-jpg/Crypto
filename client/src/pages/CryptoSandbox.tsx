@@ -1507,16 +1507,23 @@ export default function CryptoSandbox() {
     for (const hch of drawnHChannels) {
       const topY = yScaleRef.current(hch.topPrice) + margin.top;
       const botY = yScaleRef.current(hch.bottomPrice) + margin.top;
-      const leftX = xScaleRef.current(new Date(Math.min(hch.x1, hch.x2))) + margin.left;
-      const rightX = xScaleRef.current(new Date(Math.max(hch.x1, hch.x2))) + margin.left;
+      // Account for channel extensions when calculating bounds
+      let leftX = xScaleRef.current(new Date(Math.min(hch.x1, hch.x2))) + margin.left;
+      let rightX = xScaleRef.current(new Date(Math.max(hch.x1, hch.x2))) + margin.left;
+      // If extended, use full chart width
+      if (hch.extendLeft) leftX = margin.left;
+      if (hch.extendRight) rightX = dimensions.width - margin.right;
+      
       // Check if click is within x-range and near top or bottom line
       if (clickX >= leftX - threshold && clickX <= rightX + threshold) {
         if (Math.abs(clickY - topY) <= threshold || Math.abs(clickY - botY) <= threshold) {
           candidates.push({ id: hch.id, type: 'hchannel' });
         }
       }
-      // Also check if click is inside the channel fill area
-      if (clickX >= leftX && clickX <= rightX && clickY >= topY && clickY <= botY) {
+      // Also check if click is inside the channel fill area (between top and bottom lines)
+      const minY = Math.min(topY, botY);
+      const maxY = Math.max(topY, botY);
+      if (clickX >= leftX && clickX <= rightX && clickY >= minY && clickY <= maxY) {
         if (!candidates.find(c => c.id === hch.id)) {
           candidates.push({ id: hch.id, type: 'hchannel' });
         }
@@ -1550,7 +1557,7 @@ export default function CryptoSandbox() {
     }
     
     return candidates;
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, margin.left, margin.top, MAGNET_RADIUS]);
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, margin.left, margin.top, margin.right, dimensions.width, MAGNET_RADIUS]);
   
   // Close selection picker
   const closeSelectionPicker = useCallback(() => {
@@ -1590,6 +1597,7 @@ export default function CryptoSandbox() {
   const handleDrawingClick = useCallback((clickedId: string, clickedType: SelectionCandidate['type'], clickX: number, clickY: number) => {
     // Check for overlapping elements at this location
     const candidates = collectHitCandidates(clickX, clickY);
+    console.log('🎯 handleDrawingClick:', { clickedId, clickedType, clickX, clickY, candidatesFound: candidates.length, candidates });
     
     if (candidates.length > 1) {
       // Multiple overlapping elements - show picker
