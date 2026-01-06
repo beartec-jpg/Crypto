@@ -445,6 +445,40 @@ export default function CryptoSandbox() {
   // Margins for the chart
   const margin = { top: 20, right: 80, bottom: 40, left: 20 };
   
+  // Helper to constrain menu position within visible chart area
+  const constrainMenuPosition = useCallback((clickX: number, clickY: number, menuWidth: number, menuHeight: number) => {
+    const leftToolbar = 60; // Left toolbar width
+    const topArea = margin.top + 60; // Top controls area
+    const rightEdge = dimensions.width - margin.right - 10;
+    const bottomEdge = dimensions.height - 20; // Leave some padding at bottom
+    
+    let menuX = clickX + 10;
+    let menuY = clickY;
+    
+    // Keep menu to the right of left toolbar
+    if (menuX < leftToolbar) {
+      menuX = leftToolbar;
+    }
+    
+    // Keep menu from going off right edge
+    if (menuX + menuWidth > rightEdge) {
+      menuX = clickX - menuWidth - 10;
+      if (menuX < leftToolbar) menuX = leftToolbar;
+    }
+    
+    // Keep menu from going off bottom
+    if (menuY + menuHeight > bottomEdge) {
+      menuY = bottomEdge - menuHeight;
+    }
+    
+    // Keep menu below top controls
+    if (menuY < topArea) {
+      menuY = topArea;
+    }
+    
+    return { x: menuX, y: menuY };
+  }, [dimensions, margin]);
+  
   // Redirect non-admin users
   useEffect(() => {
     if (!authLoading && !isAdmin) {
@@ -717,25 +751,10 @@ export default function CryptoSandbox() {
     setMovingTrendline(lineId);
     
     // Calculate menu position with edge detection
-    let menuX = clickX + 10;
-    let menuY = clickY;
-    const menuHeight = 180; // Approximate menu height (reduced, no Move button)
-    const menuWidth = 40;
-    
-    // Keep menu within chart bounds
-    if (menuX + menuWidth > dimensions.width - margin.right) {
-      menuX = clickX - menuWidth - 10;
-    }
-    if (menuY + menuHeight > dimensions.height - margin.bottom) {
-      menuY = dimensions.height - margin.bottom - menuHeight;
-    }
-    if (menuY < margin.top) {
-      menuY = margin.top;
-    }
-    
-    setTrendlineMenuPos({ x: menuX, y: menuY });
+    const menuPos = constrainMenuPosition(clickX, clickY, 50, 200);
+    setTrendlineMenuPos(menuPos);
     setActiveSubmenu(null);
-  }, [dimensions, margin]);
+  }, [constrainMenuPosition]);
   
   // Delete selected trendline
   const deleteTrendline = useCallback(() => {
@@ -804,12 +823,9 @@ export default function CryptoSandbox() {
     setChannelMenuPos(null);
     setSelectedTextLabel(null);
     setTextLabelMenuPos(null);
-    let menuX = clickX + 10;
-    let menuY = clickY - 50;
-    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
-    if (menuY < margin.top) menuY = margin.top;
-    setHorizontalMenuPos({ x: menuX, y: menuY });
-  }, [dimensions, margin, closeTrendlineMenu]);
+    const menuPos = constrainMenuPosition(clickX, clickY, 180, 200);
+    setHorizontalMenuPos(menuPos);
+  }, [constrainMenuPosition, closeTrendlineMenu]);
 
   // Delete selected horizontal line
   const deleteHorizontal = useCallback(() => {
@@ -895,12 +911,9 @@ export default function CryptoSandbox() {
     closeHorizontalMenu();
     setSelectedTextLabel(null);
     setTextLabelMenuPos(null);
-    let menuX = clickX + 10;
-    let menuY = clickY - 50;
-    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
-    if (menuY < margin.top) menuY = margin.top;
-    setChannelMenuPos({ x: menuX, y: menuY });
-  }, [dimensions, margin, closeTrendlineMenu, closeHorizontalMenu]);
+    const menuPos = constrainMenuPosition(clickX, clickY, 180, 250);
+    setChannelMenuPos(menuPos);
+  }, [constrainMenuPosition, closeTrendlineMenu, closeHorizontalMenu]);
 
   // Delete selected channel
   const deleteChannel = useCallback(() => {
@@ -1040,12 +1053,9 @@ export default function CryptoSandbox() {
     
     setSelectedHChannel(channelId);
     setMovingHChannel(channelId); // Auto enter move mode
-    let menuX = clickX + 10;
-    let menuY = clickY - 50;
-    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
-    if (menuY < margin.top) menuY = margin.top;
-    setHChannelMenuPos({ x: menuX, y: menuY });
-  }, [dimensions, margin]);
+    const menuPos = constrainMenuPosition(clickX, clickY, 200, 350);
+    setHChannelMenuPos(menuPos);
+  }, [constrainMenuPosition]);
 
   // Delete selected horizontal channel
   const deleteHChannel = useCallback(() => {
@@ -1213,12 +1223,9 @@ export default function CryptoSandbox() {
     setTextLabelMenuPos(null);
     setSelectedHChannel(null);
     setHChannelMenuPos(null);
-    let menuX = clickX + 10;
-    let menuY = clickY - 50;
-    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
-    if (menuY < margin.top) menuY = margin.top;
-    setSChannelMenuPos({ x: menuX, y: menuY });
-  }, [dimensions, margin, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu]);
+    const menuPos = constrainMenuPosition(clickX, clickY, 200, 350);
+    setSChannelMenuPos(menuPos);
+  }, [constrainMenuPosition, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu]);
 
   // Delete selected sloped channel
   const deleteSChannel = useCallback(() => {
@@ -1286,12 +1293,9 @@ export default function CryptoSandbox() {
     closeTrendlineMenu();
     closeHorizontalMenu();
     closeChannelMenu();
-    let menuX = clickX + 10;
-    let menuY = clickY - 50;
-    if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
-    if (menuY < margin.top) menuY = margin.top;
-    setTextLabelMenuPos({ x: menuX, y: menuY });
-  }, [dimensions, margin, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu]);
+    const menuPos = constrainMenuPosition(clickX, clickY, 180, 200);
+    setTextLabelMenuPos(menuPos);
+  }, [constrainMenuPosition, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu]);
 
   // Delete selected text label
   const deleteTextLabel = useCallback(() => {
