@@ -1762,8 +1762,9 @@ export default function CryptoSandbox() {
     if (activeTool) return;
     
     // Debounce double-taps (prevent processing same tap twice)
+    // 200ms catches synthetic click events that follow touch events
     const now = Date.now();
-    if (now - lastTapTimeRef.current < 100) {
+    if (now - lastTapTimeRef.current < 200) {
       console.log('⏭️ Debouncing duplicate tap');
       return;
     }
