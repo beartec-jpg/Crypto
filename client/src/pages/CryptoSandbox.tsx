@@ -48,7 +48,10 @@ export default function CryptoSandbox() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const crosshairStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMovedRef = useRef(false); // Track if touch moved significantly
+  const touchHandledRef = useRef(false); // Prevent duplicate calls from touch+click
+  const lastClickTimeRef = useRef(0); // Debounce rapid clicks
   const TOUCH_THRESHOLD = 15; // pixels - movement above this is a drag, not a tap
+  const CLICK_DEBOUNCE = 100; // ms - ignore clicks within this time of each other
   
   // SVG-level tap detection for selection when crosshair is OFF
   const svgTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -707,7 +710,19 @@ export default function CryptoSandbox() {
   
   // Handle trendline point placement - combined mode (magnet with free fallback)
   const handleTrendlineClick = useCallback((clickX: number, clickY: number) => {
-    if (!trendlineMode || !xScaleRef.current || !yScaleRef.current) return;
+    const now = Date.now();
+    // Debounce rapid clicks (touch often fires multiple events)
+    if (now - lastClickTimeRef.current < CLICK_DEBOUNCE) {
+      console.log('⏭️ handleTrendlineClick debounced (too fast)');
+      return;
+    }
+    lastClickTimeRef.current = now;
+    
+    console.log('🎯 handleTrendlineClick called:', { clickX, clickY, trendlineMode, hasXScale: !!xScaleRef.current, hasYScale: !!yScaleRef.current });
+    if (!trendlineMode || !xScaleRef.current || !yScaleRef.current) {
+      console.log('⚠️ handleTrendlineClick early return - missing:', { trendlineMode, hasXScale: !!xScaleRef.current, hasYScale: !!yScaleRef.current });
+      return;
+    }
     
     let point: { x: number; y: number; time: number; price: number };
     
@@ -728,9 +743,11 @@ export default function CryptoSandbox() {
     
     if (trendlinePoints.length === 0) {
       // First point
+      console.log('📍 Setting FIRST point:', point);
       setTrendlinePoints([point]);
     } else {
       // Second point - complete the trendline with full properties
+      console.log('📍 Setting SECOND point and creating trendline:', point);
       const newTrendline: TrendlineData = {
         id: `tl-${Date.now()}`,
         p1: { time: trendlinePoints[0].time, price: trendlinePoints[0].price },
@@ -3667,6 +3684,12 @@ export default function CryptoSandbox() {
                 style={{ touchAction: 'none' }}
                 data-drawing-overlay
                 onClick={(e) => {
+                  // Skip if touch was recently handled (prevents touch+click double-fire)
+                  if (touchHandledRef.current) {
+                    console.log('⏭️ onClick skipped - touch already handled');
+                    touchHandledRef.current = false;
+                    return;
+                  }
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
                   const clickY = e.clientY - rect.top;
@@ -3726,8 +3749,10 @@ export default function CryptoSandbox() {
                   }
                 }}
                 onTouchEnd={(e) => {
+                  e.preventDefault(); // Prevent synthetic click event
                   if (!touchMovedRef.current && touchStartRef.current) {
                     // Was a tap, not a drag - place point
+                    touchHandledRef.current = true; // Mark that touch handled this
                     showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
                     handleTrendlineClick(touchStartRef.current.x, touchStartRef.current.y);
                   }
