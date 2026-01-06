@@ -1751,15 +1751,15 @@ export default function CryptoSandbox() {
     }, [activeTool, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
   
   // Main selection dispatcher for tap events
-  const handleSvgTapSelection = useCallback((clickX: number, clickY: number): boolean => {
+  const handleSvgTapSelection = useCallback((clickX: number, clickY: number) => {
     // Don't select if in drawing mode
-    if (activeTool) return false;
+    if (activeTool) return;
     
     // Debounce double-taps (prevent processing same tap twice)
     const now = Date.now();
-    if (now - lastTapTimeRef.current < 500) {
+    if (now - lastTapTimeRef.current < 100) {
       console.log('⏭️ Debouncing duplicate tap');
-      return false;
+      return;
     }
     lastTapTimeRef.current = now;
     
@@ -1769,82 +1769,37 @@ export default function CryptoSandbox() {
     
     const candidates = collectHitCandidates(clickX, clickY);
     console.log('🎯 Candidates found:', candidates);
-    
-    if (candidates.length > 0) {
-      // Something was selected - track the time to prevent immediate menu close
-      selectionTimeRef.current = Date.now();
-      
-      if (candidates.length > 1) {
-        // Multiple overlapping elements - show picker
-        const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - margin.right - 60);
-        const pickerY = Math.min(Math.max(clickY, 50), dimensions.height - 150);
-        setSelectionCandidates(candidates);
-        setSelectionPickerPos({ x: pickerX, y: pickerY });
-        setSelectionPickerClickPos({ x: clickX, y: clickY });
-        return true;
-      } else {
-        // Single element - select directly
-        const candidate = candidates[0];
-        switch (candidate.type) {
-          case 'trendline':
-            // If already selected, check for endpoint/center clicks to start moving
-            // Add a guard to prevent accidental immediate pickup on first tap
-            // Increased to 800ms to be safe against phantom clicks
-            const timeSinceLastSelection = Date.now() - selectionTimeRef.current;
-            if (selectedTrendline === candidate.id && timeSinceLastSelection > 800) {
-              const endpoint = findNearbyEndpoint(clickX, clickY);
-              if (endpoint) {
-                handleEndpointClick(candidate.id, endpoint);
-                return true;
-              }
-              
-              // Check for center click to move the whole line
-              const line = drawnTrendlines.find(l => l.id === candidate.id);
-              if (line && xScaleRef.current && yScaleRef.current) {
-                const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
-                const y1 = yScaleRef.current(line.p1.price) + margin.top;
-                const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
-                const y2 = yScaleRef.current(line.p2.price) + margin.top;
-                const centerX = (x1 + x2) / 2;
-                const centerY = (y1 + y2) / 2;
-                const distToCenter = Math.sqrt((clickX - centerX) ** 2 + (clickY - centerY) ** 2);
-                if (distToCenter < 30) {
-                  setMovingWholeLine(candidate.id);
-                  setTrendlineMenuPos(null);
-                  return true;
-                }
-              }
-            }
-            handleTrendlineSelect(candidate.id, clickX, clickY);
-            break;
-          case 'horizontal':
-            // If already selected, clicking it again enters move mode
-            // Increased to 800ms to be safe against phantom clicks
-            const timeSinceHSelection = Date.now() - selectionTimeRef.current;
-            if (selectedHorizontal === candidate.id && timeSinceHSelection > 800) {
-              setMovingHorizontal(candidate.id);
-              setHorizontalMenuPos(null);
-              return true;
-            }
-            handleHorizontalSelect(candidate.id, clickX, clickY);
-            break;
-          case 'channel':
-            handleChannelSelect(candidate.id, clickX, clickY);
-            break;
-          case 'hchannel':
-            handleHChannelSelect(candidate.id, clickX, clickY);
-            break;
-          case 'schannel':
-            handleSChannelSelect(candidate.id, clickX, clickY);
-            break;
-          case 'label':
-            handleTextLabelSelect(candidate.id, clickX, clickY);
-            break;
-        }
-        return true;
+    if (candidates.length > 1) {
+      // Multiple overlapping elements - show picker
+      const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - margin.right - 60);
+      const pickerY = Math.min(Math.max(clickY, 50), dimensions.height - 150);
+      setSelectionCandidates(candidates);
+      setSelectionPickerPos({ x: pickerX, y: pickerY });
+      setSelectionPickerClickPos({ x: clickX, y: clickY });
+    } else if (candidates.length === 1) {
+      // Single element - select directly
+      const candidate = candidates[0];
+      switch (candidate.type) {
+        case 'trendline':
+          handleTrendlineSelect(candidate.id, clickX, clickY);
+          break;
+        case 'horizontal':
+          handleHorizontalSelect(candidate.id, clickX, clickY);
+          break;
+        case 'channel':
+          handleChannelSelect(candidate.id, clickX, clickY);
+          break;
+        case 'hchannel':
+          handleHChannelSelect(candidate.id, clickX, clickY);
+          break;
+        case 'schannel':
+          handleSChannelSelect(candidate.id, clickX, clickY);
+          break;
+        case 'label':
+          handleTextLabelSelect(candidate.id, clickX, clickY);
+          break;
       }
     }
-    return false;
   }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
   
   // Find if crosshair is near an endpoint of the moving trendline
