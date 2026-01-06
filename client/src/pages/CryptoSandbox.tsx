@@ -2621,29 +2621,53 @@ export default function CryptoSandbox() {
       .translateExtent([[-100, 0], [width + 100, height]])
       .on('start', (event) => {
         zoomStartTime = Date.now();
-        zoomStartX = event.sourceEvent?.clientX ?? 0;
-        zoomStartY = event.sourceEvent?.clientY ?? 0;
+        // Handle both mouse and touch events
+        const sourceEvent = event.sourceEvent;
+        if (sourceEvent) {
+          if (sourceEvent.touches && sourceEvent.touches[0]) {
+            // Touch event
+            zoomStartX = sourceEvent.touches[0].clientX;
+            zoomStartY = sourceEvent.touches[0].clientY;
+          } else if (sourceEvent.clientX !== undefined) {
+            // Mouse event
+            zoomStartX = sourceEvent.clientX;
+            zoomStartY = sourceEvent.clientY;
+          }
+        }
         zoomStartK = event.transform.k;
         console.log('🔍 Zoom start:', { zoomStartTime, zoomStartX, zoomStartY, zoomStartK });
       })
       .on('end', (event) => {
         const elapsed = Date.now() - zoomStartTime;
-        const endX = event.sourceEvent?.clientX ?? 0;
-        const endY = event.sourceEvent?.clientY ?? 0;
+        // Handle both mouse and touch events for end position
+        const sourceEvent = event.sourceEvent;
+        let endX = zoomStartX;
+        let endY = zoomStartY;
+        if (sourceEvent) {
+          if (sourceEvent.changedTouches && sourceEvent.changedTouches[0]) {
+            // Touch event - use changedTouches for touchend
+            endX = sourceEvent.changedTouches[0].clientX;
+            endY = sourceEvent.changedTouches[0].clientY;
+          } else if (sourceEvent.clientX !== undefined) {
+            // Mouse event
+            endX = sourceEvent.clientX;
+            endY = sourceEvent.clientY;
+          }
+        }
         const dx = Math.abs(endX - zoomStartX);
         const dy = Math.abs(endY - zoomStartY);
         const scaleChanged = Math.abs(event.transform.k - zoomStartK) > 0.01;
         
-        console.log('🔍 Zoom end:', { elapsed, dx, dy, scaleChanged, activeTool, crosshairMode });
+        console.log('🔍 Zoom end:', { elapsed, dx, dy, scaleChanged, activeTool, crosshairMode, endX, endY });
         
         // If this was a quick tap with minimal movement and no scale change, do hit testing
         if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD && !scaleChanged && !activeTool && !crosshairMode) {
           // Get position relative to SVG
           const svgElement = svgRef.current;
-          if (svgElement && event.sourceEvent) {
+          if (svgElement) {
             const rect = svgElement.getBoundingClientRect();
-            const clickX = (event.sourceEvent.clientX ?? endX) - rect.left;
-            const clickY = (event.sourceEvent.clientY ?? endY) - rect.top;
+            const clickX = endX - rect.left;
+            const clickY = endY - rect.top;
             console.log('👆 Tap detected! Triggering selection at:', clickX, clickY);
             handleSvgTapSelection(clickX, clickY);
           }
