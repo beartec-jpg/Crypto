@@ -185,6 +185,11 @@ export default function CryptoSandbox() {
     createdAtZoomScale?: number; // zoom scale (k) when label was created - for dynamic visibility
   }
   
+  // Fib level with individual label toggle
+  type FibLevel = { ratio: number; visible: boolean; showLabel: boolean };
+  type FibLabelPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
+  type FibExtendDirection = 'none' | 'left' | 'right' | 'both';
+  
   // Fibonacci Retracement data
   interface FibRetracementData {
     id: string;
@@ -194,24 +199,25 @@ export default function CryptoSandbox() {
     opacity: number;
     lineStyle: LineStyle;
     thickness: number;
-    labelPosition: 'left' | 'right';
+    labelPosition: FibLabelPosition;
     showPrices: boolean;
     showExtensions: boolean;
-    levels: { ratio: number; visible: boolean }[];
+    extendDirection: FibExtendDirection;
+    levels: FibLevel[];
     createdAtZoomScale?: number;
   }
   
-  const DEFAULT_FIB_LEVELS = [
-    { ratio: 0, visible: true },
-    { ratio: 0.236, visible: true },
-    { ratio: 0.382, visible: true },
-    { ratio: 0.5, visible: true },
-    { ratio: 0.618, visible: true },
-    { ratio: 0.786, visible: true },
-    { ratio: 1, visible: true },
-    { ratio: 1.272, visible: false },
-    { ratio: 1.618, visible: false },
-    { ratio: 2.618, visible: false },
+  const DEFAULT_FIB_LEVELS: FibLevel[] = [
+    { ratio: 0, visible: true, showLabel: true },
+    { ratio: 0.236, visible: true, showLabel: true },
+    { ratio: 0.382, visible: true, showLabel: true },
+    { ratio: 0.5, visible: true, showLabel: true },
+    { ratio: 0.618, visible: true, showLabel: true },
+    { ratio: 0.786, visible: true, showLabel: true },
+    { ratio: 1, visible: true, showLabel: true },
+    { ratio: 1.272, visible: false, showLabel: true },
+    { ratio: 1.618, visible: false, showLabel: true },
+    { ratio: 2.618, visible: false, showLabel: true },
   ];
 
   // Trend-Based Fibonacci Extension data (3-click)
@@ -224,24 +230,25 @@ export default function CryptoSandbox() {
     opacity: number;
     lineStyle: LineStyle;
     thickness: number;
-    labelPosition: 'left' | 'right';
+    labelPosition: FibLabelPosition;
     showPrices: boolean;
     showExtensions: boolean;
-    levels: { ratio: number; visible: boolean }[];
+    extendDirection: FibExtendDirection;
+    levels: FibLevel[];
     createdAtZoomScale?: number;
   }
 
-  const DEFAULT_TRENDFIB_LEVELS = [
-    { ratio: 0, visible: true },
-    { ratio: 0.236, visible: true },
-    { ratio: 0.382, visible: true },
-    { ratio: 0.5, visible: true },
-    { ratio: 0.618, visible: true },
-    { ratio: 0.786, visible: true },
-    { ratio: 1, visible: true },
-    { ratio: 1.272, visible: true },
-    { ratio: 1.618, visible: true },
-    { ratio: 2.618, visible: false },
+  const DEFAULT_TRENDFIB_LEVELS: FibLevel[] = [
+    { ratio: 0, visible: true, showLabel: true },
+    { ratio: 0.236, visible: true, showLabel: true },
+    { ratio: 0.382, visible: true, showLabel: true },
+    { ratio: 0.5, visible: true, showLabel: true },
+    { ratio: 0.618, visible: true, showLabel: true },
+    { ratio: 0.786, visible: true, showLabel: true },
+    { ratio: 1, visible: true, showLabel: true },
+    { ratio: 1.272, visible: true, showLabel: true },
+    { ratio: 1.618, visible: true, showLabel: true },
+    { ratio: 2.618, visible: false, showLabel: true },
   ];
   
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
@@ -1487,9 +1494,10 @@ export default function CryptoSandbox() {
         opacity: 0.8,
         lineStyle: 'dashed',
         thickness: 1,
-        labelPosition: 'right',
+        labelPosition: 'bottom-right',
         showPrices: true,
         showExtensions: false,
+        extendDirection: 'both',
         levels: DEFAULT_FIB_LEVELS.map(l => ({ ...l })),
         createdAtZoomScale: zoomTransformRef.current?.k ?? 1,
       };
@@ -1584,9 +1592,10 @@ export default function CryptoSandbox() {
         opacity: 0.8,
         lineStyle: 'dashed',
         thickness: 1,
-        labelPosition: 'right',
+        labelPosition: 'bottom-right',
         showPrices: true,
         showExtensions: true,
+        extendDirection: 'both',
         levels: DEFAULT_TRENDFIB_LEVELS.map(l => ({ ...l })),
         createdAtZoomScale: zoomTransformRef.current?.k ?? 1,
       };
@@ -2097,7 +2106,6 @@ export default function CryptoSandbox() {
       
       for (const level of fib.levels) {
         if (!level.visible) continue;
-        if (level.ratio > 1 && !fib.showExtensions) continue;
         
         const levelPrice = lowPrice + level.ratio * range;
         const y = yScaleRef.current(levelPrice) + margin.top;
@@ -2116,7 +2124,6 @@ export default function CryptoSandbox() {
       
       for (const level of tfib.levels) {
         if (!level.visible) continue;
-        if (level.ratio > 1 && !tfib.showExtensions) continue;
         
         const levelPrice = basePrice + level.ratio * height * direction;
         const y = yScaleRef.current(levelPrice) + margin.top;
@@ -3124,10 +3131,23 @@ export default function CryptoSandbox() {
         const anchor2X = xS(new Date(fib.anchor2.time));
         const anchor2Y = yS(fib.anchor2.price);
         
-        // Draw each level
+        // Calculate line extents based on extendDirection
+        const extDir = fib.extendDirection || 'both';
+        const anchorMinX = Math.min(anchor1X, anchor2X);
+        const anchorMaxX = Math.max(anchor1X, anchor2X);
+        let lineX1 = margin.left;
+        let lineX2 = dimensions.width - margin.right;
+        if (extDir === 'none') {
+          lineX1 = anchorMinX; lineX2 = anchorMaxX;
+        } else if (extDir === 'left') {
+          lineX1 = margin.left; lineX2 = anchorMaxX;
+        } else if (extDir === 'right') {
+          lineX1 = anchorMinX; lineX2 = dimensions.width - margin.right;
+        }
+        
+        // Draw each level (visibility controlled entirely by level.visible)
         fib.levels.forEach(level => {
           if (!level.visible) return;
-          if (level.ratio > 1 && !fib.showExtensions) return;
           
           const levelPrice = lowPrice + level.ratio * range;
           const y = yS(levelPrice);
@@ -3135,8 +3155,8 @@ export default function CryptoSandbox() {
           const strokeDash = fib.lineStyle === 'dashed' ? '5,5' : fib.lineStyle === 'dotted' ? '2,4' : '';
           
           fibGroup.append('line')
-            .attr('x1', margin.left)
-            .attr('x2', dimensions.width - margin.right)
+            .attr('x1', lineX1)
+            .attr('x2', lineX2)
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', fib.color)
@@ -3145,17 +3165,25 @@ export default function CryptoSandbox() {
             .attr('stroke-dasharray', isMain ? '' : strokeDash)
             .style('pointer-events', 'none');
           
-          // Label
-          const labelX = fib.labelPosition === 'right' ? dimensions.width - margin.right - 10 : margin.left + 10;
-          const labelText = `${(level.ratio * 100).toFixed(1)}%${fib.showPrices ? ` (${levelPrice.toFixed(2)})` : ''}`;
-          fibGroup.append('text')
-            .attr('x', labelX)
-            .attr('y', y + 4)
-            .attr('fill', fib.color)
-            .attr('font-size', '11px')
-            .attr('text-anchor', fib.labelPosition === 'right' ? 'end' : 'start')
-            .attr('fill-opacity', fib.opacity)
-            .text(labelText);
+          // Label (only if showLabel is true for this level)
+          if (level.showLabel !== false) {
+            const pos = fib.labelPosition || 'bottom-right';
+            const isRight = pos.includes('right');
+            const isCenter = pos.includes('center');
+            const isTop = pos.includes('top');
+            let labelX = isRight ? lineX2 - 5 : isCenter ? (lineX1 + lineX2) / 2 : lineX1 + 5;
+            const labelY = isTop ? y - 4 : y + 12;
+            const anchor = isRight ? 'end' : isCenter ? 'middle' : 'start';
+            const labelText = `${(level.ratio * 100).toFixed(1)}%${fib.showPrices ? ` (${levelPrice.toFixed(2)})` : ''}`;
+            fibGroup.append('text')
+              .attr('x', labelX)
+              .attr('y', labelY)
+              .attr('fill', fib.color)
+              .attr('font-size', '11px')
+              .attr('text-anchor', anchor)
+              .attr('fill-opacity', fib.opacity)
+              .text(labelText);
+          }
         });
         
         // Selection indicators (anchor circles)
@@ -3186,6 +3214,20 @@ export default function CryptoSandbox() {
         const p3X = xS(new Date(tfib.p3.time));
         const p3Y = yS(tfib.p3.price);
         
+        // Calculate line extents based on extendDirection
+        const extDir = tfib.extendDirection || 'both';
+        const anchorMinX = Math.min(p1X, p2X, p3X);
+        const anchorMaxX = Math.max(p1X, p2X, p3X);
+        let lineX1 = margin.left;
+        let lineX2 = dimensions.width - margin.right;
+        if (extDir === 'none') {
+          lineX1 = anchorMinX; lineX2 = anchorMaxX;
+        } else if (extDir === 'left') {
+          lineX1 = margin.left; lineX2 = anchorMaxX;
+        } else if (extDir === 'right') {
+          lineX1 = anchorMinX; lineX2 = dimensions.width - margin.right;
+        }
+        
         // Draw impulse line (p1 to p2)
         tfibGroup.append('line')
           .attr('x1', p1X).attr('y1', p1Y)
@@ -3205,10 +3247,9 @@ export default function CryptoSandbox() {
           .attr('stroke-dasharray', '3,3')
           .style('pointer-events', 'none');
         
-        // Draw each extension level
+        // Draw each extension level (visibility controlled entirely by level.visible)
         tfib.levels.forEach(level => {
           if (!level.visible) return;
-          if (level.ratio > 1 && !tfib.showExtensions) return;
           
           const levelPrice = basePrice + level.ratio * height * direction;
           const y = yS(levelPrice);
@@ -3216,8 +3257,8 @@ export default function CryptoSandbox() {
           const strokeDash = tfib.lineStyle === 'dashed' ? '5,5' : tfib.lineStyle === 'dotted' ? '2,4' : '';
           
           tfibGroup.append('line')
-            .attr('x1', margin.left)
-            .attr('x2', dimensions.width - margin.right)
+            .attr('x1', lineX1)
+            .attr('x2', lineX2)
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', tfib.color)
@@ -3226,17 +3267,25 @@ export default function CryptoSandbox() {
             .attr('stroke-dasharray', isMain ? '' : strokeDash)
             .style('pointer-events', 'none');
           
-          // Label
-          const labelX = tfib.labelPosition === 'right' ? dimensions.width - margin.right - 10 : margin.left + 10;
-          const labelText = `${(level.ratio * 100).toFixed(1)}%${tfib.showPrices ? ` (${levelPrice.toFixed(2)})` : ''}`;
-          tfibGroup.append('text')
-            .attr('x', labelX)
-            .attr('y', y + 4)
-            .attr('fill', tfib.color)
-            .attr('font-size', '11px')
-            .attr('text-anchor', tfib.labelPosition === 'right' ? 'end' : 'start')
-            .attr('fill-opacity', tfib.opacity)
-            .text(labelText);
+          // Label (only if showLabel is true for this level)
+          if (level.showLabel !== false) {
+            const pos = tfib.labelPosition || 'bottom-right';
+            const isRight = pos.includes('right');
+            const isCenter = pos.includes('center');
+            const isTop = pos.includes('top');
+            let labelX = isRight ? lineX2 - 5 : isCenter ? (lineX1 + lineX2) / 2 : lineX1 + 5;
+            const labelY = isTop ? y - 4 : y + 12;
+            const anchor = isRight ? 'end' : isCenter ? 'middle' : 'start';
+            const labelText = `${(level.ratio * 100).toFixed(1)}%${tfib.showPrices ? ` (${levelPrice.toFixed(2)})` : ''}`;
+            tfibGroup.append('text')
+              .attr('x', labelX)
+              .attr('y', labelY)
+              .attr('fill', tfib.color)
+              .attr('font-size', '11px')
+              .attr('text-anchor', anchor)
+              .attr('fill-opacity', tfib.opacity)
+              .text(labelText);
+          }
         });
         
         // Selection indicators (3 anchor circles)
@@ -6467,7 +6516,6 @@ export default function CryptoSandbox() {
                   style={{ left: fibMenuPos.x, top: fibMenuPos.y }}
                   data-menu="fib"
                 >
-                  {/* Drag handle */}
                   <div 
                     className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
                     onMouseDown={(e) => {
@@ -6479,59 +6527,34 @@ export default function CryptoSandbox() {
                     <div className="w-6 h-0.5 bg-slate-400 rounded" />
                   </div>
                   <div className="p-1 flex flex-col gap-1">
-                    {/* Delete */}
                     <button onClick={deleteFib} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete" data-testid="button-delete-fib">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
                       </svg>
                     </button>
-                    {/* Color picker */}
-                    <button
-                      onClick={() => setActiveSubmenu(activeSubmenu === 'fib-color' ? null : 'fib-color')}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'fib-color' ? 'bg-slate-600' : ''}`}
-                      title="Colour"
-                      data-testid="button-fib-color"
-                    >
+                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'fib-setup' ? null : 'fib-setup')} className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'fib-setup' ? 'bg-slate-600' : ''}`} title="Setup Levels" data-testid="button-fib-setup">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="10" cy="10" r="7" />
-                        <circle cx="10" cy="10" r="3" fill={fib?.color || '#facc15'} stroke="none" />
+                        <circle cx="10" cy="10" r="3" /><path d="M10 2v3M10 15v3M2 10h3M15 10h3M4.5 4.5l2 2M13.5 13.5l2 2M4.5 15.5l2-2M13.5 6.5l2-2" />
                       </svg>
                     </button>
-                    {/* Toggle extensions */}
-                    <button
-                      onClick={() => updateFib(selectedFib, { showExtensions: !fib?.showExtensions })}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${fib?.showExtensions ? 'bg-slate-600' : ''}`}
-                      title="Toggle Extensions"
-                      data-testid="button-fib-extensions"
-                    >
+                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'fib-lines' ? null : 'fib-lines')} className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'fib-lines' ? 'bg-slate-600' : ''}`} title="Lines Style" data-testid="button-fib-lines">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M4 4v12M16 4v12M4 16h12M4 4h12" />
+                        <path d="M4 6h12M4 10h12M4 14h12" />
                       </svg>
                     </button>
-                    {/* Toggle prices */}
-                    <button
-                      onClick={() => updateFib(selectedFib, { showPrices: !fib?.showPrices })}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${fib?.showPrices ? 'bg-slate-600' : ''}`}
-                      title="Toggle Prices"
-                      data-testid="button-fib-prices"
-                    >
+                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'fib-extend' ? null : 'fib-extend')} className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'fib-extend' ? 'bg-slate-600' : ''}`} title="Extend Direction" data-testid="button-fib-extend">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <text x="5" y="14" fontSize="10" fill="currentColor" stroke="none">$</text>
+                        <path d="M4 10h12M7 7l-3 3 3 3M13 7l3 3-3 3" />
                       </svg>
                     </button>
-                    {/* Move anchor */}
-                    <button
-                      onClick={() => {
-                        setMovingFibAnchor({ fibId: selectedFib, anchor: 'anchor1' });
-                        setFibMenuPos(null);
-                        setActiveSubmenu(null);
-                      }}
-                      className="p-2 hover:bg-slate-700 rounded text-white"
-                      title="Move Anchors"
-                      data-testid="button-fib-move"
-                    >
+                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'fib-labels' ? null : 'fib-labels')} className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'fib-labels' ? 'bg-slate-600' : ''}`} title="Labels" data-testid="button-fib-labels">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M10 2v16M2 10h16M5 5l5-3 5 3M5 15l5 3 5-3M15 5l3 5-3 5M5 5l-3 5 3 5" />
+                        <path d="M4 4h8l4 4v8a2 2 0 01-2 2H4V4z" />
+                      </svg>
+                    </button>
+                    <button onClick={() => updateFib(selectedFib, { showPrices: !fib?.showPrices })} className={`p-2 hover:bg-slate-700 rounded text-white ${fib?.showPrices ? 'bg-slate-600' : ''}`} title="Toggle Prices" data-testid="button-fib-prices">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <text x="4" y="15" fontSize="14" fill="currentColor" stroke="none" fontWeight="bold">$</text>
                       </svg>
                     </button>
                   </div>
@@ -6539,23 +6562,111 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* Fib color submenu */}
-            {activeSubmenu === 'fib-color' && fibMenuPos && selectedFib && (() => {
+            {/* Fib Setup submenu - level values list */}
+            {activeSubmenu === 'fib-setup' && fibMenuPos && selectedFib && (() => {
+              const fib = drawnFibRetraces.find(f => f.id === selectedFib);
+              return (
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48 max-h-64 overflow-y-auto" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}>
+                  <div className="text-xs text-gray-300 mb-2 font-semibold">Fib Levels</div>
+                  {fib?.levels.map((level, idx) => (
+                    <div key={idx} className="flex items-center gap-1 mb-1">
+                      <button onClick={() => {
+                        const newLevels = [...(fib?.levels || [])];
+                        newLevels[idx] = { ...newLevels[idx], visible: !newLevels[idx].visible };
+                        updateFib(selectedFib, { levels: newLevels });
+                      }} className={`w-4 h-4 rounded border ${level.visible ? 'bg-green-500 border-green-400' : 'bg-slate-600 border-slate-500'}`} data-testid={`button-fib-level-toggle-${idx}`} />
+                      <input type="number" step="0.1" value={(level.ratio * 100).toFixed(1)} onChange={e => {
+                        const newLevels = [...(fib?.levels || [])];
+                        newLevels[idx] = { ...newLevels[idx], ratio: parseFloat(e.target.value) / 100 };
+                        updateFib(selectedFib, { levels: newLevels });
+                      }} className="flex-1 bg-slate-600 text-white px-1 py-0.5 text-xs rounded w-16" data-testid={`input-fib-level-${idx}`} />
+                      <span className="text-xs text-gray-400">%</span>
+                      <button onClick={() => {
+                        const newLevels = fib?.levels.filter((_, i) => i !== idx) || [];
+                        updateFib(selectedFib, { levels: newLevels });
+                      }} className="text-red-400 hover:text-red-300 text-xs px-1" data-testid={`button-fib-level-remove-${idx}`}>×</button>
+                    </div>
+                  ))}
+                  <button onClick={() => {
+                    const newLevels = [...(fib?.levels || []), { ratio: 0, visible: true, showLabel: true }];
+                    updateFib(selectedFib, { levels: newLevels });
+                  }} className="w-full mt-2 bg-slate-600 hover:bg-slate-500 text-white text-xs py-1 rounded" data-testid="button-fib-add-level">+ Add Level</button>
+                </div>
+              );
+            })()}
+            
+            {/* Fib Lines submenu - style, opacity, color */}
+            {activeSubmenu === 'fib-lines' && fibMenuPos && selectedFib && (() => {
+              const fib = drawnFibRetraces.find(f => f.id === selectedFib);
               const colors = ['#facc15', '#22c55e', '#3b82f6', '#ef4444', '#a855f7', '#06b6d4', '#f97316', '#ffffff'];
               return (
-                <div 
-                  className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 flex flex-wrap gap-1"
-                  style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}
-                >
-                  {colors.map(c => (
-                    <button 
-                      key={c} 
-                      className="w-6 h-6 rounded border border-slate-400 hover:scale-110 transition-transform"
-                      style={{ backgroundColor: c }}
-                      onClick={() => { updateFib(selectedFib, { color: c }); setActiveSubmenu(null); }}
-                      data-testid={`button-fib-color-${c.replace('#', '')}`}
-                    />
-                  ))}
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-40" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}>
+                  <div className="text-xs text-gray-300 mb-2 font-semibold">Line Style</div>
+                  <div className="flex gap-1 mb-3">
+                    {(['solid', 'dashed', 'dotted'] as const).map(style => (
+                      <button key={style} onClick={() => updateFib(selectedFib, { lineStyle: style })} className={`flex-1 py-1 text-xs rounded ${fib?.lineStyle === style ? 'bg-blue-600' : 'bg-slate-600 hover:bg-slate-500'}`} data-testid={`button-fib-style-${style}`}>
+                        {style === 'solid' ? '—' : style === 'dashed' ? '- -' : '···'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-300 mb-1">Opacity</div>
+                  <input type="range" min="0.1" max="1" step="0.1" value={fib?.opacity || 0.8} onChange={e => updateFib(selectedFib, { opacity: parseFloat(e.target.value) })} className="w-full mb-3" data-testid="input-fib-opacity" />
+                  <div className="text-xs text-gray-300 mb-1">Colour</div>
+                  <div className="flex flex-wrap gap-1">
+                    {colors.map(c => (
+                      <button key={c} className={`w-5 h-5 rounded border ${fib?.color === c ? 'border-white border-2' : 'border-slate-400'}`} style={{ backgroundColor: c }} onClick={() => updateFib(selectedFib, { color: c })} data-testid={`button-fib-color-${c.replace('#', '')}`} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Fib Extend submenu - direction tabs */}
+            {activeSubmenu === 'fib-extend' && fibMenuPos && selectedFib && (() => {
+              const fib = drawnFibRetraces.find(f => f.id === selectedFib);
+              const dirs: FibExtendDirection[] = ['none', 'left', 'right', 'both'];
+              return (
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}>
+                  <div className="text-xs text-gray-300 mb-2 font-semibold">Extend Lines</div>
+                  <div className="flex gap-1">
+                    {dirs.map(dir => (
+                      <button key={dir} onClick={() => updateFib(selectedFib, { extendDirection: dir })} className={`px-2 py-1 text-xs rounded ${(fib?.extendDirection || 'both') === dir ? 'bg-blue-600' : 'bg-slate-600 hover:bg-slate-500'}`} data-testid={`button-fib-extend-${dir}`}>
+                        {dir === 'none' ? '|—|' : dir === 'left' ? '←|' : dir === 'right' ? '|→' : '←→'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* Fib Labels submenu - position keypad + individual toggles */}
+            {activeSubmenu === 'fib-labels' && fibMenuPos && selectedFib && (() => {
+              const fib = drawnFibRetraces.find(f => f.id === selectedFib);
+              const positions: FibLabelPosition[] = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+              return (
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}>
+                  <div className="text-xs text-gray-300 mb-2 font-semibold">Label Position</div>
+                  <div className="grid grid-cols-3 gap-1 mb-3">
+                    {positions.map(pos => (
+                      <button key={pos} onClick={() => updateFib(selectedFib, { labelPosition: pos })} className={`p-1 text-xs rounded ${(fib?.labelPosition || 'bottom-right') === pos ? 'bg-blue-600' : 'bg-slate-600 hover:bg-slate-500'}`} data-testid={`button-fib-labelpos-${pos}`}>
+                        {pos.includes('top') ? '↑' : '↓'}{pos.includes('left') ? '←' : pos.includes('right') ? '→' : '•'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-300 mb-1 font-semibold">Level Labels</div>
+                  <div className="max-h-32 overflow-y-auto">
+                    {fib?.levels.filter(l => l.visible).map((level, idx) => (
+                      <div key={idx} className="flex items-center gap-2 mb-1">
+                        <button onClick={() => {
+                          const levelIdx = fib.levels.findIndex(l => l.ratio === level.ratio);
+                          const newLevels = [...fib.levels];
+                          newLevels[levelIdx] = { ...newLevels[levelIdx], showLabel: !newLevels[levelIdx].showLabel };
+                          updateFib(selectedFib, { levels: newLevels });
+                        }} className={`w-4 h-4 rounded border ${level.showLabel !== false ? 'bg-green-500 border-green-400' : 'bg-slate-600 border-slate-500'}`} data-testid={`button-fib-showlabel-${idx}`} />
+                        <span className="text-xs text-gray-300">{(level.ratio * 100).toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })()}
@@ -6585,35 +6696,29 @@ export default function CryptoSandbox() {
                         <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
                       </svg>
                     </button>
-                    <button
-                      onClick={() => setActiveSubmenu(activeSubmenu === 'trendfib-color' ? null : 'trendfib-color')}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'trendfib-color' ? 'bg-slate-600' : ''}`}
-                      title="Colour"
-                      data-testid="button-trendfib-color"
-                    >
+                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'trendfib-setup' ? null : 'trendfib-setup')} className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'trendfib-setup' ? 'bg-slate-600' : ''}`} title="Setup Levels" data-testid="button-trendfib-setup">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="10" cy="10" r="7" />
-                        <circle cx="10" cy="10" r="3" fill={tfib?.color || '#FFD700'} stroke="none" />
+                        <circle cx="10" cy="10" r="3" /><path d="M10 2v3M10 15v3M2 10h3M15 10h3M4.5 4.5l2 2M13.5 13.5l2 2M4.5 15.5l2-2M13.5 6.5l2-2" />
                       </svg>
                     </button>
-                    <button
-                      onClick={() => updateTrendFib(selectedTrendFib, { showExtensions: !tfib?.showExtensions })}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${tfib?.showExtensions ? 'bg-slate-600' : ''}`}
-                      title="Toggle Extensions"
-                      data-testid="button-trendfib-extensions"
-                    >
+                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'trendfib-lines' ? null : 'trendfib-lines')} className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'trendfib-lines' ? 'bg-slate-600' : ''}`} title="Lines Style" data-testid="button-trendfib-lines">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M4 4v12M16 4v12M4 16h12M4 4h12" />
+                        <path d="M4 6h12M4 10h12M4 14h12" />
                       </svg>
                     </button>
-                    <button
-                      onClick={() => updateTrendFib(selectedTrendFib, { showPrices: !tfib?.showPrices })}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${tfib?.showPrices ? 'bg-slate-600' : ''}`}
-                      title="Toggle Prices"
-                      data-testid="button-trendfib-prices"
-                    >
+                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'trendfib-extend' ? null : 'trendfib-extend')} className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'trendfib-extend' ? 'bg-slate-600' : ''}`} title="Extend Direction" data-testid="button-trendfib-extend">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <text x="5" y="14" fontSize="10" fill="currentColor" stroke="none">$</text>
+                        <path d="M4 10h12M7 7l-3 3 3 3M13 7l3 3-3 3" />
+                      </svg>
+                    </button>
+                    <button onClick={() => setActiveSubmenu(activeSubmenu === 'trendfib-labels' ? null : 'trendfib-labels')} className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'trendfib-labels' ? 'bg-slate-600' : ''}`} title="Labels" data-testid="button-trendfib-labels">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 4h8l4 4v8a2 2 0 01-2 2H4V4z" />
+                      </svg>
+                    </button>
+                    <button onClick={() => updateTrendFib(selectedTrendFib, { showPrices: !tfib?.showPrices })} className={`p-2 hover:bg-slate-700 rounded text-white ${tfib?.showPrices ? 'bg-slate-600' : ''}`} title="Toggle Prices" data-testid="button-trendfib-prices">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <text x="4" y="15" fontSize="14" fill="currentColor" stroke="none" fontWeight="bold">$</text>
                       </svg>
                     </button>
                   </div>
@@ -6621,23 +6726,111 @@ export default function CryptoSandbox() {
               );
             })()}
             
-            {/* Trend Fib color submenu */}
-            {activeSubmenu === 'trendfib-color' && trendFibMenuPos && selectedTrendFib && (() => {
+            {/* TrendFib Setup submenu */}
+            {activeSubmenu === 'trendfib-setup' && trendFibMenuPos && selectedTrendFib && (() => {
+              const tfib = drawnTrendFibs.find(t => t.id === selectedTrendFib);
+              return (
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48 max-h-64 overflow-y-auto" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}>
+                  <div className="text-xs text-gray-300 mb-2 font-semibold">Extension Levels</div>
+                  {tfib?.levels.map((level, idx) => (
+                    <div key={idx} className="flex items-center gap-1 mb-1">
+                      <button onClick={() => {
+                        const newLevels = [...(tfib?.levels || [])];
+                        newLevels[idx] = { ...newLevels[idx], visible: !newLevels[idx].visible };
+                        updateTrendFib(selectedTrendFib, { levels: newLevels });
+                      }} className={`w-4 h-4 rounded border ${level.visible ? 'bg-green-500 border-green-400' : 'bg-slate-600 border-slate-500'}`} data-testid={`button-trendfib-level-toggle-${idx}`} />
+                      <input type="number" step="0.1" value={(level.ratio * 100).toFixed(1)} onChange={e => {
+                        const newLevels = [...(tfib?.levels || [])];
+                        newLevels[idx] = { ...newLevels[idx], ratio: parseFloat(e.target.value) / 100 };
+                        updateTrendFib(selectedTrendFib, { levels: newLevels });
+                      }} className="flex-1 bg-slate-600 text-white px-1 py-0.5 text-xs rounded w-16" data-testid={`input-trendfib-level-${idx}`} />
+                      <span className="text-xs text-gray-400">%</span>
+                      <button onClick={() => {
+                        const newLevels = tfib?.levels.filter((_, i) => i !== idx) || [];
+                        updateTrendFib(selectedTrendFib, { levels: newLevels });
+                      }} className="text-red-400 hover:text-red-300 text-xs px-1" data-testid={`button-trendfib-level-remove-${idx}`}>×</button>
+                    </div>
+                  ))}
+                  <button onClick={() => {
+                    const newLevels = [...(tfib?.levels || []), { ratio: 0, visible: true, showLabel: true }];
+                    updateTrendFib(selectedTrendFib, { levels: newLevels });
+                  }} className="w-full mt-2 bg-slate-600 hover:bg-slate-500 text-white text-xs py-1 rounded" data-testid="button-trendfib-add-level">+ Add Level</button>
+                </div>
+              );
+            })()}
+            
+            {/* TrendFib Lines submenu */}
+            {activeSubmenu === 'trendfib-lines' && trendFibMenuPos && selectedTrendFib && (() => {
+              const tfib = drawnTrendFibs.find(t => t.id === selectedTrendFib);
               const colors = ['#FFD700', '#22c55e', '#3b82f6', '#ef4444', '#a855f7', '#06b6d4', '#f97316', '#ffffff'];
               return (
-                <div 
-                  className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 flex flex-wrap gap-1"
-                  style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}
-                >
-                  {colors.map(c => (
-                    <button 
-                      key={c} 
-                      className="w-6 h-6 rounded border border-slate-400 hover:scale-110 transition-transform"
-                      style={{ backgroundColor: c }}
-                      onClick={() => { updateTrendFib(selectedTrendFib, { color: c }); setActiveSubmenu(null); }}
-                      data-testid={`button-trendfib-color-${c.replace('#', '')}`}
-                    />
-                  ))}
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-40" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}>
+                  <div className="text-xs text-gray-300 mb-2 font-semibold">Line Style</div>
+                  <div className="flex gap-1 mb-3">
+                    {(['solid', 'dashed', 'dotted'] as const).map(style => (
+                      <button key={style} onClick={() => updateTrendFib(selectedTrendFib, { lineStyle: style })} className={`flex-1 py-1 text-xs rounded ${tfib?.lineStyle === style ? 'bg-blue-600' : 'bg-slate-600 hover:bg-slate-500'}`} data-testid={`button-trendfib-style-${style}`}>
+                        {style === 'solid' ? '—' : style === 'dashed' ? '- -' : '···'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-300 mb-1">Opacity</div>
+                  <input type="range" min="0.1" max="1" step="0.1" value={tfib?.opacity || 0.8} onChange={e => updateTrendFib(selectedTrendFib, { opacity: parseFloat(e.target.value) })} className="w-full mb-3" data-testid="input-trendfib-opacity" />
+                  <div className="text-xs text-gray-300 mb-1">Colour</div>
+                  <div className="flex flex-wrap gap-1">
+                    {colors.map(c => (
+                      <button key={c} className={`w-5 h-5 rounded border ${tfib?.color === c ? 'border-white border-2' : 'border-slate-400'}`} style={{ backgroundColor: c }} onClick={() => updateTrendFib(selectedTrendFib, { color: c })} data-testid={`button-trendfib-color-${c.replace('#', '')}`} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* TrendFib Extend submenu */}
+            {activeSubmenu === 'trendfib-extend' && trendFibMenuPos && selectedTrendFib && (() => {
+              const tfib = drawnTrendFibs.find(t => t.id === selectedTrendFib);
+              const dirs: FibExtendDirection[] = ['none', 'left', 'right', 'both'];
+              return (
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}>
+                  <div className="text-xs text-gray-300 mb-2 font-semibold">Extend Lines</div>
+                  <div className="flex gap-1">
+                    {dirs.map(dir => (
+                      <button key={dir} onClick={() => updateTrendFib(selectedTrendFib, { extendDirection: dir })} className={`px-2 py-1 text-xs rounded ${(tfib?.extendDirection || 'both') === dir ? 'bg-blue-600' : 'bg-slate-600 hover:bg-slate-500'}`} data-testid={`button-trendfib-extend-${dir}`}>
+                        {dir === 'none' ? '|—|' : dir === 'left' ? '←|' : dir === 'right' ? '|→' : '←→'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {/* TrendFib Labels submenu */}
+            {activeSubmenu === 'trendfib-labels' && trendFibMenuPos && selectedTrendFib && (() => {
+              const tfib = drawnTrendFibs.find(t => t.id === selectedTrendFib);
+              const positions: FibLabelPosition[] = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+              return (
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}>
+                  <div className="text-xs text-gray-300 mb-2 font-semibold">Label Position</div>
+                  <div className="grid grid-cols-3 gap-1 mb-3">
+                    {positions.map(pos => (
+                      <button key={pos} onClick={() => updateTrendFib(selectedTrendFib, { labelPosition: pos })} className={`p-1 text-xs rounded ${(tfib?.labelPosition || 'bottom-right') === pos ? 'bg-blue-600' : 'bg-slate-600 hover:bg-slate-500'}`} data-testid={`button-trendfib-labelpos-${pos}`}>
+                        {pos.includes('top') ? '↑' : '↓'}{pos.includes('left') ? '←' : pos.includes('right') ? '→' : '•'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-300 mb-1 font-semibold">Level Labels</div>
+                  <div className="max-h-32 overflow-y-auto">
+                    {tfib?.levels.filter(l => l.visible).map((level, idx) => (
+                      <div key={idx} className="flex items-center gap-2 mb-1">
+                        <button onClick={() => {
+                          const levelIdx = tfib.levels.findIndex(l => l.ratio === level.ratio);
+                          const newLevels = [...tfib.levels];
+                          newLevels[levelIdx] = { ...newLevels[levelIdx], showLabel: !newLevels[levelIdx].showLabel };
+                          updateTrendFib(selectedTrendFib, { levels: newLevels });
+                        }} className={`w-4 h-4 rounded border ${level.showLabel !== false ? 'bg-green-500 border-green-400' : 'bg-slate-600 border-slate-500'}`} data-testid={`button-trendfib-showlabel-${idx}`} />
+                        <span className="text-xs text-gray-300">{(level.ratio * 100).toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })()}
