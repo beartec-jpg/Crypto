@@ -1762,17 +1762,17 @@ export default function CryptoSandbox() {
     // Don't select if in drawing mode
     if (activeTool) return;
     
-    // Block concurrent taps (more reliable than timestamp-based debounce)
-    if (tapInProgressRef.current) {
-      console.log('⏭️ Blocking concurrent tap');
-      return;
-    }
-    tapInProgressRef.current = true;
-    setTimeout(() => { tapInProgressRef.current = false; }, 300);
-    
-    // Show tap feedback circle
-    setTapFeedback({ x: clickX, y: clickY });
-    setTimeout(() => setTapFeedback(null), 400);
+    // Show tap feedback circle (only if not already showing)
+    // Use functional update to check current state and prevent double-pulse
+    setTapFeedback(current => {
+      if (current !== null) {
+        console.log('⏭️ Tap feedback already showing, skipping');
+        return current; // Keep existing feedback, don't restart animation
+      }
+      // Start new feedback with auto-clear
+      setTimeout(() => setTapFeedback(null), 400);
+      return { x: clickX, y: clickY };
+    });
     
     const candidates = collectHitCandidates(clickX, clickY);
     console.log('🎯 Candidates found:', candidates);
