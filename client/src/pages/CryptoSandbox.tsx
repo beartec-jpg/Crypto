@@ -752,7 +752,13 @@ export default function CryptoSandbox() {
   
   // Handle click on trendline to select it - auto enters move mode
   const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
-    console.log('✅ handleTrendlineSelect called:', { lineId, clickX, clickY });
+    console.log('✅ handleTrendlineSelect called:', { lineId, clickX, clickY, alreadySelected: selectedTrendline === lineId });
+    
+    // If already selected, don't re-select (let pickup point handlers work)
+    if (selectedTrendline === lineId) {
+      console.log('⏭️ Line already selected, skipping re-selection');
+      return;
+    }
     
     // Track when selection occurred to prevent immediate close
     selectionTimeRef.current = Date.now();
@@ -779,7 +785,7 @@ export default function CryptoSandbox() {
     console.log('📍 Menu position set:', menuPos);
     setTrendlineMenuPos(menuPos);
     setActiveSubmenu(null);
-  }, [constrainMenuPosition]);
+  }, [constrainMenuPosition, selectedTrendline]);
   
   // Delete selected trendline
   const deleteTrendline = useCallback(() => {
@@ -1799,8 +1805,25 @@ export default function CryptoSandbox() {
           handleTextLabelSelect(candidate.id, clickX, clickY);
           break;
       }
+    } else {
+      // Clicked on empty space - close all menus and deselect
+      console.log('🔄 Closing all menus (clicked empty space)');
+      closeTrendlineMenu();
+      closeHorizontalMenu();
+      setSelectedChannel(null);
+      setChannelMenuPos(null);
+      setSelectedHChannel(null);
+      setHChannelMenuPos(null);
+      setMovingHChannel(null);
+      setSelectedSChannel(null);
+      setSChannelMenuPos(null);
+      setSelectedTextLabel(null);
+      setTextLabelMenuPos(null);
+      setMovingWholeLine(null);
+      setSelectionPickerPos(null);
+      setSelectionCandidates([]);
     }
-  }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
+  }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect, closeTrendlineMenu, closeHorizontalMenu]);
   
   // Find if crosshair is near an endpoint of the moving trendline
   const findNearbyEndpoint = useCallback((clickX: number, clickY: number): 'p1' | 'p2' | null => {
