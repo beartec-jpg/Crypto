@@ -1516,7 +1516,15 @@ export default function CryptoSandbox() {
     };
     
     // Check trendlines - use infinite line distance since lines can be extended
+    // Also check visibility based on zoom level
+    const currentK = zoomTransformRef.current?.k ?? 1;
     for (const line of drawnTrendlines) {
+      // Calculate visibility based on zoom level when created
+      const createdK = line.createdAtZoomScale ?? 1;
+      const zoomRatio = currentK / createdK;
+      // Skip if invisible (zoomed out too far from creation level)
+      if (zoomRatio < 0.2) continue;
+      
       const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
       const y1 = yScaleRef.current(line.p1.price) + margin.top;
       const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
