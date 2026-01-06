@@ -1562,7 +1562,7 @@ export default function CryptoSandbox() {
       return Math.abs((y2 - y1) * px - (x2 - x1) * py + x2 * y1 - y2 * x1) / lineLen;
     };
     
-    // Check trendlines - use infinite line distance since lines can be extended
+    // Check trendlines - account for extensions when detecting hits
     // Also check visibility based on zoom level
     const currentK = zoomTransformRef.current?.k ?? 1;
     console.log('🎯 Hit detection:', { clickX, clickY, currentK, trendlineCount: drawnTrendlines.length });
@@ -1576,13 +1576,41 @@ export default function CryptoSandbox() {
         continue;
       }
       
-      const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
-      const y1 = yScaleRef.current(line.p1.price) + margin.top;
-      const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
-      const y2 = yScaleRef.current(line.p2.price) + margin.top;
+      let x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
+      let y1 = yScaleRef.current(line.p1.price) + margin.top;
+      let x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
+      let y2 = yScaleRef.current(line.p2.price) + margin.top;
+      
+      // Calculate extended segment points if extensions are enabled
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      if ((dx !== 0 || dy !== 0) && (line.extendLeft || line.extendRight)) {
+        const slope = dy / dx;
+        if (line.extendLeft) {
+          // Extend to left edge of chart
+          const leftX = margin.left;
+          const leftY = y1 + slope * (leftX - x1);
+          // Use extended point as x1,y1 if it extends left
+          if (leftX < x1) {
+            x1 = leftX;
+            y1 = leftY;
+          }
+        }
+        if (line.extendRight) {
+          // Extend to right edge of chart
+          const rightX = dimensions.width - margin.right;
+          const rightY = y1 + slope * (rightX - x1);
+          // Use extended point as x2,y2 if it extends right
+          if (rightX > x2) {
+            x2 = rightX;
+            y2 = rightY;
+          }
+        }
+      }
+      
       const dist = distToSegment(clickX, clickY, x1, y1, x2, y2);
-      console.log('📏 Trendline distance:', { id: line.id, dist, threshold, x1, y1, x2, y2 });
-      // Use segment distance for better accuracy along the line
+      console.log('📏 Trendline distance:', { id: line.id, dist, threshold, x1, y1, x2, y2, extendLeft: line.extendLeft, extendRight: line.extendRight });
+      // Use segment distance for the (potentially extended) line
       if (dist <= threshold) {
         candidates.push({ id: line.id, type: 'trendline' });
       }
@@ -1641,14 +1669,42 @@ export default function CryptoSandbox() {
     
     // Check sloped channels (top and bottom sloped lines + fill area)
     for (const sch of drawnSChannels) {
-      const x1Top = xScaleRef.current(new Date(sch.topLine.p1.time)) + margin.left;
-      const y1Top = yScaleRef.current(sch.topLine.p1.price) + margin.top;
-      const x2Top = xScaleRef.current(new Date(sch.topLine.p2.time)) + margin.left;
-      const y2Top = yScaleRef.current(sch.topLine.p2.price) + margin.top;
-      const x1Bot = xScaleRef.current(new Date(sch.bottomLine.p1.time)) + margin.left;
-      const y1Bot = yScaleRef.current(sch.bottomLine.p1.price) + margin.top;
-      const x2Bot = xScaleRef.current(new Date(sch.bottomLine.p2.time)) + margin.left;
-      const y2Bot = yScaleRef.current(sch.bottomLine.p2.price) + margin.top;
+      let x1Top = xScaleRef.current(new Date(sch.topLine.p1.time)) + margin.left;
+      let y1Top = yScaleRef.current(sch.topLine.p1.price) + margin.top;
+      let x2Top = xScaleRef.current(new Date(sch.topLine.p2.time)) + margin.left;
+      let y2Top = yScaleRef.current(sch.topLine.p2.price) + margin.top;
+      let x1Bot = xScaleRef.current(new Date(sch.bottomLine.p1.time)) + margin.left;
+      let y1Bot = yScaleRef.current(sch.bottomLine.p1.price) + margin.top;
+      let x2Bot = xScaleRef.current(new Date(sch.bottomLine.p2.time)) + margin.left;
+      let y2Bot = yScaleRef.current(sch.bottomLine.p2.price) + margin.top;
+      
+      // Extend lines if extensions are enabled
+      if (sch.extendLeft || sch.extendRight) {
+        const dxTop = x2Top - x1Top;
+        const dyTop = y2Top - y1Top;
+        const dxBot = x2Bot - x1Bot;
+        const dyBot = y2Bot - y1Bot;
+        
+        if (dxTop !== 0 || dyTop !== 0) {
+          const slopeTop = dyTop / dxTop;
+          const slopeBot = dyBot / dxBot;
+          
+          if (sch.extendLeft) {
+            const leftX = margin.left;
+            x1Top = leftX;
+            y1Top = y1Top + slopeTop * (leftX - x1Top);
+            x1Bot = leftX;
+            y1Bot = y1Bot + slopeBot * (leftX - x1Bot);
+          }
+          if (sch.extendRight) {
+            const rightX = dimensions.width - margin.right;
+            x2Top = rightX;
+            y2Top = y1Top + slopeTop * (rightX - x1Top);
+            x2Bot = rightX;
+            y2Bot = y1Bot + slopeBot * (rightX - x1Bot);
+          }
+        }
+      }
       
       // Check if near top or bottom line
       if (distToSegment(clickX, clickY, x1Top, y1Top, x2Top, y2Top) <= threshold ||
