@@ -2608,10 +2608,46 @@ export default function CryptoSandbox() {
       .call(g => g.selectAll('line').attr('stroke', '#475569'))
       .call(g => g.select('.domain').attr('stroke', '#475569'));
     
+    // Track zoom start for tap detection
+    let zoomStartTime = 0;
+    let zoomStartX = 0;
+    let zoomStartY = 0;
+    let zoomStartK = 1;
+    
     // Zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.5, 20])
       .translateExtent([[-100, 0], [width + 100, height]])
+      .on('start', (event) => {
+        zoomStartTime = Date.now();
+        zoomStartX = event.sourceEvent?.clientX ?? 0;
+        zoomStartY = event.sourceEvent?.clientY ?? 0;
+        zoomStartK = event.transform.k;
+        console.log('🔍 Zoom start:', { zoomStartTime, zoomStartX, zoomStartY, zoomStartK });
+      })
+      .on('end', (event) => {
+        const elapsed = Date.now() - zoomStartTime;
+        const endX = event.sourceEvent?.clientX ?? 0;
+        const endY = event.sourceEvent?.clientY ?? 0;
+        const dx = Math.abs(endX - zoomStartX);
+        const dy = Math.abs(endY - zoomStartY);
+        const scaleChanged = Math.abs(event.transform.k - zoomStartK) > 0.01;
+        
+        console.log('🔍 Zoom end:', { elapsed, dx, dy, scaleChanged, activeTool, crosshairMode });
+        
+        // If this was a quick tap with minimal movement and no scale change, do hit testing
+        if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD && !scaleChanged && !activeTool && !crosshairMode) {
+          // Get position relative to SVG
+          const svgElement = svgRef.current;
+          if (svgElement && event.sourceEvent) {
+            const rect = svgElement.getBoundingClientRect();
+            const clickX = (event.sourceEvent.clientX ?? endX) - rect.left;
+            const clickY = (event.sourceEvent.clientY ?? endY) - rect.top;
+            console.log('👆 Tap detected! Triggering selection at:', clickX, clickY);
+            handleSvgTapSelection(clickX, clickY);
+          }
+        }
+      })
       .on('zoom', (event) => {
         const transform = event.transform;
         
@@ -2694,6 +2730,45 @@ export default function CryptoSandbox() {
     
     zoomRef.current = zoom;
     svg.call(zoom);
+    
+    // Add D3-based touch event listeners for tap detection (fires before D3 zoom captures)
+    let tapStartX = 0;
+    let tapStartY = 0;
+    let tapStartTime = 0;
+    
+    svg.on('touchstart.tap', function(event: TouchEvent) {
+      if (activeTool || crosshairMode) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      tapStartX = touch.clientX;
+      tapStartY = touch.clientY;
+      tapStartTime = Date.now();
+      console.log('🖐️ D3 touchstart:', { tapStartX, tapStartY, tapStartTime });
+    });
+    
+    svg.on('touchend.tap', function(event: TouchEvent) {
+      if (activeTool || crosshairMode) return;
+      const changedTouch = event.changedTouches[0];
+      if (!changedTouch) return;
+      
+      const elapsed = Date.now() - tapStartTime;
+      const dx = Math.abs(changedTouch.clientX - tapStartX);
+      const dy = Math.abs(changedTouch.clientY - tapStartY);
+      
+      console.log('🖐️ D3 touchend:', { elapsed, dx, dy, TAP_MAX_DURATION, TOUCH_THRESHOLD });
+      
+      // If this was a quick tap with minimal movement, do hit testing
+      if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD) {
+        const svgElement = svgRef.current;
+        if (svgElement) {
+          const rect = svgElement.getBoundingClientRect();
+          const clickX = changedTouch.clientX - rect.left;
+          const clickY = changedTouch.clientY - rect.top;
+          console.log('👆 D3 Tap detected! Triggering selection at:', clickX, clickY);
+          handleSvgTapSelection(clickX, clickY);
+        }
+      }
+    });
     
     // Restore saved zoom transform if it exists
     if (zoomTransformRef.current) {
