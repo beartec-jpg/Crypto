@@ -2815,6 +2815,7 @@ export default function CryptoSandbox() {
               className="chart-background"
               data-testid="sandbox-chart"
               onTouchStart={(e) => {
+                console.log('👆 TouchStart:', { crosshairMode, activeTool, touches: e.touches.length });
                 // Only track taps when not in crosshair mode (crosshair handles its own events)
                 if (!crosshairMode && !activeTool && e.touches[0]) {
                   const touch = e.touches[0];
@@ -2824,6 +2825,7 @@ export default function CryptoSandbox() {
                     y: touch.clientY - rect.top,
                     time: Date.now()
                   };
+                  console.log('👆 Tap tracking started:', svgTapStartRef.current);
                 }
               }}
               onTouchMove={(e) => {
@@ -2834,16 +2836,20 @@ export default function CryptoSandbox() {
                   const dx = (touch.clientX - rect.left) - svgTapStartRef.current.x;
                   const dy = (touch.clientY - rect.top) - svgTapStartRef.current.y;
                   if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) {
+                    console.log('👆 Tap cancelled - moved too much:', { dx, dy });
                     svgTapStartRef.current = null; // Cancel tap - this is a pan gesture
                   }
                 }
               }}
               onTouchEnd={() => {
+                console.log('👆 TouchEnd:', { hasStart: !!svgTapStartRef.current });
                 // Check if this was a quick tap (not a drag)
                 if (svgTapStartRef.current) {
                   const elapsed = Date.now() - svgTapStartRef.current.time;
+                  console.log('👆 Tap elapsed:', elapsed, 'max:', TAP_MAX_DURATION);
                   if (elapsed < TAP_MAX_DURATION) {
                     // This was a tap - do hit testing
+                    console.log('👆 Triggering tap selection at:', svgTapStartRef.current.x, svgTapStartRef.current.y);
                     handleSvgTapSelection(svgTapStartRef.current.x, svgTapStartRef.current.y);
                   }
                   svgTapStartRef.current = null;
