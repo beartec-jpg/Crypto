@@ -1885,8 +1885,15 @@ export default function CryptoSandbox() {
   // Universal click pulse - show on any placement/move/selection
   const [clickPulse, setClickPulse] = useState<{ x: number; y: number } | null>(null);
   const showClickPulse = useCallback((x: number, y: number) => {
-    setClickPulse({ x, y });
-    setTimeout(() => setClickPulse(null), 400);
+    // Use functional update to prevent double-pulse from touch + synthetic click
+    setClickPulse(current => {
+      if (current !== null) {
+        console.log('⏭️ Click pulse already showing, skipping');
+        return current; // Keep existing pulse, don't restart animation
+      }
+      setTimeout(() => setClickPulse(null), 400);
+      return { x, y };
+    });
   }, []);
   
   // Render D3 chart - D3's built-in zoom handles pan/zoom
