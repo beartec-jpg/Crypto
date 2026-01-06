@@ -1459,13 +1459,22 @@ export default function CryptoSandbox() {
       return Math.sqrt((px - nearestX) ** 2 + (py - nearestY) ** 2);
     };
     
-    // Check trendlines
+    // Helper to calculate distance from point to infinite line (not clamped to segment)
+    const distToLine = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+      const lineLen = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+      if (lineLen === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+      // Distance = |cross product| / |line length|
+      return Math.abs((y2 - y1) * px - (x2 - x1) * py + x2 * y1 - y2 * x1) / lineLen;
+    };
+    
+    // Check trendlines - use infinite line distance since lines can be extended
     for (const line of drawnTrendlines) {
       const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
       const y1 = yScaleRef.current(line.p1.price) + margin.top;
       const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
       const y2 = yScaleRef.current(line.p2.price) + margin.top;
-      if (distToSegment(clickX, clickY, x1, y1, x2, y2) <= threshold) {
+      // Use line distance (not segment) so we can detect hits anywhere along the line
+      if (distToLine(clickX, clickY, x1, y1, x2, y2) <= threshold) {
         candidates.push({ id: line.id, type: 'trendline' });
       }
     }
