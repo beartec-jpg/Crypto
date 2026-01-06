@@ -239,6 +239,7 @@ export default function CryptoSandbox() {
   // Tap feedback circle (visual indicator where user tapped)
   const [tapFeedback, setTapFeedback] = useState<{ x: number; y: number } | null>(null);
   const lastTapTimeRef = useRef<number>(0); // Debounce double-taps
+  const selectionTimeRef = useRef<number>(0); // Track when selection occurred to prevent immediate close
   
   // Undo/redo history for ALL drawing types (unified)
   type DrawingState = {
@@ -744,6 +745,11 @@ export default function CryptoSandbox() {
   
   // Handle click on trendline to select it - auto enters move mode
   const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
+    console.log('✅ handleTrendlineSelect called:', { lineId, clickX, clickY });
+    
+    // Track when selection occurred to prevent immediate close
+    selectionTimeRef.current = Date.now();
+    
     // Close all other menus first
     setHorizontalMenuPos(null);
     setSelectedHorizontal(null);
@@ -763,6 +769,7 @@ export default function CryptoSandbox() {
     
     // Calculate menu position with edge detection
     const menuPos = constrainMenuPosition(clickX, clickY, 50, 200);
+    console.log('📍 Menu position set:', menuPos);
     setTrendlineMenuPos(menuPos);
     setActiveSubmenu(null);
   }, [constrainMenuPosition]);
@@ -4511,14 +4518,19 @@ export default function CryptoSandbox() {
                 }}
               >
                 <div 
-                  className="w-full h-full rounded-full border-2 border-cyan-400 animate-ping"
-                  style={{ animationDuration: '0.4s' }}
-                />
-                <div 
-                  className="absolute inset-0 rounded-full border border-cyan-400 opacity-50"
+                  className="w-full h-full rounded-full border-2 border-cyan-400"
+                  style={{ 
+                    animation: 'tapPulse 0.4s ease-out forwards'
+                  }}
                 />
               </div>
             )}
+            <style>{`
+              @keyframes tapPulse {
+                0% { transform: scale(0.5); opacity: 1; }
+                100% { transform: scale(1.5); opacity: 0; }
+              }
+            `}</style>
             
             {/* Selection Picker - shows when multiple overlapping elements */}
             {selectionPickerPos && selectionCandidates.length > 1 && (
@@ -5564,6 +5576,13 @@ export default function CryptoSandbox() {
                 className="absolute top-0 right-0 bottom-0 z-20"
                 style={{ left: 40 }}
                 onClick={(e) => {
+                  // Don't close immediately after selection (prevents touch event propagation issues)
+                  const timeSinceSelection = Date.now() - selectionTimeRef.current;
+                  if (timeSinceSelection < 300) {
+                    console.log('⏭️ Ignoring click - selection just occurred', timeSinceSelection);
+                    return;
+                  }
+                  
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left + 40; // Offset for toolbar
                   const clickY = e.clientY - rect.top;
