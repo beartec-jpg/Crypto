@@ -3807,25 +3807,27 @@ export default function CryptoSandbox() {
                   data-menu="submenu"
                   style={{ left: submenuX, top: trendlineMenuPos.y }}
                 >
-                  <div className="flex flex-col gap-2">
-                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedLine?.extendLeft || false}
-                        onChange={(e) => updateTrendline(selectedTrendline, { extendLeft: e.target.checked })}
-                        className="w-4 h-4"
-                      />
-                      Extend Left
-                    </label>
-                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedLine?.extendRight || false}
-                        onChange={(e) => updateTrendline(selectedTrendline, { extendRight: e.target.checked })}
-                        className="w-4 h-4"
-                      />
-                      Extend Right
-                    </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => updateTrendline(selectedTrendline, { extendLeft: !selectedLine?.extendLeft })}
+                      className={`p-2 rounded transition-colors ${selectedLine?.extendLeft ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}
+                      title="Extend Left"
+                      data-testid="btn-trendline-extend-left"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 4L4 10L12 16" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => updateTrendline(selectedTrendline, { extendRight: !selectedLine?.extendRight })}
+                      className={`p-2 rounded transition-colors ${selectedLine?.extendRight ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}
+                      title="Extend Right"
+                      data-testid="btn-trendline-extend-right"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M8 4L16 10L8 16" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               );
@@ -4421,23 +4423,31 @@ export default function CryptoSandbox() {
             {/* HChannel Extend submenu */}
             {activeSubmenu === 'hch-extend' && hchannelMenuPos && selectedHChannel && (() => {
               const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
-              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 120 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 130;
-              const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 100);
+              const submenuX = hchannelMenuPos.x + 50 < dimensions.width - 100 ? hchannelMenuPos.x + 50 : hchannelMenuPos.x - 110;
+              const submenuY = Math.min(hchannelMenuPos.y, dimensions.height - 80);
               return (
                 <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY }}>
-                  <div className="flex flex-col gap-2">
-                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
-                      <input type="checkbox" checked={hchannel?.extendLeft || false}
-                        onChange={(e) => updateHChannel(selectedHChannel, { extendLeft: e.target.checked })}
-                        className="w-4 h-4" data-testid="checkbox-hchannel-extend-left" />
-                      Extend Left
-                    </label>
-                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
-                      <input type="checkbox" checked={hchannel?.extendRight || false}
-                        onChange={(e) => updateHChannel(selectedHChannel, { extendRight: e.target.checked })}
-                        className="w-4 h-4" data-testid="checkbox-hchannel-extend-right" />
-                      Extend Right
-                    </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => updateHChannel(selectedHChannel, { extendLeft: !hchannel?.extendLeft })}
+                      className={`p-2 rounded transition-colors ${hchannel?.extendLeft ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}
+                      title="Extend Left"
+                      data-testid="btn-hchannel-extend-left"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 4L4 10L12 16" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => updateHChannel(selectedHChannel, { extendRight: !hchannel?.extendRight })}
+                      className={`p-2 rounded transition-colors ${hchannel?.extendRight ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}
+                      title="Extend Right"
+                      data-testid="btn-hchannel-extend-right"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M8 4L16 10L8 16" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               );
@@ -4754,23 +4764,31 @@ export default function CryptoSandbox() {
             {/* SChannel Extend submenu */}
             {activeSubmenu === 'sch-extend' && schannelMenuPos && selectedSChannel && (() => {
               const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
-              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 120 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 130;
-              const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 100);
+              const submenuX = schannelMenuPos.x + 50 < dimensions.width - 100 ? schannelMenuPos.x + 50 : schannelMenuPos.x - 110;
+              const submenuY = Math.min(schannelMenuPos.y, dimensions.height - 80);
               return (
                 <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: submenuY }}>
-                  <div className="flex flex-col gap-2">
-                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
-                      <input type="checkbox" checked={schannel?.extendLeft || false}
-                        onChange={(e) => updateSChannel(selectedSChannel, { extendLeft: e.target.checked })}
-                        className="w-4 h-4" data-testid="checkbox-schannel-extend-left" />
-                      Extend Left
-                    </label>
-                    <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
-                      <input type="checkbox" checked={schannel?.extendRight || false}
-                        onChange={(e) => updateSChannel(selectedSChannel, { extendRight: e.target.checked })}
-                        className="w-4 h-4" data-testid="checkbox-schannel-extend-right" />
-                      Extend Right
-                    </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => updateSChannel(selectedSChannel, { extendLeft: !schannel?.extendLeft })}
+                      className={`p-2 rounded transition-colors ${schannel?.extendLeft ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}
+                      title="Extend Left"
+                      data-testid="btn-schannel-extend-left"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 4L4 10L12 16" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => updateSChannel(selectedSChannel, { extendRight: !schannel?.extendRight })}
+                      className={`p-2 rounded transition-colors ${schannel?.extendRight ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}
+                      title="Extend Right"
+                      data-testid="btn-schannel-extend-right"
+                    >
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M8 4L16 10L8 16" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               );
