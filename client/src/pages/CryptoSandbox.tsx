@@ -48,11 +48,7 @@ export default function CryptoSandbox() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const crosshairStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMovedRef = useRef(false); // Track if touch moved significantly
-  const touchHandledRef = useRef(false); // Track if touch already handled action (prevents double pulse from click)
   const TOUCH_THRESHOLD = 15; // pixels - movement above this is a drag, not a tap
-  
-  // Multi-touch tracking for pan/zoom passthrough
-  const [multiTouchActive, setMultiTouchActive] = useState(false);
   
   // SVG-level tap detection for selection when crosshair is OFF
   const svgTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -2863,8 +2859,8 @@ export default function CryptoSandbox() {
         
         console.log('🔍 Zoom end:', { elapsed, dx, dy, scaleChanged, activeTool, crosshairMode, endX, endY });
         
-        // If this was a quick tap with minimal movement and no scale change, do hit testing
-        if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD && !scaleChanged && !activeTool && !crosshairMode) {
+        // If this was a quick tap with minimal movement and no scale change
+        if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD && !scaleChanged) {
           // Get position relative to SVG
           const svgElement = svgRef.current;
           if (svgElement && endX > 0 && endY > 0) {
@@ -2873,8 +2869,36 @@ export default function CryptoSandbox() {
             const clickY = endY - rect.top;
             // Skip clearly invalid coordinates (outside chart area)
             if (clickX > 0 && clickY > 0 && clickX < rect.width && clickY < rect.height) {
-              console.log('👆 Tap detected! Triggering selection at:', clickX, clickY);
-              handleSvgTapSelection(clickX, clickY);
+              // Handle drawing tool taps
+              if (activeTool === 'trendline' && trendlineMode) {
+                console.log('👆 Trendline tap at:', clickX, clickY);
+                showClickPulse(clickX, clickY);
+                handleTrendlineClick(clickX, clickY);
+              } else if (activeTool === 'horizontal') {
+                console.log('👆 Horizontal line tap at:', clickX, clickY);
+                showClickPulse(clickX, clickY);
+                handleHorizontalClick(clickX, clickY);
+              } else if (activeTool === 'channel') {
+                console.log('👆 Channel tap at:', clickX, clickY);
+                showClickPulse(clickX, clickY);
+                handleChannelClick(clickX, clickY);
+              } else if (activeTool === 'hchannel') {
+                console.log('👆 HChannel tap at:', clickX, clickY);
+                showClickPulse(clickX, clickY);
+                handleHChannelClick(clickX, clickY);
+              } else if (activeTool === 'schannel') {
+                console.log('👆 SChannel tap at:', clickX, clickY);
+                showClickPulse(clickX, clickY);
+                handleSChannelClick(clickX, clickY);
+              } else if (activeTool === 'label') {
+                console.log('👆 Label tap at:', clickX, clickY);
+                showClickPulse(clickX, clickY);
+                handleTextLabelClick(clickX, clickY);
+              } else if (!activeTool && !crosshairMode) {
+                // Selection tap (no tool active)
+                console.log('👆 Selection tap at:', clickX, clickY);
+                handleSvgTapSelection(clickX, clickY);
+              }
             }
           }
         }
@@ -3670,96 +3694,11 @@ export default function CryptoSandbox() {
               )}
             </div>
             
-            {/* Trendline drawing overlay */}
+            {/* Trendline drawing overlay - display only, events handled by d3 zoom */}
             {activeTool === 'trendline' && trendlineMode && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
+                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
                 data-drawing-overlay
-                onClick={(e) => {
-                  // Skip if touch already handled this action
-                  if (touchHandledRef.current) {
-                    touchHandledRef.current = false;
-                    return;
-                  }
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = crosshairMode && crosshairPos ? crosshairPos.x : e.clientX - rect.left;
-                  const clickY = crosshairMode && crosshairPos ? crosshairPos.y : e.clientY - rect.top;
-                  showClickPulse(clickX, clickY);
-                  handleTrendlineClick(clickX, clickY);
-                }}
-                onTouchStart={(e) => {
-                  // Allow 2+ finger gestures (pan/zoom) - disable pointer events on overlay
-                  if (e.touches.length >= 2) {
-                    setMultiTouchActive(true);
-                    return;
-                  }
-                  
-                  if (crosshairMode && crosshairPos) {
-                    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-                    crosshairStartRef.current = { x: crosshairPos.x, y: crosshairPos.y };
-                    touchMovedRef.current = false;
-                  } else {
-                    // Non-crosshair mode: track single tap for drawing
-                    const touch = e.touches[0];
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-                    touchMovedRef.current = false;
-                  }
-                }}
-                onTouchMove={(e) => {
-                  // If multi-touch, keep overlay disabled
-                  if (e.touches.length >= 2) {
-                    if (!multiTouchActive) setMultiTouchActive(true);
-                    return;
-                  }
-                  
-                  if (crosshairMode && touchStartRef.current && crosshairStartRef.current) {
-                    e.preventDefault();
-                    const touch = e.touches[0];
-                    const deltaX = touch.clientX - touchStartRef.current.x;
-                    const deltaY = touch.clientY - touchStartRef.current.y;
-                    // Check if moved beyond threshold
-                    if (Math.abs(deltaX) > TOUCH_THRESHOLD || Math.abs(deltaY) > TOUCH_THRESHOLD) {
-                      touchMovedRef.current = true;
-                    }
-                    const newX = Math.max(margin.left, Math.min(dimensions.width - margin.right, crosshairStartRef.current.x + deltaX));
-                    const newY = Math.max(margin.top, Math.min(dimensions.height - margin.bottom, crosshairStartRef.current.y + deltaY));
-                    setCrosshairPos({ x: newX, y: newY });
-                  } else if (touchStartRef.current) {
-                    // Non-crosshair: track if moved
-                    const touch = e.touches[0];
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
-                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
-                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) {
-                      touchMovedRef.current = true;
-                    }
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  // Re-enable overlay when all touches end
-                  if (e.touches.length === 0) {
-                    setMultiTouchActive(false);
-                  }
-                  
-                  // Only trigger click if touch didn't move significantly (was a tap)
-                  if (crosshairMode && crosshairPos && !touchMovedRef.current) {
-                    e.preventDefault();
-                    touchHandledRef.current = true;
-                    handleTrendlineClick(crosshairPos.x, crosshairPos.y);
-                  } else if (!crosshairMode && touchStartRef.current && !touchMovedRef.current) {
-                    // Non-crosshair tap - place point
-                    e.preventDefault();
-                    touchHandledRef.current = true;
-                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
-                    handleTrendlineClick(touchStartRef.current.x, touchStartRef.current.y);
-                  }
-                  touchStartRef.current = null;
-                  crosshairStartRef.current = null;
-                  touchMovedRef.current = false;
-                }}
               >
                 {/* Magnet pulse animation */}
                 {magnetPulse && (
@@ -3826,56 +3765,11 @@ export default function CryptoSandbox() {
             
             {/* Drawings are now rendered by D3 directly in the chart effect */}
             
-            {/* Horizontal line drawing overlay - magnet mode handled by handler */}
+            {/* Horizontal line drawing overlay - display only, events handled by d3 zoom */}
             {activeTool === 'horizontal' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
+                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
                 data-drawing-overlay
-                onMouseMove={(e) => {
-                  if (crosshairMode) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  }
-                }}
-                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
-                onClick={(e) => {
-                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left;
-                  const clickY = e.clientY - rect.top;
-                  showClickPulse(clickX, clickY);
-                  handleHorizontalClick(clickX, clickY);
-                }}
-                onTouchStart={(e) => {
-                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
-                  const touch = e.touches[0];
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-                  touchMovedRef.current = false;
-                }}
-                onTouchMove={(e) => {
-                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
-                  if (touchStartRef.current) {
-                    const touch = e.touches[0];
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
-                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
-                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  if (e.touches.length === 0) setMultiTouchActive(false);
-                  if (touchStartRef.current && !touchMovedRef.current) {
-                    e.preventDefault();
-                    touchHandledRef.current = true;
-                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
-                    handleHorizontalClick(touchStartRef.current.x, touchStartRef.current.y);
-                  }
-                  touchStartRef.current = null;
-                  touchMovedRef.current = false;
-                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
@@ -3888,56 +3782,11 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Channel drawing overlay - magnet mode handled by handler */}
+            {/* Channel drawing overlay - display only, events handled by d3 zoom */}
             {activeTool === 'channel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
+                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
                 data-drawing-overlay
-                onMouseMove={(e) => {
-                  if (crosshairMode) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  }
-                }}
-                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
-                onClick={(e) => {
-                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left;
-                  const clickY = e.clientY - rect.top;
-                  showClickPulse(clickX, clickY);
-                  handleChannelClick(clickX, clickY);
-                }}
-                onTouchStart={(e) => {
-                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
-                  const touch = e.touches[0];
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-                  touchMovedRef.current = false;
-                }}
-                onTouchMove={(e) => {
-                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
-                  if (touchStartRef.current) {
-                    const touch = e.touches[0];
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
-                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
-                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  if (e.touches.length === 0) setMultiTouchActive(false);
-                  if (touchStartRef.current && !touchMovedRef.current) {
-                    e.preventDefault();
-                    touchHandledRef.current = true;
-                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
-                    handleChannelClick(touchStartRef.current.x, touchStartRef.current.y);
-                  }
-                  touchStartRef.current = null;
-                  touchMovedRef.current = false;
-                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
@@ -3966,56 +3815,11 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Horizontal Channel drawing overlay (2-click) */}
+            {/* Horizontal Channel drawing overlay - display only, events handled by d3 zoom */}
             {activeTool === 'hchannel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
+                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
                 data-drawing-overlay
-                onMouseMove={(e) => {
-                  if (crosshairMode) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  }
-                }}
-                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
-                onClick={(e) => {
-                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left;
-                  const clickY = e.clientY - rect.top;
-                  showClickPulse(clickX, clickY);
-                  handleHChannelClick(clickX, clickY);
-                }}
-                onTouchStart={(e) => {
-                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
-                  const touch = e.touches[0];
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-                  touchMovedRef.current = false;
-                }}
-                onTouchMove={(e) => {
-                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
-                  if (touchStartRef.current) {
-                    const touch = e.touches[0];
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
-                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
-                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  if (e.touches.length === 0) setMultiTouchActive(false);
-                  if (touchStartRef.current && !touchMovedRef.current) {
-                    e.preventDefault();
-                    touchHandledRef.current = true;
-                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
-                    handleHChannelClick(touchStartRef.current.x, touchStartRef.current.y);
-                  }
-                  touchStartRef.current = null;
-                  touchMovedRef.current = false;
-                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
@@ -4037,56 +3841,11 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Sloped Channel drawing overlay (3-click) */}
+            {/* Sloped Channel drawing overlay - display only, events handled by d3 zoom */}
             {activeTool === 'schannel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
+                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
                 data-drawing-overlay
-                onMouseMove={(e) => {
-                  if (crosshairMode) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  }
-                }}
-                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
-                onClick={(e) => {
-                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left;
-                  const clickY = e.clientY - rect.top;
-                  showClickPulse(clickX, clickY);
-                  handleSChannelClick(clickX, clickY);
-                }}
-                onTouchStart={(e) => {
-                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
-                  const touch = e.touches[0];
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-                  touchMovedRef.current = false;
-                }}
-                onTouchMove={(e) => {
-                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
-                  if (touchStartRef.current) {
-                    const touch = e.touches[0];
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
-                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
-                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  if (e.touches.length === 0) setMultiTouchActive(false);
-                  if (touchStartRef.current && !touchMovedRef.current) {
-                    e.preventDefault();
-                    touchHandledRef.current = true;
-                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
-                    handleSChannelClick(touchStartRef.current.x, touchStartRef.current.y);
-                  }
-                  touchStartRef.current = null;
-                  touchMovedRef.current = false;
-                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
@@ -4139,56 +3898,11 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Text label drawing overlay - magnet mode handled by handler */}
+            {/* Text label drawing overlay - display only, events handled by d3 zoom */}
             {activeTool === 'label' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
+                className="absolute inset-0 cursor-crosshair z-[25] pointer-events-none"
                 data-drawing-overlay
-                onMouseMove={(e) => {
-                  if (crosshairMode) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setCrosshairPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  }
-                }}
-                onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
-                onClick={(e) => {
-                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left;
-                  const clickY = e.clientY - rect.top;
-                  showClickPulse(clickX, clickY);
-                  handleTextLabelClick(clickX, clickY);
-                }}
-                onTouchStart={(e) => {
-                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
-                  const touch = e.touches[0];
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-                  touchMovedRef.current = false;
-                }}
-                onTouchMove={(e) => {
-                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
-                  if (touchStartRef.current) {
-                    const touch = e.touches[0];
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
-                    const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
-                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  if (e.touches.length === 0) setMultiTouchActive(false);
-                  if (touchStartRef.current && !touchMovedRef.current) {
-                    e.preventDefault();
-                    touchHandledRef.current = true;
-                    showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
-                    handleTextLabelClick(touchStartRef.current.x, touchStartRef.current.y);
-                  }
-                  touchStartRef.current = null;
-                  touchMovedRef.current = false;
-                }}
               >
                 {magnetPulse && (
                   <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
