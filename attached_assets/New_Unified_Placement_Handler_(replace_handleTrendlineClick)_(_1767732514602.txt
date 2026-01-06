@@ -1,0 +1,34 @@
+const handleTrendlinePlacement = useCallback((clickX: number, clickY: number) => {
+  const now = Date.now();
+  if (now - lastClickTimeRef.current < CLICK_DEBOUNCE) return;
+  lastClickTimeRef.current = now;
+
+  if (!trendlineMode || !xScaleRef.current || !yScaleRef.current) return;
+
+  const magnetPoint = findMagnetPoint(clickX, clickY);
+  const finalPoint = magnetPoint || {
+    x: clickX,
+    y: clickY,
+    time: xScaleRef.current.invert(clickX - margin.left).getTime(),
+    price: yScaleRef.current.invert(clickY - margin.top)
+  };
+
+  // Single pulse at FINAL placement position
+  setMagnetPulse({ x: finalPoint.x, y: finalPoint.y });
+  setTimeout(() => setMagnetPulse(null), 400);
+
+  // Remove showClickPulse entirely (or call it here with finalPoint.x/y if you want ripple)
+
+  if (trendlinePoints.length === 0) {
+    setTrendlinePoints([finalPoint]);
+  } else {
+    // Complete trendline (unchanged)
+    const newTrendline: TrendlineData = { /* ... same as before */ };
+    setDrawnTrendlines(prev => {
+      const updated = [...prev, newTrendline];
+      saveToHistory({ /* ... */ });
+      return updated;
+    });
+    setTrendlinePoints([]);
+  }
+}, [trendlineMode, findMagnetPoint, margin, trendlinePoints, /* deps */]);

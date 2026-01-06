@@ -1,0 +1,94 @@
+{activeTool === 'trendline' && trendlineMode && (
+  <div 
+    className="absolute inset-0 cursor-crosshair z-[25]"
+    style={{ touchAction: 'none' }}
+    data-drawing-overlay
+    onClick={(e) => {
+      if (touchHandledRef.current) {
+        touchHandledRef.current = false;
+        return;
+      }
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      handleTrendlinePlacement(clickX, clickY); // New unified handler
+    }}
+    onTouchStart={(e) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const rect = e.currentTarget.getBoundingClientRect();
+        touchStartRef.current = {
+          x: touch.clientX - rect.left,
+          y: touch.clientY - rect.top,
+          time: Date.now()
+        };
+        touchMovedRef.current = false;
+      } else if (e.touches.length >= 2) {
+        // Pinch setup
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        touchStartRef.current = touchStartRef.current || { x: 0, y: 0 };
+        (touchStartRef.current as any).pinchDist = dist;
+        (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+      }
+    }}
+    onTouchMove={(e) => {
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+
+      if (e.touches.length >= 2 && touchStartRef.current) {
+        // Pinch zoom (unchanged, minor safety)
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const startDist = (touchStartRef.current as any).pinchDist || newDist;
+        const scale = newDist / startDist;
+        if (Math.abs(scale - 1) > 0.02 && xScaleRef.current && zoomRef.current && svgRef.current) {
+          touchMovedRef.current = true;
+          const midX = (touchStartRef.current as any).pinchMidX || 0;
+          const currentTransform = d3.zoomTransform(svgRef.current);
+          const newK = Math.max(0.5, Math.min(20, currentTransform.k * scale));
+          const newX = midX - midX * (newK / currentTransform.k) + currentTransform.x * (newK / currentTransform.k);
+          const newTransform = d3.zoomIdentity.translate(newX, 0).scale(newK);
+          d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+          (touchStartRef.current as any).pinchDist = newDist;
+        }
+      } else if (e.touches.length === 1 && touchStartRef.current) {
+        const touch = e.touches[0];
+        const currentX = touch.clientX - rect.left;
+        const currentY = touch.clientY - rect.top;
+
+        // Update last position always
+        touchStartRef.current.x = currentX;
+        touchStartRef.current.y = currentY;
+
+        // Check total distance from initial down
+        const initX = touchStartRef.current.x - (currentX - touchStartRef.current.x); // original down X (reset not needed)
+        const initY = touchStartRef.current.y - (currentY - touchStartRef.current.y);
+        const dist = Math.hypot(currentX - initX, currentY - initY);
+
+        if (dist > TOUCH_THRESHOLD) {
+          touchMovedRef.current = true;
+          // Optional: manual pan here if you want (using dx/dy from last)
+          if (xScaleRef.current && zoomRef.current && svgRef.current) {
+            const currentTransform = d3.zoomTransform(svgRef.current);
+            const dx = currentX - (touchStartRef.current.x || currentX); // from last
+            const newTransform = d3.zoomIdentity.translate(currentTransform.x + dx, 0).scale(currentTransform.k);
+            d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+          }
+        }
+      }
+    }}
+    onTouchEnd={(e) => {
+      e.preventDefault();
+      if (touchStartRef.current && !touchMovedRef.current && (Date.now() - touchStartRef.current.time) < 300) {
+        touchHandledRef.current = true;
+        const { x: clickX, y: clickY } = touchStartRef.current; // lift position
+        handleTrendlinePlacement(clickX, clickY);
+      }
+      touchStartRef.current = null;
+      touchMovedRef.current = false;
+    }}
+  />
+)}
