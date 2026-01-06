@@ -1723,6 +1723,7 @@ export default function CryptoSandbox() {
     if (activeTool) return;
     
     const candidates = collectHitCandidates(clickX, clickY);
+    console.log('🎯 Candidates found:', candidates);
     if (candidates.length > 1) {
       // Multiple overlapping elements - show picker
       const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - margin.right - 60);
