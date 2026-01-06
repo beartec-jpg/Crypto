@@ -1953,8 +1953,27 @@ export default function CryptoSandbox() {
       }
     }
     
+    // Check fib retracements (check each visible level line)
+    for (const fib of drawnFibRetraces) {
+      const lowPrice = Math.min(fib.anchor1.price, fib.anchor2.price);
+      const highPrice = Math.max(fib.anchor1.price, fib.anchor2.price);
+      const range = highPrice - lowPrice;
+      
+      for (const level of fib.levels) {
+        if (!level.visible) continue;
+        if (level.ratio > 1 && !fib.showExtensions) continue;
+        
+        const levelPrice = lowPrice + level.ratio * range;
+        const y = yScaleRef.current(levelPrice) + margin.top;
+        if (Math.abs(clickY - y) <= threshold) {
+          candidates.push({ id: fib.id, type: 'fib' });
+          break; // Only add once per fib
+        }
+      }
+    }
+    
     return candidates;
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, margin.left, margin.top, margin.right, dimensions.width, MAGNET_RADIUS]);
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, margin.left, margin.top, margin.right, dimensions.width, MAGNET_RADIUS]);
   
   // Close selection picker
   const closeSelectionPicker = useCallback(() => {
@@ -1985,11 +2004,14 @@ export default function CryptoSandbox() {
       case 'schannel':
         handleSChannelSelect(candidate.id, clickX, clickY);
         break;
+      case 'fib':
+        handleFibSelect(candidate.id, clickX, clickY);
+        break;
       case 'label':
         handleTextLabelSelect(candidate.id, clickX, clickY);
         break;
     }
-  }, [closeSelectionPicker, selectionPickerClickPos, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
+  }, [closeSelectionPicker, selectionPickerClickPos, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTextLabelSelect]);
 
     // Unified drawing click handler - legacy support for direct element clicks
     const handleDrawingClick = useCallback((clickedId: string, clickedType: SelectionCandidate['type'], clickX: number, clickY: number) => {
@@ -2016,11 +2038,14 @@ export default function CryptoSandbox() {
         case 'schannel':
           handleSChannelSelect(clickedId, clickX, clickY);
           break;
+        case 'fib':
+          handleFibSelect(clickedId, clickX, clickY);
+          break;
         case 'label':
           handleTextLabelSelect(clickedId, clickX, clickY);
           break;
       }
-    }, [activeTool, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
+    }, [activeTool, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTextLabelSelect]);
   
   // Main selection dispatcher for tap events
   const handleSvgTapSelection = useCallback((clickX: number, clickY: number) => {
@@ -2067,6 +2092,9 @@ export default function CryptoSandbox() {
         case 'schannel':
           handleSChannelSelect(candidate.id, clickX, clickY);
           break;
+        case 'fib':
+          handleFibSelect(candidate.id, clickX, clickY);
+          break;
         case 'label':
           handleTextLabelSelect(candidate.id, clickX, clickY);
           break;
@@ -2083,13 +2111,16 @@ export default function CryptoSandbox() {
       setMovingHChannel(null);
       setSelectedSChannel(null);
       setSChannelMenuPos(null);
+      setSelectedFib(null);
+      setFibMenuPos(null);
+      setMovingFibAnchor(null);
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
       setMovingWholeLine(null);
       setSelectionPickerPos(null);
       setSelectionCandidates([]);
     }
-  }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect, closeTrendlineMenu, closeHorizontalMenu]);
+  }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTextLabelSelect, closeTrendlineMenu, closeHorizontalMenu]);
   
   // Find if crosshair is near an endpoint of the moving trendline
   const findNearbyEndpoint = useCallback((clickX: number, clickY: number): 'p1' | 'p2' | null => {
@@ -2908,6 +2939,66 @@ export default function CryptoSandbox() {
               .attr('cx', pt.x).attr('cy', pt.y).attr('r', 5)
               .attr('fill', schannel.color).attr('stroke', 'white').attr('stroke-width', 2);
           });
+        }
+      });
+      
+      // Draw Fibonacci retracements
+      drawnFibRetraces.forEach(fib => {
+        const lowPrice = Math.min(fib.anchor1.price, fib.anchor2.price);
+        const highPrice = Math.max(fib.anchor1.price, fib.anchor2.price);
+        const range = highPrice - lowPrice;
+        const isSelected = selectedFib === fib.id;
+        
+        const fibGroup = drawingsGroup.append('g').attr('class', `fib-${fib.id}`);
+        
+        // Get anchor screen positions for selection handles
+        const anchor1X = xS(new Date(fib.anchor1.time));
+        const anchor1Y = yS(fib.anchor1.price);
+        const anchor2X = xS(new Date(fib.anchor2.time));
+        const anchor2Y = yS(fib.anchor2.price);
+        
+        // Draw each level
+        fib.levels.forEach(level => {
+          if (!level.visible) return;
+          if (level.ratio > 1 && !fib.showExtensions) return;
+          
+          const levelPrice = lowPrice + level.ratio * range;
+          const y = yS(levelPrice);
+          const isMain = level.ratio === 0 || level.ratio === 1;
+          const strokeDash = fib.lineStyle === 'dashed' ? '5,5' : fib.lineStyle === 'dotted' ? '2,4' : '';
+          
+          fibGroup.append('line')
+            .attr('x1', margin.left)
+            .attr('x2', dimensions.width - margin.right)
+            .attr('y1', y)
+            .attr('y2', y)
+            .attr('stroke', fib.color)
+            .attr('stroke-width', isMain ? fib.thickness + 1 : fib.thickness)
+            .attr('stroke-opacity', fib.opacity)
+            .attr('stroke-dasharray', isMain ? '' : strokeDash)
+            .style('pointer-events', 'none');
+          
+          // Label
+          const labelX = fib.labelPosition === 'right' ? dimensions.width - margin.right - 10 : margin.left + 10;
+          const labelText = `${(level.ratio * 100).toFixed(1)}%${fib.showPrices ? ` (${levelPrice.toFixed(2)})` : ''}`;
+          fibGroup.append('text')
+            .attr('x', labelX)
+            .attr('y', y + 4)
+            .attr('fill', fib.color)
+            .attr('font-size', '11px')
+            .attr('text-anchor', fib.labelPosition === 'right' ? 'end' : 'start')
+            .attr('fill-opacity', fib.opacity)
+            .text(labelText);
+        });
+        
+        // Selection indicators (anchor circles)
+        if (isSelected) {
+          fibGroup.append('circle')
+            .attr('cx', anchor1X).attr('cy', anchor1Y).attr('r', 8)
+            .attr('fill', 'white').attr('stroke', fib.color).attr('stroke-width', 2);
+          fibGroup.append('circle')
+            .attr('cx', anchor2X).attr('cy', anchor2Y).attr('r', 8)
+            .attr('fill', 'white').attr('stroke', fib.color).attr('stroke-width', 2);
         }
       });
       
@@ -4410,6 +4501,103 @@ export default function CryptoSandbox() {
                 )}
                 <div className="absolute top-14 left-14 bg-amber-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
                   {schannelPoints.length === 0 ? 'Click start of baseline' : schannelPoints.length === 1 ? 'Click end of baseline' : 'Click to set channel height'}
+                </div>
+              </div>
+            )}
+            
+            {/* Fibonacci Retracement drawing overlay */}
+            {activeTool === 'fibretracement' && (
+              <div 
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ touchAction: 'none' }}
+                data-drawing-overlay
+                onClick={(e) => {
+                  if (touchHandledRef.current) {
+                    touchHandledRef.current = false;
+                    return;
+                  }
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  handleFibPlacement(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+                onTouchStart={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    const x = touch.clientX - rect.left;
+                    const y = touch.clientY - rect.top;
+                    touchStartRef.current = { x, y, time: Date.now(), initX: x, initY: y };
+                    touchMovedRef.current = false;
+                  } else if (e.touches.length >= 2) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    if (!touchStartRef.current) {
+                      touchStartRef.current = { x: 0, y: 0, time: Date.now() };
+                    }
+                    touchStartRef.current.pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    touchStartRef.current.pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length >= 2 && touchStartRef.current) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const scale = newDist / (touchStartRef.current.pinchDist || newDist);
+                    if (Math.abs(scale - 1) > 0.02 && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const midX = touchStartRef.current.pinchMidX || 0;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      const newK = Math.max(0.5, Math.min(20, ct.k * scale));
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      touchStartRef.current.pinchDist = newDist;
+                    }
+                  } else if (e.touches.length === 1 && touchStartRef.current) {
+                    const touch = e.touches[0];
+                    const currentX = touch.clientX - rect.left;
+                    const currentY = touch.clientY - rect.top;
+                    const initX = touchStartRef.current.initX ?? touchStartRef.current.x;
+                    const initY = touchStartRef.current.initY ?? touchStartRef.current.y;
+                    const dist = Math.hypot(currentX - initX, currentY - initY);
+                    if (dist > TOUCH_THRESHOLD) {
+                      if (!touchMovedRef.current) touchMovedRef.current = true;
+                      if (zoomRef.current && svgRef.current) {
+                        const dx = currentX - touchStartRef.current.x;
+                        const ct = d3.zoomTransform(svgRef.current);
+                        d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      }
+                    }
+                    touchStartRef.current.x = currentX;
+                    touchStartRef.current.y = currentY;
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault();
+                  if (touchStartRef.current && !touchMovedRef.current) {
+                    const tapDuration = Date.now() - touchStartRef.current.time;
+                    if (tapDuration < TAP_TIME_LIMIT) {
+                      touchHandledRef.current = true;
+                      handleFibPlacement(touchStartRef.current.x, touchStartRef.current.y);
+                    }
+                  }
+                  touchStartRef.current = null; touchMovedRef.current = false;
+                }}
+              >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-white animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
+                {fibPoints.length === 1 && (
+                  <div className="absolute w-3 h-3 bg-yellow-400 rounded-full pointer-events-none" style={{ left: fibPoints[0].x - 6, top: fibPoints[0].y - 6 }} />
+                )}
+                {fibPoints.length === 1 && crosshairMode && crosshairPos && (
+                  <svg className="absolute inset-0 pointer-events-none overflow-visible">
+                    <line x1={0} y1={fibPoints[0].y} x2={dimensions.width} y2={fibPoints[0].y} stroke="#facc15" strokeWidth="1" />
+                    <line x1={0} y1={crosshairPos.y} x2={dimensions.width} y2={crosshairPos.y} stroke="#facc15" strokeWidth="1" strokeDasharray="5,5" />
+                  </svg>
+                )}
+                <div className="absolute top-14 left-14 bg-yellow-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                  {fibPoints.length === 0 ? 'Click for first anchor' : 'Click for second anchor'}
                 </div>
               </div>
             )}
