@@ -4240,7 +4240,16 @@ export default function CryptoSandbox() {
                     return (
                       <button
                         key={`${candidate.type}-${candidate.id}-${idx}`}
-                        onClick={() => handlePickerSelect(candidate)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          handlePickerSelect(candidate);
+                        }}
+                        onTouchEnd={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          handlePickerSelect(candidate);
+                        }}
                         className="flex items-center gap-2 px-3 py-2 text-white hover:bg-slate-700 rounded transition-colors text-sm"
                         data-testid={`picker-${candidate.type}-${idx}`}
                       >
