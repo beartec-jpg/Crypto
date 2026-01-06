@@ -48,7 +48,11 @@ export default function CryptoSandbox() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const crosshairStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMovedRef = useRef(false); // Track if touch moved significantly
+  const touchHandledRef = useRef(false); // Track if touch already handled action (prevents double pulse from click)
   const TOUCH_THRESHOLD = 15; // pixels - movement above this is a drag, not a tap
+  
+  // Multi-touch tracking for pan/zoom passthrough
+  const [multiTouchActive, setMultiTouchActive] = useState(false);
   
   // SVG-level tap detection for selection when crosshair is OFF
   const svgTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -3670,9 +3674,14 @@ export default function CryptoSandbox() {
             {activeTool === 'trendline' && trendlineMode && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto', touchAction: 'none' }}
+                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onClick={(e) => {
+                  // Skip if touch already handled this action
+                  if (touchHandledRef.current) {
+                    touchHandledRef.current = false;
+                    return;
+                  }
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = crosshairMode && crosshairPos ? crosshairPos.x : e.clientX - rect.left;
@@ -3681,8 +3690,11 @@ export default function CryptoSandbox() {
                   handleTrendlineClick(clickX, clickY);
                 }}
                 onTouchStart={(e) => {
-                  // Allow 2+ finger gestures (pan/zoom) to pass through to d3
-                  if (e.touches.length >= 2) return;
+                  // Allow 2+ finger gestures (pan/zoom) - disable pointer events on overlay
+                  if (e.touches.length >= 2) {
+                    setMultiTouchActive(true);
+                    return;
+                  }
                   
                   if (crosshairMode && crosshairPos) {
                     touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -3697,8 +3709,11 @@ export default function CryptoSandbox() {
                   }
                 }}
                 onTouchMove={(e) => {
-                  // Allow 2+ finger gestures to pass through
-                  if (e.touches.length >= 2) return;
+                  // If multi-touch, keep overlay disabled
+                  if (e.touches.length >= 2) {
+                    if (!multiTouchActive) setMultiTouchActive(true);
+                    return;
+                  }
                   
                   if (crosshairMode && touchStartRef.current && crosshairStartRef.current) {
                     e.preventDefault();
@@ -3724,13 +3739,20 @@ export default function CryptoSandbox() {
                   }
                 }}
                 onTouchEnd={(e) => {
+                  // Re-enable overlay when all touches end
+                  if (e.touches.length === 0) {
+                    setMultiTouchActive(false);
+                  }
+                  
                   // Only trigger click if touch didn't move significantly (was a tap)
                   if (crosshairMode && crosshairPos && !touchMovedRef.current) {
                     e.preventDefault();
+                    touchHandledRef.current = true;
                     handleTrendlineClick(crosshairPos.x, crosshairPos.y);
                   } else if (!crosshairMode && touchStartRef.current && !touchMovedRef.current) {
                     // Non-crosshair tap - place point
                     e.preventDefault();
+                    touchHandledRef.current = true;
                     showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
                     handleTrendlineClick(touchStartRef.current.x, touchStartRef.current.y);
                   }
@@ -3808,7 +3830,7 @@ export default function CryptoSandbox() {
             {activeTool === 'horizontal' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto', touchAction: 'none' }}
+                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -3818,6 +3840,7 @@ export default function CryptoSandbox() {
                 }}
                 onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
+                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
@@ -3826,28 +3849,27 @@ export default function CryptoSandbox() {
                   handleHorizontalClick(clickX, clickY);
                 }}
                 onTouchStart={(e) => {
-                  // Allow 2+ finger gestures (pan/zoom) to pass through
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
                   touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
                   touchMovedRef.current = false;
                 }}
                 onTouchMove={(e) => {
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
                   if (touchStartRef.current) {
                     const touch = e.touches[0];
                     const rect = e.currentTarget.getBoundingClientRect();
                     const dx = (touch.clientX - rect.left) - touchStartRef.current.x;
                     const dy = (touch.clientY - rect.top) - touchStartRef.current.y;
-                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) {
-                      touchMovedRef.current = true;
-                    }
+                    if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) touchMovedRef.current = true;
                   }
                 }}
                 onTouchEnd={(e) => {
+                  if (e.touches.length === 0) setMultiTouchActive(false);
                   if (touchStartRef.current && !touchMovedRef.current) {
                     e.preventDefault();
+                    touchHandledRef.current = true;
                     showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
                     handleHorizontalClick(touchStartRef.current.x, touchStartRef.current.y);
                   }
@@ -3870,7 +3892,7 @@ export default function CryptoSandbox() {
             {activeTool === 'channel' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto', touchAction: 'none' }}
+                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -3880,6 +3902,7 @@ export default function CryptoSandbox() {
                 }}
                 onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
+                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
@@ -3888,14 +3911,14 @@ export default function CryptoSandbox() {
                   handleChannelClick(clickX, clickY);
                 }}
                 onTouchStart={(e) => {
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
                   touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
                   touchMovedRef.current = false;
                 }}
                 onTouchMove={(e) => {
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
                   if (touchStartRef.current) {
                     const touch = e.touches[0];
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -3905,8 +3928,10 @@ export default function CryptoSandbox() {
                   }
                 }}
                 onTouchEnd={(e) => {
+                  if (e.touches.length === 0) setMultiTouchActive(false);
                   if (touchStartRef.current && !touchMovedRef.current) {
                     e.preventDefault();
+                    touchHandledRef.current = true;
                     showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
                     handleChannelClick(touchStartRef.current.x, touchStartRef.current.y);
                   }
@@ -3945,7 +3970,7 @@ export default function CryptoSandbox() {
             {activeTool === 'hchannel' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto', touchAction: 'none' }}
+                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -3955,6 +3980,7 @@ export default function CryptoSandbox() {
                 }}
                 onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
+                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
@@ -3963,14 +3989,14 @@ export default function CryptoSandbox() {
                   handleHChannelClick(clickX, clickY);
                 }}
                 onTouchStart={(e) => {
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
                   touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
                   touchMovedRef.current = false;
                 }}
                 onTouchMove={(e) => {
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
                   if (touchStartRef.current) {
                     const touch = e.touches[0];
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -3980,8 +4006,10 @@ export default function CryptoSandbox() {
                   }
                 }}
                 onTouchEnd={(e) => {
+                  if (e.touches.length === 0) setMultiTouchActive(false);
                   if (touchStartRef.current && !touchMovedRef.current) {
                     e.preventDefault();
+                    touchHandledRef.current = true;
                     showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
                     handleHChannelClick(touchStartRef.current.x, touchStartRef.current.y);
                   }
@@ -4013,7 +4041,7 @@ export default function CryptoSandbox() {
             {activeTool === 'schannel' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto', touchAction: 'none' }}
+                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -4023,6 +4051,7 @@ export default function CryptoSandbox() {
                 }}
                 onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
+                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
@@ -4031,14 +4060,14 @@ export default function CryptoSandbox() {
                   handleSChannelClick(clickX, clickY);
                 }}
                 onTouchStart={(e) => {
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
                   touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
                   touchMovedRef.current = false;
                 }}
                 onTouchMove={(e) => {
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
                   if (touchStartRef.current) {
                     const touch = e.touches[0];
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -4048,8 +4077,10 @@ export default function CryptoSandbox() {
                   }
                 }}
                 onTouchEnd={(e) => {
+                  if (e.touches.length === 0) setMultiTouchActive(false);
                   if (touchStartRef.current && !touchMovedRef.current) {
                     e.preventDefault();
+                    touchHandledRef.current = true;
                     showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
                     handleSChannelClick(touchStartRef.current.x, touchStartRef.current.y);
                   }
@@ -4112,7 +4143,7 @@ export default function CryptoSandbox() {
             {activeTool === 'label' && (
               <div 
                 className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ pointerEvents: 'auto', touchAction: 'none' }}
+                style={{ pointerEvents: multiTouchActive ? 'none' : 'auto', touchAction: 'none' }}
                 data-drawing-overlay
                 onMouseMove={(e) => {
                   if (crosshairMode) {
@@ -4122,6 +4153,7 @@ export default function CryptoSandbox() {
                 }}
                 onMouseLeave={() => { if (crosshairMode) setCrosshairPos(null); }}
                 onClick={(e) => {
+                  if (touchHandledRef.current) { touchHandledRef.current = false; return; }
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
@@ -4130,14 +4162,14 @@ export default function CryptoSandbox() {
                   handleTextLabelClick(clickX, clickY);
                 }}
                 onTouchStart={(e) => {
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { setMultiTouchActive(true); return; }
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
                   touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
                   touchMovedRef.current = false;
                 }}
                 onTouchMove={(e) => {
-                  if (e.touches.length >= 2) return;
+                  if (e.touches.length >= 2) { if (!multiTouchActive) setMultiTouchActive(true); return; }
                   if (touchStartRef.current) {
                     const touch = e.touches[0];
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -4147,8 +4179,10 @@ export default function CryptoSandbox() {
                   }
                 }}
                 onTouchEnd={(e) => {
+                  if (e.touches.length === 0) setMultiTouchActive(false);
                   if (touchStartRef.current && !touchMovedRef.current) {
                     e.preventDefault();
+                    touchHandledRef.current = true;
                     showClickPulse(touchStartRef.current.x, touchStartRef.current.y);
                     handleTextLabelClick(touchStartRef.current.x, touchStartRef.current.y);
                   }
