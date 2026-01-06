@@ -2327,9 +2327,11 @@ export default function CryptoSandbox() {
           .attr('fill', 'white').attr('font-size', '10px')
           .text(priceText);
         
-        // Custom text labels at specified positions
-        if (line.label && line.label.positions && line.label.text) {
-          line.label.positions.forEach(pos => {
+        // Custom text labels at specified positions (with backward compatibility for old single 'position')
+        if (line.label && line.label.text) {
+          // Support both old 'position' (single) and new 'positions' (array) formats
+          const positions = line.label.positions || ((line.label as any).position ? [(line.label as any).position] : ['right']);
+          positions.forEach(pos => {
             let labelX: number;
             let textAnchor: string;
             if (pos === 'left') {
@@ -4374,12 +4376,18 @@ export default function CryptoSandbox() {
                 <div className="absolute bg-slate-800 border border-slate-600 rounded p-2 z-50" data-menu="submenu" style={{ left: submenuX, top: horizontalMenuPos.y }}>
                   <div className="text-xs text-gray-400 mb-1">Label Text</div>
                   <input type="text" value={selectedLine?.label?.text || ''} placeholder="Enter label..."
-                    onChange={e => updateHorizontal(selectedHorizontal, { label: { text: e.target.value, positions: selectedLine?.label?.positions || ['right'] } })}
+                    onChange={e => {
+                      const existingPositions = selectedLine?.label?.positions || 
+                        ((selectedLine?.label as any)?.position ? [(selectedLine?.label as any).position] : ['right']);
+                      updateHorizontal(selectedHorizontal, { label: { text: e.target.value, positions: existingPositions } });
+                    }}
                     className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm mb-3" />
                   <div className="text-xs text-gray-400 mb-1">Position (toggle multiple)</div>
                   <div className="flex gap-1">
                     {(['left', 'center', 'right'] as const).map(pos => {
-                      const currentPositions = selectedLine?.label?.positions || [];
+                      // Support both old 'position' (single) and new 'positions' (array) formats
+                      const currentPositions = selectedLine?.label?.positions || 
+                        ((selectedLine?.label as any)?.position ? [(selectedLine?.label as any).position] : []);
                       const isSelected = currentPositions.includes(pos);
                       return (
                         <button key={pos} onClick={() => {
