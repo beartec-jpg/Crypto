@@ -185,6 +185,35 @@ export default function CryptoSandbox() {
     createdAtZoomScale?: number; // zoom scale (k) when label was created - for dynamic visibility
   }
   
+  // Fibonacci Retracement data
+  interface FibRetracementData {
+    id: string;
+    anchor1: { time: number; price: number }; // Lower price anchor (0%)
+    anchor2: { time: number; price: number }; // Higher price anchor (100%)
+    color: string;
+    opacity: number;
+    lineStyle: LineStyle;
+    thickness: number;
+    labelPosition: 'left' | 'right';
+    showPrices: boolean;
+    showExtensions: boolean;
+    levels: { ratio: number; visible: boolean }[];
+    createdAtZoomScale?: number;
+  }
+  
+  const DEFAULT_FIB_LEVELS = [
+    { ratio: 0, visible: true },
+    { ratio: 0.236, visible: true },
+    { ratio: 0.382, visible: true },
+    { ratio: 0.5, visible: true },
+    { ratio: 0.618, visible: true },
+    { ratio: 0.786, visible: true },
+    { ratio: 1, visible: true },
+    { ratio: 1.272, visible: false },
+    { ratio: 1.618, visible: false },
+    { ratio: 2.618, visible: false },
+  ];
+  
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
   const [trendlinePoints, setTrendlinePoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [drawnTrendlines, setDrawnTrendlines] = useState<TrendlineData[]>([]);
@@ -208,6 +237,13 @@ export default function CryptoSandbox() {
   const [selectedSChannel, setSelectedSChannel] = useState<string | null>(null);
   const [schannelMenuPos, setSChannelMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [movingSChannel, setMovingSChannel] = useState<string | null>(null);
+  
+  // Fibonacci Retracement state (2-click)
+  const [drawnFibRetraces, setDrawnFibRetraces] = useState<FibRetracementData[]>([]);
+  const [fibPoints, setFibPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
+  const [selectedFib, setSelectedFib] = useState<string | null>(null);
+  const [fibMenuPos, setFibMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [movingFibAnchor, setMovingFibAnchor] = useState<'anchor1' | 'anchor2' | 'whole' | null>(null);
   
   // Selection state for all drawing types
   const [selectedHorizontal, setSelectedHorizontal] = useState<string | null>(null);
