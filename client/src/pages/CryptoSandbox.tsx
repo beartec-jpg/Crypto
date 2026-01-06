@@ -845,7 +845,8 @@ export default function CryptoSandbox() {
     console.log('✅ handleHorizontalSelect called:', { lineId, clickX, clickY });
     
     // Track when selection occurred to prevent immediate close
-    selectionTimeRef.current = Date.now();
+    const now = Date.now();
+    selectionTimeRef.current = now;
     
     // Close all other menus
     closeTrendlineMenu();
@@ -856,7 +857,8 @@ export default function CryptoSandbox() {
     
     setSelectedHorizontal(lineId);
     setMoveMode(true);
-    // Don't set movingHorizontal yet - that happens when user taps the pickup point
+    // Don't set movingHorizontal yet - that happens when user taps the line AGAIN 
+    // with a delay in handleSvgTapSelection or via a separate click handler
     
     const menuPos = constrainMenuPosition(clickX, clickY, 180, 200);
     console.log('📍 Horizontal menu position set:', menuPos);
@@ -1755,7 +1757,7 @@ export default function CryptoSandbox() {
     
     // Debounce double-taps (prevent processing same tap twice)
     const now = Date.now();
-    if (now - lastTapTimeRef.current < 100) {
+    if (now - lastTapTimeRef.current < 500) {
       console.log('⏭️ Debouncing duplicate tap');
       return false;
     }
@@ -1786,7 +1788,10 @@ export default function CryptoSandbox() {
         switch (candidate.type) {
           case 'trendline':
             // If already selected, check for endpoint/center clicks to start moving
-            if (selectedTrendline === candidate.id) {
+            // Add a guard to prevent accidental immediate pickup on first tap
+            // Increased to 800ms to be safe against phantom clicks
+            const timeSinceLastSelection = Date.now() - selectionTimeRef.current;
+            if (selectedTrendline === candidate.id && timeSinceLastSelection > 800) {
               const endpoint = findNearbyEndpoint(clickX, clickY);
               if (endpoint) {
                 handleEndpointClick(candidate.id, endpoint);
@@ -1814,7 +1819,9 @@ export default function CryptoSandbox() {
             break;
           case 'horizontal':
             // If already selected, clicking it again enters move mode
-            if (selectedHorizontal === candidate.id) {
+            // Increased to 800ms to be safe against phantom clicks
+            const timeSinceHSelection = Date.now() - selectionTimeRef.current;
+            if (selectedHorizontal === candidate.id && timeSinceHSelection > 800) {
               setMovingHorizontal(candidate.id);
               setHorizontalMenuPos(null);
               return true;
