@@ -601,6 +601,13 @@ export default function CryptoSandbox() {
   
   // Click-off handler: deselect tool and close menus when clicking on chart background
   const handleChartBackgroundClick = useCallback((e: React.MouseEvent) => {
+    // Don't close immediately after selection (prevents touch event propagation issues)
+    const timeSinceSelection = Date.now() - selectionTimeRef.current;
+    if (timeSinceSelection < 300) {
+      console.log('⏭️ handleChartBackgroundClick ignored - selection just occurred', timeSinceSelection);
+      return;
+    }
+
     // Check if clicking on a menu, toolbar, or drawing overlay - if so, don't close
     const target = e.target as HTMLElement;
     const isMenuClick = target.closest('[data-menu]') !== null;
@@ -935,6 +942,9 @@ export default function CryptoSandbox() {
 
   // Handle click on channel to select it
   const handleChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
+    // Track when selection occurred to prevent immediate close
+    selectionTimeRef.current = Date.now();
+    
     setSelectedChannel(channelId);
     closeTrendlineMenu();
     closeHorizontalMenu();
@@ -1243,6 +1253,9 @@ export default function CryptoSandbox() {
 
   // Handle click on sloped channel to select it
   const handleSChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
+    // Track when selection occurred to prevent immediate close
+    selectionTimeRef.current = Date.now();
+    
     setSelectedSChannel(channelId);
     setMovingSChannel(channelId); // Auto enter move mode
     closeTrendlineMenu();
@@ -1322,6 +1335,9 @@ export default function CryptoSandbox() {
 
   // Handle click on text label to select it
   const handleTextLabelSelect = useCallback((labelId: string, clickX: number, clickY: number) => {
+    // Track when selection occurred to prevent immediate close
+    selectionTimeRef.current = Date.now();
+    
     setSelectedTextLabel(labelId);
     closeTrendlineMenu();
     closeHorizontalMenu();
@@ -1739,16 +1755,16 @@ export default function CryptoSandbox() {
     }
   }, [collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
   
-  // SVG-level tap handler for selecting drawings without blocking pan/zoom
-  const handleSvgTapSelection = useCallback((clickX: number, clickY: number) => {
+  // Main selection dispatcher for tap events
+  const handleSvgTapSelection = useCallback((clickX: number, clickY: number): boolean => {
     // Don't select if in drawing mode
-    if (activeTool) return;
+    if (activeTool) return false;
     
     // Debounce double-taps (prevent processing same tap twice)
     const now = Date.now();
     if (now - lastTapTimeRef.current < 100) {
       console.log('⏭️ Debouncing duplicate tap');
-      return;
+      return false;
     }
     lastTapTimeRef.current = now;
     
@@ -1758,37 +1774,46 @@ export default function CryptoSandbox() {
     
     const candidates = collectHitCandidates(clickX, clickY);
     console.log('🎯 Candidates found:', candidates);
-    if (candidates.length > 1) {
-      // Multiple overlapping elements - show picker
-      const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - margin.right - 60);
-      const pickerY = Math.min(Math.max(clickY, 50), dimensions.height - 150);
-      setSelectionCandidates(candidates);
-      setSelectionPickerPos({ x: pickerX, y: pickerY });
-      setSelectionPickerClickPos({ x: clickX, y: clickY });
-    } else if (candidates.length === 1) {
-      // Single element - select directly
-      const candidate = candidates[0];
-      switch (candidate.type) {
-        case 'trendline':
-          handleTrendlineSelect(candidate.id, clickX, clickY);
-          break;
-        case 'horizontal':
-          handleHorizontalSelect(candidate.id, clickX, clickY);
-          break;
-        case 'channel':
-          handleChannelSelect(candidate.id, clickX, clickY);
-          break;
-        case 'hchannel':
-          handleHChannelSelect(candidate.id, clickX, clickY);
-          break;
-        case 'schannel':
-          handleSChannelSelect(candidate.id, clickX, clickY);
-          break;
-        case 'label':
-          handleTextLabelSelect(candidate.id, clickX, clickY);
-          break;
+    
+    if (candidates.length > 0) {
+      // Something was selected - track the time to prevent immediate menu close
+      selectionTimeRef.current = Date.now();
+      
+      if (candidates.length > 1) {
+        // Multiple overlapping elements - show picker
+        const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - margin.right - 60);
+        const pickerY = Math.min(Math.max(clickY, 50), dimensions.height - 150);
+        setSelectionCandidates(candidates);
+        setSelectionPickerPos({ x: pickerX, y: pickerY });
+        setSelectionPickerClickPos({ x: clickX, y: clickY });
+        return true;
+      } else {
+        // Single element - select directly
+        const candidate = candidates[0];
+        switch (candidate.type) {
+          case 'trendline':
+            handleTrendlineSelect(candidate.id, clickX, clickY);
+            break;
+          case 'horizontal':
+            handleHorizontalSelect(candidate.id, clickX, clickY);
+            break;
+          case 'channel':
+            handleChannelSelect(candidate.id, clickX, clickY);
+            break;
+          case 'hchannel':
+            handleHChannelSelect(candidate.id, clickX, clickY);
+            break;
+          case 'schannel':
+            handleSChannelSelect(candidate.id, clickX, clickY);
+            break;
+          case 'label':
+            handleTextLabelSelect(candidate.id, clickX, clickY);
+            break;
+        }
+        return true;
       }
     }
+    return false;
   }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
   
   // Find if crosshair is near an endpoint of the moving trendline
@@ -2978,7 +3003,7 @@ export default function CryptoSandbox() {
                   }
                 }
               }}
-              onTouchEnd={() => {
+              onTouchEnd={(e) => {
                 console.log('👆 TouchEnd:', { hasStart: !!svgTapStartRef.current });
                 // Check if this was a quick tap (not a drag)
                 if (svgTapStartRef.current) {
@@ -2987,7 +3012,10 @@ export default function CryptoSandbox() {
                   if (elapsed < TAP_MAX_DURATION) {
                     // This was a tap - do hit testing
                     console.log('👆 Triggering tap selection at:', svgTapStartRef.current.x, svgTapStartRef.current.y);
-                    handleSvgTapSelection(svgTapStartRef.current.x, svgTapStartRef.current.y);
+                    const selected = handleSvgTapSelection(svgTapStartRef.current.x, svgTapStartRef.current.y);
+                    if (selected) {
+                      e.stopPropagation();
+                    }
                   }
                   svgTapStartRef.current = null;
                 }
@@ -3412,38 +3440,9 @@ export default function CryptoSandbox() {
                     }
                   } else {
                     // Check for any drawing elements at click location
-                    const candidates = collectHitCandidates(crosshairPos.x, crosshairPos.y);
-                    console.log('Selection candidates:', candidates.length, candidates);
-                    if (candidates.length > 1) {
-                      // Multiple overlapping elements - show picker
-                      const pickerX = Math.min(Math.max(crosshairPos.x + 12, 60), dimensions.width - margin.right - 60);
-                      const pickerY = Math.min(Math.max(crosshairPos.y, 50), dimensions.height - 150);
-                      setSelectionCandidates(candidates);
-                      setSelectionPickerPos({ x: pickerX, y: pickerY });
-                      setSelectionPickerClickPos({ x: crosshairPos.x, y: crosshairPos.y });
-                    } else if (candidates.length === 1) {
-                      // Single element - select directly
-                      const candidate = candidates[0];
-                      switch (candidate.type) {
-                        case 'trendline':
-                          handleTrendlineSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'horizontal':
-                          handleHorizontalSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'channel':
-                          handleChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'hchannel':
-                          handleHChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'schannel':
-                          handleSChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'label':
-                          handleTextLabelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                      }
+                    const selected = handleSvgTapSelection(crosshairPos.x, crosshairPos.y);
+                    if (selected) {
+                      e.stopPropagation();
                     } else {
                       // Click on empty space - close any open menu
                       closeSelectionPicker();
@@ -3503,44 +3502,7 @@ export default function CryptoSandbox() {
                     }
                   } else {
                     // Check for any drawing elements at click location
-                    const candidates = collectHitCandidates(crosshairPos.x, crosshairPos.y);
-                    if (candidates.length > 1) {
-                      // Multiple overlapping elements - show picker
-                      const pickerX = Math.min(Math.max(crosshairPos.x + 12, 60), dimensions.width - margin.right - 60);
-                      const pickerY = Math.min(Math.max(crosshairPos.y, 50), dimensions.height - 150);
-                      setSelectionCandidates(candidates);
-                      setSelectionPickerPos({ x: pickerX, y: pickerY });
-                      setSelectionPickerClickPos({ x: crosshairPos.x, y: crosshairPos.y }); // Store original click
-                    } else if (candidates.length === 1) {
-                      // Single element - select directly using stored click pos
-                      setSelectionPickerClickPos({ x: crosshairPos.x, y: crosshairPos.y });
-                      // Direct selection - call the handler directly with original position
-                      const candidate = candidates[0];
-                      switch (candidate.type) {
-                        case 'trendline':
-                          handleTrendlineSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'horizontal':
-                          handleHorizontalSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'channel':
-                          handleChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'hchannel':
-                          handleHChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'schannel':
-                          handleSChannelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                        case 'label':
-                          handleTextLabelSelect(candidate.id, crosshairPos.x, crosshairPos.y);
-                          break;
-                      }
-                    } else {
-                      // Tap on empty space - close any open menu
-                      closeSelectionPicker();
-                      closeTrendlineMenu();
-                    }
+                    handleSvgTapSelection(crosshairPos.x, crosshairPos.y);
                   }
                 }
                 // Clear touch tracking on end
@@ -3942,8 +3904,6 @@ export default function CryptoSandbox() {
               </div>
             )}
             
-            {/* Trendline action menu */}
-            {console.log('🎨 RENDER CHECK - trendlineMenuPos:', trendlineMenuPos, 'selectedTrendline:', selectedTrendline)}
             {trendlineMenuPos && selectedTrendline && (
               <div 
                 className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
@@ -5509,6 +5469,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute top-0 right-0 bottom-0 cursor-crosshair z-20"
                 style={{ left: 40 }}
+                data-drawing-overlay
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left + 40;
@@ -5524,6 +5485,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute top-0 right-0 bottom-0 cursor-crosshair z-20"
                 style={{ left: 40 }}
+                data-drawing-overlay
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left + 40;
@@ -5545,6 +5507,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute top-0 right-0 bottom-0 cursor-crosshair z-20"
                 style={{ left: 40 }}
+                data-drawing-overlay
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left + 40;
@@ -5566,6 +5529,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute top-0 right-0 bottom-0 cursor-crosshair z-20"
                 style={{ left: 40 }}
+                data-drawing-overlay
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left + 40;
@@ -5587,6 +5551,7 @@ export default function CryptoSandbox() {
               <div 
                 className="absolute top-0 right-0 bottom-0 z-20"
                 style={{ left: 40 }}
+                data-drawing-overlay
                 onClick={(e) => {
                   // Don't close immediately after selection (prevents touch event propagation issues)
                   const timeSinceSelection = Date.now() - selectionTimeRef.current;
