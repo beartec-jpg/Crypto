@@ -1576,7 +1576,7 @@ export default function CryptoSandbox() {
       }
     }
     
-    // Check sloped channels (top and bottom sloped lines)
+    // Check sloped channels (top and bottom sloped lines + fill area)
     for (const sch of drawnSChannels) {
       const x1Top = xScaleRef.current(new Date(sch.topLine.p1.time)) + margin.left;
       const y1Top = yScaleRef.current(sch.topLine.p1.price) + margin.top;
@@ -1586,9 +1586,32 @@ export default function CryptoSandbox() {
       const y1Bot = yScaleRef.current(sch.bottomLine.p1.price) + margin.top;
       const x2Bot = xScaleRef.current(new Date(sch.bottomLine.p2.time)) + margin.left;
       const y2Bot = yScaleRef.current(sch.bottomLine.p2.price) + margin.top;
+      
+      // Check if near top or bottom line
       if (distToSegment(clickX, clickY, x1Top, y1Top, x2Top, y2Top) <= threshold ||
           distToSegment(clickX, clickY, x1Bot, y1Bot, x2Bot, y2Bot) <= threshold) {
         candidates.push({ id: sch.id, type: 'schannel' });
+      } else {
+        // Also check if click is inside the channel fill area (parallelogram)
+        // Check if point is between the two lines using cross product
+        const minX = Math.min(x1Top, x2Top, x1Bot, x2Bot);
+        const maxX = Math.max(x1Top, x2Top, x1Bot, x2Bot);
+        if (clickX >= minX && clickX <= maxX) {
+          // Interpolate Y positions on both lines at clickX
+          const tTop = (clickX - x1Top) / (x2Top - x1Top || 1);
+          const tBot = (clickX - x1Bot) / (x2Bot - x1Bot || 1);
+          if (tTop >= 0 && tTop <= 1 && tBot >= 0 && tBot <= 1) {
+            const yOnTop = y1Top + tTop * (y2Top - y1Top);
+            const yOnBot = y1Bot + tBot * (y2Bot - y1Bot);
+            const minY = Math.min(yOnTop, yOnBot);
+            const maxY = Math.max(yOnTop, yOnBot);
+            if (clickY >= minY && clickY <= maxY) {
+              if (!candidates.find(c => c.id === sch.id)) {
+                candidates.push({ id: sch.id, type: 'schannel' });
+              }
+            }
+          }
+        }
       }
     }
     
@@ -1902,7 +1925,8 @@ export default function CryptoSandbox() {
       .attr('clip-path', 'url(#chart-clip)');
     
     // Function to draw all drawings with current scales
-    const drawDrawings = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+    // zoomK parameter is required for dynamic label visibility based on zoom level
+    const drawDrawings = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>, zoomK: number = 1) => {
       drawingsGroup.selectAll('*').remove();
       
       // Helper: clip line to chart boundaries
@@ -2440,8 +2464,8 @@ export default function CryptoSandbox() {
       });
       
       // Draw text labels with dynamic zoom visibility
-      // Get current zoom scale from the transform
-      const currentZoomK = zoomTransformRef.current?.k ?? 1;
+      // Use the zoomK parameter passed to this function for accurate real-time zoom level
+      const currentZoomK = zoomK;
       
       drawnTextLabels.forEach(label => {
         const x = xS(new Date(label.time));
@@ -2514,8 +2538,8 @@ export default function CryptoSandbox() {
       });
     };
     
-    // Initial draw
-    drawDrawings(xScale, yScale);
+    // Initial draw (zoom k = 1 at initial load)
+    drawDrawings(xScale, yScale, 1);
     
     // Store drawDrawings for zoom handler
     const drawDrawingsRef = drawDrawings;
@@ -2627,8 +2651,8 @@ export default function CryptoSandbox() {
               .attr('y', newYScale(lastCandle.close) + 4);
           }
           
-          // Redraw drawings with new scales (D3 native, no React re-render needed)
-          drawDrawingsRef(newXScale, newYScale);
+          // Redraw drawings with new scales and current zoom k (D3 native, no React re-render needed)
+          drawDrawingsRef(newXScale, newYScale, transform.k);
         }
       });
     
