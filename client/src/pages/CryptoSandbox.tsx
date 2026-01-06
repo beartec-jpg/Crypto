@@ -290,6 +290,7 @@ export default function CryptoSandbox() {
     channels: ChannelData[];
     hchannels: HorizontalChannelData[];
     schannels: SlopedChannelData[];
+    fibs: FibRetracementData[];
     labels: TextLabelData[];
   };
   const [drawingHistory, setDrawingHistory] = useState<DrawingState[]>([{
@@ -298,6 +299,7 @@ export default function CryptoSandbox() {
     channels: [],
     hchannels: [],
     schannels: [],
+    fibs: [],
     labels: []
   }]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -327,9 +329,10 @@ export default function CryptoSandbox() {
       channels: drawnChannels,
       hchannels: drawnHChannels,
       schannels: drawnSChannels,
+      fibs: drawnFibRetraces,
       labels: drawnTextLabels
     });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, saveToHistory]);
   
   const undo = useCallback(() => {
     if (historyIndex > 0) {
@@ -342,6 +345,7 @@ export default function CryptoSandbox() {
       setDrawnChannels(state.channels);
       setDrawnHChannels(state.hchannels || []);
       setDrawnSChannels(state.schannels || []);
+      setDrawnFibRetraces(state.fibs || []);
       setDrawnTextLabels(state.labels);
       // Close all menus
       setSelectedTrendline(null);
@@ -354,6 +358,8 @@ export default function CryptoSandbox() {
       setHChannelMenuPos(null);
       setSelectedSChannel(null);
       setSChannelMenuPos(null);
+      setSelectedFib(null);
+      setFibMenuPos(null);
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
     }
@@ -370,6 +376,7 @@ export default function CryptoSandbox() {
       setDrawnChannels(state.channels);
       setDrawnHChannels(state.hchannels || []);
       setDrawnSChannels(state.schannels || []);
+      setDrawnFibRetraces(state.fibs || []);
       setDrawnTextLabels(state.labels);
       // Close all menus
       setSelectedTrendline(null);
@@ -382,6 +389,8 @@ export default function CryptoSandbox() {
       setHChannelMenuPos(null);
       setSelectedSChannel(null);
       setSChannelMenuPos(null);
+      setSelectedFib(null);
+      setFibMenuPos(null);
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
     }
@@ -1395,6 +1404,106 @@ export default function CryptoSandbox() {
     setSelectedSChannel(null);
     setSChannelMenuPos(null);
     setMovingSChannel(null);
+  }, []);
+
+  // === FIBONACCI RETRACEMENT HANDLERS ===
+  const handleFibPlacement = useCallback((clickX: number, clickY: number) => {
+    const now = Date.now();
+    if (now - lastClickTimeRef.current < CLICK_DEBOUNCE) return;
+    lastClickTimeRef.current = now;
+
+    if (!xScaleRef.current || !yScaleRef.current) return;
+
+    const magnetPoint = findMagnetPoint(clickX, clickY);
+    const point = magnetPoint || {
+      x: clickX,
+      y: clickY,
+      time: xScaleRef.current.invert(clickX - margin.left).getTime(),
+      price: yScaleRef.current.invert(clickY - margin.top),
+    };
+
+    setMagnetPulse({ x: point.x, y: point.y });
+    setTimeout(() => setMagnetPulse(null), 400);
+
+    if (fibPoints.length === 0) {
+      setFibPoints([point]);
+    } else {
+      const p1 = fibPoints[0];
+      const p2 = point;
+      const lowPrice = Math.min(p1.price, p2.price);
+      const highPrice = Math.max(p1.price, p2.price);
+      const anchor1 = p1.price === lowPrice ? { time: p1.time, price: p1.price } : { time: p2.time, price: p2.price };
+      const anchor2 = p1.price === highPrice ? { time: p1.time, price: p1.price } : { time: p2.time, price: p2.price };
+
+      const newFib: FibRetracementData = {
+        id: `fib-${Date.now()}`,
+        anchor1,
+        anchor2,
+        color: '#FFFFFF',
+        opacity: 0.8,
+        lineStyle: 'dashed',
+        thickness: 1,
+        labelPosition: 'right',
+        showPrices: true,
+        showExtensions: false,
+        levels: DEFAULT_FIB_LEVELS.map(l => ({ ...l })),
+        createdAtZoomScale: zoomTransformRef.current?.k ?? 1,
+      };
+
+      const newFibs = [...drawnFibRetraces, newFib];
+      setDrawnFibRetraces(newFibs);
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: newFibs, labels: drawnTextLabels });
+      setFibPoints([]);
+    }
+  }, [fibPoints, margin, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, saveToHistory]);
+
+  // Handle click on fib to select it
+  const handleFibSelect = useCallback((fibId: string, clickX: number, clickY: number) => {
+    const now = Date.now();
+    if (now - lastSelectionTimeRef.current < CLICK_DEBOUNCE) {
+      return;
+    }
+    lastSelectionTimeRef.current = now;
+    selectionTimeRef.current = now;
+    
+    setSelectedFib(fibId);
+    setMovingFibAnchor('whole');
+    closeTrendlineMenu();
+    closeHorizontalMenu();
+    closeChannelMenu();
+    closeSChannelMenu();
+    setSelectedTextLabel(null);
+    setTextLabelMenuPos(null);
+    setSelectedHChannel(null);
+    setHChannelMenuPos(null);
+    const menuPos = constrainMenuPosition(clickX, clickY, 200, 350);
+    setFibMenuPos(menuPos);
+  }, [constrainMenuPosition, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu, closeSChannelMenu]);
+
+  // Delete selected fib
+  const deleteFib = useCallback(() => {
+    if (selectedFib) {
+      const newFibs = drawnFibRetraces.filter(f => f.id !== selectedFib);
+      setDrawnFibRetraces(newFibs);
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: newFibs, labels: drawnTextLabels });
+      setSelectedFib(null);
+      setFibMenuPos(null);
+      setMovingFibAnchor(null);
+    }
+  }, [selectedFib, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, saveToHistory]);
+
+  // Update fib property
+  const updateFib = useCallback((id: string, updates: Partial<FibRetracementData>) => {
+    const newFibs = drawnFibRetraces.map(f => f.id === id ? { ...f, ...updates } : f);
+    setDrawnFibRetraces(newFibs);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: newFibs, labels: drawnTextLabels });
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, saveToHistory]);
+
+  // Close fib menu
+  const closeFibMenu = useCallback(() => {
+    setSelectedFib(null);
+    setFibMenuPos(null);
+    setMovingFibAnchor(null);
   }, []);
 
   // === TEXT LABEL HANDLERS ===
