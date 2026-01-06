@@ -236,6 +236,10 @@ export default function CryptoSandbox() {
   const [selectionPickerPos, setSelectionPickerPos] = useState<{ x: number; y: number } | null>(null);
   const [selectionPickerClickPos, setSelectionPickerClickPos] = useState<{ x: number; y: number } | null>(null); // Original click position
   
+  // Tap feedback circle (visual indicator where user tapped)
+  const [tapFeedback, setTapFeedback] = useState<{ x: number; y: number } | null>(null);
+  const lastTapTimeRef = useRef<number>(0); // Debounce double-taps
+  
   // Undo/redo history for ALL drawing types (unified)
   type DrawingState = {
     trendlines: TrendlineData[];
@@ -1722,6 +1726,18 @@ export default function CryptoSandbox() {
     // Don't select if in drawing mode
     if (activeTool) return;
     
+    // Debounce double-taps (prevent processing same tap twice)
+    const now = Date.now();
+    if (now - lastTapTimeRef.current < 100) {
+      console.log('⏭️ Debouncing duplicate tap');
+      return;
+    }
+    lastTapTimeRef.current = now;
+    
+    // Show tap feedback circle
+    setTapFeedback({ x: clickX, y: clickY });
+    setTimeout(() => setTapFeedback(null), 400);
+    
     const candidates = collectHitCandidates(clickX, clickY);
     console.log('🎯 Candidates found:', candidates);
     if (candidates.length > 1) {
@@ -2664,12 +2680,15 @@ export default function CryptoSandbox() {
         if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD && !scaleChanged && !activeTool && !crosshairMode) {
           // Get position relative to SVG
           const svgElement = svgRef.current;
-          if (svgElement) {
+          if (svgElement && endX > 0 && endY > 0) {
             const rect = svgElement.getBoundingClientRect();
             const clickX = endX - rect.left;
             const clickY = endY - rect.top;
-            console.log('👆 Tap detected! Triggering selection at:', clickX, clickY);
-            handleSvgTapSelection(clickX, clickY);
+            // Skip clearly invalid coordinates (outside chart area)
+            if (clickX > 0 && clickY > 0 && clickX < rect.width && clickY < rect.height) {
+              console.log('👆 Tap detected! Triggering selection at:', clickX, clickY);
+              handleSvgTapSelection(clickX, clickY);
+            }
           }
         }
       })
@@ -4479,6 +4498,27 @@ export default function CryptoSandbox() {
                 </div>
               );
             })()}
+            
+            {/* Tap feedback circle - visual indicator where user tapped */}
+            {tapFeedback && (
+              <div 
+                className="absolute pointer-events-none z-40"
+                style={{ 
+                  left: tapFeedback.x - MAGNET_RADIUS, 
+                  top: tapFeedback.y - MAGNET_RADIUS,
+                  width: MAGNET_RADIUS * 2,
+                  height: MAGNET_RADIUS * 2,
+                }}
+              >
+                <div 
+                  className="w-full h-full rounded-full border-2 border-cyan-400 animate-ping"
+                  style={{ animationDuration: '0.4s' }}
+                />
+                <div 
+                  className="absolute inset-0 rounded-full border border-cyan-400 opacity-50"
+                />
+              </div>
+            )}
             
             {/* Selection Picker - shows when multiple overlapping elements */}
             {selectionPickerPos && selectionCandidates.length > 1 && (
