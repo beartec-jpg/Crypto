@@ -38,6 +38,7 @@ export default function CryptoSandbox() {
   const xScaleRef = useRef<d3.ScaleTime<number, number> | null>(null);
   const yScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const zoomTransformRef = useRef<d3.ZoomTransform | null>(null);
   
   
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
@@ -1723,6 +1724,13 @@ export default function CryptoSandbox() {
     if (!svgRef.current || candles.length === 0 || dimensions.width === 0) return;
     
     const svg = d3.select(svgRef.current);
+    
+    // Save current zoom transform before clearing
+    const currentTransform = d3.zoomTransform(svgRef.current);
+    if (currentTransform.k !== 1 || currentTransform.x !== 0 || currentTransform.y !== 0) {
+      zoomTransformRef.current = currentTransform;
+    }
+    
     svg.selectAll('*').remove();
     
     const width = dimensions.width;
@@ -2575,6 +2583,11 @@ export default function CryptoSandbox() {
     
     zoomRef.current = zoom;
     svg.call(zoom);
+    
+    // Restore saved zoom transform if it exists
+    if (zoomTransformRef.current) {
+      svg.call(zoom.transform, zoomTransformRef.current);
+    }
     
     // Current price line
     const lastCandle = candles[candles.length - 1];
