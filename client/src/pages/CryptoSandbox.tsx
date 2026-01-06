@@ -2840,44 +2840,8 @@ export default function CryptoSandbox() {
     zoomRef.current = zoom;
     svg.call(zoom);
     
-    // Add D3-based touch event listeners for tap detection (fires before D3 zoom captures)
-    let tapStartX = 0;
-    let tapStartY = 0;
-    let tapStartTime = 0;
-    
-    svg.on('touchstart.tap', function(event: TouchEvent) {
-      if (activeTool || crosshairMode) return;
-      const touch = event.touches[0];
-      if (!touch) return;
-      tapStartX = touch.clientX;
-      tapStartY = touch.clientY;
-      tapStartTime = Date.now();
-      console.log('🖐️ D3 touchstart:', { tapStartX, tapStartY, tapStartTime });
-    });
-    
-    svg.on('touchend.tap', function(event: TouchEvent) {
-      if (activeTool || crosshairMode) return;
-      const changedTouch = event.changedTouches[0];
-      if (!changedTouch) return;
-      
-      const elapsed = Date.now() - tapStartTime;
-      const dx = Math.abs(changedTouch.clientX - tapStartX);
-      const dy = Math.abs(changedTouch.clientY - tapStartY);
-      
-      console.log('🖐️ D3 touchend:', { elapsed, dx, dy, TAP_MAX_DURATION, TOUCH_THRESHOLD });
-      
-      // If this was a quick tap with minimal movement, do hit testing
-      if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD) {
-        const svgElement = svgRef.current;
-        if (svgElement) {
-          const rect = svgElement.getBoundingClientRect();
-          const clickX = changedTouch.clientX - rect.left;
-          const clickY = changedTouch.clientY - rect.top;
-          console.log('👆 D3 Tap detected! Triggering selection at:', clickX, clickY);
-          handleSvgTapSelection(clickX, clickY);
-        }
-      }
-    });
+    // NOTE: Tap detection is handled in the zoom 'end' event handler above.
+    // We removed duplicate touchstart.tap/touchend.tap handlers that were causing double-tap issues.
     
     // Restore saved zoom transform if it exists
     if (zoomTransformRef.current) {
