@@ -3943,6 +3943,7 @@ export default function CryptoSandbox() {
             )}
             
             {/* Trendline action menu */}
+            {console.log('🎨 RENDER CHECK - trendlineMenuPos:', trendlineMenuPos, 'selectedTrendline:', selectedTrendline)}
             {trendlineMenuPos && selectedTrendline && (
               <div 
                 className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
