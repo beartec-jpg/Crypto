@@ -50,6 +50,10 @@ export default function CryptoSandbox() {
   const touchMovedRef = useRef(false); // Track if touch moved significantly
   const TOUCH_THRESHOLD = 15; // pixels - movement above this is a drag, not a tap
   
+  // SVG-level tap detection for selection when crosshair is OFF
+  const svgTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const TAP_MAX_DURATION = 300; // ms - max time for a tap
+  
   // Drawing tool state
   type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | 'hchannel' | 'schannel' | null;
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
@@ -1669,6 +1673,45 @@ export default function CryptoSandbox() {
     }
   }, [collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
   
+  // SVG-level tap handler for selecting drawings without blocking pan/zoom
+  const handleSvgTapSelection = useCallback((clickX: number, clickY: number) => {
+    // Don't select if in drawing mode
+    if (activeTool) return;
+    
+    const candidates = collectHitCandidates(clickX, clickY);
+    if (candidates.length > 1) {
+      // Multiple overlapping elements - show picker
+      const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - margin.right - 60);
+      const pickerY = Math.min(Math.max(clickY, 50), dimensions.height - 150);
+      setSelectionCandidates(candidates);
+      setSelectionPickerPos({ x: pickerX, y: pickerY });
+      setSelectionPickerClickPos({ x: clickX, y: clickY });
+    } else if (candidates.length === 1) {
+      // Single element - select directly
+      const candidate = candidates[0];
+      switch (candidate.type) {
+        case 'trendline':
+          handleTrendlineSelect(candidate.id, clickX, clickY);
+          break;
+        case 'horizontal':
+          handleHorizontalSelect(candidate.id, clickX, clickY);
+          break;
+        case 'channel':
+          handleChannelSelect(candidate.id, clickX, clickY);
+          break;
+        case 'hchannel':
+          handleHChannelSelect(candidate.id, clickX, clickY);
+          break;
+        case 'schannel':
+          handleSChannelSelect(candidate.id, clickX, clickY);
+          break;
+        case 'label':
+          handleTextLabelSelect(candidate.id, clickX, clickY);
+          break;
+      }
+    }
+  }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
+  
   // Find if crosshair is near an endpoint of the moving trendline
   const findNearbyEndpoint = useCallback((clickX: number, clickY: number): 'p1' | 'p2' | null => {
     if (!xScaleRef.current || !yScaleRef.current || !movingTrendline) return null;
@@ -1937,19 +1980,12 @@ export default function CryptoSandbox() {
           }
         }
         
-        // Invisible hit area
+        // Invisible hit area - no click handler, selection handled via SVG tap detection
         lineGroup.append('line')
           .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
           .attr('stroke', 'transparent')
           .attr('stroke-width', 12)
-          .style('cursor', 'pointer')
-          .on('click', function(event) {
-            event.stopPropagation();
-            const rect = svgRef.current?.getBoundingClientRect();
-            if (rect) {
-              handleDrawingClick(line.id, 'trendline', event.clientX - rect.left, event.clientY - rect.top);
-            }
-          });
+          .style('pointer-events', 'none');
         
         // Visible line
         lineGroup.append('line')
@@ -2040,19 +2076,12 @@ export default function CryptoSandbox() {
         
         const lineGroup = drawingsGroup.append('g').attr('class', `horizontal-${line.id}`);
         
-        // Invisible hit area
+        // Invisible hit area - no click handler, selection handled via SVG tap detection
         lineGroup.append('line')
           .attr('x1', 0).attr('y1', y).attr('x2', innerWidth).attr('y2', y)
           .attr('stroke', 'transparent')
           .attr('stroke-width', 12)
-          .style('cursor', 'pointer')
-          .on('click', function(event) {
-            event.stopPropagation();
-            const rect = svgRef.current?.getBoundingClientRect();
-            if (rect) {
-              handleDrawingClick(line.id, 'horizontal', event.clientX - rect.left, event.clientY - rect.top);
-            }
-          });
+          .style('pointer-events', 'none');
         
         // Visible line
         lineGroup.append('line')
@@ -2117,19 +2146,12 @@ export default function CryptoSandbox() {
         const x1Bot = x1 + nx;
         const x2Bot = x2 + nx;
         
-        // Fill
+        // Fill - no click handler, selection handled via SVG tap detection
         channelGroup.append('polygon')
           .attr('points', `${x1Top},${y1Top} ${x2Top},${y2Top} ${x2Bot},${y2Bot} ${x1Bot},${y1Bot}`)
           .attr('fill', channel.color)
           .attr('fill-opacity', 0.1)
-          .style('cursor', 'pointer')
-          .on('click', function(event) {
-            event.stopPropagation();
-            const rect = svgRef.current?.getBoundingClientRect();
-            if (rect) {
-              handleDrawingClick(channel.id, 'channel', event.clientX - rect.left, event.clientY - rect.top);
-            }
-          });
+          .style('pointer-events', 'none');
         
         // Top line
         channelGroup.append('line')
@@ -2172,7 +2194,7 @@ export default function CryptoSandbox() {
         
         const hchannelGroup = drawingsGroup.append('g').attr('class', `hchannel-${hchannel.id}`);
         
-        // Fill area - use min/max to handle any draw direction
+        // Fill area - use min/max to handle any draw direction, no click handler
         const yMin = Math.min(yTop, yBottom);
         const yMax = Math.max(yTop, yBottom);
         hchannelGroup.append('rect')
@@ -2182,14 +2204,7 @@ export default function CryptoSandbox() {
           .attr('height', Math.max(1, yMax - yMin))
           .attr('fill', hchannel.fillColor || hchannel.color)
           .attr('fill-opacity', hchannel.fillOpacity ?? 0.1)
-          .style('cursor', 'pointer')
-          .on('click', function(event) {
-            event.stopPropagation();
-            const rect = svgRef.current?.getBoundingClientRect();
-            if (rect) {
-              handleDrawingClick(hchannel.id, 'hchannel', event.clientX - rect.left, event.clientY - rect.top);
-            }
-          });
+          .style('pointer-events', 'none');
         
         // Top external line
         const topStrokeDash = hchannel.topLineStyle === 'dashed' ? '8,4' : hchannel.topLineStyle === 'dotted' ? '2,4' : '';
@@ -2312,19 +2327,12 @@ export default function CryptoSandbox() {
         
         const schannelGroup = drawingsGroup.append('g').attr('class', `schannel-${schannel.id}`);
         
-        // Fill area (polygon between the two lines)
+        // Fill area (polygon between the two lines) - no click handler
         schannelGroup.append('polygon')
           .attr('points', `${topX1},${topY1} ${topX2},${topY2} ${botX2},${botY2} ${botX1},${botY1}`)
           .attr('fill', schannel.fillColor || schannel.color)
           .attr('fill-opacity', schannel.fillOpacity ?? 0.1)
-          .style('cursor', 'pointer')
-          .on('click', function(event) {
-            event.stopPropagation();
-            const rect = svgRef.current?.getBoundingClientRect();
-            if (rect) {
-              handleDrawingClick(schannel.id, 'schannel', event.clientX - rect.left, event.clientY - rect.top);
-            }
-          });
+          .style('pointer-events', 'none');
         
         // Top external line
         const sTopStrokeDash = schannel.topLineStyle === 'dashed' ? '8,4' : schannel.topLineStyle === 'dotted' ? '2,4' : '';
@@ -2713,9 +2721,44 @@ export default function CryptoSandbox() {
               ref={svgRef} 
               width={dimensions.width} 
               height={dimensions.height}
-              style={{ display: 'block', cursor: activeTool ? 'crosshair' : 'grab' }}
+              style={{ display: 'block', cursor: activeTool ? 'crosshair' : 'grab', touchAction: 'none' }}
               className="chart-background"
               data-testid="sandbox-chart"
+              onTouchStart={(e) => {
+                // Only track taps when not in crosshair mode (crosshair handles its own events)
+                if (!crosshairMode && !activeTool && e.touches[0]) {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  svgTapStartRef.current = {
+                    x: touch.clientX - rect.left,
+                    y: touch.clientY - rect.top,
+                    time: Date.now()
+                  };
+                }
+              }}
+              onTouchMove={(e) => {
+                // If moved significantly, cancel the tap
+                if (svgTapStartRef.current && e.touches[0]) {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const dx = (touch.clientX - rect.left) - svgTapStartRef.current.x;
+                  const dy = (touch.clientY - rect.top) - svgTapStartRef.current.y;
+                  if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) {
+                    svgTapStartRef.current = null; // Cancel tap - this is a pan gesture
+                  }
+                }
+              }}
+              onTouchEnd={() => {
+                // Check if this was a quick tap (not a drag)
+                if (svgTapStartRef.current) {
+                  const elapsed = Date.now() - svgTapStartRef.current.time;
+                  if (elapsed < TAP_MAX_DURATION) {
+                    // This was a tap - do hit testing
+                    handleSvgTapSelection(svgTapStartRef.current.x, svgTapStartRef.current.y);
+                  }
+                  svgTapStartRef.current = null;
+                }
+              }}
             />
             
             {/* Top indicator dropdowns */}
