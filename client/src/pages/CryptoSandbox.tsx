@@ -1570,6 +1570,7 @@ export default function CryptoSandbox() {
   const handlePickerSelect = useCallback((candidate: SelectionCandidate) => {
     const clickX = selectionPickerClickPos?.x ?? 0;
     const clickY = selectionPickerClickPos?.y ?? 0;
+    console.log('🔘 handlePickerSelect:', { candidate, clickX, clickY });
     closeSelectionPicker();
     switch (candidate.type) {
       case 'trendline':
