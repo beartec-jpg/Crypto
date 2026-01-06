@@ -176,6 +176,7 @@ export default function CryptoSandbox() {
     opacity: number;
     backgroundColor: string;
     fontSize: number;
+    createdAtZoomScale?: number; // zoom scale (k) when label was created - for dynamic visibility
   }
   
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
@@ -1274,6 +1275,9 @@ export default function CryptoSandbox() {
       price = yScaleRef.current.invert(clickY - margin.top);
     }
     
+    // Capture current zoom scale for dynamic visibility
+    const currentZoomScale = zoomTransformRef.current?.k ?? 1;
+    
     const newLabel: TextLabelData = {
       id: `txt-${Date.now()}`,
       x: clickX,
@@ -1285,6 +1289,7 @@ export default function CryptoSandbox() {
       opacity: textLabelDefaults.opacity,
       backgroundColor: textLabelDefaults.backgroundColor,
       fontSize: textLabelDefaults.fontSize,
+      createdAtZoomScale: currentZoomScale,
     };
     const newLabels = [...drawnTextLabels, newLabel];
     setDrawnTextLabels(newLabels);
@@ -2434,31 +2439,56 @@ export default function CryptoSandbox() {
         }
       });
       
-      // Draw text labels
+      // Draw text labels with dynamic zoom visibility
+      // Get current zoom scale from the transform
+      const currentZoomK = zoomTransformRef.current?.k ?? 1;
+      
       drawnTextLabels.forEach(label => {
         const x = xS(new Date(label.time));
         const y = yS(label.price);
         const isSelected = selectedTextLabel === label.id;
+        
+        // Calculate dynamic visibility based on zoom level
+        // If created at high zoom (k=4) and now at low zoom (k=1), ratio = 0.25
+        // Label fades/shrinks as you zoom out from where it was created
+        const createdK = label.createdAtZoomScale ?? 1;
+        const zoomRatio = currentZoomK / createdK;
+        
+        // Calculate visibility factor: 1.0 at same zoom or zoomed in more, fades when zoomed out
+        // Uses a smooth curve: fully visible above 0.5 ratio, fades to 0 at 0.2 ratio
+        let visibilityFactor = 1;
+        if (zoomRatio < 1) {
+          // Zoomed out from creation level
+          // Smooth fade: clamp between 0.2 and 0.7 ratio, map to 0-1
+          visibilityFactor = Math.max(0, Math.min(1, (zoomRatio - 0.2) / 0.5));
+        }
+        
+        // Skip rendering if completely invisible
+        if (visibilityFactor <= 0) return;
+        
+        // Apply visibility to opacity and font size
+        const effectiveOpacity = label.opacity * visibilityFactor;
+        const effectiveFontSize = label.fontSize * Math.max(0.5, visibilityFactor); // Min 50% size
         
         const labelGroup = drawingsGroup.append('g').attr('class', `textlabel-${label.id}`);
         
         // Background if set
         if (label.backgroundColor !== 'transparent') {
           labelGroup.append('rect')
-            .attr('x', x - 5).attr('y', y - label.fontSize)
-            .attr('width', label.text.length * label.fontSize * 0.6 + 10)
-            .attr('height', label.fontSize + 6)
+            .attr('x', x - 5).attr('y', y - effectiveFontSize)
+            .attr('width', label.text.length * effectiveFontSize * 0.6 + 10)
+            .attr('height', effectiveFontSize + 6)
             .attr('fill', label.backgroundColor)
             .attr('rx', 3)
-            .attr('opacity', label.opacity);
+            .attr('opacity', effectiveOpacity);
         }
         
         // Text
         labelGroup.append('text')
           .attr('x', x).attr('y', y)
           .attr('fill', label.color)
-          .attr('font-size', `${label.fontSize}px`)
-          .attr('opacity', label.opacity)
+          .attr('font-size', `${effectiveFontSize}px`)
+          .attr('opacity', effectiveOpacity)
           .style('cursor', 'pointer')
           .text(label.text)
           .on('click', function(event) {
@@ -2472,9 +2502,9 @@ export default function CryptoSandbox() {
         // Selection indicator
         if (isSelected) {
           labelGroup.append('rect')
-            .attr('x', x - 8).attr('y', y - label.fontSize - 3)
-            .attr('width', label.text.length * label.fontSize * 0.6 + 16)
-            .attr('height', label.fontSize + 12)
+            .attr('x', x - 8).attr('y', y - effectiveFontSize - 3)
+            .attr('width', label.text.length * effectiveFontSize * 0.6 + 16)
+            .attr('height', effectiveFontSize + 12)
             .attr('fill', 'none')
             .attr('stroke', '#3b82f6')
             .attr('stroke-width', 2)
