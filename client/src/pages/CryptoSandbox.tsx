@@ -698,6 +698,19 @@ export default function CryptoSandbox() {
   
   // Handle click on trendline to select it - auto enters move mode
   const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
+    // Close all other menus first
+    setHorizontalMenuPos(null);
+    setSelectedHorizontal(null);
+    setChannelMenuPos(null);
+    setSelectedChannel(null);
+    setHChannelMenuPos(null);
+    setSelectedHChannel(null);
+    setMovingHChannel(null);
+    setSChannelMenuPos(null);
+    setSelectedSChannel(null);
+    setTextLabelMenuPos(null);
+    setSelectedTextLabel(null);
+    
     setSelectedTrendline(lineId);
     setMoveMode(true);
     setMovingTrendline(lineId);
@@ -1007,21 +1020,31 @@ export default function CryptoSandbox() {
 
   // Handle click on horizontal channel to select it
   const handleHChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
+    // Close all other menus first
+    setSelectedTrendline(null);
+    setTrendlineMenuPos(null);
+    setActiveSubmenu(null);
+    setMovingTrendline(null);
+    setMoveMode(false);
+    setMovingPoint(null);
+    setMovingWholeLine(null);
+    setHorizontalMenuPos(null);
+    setSelectedHorizontal(null);
+    setChannelMenuPos(null);
+    setSelectedChannel(null);
+    setSChannelMenuPos(null);
+    setSelectedSChannel(null);
+    setTextLabelMenuPos(null);
+    setSelectedTextLabel(null);
+    
     setSelectedHChannel(channelId);
     setMovingHChannel(channelId); // Auto enter move mode
-    closeTrendlineMenu();
-    closeHorizontalMenu();
-    closeChannelMenu();
-    setSelectedTextLabel(null);
-    setTextLabelMenuPos(null);
-    setSelectedSChannel(null);
-    setSChannelMenuPos(null);
     let menuX = clickX + 10;
     let menuY = clickY - 50;
     if (menuX > dimensions.width - 60) menuX = dimensions.width - 60;
     if (menuY < margin.top) menuY = margin.top;
     setHChannelMenuPos({ x: menuX, y: menuY });
-  }, [dimensions, margin, closeTrendlineMenu, closeHorizontalMenu, closeChannelMenu]);
+  }, [dimensions, margin]);
 
   // Delete selected horizontal channel
   const deleteHChannel = useCallback(() => {
