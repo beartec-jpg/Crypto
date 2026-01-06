@@ -239,6 +239,7 @@ export default function CryptoSandbox() {
   // Tap feedback circle (visual indicator where user tapped)
   const [tapFeedback, setTapFeedback] = useState<{ x: number; y: number } | null>(null);
   const lastTapTimeRef = useRef<number>(0); // Debounce double-taps
+  const tapInProgressRef = useRef<boolean>(false); // Block concurrent taps
   const selectionTimeRef = useRef<number>(0); // Track when selection occurred to prevent immediate close
   
   // Undo/redo history for ALL drawing types (unified)
@@ -1761,14 +1762,13 @@ export default function CryptoSandbox() {
     // Don't select if in drawing mode
     if (activeTool) return;
     
-    // Debounce double-taps (prevent processing same tap twice)
-    // 200ms catches synthetic click events that follow touch events
-    const now = Date.now();
-    if (now - lastTapTimeRef.current < 200) {
-      console.log('⏭️ Debouncing duplicate tap');
+    // Block concurrent taps (more reliable than timestamp-based debounce)
+    if (tapInProgressRef.current) {
+      console.log('⏭️ Blocking concurrent tap');
       return;
     }
-    lastTapTimeRef.current = now;
+    tapInProgressRef.current = true;
+    setTimeout(() => { tapInProgressRef.current = false; }, 300);
     
     // Show tap feedback circle
     setTapFeedback({ x: clickX, y: clickY });
