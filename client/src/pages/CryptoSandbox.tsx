@@ -1576,6 +1576,43 @@ export default function CryptoSandbox() {
         break;
     }
   }, [closeSelectionPicker, selectionPickerClickPos, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
+
+  // Unified drawing click handler - checks for overlapping elements and shows picker if needed
+  const handleDrawingClick = useCallback((clickedId: string, clickedType: SelectionCandidate['type'], clickX: number, clickY: number) => {
+    // Check for overlapping elements at this location
+    const candidates = collectHitCandidates(clickX, clickY);
+    
+    if (candidates.length > 1) {
+      // Multiple overlapping elements - show picker
+      const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - margin.right - 60);
+      const pickerY = Math.min(Math.max(clickY, 50), dimensions.height - 150);
+      setSelectionCandidates(candidates);
+      setSelectionPickerPos({ x: pickerX, y: pickerY });
+      setSelectionPickerClickPos({ x: clickX, y: clickY });
+    } else {
+      // Single element or none - select directly (fallback to clicked element)
+      switch (clickedType) {
+        case 'trendline':
+          handleTrendlineSelect(clickedId, clickX, clickY);
+          break;
+        case 'horizontal':
+          handleHorizontalSelect(clickedId, clickX, clickY);
+          break;
+        case 'channel':
+          handleChannelSelect(clickedId, clickX, clickY);
+          break;
+        case 'hchannel':
+          handleHChannelSelect(clickedId, clickX, clickY);
+          break;
+        case 'schannel':
+          handleSChannelSelect(clickedId, clickX, clickY);
+          break;
+        case 'label':
+          handleTextLabelSelect(clickedId, clickX, clickY);
+          break;
+      }
+    }
+  }, [collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect]);
   
   // Find if crosshair is near an endpoint of the moving trendline
   const findNearbyEndpoint = useCallback((clickX: number, clickY: number): 'p1' | 'p2' | null => {
@@ -1848,7 +1885,7 @@ export default function CryptoSandbox() {
             event.stopPropagation();
             const rect = svgRef.current?.getBoundingClientRect();
             if (rect) {
-              handleTrendlineSelect(line.id, event.clientX - rect.left, event.clientY - rect.top);
+              handleDrawingClick(line.id, 'trendline', event.clientX - rect.left, event.clientY - rect.top);
             }
           });
         
@@ -1951,7 +1988,7 @@ export default function CryptoSandbox() {
             event.stopPropagation();
             const rect = svgRef.current?.getBoundingClientRect();
             if (rect) {
-              handleHorizontalSelect(line.id, event.clientX - rect.left, event.clientY - rect.top);
+              handleDrawingClick(line.id, 'horizontal', event.clientX - rect.left, event.clientY - rect.top);
             }
           });
         
@@ -2028,7 +2065,7 @@ export default function CryptoSandbox() {
             event.stopPropagation();
             const rect = svgRef.current?.getBoundingClientRect();
             if (rect) {
-              handleChannelSelect(channel.id, event.clientX - rect.left, event.clientY - rect.top);
+              handleDrawingClick(channel.id, 'channel', event.clientX - rect.left, event.clientY - rect.top);
             }
           });
         
@@ -2088,7 +2125,7 @@ export default function CryptoSandbox() {
             event.stopPropagation();
             const rect = svgRef.current?.getBoundingClientRect();
             if (rect) {
-              handleHChannelSelect(hchannel.id, event.clientX - rect.left, event.clientY - rect.top);
+              handleDrawingClick(hchannel.id, 'hchannel', event.clientX - rect.left, event.clientY - rect.top);
             }
           });
         
@@ -2223,7 +2260,7 @@ export default function CryptoSandbox() {
             event.stopPropagation();
             const rect = svgRef.current?.getBoundingClientRect();
             if (rect) {
-              handleSChannelSelect(schannel.id, event.clientX - rect.left, event.clientY - rect.top);
+              handleDrawingClick(schannel.id, 'schannel', event.clientX - rect.left, event.clientY - rect.top);
             }
           });
         
@@ -2536,7 +2573,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleTextLabelSelect, handleEndpointClick]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick]);
   
   // Show loading while checking auth
   if (authLoading) {
