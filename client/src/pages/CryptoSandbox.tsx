@@ -5334,22 +5334,28 @@ export default function CryptoSandbox() {
             )}
             
             {/* Drag overlay for menu */}
-            {draggingMenu && trendlineMenuPos && (
+            {draggingMenu && (trendlineMenuPos || horizontalMenuPos || channelMenuPos) && (
               <div 
                 className="fixed inset-0 z-[100] cursor-grabbing"
                 onMouseMove={(e) => {
-                  setTrendlineMenuPos({
+                  const newPos = {
                     x: e.clientX - menuDragOffset.current.x,
                     y: e.clientY - menuDragOffset.current.y
-                  });
+                  };
+                  if (trendlineMenuPos) setTrendlineMenuPos(newPos);
+                  if (horizontalMenuPos) setHorizontalMenuPos(newPos);
+                  if (channelMenuPos) setChannelMenuPos(newPos);
                 }}
                 onMouseUp={() => setDraggingMenu(false)}
                 onTouchMove={(e) => {
                   const touch = e.touches[0];
-                  setTrendlineMenuPos({
+                  const newPos = {
                     x: touch.clientX - menuDragOffset.current.x,
                     y: touch.clientY - menuDragOffset.current.y
-                  });
+                  };
+                  if (trendlineMenuPos) setTrendlineMenuPos(newPos);
+                  if (horizontalMenuPos) setHorizontalMenuPos(newPos);
+                  if (channelMenuPos) setChannelMenuPos(newPos);
                 }}
                 onTouchEnd={() => setDraggingMenu(false)}
               />
