@@ -91,6 +91,7 @@ export default function CryptoSandbox() {
     lineStyle: LineStyle;
     thickness: number;
     label?: { text: string; positions: ('left' | 'center' | 'right')[] };
+    createdAtZoomScale?: number; // Zoom level when horizontal line was created for dynamic visibility
   }
   
   // Channel data (legacy - kept for backward compatibility)
@@ -953,6 +954,7 @@ export default function CryptoSandbox() {
       opacity: horizontalDefaults.opacity,
       lineStyle: horizontalDefaults.lineStyle,
       thickness: horizontalDefaults.thickness,
+      createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Capture zoom level
     };
     const newHorizontals = [...drawnHorizontals, newLine];
     setDrawnHorizontals(newHorizontals);
@@ -2718,9 +2720,29 @@ export default function CryptoSandbox() {
       
       // Draw horizontal lines
       drawnHorizontals.forEach(line => {
+        // Calculate visibility based on zoom level when created
+        const createdK = line.createdAtZoomScale ?? 1;
+        const zoomRatio = currentZoomK / createdK;
+        // Visibility: fully visible when zoomed in more than creation level (ratio >= 1)
+        // Fades out when zooming out: starts fading at ratio 0.5, invisible at ratio 0.2
+        let visibilityFactor = 1;
+        if (zoomRatio < 1) {
+          if (zoomRatio <= 0.2) {
+            visibilityFactor = 0;
+          } else if (zoomRatio < 0.5) {
+            visibilityFactor = (zoomRatio - 0.2) / 0.3; // Linear fade from 0.2 to 0.5
+          }
+        }
+        
+        // Skip rendering if completely invisible
+        if (visibilityFactor <= 0) return;
+        
         const y = yS(line.price);
         const strokeDash = line.lineStyle === 'dashed' ? '8,4' : line.lineStyle === 'dotted' ? '2,4' : '';
         const isSelected = selectedHorizontal === line.id;
+        
+        // Apply visibility factor to opacity
+        const effectiveOpacity = line.opacity * visibilityFactor;
         
         const lineGroup = drawingsGroup.append('g').attr('class', `horizontal-${line.id}`);
         
@@ -2736,7 +2758,7 @@ export default function CryptoSandbox() {
           .attr('x1', 0).attr('y1', y).attr('x2', innerWidth).attr('y2', y)
           .attr('stroke', line.color)
           .attr('stroke-width', line.thickness || 2)
-          .attr('stroke-opacity', line.opacity)
+          .attr('stroke-opacity', effectiveOpacity)
           .attr('stroke-dasharray', strokeDash)
           .style('pointer-events', 'none');
         
