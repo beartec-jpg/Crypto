@@ -25,8 +25,7 @@ const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
 // Drawing constants
 const TOUCH_THRESHOLD = 35; // pixels - movement above this is a drag, not a tap (increased for mobile)
 const CLICK_DEBOUNCE = 100; // ms - ignore clicks within this time of each other
-const TAP_TIME_LIMIT = 300; // ms - max time for a tap
-const TAP_MAX_DURATION = 300; // ms - max time for a tap
+const TAP_MAX_DURATION = 300; // ms - max time for a tap gesture
 const FIB_SNAP_PIXELS = 20; // pixels - threshold for snapping to Fibonacci levels
 
 export default function CryptoSandbox() {
@@ -4763,7 +4762,7 @@ export default function CryptoSandbox() {
                   if (touchStartRef.current && !touchMovedRef.current) {
                     // Quick tap without significant movement - place point at lift position
                     const tapDuration = Date.now() - touchStartRef.current.time;
-                    if (tapDuration < TAP_TIME_LIMIT) {
+                    if (tapDuration < TAP_MAX_DURATION) {
                       touchHandledRef.current = true;
                       handleTrendlinePlacement(touchStartRef.current.x, touchStartRef.current.y);
                     }
@@ -5054,7 +5053,7 @@ export default function CryptoSandbox() {
                   e.preventDefault();
                   if (touchStartRef.current && !touchMovedRef.current) {
                     const tapDuration = Date.now() - touchStartRef.current.time;
-                    if (tapDuration < TAP_TIME_LIMIT) {
+                    if (tapDuration < TAP_MAX_DURATION) {
                       touchHandledRef.current = true;
                       handleHChannelPlacement(touchStartRef.current.x, touchStartRef.current.y);
                     }
@@ -5151,7 +5150,7 @@ export default function CryptoSandbox() {
                   e.preventDefault();
                   if (touchStartRef.current && !touchMovedRef.current) {
                     const tapDuration = Date.now() - touchStartRef.current.time;
-                    if (tapDuration < TAP_TIME_LIMIT) {
+                    if (tapDuration < TAP_MAX_DURATION) {
                       touchHandledRef.current = true;
                       handleSChannelPlacement(touchStartRef.current.x, touchStartRef.current.y);
                     }
@@ -5279,7 +5278,7 @@ export default function CryptoSandbox() {
                   e.preventDefault();
                   if (touchStartRef.current && !touchMovedRef.current) {
                     const tapDuration = Date.now() - touchStartRef.current.time;
-                    if (tapDuration < TAP_TIME_LIMIT) {
+                    if (tapDuration < TAP_MAX_DURATION) {
                       touchHandledRef.current = true;
                       handleFibPlacement(touchStartRef.current.x, touchStartRef.current.y);
                     }
@@ -5376,7 +5375,7 @@ export default function CryptoSandbox() {
                   e.preventDefault();
                   if (touchStartRef.current && !touchMovedRef.current) {
                     const tapDuration = Date.now() - touchStartRef.current.time;
-                    if (tapDuration < TAP_TIME_LIMIT) {
+                    if (tapDuration < TAP_MAX_DURATION) {
                       touchHandledRef.current = true;
                       handleTrendFibPlacement(touchStartRef.current.x, touchStartRef.current.y);
                     }
