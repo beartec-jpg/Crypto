@@ -1,59 +1,73 @@
-import { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ReactNode } from 'react';
+import { ErrorHandler } from '@/lib/errorHandler';
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: any) => void;
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
+  errorInfo: any;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, errorInfo: null };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  componentDidCatch(error: Error, errorInfo: any) {
+    const { onError } = this.props;
+    
+    // Log to error handler
+    ErrorHandler.logError(
+      'rendering',
+      `React error boundary caught: ${error.message}`,
+      { errorInfo },
+      { component: errorInfo.componentStack }
+    );
+
+    this.setState({ errorInfo });
+
+    if (onError) {
+      onError(error, errorInfo);
+    }
   }
 
   render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
+    const { hasError, error } = this.state;
+    const { children, fallback } = this.props;
 
+    if (hasError) {
       return (
-        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-          <div className="bg-slate-800 rounded-lg p-8 max-w-lg w-full text-center">
-            <div className="text-red-400 text-6xl mb-4">⚠️</div>
-            <h1 className="text-xl font-bold text-white mb-2">Something went wrong</h1>
-            <p className="text-slate-400 mb-4">
-              The application encountered an error. Please try refreshing the page.
-            </p>
-            <div className="bg-slate-900 rounded p-3 mb-4 text-left">
-              <p className="text-xs text-red-400 font-mono break-all">
-                {this.state.error?.message || 'Unknown error'}
-              </p>
-            </div>
+        fallback || (
+          <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-4">
+            <h1 className="text-3xl font-bold mb-4">Something went wrong</h1>
+            <p className="text-gray-400 mb-4">{error?.message}</p>
             <button
               onClick={() => window.location.reload()}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
             >
-              Refresh Page
+              Reload Page
             </button>
+            <details className="mt-8 max-w-2xl text-sm text-gray-500">
+              <summary className="cursor-pointer">Error Details</summary>
+              <pre className="mt-4 p-4 bg-slate-800 rounded overflow-auto">
+                {error?.stack}
+              </pre>
+            </details>
           </div>
-        </div>
+        )
       );
     }
 
-    return this.props.children;
+    return children;
   }
 }
