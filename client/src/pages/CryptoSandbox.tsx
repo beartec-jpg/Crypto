@@ -6515,6 +6515,7 @@ export default function CryptoSandbox() {
                   className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
                   style={{ left: fibMenuPos.x, top: fibMenuPos.y }}
                   data-menu="fib"
+                  onClick={e => e.stopPropagation()}
                 >
                   <div 
                     className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
@@ -6566,7 +6567,7 @@ export default function CryptoSandbox() {
             {activeSubmenu === 'fib-setup' && fibMenuPos && selectedFib && (() => {
               const fib = drawnFibRetraces.find(f => f.id === selectedFib);
               return (
-                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48 max-h-64 overflow-y-auto" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}>
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48 max-h-64 overflow-y-auto" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }} onClick={e => e.stopPropagation()}>
                   <div className="text-xs text-gray-300 mb-2 font-semibold">Fib Levels</div>
                   {fib?.levels.map((level, idx) => (
                     <div key={idx} className="flex items-center gap-1 mb-1">
@@ -6600,7 +6601,7 @@ export default function CryptoSandbox() {
               const fib = drawnFibRetraces.find(f => f.id === selectedFib);
               const colors = ['#facc15', '#22c55e', '#3b82f6', '#ef4444', '#a855f7', '#06b6d4', '#f97316', '#ffffff'];
               return (
-                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-40" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}>
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-40" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }} onClick={e => e.stopPropagation()}>
                   <div className="text-xs text-gray-300 mb-2 font-semibold">Line Style</div>
                   <div className="flex gap-1 mb-3">
                     {(['solid', 'dashed', 'dotted'] as const).map(style => (
@@ -6626,7 +6627,7 @@ export default function CryptoSandbox() {
               const fib = drawnFibRetraces.find(f => f.id === selectedFib);
               const dirs: FibExtendDirection[] = ['none', 'left', 'right', 'both'];
               return (
-                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}>
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }} onClick={e => e.stopPropagation()}>
                   <div className="text-xs text-gray-300 mb-2 font-semibold">Extend Lines</div>
                   <div className="flex gap-1">
                     {dirs.map(dir => (
@@ -6644,7 +6645,7 @@ export default function CryptoSandbox() {
               const fib = drawnFibRetraces.find(f => f.id === selectedFib);
               const positions: FibLabelPosition[] = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
               return (
-                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }}>
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48" style={{ left: fibMenuPos.x + 50, top: fibMenuPos.y }} onClick={e => e.stopPropagation()}>
                   <div className="text-xs text-gray-300 mb-2 font-semibold">Label Position</div>
                   <div className="grid grid-cols-3 gap-1 mb-3">
                     {positions.map(pos => (
@@ -6679,6 +6680,7 @@ export default function CryptoSandbox() {
                   className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
                   style={{ left: trendFibMenuPos.x, top: trendFibMenuPos.y }}
                   data-menu="trendfib"
+                  onClick={e => e.stopPropagation()}
                 >
                   <div 
                     className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
@@ -6730,7 +6732,7 @@ export default function CryptoSandbox() {
             {activeSubmenu === 'trendfib-setup' && trendFibMenuPos && selectedTrendFib && (() => {
               const tfib = drawnTrendFibs.find(t => t.id === selectedTrendFib);
               return (
-                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48 max-h-64 overflow-y-auto" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}>
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48 max-h-64 overflow-y-auto" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }} onClick={e => e.stopPropagation()}>
                   <div className="text-xs text-gray-300 mb-2 font-semibold">Extension Levels</div>
                   {tfib?.levels.map((level, idx) => (
                     <div key={idx} className="flex items-center gap-1 mb-1">
@@ -6764,7 +6766,7 @@ export default function CryptoSandbox() {
               const tfib = drawnTrendFibs.find(t => t.id === selectedTrendFib);
               const colors = ['#FFD700', '#22c55e', '#3b82f6', '#ef4444', '#a855f7', '#06b6d4', '#f97316', '#ffffff'];
               return (
-                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-40" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}>
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-40" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }} onClick={e => e.stopPropagation()}>
                   <div className="text-xs text-gray-300 mb-2 font-semibold">Line Style</div>
                   <div className="flex gap-1 mb-3">
                     {(['solid', 'dashed', 'dotted'] as const).map(style => (
@@ -6790,7 +6792,7 @@ export default function CryptoSandbox() {
               const tfib = drawnTrendFibs.find(t => t.id === selectedTrendFib);
               const dirs: FibExtendDirection[] = ['none', 'left', 'right', 'both'];
               return (
-                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}>
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }} onClick={e => e.stopPropagation()}>
                   <div className="text-xs text-gray-300 mb-2 font-semibold">Extend Lines</div>
                   <div className="flex gap-1">
                     {dirs.map(dir => (
@@ -6808,7 +6810,7 @@ export default function CryptoSandbox() {
               const tfib = drawnTrendFibs.find(t => t.id === selectedTrendFib);
               const positions: FibLabelPosition[] = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
               return (
-                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }}>
+                <div className="absolute bg-slate-700 border border-slate-500 rounded p-2 z-50 w-48" style={{ left: trendFibMenuPos.x + 50, top: trendFibMenuPos.y }} onClick={e => e.stopPropagation()}>
                   <div className="text-xs text-gray-300 mb-2 font-semibold">Label Position</div>
                   <div className="grid grid-cols-3 gap-1 mb-3">
                     {positions.map(pos => (
