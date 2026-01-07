@@ -30,7 +30,7 @@ export interface UseElliottWaveResult {
   // Actions
   activateMode: () => void;
   deactivateMode: () => void;
-  placePoint: (time: number, price: number, snappedToHigh: boolean) => void;
+  placePoint: (time: number, price: number, snappedToHigh: boolean, snapType?: 'candle' | 'fib') => void;
   reset: () => void;
   undo: () => void;
   
@@ -103,7 +103,7 @@ export function useElliottWave(): UseElliottWaveResult {
     });
   }, []);
 
-  const placePoint = useCallback((time: number, price: number, snappedToHigh: boolean) => {
+  const placePoint = useCallback((time: number, price: number, snappedToHigh: boolean, snapType?: 'candle' | 'fib') => {
     if (mode === 'placing_w0') {
       const point: ElliottWavePoint = { time, price, snappedToHigh, label: 'W0' };
       setPlacedPoints([point]);
@@ -135,53 +135,60 @@ export function useElliottWave(): UseElliottWaveResult {
       const point: ElliottWavePoint = { time, price, snappedToHigh, label: 'W2' };
       setPlacedPoints(prev => [...prev, point]);
       
-      // Generate simulated W2 ABC correction candles
-      const w1 = placedPoints[1];
-      const w2 = point;
-      const w2Range = Math.abs(w2.price - w1.price);
-      const direction = w2.price < w1.price ? 'down' : 'up'; // W2 retraces opposite to W1
+      // Only generate simulated candles if clicked on fib level, NOT on real candle
+      if (snapType === 'fib') {
+        // Generate simulated W2 ABC correction candles
+        const w1 = placedPoints[1];
+        const w2 = point;
+        const w2Range = Math.abs(w2.price - w1.price);
+        const direction = w2.price < w1.price ? 'down' : 'up'; // W2 retraces opposite to W1
+        
+        // Create 3 simulated candles for A, B, C waves
+        // Simple approximation: A = 61.8% of W2 move, B = 50% retrace of A, C completes to W2
+        const timePerCandle = 60 * 60 * 1000; // 1 hour per candle (arbitrary)
+        
+        const aEndPrice = direction === 'down' 
+          ? w1.price - (w2Range * 0.618)
+          : w1.price + (w2Range * 0.618);
+        
+        const bRange = Math.abs(aEndPrice - w1.price) * 0.5;
+        const bEndPrice = direction === 'down'
+          ? aEndPrice + bRange
+          : aEndPrice - bRange;
+        
+        const candles: SimulatedCandle[] = [
+          {
+            time: w1.time + timePerCandle,
+            open: w1.price,
+            high: direction === 'down' ? w1.price : aEndPrice,
+            low: direction === 'down' ? aEndPrice : w1.price,
+            close: aEndPrice,
+            label: 'W2.A'
+          },
+          {
+            time: w1.time + timePerCandle * 2,
+            open: aEndPrice,
+            high: direction === 'down' ? bEndPrice : aEndPrice,
+            low: direction === 'down' ? aEndPrice : bEndPrice,
+            close: bEndPrice,
+            label: 'W2.B'
+          },
+          {
+            time: w1.time + timePerCandle * 3,
+            open: bEndPrice,
+            high: direction === 'down' ? bEndPrice : w2.price,
+            low: direction === 'down' ? w2.price : bEndPrice,
+            close: w2.price,
+            label: 'W2.C'
+          }
+        ];
+        
+        setSimulatedCandles(candles);
+      } else {
+        // Clicked on real candle - no simulated candles, just trendline + retracement %
+        setSimulatedCandles([]);
+      }
       
-      // Create 3 simulated candles for A, B, C waves
-      // Simple approximation: A = 61.8% of W2 move, B = 50% retrace of A, C completes to W2
-      const timePerCandle = 60 * 60 * 1000; // 1 hour per candle (arbitrary)
-      
-      const aEndPrice = direction === 'down' 
-        ? w1.price - (w2Range * 0.618)
-        : w1.price + (w2Range * 0.618);
-      
-      const bRange = Math.abs(aEndPrice - w1.price) * 0.5;
-      const bEndPrice = direction === 'down'
-        ? aEndPrice + bRange
-        : aEndPrice - bRange;
-      
-      const candles: SimulatedCandle[] = [
-        {
-          time: w1.time + timePerCandle,
-          open: w1.price,
-          high: direction === 'down' ? w1.price : aEndPrice,
-          low: direction === 'down' ? aEndPrice : w1.price,
-          close: aEndPrice,
-          label: 'W2.A'
-        },
-        {
-          time: w1.time + timePerCandle * 2,
-          open: aEndPrice,
-          high: direction === 'down' ? bEndPrice : aEndPrice,
-          low: direction === 'down' ? aEndPrice : bEndPrice,
-          close: bEndPrice,
-          label: 'W2.B'
-        },
-        {
-          time: w1.time + timePerCandle * 3,
-          open: bEndPrice,
-          high: direction === 'down' ? bEndPrice : w2.price,
-          low: direction === 'down' ? w2.price : bEndPrice,
-          close: w2.price,
-          label: 'W2.C'
-        }
-      ];
-      
-      setSimulatedCandles(candles);
       setMode('complete');
     }
   }, [mode, placedPoints]);
