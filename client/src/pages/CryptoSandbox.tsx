@@ -55,6 +55,7 @@ export default function CryptoSandbox() {
   const TOUCH_THRESHOLD = 35; // pixels - movement above this is a drag, not a tap (increased for mobile)
   const CLICK_DEBOUNCE = 100; // ms - ignore clicks within this time of each other
   const TAP_TIME_LIMIT = 300; // ms - max time for a tap
+  const FIB_SNAP_PIXELS = 20; // pixels - threshold for snapping to Fibonacci levels
   
   // SVG-level tap detection for selection when crosshair is OFF
   const svgTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -343,7 +344,7 @@ export default function CryptoSandbox() {
     hchannels: HorizontalChannelData[];
     schannels: SlopedChannelData[];
     fibs: FibRetracementData[];
-    trendfibs?: TrendFibExtensionData[];
+    trendfibs: TrendFibExtensionData[];
     labels: TextLabelData[];
   };
   const [drawingHistory, setDrawingHistory] = useState<DrawingState[]>([{
@@ -1728,7 +1729,7 @@ export default function CryptoSandbox() {
     if (selectedTextLabel) {
       const newLabels = drawnTextLabels.filter(l => l.id !== selectedTextLabel);
       setDrawnTextLabels(newLabels);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: newLabels });
+      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: newLabels });
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
     }
@@ -1738,8 +1739,8 @@ export default function CryptoSandbox() {
   const updateTextLabel = useCallback((id: string, updates: Partial<TextLabelData>) => {
     const newLabels = drawnTextLabels.map(l => l.id === id ? { ...l, ...updates } : l);
     setDrawnTextLabels(newLabels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: newLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: newLabels });
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, saveToHistory]);
   
   // Handle Elliott Wave click placement
   const handleElliottWaveClick = useCallback((clickX: number, clickY: number) => {
@@ -1755,7 +1756,7 @@ export default function CryptoSandbox() {
     let clickedFibLevel = null;
     if (elliottWave.mode === 'placing_w2' && elliottWave.fibLevels.length > 0) {
       const clickPrice = yScaleRef.current.invert(clickY - margin.top);
-      const FIB_SNAP_THRESHOLD = Math.abs(yScaleRef.current.invert(margin.top + 20) - yScaleRef.current.invert(margin.top)); // ~20px
+      const FIB_SNAP_THRESHOLD = Math.abs(yScaleRef.current.invert(margin.top + FIB_SNAP_PIXELS) - yScaleRef.current.invert(margin.top));
       
       for (const level of elliottWave.fibLevels) {
         if (Math.abs(clickPrice - level.price) < FIB_SNAP_THRESHOLD) {
