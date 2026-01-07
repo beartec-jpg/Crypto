@@ -340,6 +340,7 @@ export default function CryptoSandbox() {
     hchannels: HorizontalChannelData[];
     schannels: SlopedChannelData[];
     fibs: FibRetracementData[];
+    trendfibs?: TrendFibExtensionData[];
     labels: TextLabelData[];
   };
   const [drawingHistory, setDrawingHistory] = useState<DrawingState[]>([{
@@ -349,6 +350,7 @@ export default function CryptoSandbox() {
     hchannels: [],
     schannels: [],
     fibs: [],
+    trendfibs: [],
     labels: []
   }]);
   const [historyIndex, setHistoryIndex] = useState(0);
