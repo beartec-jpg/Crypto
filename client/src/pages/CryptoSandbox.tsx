@@ -3840,7 +3840,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive]);
+  }, [candles, dimensions, interval, chartScales, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive]);
   
   // Show loading while checking auth
   if (authLoading) {
