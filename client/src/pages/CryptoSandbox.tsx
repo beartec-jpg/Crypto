@@ -11,9 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Crosshair, ChevronDown, TrendingUp } from 'lucide-react';
 import { useElliottWave } from '@/hooks/useElliottWave';
 import { useDrawingState } from '@/hooks/useDrawingState';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { useErrorHandler } from '@/hooks/useErrorHandler';
-import { ErrorHandler } from '@/lib/errorHandler';
+import { TrendlineMenu, HorizontalMenu, ChannelMenu } from '@/components/menus';
 import {
   constrainLabelPosition,
   formatFibonacciLabel,
@@ -5368,115 +5366,50 @@ export default function CryptoSandbox() {
             )}
             
             {trendlineMenuPos && selectedTrendline && (
-              <div 
-                className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
-                style={{ left: trendlineMenuPos.x, top: trendlineMenuPos.y }}
-                data-menu="trendline"
-              >
-                {/* Drag handle */}
-                <div 
-                  className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setDraggingMenu(true);
-                    menuDragOffset.current = {
-                      x: e.clientX - trendlineMenuPos.x,
-                      y: e.clientY - trendlineMenuPos.y
-                    };
-                  }}
-                  onTouchStart={(e) => {
-                    const touch = e.touches[0];
-                    setDraggingMenu(true);
-                    menuDragOffset.current = {
-                      x: touch.clientX - trendlineMenuPos.x,
-                      y: touch.clientY - trendlineMenuPos.y
-                    };
-                  }}
-                >
-                  <div className="w-6 h-0.5 bg-slate-400 rounded" />
-                </div>
-                <div className="p-1 flex flex-col gap-1">
-                {/* Delete */}
-                <button
-                  onClick={deleteTrendline}
-                  className="p-2 hover:bg-slate-700 rounded text-red-400"
-                  title="Delete"
-                >
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
-                  </svg>
-                </button>
-                
-                {/* Colour */}
-                <button
-                  onClick={() => setActiveSubmenu(activeSubmenu === 'color' ? null : 'color')}
-                  className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'color' ? 'bg-slate-600' : ''}`}
-                  title="Colour"
-                >
-                  {(() => {
-                    const selectedLine = drawnTrendlines.find(l => l.id === selectedTrendline);
-                    return (
-                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="10" cy="10" r="7" />
-                        <circle cx="10" cy="10" r="3" fill={selectedLine?.color || 'currentColor'} stroke="none" />
-                      </svg>
-                    );
-                  })()}
-                </button>
-                
-                {/* Extend */}
-                <button
-                  onClick={() => setActiveSubmenu(activeSubmenu === 'extend' ? null : 'extend')}
-                  className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'extend' ? 'bg-slate-600' : ''}`}
-                  title="Extend"
-                >
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 10h12M16 10l-4-4M16 10l-4 4" />
-                  </svg>
-                </button>
-                
-                {/* Label */}
-                <button
-                  onClick={() => setActiveSubmenu(activeSubmenu === 'label' ? null : 'label')}
-                  className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'label' ? 'bg-slate-600' : ''}`}
-                  title="Label"
-                >
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
-                    <text x="5" y="15" fontSize="14" fontWeight="bold">T</text>
-                  </svg>
-                </button>
-                
-                {/* Save as Favorite */}
-                <button
-                  onClick={saveAsFavorite}
-                  className="p-2 hover:bg-slate-700 rounded text-yellow-400"
-                  title="Save as Default"
-                >
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
-                    <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
-                  </svg>
-                </button>
-                </div>
-              </div>
+              <TrendlineMenu
+                position={trendlineMenuPos}
+                trendlineColor={drawnTrendlines.find(l => l.id === selectedTrendline)?.color}
+                onDelete={deleteTrendline}
+                onToggleColorSubmenu={() => setActiveSubmenu(activeSubmenu === 'color' ? null : 'color')}
+                onToggleExtendSubmenu={() => setActiveSubmenu(activeSubmenu === 'extend' ? null : 'extend')}
+                onToggleLabelSubmenu={() => setActiveSubmenu(activeSubmenu === 'label' ? null : 'label')}
+                onSaveAsFavorite={saveAsFavorite}
+                onDragStart={(e) => {
+                  setDraggingMenu(true);
+                  const clientX = 'clientX' in e ? e.clientX : e.touches[0].clientX;
+                  const clientY = 'clientY' in e ? e.clientY : e.touches[0].clientY;
+                  menuDragOffset.current = {
+                    x: clientX - trendlineMenuPos.x,
+                    y: clientY - trendlineMenuPos.y
+                  };
+                }}
+                activeSubmenu={activeSubmenu}
+              />
             )}
             
             {/* Drag overlay for menu */}
-            {draggingMenu && trendlineMenuPos && (
+            {draggingMenu && (trendlineMenuPos || horizontalMenuPos || channelMenuPos) && (
               <div 
                 className="fixed inset-0 z-[100] cursor-grabbing"
                 onMouseMove={(e) => {
-                  setTrendlineMenuPos({
+                  const newPos = {
                     x: e.clientX - menuDragOffset.current.x,
                     y: e.clientY - menuDragOffset.current.y
-                  });
+                  };
+                  if (trendlineMenuPos) setTrendlineMenuPos(newPos);
+                  if (horizontalMenuPos) setHorizontalMenuPos(newPos);
+                  if (channelMenuPos) setChannelMenuPos(newPos);
                 }}
                 onMouseUp={() => setDraggingMenu(false)}
                 onTouchMove={(e) => {
                   const touch = e.touches[0];
-                  setTrendlineMenuPos({
+                  const newPos = {
                     x: touch.clientX - menuDragOffset.current.x,
                     y: touch.clientY - menuDragOffset.current.y
-                  });
+                  };
+                  if (trendlineMenuPos) setTrendlineMenuPos(newPos);
+                  if (horizontalMenuPos) setHorizontalMenuPos(newPos);
+                  if (channelMenuPos) setChannelMenuPos(newPos);
                 }}
                 onTouchEnd={() => setDraggingMenu(false)}
               />
@@ -5655,72 +5588,29 @@ export default function CryptoSandbox() {
             
             {/* Horizontal line action menu - matches trendline menu structure */}
             {horizontalMenuPos && selectedHorizontal && (
-              <div 
-                className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
-                style={{ left: horizontalMenuPos.x, top: horizontalMenuPos.y }}
-                data-menu="horizontal"
-              >
-                {/* Drag handle */}
-                <div 
-                  className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setDraggingMenu(true);
-                    menuDragOffset.current = { x: e.clientX - horizontalMenuPos.x, y: e.clientY - horizontalMenuPos.y };
-                  }}
-                >
-                  <div className="w-6 h-0.5 bg-slate-400 rounded" />
-                </div>
-                <div className="p-1 flex flex-col gap-1">
-                  {/* Delete */}
-                  <button onClick={deleteHorizontal} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
-                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
-                    </svg>
-                  </button>
-                  {/* Move */}
-                  <button 
-                    onClick={() => {
-                      setMovingHorizontal(selectedHorizontal);
-                      setHorizontalMenuPos(null);
-                      setActiveSubmenu(null);
-                    }} 
-                    className="p-2 hover:bg-slate-700 rounded text-white" 
-                    title="Move"
-                  >
-                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
-                    </svg>
-                  </button>
-                  {/* Color - circle with colored dot */}
-                  <button
-                    onClick={() => setActiveSubmenu(activeSubmenu === 'h-color' ? null : 'h-color')}
-                    className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'h-color' ? 'bg-slate-600' : ''}`}
-                    title="Colour"
-                  >
-                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="10" cy="10" r="7" />
-                      <circle cx="10" cy="10" r="3" fill={drawnHorizontals.find(l => l.id === selectedHorizontal)?.color || '#facc15'} stroke="none" />
-                    </svg>
-                  </button>
-                  {/* Label */}
-                  <button
-                    onClick={() => setActiveSubmenu(activeSubmenu === 'h-label' ? null : 'h-label')}
-                    className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'h-label' ? 'bg-slate-600' : ''}`}
-                    title="Label"
-                  >
-                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
-                      <text x="5" y="15" fontSize="14" fontWeight="bold">T</text>
-                    </svg>
-                  </button>
-                  {/* Save as Favorite */}
-                  <button onClick={saveHorizontalAsFavorite} className="p-2 hover:bg-slate-700 rounded text-yellow-400" title="Save as Default">
-                    <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
-                      <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <HorizontalMenu
+                position={horizontalMenuPos}
+                horizontalColor={drawnHorizontals.find(l => l.id === selectedHorizontal)?.color}
+                onDelete={deleteHorizontal}
+                onMove={() => {
+                  setMovingHorizontal(selectedHorizontal);
+                  setHorizontalMenuPos(null);
+                  setActiveSubmenu(null);
+                }}
+                onToggleColorSubmenu={() => setActiveSubmenu(activeSubmenu === 'h-color' ? null : 'h-color')}
+                onToggleLabelSubmenu={() => setActiveSubmenu(activeSubmenu === 'h-label' ? null : 'h-label')}
+                onSaveAsFavorite={saveHorizontalAsFavorite}
+                onDragStart={(e) => {
+                  setDraggingMenu(true);
+                  const clientX = 'clientX' in e ? e.clientX : e.touches[0].clientX;
+                  const clientY = 'clientY' in e ? e.clientY : e.touches[0].clientY;
+                  menuDragOffset.current = {
+                    x: clientX - horizontalMenuPos.x,
+                    y: clientY - horizontalMenuPos.y
+                  };
+                }}
+                activeSubmenu={activeSubmenu}
+              />
             )}
             
             {/* Horizontal line color submenu */}
@@ -5822,77 +5712,34 @@ export default function CryptoSandbox() {
             {channelMenuPos && selectedChannel && (() => {
               const channel = drawnChannels.find(c => c.id === selectedChannel);
               return (
-                <div 
-                  className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
-                  style={{ left: channelMenuPos.x, top: channelMenuPos.y }}
-                  data-menu="channel"
-                >
-                  {/* Drag handle */}
-                  <div 
-                    className="h-2 bg-slate-600 rounded-t-sm cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-slate-500 transition-colors"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      setDraggingMenu(true);
-                      menuDragOffset.current = { x: e.clientX - channelMenuPos.x, y: e.clientY - channelMenuPos.y };
-                    }}
-                  >
-                    <div className="w-6 h-0.5 bg-slate-400 rounded" />
-                  </div>
-                  <div className="p-1 flex flex-col gap-1">
-                    {/* Delete */}
-                    <button onClick={deleteChannel} className="p-2 hover:bg-slate-700 rounded text-red-400" title="Delete">
-                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M4 6h12M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6M8 6V4a1 1 0 011-1h2a1 1 0 011 1v2" />
-                      </svg>
-                    </button>
-                    {/* Move */}
-                    <button 
-                      onClick={() => {
-                        setMovingChannel(selectedChannel);
-                        setChannelMenuPos(null);
-                        setActiveSubmenu(null);
-                      }} 
-                      className="p-2 hover:bg-slate-700 rounded text-white" 
-                      title="Move"
-                    >
-                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M10 2v16M2 10h16M10 2l-3 3M10 2l3 3M10 18l-3-3M10 18l3-3M2 10l3-3M2 10l3 3M18 10l-3-3M18 10l-3 3" />
-                      </svg>
-                    </button>
-                    {/* Color - circle with colored dot */}
-                    <button
-                      onClick={() => setActiveSubmenu(activeSubmenu === 'ch-color' ? null : 'ch-color')}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'ch-color' ? 'bg-slate-600' : ''}`}
-                      title="Colour"
-                    >
-                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="10" cy="10" r="7" />
-                        <circle cx="10" cy="10" r="3" fill={channel?.color || '#22c55e'} stroke="none" />
-                      </svg>
-                    </button>
-                    {/* Labels/Lines */}
-                    <button
-                      onClick={() => setActiveSubmenu(activeSubmenu === 'ch-lines' ? null : 'ch-lines')}
-                      className={`p-2 hover:bg-slate-700 rounded text-white ${activeSubmenu === 'ch-lines' ? 'bg-slate-600' : ''}`}
-                      title="Lines"
-                    >
-                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M2 5h16M2 10h16M2 15h16" />
-                      </svg>
-                    </button>
-                    {/* Save as Favorite */}
-                    <button onClick={() => {
-                      if (channel) {
-                        const defaults = { color: channel.color, opacity: channel.opacity, lineStyle: channel.lineStyle, thickness: channel.thickness, internalLineStyle: channel.internalLineStyle, internalLineColor: channel.internalLineColor };
-                        localStorage.setItem('channelDefaults', JSON.stringify(defaults));
-                      }
-                    }} className="p-2 hover:bg-slate-700 rounded text-yellow-400" title="Save as Default">
-                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
-                        <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+                <ChannelMenu
+                  position={channelMenuPos}
+                  channelColor={channel?.color}
+                  onDelete={deleteChannel}
+                  onMove={() => {
+                    setMovingChannel(selectedChannel);
+                    setChannelMenuPos(null);
+                    setActiveSubmenu(null);
+                  }}
+                  onToggleColorSubmenu={() => setActiveSubmenu(activeSubmenu === 'ch-color' ? null : 'ch-color')}
+                  onToggleLinesSubmenu={() => setActiveSubmenu(activeSubmenu === 'ch-lines' ? null : 'ch-lines')}
+                  onSaveAsFavorite={() => {
+                    if (channel) {
+                      const defaults = { color: channel.color, opacity: channel.opacity, lineStyle: channel.lineStyle, thickness: channel.thickness, internalLineStyle: channel.internalLineStyle, internalLineColor: channel.internalLineColor };
+                      localStorage.setItem('channelDefaults', JSON.stringify(defaults));
+                    }
+                  }}
+                  onDragStart={(e) => {
+                    setDraggingMenu(true);
+                    const clientX = 'clientX' in e ? e.clientX : e.touches[0].clientX;
+                    const clientY = 'clientY' in e ? e.clientY : e.touches[0].clientY;
+                    menuDragOffset.current = {
+                      x: clientX - channelMenuPos.x,
+                      y: clientY - channelMenuPos.y
+                    };
+                  }}
+                  activeSubmenu={activeSubmenu}
+                />
               );
             })()}
             
