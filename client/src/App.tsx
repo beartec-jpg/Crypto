@@ -6,27 +6,32 @@ import { HelmetProvider } from 'react-helmet-async';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CryptoAuthGate } from '@/components/CryptoAuthGate';
 import { InstallPrompt } from '@/components/InstallPrompt';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { lazy, Suspense } from 'react';
 
-import CryptoLanding from '@/pages/CryptoLanding';
-import CryptoIndicators from '@/pages/CryptoIndicators';
-import CryptoAI from '@/pages/CryptoAI';
-import CryptoElliottWave from '@/pages/CryptoElliottWave';
-import CryptoTraining from '@/pages/CryptoTraining';
-import CryptoLogin from '@/pages/CryptoLogin';
-import CryptoSubscribe from '@/pages/CryptoSubscribe';
-import CryptoPrivacy from '@/pages/CryptoPrivacy';
-import CryptoTerms from '@/pages/CryptoTerms';
-import CryptoAccount from '@/pages/CryptoAccount';
-import CryptoFeedbackBoard from '@/pages/CryptoFeedbackBoard';
-import CryptoElliottWaveLessons from '@/pages/CryptoElliottWaveLessons';
-import DevAnalytics from '@/pages/DevAnalytics';
-import CryptoSandbox from '@/pages/CryptoSandbox';
-import NotFound from '@/pages/not-found';
+// Lazy load all route components for code splitting
+const CryptoLanding = lazy(() => import('@/pages/CryptoLanding'));
+const CryptoLogin = lazy(() => import('@/pages/CryptoLogin'));
+const CryptoPrivacy = lazy(() => import('@/pages/CryptoPrivacy'));
+const CryptoTerms = lazy(() => import('@/pages/CryptoTerms'));
+const CryptoIndicators = lazy(() => import('@/pages/CryptoIndicators'));
+const CryptoAI = lazy(() => import('@/pages/CryptoAI'));
+const CryptoElliottWave = lazy(() => import('@/pages/CryptoElliottWave'));
+const CryptoTraining = lazy(() => import('@/pages/CryptoTraining'));
+const CryptoSubscribe = lazy(() => import('@/pages/CryptoSubscribe'));
+const CryptoAccount = lazy(() => import('@/pages/CryptoAccount'));
+const CryptoFeedbackBoard = lazy(() => import('@/pages/CryptoFeedbackBoard'));
+const CryptoElliottWaveLessons = lazy(() => import('@/pages/CryptoElliottWaveLessons'));
+const DevAnalytics = lazy(() => import('@/pages/DevAnalytics'));
+const CryptoSandbox = lazy(() => import('@/pages/CryptoSandbox'));
+const NotFound = lazy(() => import('@/pages/not-found'));
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   return (
     <CryptoAuthGate>
-      <Component />
+      <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+        <Component />
+      </Suspense>
     </CryptoAuthGate>
   );
 }
@@ -38,11 +43,31 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <Switch>
             {/* Public routes */}
-            <Route path="/" component={CryptoLanding} />
-            <Route path="/crypto" component={CryptoLanding} />
-            <Route path="/cryptologin" component={CryptoLogin} />
-            <Route path="/cryptoprivacy" component={CryptoPrivacy} />
-            <Route path="/cryptoterms" component={CryptoTerms} />
+            <Route path="/">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoLanding />
+              </Suspense>
+            </Route>
+            <Route path="/crypto">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoLanding />
+              </Suspense>
+            </Route>
+            <Route path="/cryptologin">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoLogin />
+              </Suspense>
+            </Route>
+            <Route path="/cryptoprivacy">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoPrivacy />
+              </Suspense>
+            </Route>
+            <Route path="/cryptoterms">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoTerms />
+              </Suspense>
+            </Route>
             
             {/* Protected routes - require authentication */}
             <Route path="/cryptoindicators">
@@ -79,7 +104,11 @@ function App() {
               <ProtectedRoute component={CryptoSandbox} />
             </Route>
             
-            <Route component={NotFound} />
+            <Route>
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <NotFound />
+              </Suspense>
+            </Route>
           </Switch>
           <Toaster />
           <InstallPrompt />

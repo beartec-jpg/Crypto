@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { MenuButton } from './MenuButton';
 import { MenuDragHandle } from './MenuDragHandle';
 
@@ -14,7 +14,7 @@ interface TrendlineMenuProps {
   activeSubmenu: string | null;
 }
 
-export function TrendlineMenu({ 
+const TrendlineMenuComponent = ({ 
   position, 
   trendlineColor = 'currentColor',
   onDelete, 
@@ -24,7 +24,7 @@ export function TrendlineMenu({
   onSaveAsFavorite,
   onDragStart,
   activeSubmenu
-}: TrendlineMenuProps) {
+}: TrendlineMenuProps) => {
   return (
     <div 
       className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
@@ -104,4 +104,8 @@ export function TrendlineMenu({
       </div>
     </div>
   );
-}
+};
+
+TrendlineMenuComponent.displayName = 'TrendlineMenu';
+
+export const TrendlineMenu = memo(TrendlineMenuComponent);

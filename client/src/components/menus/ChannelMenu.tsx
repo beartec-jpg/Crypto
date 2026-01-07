@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { MenuButton } from './MenuButton';
 import { MenuDragHandle } from './MenuDragHandle';
 
@@ -14,7 +14,7 @@ interface ChannelMenuProps {
   activeSubmenu: string | null;
 }
 
-export function ChannelMenu({ 
+const ChannelMenuComponent = ({ 
   position, 
   channelColor = '#22c55e',
   onDelete,
@@ -24,7 +24,7 @@ export function ChannelMenu({
   onSaveAsFavorite,
   onDragStart,
   activeSubmenu
-}: ChannelMenuProps) {
+}: ChannelMenuProps) => {
   return (
     <div 
       className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
@@ -103,4 +103,8 @@ export function ChannelMenu({
       </div>
     </div>
   );
-}
+};
+
+ChannelMenuComponent.displayName = 'ChannelMenu';
+
+export const ChannelMenu = memo(ChannelMenuComponent);

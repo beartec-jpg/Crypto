@@ -1,5 +1,6 @@
-import { useMemo, useRef, useEffect } from 'react';
-import * as d3 from 'd3';
+import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
+import { loadD3 } from '@/lib/d3Loader';
+import type * as d3Types from 'd3';
 
 /**
  * CandleData interface - matches the structure used in CryptoSandbox
@@ -32,6 +33,8 @@ export interface MarginConfig {
  * - Line and area generators
  * - Coordinate conversion utilities
  * 
+ * Now with lazy D3 loading to reduce initial bundle size
+ * 
  * @param dimensions - Chart dimensions (width and height)
  * @param margin - Chart margins for axis spacing
  * @param data - Candle data array
@@ -46,32 +49,41 @@ export function useChartScales(
   _zoomScale: number = 1,
   _panOffset: number = 0
 ) {
+  // D3 loading state
+  const [d3, setD3] = useState<typeof d3Types | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load D3 dynamically
+  useEffect(() => {
+    loadD3().then((d3Module) => {
+      setD3(d3Module);
+      setIsLoading(false);
+    }).catch((error) => {
+      console.error('Failed to load D3:', error);
+      setIsLoading(false);
+    });
+  }, []);
+
   // Calculate inner dimensions
   const innerWidth = dimensions.width - margin.left - margin.right;
   const innerHeight = dimensions.height - margin.top - margin.bottom;
 
   // X scale (time) - memoized
   const xScale = useMemo(() => {
-    if (!data.length) {
-      // Return empty scale with default range
-      return d3.scaleTime()
-        .domain([new Date(0), new Date(1)])
-        .range([0, innerWidth]);
+    if (!d3 || !data.length) {
+      return null;
     }
     
     const timeExtent = d3.extent(data, (d: CandleData) => d.time) as [number, number];
     return d3.scaleTime()
       .domain([new Date(timeExtent[0]), new Date(timeExtent[1])])
       .range([0, innerWidth]);
-  }, [data, innerWidth]);
+  }, [d3, data, innerWidth]);
 
   // Y scale (price) - memoized
   const yScale = useMemo(() => {
-    if (!data.length) {
-      // Return empty scale with default range
-      return d3.scaleLinear()
-        .domain([0, 100])
-        .range([innerHeight, 0]);
+    if (!d3 || !data.length) {
+      return null;
     }
     
     const priceExtent = [
@@ -83,36 +95,50 @@ export function useChartScales(
       .domain(priceExtent)
       .range([innerHeight, 0])
       .nice();
-  }, [data, innerHeight]);
+  }, [d3, data, innerHeight]);
 
   // Line generator (uses scales)
   const line = useMemo(() => {
+    if (!d3 || !xScale || !yScale) {
+      return null;
+    }
+    
     return d3.line<CandleData>()
       .x((d: CandleData) => xScale(new Date(d.time)))
       .y((d: CandleData) => yScale(d.close));
-  }, [xScale, yScale]);
+  }, [d3, xScale, yScale]);
 
   // Area generator (uses scales)
   const area = useMemo(() => {
+    if (!d3 || !xScale || !yScale) {
+      return null;
+    }
+    
     return d3.area<CandleData>()
       .x((d: CandleData) => xScale(new Date(d.time)))
       .y0(innerHeight)
       .y1((d: CandleData) => yScale(d.close));
-  }, [xScale, yScale, innerHeight]);
+  }, [d3, xScale, yScale, innerHeight]);
 
   // X Axis generator
   const xAxis = useMemo(() => {
+    if (!d3 || !xScale) {
+      return null;
+    }
     return d3.axisBottom(xScale).ticks(10);
-  }, [xScale]);
+  }, [d3, xScale]);
 
   // Y Axis generator
   const yAxis = useMemo(() => {
+    if (!d3 || !yScale) {
+      return null;
+    }
     return d3.axisLeft(yScale).ticks(8);
-  }, [yScale]);
+  }, [d3, yScale]);
 
   // Scale refs for D3 selections
-  const xScaleRef = useRef(xScale);
-  const yScaleRef = useRef(yScale);
+  const xScaleRef = useRef<d3Types.ScaleTime<number, number> | null>(null);
+  const yScaleRef = useRef<d3Types.ScaleLinear<number, number> | null>(null);
 
   // Update refs when scales change
   useEffect(() => {
@@ -120,14 +146,33 @@ export function useChartScales(
     yScaleRef.current = yScale;
   }, [xScale, yScale]);
 
-  // Utility functions for coordinate conversions
-  const timeToPixels = (time: number) => xScale(new Date(time));
-  const priceToPixels = (price: number) => yScale(price);
-  const pixelsToTime = (pixels: number) => xScale.invert(pixels).getTime();
-  const pixelsToPrice = (pixels: number) => yScale.invert(pixels);
+  // Utility functions for coordinate conversions - memoized
+  const timeToPixels = useCallback((time: number) => {
+    if (!xScale) return 0;
+    return xScale(new Date(time));
+  }, [xScale]);
+
+  const priceToPixels = useCallback((price: number) => {
+    if (!yScale) return 0;
+    return yScale(price);
+  }, [yScale]);
+
+  const pixelsToTime = useCallback((pixels: number) => {
+    if (!xScale) return 0;
+    return xScale.invert(pixels).getTime();
+  }, [xScale]);
+
+  const pixelsToPrice = useCallback((pixels: number) => {
+    if (!yScale) return 0;
+    return yScale.invert(pixels);
+  }, [yScale]);
 
   // Return all scales, generators, refs, and utilities
   return {
+    // Loading state
+    isLoading,
+    d3,
+    
     // Core scales
     xScale,
     yScale,
