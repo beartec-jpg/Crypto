@@ -11,6 +11,9 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Crosshair, ChevronDown, TrendingUp } from 'lucide-react';
 import { useElliottWave } from '@/hooks/useElliottWave';
 import { useDrawingState } from '@/hooks/useDrawingState';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorHandler } from '@/lib/errorHandler';
 import {
   constrainLabelPosition,
   formatFibonacciLabel,
@@ -52,6 +55,9 @@ interface CandleData {
 export default function CryptoSandbox() {
   const { isAdmin, isLoading: authLoading } = useCryptoAuth();
   const [, setLocation] = useLocation();
+  
+  // Error handling hook
+  const { error: errorMessage, handleError, clearError, exportLogs } = useErrorHandler();
   
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -400,7 +406,10 @@ export default function CryptoSandbox() {
       // First batch - most recent 1000
       const url1 = `/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000`;
       const response1 = await fetch(url1);
-      if (!response1.ok) throw new Error('Failed to fetch data');
+      if (!response1.ok) {
+        handleError('data-fetch', `Failed to fetch data: HTTP ${response1.status}`, { url: url1, status: response1.status });
+        throw new Error(`HTTP ${response1.status}`);
+      }
       const data1 = await response1.json();
       
       let allData = [...data1];
@@ -439,12 +448,13 @@ export default function CryptoSandbox() {
       }));
       
       setCandles(formattedCandles);
-    } catch (error) {
+    } catch (error: any) {
+      handleError('data-fetch', `Failed to load candles: ${error.message}`, { symbol, interval, error: error.toString() });
       console.error('Error fetching candles:', error);
     } finally {
       setLoading(false);
     }
-  }, [symbol, interval]);
+  }, [symbol, interval, handleError]);
   
   useEffect(() => {
     fetchCandles();
@@ -2148,7 +2158,8 @@ export default function CryptoSandbox() {
   useEffect(() => {
     if (!svgRef.current || candles.length === 0 || dimensions.width === 0) return;
     
-    const svg = d3.select(svgRef.current);
+    try {
+      const svg = d3.select(svgRef.current);
     
     // Save current zoom transform before clearing
     const currentTransform = d3.zoomTransform(svgRef.current);
@@ -3714,7 +3725,12 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, interval, chartScales, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive]);
+    } catch (err: any) {
+      handleError('rendering', `Failed to render chart: ${err.message}`, { error: err.toString() });
+      console.error('D3 rendering error:', err);
+    }
+    
+  }, [candles, dimensions, interval, chartScales, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive, handleError]);
   
   // Show loading while checking auth
   if (authLoading) {
@@ -3731,8 +3747,33 @@ export default function CryptoSandbox() {
   }
   
   return (
-    <div className="h-screen bg-slate-900 text-white overflow-hidden flex flex-col">
-      {/* Header Controls */}
+    <ErrorBoundary>
+      <div className="h-screen bg-slate-900 text-white overflow-hidden flex flex-col">
+        {/* Error notification toast */}
+        {errorMessage && (
+          <div className="fixed top-4 right-4 bg-red-600 text-white px-4 py-3 rounded shadow-lg max-w-md z-[1000]">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="font-bold">Error</p>
+                <p className="text-sm">{errorMessage}</p>
+              </div>
+              <button
+                onClick={clearError}
+                className="text-white hover:text-red-200 ml-4"
+              >
+                ✕
+              </button>
+            </div>
+            <button
+              onClick={exportLogs}
+              className="mt-2 text-xs bg-red-700 hover:bg-red-800 px-2 py-1 rounded"
+            >
+              Export Logs
+            </button>
+          </div>
+        )}
+        
+        {/* Header Controls */}
       <div className="p-4 border-b border-slate-700 flex items-center gap-4 flex-shrink-0">
         <h1 className="text-xl font-bold text-blue-400">Sandbox Chart</h1>
         
@@ -3766,6 +3807,22 @@ export default function CryptoSandbox() {
         >
           Refresh
         </Button>
+        
+        <button
+          onClick={exportLogs}
+          className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-xs text-white rounded"
+          title="Export error logs for debugging"
+        >
+          📋 Export Logs
+        </button>
+
+        <button
+          onClick={() => ErrorHandler.clearLogs()}
+          className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-xs text-white rounded"
+          title="Clear error logs"
+        >
+          🗑️ Clear Logs
+        </button>
         
         <div className="ml-auto text-sm text-slate-400">
           {candles.length} candles loaded
@@ -7345,5 +7402,6 @@ export default function CryptoSandbox() {
         )}
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
