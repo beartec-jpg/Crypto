@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
+import { useChartScales } from '@/hooks/useChartScales';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -61,7 +62,10 @@ export default function CryptoSandbox() {
   const [loading, setLoading] = useState(true);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
-  // Scales refs for zoom/pan
+  // Use chart scales hook for D3 scale management
+  const chartScales = useChartScales(dimensions, MARGIN, candles);
+  
+  // Scales refs for zoom/pan - these track the current (potentially zoomed) scales
   const xScaleRef = useRef<d3.ScaleTime<number, number> | null>(null);
   const yScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
@@ -2171,24 +2175,10 @@ export default function CryptoSandbox() {
       .attr('width', innerWidth)
       .attr('height', innerHeight);
     
-    // Time extent
-    const timeExtent = d3.extent(candles, d => d.time) as [number, number];
-    const priceExtent = [
-      d3.min(candles, d => d.low) as number * 0.999,
-      d3.max(candles, d => d.high) as number * 1.001
-    ];
-    
-    // X Scale (time) - D3 zoom handles transforms
-    const xScale = d3.scaleTime()
-      .domain([new Date(timeExtent[0]), new Date(timeExtent[1])])
-      .range([0, innerWidth]);
+    // Get scales from hook - these are memoized and automatically update when data/dimensions change
+    const xScale = chartScales.xScale;
+    const yScale = chartScales.yScale;
     xScaleRef.current = xScale;
-    
-    // Y Scale (price) - D3 zoom recalculates based on visible candles
-    const yScale = d3.scaleLinear()
-      .domain(priceExtent)
-      .range([innerHeight, 0])
-      .nice();
     yScaleRef.current = yScale;
     
     // Background
@@ -3724,7 +3714,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive]);
+  }, [candles, dimensions, interval, chartScales, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive]);
   
   // Show loading while checking auth
   if (authLoading) {
