@@ -2723,7 +2723,7 @@ export default function CryptoSandbox() {
         // Calculate visibility based on zoom level when created
         const createdK = line.createdAtZoomScale ?? 1;
         const zoomRatio = currentZoomK / createdK;
-        // Visibility: fully visible when zoomed in more than creation level (ratio >= 1)
+        // Visibility: fully visible when at or zoomed in more than creation level (ratio >= 1)
         // Fades out when zooming out: starts fading at ratio 0.5, invisible at ratio 0.2
         let visibilityFactor = 1;
         if (zoomRatio < 1) {
