@@ -112,6 +112,7 @@ export default function CryptoSandbox() {
     internalLineStyle: LineStyle;
     internalLineColor: string;
     showExternalLines: boolean;
+    createdAtZoomScale?: number; // Zoom level when channel was created for dynamic visibility
   }
   
   // Horizontal Channel - 2 click mode
@@ -143,6 +144,7 @@ export default function CryptoSandbox() {
     isFavorite?: boolean;
     extendLeft?: boolean;
     extendRight?: boolean;
+    createdAtZoomScale?: number; // Zoom level when channel was created for dynamic visibility
   }
 
   // Sloped Channel - 3 click mode
@@ -173,6 +175,7 @@ export default function CryptoSandbox() {
     isFavorite?: boolean;
     extendLeft?: boolean;
     extendRight?: boolean;
+    createdAtZoomScale?: number; // Zoom level when channel was created for dynamic visibility
   }
   
   // Text label data
@@ -1067,6 +1070,7 @@ export default function CryptoSandbox() {
         internalLineStyle: channelDefaults.internalLineStyle,
         internalLineColor: channelDefaults.internalLineColor,
         showExternalLines: true,
+        createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Capture zoom level
       };
       const newChannels = [...drawnChannels, newChannel];
       setDrawnChannels(newChannels);
@@ -1211,6 +1215,7 @@ export default function CryptoSandbox() {
         showLabelRight: hchDefaults.showLabelRight,
         extendLeft: hchDefaults.extendLeft,
         extendRight: hchDefaults.extendRight,
+        createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Capture zoom level
       };
       const newHChannels = [...drawnHChannels, newHChannel];
       setDrawnHChannels(newHChannels);
@@ -1405,6 +1410,7 @@ export default function CryptoSandbox() {
         showLabelRight: schDefaults.showLabelRight,
         extendLeft: schDefaults.extendLeft,
         extendRight: schDefaults.extendRight,
+        createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Capture zoom level
       };
       const newSChannels = [...drawnSChannels, newSChannel];
       setDrawnSChannels(newSChannels);
@@ -3066,6 +3072,23 @@ export default function CryptoSandbox() {
       
       // Draw channels (parallel lines offset by width)
       drawnChannels.forEach(channel => {
+        // Calculate visibility based on zoom level when created
+        const createdK = channel.createdAtZoomScale ?? 1;
+        const zoomRatio = currentZoomK / createdK;
+        // Visibility: fully visible when zoomed in more than creation level (ratio >= 1)
+        // Fades out when zooming out: starts fading at ratio 0.5, invisible at ratio 0.2
+        let visibilityFactor = 1;
+        if (zoomRatio < 1) {
+          if (zoomRatio <= 0.2) {
+            visibilityFactor = 0;
+          } else if (zoomRatio < 0.5) {
+            visibilityFactor = (zoomRatio - 0.2) / 0.3; // Linear fade from 0.2 to 0.5
+          }
+        }
+        
+        // Skip rendering if completely invisible
+        if (visibilityFactor <= 0) return;
+        
         const x1 = xS(new Date(channel.p1.time));
         const y1 = yS(channel.p1.price);
         const x2 = xS(new Date(channel.p2.time));
@@ -3073,6 +3096,10 @@ export default function CryptoSandbox() {
         // Channel width is in price units, convert to screen
         const widthPx = Math.abs(yS(0) - yS(channel.width));
         const isSelected = selectedChannel === channel.id;
+        
+        // Apply visibility factor to opacity
+        const effectiveOpacity = channel.opacity * visibilityFactor;
+        const effectiveFillOpacity = 0.1 * visibilityFactor;
         
         const channelGroup = drawingsGroup.append('g').attr('class', `channel-${channel.id}`);
         
@@ -3099,7 +3126,7 @@ export default function CryptoSandbox() {
         channelGroup.append('polygon')
           .attr('points', `${x1Top},${y1Top} ${x2Top},${y2Top} ${x2Bot},${y2Bot} ${x1Bot},${y1Bot}`)
           .attr('fill', channel.color)
-          .attr('fill-opacity', 0.1)
+          .attr('fill-opacity', effectiveFillOpacity)
           .style('pointer-events', 'none');
         
         // Top line
@@ -3107,7 +3134,7 @@ export default function CryptoSandbox() {
           .attr('x1', x1Top).attr('y1', y1Top).attr('x2', x2Top).attr('y2', y2Top)
           .attr('stroke', channel.color)
           .attr('stroke-width', channel.thickness || 2)
-          .attr('stroke-opacity', channel.opacity)
+          .attr('stroke-opacity', effectiveOpacity)
           .style('pointer-events', 'none');
         
         // Bottom line
@@ -3115,7 +3142,7 @@ export default function CryptoSandbox() {
           .attr('x1', x1Bot).attr('y1', y1Bot).attr('x2', x2Bot).attr('y2', y2Bot)
           .attr('stroke', channel.color)
           .attr('stroke-width', channel.thickness || 2)
-          .attr('stroke-opacity', channel.opacity)
+          .attr('stroke-opacity', effectiveOpacity)
           .style('pointer-events', 'none');
         
         // Selection indicators
@@ -3130,11 +3157,32 @@ export default function CryptoSandbox() {
       
       // Draw horizontal channels (new - 2 click mode)
       drawnHChannels.forEach(hchannel => {
+        // Calculate visibility based on zoom level when created
+        const createdK = hchannel.createdAtZoomScale ?? 1;
+        const zoomRatio = currentZoomK / createdK;
+        // Visibility: fully visible when zoomed in more than creation level (ratio >= 1)
+        // Fades out when zooming out: starts fading at ratio 0.5, invisible at ratio 0.2
+        let visibilityFactor = 1;
+        if (zoomRatio < 1) {
+          if (zoomRatio <= 0.2) {
+            visibilityFactor = 0;
+          } else if (zoomRatio < 0.5) {
+            visibilityFactor = (zoomRatio - 0.2) / 0.3; // Linear fade from 0.2 to 0.5
+          }
+        }
+        
+        // Skip rendering if completely invisible
+        if (visibilityFactor <= 0) return;
+        
         let x1 = xS(new Date(hchannel.x1));
         let x2 = xS(new Date(hchannel.x2));
         const yTop = yS(hchannel.topPrice);
         const yBottom = yS(hchannel.bottomPrice);
         const isSelected = selectedHChannel === hchannel.id;
+        
+        // Apply visibility factor to opacity
+        const effectiveOpacity = hchannel.opacity * visibilityFactor;
+        const effectiveFillOpacity = (hchannel.fillOpacity ?? 0.1) * visibilityFactor;
         
         // Extend left/right for horizontal channels
         const origX1 = x1, origX2 = x2;
@@ -3152,7 +3200,7 @@ export default function CryptoSandbox() {
           .attr('width', Math.abs(x2 - x1))
           .attr('height', Math.max(1, yMax - yMin))
           .attr('fill', hchannel.fillColor || hchannel.color)
-          .attr('fill-opacity', hchannel.fillOpacity ?? 0.1)
+          .attr('fill-opacity', effectiveFillOpacity)
           .style('pointer-events', 'none');
         
         // Top external line
@@ -3161,7 +3209,7 @@ export default function CryptoSandbox() {
           .attr('x1', x1).attr('y1', yTop).attr('x2', x2).attr('y2', yTop)
           .attr('stroke', hchannel.topLineColor || hchannel.color)
           .attr('stroke-width', hchannel.topLineThickness || 2)
-          .attr('stroke-opacity', hchannel.opacity)
+          .attr('stroke-opacity', effectiveOpacity)
           .attr('stroke-dasharray', topStrokeDash)
           .style('pointer-events', 'none');
         
@@ -3203,7 +3251,7 @@ export default function CryptoSandbox() {
           .attr('x1', x1).attr('y1', yBottom).attr('x2', x2).attr('y2', yBottom)
           .attr('stroke', hchannel.bottomLineColor || hchannel.color)
           .attr('stroke-width', hchannel.bottomLineThickness || 2)
-          .attr('stroke-opacity', hchannel.opacity)
+          .attr('stroke-opacity', effectiveOpacity)
           .attr('stroke-dasharray', bottomStrokeDash)
           .style('pointer-events', 'none');
         
@@ -3221,7 +3269,7 @@ export default function CryptoSandbox() {
               .attr('x1', x1).attr('y1', yInternal).attr('x2', x2).attr('y2', yInternal)
               .attr('stroke', line.color || hchannel.color)
               .attr('stroke-width', 1)
-              .attr('stroke-opacity', hchannel.opacity * 0.7)
+              .attr('stroke-opacity', effectiveOpacity * 0.7)
               .attr('stroke-dasharray', strokeDash)
               .style('pointer-events', 'none');
             
@@ -3244,6 +3292,23 @@ export default function CryptoSandbox() {
       
       // Draw sloped channels (new - 3 click mode)
       drawnSChannels.forEach(schannel => {
+        // Calculate visibility based on zoom level when created
+        const createdK = schannel.createdAtZoomScale ?? 1;
+        const zoomRatio = currentZoomK / createdK;
+        // Visibility: fully visible when zoomed in more than creation level (ratio >= 1)
+        // Fades out when zooming out: starts fading at ratio 0.5, invisible at ratio 0.2
+        let visibilityFactor = 1;
+        if (zoomRatio < 1) {
+          if (zoomRatio <= 0.2) {
+            visibilityFactor = 0;
+          } else if (zoomRatio < 0.5) {
+            visibilityFactor = (zoomRatio - 0.2) / 0.3; // Linear fade from 0.2 to 0.5
+          }
+        }
+        
+        // Skip rendering if completely invisible
+        if (visibilityFactor <= 0) return;
+        
         let topX1 = xS(new Date(schannel.topLine.p1.time));
         let topY1 = yS(schannel.topLine.p1.price);
         let topX2 = xS(new Date(schannel.topLine.p2.time));
@@ -3253,6 +3318,10 @@ export default function CryptoSandbox() {
         let botX2 = xS(new Date(schannel.bottomLine.p2.time));
         let botY2 = yS(schannel.bottomLine.p2.price);
         const isSelected = selectedSChannel === schannel.id;
+        
+        // Apply visibility factor to opacity
+        const effectiveOpacity = schannel.opacity * visibilityFactor;
+        const effectiveFillOpacity = (schannel.fillOpacity ?? 0.1) * visibilityFactor;
         
         // Extend left/right for sloped channels (calculate slope and extend)
         if (schannel.extendLeft || schannel.extendRight) {
@@ -3280,7 +3349,7 @@ export default function CryptoSandbox() {
         schannelGroup.append('polygon')
           .attr('points', `${topX1},${topY1} ${topX2},${topY2} ${botX2},${botY2} ${botX1},${botY1}`)
           .attr('fill', schannel.fillColor || schannel.color)
-          .attr('fill-opacity', schannel.fillOpacity ?? 0.1)
+          .attr('fill-opacity', effectiveFillOpacity)
           .style('pointer-events', 'none');
         
         // Top external line
@@ -3289,7 +3358,7 @@ export default function CryptoSandbox() {
           .attr('x1', topX1).attr('y1', topY1).attr('x2', topX2).attr('y2', topY2)
           .attr('stroke', schannel.topLineColor || schannel.color)
           .attr('stroke-width', schannel.topLineThickness || 2)
-          .attr('stroke-opacity', schannel.opacity)
+          .attr('stroke-opacity', effectiveOpacity)
           .attr('stroke-dasharray', sTopStrokeDash)
           .style('pointer-events', 'none');
         
@@ -3340,7 +3409,7 @@ export default function CryptoSandbox() {
           .attr('x1', botX1).attr('y1', botY1).attr('x2', botX2).attr('y2', botY2)
           .attr('stroke', schannel.bottomLineColor || schannel.color)
           .attr('stroke-width', schannel.bottomLineThickness || 2)
-          .attr('stroke-opacity', schannel.opacity)
+          .attr('stroke-opacity', effectiveOpacity)
           .attr('stroke-dasharray', sBottomStrokeDash)
           .style('pointer-events', 'none');
         
@@ -3362,7 +3431,7 @@ export default function CryptoSandbox() {
               .attr('x1', intX1).attr('y1', intY1).attr('x2', intX2).attr('y2', intY2)
               .attr('stroke', line.color || schannel.color)
               .attr('stroke-width', 1)
-              .attr('stroke-opacity', schannel.opacity * 0.7)
+              .attr('stroke-opacity', effectiveOpacity * 0.7)
               .attr('stroke-dasharray', strokeDash)
               .style('pointer-events', 'none');
             
@@ -3385,10 +3454,30 @@ export default function CryptoSandbox() {
       
       // Draw Fibonacci retracements
       drawnFibRetraces.forEach(fib => {
+        // Calculate visibility based on zoom level when created
+        const createdK = fib.createdAtZoomScale ?? 1;
+        const zoomRatio = currentZoomK / createdK;
+        // Visibility: fully visible when zoomed in more than creation level (ratio >= 1)
+        // Fades out when zooming out: starts fading at ratio 0.5, invisible at ratio 0.2
+        let visibilityFactor = 1;
+        if (zoomRatio < 1) {
+          if (zoomRatio <= 0.2) {
+            visibilityFactor = 0;
+          } else if (zoomRatio < 0.5) {
+            visibilityFactor = (zoomRatio - 0.2) / 0.3; // Linear fade from 0.2 to 0.5
+          }
+        }
+        
+        // Skip rendering if completely invisible
+        if (visibilityFactor <= 0) return;
+        
         const lowPrice = Math.min(fib.anchor1.price, fib.anchor2.price);
         const highPrice = Math.max(fib.anchor1.price, fib.anchor2.price);
         const range = highPrice - lowPrice;
         const isSelected = selectedFib === fib.id;
+        
+        // Apply visibility factor to opacity
+        const effectiveOpacity = fib.opacity * visibilityFactor;
         
         const fibGroup = drawingsGroup.append('g').attr('class', `fib-${fib.id}`);
         
@@ -3428,7 +3517,7 @@ export default function CryptoSandbox() {
             .attr('y2', y)
             .attr('stroke', fib.color)
             .attr('stroke-width', isMain ? fib.thickness + 1 : fib.thickness)
-            .attr('stroke-opacity', fib.opacity)
+            .attr('stroke-opacity', effectiveOpacity)
             .attr('stroke-dasharray', isMain ? '' : strokeDash)
             .style('pointer-events', 'none');
           
@@ -3448,7 +3537,7 @@ export default function CryptoSandbox() {
               .attr('fill', fib.color)
               .attr('font-size', '11px')
               .attr('text-anchor', anchor)
-              .attr('fill-opacity', fib.opacity)
+              .attr('fill-opacity', effectiveOpacity)
               .text(labelText);
           }
         });
@@ -3466,10 +3555,30 @@ export default function CryptoSandbox() {
       
       // Draw Trend-Based Fib Extensions (3-point)
       drawnTrendFibs.forEach(tfib => {
+        // Calculate visibility based on zoom level when created
+        const createdK = tfib.createdAtZoomScale ?? 1;
+        const zoomRatio = currentZoomK / createdK;
+        // Visibility: fully visible when zoomed in more than creation level (ratio >= 1)
+        // Fades out when zooming out: starts fading at ratio 0.5, invisible at ratio 0.2
+        let visibilityFactor = 1;
+        if (zoomRatio < 1) {
+          if (zoomRatio <= 0.2) {
+            visibilityFactor = 0;
+          } else if (zoomRatio < 0.5) {
+            visibilityFactor = (zoomRatio - 0.2) / 0.3; // Linear fade from 0.2 to 0.5
+          }
+        }
+        
+        // Skip rendering if completely invisible
+        if (visibilityFactor <= 0) return;
+        
         const height = Math.abs(tfib.p2.price - tfib.p1.price);
         const direction = tfib.p2.price > tfib.p1.price ? 1 : -1;
         const basePrice = tfib.p3.price;
         const isSelected = selectedTrendFib === tfib.id;
+        
+        // Apply visibility factor to opacity
+        const effectiveOpacity = tfib.opacity * visibilityFactor;
         
         const tfibGroup = drawingsGroup.append('g').attr('class', `trendfib-${tfib.id}`);
         
@@ -3501,7 +3610,7 @@ export default function CryptoSandbox() {
           .attr('x2', p2X).attr('y2', p2Y)
           .attr('stroke', tfib.color)
           .attr('stroke-width', 2)
-          .attr('stroke-opacity', tfib.opacity * 0.5)
+          .attr('stroke-opacity', effectiveOpacity * 0.5)
           .style('pointer-events', 'none');
         
         // Draw retracement line (p2 to p3)
@@ -3510,7 +3619,7 @@ export default function CryptoSandbox() {
           .attr('x2', p3X).attr('y2', p3Y)
           .attr('stroke', tfib.color)
           .attr('stroke-width', 2)
-          .attr('stroke-opacity', tfib.opacity * 0.5)
+          .attr('stroke-opacity', effectiveOpacity * 0.5)
           .attr('stroke-dasharray', '3,3')
           .style('pointer-events', 'none');
         
@@ -3530,7 +3639,7 @@ export default function CryptoSandbox() {
             .attr('y2', y)
             .attr('stroke', tfib.color)
             .attr('stroke-width', isMain ? tfib.thickness + 1 : tfib.thickness)
-            .attr('stroke-opacity', tfib.opacity)
+            .attr('stroke-opacity', effectiveOpacity)
             .attr('stroke-dasharray', isMain ? '' : strokeDash)
             .style('pointer-events', 'none');
           
@@ -3550,7 +3659,7 @@ export default function CryptoSandbox() {
               .attr('fill', tfib.color)
               .attr('font-size', '11px')
               .attr('text-anchor', anchor)
-              .attr('fill-opacity', tfib.opacity)
+              .attr('fill-opacity', effectiveOpacity)
               .text(labelText);
           }
         });
