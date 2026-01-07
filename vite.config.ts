@@ -16,7 +16,7 @@ export default defineConfig({
       open: false,
       gzipSize: true,
       brotliSize: true,
-    }) as any,
+    }),
   ],
 
   // This tells Vite where your React app lives

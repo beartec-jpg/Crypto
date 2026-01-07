@@ -17,7 +17,11 @@ export function LoadingSpinner({ message = 'Loading...', size = 'lg' }: LoadingS
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-slate-100">
+    <div 
+      className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-slate-100"
+      role="status"
+      aria-live="polite"
+    >
       <Loader2 className={`${sizeClasses[size]} animate-spin text-blue-500`} />
       {message && (
         <p className="mt-4 text-sm text-slate-400">{message}</p>
