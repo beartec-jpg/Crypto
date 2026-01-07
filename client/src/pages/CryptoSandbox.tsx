@@ -13,6 +13,7 @@ import {
   constrainLabelPosition,
   formatFibonacciLabel,
   estimateTextWidth,
+  createLabelTooltip,
   type LabelBounds
 } from '@/lib/labelUtils';
 
@@ -3601,7 +3602,7 @@ export default function CryptoSandbox() {
               .attr('fill-opacity', effectiveOpacity)
               .text(labelText)
               .append('title')
-              .text(labelText);
+              .text(createLabelTooltip(labelText, level.ratio, levelPrice));
           }
         });
         
@@ -3737,7 +3738,7 @@ export default function CryptoSandbox() {
               .attr('fill-opacity', effectiveOpacity)
               .text(labelText)
               .append('title')
-              .text(labelText);
+              .text(createLabelTooltip(labelText, level.ratio, levelPrice));
           }
         });
         

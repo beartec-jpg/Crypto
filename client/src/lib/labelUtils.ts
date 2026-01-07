@@ -3,6 +3,10 @@
  * Provides smart label positioning and formatting to prevent overflow
  */
 
+// Constants for label formatting and positioning
+const PRICE_FORMAT_THRESHOLD = 1000; // Above this value, use 2 decimals; below use 4
+const AVG_CHAR_WIDTH_MULTIPLIER = 0.65; // Average character width relative to font size
+
 export interface LabelBounds {
   left: number;
   right: number;
@@ -76,6 +80,16 @@ export function constrainLabelPosition(
 }
 
 /**
+ * Formats a price value with appropriate decimal places
+ * 
+ * @param price - Price to format
+ * @returns Formatted price string
+ */
+export function formatPrice(price: number): string {
+  return price >= PRICE_FORMAT_THRESHOLD ? price.toFixed(2) : price.toFixed(4);
+}
+
+/**
  * Formats a Fibonacci level label with optional price
  * Supports both full and abbreviated modes
  * 
@@ -98,8 +112,7 @@ export function formatFibonacciLabel(
   }
   
   if (showPrice) {
-    const priceText = price >= 1000 ? price.toFixed(2) : price.toFixed(4);
-    return `${percentage}% ($${priceText})`;
+    return `${percentage}% ($${formatPrice(price)})`;
   }
   
   return `${percentage}%`;
@@ -114,9 +127,8 @@ export function formatFibonacciLabel(
  * @returns Estimated width in pixels
  */
 export function estimateTextWidth(text: string, fontSize: number): number {
-  // Average character width is approximately 0.6 * fontSize for monospace-ish fonts
-  // For labels, we use a slightly wider estimate of 0.65 to be safe
-  const avgCharWidth = fontSize * 0.65;
+  // Average character width is approximately AVG_CHAR_WIDTH_MULTIPLIER * fontSize
+  const avgCharWidth = fontSize * AVG_CHAR_WIDTH_MULTIPLIER;
   return text.length * avgCharWidth;
 }
 
@@ -212,8 +224,7 @@ export function createLabelTooltip(
 ): string {
   if (ratio !== undefined && price !== undefined) {
     const percentage = (ratio * 100).toFixed(1);
-    const priceText = price >= 1000 ? price.toFixed(2) : price.toFixed(4);
-    return `Fibonacci ${percentage}% - $${priceText}`;
+    return `Fibonacci ${percentage}% - $${formatPrice(price)}`;
   }
   return fullText;
 }
