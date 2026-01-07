@@ -919,7 +919,7 @@ export default function CryptoSandbox() {
       saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
       setChannelPoints([]);
     }
-  }, [channelPoints, margin, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [channelPoints, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Handle click on channel to select it
   const handleChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
@@ -1065,7 +1065,7 @@ export default function CryptoSandbox() {
       setHChannelPoints([]);
       // Keep tool active for drawing more
     }
-  }, [hchannelPoints, margin, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [hchannelPoints, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Handle click on horizontal channel to select it
   const handleHChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
@@ -1260,7 +1260,7 @@ export default function CryptoSandbox() {
       setSChannelPoints([]);
       // Keep tool active for drawing more
     }
-  }, [schannelPoints, margin, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [schannelPoints, channelDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Handle click on sloped channel to select it
   const handleSChannelSelect = useCallback((channelId: string, clickX: number, clickY: number) => {
@@ -1363,7 +1363,7 @@ export default function CryptoSandbox() {
       saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: newFibs, labels: drawnTextLabels });
       setFibPoints([]);
     }
-  }, [fibPoints, margin, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, saveToHistory]);
+  }, [fibPoints, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, saveToHistory]);
 
   // Handle click on fib to select it
   const handleFibSelect = useCallback((fibId: string, clickX: number, clickY: number) => {
@@ -1461,7 +1461,7 @@ export default function CryptoSandbox() {
       saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: newTrendFibs, labels: drawnTextLabels });
       setTrendFibPoints([]);
     }
-  }, [trendFibPoints, margin, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, saveToHistory]);
+  }, [trendFibPoints, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, saveToHistory]);
 
   const handleTrendFibSelect = useCallback((tfibId: string, clickX: number, clickY: number) => {
     const now = Date.now();
@@ -1649,7 +1649,7 @@ export default function CryptoSandbox() {
     
     // Place the point in Elliott Wave state with snap type
     elliottWave.placePoint(time, price, snappedToHigh, snapType);
-  }, [elliottWave, candles, margin, findMagnetPoint]);
+  }, [elliottWave, candles, findMagnetPoint]);
   
   // Move whole line - places center at click position
   const moveWholeLine = useCallback((clickX: number, clickY: number) => {
@@ -2218,7 +2218,7 @@ export default function CryptoSandbox() {
       setSelectionPickerPos(null);
       setSelectionCandidates([]);
     }
-  }, [activeTool, collectHitCandidates, dimensions, margin, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTrendFibSelect, handleTextLabelSelect, closeTrendlineMenu, closeHorizontalMenu]);
+  }, [activeTool, collectHitCandidates, dimensions, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTrendFibSelect, handleTextLabelSelect, closeTrendlineMenu, closeHorizontalMenu]);
   
   // Find if crosshair is near an endpoint of the moving trendline
   const findNearbyEndpoint = useCallback((clickX: number, clickY: number): 'p1' | 'p2' | null => {

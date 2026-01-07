@@ -1,5 +1,7 @@
 // Drawing-related constants for CryptoSandbox component
 
+import type { FibLevel } from '@/types/drawing';
+
 // Symbol and interval lists
 export const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT'];
 export const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
@@ -15,9 +17,6 @@ export const MAGNET_RADIUS = 30; // pixels
 
 // Color palette for trendlines
 export const TRENDLINE_COLORS = ['#facc15', '#22c55e', '#ef4444', '#3b82f6', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#ffffff'];
-
-// Fibonacci level type (needs to be here for the constants below)
-export type FibLevel = { ratio: number; visible: boolean; showLabel: boolean };
 
 // Default Fibonacci Retracement levels
 export const DEFAULT_FIB_LEVELS: FibLevel[] = [
