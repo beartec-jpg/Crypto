@@ -9,6 +9,13 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Loader2, Crosshair, ChevronDown, TrendingUp } from 'lucide-react';
 import { useElliottWave } from '@/hooks/useElliottWave';
+import {
+  constrainLabelPosition,
+  formatFibonacciLabel,
+  estimateTextWidth,
+  createLabelTooltip,
+  type LabelBounds
+} from '@/lib/labelUtils';
 
 interface CandleData {
   time: number;
@@ -27,6 +34,13 @@ const TOUCH_THRESHOLD = 35; // pixels - movement above this is a drag, not a tap
 const CLICK_DEBOUNCE = 100; // ms - ignore clicks within this time of each other
 const TAP_MAX_DURATION = 300; // ms - max time for a tap gesture
 const FIB_SNAP_PIXELS = 20; // pixels - threshold for snapping to Fibonacci levels
+
+// Label rendering configuration
+const LABEL_RENDERING_CONFIG = {
+  PADDING: 10,
+  MIN_DISTANCE_BETWEEN_LABELS: 20,
+  ESTIMATED_LABEL_HEIGHT: 16,
+} as const;
 
 export default function CryptoSandbox() {
   const { isAdmin, isLoading: authLoading } = useCryptoAuth();
@@ -562,6 +576,14 @@ export default function CryptoSandbox() {
   
   // Margins for the chart
   const margin = { top: 20, right: 80, bottom: 40, left: 20 };
+  
+  // Helper to get label bounds for constraining label positions
+  const getLabelBounds = useCallback((dims: { width: number; height: number }, margin: any): LabelBounds => ({
+    left: margin.left + 50,
+    right: dims.width - margin.right - 70,
+    top: margin.top,
+    bottom: dims.height - margin.bottom - 20
+  }), []);
   
   // Helper to constrain menu position within visible chart area
   const constrainMenuPosition = useCallback((clickX: number, clickY: number, menuWidth: number, menuHeight: number) => {
@@ -2944,34 +2966,44 @@ export default function CryptoSandbox() {
           const midX = (x1 + x2) / 2;
           const midY = (y1 + y2) / 2;
           line.label.positions.forEach(pos => {
-            let labelX: number;
-            let labelY: number;
-            let textAnchor: string;
+            let baseX: number;
+            let baseY: number;
             
             // Horizontal position
             if (pos.includes('left')) {
-              labelX = x1;
-              textAnchor = 'start';
+              baseX = x1;
             } else if (pos.includes('center')) {
-              labelX = midX;
-              textAnchor = 'middle';
+              baseX = midX;
             } else {
-              labelX = x2;
-              textAnchor = 'end';
+              baseX = x2;
             }
             
             // Vertical position - get the Y at that X point
-            const baseY = pos.includes('left') ? y1 : pos.includes('center') ? midY : y2;
-            labelY = pos.includes('top') ? baseY - 10 : baseY + 18;
+            const yAtX = pos.includes('left') ? y1 : pos.includes('center') ? midY : y2;
+            baseY = pos.includes('top') ? yAtX - 10 : yAtX + 18;
+            
+            // Constrain label position
+            const labelWidth = estimateTextWidth(line.label!.text, 11);
+            const labelBounds = getLabelBounds(dimensions, margin);
+            const constrained = constrainLabelPosition(
+              baseX,
+              baseY,
+              labelWidth,
+              LABEL_RENDERING_CONFIG.ESTIMATED_LABEL_HEIGHT,
+              labelBounds,
+              LABEL_RENDERING_CONFIG.PADDING
+            );
             
             lineGroup.append('text')
-              .attr('x', labelX)
-              .attr('y', labelY)
+              .attr('x', constrained.x)
+              .attr('y', constrained.y)
               .attr('fill', line.color)
               .attr('font-size', '11px')
               .attr('font-weight', 'bold')
-              .attr('text-anchor', textAnchor)
-              .text(line.label.text);
+              .attr('text-anchor', constrained.textAnchor)
+              .text(line.label!.text)
+              .append('title')
+              .text(line.label!.text);
           });
         }
       });
@@ -3047,31 +3079,42 @@ export default function CryptoSandbox() {
           // Support old formats and new 6-position format
           const positions = line.label.positions || ((line.label as any).position ? [(line.label as any).position] : ['top-right']);
           positions.forEach(pos => {
-            let labelX: number;
-            let labelY: number;
-            let textAnchor: string;
+            let baseX: number;
+            let baseY: number;
             
             // Horizontal position
             if (pos.includes('left')) {
-              labelX = 10;
-              textAnchor = 'start';
+              baseX = 10;
             } else if (pos.includes('center')) {
-              labelX = innerWidth / 2;
-              textAnchor = 'middle';
+              baseX = innerWidth / 2;
             } else {
-              labelX = innerWidth - 70; // Offset from price label
-              textAnchor = 'end';
+              baseX = innerWidth - 70; // Offset from price label
             }
             
             // Vertical position
-            labelY = pos.includes('top') ? y - 8 : y + 18;
+            baseY = pos.includes('top') ? y - 8 : y + 18;
+            
+            // Constrain label position
+            const labelWidth = estimateTextWidth(line.label!.text, 11);
+            const labelBounds = getLabelBounds(dimensions, margin);
+            const constrained = constrainLabelPosition(
+              baseX,
+              baseY,
+              labelWidth,
+              LABEL_RENDERING_CONFIG.ESTIMATED_LABEL_HEIGHT,
+              labelBounds,
+              LABEL_RENDERING_CONFIG.PADDING
+            );
             
             lineGroup.append('text')
-              .attr('x', labelX).attr('y', labelY)
+              .attr('x', constrained.x)
+              .attr('y', constrained.y)
               .attr('fill', line.color)
               .attr('font-size', '11px')
               .attr('font-weight', 'bold')
-              .attr('text-anchor', textAnchor)
+              .attr('text-anchor', constrained.textAnchor)
+              .text(line.label!.text)
+              .append('title')
               .text(line.label!.text);
           });
         }
@@ -3534,18 +3577,32 @@ export default function CryptoSandbox() {
             const isRight = pos.includes('right');
             const isCenter = pos.includes('center');
             const isTop = pos.includes('top');
-            let labelX = isRight ? lineX2 - 5 : isCenter ? (lineX1 + lineX2) / 2 : lineX1 + 5;
-            const labelY = isTop ? y - 4 : y + 12;
-            const anchor = isRight ? 'end' : isCenter ? 'middle' : 'start';
-            const labelText = `${(level.ratio * 100).toFixed(1)}%${fib.showPrices ? ` (${levelPrice.toFixed(2)})` : ''}`;
+            let baseX = isRight ? lineX2 - 5 : isCenter ? (lineX1 + lineX2) / 2 : lineX1 + 5;
+            const baseY = isTop ? y - 4 : y + 12;
+            
+            // Format and constrain label
+            const labelText = formatFibonacciLabel(level.ratio, levelPrice, fib.showPrices, false);
+            const labelWidth = estimateTextWidth(labelText, 11);
+            const labelBounds = getLabelBounds(dimensions, margin);
+            const constrained = constrainLabelPosition(
+              baseX,
+              baseY,
+              labelWidth,
+              LABEL_RENDERING_CONFIG.ESTIMATED_LABEL_HEIGHT,
+              labelBounds,
+              LABEL_RENDERING_CONFIG.PADDING
+            );
+            
             fibGroup.append('text')
-              .attr('x', labelX)
-              .attr('y', labelY)
+              .attr('x', constrained.x)
+              .attr('y', constrained.y)
               .attr('fill', fib.color)
               .attr('font-size', '11px')
-              .attr('text-anchor', anchor)
+              .attr('text-anchor', constrained.textAnchor)
               .attr('fill-opacity', effectiveOpacity)
-              .text(labelText);
+              .text(labelText)
+              .append('title')
+              .text(createLabelTooltip(labelText, level.ratio, levelPrice));
           }
         });
         
@@ -3656,18 +3713,32 @@ export default function CryptoSandbox() {
             const isRight = pos.includes('right');
             const isCenter = pos.includes('center');
             const isTop = pos.includes('top');
-            let labelX = isRight ? lineX2 - 5 : isCenter ? (lineX1 + lineX2) / 2 : lineX1 + 5;
-            const labelY = isTop ? y - 4 : y + 12;
-            const anchor = isRight ? 'end' : isCenter ? 'middle' : 'start';
-            const labelText = `${(level.ratio * 100).toFixed(1)}%${tfib.showPrices ? ` (${levelPrice.toFixed(2)})` : ''}`;
+            let baseX = isRight ? lineX2 - 5 : isCenter ? (lineX1 + lineX2) / 2 : lineX1 + 5;
+            const baseY = isTop ? y - 4 : y + 12;
+            
+            // Format and constrain label
+            const labelText = formatFibonacciLabel(level.ratio, levelPrice, tfib.showPrices, false);
+            const labelWidth = estimateTextWidth(labelText, 11);
+            const labelBounds = getLabelBounds(dimensions, margin);
+            const constrained = constrainLabelPosition(
+              baseX,
+              baseY,
+              labelWidth,
+              LABEL_RENDERING_CONFIG.ESTIMATED_LABEL_HEIGHT,
+              labelBounds,
+              LABEL_RENDERING_CONFIG.PADDING
+            );
+            
             tfibGroup.append('text')
-              .attr('x', labelX)
-              .attr('y', labelY)
+              .attr('x', constrained.x)
+              .attr('y', constrained.y)
               .attr('fill', tfib.color)
               .attr('font-size', '11px')
-              .attr('text-anchor', anchor)
+              .attr('text-anchor', constrained.textAnchor)
               .attr('fill-opacity', effectiveOpacity)
-              .text(labelText);
+              .text(labelText)
+              .append('title')
+              .text(createLabelTooltip(labelText, level.ratio, levelPrice));
           }
         });
         
