@@ -14,8 +14,54 @@ import {
   formatFibonacciLabel,
   estimateTextWidth,
   createLabelTooltip,
-  type LabelBounds
 } from '@/lib/labelUtils';
+
+// Constants
+import {
+  SYMBOLS,
+  INTERVALS,
+  TOUCH_THRESHOLD,
+  CLICK_DEBOUNCE,
+  TAP_MAX_DURATION,
+  FIB_SNAP_PIXELS,
+  MAGNET_RADIUS,
+  TRENDLINE_COLORS,
+  DEFAULT_FIB_LEVELS,
+  DEFAULT_TRENDFIB_LEVELS,
+  LABEL_RENDERING_CONFIG,
+} from '@/constants/drawing';
+
+import {
+  MARGIN,
+  LEFT_TOOLBAR_WIDTH,
+  TOP_CONTROLS_HEIGHT,
+  ZOOM_SCALE_EXTENTS,
+} from '@/constants/ui';
+
+// Types
+import type {
+  LineStyle,
+  DrawingTool,
+  TrendlineMode,
+  TrendlineData,
+  HorizontalLineData,
+  ChannelData,
+  HorizontalChannelData,
+  SlopedChannelData,
+  TextLabelData,
+  FibRetracementData,
+  TrendFibExtensionData,
+  FibLevel,
+  FibLabelPosition,
+  FibExtendDirection,
+  LabelBounds,
+  ConstrainedLabel,
+  SelectionCandidate,
+  DrawingState,
+  Dimensions,
+  MenuPosition,
+  Bounds,
+} from '@/types';
 
 interface CandleData {
   time: number;
@@ -25,22 +71,6 @@ interface CandleData {
   close: number;
   volume: number;
 }
-
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT'];
-const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
-
-// Drawing constants
-const TOUCH_THRESHOLD = 35; // pixels - movement above this is a drag, not a tap (increased for mobile)
-const CLICK_DEBOUNCE = 100; // ms - ignore clicks within this time of each other
-const TAP_MAX_DURATION = 300; // ms - max time for a tap gesture
-const FIB_SNAP_PIXELS = 20; // pixels - threshold for snapping to Fibonacci levels
-
-// Label rendering configuration
-const LABEL_RENDERING_CONFIG = {
-  PADDING: 10,
-  MIN_DISTANCE_BETWEEN_LABELS: 20,
-  ESTIMATED_LABEL_HEIGHT: 16,
-} as const;
 
 export default function CryptoSandbox() {
   const { isAdmin, isLoading: authLoading } = useCryptoAuth();
@@ -77,203 +107,10 @@ export default function CryptoSandbox() {
   const svgTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   
   // Drawing tool state
-  type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | 'hchannel' | 'schannel' | 'elliottwave' | null;
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   
   // Elliott Wave hook
   const elliottWave = useElliottWave();
-  
-  // Shared types
-  type LineStyle = 'solid' | 'dashed' | 'dotted';
-  type TrendlineMode = 'magnet' | 'free' | null;
-  
-  // Trendline data
-  interface TrendlineData {
-    id: string;
-    p1: { time: number; price: number };
-    p2: { time: number; price: number };
-    color: string;
-    opacity: number;
-    lineStyle: LineStyle;
-    thickness: number;
-    extendLeft: boolean;
-    extendRight: boolean;
-    label?: { text: string; positions: ('top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right')[] };
-    createdAtZoomScale?: number; // Zoom level when trendline was created for dynamic visibility
-  }
-  
-  // Horizontal line data
-  interface HorizontalLineData {
-    id: string;
-    price: number;
-    color: string;
-    opacity: number;
-    lineStyle: LineStyle;
-    thickness: number;
-    label?: { text: string; positions: ('left' | 'center' | 'right')[] };
-    createdAtZoomScale?: number; // Zoom level when horizontal line was created for dynamic visibility
-  }
-  
-  // Channel data (legacy - kept for backward compatibility)
-  interface ChannelData {
-    id: string;
-    p1: { time: number; price: number };
-    p2: { time: number; price: number };
-    width: number; // Distance in price units
-    color: string;
-    opacity: number;
-    lineStyle: LineStyle;
-    thickness: number;
-    internalLines: { percent: number; visible: boolean; label: string }[];
-    internalLineStyle: LineStyle;
-    internalLineColor: string;
-    showExternalLines: boolean;
-    createdAtZoomScale?: number; // Zoom level when channel was created for dynamic visibility
-  }
-  
-  // Horizontal Channel - 2 click mode
-  interface HorizontalChannelData {
-    id: string;
-    x1: number; // First click x position (time)
-    x2: number; // Second click x position (time)
-    topPrice: number; // Top external line price
-    bottomPrice: number; // Bottom external line price
-    color: string;
-    fillColor?: string;
-    fillOpacity?: number;
-    opacity: number;
-    lineStyle: LineStyle;
-    thickness: number;
-    topLineColor: string;
-    topLineThickness: number;
-    topLineStyle: LineStyle;
-    topLabel?: string;
-    bottomLineColor: string;
-    bottomLineThickness: number;
-    bottomLineStyle: LineStyle;
-    bottomLabel?: string;
-    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string; bgColor?: string }[]; // 25, 50, 75%
-    label?: { text: string; value?: string };
-    showLabelLeft?: boolean;
-    showLabelCenter?: boolean;
-    showLabelRight?: boolean;
-    isFavorite?: boolean;
-    extendLeft?: boolean;
-    extendRight?: boolean;
-    createdAtZoomScale?: number; // Zoom level when channel was created for dynamic visibility
-  }
-
-  // Sloped Channel - 3 click mode
-  interface SlopedChannelData {
-    id: string;
-    // First two clicks define external lines and height
-    topLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
-    bottomLine: { p1: { time: number; price: number }; p2: { time: number; price: number } };
-    color: string;
-    fillColor?: string;
-    fillOpacity?: number;
-    opacity: number;
-    lineStyle: LineStyle;
-    thickness: number;
-    topLineColor: string;
-    topLineThickness: number;
-    topLineStyle: LineStyle;
-    topLabel?: string;
-    bottomLineColor: string;
-    bottomLineThickness: number;
-    bottomLineStyle: LineStyle;
-    bottomLabel?: string;
-    internalLines: { percent: number; visible: boolean; color: string; style: LineStyle; label?: string; bgColor?: string }[]; // 25, 50, 75%
-    label?: { text: string; value?: string };
-    showLabelLeft?: boolean;
-    showLabelCenter?: boolean;
-    showLabelRight?: boolean;
-    isFavorite?: boolean;
-    extendLeft?: boolean;
-    extendRight?: boolean;
-    createdAtZoomScale?: number; // Zoom level when channel was created for dynamic visibility
-  }
-  
-  // Text label data
-  interface TextLabelData {
-    id: string;
-    x: number; // screen x (updated on pan/zoom)
-    y: number; // screen y
-    time: number; // anchor time for repositioning
-    price: number; // anchor price
-    text: string;
-    color: string;
-    opacity: number;
-    backgroundColor: string;
-    fontSize: number;
-    createdAtZoomScale?: number; // zoom scale (k) when label was created - for dynamic visibility
-  }
-  
-  // Fib level with individual label toggle
-  type FibLevel = { ratio: number; visible: boolean; showLabel: boolean };
-  type FibLabelPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
-  type FibExtendDirection = 'none' | 'left' | 'right' | 'both';
-  
-  // Fibonacci Retracement data
-  interface FibRetracementData {
-    id: string;
-    anchor1: { time: number; price: number }; // Lower price anchor (0%)
-    anchor2: { time: number; price: number }; // Higher price anchor (100%)
-    color: string;
-    opacity: number;
-    lineStyle: LineStyle;
-    thickness: number;
-    labelPosition: FibLabelPosition;
-    showPrices: boolean;
-    showExtensions: boolean;
-    extendDirection: FibExtendDirection;
-    levels: FibLevel[];
-    createdAtZoomScale?: number;
-  }
-  
-  const DEFAULT_FIB_LEVELS: FibLevel[] = [
-    { ratio: 0, visible: true, showLabel: true },
-    { ratio: 0.236, visible: true, showLabel: true },
-    { ratio: 0.382, visible: true, showLabel: true },
-    { ratio: 0.5, visible: true, showLabel: true },
-    { ratio: 0.618, visible: true, showLabel: true },
-    { ratio: 0.786, visible: true, showLabel: true },
-    { ratio: 1, visible: true, showLabel: true },
-    { ratio: 1.272, visible: false, showLabel: true },
-    { ratio: 1.618, visible: false, showLabel: true },
-    { ratio: 2.618, visible: false, showLabel: true },
-  ];
-
-  // Trend-Based Fibonacci Extension data (3-click)
-  interface TrendFibExtensionData {
-    id: string;
-    p1: { time: number; price: number }; // Start of impulse move
-    p2: { time: number; price: number }; // End of impulse move
-    p3: { time: number; price: number }; // End of retracement (projection base)
-    color: string;
-    opacity: number;
-    lineStyle: LineStyle;
-    thickness: number;
-    labelPosition: FibLabelPosition;
-    showPrices: boolean;
-    showExtensions: boolean;
-    extendDirection: FibExtendDirection;
-    levels: FibLevel[];
-    createdAtZoomScale?: number;
-  }
-
-  const DEFAULT_TRENDFIB_LEVELS: FibLevel[] = [
-    { ratio: 0, visible: true, showLabel: true },
-    { ratio: 0.236, visible: true, showLabel: true },
-    { ratio: 0.382, visible: true, showLabel: true },
-    { ratio: 0.5, visible: true, showLabel: true },
-    { ratio: 0.618, visible: true, showLabel: true },
-    { ratio: 0.786, visible: true, showLabel: true },
-    { ratio: 1, visible: true, showLabel: true },
-    { ratio: 1.272, visible: true, showLabel: true },
-    { ratio: 1.618, visible: true, showLabel: true },
-    { ratio: 2.618, visible: false, showLabel: true },
-  ];
   
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
   const [trendlinePoints, setTrendlinePoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
@@ -283,7 +120,6 @@ export default function CryptoSandbox() {
   const [drawnTextLabels, setDrawnTextLabels] = useState<TextLabelData[]>([]);
   const [channelPoints, setChannelPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [magnetPulse, setMagnetPulse] = useState<{ x: number; y: number } | null>(null);
-  const MAGNET_RADIUS = 30; // pixels
   
   // Horizontal Channel state (2-click)
   const [drawnHChannels, setDrawnHChannels] = useState<HorizontalChannelData[]>([]);
@@ -340,7 +176,6 @@ export default function CryptoSandbox() {
   const [movingTextLabel, setMovingTextLabel] = useState<string | null>(null);
   
   // Selection picker state for overlapping elements
-  type SelectionCandidate = { id: string; type: 'trendline' | 'horizontal' | 'channel' | 'hchannel' | 'schannel' | 'fib' | 'trendfib' | 'label' };
   const [selectionCandidates, setSelectionCandidates] = useState<SelectionCandidate[]>([]);
   const [selectionPickerPos, setSelectionPickerPos] = useState<{ x: number; y: number } | null>(null);
   const [selectionPickerClickPos, setSelectionPickerClickPos] = useState<{ x: number; y: number } | null>(null); // Original click position
@@ -352,16 +187,6 @@ export default function CryptoSandbox() {
   const selectionTimeRef = useRef<number>(0); // Track when selection occurred to prevent immediate close
   
   // Undo/redo history for ALL drawing types (unified)
-  type DrawingState = {
-    trendlines: TrendlineData[];
-    horizontals: HorizontalLineData[];
-    channels: ChannelData[];
-    hchannels: HorizontalChannelData[];
-    schannels: SlopedChannelData[];
-    fibs: FibRetracementData[];
-    trendfibs: TrendFibExtensionData[];
-    labels: TextLabelData[];
-  };
   const [drawingHistory, setDrawingHistory] = useState<DrawingState[]>([{
     trendlines: [],
     horizontals: [],
@@ -470,9 +295,6 @@ export default function CryptoSandbox() {
   const canRedo = historyIndex < drawingHistory.length - 1;
   
   
-  // Color palette for trendlines
-  const TRENDLINE_COLORS = ['#facc15', '#22c55e', '#ef4444', '#3b82f6', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#ffffff'];
-  
   // Default trendline settings (loaded from localStorage)
   const [trendlineDefaults, setTrendlineDefaults] = useState(() => {
     try {
@@ -574,36 +396,32 @@ export default function CryptoSandbox() {
   const [showMFI, setShowMFI] = useState(false);
   const [showADX, setShowADX] = useState(false);
   
-  // Margins for the chart
-  const margin = { top: 20, right: 80, bottom: 40, left: 20 };
-  
   // Helper to get label bounds for constraining label positions
-  const getLabelBounds = useCallback((dims: { width: number; height: number }, margin: any): LabelBounds => ({
-    left: margin.left + 50,
-    right: dims.width - margin.right - 70,
-    top: margin.top,
-    bottom: dims.height - margin.bottom - 20
+  const getLabelBounds = useCallback((dims: { width: number; height: number }): LabelBounds => ({
+    left: MARGIN.left + 50,
+    right: dims.width - MARGIN.right - 70,
+    top: MARGIN.top,
+    bottom: dims.height - MARGIN.bottom - 20
   }), []);
   
   // Helper to constrain menu position within visible chart area
   const constrainMenuPosition = useCallback((clickX: number, clickY: number, menuWidth: number, menuHeight: number) => {
-    const leftToolbar = 60; // Left toolbar width
-    const topArea = margin.top + 60; // Top controls area
-    const rightEdge = dimensions.width - margin.right - 10;
+    const topArea = MARGIN.top + TOP_CONTROLS_HEIGHT; // Top controls area
+    const rightEdge = dimensions.width - MARGIN.right - 10;
     const bottomEdge = dimensions.height - 20; // Leave some padding at bottom
     
     let menuX = clickX + 10;
     let menuY = clickY;
     
     // Keep menu to the right of left toolbar
-    if (menuX < leftToolbar) {
-      menuX = leftToolbar;
+    if (menuX < LEFT_TOOLBAR_WIDTH) {
+      menuX = LEFT_TOOLBAR_WIDTH;
     }
     
     // Keep menu from going off right edge
     if (menuX + menuWidth > rightEdge) {
       menuX = clickX - menuWidth - 10;
-      if (menuX < leftToolbar) menuX = leftToolbar;
+      if (menuX < LEFT_TOOLBAR_WIDTH) menuX = LEFT_TOOLBAR_WIDTH;
     }
     
     // Keep menu from going off bottom
@@ -617,7 +435,7 @@ export default function CryptoSandbox() {
     }
     
     return { x: menuX, y: menuY };
-  }, [dimensions, margin]);
+  }, [dimensions]);
   
   // Redirect non-admin users
   useEffect(() => {
@@ -791,13 +609,13 @@ export default function CryptoSandbox() {
     const candidateCandles: { candle: CandleData; distance: number }[] = [];
     
     for (const candle of candles) {
-      const candleX = xScale(new Date(candle.time)) + margin.left;
+      const candleX = xScale(new Date(candle.time)) + MARGIN.left;
       const distanceX = Math.abs(candleX - clickX);
       
       if (distanceX <= MAGNET_RADIUS) {
         // Check if high or low is within vertical radius
-        const highY = yScale(candle.high) + margin.top;
-        const lowY = yScale(candle.low) + margin.top;
+        const highY = yScale(candle.high) + MARGIN.top;
+        const lowY = yScale(candle.low) + MARGIN.top;
         
         const distHigh = Math.sqrt(distanceX * distanceX + Math.pow(highY - clickY, 2));
         const distLow = Math.sqrt(distanceX * distanceX + Math.pow(lowY - clickY, 2));
@@ -812,7 +630,7 @@ export default function CryptoSandbox() {
     
     // Determine if click is above or below candles (use average midpoint of candidates)
     const avgMid = candidateCandles.reduce((sum, c) => {
-      const midY = yScale((c.candle.high + c.candle.low) / 2) + margin.top;
+      const midY = yScale((c.candle.high + c.candle.low) / 2) + MARGIN.top;
       return sum + midY;
     }, 0) / candidateCandles.length;
     
@@ -834,11 +652,11 @@ export default function CryptoSandbox() {
     
     if (!bestCandle) return null;
     
-    const finalX = xScale(new Date(bestCandle.time)) + margin.left;
-    const finalY = yScale(bestPrice) + margin.top;
+    const finalX = xScale(new Date(bestCandle.time)) + MARGIN.left;
+    const finalY = yScale(bestPrice) + MARGIN.top;
     
     return { x: finalX, y: finalY, time: bestCandle.time, price: bestPrice };
-  }, [candles, margin.left, margin.top, MAGNET_RADIUS]);
+  }, [candles, MARGIN.left, MARGIN.top, MAGNET_RADIUS]);
   
   // Handle trendline point placement - unified handler with single pulse at final position
   const handleTrendlinePlacement = useCallback((clickX: number, clickY: number) => {
@@ -858,8 +676,8 @@ export default function CryptoSandbox() {
     const finalPoint = magnetPoint || {
       x: clickX,
       y: clickY,
-      time: xScaleRef.current.invert(clickX - margin.left).getTime(),
-      price: yScaleRef.current.invert(clickY - margin.top)
+      time: xScaleRef.current.invert(clickX - MARGIN.left).getTime(),
+      price: yScaleRef.current.invert(clickY - MARGIN.top)
     };
     
     // Single pulse at FINAL placement position (snapped if magnet hit)
@@ -888,7 +706,7 @@ export default function CryptoSandbox() {
       saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
       setTrendlinePoints([]);
     }
-  }, [trendlineMode, trendlinePoints, findMagnetPoint, margin.left, margin.top, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory, trendlineDefaults]);
+  }, [trendlineMode, trendlinePoints, findMagnetPoint, MARGIN.left, MARGIN.top, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory, trendlineDefaults]);
   
   // Handle click on trendline to select it - auto enters move mode
   const handleTrendlineSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
@@ -977,7 +795,7 @@ export default function CryptoSandbox() {
       setMagnetPulse({ x: clickX, y: clickY });
       setTimeout(() => setMagnetPulse(null), 400);
     } else {
-      price = yScaleRef.current.invert(clickY - margin.top);
+      price = yScaleRef.current.invert(clickY - MARGIN.top);
     }
     
     const newLine: HorizontalLineData = {
@@ -992,7 +810,7 @@ export default function CryptoSandbox() {
     const newHorizontals = [...drawnHorizontals, newLine];
     setDrawnHorizontals(newHorizontals);
     saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
-  }, [margin.top, horizontalDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [MARGIN.top, horizontalDefaults, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
 
   // Handle click on horizontal line to select it
   const handleHorizontalSelect = useCallback((lineId: string, clickX: number, clickY: number) => {
@@ -1061,8 +879,8 @@ export default function CryptoSandbox() {
       setMagnetPulse({ x: clickX, y: clickY });
       setTimeout(() => setMagnetPulse(null), 400);
     } else {
-      const time = xScaleRef.current.invert(clickX - margin.left).getTime();
-      const price = yScaleRef.current.invert(clickY - margin.top);
+      const time = xScaleRef.current.invert(clickX - MARGIN.left).getTime();
+      const price = yScaleRef.current.invert(clickY - MARGIN.top);
       point = { x: clickX, y: clickY, time, price };
     }
     
@@ -1164,8 +982,8 @@ export default function CryptoSandbox() {
     const finalPoint = magnetPoint || {
       x: clickX,
       y: clickY,
-      time: xScaleRef.current.invert(clickX - margin.left).getTime(),
-      price: yScaleRef.current.invert(clickY - margin.top)
+      time: xScaleRef.current.invert(clickX - MARGIN.left).getTime(),
+      price: yScaleRef.current.invert(clickY - MARGIN.top)
     };
     
     // Single pulse at FINAL placement position
@@ -1325,8 +1143,8 @@ export default function CryptoSandbox() {
     const finalPoint = magnetPoint || {
       x: clickX,
       y: clickY,
-      time: xScaleRef.current.invert(clickX - margin.left).getTime(),
-      price: yScaleRef.current.invert(clickY - margin.top)
+      time: xScaleRef.current.invert(clickX - MARGIN.left).getTime(),
+      price: yScaleRef.current.invert(clickY - MARGIN.top)
     };
     
     // Single pulse at FINAL placement position
@@ -1507,8 +1325,8 @@ export default function CryptoSandbox() {
     const point = magnetPoint || {
       x: clickX,
       y: clickY,
-      time: xScaleRef.current.invert(clickX - margin.left).getTime(),
-      price: yScaleRef.current.invert(clickY - margin.top),
+      time: xScaleRef.current.invert(clickX - MARGIN.left).getTime(),
+      price: yScaleRef.current.invert(clickY - MARGIN.top),
     };
 
     setMagnetPulse({ x: point.x, y: point.y });
@@ -1608,8 +1426,8 @@ export default function CryptoSandbox() {
     const point = magnetPoint || {
       x: clickX,
       y: clickY,
-      time: xScaleRef.current.invert(clickX - margin.left).getTime(),
-      price: yScaleRef.current.invert(clickY - margin.top),
+      time: xScaleRef.current.invert(clickX - MARGIN.left).getTime(),
+      price: yScaleRef.current.invert(clickY - MARGIN.top),
     };
 
     setMagnetPulse({ x: point.x, y: point.y });
@@ -1702,8 +1520,8 @@ export default function CryptoSandbox() {
       setMagnetPulse({ x: clickX, y: clickY });
       setTimeout(() => setMagnetPulse(null), 400);
     } else {
-      time = xScaleRef.current.invert(clickX - margin.left).getTime();
-      price = yScaleRef.current.invert(clickY - margin.top);
+      time = xScaleRef.current.invert(clickX - MARGIN.left).getTime();
+      price = yScaleRef.current.invert(clickY - MARGIN.top);
     }
     
     // Capture current zoom scale for dynamic visibility
@@ -1780,8 +1598,8 @@ export default function CryptoSandbox() {
     let snapType: 'candle' | 'fib' = 'candle'; // Default to candle
     
     if (elliottWave.mode === 'placing_w2' && elliottWave.fibLevels.length > 0) {
-      const clickPrice = yScaleRef.current.invert(clickY - margin.top);
-      const FIB_SNAP_THRESHOLD = Math.abs(yScaleRef.current.invert(margin.top + FIB_SNAP_PIXELS) - yScaleRef.current.invert(margin.top));
+      const clickPrice = yScaleRef.current.invert(clickY - MARGIN.top);
+      const FIB_SNAP_THRESHOLD = Math.abs(yScaleRef.current.invert(MARGIN.top + FIB_SNAP_PIXELS) - yScaleRef.current.invert(MARGIN.top));
       
       for (const level of elliottWave.fibLevels) {
         if (Math.abs(clickPrice - level.price) < FIB_SNAP_THRESHOLD) {
@@ -1797,12 +1615,12 @@ export default function CryptoSandbox() {
     
     if (clickedFibLevel) {
       // Snap to fib level
-      time = xScaleRef.current.invert(clickX - margin.left).getTime();
+      time = xScaleRef.current.invert(clickX - MARGIN.left).getTime();
       price = clickedFibLevel.price;
       snappedToHigh = false; // Doesn't matter for fib level
       
       // Show pulse at fib line
-      const fibY = yScaleRef.current(price) + margin.top;
+      const fibY = yScaleRef.current(price) + MARGIN.top;
       setMagnetPulse({ x: clickX, y: fibY });
       setTimeout(() => setMagnetPulse(null), 400);
     } else {
@@ -1822,8 +1640,8 @@ export default function CryptoSandbox() {
         setTimeout(() => setMagnetPulse(null), 400);
       } else {
         // Free placement fallback
-        time = xScaleRef.current.invert(clickX - margin.left).getTime();
-        price = yScaleRef.current.invert(clickY - margin.top);
+        time = xScaleRef.current.invert(clickX - MARGIN.left).getTime();
+        price = yScaleRef.current.invert(clickY - MARGIN.top);
         snappedToHigh = false;
         snapType = 'candle'; // Default to candle for free placement
       }
@@ -1841,8 +1659,8 @@ export default function CryptoSandbox() {
     if (!line) return;
     
     // Get current center in screen coords
-    const oldCenterX = (xScaleRef.current(new Date(line.p1.time)) + xScaleRef.current(new Date(line.p2.time))) / 2 + margin.left;
-    const oldCenterY = (yScaleRef.current(line.p1.price) + yScaleRef.current(line.p2.price)) / 2 + margin.top;
+    const oldCenterX = (xScaleRef.current(new Date(line.p1.time)) + xScaleRef.current(new Date(line.p2.time))) / 2 + MARGIN.left;
+    const oldCenterY = (yScaleRef.current(line.p1.price) + yScaleRef.current(line.p2.price)) / 2 + MARGIN.top;
     
     // Calculate offset
     const offsetX = clickX - oldCenterX;
@@ -1869,7 +1687,7 @@ export default function CryptoSandbox() {
     saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
     setMovingWholeLine(null);
     setSelectedTrendline(null);
-  }, [movingWholeLine, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, margin.left, margin.top, saveToHistory]);
+  }, [movingWholeLine, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, MARGIN.left, MARGIN.top, saveToHistory]);
   
   // Move horizontal line to new position
   const placeMovingHorizontal = useCallback((clickX: number, clickY: number) => {
@@ -1882,7 +1700,7 @@ export default function CryptoSandbox() {
       setMagnetPulse({ x: clickX, y: clickY });
       setTimeout(() => setMagnetPulse(null), 400);
     } else {
-      newPrice = yScaleRef.current.invert(clickY - margin.top);
+      newPrice = yScaleRef.current.invert(clickY - MARGIN.top);
     }
     
     const newHorizontals = drawnHorizontals.map(l => 
@@ -1893,7 +1711,7 @@ export default function CryptoSandbox() {
     setMovingHorizontal(null);
     setSelectedHorizontal(null);
     setHorizontalMenuPos(null);
-  }, [movingHorizontal, margin.top, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [movingHorizontal, MARGIN.top, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   // Move text label to new position
   const placeMovingTextLabel = useCallback((clickX: number, clickY: number) => {
@@ -1907,8 +1725,8 @@ export default function CryptoSandbox() {
       setMagnetPulse({ x: clickX, y: clickY });
       setTimeout(() => setMagnetPulse(null), 400);
     } else {
-      time = xScaleRef.current.invert(clickX - margin.left).getTime();
-      price = yScaleRef.current.invert(clickY - margin.top);
+      time = xScaleRef.current.invert(clickX - MARGIN.left).getTime();
+      price = yScaleRef.current.invert(clickY - MARGIN.top);
     }
     
     const newLabels = drawnTextLabels.map(l => 
@@ -1919,7 +1737,7 @@ export default function CryptoSandbox() {
     setMovingTextLabel(null);
     setSelectedTextLabel(null);
     setTextLabelMenuPos(null);
-  }, [movingTextLabel, margin.left, margin.top, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [movingTextLabel, MARGIN.left, MARGIN.top, findMagnetPoint, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   // Move channel to new position (translates the whole channel)
   const placeMovingChannel = useCallback((clickX: number, clickY: number) => {
@@ -1936,8 +1754,8 @@ export default function CryptoSandbox() {
       setMagnetPulse({ x: clickX, y: clickY });
       setTimeout(() => setMagnetPulse(null), 400);
     } else {
-      newTime = xScaleRef.current.invert(clickX - margin.left).getTime();
-      newPrice = yScaleRef.current.invert(clickY - margin.top);
+      newTime = xScaleRef.current.invert(clickX - MARGIN.left).getTime();
+      newPrice = yScaleRef.current.invert(clickY - MARGIN.top);
     }
     
     // Calculate center of current channel
@@ -1961,7 +1779,7 @@ export default function CryptoSandbox() {
     setMovingChannel(null);
     setSelectedChannel(null);
     setChannelMenuPos(null);
-  }, [movingChannel, drawnChannels, drawnTrendlines, drawnHorizontals, drawnHChannels, drawnSChannels, drawnTextLabels, margin.left, margin.top, findMagnetPoint, saveToHistory]);
+  }, [movingChannel, drawnChannels, drawnTrendlines, drawnHorizontals, drawnHChannels, drawnSChannels, drawnTextLabels, MARGIN.left, MARGIN.top, findMagnetPoint, saveToHistory]);
   
   // Handle clicking an endpoint in move mode - immediately start moving
   const handleEndpointClick = useCallback((lineId: string, point: 'p1' | 'p2') => {
@@ -1977,10 +1795,10 @@ export default function CryptoSandbox() {
     const threshold = 15; // pixels distance to consider "near" a line
     
     for (const line of drawnTrendlines) {
-      const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
-      const y1 = yScaleRef.current(line.p1.price) + margin.top;
-      const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
-      const y2 = yScaleRef.current(line.p2.price) + margin.top;
+      const x1 = xScaleRef.current(new Date(line.p1.time)) + MARGIN.left;
+      const y1 = yScaleRef.current(line.p1.price) + MARGIN.top;
+      const x2 = xScaleRef.current(new Date(line.p2.time)) + MARGIN.left;
+      const y2 = yScaleRef.current(line.p2.price) + MARGIN.top;
       
       // Calculate distance from point to line segment
       const lineLen = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -1996,7 +1814,7 @@ export default function CryptoSandbox() {
       }
     }
     return null;
-  }, [drawnTrendlines, margin.left, margin.top]);
+  }, [drawnTrendlines, MARGIN.left, MARGIN.top]);
   
   // Collect all drawing elements within the hit radius (for selection picker)
   const collectHitCandidates = useCallback((clickX: number, clickY: number): SelectionCandidate[] => {
@@ -2036,10 +1854,10 @@ export default function CryptoSandbox() {
         continue;
       }
       
-      let x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
-      let y1 = yScaleRef.current(line.p1.price) + margin.top;
-      let x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
-      let y2 = yScaleRef.current(line.p2.price) + margin.top;
+      let x1 = xScaleRef.current(new Date(line.p1.time)) + MARGIN.left;
+      let y1 = yScaleRef.current(line.p1.price) + MARGIN.top;
+      let x2 = xScaleRef.current(new Date(line.p2.time)) + MARGIN.left;
+      let y2 = yScaleRef.current(line.p2.price) + MARGIN.top;
       
       // Calculate extended segment points if extensions are enabled
       const dx = x2 - x1;
@@ -2048,7 +1866,7 @@ export default function CryptoSandbox() {
         const slope = dy / dx;
         if (line.extendLeft) {
           // Extend to left edge of chart
-          const leftX = margin.left;
+          const leftX = MARGIN.left;
           const leftY = y1 + slope * (leftX - x1);
           // Use extended point as x1,y1 if it extends left
           if (leftX < x1) {
@@ -2058,7 +1876,7 @@ export default function CryptoSandbox() {
         }
         if (line.extendRight) {
           // Extend to right edge of chart
-          const rightX = dimensions.width - margin.right;
+          const rightX = dimensions.width - MARGIN.right;
           const rightY = y1 + slope * (rightX - x1);
           // Use extended point as x2,y2 if it extends right
           if (rightX > x2) {
@@ -2078,7 +1896,7 @@ export default function CryptoSandbox() {
     
     // Check horizontals
     for (const h of drawnHorizontals) {
-      const y = yScaleRef.current(h.price) + margin.top;
+      const y = yScaleRef.current(h.price) + MARGIN.top;
       if (Math.abs(clickY - y) <= threshold) {
         candidates.push({ id: h.id, type: 'horizontal' });
       }
@@ -2086,14 +1904,14 @@ export default function CryptoSandbox() {
     
     // Check legacy channels (top and bottom lines)
     for (const ch of drawnChannels) {
-      const x1Top = xScaleRef.current(new Date(ch.topLine.p1.time)) + margin.left;
-      const y1Top = yScaleRef.current(ch.topLine.p1.price) + margin.top;
-      const x2Top = xScaleRef.current(new Date(ch.topLine.p2.time)) + margin.left;
-      const y2Top = yScaleRef.current(ch.topLine.p2.price) + margin.top;
-      const x1Bot = xScaleRef.current(new Date(ch.bottomLine.p1.time)) + margin.left;
-      const y1Bot = yScaleRef.current(ch.bottomLine.p1.price) + margin.top;
-      const x2Bot = xScaleRef.current(new Date(ch.bottomLine.p2.time)) + margin.left;
-      const y2Bot = yScaleRef.current(ch.bottomLine.p2.price) + margin.top;
+      const x1Top = xScaleRef.current(new Date(ch.topLine.p1.time)) + MARGIN.left;
+      const y1Top = yScaleRef.current(ch.topLine.p1.price) + MARGIN.top;
+      const x2Top = xScaleRef.current(new Date(ch.topLine.p2.time)) + MARGIN.left;
+      const y2Top = yScaleRef.current(ch.topLine.p2.price) + MARGIN.top;
+      const x1Bot = xScaleRef.current(new Date(ch.bottomLine.p1.time)) + MARGIN.left;
+      const y1Bot = yScaleRef.current(ch.bottomLine.p1.price) + MARGIN.top;
+      const x2Bot = xScaleRef.current(new Date(ch.bottomLine.p2.time)) + MARGIN.left;
+      const y2Bot = yScaleRef.current(ch.bottomLine.p2.price) + MARGIN.top;
       if (distToSegment(clickX, clickY, x1Top, y1Top, x2Top, y2Top) <= threshold ||
           distToSegment(clickX, clickY, x1Bot, y1Bot, x2Bot, y2Bot) <= threshold) {
         candidates.push({ id: ch.id, type: 'channel' });
@@ -2102,14 +1920,14 @@ export default function CryptoSandbox() {
     
     // Check horizontal channels (top and bottom horizontal lines)
     for (const hch of drawnHChannels) {
-      const topY = yScaleRef.current(hch.topPrice) + margin.top;
-      const botY = yScaleRef.current(hch.bottomPrice) + margin.top;
+      const topY = yScaleRef.current(hch.topPrice) + MARGIN.top;
+      const botY = yScaleRef.current(hch.bottomPrice) + MARGIN.top;
       // Account for channel extensions when calculating bounds
-      let leftX = xScaleRef.current(new Date(Math.min(hch.x1, hch.x2))) + margin.left;
-      let rightX = xScaleRef.current(new Date(Math.max(hch.x1, hch.x2))) + margin.left;
+      let leftX = xScaleRef.current(new Date(Math.min(hch.x1, hch.x2))) + MARGIN.left;
+      let rightX = xScaleRef.current(new Date(Math.max(hch.x1, hch.x2))) + MARGIN.left;
       // If extended, use full chart width
-      if (hch.extendLeft) leftX = margin.left;
-      if (hch.extendRight) rightX = dimensions.width - margin.right;
+      if (hch.extendLeft) leftX = MARGIN.left;
+      if (hch.extendRight) rightX = dimensions.width - MARGIN.right;
       
       // Check if click is within x-range and near top or bottom line
       if (clickX >= leftX - threshold && clickX <= rightX + threshold) {
@@ -2129,14 +1947,14 @@ export default function CryptoSandbox() {
     
     // Check sloped channels (top and bottom sloped lines + fill area)
     for (const sch of drawnSChannels) {
-      let x1Top = xScaleRef.current(new Date(sch.topLine.p1.time)) + margin.left;
-      let y1Top = yScaleRef.current(sch.topLine.p1.price) + margin.top;
-      let x2Top = xScaleRef.current(new Date(sch.topLine.p2.time)) + margin.left;
-      let y2Top = yScaleRef.current(sch.topLine.p2.price) + margin.top;
-      let x1Bot = xScaleRef.current(new Date(sch.bottomLine.p1.time)) + margin.left;
-      let y1Bot = yScaleRef.current(sch.bottomLine.p1.price) + margin.top;
-      let x2Bot = xScaleRef.current(new Date(sch.bottomLine.p2.time)) + margin.left;
-      let y2Bot = yScaleRef.current(sch.bottomLine.p2.price) + margin.top;
+      let x1Top = xScaleRef.current(new Date(sch.topLine.p1.time)) + MARGIN.left;
+      let y1Top = yScaleRef.current(sch.topLine.p1.price) + MARGIN.top;
+      let x2Top = xScaleRef.current(new Date(sch.topLine.p2.time)) + MARGIN.left;
+      let y2Top = yScaleRef.current(sch.topLine.p2.price) + MARGIN.top;
+      let x1Bot = xScaleRef.current(new Date(sch.bottomLine.p1.time)) + MARGIN.left;
+      let y1Bot = yScaleRef.current(sch.bottomLine.p1.price) + MARGIN.top;
+      let x2Bot = xScaleRef.current(new Date(sch.bottomLine.p2.time)) + MARGIN.left;
+      let y2Bot = yScaleRef.current(sch.bottomLine.p2.price) + MARGIN.top;
       
       // Extend lines if extensions are enabled
       if (sch.extendLeft || sch.extendRight) {
@@ -2150,14 +1968,14 @@ export default function CryptoSandbox() {
           const slopeBot = dyBot / dxBot;
           
           if (sch.extendLeft) {
-            const leftX = margin.left;
+            const leftX = MARGIN.left;
             x1Top = leftX;
             y1Top = y1Top + slopeTop * (leftX - x1Top);
             x1Bot = leftX;
             y1Bot = y1Bot + slopeBot * (leftX - x1Bot);
           }
           if (sch.extendRight) {
-            const rightX = dimensions.width - margin.right;
+            const rightX = dimensions.width - MARGIN.right;
             x2Top = rightX;
             y2Top = y1Top + slopeTop * (rightX - x1Top);
             x2Bot = rightX;
@@ -2196,8 +2014,8 @@ export default function CryptoSandbox() {
     
     // Check text labels
     for (const lbl of drawnTextLabels) {
-      const x = xScaleRef.current(new Date(lbl.time)) + margin.left;
-      const y = yScaleRef.current(lbl.price) + margin.top;
+      const x = xScaleRef.current(new Date(lbl.time)) + MARGIN.left;
+      const y = yScaleRef.current(lbl.price) + MARGIN.top;
       // Labels have a wider hit area
       if (Math.abs(clickX - x) <= threshold && Math.abs(clickY - y) <= threshold) {
         candidates.push({ id: lbl.id, type: 'label' });
@@ -2214,7 +2032,7 @@ export default function CryptoSandbox() {
         if (!level.visible) continue;
         
         const levelPrice = lowPrice + level.ratio * range;
-        const y = yScaleRef.current(levelPrice) + margin.top;
+        const y = yScaleRef.current(levelPrice) + MARGIN.top;
         if (Math.abs(clickY - y) <= threshold) {
           candidates.push({ id: fib.id, type: 'fib' });
           break; // Only add once per fib
@@ -2232,7 +2050,7 @@ export default function CryptoSandbox() {
         if (!level.visible) continue;
         
         const levelPrice = basePrice + level.ratio * height * direction;
-        const y = yScaleRef.current(levelPrice) + margin.top;
+        const y = yScaleRef.current(levelPrice) + MARGIN.top;
         if (Math.abs(clickY - y) <= threshold) {
           candidates.push({ id: tfib.id, type: 'trendfib' });
           break;
@@ -2241,7 +2059,7 @@ export default function CryptoSandbox() {
     }
     
     return candidates;
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, margin.left, margin.top, margin.right, dimensions.width, MAGNET_RADIUS]);
+  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, MARGIN.left, MARGIN.top, MARGIN.right, dimensions.width, MAGNET_RADIUS]);
   
   // Close selection picker
   const closeSelectionPicker = useCallback(() => {
@@ -2342,7 +2160,7 @@ export default function CryptoSandbox() {
     console.log('🎯 Candidates found:', candidates);
     if (candidates.length > 1) {
       // Multiple overlapping elements - show picker
-      const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - margin.right - 60);
+      const pickerX = Math.min(Math.max(clickX + 12, 60), dimensions.width - MARGIN.right - 60);
       const pickerY = Math.min(Math.max(clickY, 50), dimensions.height - 150);
       setSelectionCandidates(candidates);
       setSelectionPickerPos({ x: pickerX, y: pickerY });
@@ -2409,10 +2227,10 @@ export default function CryptoSandbox() {
     if (!line) return null;
     
     const threshold = 20; // pixels
-    const x1 = xScaleRef.current(new Date(line.p1.time)) + margin.left;
-    const y1 = yScaleRef.current(line.p1.price) + margin.top;
-    const x2 = xScaleRef.current(new Date(line.p2.time)) + margin.left;
-    const y2 = yScaleRef.current(line.p2.price) + margin.top;
+    const x1 = xScaleRef.current(new Date(line.p1.time)) + MARGIN.left;
+    const y1 = yScaleRef.current(line.p1.price) + MARGIN.top;
+    const x2 = xScaleRef.current(new Date(line.p2.time)) + MARGIN.left;
+    const y2 = yScaleRef.current(line.p2.price) + MARGIN.top;
     
     const dist1 = Math.sqrt((clickX - x1) ** 2 + (clickY - y1) ** 2);
     const dist2 = Math.sqrt((clickX - x2) ** 2 + (clickY - y2) ** 2);
@@ -2420,7 +2238,7 @@ export default function CryptoSandbox() {
     if (dist1 <= threshold && dist1 < dist2) return 'p1';
     if (dist2 <= threshold) return 'p2';
     return null;
-  }, [drawnTrendlines, movingTrendline, margin.left, margin.top]);
+  }, [drawnTrendlines, movingTrendline, MARGIN.left, MARGIN.top]);
 
   // Place the moving point at new location - magnet with free fallback
   const placeMovingPoint = useCallback((clickX: number, clickY: number) => {
@@ -2436,8 +2254,8 @@ export default function CryptoSandbox() {
       setTimeout(() => setMagnetPulse(null), 400);
     } else {
       // Free mode fallback
-      const time = xScaleRef.current.invert(clickX - margin.left).getTime();
-      const price = yScaleRef.current.invert(clickY - margin.top);
+      const time = xScaleRef.current.invert(clickX - MARGIN.left).getTime();
+      const price = yScaleRef.current.invert(clickY - MARGIN.top);
       newPoint = { time, price };
     }
     
@@ -2456,7 +2274,7 @@ export default function CryptoSandbox() {
     
     // Stay in move mode, just clear the moving point
     setMovingPoint(null);
-  }, [movingPoint, findMagnetPoint, margin.left, margin.top, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [movingPoint, findMagnetPoint, MARGIN.left, MARGIN.top, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
   // Universal click pulse - show on any placement/move/selection
   const [clickPulse, setClickPulse] = useState<{ x: number; y: number } | null>(null);
@@ -2488,12 +2306,12 @@ export default function CryptoSandbox() {
     
     const width = dimensions.width;
     const height = dimensions.height;
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
+    const innerWidth = width - MARGIN.left - MARGIN.right;
+    const innerHeight = height - MARGIN.top - MARGIN.bottom;
     
     // Create main group with margins
     const g = svg.append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`);
+      .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
     
     // Create clip path for chart area
     svg.append('defs')
@@ -2984,7 +2802,7 @@ export default function CryptoSandbox() {
             
             // Constrain label position
             const labelWidth = estimateTextWidth(line.label!.text, 11);
-            const labelBounds = getLabelBounds(dimensions, margin);
+            const labelBounds = getLabelBounds(dimensions);
             const constrained = constrainLabelPosition(
               baseX,
               baseY,
@@ -3096,7 +2914,7 @@ export default function CryptoSandbox() {
             
             // Constrain label position
             const labelWidth = estimateTextWidth(line.label!.text, 11);
-            const labelBounds = getLabelBounds(dimensions, margin);
+            const labelBounds = getLabelBounds(dimensions);
             const constrained = constrainLabelPosition(
               baseX,
               baseY,
@@ -3236,8 +3054,8 @@ export default function CryptoSandbox() {
         
         // Extend left/right for horizontal channels
         const origX1 = x1, origX2 = x2;
-        if (hchannel.extendLeft) x1 = margin.left;
-        if (hchannel.extendRight) x2 = dimensions.width - margin.right;
+        if (hchannel.extendLeft) x1 = MARGIN.left;
+        if (hchannel.extendRight) x2 = dimensions.width - MARGIN.right;
         
         const hchannelGroup = drawingsGroup.append('g').attr('class', `hchannel-${hchannel.id}`);
         
@@ -3264,8 +3082,8 @@ export default function CryptoSandbox() {
           .style('pointer-events', 'none');
         
         // Calculate label positions, keeping on screen (avoid toolbar ~50px and axis ~60px)
-        const chartLeft = margin.left + 50;
-        const chartRight = dimensions.width - margin.right - 60;
+        const chartLeft = MARGIN.left + 50;
+        const chartRight = dimensions.width - MARGIN.right - 60;
         const leftX = Math.max(Math.min(x1, x2) + 5, chartLeft);
         const centerX = Math.max(chartLeft, Math.min(chartRight, (x1 + x2) / 2));
         const rightX = Math.min(Math.max(x1, x2) - 5, chartRight);
@@ -3378,14 +3196,14 @@ export default function CryptoSandbox() {
           const topSlope = topX2 !== topX1 ? (topY2 - topY1) / (topX2 - topX1) : 0;
           const botSlope = botX2 !== botX1 ? (botY2 - botY1) / (botX2 - botX1) : 0;
           if (schannel.extendLeft) {
-            const leftX = margin.left;
+            const leftX = MARGIN.left;
             topY1 = topY1 + topSlope * (leftX - topX1);
             topX1 = leftX;
             botY1 = botY1 + botSlope * (leftX - botX1);
             botX1 = leftX;
           }
           if (schannel.extendRight) {
-            const rightX = dimensions.width - margin.right;
+            const rightX = dimensions.width - MARGIN.right;
             topY2 = topY2 + topSlope * (rightX - topX2);
             topX2 = rightX;
             botY2 = botY2 + botSlope * (rightX - botX2);
@@ -3413,8 +3231,8 @@ export default function CryptoSandbox() {
           .style('pointer-events', 'none');
         
         // Calculate label positions for sloped channel, keeping on screen (avoid toolbar ~50px and axis ~60px)
-        const sChartLeft = margin.left + 50;
-        const sChartRight = dimensions.width - margin.right - 60;
+        const sChartLeft = MARGIN.left + 50;
+        const sChartRight = dimensions.width - MARGIN.right - 60;
         
         // Helper to render sloped channel labels at multiple positions with optional background
         const renderSLabel = (text: string, lx1: number, ly1: number, lx2: number, ly2: number, yOffset: number, color: string, fontSize: string = '11px', bold: boolean = true, bgColor?: string) => {
@@ -3541,14 +3359,14 @@ export default function CryptoSandbox() {
         const extDir = fib.extendDirection || 'both';
         const anchorMinX = Math.min(anchor1X, anchor2X);
         const anchorMaxX = Math.max(anchor1X, anchor2X);
-        let lineX1 = margin.left;
-        let lineX2 = dimensions.width - margin.right;
+        let lineX1 = MARGIN.left;
+        let lineX2 = dimensions.width - MARGIN.right;
         if (extDir === 'none') {
           lineX1 = anchorMinX; lineX2 = anchorMaxX;
         } else if (extDir === 'left') {
-          lineX1 = margin.left; lineX2 = anchorMaxX;
+          lineX1 = MARGIN.left; lineX2 = anchorMaxX;
         } else if (extDir === 'right') {
-          lineX1 = anchorMinX; lineX2 = dimensions.width - margin.right;
+          lineX1 = anchorMinX; lineX2 = dimensions.width - MARGIN.right;
         }
         
         // Draw each level (visibility controlled entirely by level.visible)
@@ -3583,7 +3401,7 @@ export default function CryptoSandbox() {
             // Format and constrain label
             const labelText = formatFibonacciLabel(level.ratio, levelPrice, fib.showPrices, false);
             const labelWidth = estimateTextWidth(labelText, 11);
-            const labelBounds = getLabelBounds(dimensions, margin);
+            const labelBounds = getLabelBounds(dimensions);
             const constrained = constrainLabelPosition(
               baseX,
               baseY,
@@ -3658,14 +3476,14 @@ export default function CryptoSandbox() {
         const extDir = tfib.extendDirection || 'both';
         const anchorMinX = Math.min(p1X, p2X, p3X);
         const anchorMaxX = Math.max(p1X, p2X, p3X);
-        let lineX1 = margin.left;
-        let lineX2 = dimensions.width - margin.right;
+        let lineX1 = MARGIN.left;
+        let lineX2 = dimensions.width - MARGIN.right;
         if (extDir === 'none') {
           lineX1 = anchorMinX; lineX2 = anchorMaxX;
         } else if (extDir === 'left') {
-          lineX1 = margin.left; lineX2 = anchorMaxX;
+          lineX1 = MARGIN.left; lineX2 = anchorMaxX;
         } else if (extDir === 'right') {
-          lineX1 = anchorMinX; lineX2 = dimensions.width - margin.right;
+          lineX1 = anchorMinX; lineX2 = dimensions.width - MARGIN.right;
         }
         
         // Draw impulse line (p1 to p2)
@@ -3719,7 +3537,7 @@ export default function CryptoSandbox() {
             // Format and constrain label
             const labelText = formatFibonacciLabel(level.ratio, levelPrice, tfib.showPrices, false);
             const labelWidth = estimateTextWidth(labelText, 11);
-            const labelBounds = getLabelBounds(dimensions, margin);
+            const labelBounds = getLabelBounds(dimensions);
             const constrained = constrainLabelPosition(
               baseX,
               baseY,
@@ -3871,7 +3689,7 @@ export default function CryptoSandbox() {
     
     // Zoom behavior - DISABLED when drawing tool is active
     const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.5, 20])
+      .scaleExtent(ZOOM_SCALE_EXTENTS as [number, number])
       .translateExtent([[-100, 0], [width + 100, height]])
       .filter((event) => {
         // Disable d3 zoom when a drawing tool is active - overlay handles everything
@@ -4056,7 +3874,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive]);
+  }, [candles, dimensions, MARGIN.left, MARGIN.right, MARGIN.top, MARGIN.bottom, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive]);
   
   // Show loading while checking auth
   if (authLoading) {
@@ -4661,8 +4479,8 @@ export default function CryptoSandbox() {
                     touchMovedRef.current = true;
                   }
                   // Move crosshair by that delta from its starting position
-                  const newX = Math.max(margin.left, Math.min(dimensions.width - margin.right, crosshairStartRef.current.x + deltaX));
-                  const newY = Math.max(margin.top, Math.min(dimensions.height - margin.bottom, crosshairStartRef.current.y + deltaY));
+                  const newX = Math.max(MARGIN.left, Math.min(dimensions.width - MARGIN.right, crosshairStartRef.current.x + deltaX));
+                  const newY = Math.max(MARGIN.top, Math.min(dimensions.height - MARGIN.bottom, crosshairStartRef.current.y + deltaY));
                   setCrosshairPos({ x: newX, y: newY });
                 }
               }}
@@ -4703,7 +4521,7 @@ export default function CryptoSandbox() {
                     style={{ top: crosshairPos.y }}
                   />
                   {/* Price label */}
-                  {yScaleRef.current && crosshairPos.y > margin.top && crosshairPos.y < dimensions.height - margin.bottom && (
+                  {yScaleRef.current && crosshairPos.y > MARGIN.top && crosshairPos.y < dimensions.height - MARGIN.bottom && (
                     <div 
                       className="absolute bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none"
                       style={{ 
@@ -4712,13 +4530,13 @@ export default function CryptoSandbox() {
                       }}
                     >
                       {(() => {
-                        const price = yScaleRef.current?.invert(crosshairPos.y - margin.top);
+                        const price = yScaleRef.current?.invert(crosshairPos.y - MARGIN.top);
                         return price ? (price >= 1000 ? price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : price.toFixed(4)) : '';
                       })()}
                     </div>
                   )}
                   {/* Time label */}
-                  {xScaleRef.current && crosshairPos.x > margin.left && crosshairPos.x < dimensions.width - margin.right && (
+                  {xScaleRef.current && crosshairPos.x > MARGIN.left && crosshairPos.x < dimensions.width - MARGIN.right && (
                     <div 
                       className="absolute bg-blue-600 text-white text-xs px-2 py-1 rounded pointer-events-none"
                       style={{ 
@@ -4727,7 +4545,7 @@ export default function CryptoSandbox() {
                       }}
                     >
                       {(() => {
-                        const date = xScaleRef.current?.invert(crosshairPos.x - margin.left);
+                        const date = xScaleRef.current?.invert(crosshairPos.x - MARGIN.left);
                         return date ? d3.timeFormat('%b %d %H:%M')(date) : '';
                       })()}
                     </div>
@@ -6406,7 +6224,7 @@ export default function CryptoSandbox() {
               const hchannel = drawnHChannels.find(c => c.id === selectedHChannel);
               const menuWidth = 48;
               const menuHeight = 200;
-              const autoX = Math.min(Math.max(hchannelMenuPos.x, 10), dimensions.width - margin.right - menuWidth - 10);
+              const autoX = Math.min(Math.max(hchannelMenuPos.x, 10), dimensions.width - MARGIN.right - menuWidth - 10);
               const autoY = Math.min(Math.max(hchannelMenuPos.y, 10), dimensions.height - menuHeight - 10);
               return (
                 <div 
@@ -6747,7 +6565,7 @@ export default function CryptoSandbox() {
               const schannel = drawnSChannels.find(c => c.id === selectedSChannel);
               const menuWidth = 48;
               const menuHeight = 200;
-              const autoX = Math.min(Math.max(schannelMenuPos.x, 10), dimensions.width - margin.right - menuWidth - 10);
+              const autoX = Math.min(Math.max(schannelMenuPos.x, 10), dimensions.width - MARGIN.right - menuWidth - 10);
               const autoY = Math.min(Math.max(schannelMenuPos.y, 10), dimensions.height - menuHeight - 10);
               return (
                 <div 
