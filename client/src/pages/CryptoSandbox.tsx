@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Loader2, Crosshair, ChevronDown, TrendingUp } from 'lucide-react';
 import { useElliottWave } from '@/hooks/useElliottWave';
+import { useDrawingState } from '@/hooks/useDrawingState';
 import {
   constrainLabelPosition,
   formatFibonacciLabel,
@@ -87,38 +88,57 @@ export default function CryptoSandbox() {
   // Elliott Wave hook
   const elliottWave = useElliottWave();
   
+  // Drawing state hook - manages all drawings, undo/redo, and selection
+  const drawingState = useDrawingState();
+  const { state: drawingStateData, setState: setDrawingStateData, undo, redo, canUndo, canRedo } = drawingState;
+  
+  // Extract drawing arrays from hook state for easier access
+  const drawnTrendlines = drawingStateData.trendlines;
+  const drawnHorizontals = drawingStateData.horizontals;
+  const drawnChannels = drawingStateData.channels;
+  const drawnHChannels = drawingStateData.hchannels;
+  const drawnSChannels = drawingStateData.schannels;
+  const drawnFibRetraces = drawingStateData.fibs;
+  const drawnTrendFibs = drawingStateData.trendfibs;
+  const drawnTextLabels = drawingStateData.labels;
+  
+  // Extract setters for direct state manipulation (needed for some operations)
+  const setDrawnTrendlines = setDrawingStateData.setTrendlines;
+  const setDrawnHorizontals = setDrawingStateData.setHorizontals;
+  const setDrawnChannels = setDrawingStateData.setChannels;
+  const setDrawnHChannels = setDrawingStateData.setHChannels;
+  const setDrawnSChannels = setDrawingStateData.setSChannels;
+  const setDrawnFibRetraces = setDrawingStateData.setFibs;
+  const setDrawnTrendFibs = setDrawingStateData.setTrendFibs;
+  const setDrawnTextLabels = setDrawingStateData.setLabels;
+  
+  // Helper to save state to history (wraps the hook's saveToHistory)
+  const saveToHistory = drawingState.saveToHistory;
+  
   const [trendlineMode, setTrendlineMode] = useState<TrendlineMode>(null);
   const [trendlinePoints, setTrendlinePoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
-  const [drawnTrendlines, setDrawnTrendlines] = useState<TrendlineData[]>([]);
-  const [drawnHorizontals, setDrawnHorizontals] = useState<HorizontalLineData[]>([]);
-  const [drawnChannels, setDrawnChannels] = useState<ChannelData[]>([]);
-  const [drawnTextLabels, setDrawnTextLabels] = useState<TextLabelData[]>([]);
   const [channelPoints, setChannelPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [magnetPulse, setMagnetPulse] = useState<{ x: number; y: number } | null>(null);
   
   // Horizontal Channel state (2-click)
-  const [drawnHChannels, setDrawnHChannels] = useState<HorizontalChannelData[]>([]);
   const [hchannelPoints, setHChannelPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [selectedHChannel, setSelectedHChannel] = useState<string | null>(null);
   const [hchannelMenuPos, setHChannelMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [movingHChannel, setMovingHChannel] = useState<string | null>(null);
   
   // Sloped Channel state (3-click)
-  const [drawnSChannels, setDrawnSChannels] = useState<SlopedChannelData[]>([]);
   const [schannelPoints, setSChannelPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [selectedSChannel, setSelectedSChannel] = useState<string | null>(null);
   const [schannelMenuPos, setSChannelMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [movingSChannel, setMovingSChannel] = useState<string | null>(null);
   
   // Fibonacci Retracement state (2-click)
-  const [drawnFibRetraces, setDrawnFibRetraces] = useState<FibRetracementData[]>([]);
   const [fibPoints, setFibPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [selectedFib, setSelectedFib] = useState<string | null>(null);
   const [fibMenuPos, setFibMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [movingFibAnchor, setMovingFibAnchor] = useState<'anchor1' | 'anchor2' | 'whole' | null>(null);
   
   // Trend-Based Fib Extension state (3-click)
-  const [drawnTrendFibs, setDrawnTrendFibs] = useState<TrendFibExtensionData[]>([]);
   const [trendFibPoints, setTrendFibPoints] = useState<{ x: number; y: number; time: number; price: number }[]>([]);
   const [selectedTrendFib, setSelectedTrendFib] = useState<string | null>(null);
   const [trendFibMenuPos, setTrendFibMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -161,113 +181,44 @@ export default function CryptoSandbox() {
   const tapInProgressRef = useRef<boolean>(false); // Block concurrent taps
   const selectionTimeRef = useRef<number>(0); // Track when selection occurred to prevent immediate close
   
-  // Undo/redo history for ALL drawing types (unified)
-  const [drawingHistory, setDrawingHistory] = useState<DrawingState[]>([{
-    trendlines: [],
-    horizontals: [],
-    channels: [],
-    hchannels: [],
-    schannels: [],
-    fibs: [],
-    trendfibs: [],
-    labels: []
-  }]);
-  const [historyIndex, setHistoryIndex] = useState(0);
-  const isUndoRedoRef = useRef(false); // Track if change is from undo/redo
+  // Wrap undo/redo to also close menus
+  const undoClick = useCallback(() => {
+    undo();
+    // Close all menus
+    setSelectedTrendline(null);
+    setTrendlineMenuPos(null);
+    setSelectedHorizontal(null);
+    setHorizontalMenuPos(null);
+    setSelectedChannel(null);
+    setChannelMenuPos(null);
+    setSelectedHChannel(null);
+    setHChannelMenuPos(null);
+    setSelectedSChannel(null);
+    setSChannelMenuPos(null);
+    setSelectedFib(null);
+    setFibMenuPos(null);
+    setSelectedTextLabel(null);
+    setTextLabelMenuPos(null);
+  }, [undo]);
   
-  // Save to history with explicit new state
-  const saveToHistory = useCallback((state: DrawingState) => {
-    if (isUndoRedoRef.current) {
-      isUndoRedoRef.current = false;
-      return;
-    }
-    setDrawingHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(state);
-      // Keep last 50 states
-      if (newHistory.length > 50) newHistory.shift();
-      return newHistory;
-    });
-    setHistoryIndex(prev => Math.min(prev + 1, 49));
-  }, [historyIndex]);
-  
-  // Wrapper to save current drawing state
-  const saveDrawingState = useCallback(() => {
-    saveToHistory({
-      trendlines: drawnTrendlines,
-      horizontals: drawnHorizontals,
-      channels: drawnChannels,
-      hchannels: drawnHChannels,
-      schannels: drawnSChannels,
-      fibs: drawnFibRetraces,
-      labels: drawnTextLabels
-    });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, saveToHistory]);
-  
-  const undo = useCallback(() => {
-    if (historyIndex > 0) {
-      isUndoRedoRef.current = true;
-      const newIndex = historyIndex - 1;
-      const state = drawingHistory[newIndex];
-      setHistoryIndex(newIndex);
-      setDrawnTrendlines(state.trendlines);
-      setDrawnHorizontals(state.horizontals);
-      setDrawnChannels(state.channels);
-      setDrawnHChannels(state.hchannels || []);
-      setDrawnSChannels(state.schannels || []);
-      setDrawnFibRetraces(state.fibs || []);
-      setDrawnTextLabels(state.labels);
-      // Close all menus
-      setSelectedTrendline(null);
-      setTrendlineMenuPos(null);
-      setSelectedHorizontal(null);
-      setHorizontalMenuPos(null);
-      setSelectedChannel(null);
-      setChannelMenuPos(null);
-      setSelectedHChannel(null);
-      setHChannelMenuPos(null);
-      setSelectedSChannel(null);
-      setSChannelMenuPos(null);
-      setSelectedFib(null);
-      setFibMenuPos(null);
-      setSelectedTextLabel(null);
-      setTextLabelMenuPos(null);
-    }
-  }, [historyIndex, drawingHistory]);
-  
-  const redo = useCallback(() => {
-    if (historyIndex < drawingHistory.length - 1) {
-      isUndoRedoRef.current = true;
-      const newIndex = historyIndex + 1;
-      const state = drawingHistory[newIndex];
-      setHistoryIndex(newIndex);
-      setDrawnTrendlines(state.trendlines);
-      setDrawnHorizontals(state.horizontals);
-      setDrawnChannels(state.channels);
-      setDrawnHChannels(state.hchannels || []);
-      setDrawnSChannels(state.schannels || []);
-      setDrawnFibRetraces(state.fibs || []);
-      setDrawnTextLabels(state.labels);
-      // Close all menus
-      setSelectedTrendline(null);
-      setTrendlineMenuPos(null);
-      setSelectedHorizontal(null);
-      setHorizontalMenuPos(null);
-      setSelectedChannel(null);
-      setChannelMenuPos(null);
-      setSelectedHChannel(null);
-      setHChannelMenuPos(null);
-      setSelectedSChannel(null);
-      setSChannelMenuPos(null);
-      setSelectedFib(null);
-      setFibMenuPos(null);
-      setSelectedTextLabel(null);
-      setTextLabelMenuPos(null);
-    }
-  }, [historyIndex, drawingHistory]);
-  
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex < drawingHistory.length - 1;
+  const redoClick = useCallback(() => {
+    redo();
+    // Close all menus
+    setSelectedTrendline(null);
+    setTrendlineMenuPos(null);
+    setSelectedHorizontal(null);
+    setHorizontalMenuPos(null);
+    setSelectedChannel(null);
+    setChannelMenuPos(null);
+    setSelectedHChannel(null);
+    setHChannelMenuPos(null);
+    setSelectedSChannel(null);
+    setSChannelMenuPos(null);
+    setSelectedFib(null);
+    setFibMenuPos(null);
+    setSelectedTextLabel(null);
+    setTextLabelMenuPos(null);
+  }, [redo]);
   
   
   // Default trendline settings (loaded from localStorage)
@@ -4121,7 +4072,7 @@ export default function CryptoSandbox() {
               
               {/* Undo button */}
               <button
-                onClick={undo}
+                onClick={undoClick}
                 disabled={!canUndo}
                 className={`p-2 rounded transition-all ${
                   canUndo 
@@ -4138,7 +4089,7 @@ export default function CryptoSandbox() {
               
               {/* Redo button */}
               <button
-                onClick={redo}
+                onClick={redoClick}
                 disabled={!canRedo}
                 className={`p-2 rounded transition-all ${
                   canRedo 
