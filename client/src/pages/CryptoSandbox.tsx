@@ -1755,6 +1755,8 @@ export default function CryptoSandbox() {
     
     // For W2, check if clicking near a Fibonacci level first
     let clickedFibLevel = null;
+    let snapType: 'candle' | 'fib' = 'candle'; // Default to candle
+    
     if (elliottWave.mode === 'placing_w2' && elliottWave.fibLevels.length > 0) {
       const clickPrice = yScaleRef.current.invert(clickY - margin.top);
       const FIB_SNAP_THRESHOLD = Math.abs(yScaleRef.current.invert(margin.top + FIB_SNAP_PIXELS) - yScaleRef.current.invert(margin.top));
@@ -1762,6 +1764,7 @@ export default function CryptoSandbox() {
       for (const level of elliottWave.fibLevels) {
         if (Math.abs(clickPrice - level.price) < FIB_SNAP_THRESHOLD) {
           clickedFibLevel = level;
+          snapType = 'fib'; // Mark as fib snap
           break;
         }
       }
@@ -1787,6 +1790,7 @@ export default function CryptoSandbox() {
       if (magnetPoint) {
         time = magnetPoint.time;
         price = magnetPoint.price;
+        snapType = 'candle'; // Explicitly mark as candle snap
         
         // Determine if snapped to high or low
         const candle = candles.find(c => c.time === time);
@@ -1799,11 +1803,12 @@ export default function CryptoSandbox() {
         time = xScaleRef.current.invert(clickX - margin.left).getTime();
         price = yScaleRef.current.invert(clickY - margin.top);
         snappedToHigh = false;
+        snapType = 'candle'; // Default to candle for free placement
       }
     }
     
-    // Place the point in Elliott Wave state
-    elliottWave.placePoint(time, price, snappedToHigh);
+    // Place the point in Elliott Wave state with snap type
+    elliottWave.placePoint(time, price, snappedToHigh, snapType);
   }, [elliottWave, candles, margin, findMagnetPoint]);
   
   // Move whole line - places center at click position
