@@ -682,21 +682,17 @@ export default function CryptoSandbox() {
   // Delete selected trendline
   const deleteTrendline = useCallback(() => {
     if (selectedTrendline) {
-      const newTrendlines = drawnTrendlines.filter(l => l.id !== selectedTrendline);
-      setDrawnTrendlines(newTrendlines);
-      saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
+      drawingState.deleteDrawing('trendline', selectedTrendline);
       setSelectedTrendline(null);
       setTrendlineMenuPos(null);
       setActiveSubmenu(null);
     }
-  }, [selectedTrendline, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedTrendline, drawingState]);
   
   // Update trendline property
   const updateTrendline = useCallback((id: string, updates: Partial<TrendlineData>) => {
-    const newTrendlines = drawnTrendlines.map(l => l.id === id ? { ...l, ...updates } : l);
-    setDrawnTrendlines(newTrendlines);
-    saveToHistory({ trendlines: newTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+    drawingState.updateDrawing('trendline', id, updates);
+  }, [drawingState]);
   
   // Close trendline menu when clicking elsewhere
   const closeTrendlineMenu = useCallback(() => {
@@ -773,20 +769,16 @@ export default function CryptoSandbox() {
   // Delete selected horizontal line
   const deleteHorizontal = useCallback(() => {
     if (selectedHorizontal) {
-      const newHorizontals = drawnHorizontals.filter(l => l.id !== selectedHorizontal);
-      setDrawnHorizontals(newHorizontals);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
+      drawingState.deleteDrawing('horizontal', selectedHorizontal);
       setSelectedHorizontal(null);
       setHorizontalMenuPos(null);
     }
-  }, [selectedHorizontal, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedHorizontal, drawingState]);
 
   // Update horizontal line property
   const updateHorizontal = useCallback((id: string, updates: Partial<HorizontalLineData>) => {
-    const newHorizontals = drawnHorizontals.map(l => l.id === id ? { ...l, ...updates } : l);
-    setDrawnHorizontals(newHorizontals);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: newHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+    drawingState.updateDrawing('horizontal', id, updates);
+  }, [drawingState]);
 
   // Close horizontal menu
   const closeHorizontalMenu = useCallback(() => {
@@ -872,20 +864,16 @@ export default function CryptoSandbox() {
   // Delete selected channel
   const deleteChannel = useCallback(() => {
     if (selectedChannel) {
-      const newChannels = drawnChannels.filter(c => c.id !== selectedChannel);
-      setDrawnChannels(newChannels);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
+      drawingState.deleteDrawing('channel', selectedChannel);
       setSelectedChannel(null);
       setChannelMenuPos(null);
     }
-  }, [selectedChannel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedChannel, drawingState]);
 
   // Update channel property
   const updateChannel = useCallback((id: string, updates: Partial<ChannelData>) => {
-    const newChannels = drawnChannels.map(c => c.id === id ? { ...c, ...updates } : c);
-    setDrawnChannels(newChannels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: newChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+    drawingState.updateDrawing('channel', id, updates);
+  }, [drawingState]);
 
   // Close channel menu
   const closeChannelMenu = useCallback(() => {
@@ -1029,21 +1017,17 @@ export default function CryptoSandbox() {
   // Delete selected horizontal channel
   const deleteHChannel = useCallback(() => {
     if (selectedHChannel) {
-      const newHChannels = drawnHChannels.filter(c => c.id !== selectedHChannel);
-      setDrawnHChannels(newHChannels);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: newHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
+      drawingState.deleteDrawing('hchannel', selectedHChannel);
       setSelectedHChannel(null);
       setHChannelMenuPos(null);
       setMovingHChannel(null);
     }
-  }, [selectedHChannel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedHChannel, drawingState]);
 
   // Update horizontal channel property
   const updateHChannel = useCallback((id: string, updates: Partial<HorizontalChannelData>) => {
-    const newHChannels = drawnHChannels.map(c => c.id === id ? { ...c, ...updates } : c);
-    setDrawnHChannels(newHChannels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: newHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+    drawingState.updateDrawing('hchannel', id, updates);
+  }, [drawingState]);
 
   // Close horizontal channel menu
   const closeHChannelMenu = useCallback(() => {
@@ -1217,21 +1201,17 @@ export default function CryptoSandbox() {
   // Delete selected sloped channel
   const deleteSChannel = useCallback(() => {
     if (selectedSChannel) {
-      const newSChannels = drawnSChannels.filter(c => c.id !== selectedSChannel);
-      setDrawnSChannels(newSChannels);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: newSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
+      drawingState.deleteDrawing('schannel', selectedSChannel);
       setSelectedSChannel(null);
       setSChannelMenuPos(null);
       setMovingSChannel(null);
     }
-  }, [selectedSChannel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedSChannel, drawingState]);
 
   // Update sloped channel property
   const updateSChannel = useCallback((id: string, updates: Partial<SlopedChannelData>) => {
-    const newSChannels = drawnSChannels.map(c => c.id === id ? { ...c, ...updates } : c);
-    setDrawnSChannels(newSChannels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: newSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+    drawingState.updateDrawing('schannel', id, updates);
+  }, [drawingState]);
 
   // Close sloped channel menu
   const closeSChannelMenu = useCallback(() => {
@@ -1318,21 +1298,17 @@ export default function CryptoSandbox() {
   // Delete selected fib
   const deleteFib = useCallback(() => {
     if (selectedFib) {
-      const newFibs = drawnFibRetraces.filter(f => f.id !== selectedFib);
-      setDrawnFibRetraces(newFibs);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: newFibs, labels: drawnTextLabels });
+      drawingState.deleteDrawing('fibretracement', selectedFib);
       setSelectedFib(null);
       setFibMenuPos(null);
       setMovingFibAnchor(null);
     }
-  }, [selectedFib, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, saveToHistory]);
+  }, [selectedFib, drawingState]);
 
   // Update fib property
   const updateFib = useCallback((id: string, updates: Partial<FibRetracementData>) => {
-    const newFibs = drawnFibRetraces.map(f => f.id === id ? { ...f, ...updates } : f);
-    setDrawnFibRetraces(newFibs);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: newFibs, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTextLabels, saveToHistory]);
+    drawingState.updateDrawing('fibretracement', id, updates);
+  }, [drawingState]);
 
   // Close fib menu
   const closeFibMenu = useCallback(() => {
@@ -1413,20 +1389,16 @@ export default function CryptoSandbox() {
 
   const deleteTrendFib = useCallback(() => {
     if (selectedTrendFib) {
-      const newTrendFibs = drawnTrendFibs.filter(t => t.id !== selectedTrendFib);
-      setDrawnTrendFibs(newTrendFibs);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: newTrendFibs, labels: drawnTextLabels });
+      drawingState.deleteDrawing('trendfib', selectedTrendFib);
       setSelectedTrendFib(null);
       setTrendFibMenuPos(null);
       setMovingTrendFibPoint(null);
     }
-  }, [selectedTrendFib, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, saveToHistory]);
+  }, [selectedTrendFib, drawingState]);
 
   const updateTrendFib = useCallback((id: string, updates: Partial<TrendFibExtensionData>) => {
-    const newTrendFibs = drawnTrendFibs.map(t => t.id === id ? { ...t, ...updates } : t);
-    setDrawnTrendFibs(newTrendFibs);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: newTrendFibs, labels: drawnTextLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, saveToHistory]);
+    drawingState.updateDrawing('trendfib', id, updates);
+  }, [drawingState]);
 
   const closeTrendFibMenu = useCallback(() => {
     setSelectedTrendFib(null);
@@ -1495,20 +1467,16 @@ export default function CryptoSandbox() {
   // Delete selected text label
   const deleteTextLabel = useCallback(() => {
     if (selectedTextLabel) {
-      const newLabels = drawnTextLabels.filter(l => l.id !== selectedTextLabel);
-      setDrawnTextLabels(newLabels);
-      saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: newLabels });
+      drawingState.deleteDrawing('label', selectedTextLabel);
       setSelectedTextLabel(null);
       setTextLabelMenuPos(null);
     }
-  }, [selectedTextLabel, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
+  }, [selectedTextLabel, drawingState]);
 
   // Update text label property
   const updateTextLabel = useCallback((id: string, updates: Partial<TextLabelData>) => {
-    const newLabels = drawnTextLabels.map(l => l.id === id ? { ...l, ...updates } : l);
-    setDrawnTextLabels(newLabels);
-    saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, fibs: drawnFibRetraces, trendfibs: drawnTrendFibs, labels: newLabels });
-  }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnFibRetraces, drawnTrendFibs, drawnTextLabels, saveToHistory]);
+    drawingState.updateDrawing('label', id, updates);
+  }, [drawingState]);
   
   // Handle Elliott Wave click placement
   const handleElliottWaveClick = useCallback((clickX: number, clickY: number) => {
