@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Loader2, Crosshair, ChevronDown } from 'lucide-react';
+import { Loader2, Crosshair, ChevronDown, TrendingUp } from 'lucide-react';
+import { useElliottWave } from '@/hooks/useElliottWave';
 
 interface CandleData {
   time: number;
@@ -60,8 +61,11 @@ export default function CryptoSandbox() {
   const TAP_MAX_DURATION = 300; // ms - max time for a tap
   
   // Drawing tool state
-  type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | 'hchannel' | 'schannel' | null;
+  type DrawingTool = 'trendline' | 'horizontal' | 'channel' | 'fibretracement' | 'trendfib' | 'label' | 'impulse' | 'abc' | 'wxy' | 'abcde' | 'wxyxz' | 'hchannel' | 'schannel' | 'elliottwave' | null;
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
+  
+  // Elliott Wave hook
+  const elliottWave = useElliottWave();
   
   // Shared types
   type LineStyle = 'solid' | 'dashed' | 'dotted';
@@ -1729,6 +1733,69 @@ export default function CryptoSandbox() {
     saveToHistory({ trendlines: drawnTrendlines, horizontals: drawnHorizontals, channels: drawnChannels, hchannels: drawnHChannels, schannels: drawnSChannels, labels: newLabels });
   }, [drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, saveToHistory]);
   
+  // Handle Elliott Wave click placement
+  const handleElliottWaveClick = useCallback((clickX: number, clickY: number) => {
+    if (!xScaleRef.current || !yScaleRef.current || !elliottWave.isActive) return;
+    
+    const now = Date.now();
+    if (now - lastClickTimeRef.current < CLICK_DEBOUNCE) {
+      return;
+    }
+    lastClickTimeRef.current = now;
+    
+    // For W2, check if clicking near a Fibonacci level first
+    let clickedFibLevel = null;
+    if (elliottWave.mode === 'placing_w2' && elliottWave.fibLevels.length > 0) {
+      const clickPrice = yScaleRef.current.invert(clickY - margin.top);
+      const FIB_SNAP_THRESHOLD = Math.abs(yScaleRef.current.invert(margin.top + 20) - yScaleRef.current.invert(margin.top)); // ~20px
+      
+      for (const level of elliottWave.fibLevels) {
+        if (Math.abs(clickPrice - level.price) < FIB_SNAP_THRESHOLD) {
+          clickedFibLevel = level;
+          break;
+        }
+      }
+    }
+    
+    // Use fib level if found, otherwise snap to candle high/low
+    let time: number, price: number, snappedToHigh: boolean;
+    
+    if (clickedFibLevel) {
+      // Snap to fib level
+      time = xScaleRef.current.invert(clickX - margin.left).getTime();
+      price = clickedFibLevel.price;
+      snappedToHigh = false; // Doesn't matter for fib level
+      
+      // Show pulse at fib line
+      const fibY = yScaleRef.current(price) + margin.top;
+      setMagnetPulse({ x: clickX, y: fibY });
+      setTimeout(() => setMagnetPulse(null), 400);
+    } else {
+      // Try magnet snap to candle high/low
+      const magnetPoint = findMagnetPoint(clickX, clickY);
+      
+      if (magnetPoint) {
+        time = magnetPoint.time;
+        price = magnetPoint.price;
+        
+        // Determine if snapped to high or low
+        const candle = candles.find(c => c.time === time);
+        snappedToHigh = candle ? Math.abs(price - candle.high) < Math.abs(price - candle.low) : false;
+        
+        setMagnetPulse({ x: magnetPoint.x, y: magnetPoint.y });
+        setTimeout(() => setMagnetPulse(null), 400);
+      } else {
+        // Free placement fallback
+        time = xScaleRef.current.invert(clickX - margin.left).getTime();
+        price = yScaleRef.current.invert(clickY - margin.top);
+        snappedToHigh = false;
+      }
+    }
+    
+    // Place the point in Elliott Wave state
+    elliottWave.placePoint(time, price, snappedToHigh);
+  }, [elliottWave, candles, margin, findMagnetPoint]);
+  
   // Move whole line - places center at click position
   const moveWholeLine = useCallback((clickX: number, clickY: number) => {
     if (!movingWholeLine || !xScaleRef.current || !yScaleRef.current) return;
@@ -2439,6 +2506,11 @@ export default function CryptoSandbox() {
       .attr('stroke', '#1e293b')
       .attr('stroke-width', 1);
     
+    // Elliott Wave simulated candles group (drawn BEFORE real candles for lower z-index)
+    const elliottWaveGroup = g.append('g')
+      .attr('class', 'elliott-wave')
+      .attr('clip-path', 'url(#chart-clip)');
+    
     // Candles group with clip path
     const candlesGroup = g.append('g')
       .attr('class', 'candles')
@@ -2483,6 +2555,177 @@ export default function CryptoSandbox() {
     };
     
     drawCandles(xScale, yScale);
+    
+    // Function to draw Elliott Wave elements
+    const drawElliottWave = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+      elliottWaveGroup.selectAll('*').remove();
+      
+      if (!elliottWave.isActive) return;
+      
+      const visibleTimeRange = xS.domain();
+      const visibleCandles = candles.filter(d => {
+        const date = new Date(d.time);
+        return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
+      });
+      const dynamicCandleWidth = Math.max(1, Math.min(20, (innerWidth / visibleCandles.length) * 0.8));
+      
+      // Draw simulated W2 candles (translucent cyan)
+      if (elliottWave.simulatedCandles.length > 0) {
+        const cyanColor = '#00ffff';
+        const opacity = 0.6;
+        
+        // Wicks for simulated candles
+        elliottWaveGroup.selectAll('.elliott-wick')
+          .data(elliottWave.simulatedCandles)
+          .enter()
+          .append('line')
+          .attr('class', 'elliott-wick')
+          .attr('x1', d => xS(new Date(d.time)))
+          .attr('x2', d => xS(new Date(d.time)))
+          .attr('y1', d => yS(d.high))
+          .attr('y2', d => yS(d.low))
+          .attr('stroke', cyanColor)
+          .attr('stroke-opacity', opacity)
+          .attr('stroke-width', 1);
+        
+        // Bodies for simulated candles
+        elliottWaveGroup.selectAll('.elliott-body')
+          .data(elliottWave.simulatedCandles)
+          .enter()
+          .append('rect')
+          .attr('class', 'elliott-body')
+          .attr('x', d => xS(new Date(d.time)) - dynamicCandleWidth / 2)
+          .attr('y', d => yS(Math.max(d.open, d.close)))
+          .attr('width', dynamicCandleWidth)
+          .attr('height', d => Math.max(1, Math.abs(yS(d.open) - yS(d.close))))
+          .attr('fill', cyanColor)
+          .attr('fill-opacity', opacity)
+          .attr('stroke', cyanColor)
+          .attr('stroke-opacity', opacity * 0.8)
+          .attr('stroke-width', 1);
+        
+        // Labels on simulated candles
+        elliottWaveGroup.selectAll('.elliott-label')
+          .data(elliottWave.simulatedCandles)
+          .enter()
+          .append('text')
+          .attr('class', 'elliott-label')
+          .attr('x', d => xS(new Date(d.time)))
+          .attr('y', d => yS(d.high) - 5) // Slightly above the candle
+          .attr('text-anchor', 'middle')
+          .attr('font-size', '10px')
+          .attr('fill', cyanColor)
+          .attr('font-weight', 'bold')
+          .text(d => d.label);
+      }
+      
+      // Draw Fibonacci retracement levels for W2
+      if (elliottWave.mode === 'placing_w2' && elliottWave.fibLevels.length > 0) {
+        elliottWaveGroup.selectAll('.fib-line')
+          .data(elliottWave.fibLevels)
+          .enter()
+          .append('line')
+          .attr('class', 'fib-line')
+          .attr('x1', 0)
+          .attr('x2', innerWidth)
+          .attr('y1', d => yS(d.price))
+          .attr('y2', d => yS(d.price))
+          .attr('stroke', '#facc15')
+          .attr('stroke-opacity', 0.5)
+          .attr('stroke-width', 1)
+          .attr('stroke-dasharray', '5,5');
+        
+        // Fib labels
+        elliottWaveGroup.selectAll('.fib-label')
+          .data(elliottWave.fibLevels)
+          .enter()
+          .append('text')
+          .attr('class', 'fib-label')
+          .attr('x', innerWidth - 5)
+          .attr('y', d => yS(d.price) - 2)
+          .attr('text-anchor', 'end')
+          .attr('font-size', '10px')
+          .attr('fill', '#facc15')
+          .text(d => d.label);
+      }
+      
+      // Draw trendlines connecting W0 → W1 → W2
+      if (elliottWave.placedPoints.length >= 2) {
+        const points = elliottWave.placedPoints;
+        
+        for (let i = 0; i < points.length - 1; i++) {
+          const p1 = points[i];
+          const p2 = points[i + 1];
+          
+          const x1 = xS(new Date(p1.time));
+          const y1 = yS(p1.price);
+          const x2 = xS(new Date(p2.time));
+          const y2 = yS(p2.price);
+          
+          // Draw trendline
+          elliottWaveGroup.append('line')
+            .attr('x1', x1)
+            .attr('y1', y1)
+            .attr('x2', x2)
+            .attr('y2', y2)
+            .attr('stroke', '#00ffff')
+            .attr('stroke-width', 2)
+            .attr('stroke-opacity', 0.8);
+          
+          // If this is the W1 → W2 line, add retracement percentage
+          if (i === 1 && points.length >= 3) {
+            const w0 = points[0];
+            const w1 = points[1];
+            const w2 = points[2];
+            const wave1Range = Math.abs(w1.price - w0.price);
+            const retracementRange = Math.abs(w2.price - w1.price);
+            const retracementPercent = (retracementRange / wave1Range * 100).toFixed(1);
+            
+            // Place label at midpoint of W1→W2 line
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2;
+            
+            elliottWaveGroup.append('text')
+              .attr('x', midX)
+              .attr('y', midY - 10)
+              .attr('text-anchor', 'middle')
+              .attr('font-size', '11px')
+              .attr('fill', '#00ffff')
+              .attr('font-weight', 'bold')
+              .text(`${retracementPercent}%`);
+          }
+        }
+        
+        // Draw point circles
+        elliottWaveGroup.selectAll('.elliott-point')
+          .data(points)
+          .enter()
+          .append('circle')
+          .attr('class', 'elliott-point')
+          .attr('cx', d => xS(new Date(d.time)))
+          .attr('cy', d => yS(d.price))
+          .attr('r', 4)
+          .attr('fill', '#00ffff')
+          .attr('stroke', '#ffffff')
+          .attr('stroke-width', 1);
+        
+        // Point labels
+        elliottWaveGroup.selectAll('.elliott-point-label')
+          .data(points)
+          .enter()
+          .append('text')
+          .attr('class', 'elliott-point-label')
+          .attr('x', d => xS(new Date(d.time)))
+          .attr('y', d => yS(d.price) - 10)
+          .attr('text-anchor', 'middle')
+          .attr('font-size', '11px')
+          .attr('fill', '#00ffff')
+          .attr('font-weight', 'bold')
+          .text(d => d.label);
+      }
+    };
+    
+    drawElliottWave(xScale, yScale);
     
     // Drawings group (above candles, below axes overlays)
     const drawingsGroup = g.append('g')
@@ -3541,6 +3784,9 @@ export default function CryptoSandbox() {
           // Redraw candles
           drawCandles(newXScale, newYScale);
           
+          // Redraw Elliott Wave elements
+          drawElliottWave(newXScale, newYScale);
+          
           // Update grid lines
           g.select('.grid-y').selectAll('line').remove();
           g.select('.grid-y')
@@ -3621,7 +3867,7 @@ export default function CryptoSandbox() {
         .text(lastCandle.close >= 1000 ? d3.format(',.2f')(lastCandle.close) : d3.format('.4f')(lastCandle.close));
     }
     
-  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick]);
+  }, [candles, dimensions, margin.left, margin.right, margin.top, margin.bottom, interval, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive]);
   
   // Show loading while checking auth
   if (authLoading) {
@@ -4135,6 +4381,28 @@ export default function CryptoSandbox() {
                   <text x="0" y="8" fontSize="5" fontWeight="bold">WXY</text>
                   <text x="3" y="15" fontSize="5" fontWeight="bold">XZ</text>
                 </svg>
+              </button>
+              
+              <div className="h-px bg-slate-600 my-1" />
+              
+              {/* Elliott Wave Impulse Tool */}
+              <button
+                onClick={() => {
+                  if (activeTool === 'elliottwave') {
+                    setActiveTool(null);
+                    elliottWave.deactivateMode();
+                  } else {
+                    setActiveTool('elliottwave');
+                    elliottWave.activateMode();
+                  }
+                }}
+                className={`p-2 rounded transition-all ${
+                  activeTool === 'elliottwave' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
+                }`}
+                title="Elliott Wave Impulse"
+                data-testid="btn-elliottwave"
+              >
+                <TrendingUp className="w-5 h-5" />
               </button>
             </div>
             {/* Crosshair overlay - only captures events when crosshair mode enabled */}
@@ -5094,6 +5362,103 @@ export default function CryptoSandbox() {
                 )}
                 <div className="absolute top-14 left-14 bg-purple-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
                   Click to place text label
+                </div>
+              </div>
+            )}
+            
+            {/* Elliott Wave drawing overlay - handles all events when tool is active */}
+            {activeTool === 'elliottwave' && elliottWave.isActive && (
+              <div 
+                className="absolute inset-0 cursor-crosshair z-[25]"
+                style={{ touchAction: 'none' }}
+                data-drawing-overlay
+                onClick={(e) => {
+                  if (touchHandledRef.current) {
+                    touchHandledRef.current = false;
+                    return;
+                  }
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickX = e.clientX - rect.left;
+                  const clickY = e.clientY - rect.top;
+                  handleElliottWaveClick(clickX, clickY);
+                }}
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
+                  touchMovedRef.current = false;
+                  if (e.touches.length >= 2) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    (touchStartRef.current as any).pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    (touchStartRef.current as any).pinchMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (e.touches.length >= 2 && touchStartRef.current) {
+                    const t1 = e.touches[0]; const t2 = e.touches[1];
+                    const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const scale = newDist / ((touchStartRef.current as any).pinchDist || newDist);
+                    if (Math.abs(scale - 1) > 0.02 && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const midX = (touchStartRef.current as any).pinchMidX;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      const newK = Math.max(0.5, Math.min(20, ct.k * scale));
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      (touchStartRef.current as any).pinchDist = newDist;
+                    }
+                  } else if (e.touches.length === 1 && touchStartRef.current) {
+                    const dx = (e.touches[0].clientX - rect.left) - touchStartRef.current.x;
+                    if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
+                      touchMovedRef.current = true;
+                      const ct = d3.zoomTransform(svgRef.current);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      touchStartRef.current.x = e.touches[0].clientX - rect.left;
+                    }
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (!touchMovedRef.current && touchStartRef.current) {
+                    handleElliottWaveClick(touchStartRef.current.x, touchStartRef.current.y);
+                    touchHandledRef.current = true;
+                  }
+                  touchStartRef.current = null; touchMovedRef.current = false;
+                }}
+              >
+                {magnetPulse && (
+                  <div className="absolute pointer-events-none" style={{ left: magnetPulse.x - MAGNET_RADIUS, top: magnetPulse.y - MAGNET_RADIUS, width: MAGNET_RADIUS * 2, height: MAGNET_RADIUS * 2 }}>
+                    <div className="w-full h-full rounded-full border-2 border-cyan-400 animate-ping" style={{ animationDuration: '0.4s' }} />
+                  </div>
+                )}
+                <div className="absolute top-14 left-14 bg-cyan-600 text-white text-xs px-2 py-1 rounded pointer-events-none z-30">
+                  {elliottWave.getStatusText()}
+                </div>
+                {/* Reset and Undo buttons */}
+                <div className="absolute top-14 right-4 flex gap-2 pointer-events-auto z-30">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      elliottWave.undo();
+                    }}
+                    disabled={elliottWave.placedPoints.length === 0}
+                    className={`px-2 py-1 text-xs rounded ${
+                      elliottWave.placedPoints.length > 0 
+                        ? 'bg-orange-600 hover:bg-orange-700 text-white' 
+                        : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    Undo Last
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      elliottWave.reset();
+                    }}
+                    className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 text-xs rounded"
+                  >
+                    Reset
+                  </button>
                 </div>
               </div>
             )}
