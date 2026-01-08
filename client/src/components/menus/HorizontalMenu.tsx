@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { MenuButton } from './MenuButton';
 import { MenuDragHandle } from './MenuDragHandle';
 
@@ -14,7 +14,7 @@ interface HorizontalMenuProps {
   activeSubmenu: string | null;
 }
 
-export function HorizontalMenu({ 
+const HorizontalMenuComponent = ({ 
   position, 
   horizontalColor = '#facc15',
   onDelete,
@@ -24,7 +24,7 @@ export function HorizontalMenu({
   onSaveAsFavorite,
   onDragStart,
   activeSubmenu
-}: HorizontalMenuProps) {
+}: HorizontalMenuProps) => {
   return (
     <div 
       className="absolute flex flex-col gap-1 bg-slate-800 border border-slate-600 rounded-b rounded-t-sm z-50"
@@ -103,4 +103,8 @@ export function HorizontalMenu({
       </div>
     </div>
   );
-}
+};
+
+HorizontalMenuComponent.displayName = 'HorizontalMenu';
+
+export const HorizontalMenu = memo(HorizontalMenuComponent);

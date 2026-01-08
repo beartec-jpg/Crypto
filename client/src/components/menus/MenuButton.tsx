@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 interface MenuButtonProps {
   icon: React.ReactNode;
@@ -8,7 +8,7 @@ interface MenuButtonProps {
   active?: boolean;
 }
 
-export function MenuButton({ icon, onClick, className = '', title, active = false }: MenuButtonProps) {
+const MenuButtonComponent = ({ icon, onClick, className = '', title, active = false }: MenuButtonProps) => {
   return (
     <button
       onClick={onClick}
@@ -18,4 +18,8 @@ export function MenuButton({ icon, onClick, className = '', title, active = fals
       {icon}
     </button>
   );
-}
+};
+
+MenuButtonComponent.displayName = 'MenuButton';
+
+export const MenuButton = memo(MenuButtonComponent);
