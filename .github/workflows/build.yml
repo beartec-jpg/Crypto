@@ -29,18 +29,7 @@ jobs:
         run: npm run analyze
       
       - name: Check bundle size
-        run: |
-          BUNDLE_SIZE=$(stat -c%s client/dist/assets/js/main-*.js 2>/dev/null | head -1)
-          MAX_SIZE=$((400 * 1024))
-          if [ -z "$BUNDLE_SIZE" ]; then
-            echo "❌ Could not find main bundle"
-            exit 1
-          fi
-          if [ $BUNDLE_SIZE -gt $MAX_SIZE ]; then
-            echo "❌ Bundle size ($BUNDLE_SIZE bytes) exceeds limit ($MAX_SIZE bytes)"
-            exit 1
-          fi
-          echo "✅ Bundle size OK ($BUNDLE_SIZE bytes)"
+        run: npm run check:bundle
       
       - name: Upload bundle stats
         if: always()

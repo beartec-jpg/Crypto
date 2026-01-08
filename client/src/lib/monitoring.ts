@@ -1,5 +1,5 @@
 // Web Vitals tracking
-import { onCLS, onFID, onFCP, onLCP, onTTFB } from 'web-vitals';
+import { onCLS, onFID, onFCP, onLCP, onTTFB, type Metric } from 'web-vitals';
 
 export function setupPerformanceMonitoring() {
   // Track Core Web Vitals
@@ -15,7 +15,7 @@ export function setupPerformanceMonitoring() {
   trackBundleChunkLoading();
 }
 
-function reportWebVital(metric: any) {
+function reportWebVital(metric: Metric) {
   // Send to monitoring service (Sentry, DataDog, etc.)
   console.log(`${metric.name}:`, metric.value);
   
@@ -26,13 +26,14 @@ function reportWebVital(metric: any) {
 }
 
 function trackRouteLoadTime() {
-  // Measure time from navigation to route render
-  if (performance.timing) {
-    window.addEventListener('load', () => {
-      const loadTime = performance.timing.loadEventEnd - performance.timing.navigationStart;
+  // Measure time from navigation to route render using Navigation Timing API
+  window.addEventListener('load', () => {
+    const perfData = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+    if (perfData) {
+      const loadTime = perfData.loadEventEnd - perfData.fetchStart;
       console.log(`Page load time: ${loadTime}ms`);
-    });
-  }
+    }
+  });
 }
 
 function trackComponentRenderTime() {

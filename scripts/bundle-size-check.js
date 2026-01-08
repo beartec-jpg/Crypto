@@ -1,6 +1,10 @@
 // Bundle size regression detection
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const BASELINE = {
   main: 400 * 1024,        // 400KB
@@ -22,7 +26,9 @@ function checkBundleSize() {
   let regressions = [];
   
   Object.entries(BASELINE).forEach(([chunk, maxSize]) => {
-    const file = files.find(f => f.startsWith(chunk));
+    // Use regex for more precise matching to avoid prefix collisions
+    const pattern = new RegExp(`^${chunk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-[a-f0-9]+\\.js$`);
+    const file = files.find(f => pattern.test(f));
     if (file) {
       const size = fs.statSync(path.join(distDir, file)).size;
       if (size > maxSize) {
