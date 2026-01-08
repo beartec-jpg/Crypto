@@ -34,8 +34,6 @@ jobs:
       
       - name: Run tests with coverage
         run: npm run test:coverage -- --reporter=verbose
-        env:
-          NODE_ENV: test
       
       - name: Upload coverage to Codecov
         if: always()
