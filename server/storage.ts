@@ -183,7 +183,7 @@ export class MemStorage implements IStorage {
       purgeResult: insertProject.purgeResult || null,
       createdAt: now,
       updatedAt: now,
-    } as Project;
+    } as unknown as Project;
     this.projects.set(id, project);
     return project;
   }

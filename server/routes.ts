@@ -6107,15 +6107,15 @@ Return ONLY valid JSON in this exact format:
       
       const { saveWaveLabel } = await import("./services/elliottWaveService");
       const label = await saveWaveLabel({
-        userId: (req as any).cryptoUser.id,
-        symbol,
-        timeframe,
-        degree,
-        patternType,
-        points,
-        fibMode: fibonacciMode ?? 'measured',
-        validationStatus: validationResult?.status ?? 'valid',
-        validationErrors: validationResult?.errors ?? [],
+        userId: String((req as any).cryptoUser.id),
+        symbol: String(symbol),
+        timeframe: String(timeframe),
+        degree: String(degree),
+        patternType: String(patternType),
+        points: Array.isArray(points) ? points : [],
+        fibMode: fibonacciMode ? String(fibonacciMode) : 'measured',
+        validationStatus: validationResult?.status ? String(validationResult.status) : 'valid',
+        validationErrors: Array.isArray(validationResult?.errors) ? validationResult.errors : [],
         metadata,
       });
       

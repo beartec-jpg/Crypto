@@ -295,9 +295,9 @@ export async function analyzeChartWithGrok(
     const match = line.match(/\[(\d+)\]\s*H:([\d.]+)\s*L:([\d.]+)/);
     if (match && match[1] && match[2] && match[3]) {
       candles.push({
-        i: parseInt(match[1]),
-        h: parseFloat(match[2]),
-        l: parseFloat(match[3])
+        i: parseInt(match[1]!),
+        h: parseFloat(match[2]!),
+        l: parseFloat(match[3]!)
       });
     }
   }
@@ -323,7 +323,7 @@ Return ONLY valid JSON:
   
   try {
     // Use text-only model when no image is provided
-    const hasImage = base64Image && base64Image.length > 0;
+    const hasImage = base64Image && base64Image!.length > 0;
     
     // Use grok-4 for all tasks (supports both text and vision)
     const modelToUse = hasImage ? "grok-4" : "grok-4";
@@ -341,7 +341,7 @@ Return ONLY valid JSON:
         role: "user",
         content: [
           { type: "text", text: userPrompt },
-          { type: "image_url", image_url: { url: base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}` } },
+          { type: "image_url", image_url: { url: base64Image!.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}` } },
         ],
       });
     } else {
@@ -364,13 +364,13 @@ Return ONLY valid JSON:
       throw new Error("Invalid JSON response from Grok");
     }
 
-    const analysis = JSON.parse(jsonMatch[0]) as GrokWaveAnalysis;
+    const analysis = JSON.parse(jsonMatch[0]!) as GrokWaveAnalysis;
     
     // Log what we got back
     console.log(`✅ CALL 2 RESULT: ${analysis.patternType} (${analysis.direction || 'unknown'}) - confidence ${analysis.confidence}`);
     console.log(`   Labels: ${analysis.suggestedLabels?.length || 0} points`);
     if (analysis.validations && analysis.validations.length > 0) {
-      console.log(`   Validations: ${analysis.validations.slice(0, 2).join(', ')}...`);
+      console.log(`   Validations: ${analysis.validations!.slice(0, 2).join(', ')}...`);
     }
     if (analysis.error) {
       console.log(`   ⚠️ Error: ${analysis.error}`);
@@ -448,5 +448,5 @@ What is the most likely next wave and price target? Respond with JSON:
     throw new Error("Invalid JSON response");
   }
 
-  return JSON.parse(jsonMatch[0]);
+  return JSON.parse(jsonMatch[0]!);
 }
