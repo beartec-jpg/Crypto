@@ -16,6 +16,10 @@ jobs:
       matrix:
         node-version: [18.x, 20.x]
     
+    env:
+      NODE_ENV: test
+      CI: true
+    
     steps:
       - uses: actions/checkout@v4
       
@@ -28,21 +32,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Run tests
-        run: npm run test:run
-      
-      - name: Generate coverage
-        run: npm run test:coverage
+      - name: Run tests with coverage
+        run: npm run test:coverage -- --reporter=verbose
+        env:
+          NODE_ENV: test
       
       - name: Upload coverage to Codecov
+        if: always()
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage/coverage-final.json
           flags: unittests
           name: codecov-umbrella
-      
-      - name: Comment coverage on PR
-        if: github.event_name == 'pull_request'
-        uses: romeovs/lcov-reporter-action@e56d450f7c5c998b5a542ba2109d29f84e37b9a0
-        with:
-          lcov-file: ./coverage/lcov.info
+          fail_ci_if_error: false
