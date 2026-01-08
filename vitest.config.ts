@@ -31,6 +31,9 @@ export default defineConfig({
         statements: 70,
       },
       // Include patterns - only files that are actually tested
+      // NOTE: This list is explicit rather than pattern-based to prevent untested files
+      // (pages, UI components, API integrations) from being included in coverage metrics.
+      // When adding new tests, add the tested file path here to include it in coverage.
       include: [
         'client/src/hooks/useDrawingState.ts',
         'client/src/hooks/useChartScales.ts',
