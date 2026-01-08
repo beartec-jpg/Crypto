@@ -30,3 +30,7 @@ Thumbs.db
 __pycache__
 *.pyc
 .venv
+
+# Test coverage
+coverage
+.vitest
