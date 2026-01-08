@@ -293,13 +293,16 @@ export async function analyzeChartWithGrok(
   
   for (const line of rawData.split('\n')) {
     const match = line.match(/\[(\d+)\]\s*H:([\d.]+)\s*L:([\d.]+)/);
-    if (!match || !match[1] || !match[2] || !match[3]) continue;
-    
-    candles.push({
-      i: parseInt(match[1]),
-      h: parseFloat(match[2]),
-      l: parseFloat(match[3])
-    });
+    const index = match?.[1];
+    const high = match?.[2];
+    const low = match?.[3];
+    if (index && high && low) {
+      candles.push({
+        i: parseInt(index as string),
+        h: parseFloat(high as string),
+        l: parseFloat(low as string)
+      });
+    }
   }
   
   // Limit to max 100 candles (take most recent)
@@ -359,18 +362,20 @@ Return ONLY valid JSON:
     }
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch || !jsonMatch[0]) {
+    const jsonString = jsonMatch?.[0];
+    if (!jsonString) {
       console.error("❌ CALL 2: No JSON in response:", content.substring(0, 200));
       throw new Error("Invalid JSON response from Grok");
     }
 
-    const analysis = JSON.parse(jsonMatch[0]) as GrokWaveAnalysis;
+    const analysis = JSON.parse(jsonString as string) as GrokWaveAnalysis;
     
     // Log what we got back
     console.log(`✅ CALL 2 RESULT: ${analysis.patternType} (${analysis.direction || 'unknown'}) - confidence ${analysis.confidence}`);
     console.log(`   Labels: ${analysis.suggestedLabels?.length || 0} points`);
-    if (analysis.validations && analysis.validations.length > 0) {
-      console.log(`   Validations: ${analysis.validations.slice(0, 2).join(', ')}...`);
+    const validationsLength = analysis.validations?.length || 0;
+    if (validationsLength > 0 && analysis.validations) {
+      console.log(`   Validations: ${analysis.validations?.slice(0, 2).join(', ')}...`);
     }
     if (analysis.error) {
       console.log(`   ⚠️ Error: ${analysis.error}`);
@@ -444,9 +449,10 @@ What is the most likely next wave and price target? Respond with JSON:
   }
 
   const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch || !jsonMatch[0]) {
+  const jsonString = jsonMatch?.[0];
+  if (!jsonString) {
     throw new Error("Invalid JSON response");
   }
 
-  return JSON.parse(jsonMatch[0]);
+  return JSON.parse(jsonString as string);
 }
