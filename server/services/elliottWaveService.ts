@@ -817,7 +817,7 @@ function scoreWave(actual: number, ruleKey: string): { quality: 'excellent' | 'g
 }
 
 // Legacy function for backward compatibility (deprecated)
-function ratioQuality(actual: number, idealRatios: number[]): 'excellent' | 'valid' | 'poor' {
+function _ratioQuality(actual: number, idealRatios: number[]): 'excellent' | 'valid' | 'poor' {
   const tolerance = 0.05;
   const goodTolerance = 0.15;
 
@@ -900,7 +900,7 @@ export function autoAnalyze(candles: Candle[], startIndex: number, endIndex: num
   };
 }
 
-function detectImpulsePattern(pivots: Pivot[], candles: Candle[], baseIndex: number): DetectedPattern | null {
+function detectImpulsePattern(pivots: Pivot[], _candles: Candle[], baseIndex: number): DetectedPattern | null {
   const alternatingPivots = getAlternatingPivots(pivots, 5);
 
   if (alternatingPivots.length < 5) {
@@ -909,7 +909,7 @@ function detectImpulsePattern(pivots: Pivot[], candles: Candle[], baseIndex: num
 
   const [p0, p1, p2, p3, p4] = alternatingPivots;
 
-  const isUptrend = p1.type === 'high';
+  const _isUptrend = p1.type === 'high';
 
   const wave1Length = Math.abs(p1.price - p0.price);
   const wave3Length = Math.abs(p3.price - p2.price);
@@ -947,7 +947,7 @@ function detectImpulsePattern(pivots: Pivot[], candles: Candle[], baseIndex: num
   };
 }
 
-function detectCorrectivePattern(pivots: Pivot[], candles: Candle[], baseIndex: number): DetectedPattern | null {
+function detectCorrectivePattern(pivots: Pivot[], _candles: Candle[], baseIndex: number): DetectedPattern | null {
   const alternatingPivots = getAlternatingPivots(pivots, 3);
 
   if (alternatingPivots.length < 3) {

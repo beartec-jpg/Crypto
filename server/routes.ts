@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { execFile } from "child_process";
+import webpush from 'web-push';
 
 // Extend Express Request type to include custom properties
 declare global {
@@ -2773,7 +2774,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Cache new candles (insert) and update existing partial candles
-      const { gte } = await import("drizzle-orm");
+      const { gte: _gte } = await import("drizzle-orm");
       let insertedCount = 0;
       let updatedCount = 0;
 
@@ -3467,13 +3468,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         branding = await storage.upsertCompanyBranding({
           userId: brandingUserId,  // Use the correct user ID
           companyName: "Your Company", // Default name for new branding
-          logoUrl: normalizedLogoUrl
+          logoUrl: normalizedLogoUrl,
+          primaryColor: "#2563eb",
+          secondaryColor: "#64748b",
+          isActive: true
         });
       } else {
         branding = await storage.upsertCompanyBranding({
           ...branding,
           userId: brandingUserId, // Use the correct user ID from database
-          logoUrl: normalizedLogoUrl
+          logoUrl: normalizedLogoUrl,
+          primaryColor: branding.primaryColor ?? "#2563eb",
+          secondaryColor: branding.secondaryColor ?? "#64748b",
+          isActive: branding.isActive ?? true
         });
       }
       
@@ -4289,10 +4296,10 @@ Respond with ONLY valid JSON in this exact format:
         symbol, interval, currentPrice, cvd, cvdTrend, poc, vah, val, 
         bullishOBCount, bearishOBCount, bullFVGCount, bearFVGCount,
         buyImbalancesCount, sellImbalancesCount, absorptionCount,
-        hiddenDivergenceCount, liquidityGrabCount, recentBars,
+        hiddenDivergenceCount: _hiddenDivergenceCount, liquidityGrabCount, recentBars,
         bullishOB, bearishOB, bullFVG, bearFVG,
-        buyImbalances, sellImbalances, absorption,
-        hiddenDivergences, liquidityGrabs,
+        buyImbalances: _buyImbalances, sellImbalances: _sellImbalances, absorption,
+        hiddenDivergences: _hiddenDivergences, liquidityGrabs,
         orderflowData,
         cci = 0,
         adx = 0,
@@ -4342,8 +4349,8 @@ Respond with ONLY valid JSON in this exact format:
       const displacement = detectDisplacement(bars);
       
       // Recent high/low
-      const recentHigh = Math.max(...bars.slice(-10).map(b => b.high));
-      const recentLow = Math.min(...bars.slice(-10).map(b => b.low));
+      const _recentHigh = Math.max(...bars.slice(-10).map(b => b.high));
+      const _recentLow = Math.min(...bars.slice(-10).map(b => b.low));
 
       // Analyze professional orderflow data (OI, Funding, L/S Ratio)
       let oiTrend = 'N/A', oiDelta = 0, fundingValue = 0, fundingBias = 'neutral', lsRatio = 1.0;
@@ -4866,7 +4873,7 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
         return res.status(500).json({ error: 'Push notifications not configured on server' });
       }
       
-      webpush.default.setVapidDetails('mailto:support@beartec.uk', publicKey, privateKey);
+      webpush.setVapidDetails('mailto:support@beartec.uk', publicKey, privateKey);
       
       const payload = JSON.stringify({
         title: '🔔 Test Notification',
@@ -4885,7 +4892,7 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
             ? JSON.parse(sub.subscription) 
             : sub.subscription;
           
-          await webpush.default.sendNotification(parsedSub, payload);
+          await webpush.sendNotification(parsedSub, payload);
           successCount++;
           console.log(`✅ Test push sent to subscription ${sub.id}`);
         } catch (error: any) {
@@ -5325,8 +5332,8 @@ Return ONLY valid JSON in this exact format:
     try {
       const userId = (req as any).cryptoUser.id;
       const { db } = await import("./db");
-      const { chartDrawings, trackedTrades } = await import("@shared/schema");
-      const { eq, and, sql, inArray } = await import("drizzle-orm");
+      const { chartDrawings: _chartDrawings, trackedTrades: _trackedTrades } = await import("@shared/schema");
+      const { eq: _eq, and: _and, sql, inArray: _inArray } = await import("drizzle-orm");
 
       // Get H-Line alerts
       const hLineAlerts = await db.execute(sql`
@@ -5448,7 +5455,7 @@ Return ONLY valid JSON in this exact format:
   });
 
   // Get VAPID public key for push notifications
-  app.get("/api/crypto/vapid-key", async (req, res) => {
+  app.get("/api/crypto/vapid-key", async (_req, res) => {
     try {
       const publicKey = process.env.VAPID_PUBLIC_KEY || process.env.PUBLIC_VAPID_KEY;
       
@@ -5505,7 +5512,14 @@ Return ONLY valid JSON in this exact format:
       const tier = subscription?.tier || 'free';
 
       // Tier-based limits with progressive feature unlocking
-      const tierLimits = {
+      const tierLimits: {
+        [key: string]: {
+          maxTickers: number;
+          allowedAlertTypes: string[];
+          allowedGrades: string[];
+          allowedTimeframes: string[];
+        };
+      } = {
         free: { 
           maxTickers: 0, 
           allowedAlertTypes: [],
@@ -6085,7 +6099,7 @@ Return ONLY valid JSON in this exact format:
   // Create a new wave label
   app.post("/api/crypto/elliott-wave/labels", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {
-      const { symbol, timeframe, degree, patternType, points, isComplete, fibonacciMode, validationResult, metadata } = req.body;
+      const { symbol, timeframe, degree, patternType, points, fibonacciMode, validationResult, metadata } = req.body;
       
       if (!symbol || !timeframe || !degree || !patternType || !points) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -6093,15 +6107,17 @@ Return ONLY valid JSON in this exact format:
       
       const { saveWaveLabel } = await import("./services/elliottWaveService");
       const label = await saveWaveLabel({
-        userId: (req as any).cryptoUser.id,
-        symbol,
-        timeframe,
-        degree,
-        patternType,
-        points,
-        isComplete: isComplete ?? false,
-        fibonacciMode: fibonacciMode ?? 'measured',
-        validationResult,
+        userId: String((req as any).cryptoUser.id),
+        symbol: String(symbol),
+        timeframe: String(timeframe),
+        degree: String(degree),
+        patternType: String(patternType),
+        points: Array.isArray(points) ? points : [],
+        fibMode: fibonacciMode ? String(fibonacciMode) : 'measured',
+        validationStatus: validationResult?.status ? String(validationResult.status) : 'valid',
+        validationErrors: Array.isArray(validationResult?.errors) ? validationResult.errors : [],
+        isAutoGenerated: false,
+        isConfirmed: false,
         metadata,
       });
       
@@ -6590,7 +6606,7 @@ Return JSON:
   });
 
   // Get wave degrees info (for UI)
-  app.get("/api/crypto/elliott-wave/degrees", async (req, res) => {
+  app.get("/api/crypto/elliott-wave/degrees", async (_req, res) => {
     try {
       const { WAVE_DEGREES, CORRECTION_LABELS } = await import("./services/elliottWaveService");
       res.json({ degrees: WAVE_DEGREES, correctionLabels: CORRECTION_LABELS });
@@ -6663,7 +6679,7 @@ Return JSON:
   const ADMIN_EMAIL = 'beartec@beartec.uk';
 
   // Get all feedback posts (public)
-  app.get("/api/crypto/feedback-board", async (req, res) => {
+  app.get("/api/crypto/feedback-board", async (_req, res) => {
     try {
       const posts = await storage.listFeedbackBoard();
       
@@ -6831,10 +6847,10 @@ Return JSON:
       });
       
       // Format pivot data: PH = pivot high (date, high price), PL = pivot low (date, low price)
-      const pivotHighs = (pivots || [])
+      const _pivotHighs = (pivots || [])
         .filter((p: any) => p.type === 'H')
         .map((p: any) => `PH ${new Date(p.time * 1000).toISOString().slice(0, 16)} @ ${p.price?.toFixed(6)}`);
-      const pivotLows = (pivots || [])
+      const _pivotLows = (pivots || [])
         .filter((p: any) => p.type === 'L')
         .map((p: any) => `PL ${new Date(p.time * 1000).toISOString().slice(0, 16)} @ ${p.price?.toFixed(6)}`);
       
@@ -6879,7 +6895,7 @@ Return JSON:
       // Create pivot summary with price levels
       // If pivots were passed from frontend, use adaptive reprocessing if too many/few
       let processedPivots = pivots || [];
-      let pivotLookback = 5;
+      let _pivotLookback = 5;
       
       // If we have raw candle data in the pivots, we could reprocess
       // For now, just use what was passed but log the count
@@ -7044,8 +7060,8 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
           console.log(`📊 Extracted synopsis from malformed JSON: "${synopsisMatch[1].slice(0, 80)}..."`);
           analysis = {
             synopsis: synopsisMatch[1],
-            recommendationsTable: [],
-            aiBestFit: [],
+            recommendationsTable: [] as any[],
+            aiBestFit: [] as any[],
             parseError: 'Partial extraction from malformed response'
           };
           
@@ -7116,8 +7132,8 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       // Find key pivot highs and lows
       const pivotHighs = pivots.filter((p: any) => p.type === 'H').sort((a: any, b: any) => b.price - a.price);
       const pivotLows = pivots.filter((p: any) => p.type === 'L').sort((a: any, b: any) => a.price - b.price);
-      const highestPivot = pivotHighs[0];
-      const lowestPivot = pivotLows[0];
+      const _highestPivot = pivotHighs[0];
+      const _lowestPivot = pivotLows[0];
       
       // CRITICAL: Analyze pivot SEQUENCE to detect structure (like stack/section analysis)
       // Sort pivots by time and analyze the H/L pattern
@@ -7172,7 +7188,7 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       // Analyze first pivot to determine initial direction
       const firstPivotType = firstPivot?.type;
       const startPrice = priceRange.start;
-      const endPrice = priceRange.end;
+      const _endPrice = priceRange.end;
       
       // Two-phase detection based on sequence analysis
       if (lowestLIndex < highestHIndex) {

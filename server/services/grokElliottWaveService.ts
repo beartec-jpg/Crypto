@@ -49,7 +49,7 @@ interface Pivot {
 }
 
 // Extract pivots from candle data - zigzag style, max 18 points
-function extractPivotsFromData(data: string): Pivot[] {
+function _extractPivotsFromData(data: string): Pivot[] {
   // Parse candle data: [index] H:x L:x format
   const candles: Array<{i: number, h: number, l: number}> = [];
   const lines = data.split('\n');
@@ -74,10 +74,10 @@ function extractPivotsFromData(data: string): Pivot[] {
   let lastPivotPrice = 0;
   
   // Find initial direction
-  const firstHigh = candles[0].h;
-  const firstLow = candles[0].l;
-  const midHigh = candles[Math.floor(candles.length / 2)].h;
-  const midLow = candles[Math.floor(candles.length / 2)].l;
+  const _firstHigh = candles[0].h;
+  const _firstLow = candles[0].l;
+  const _midHigh = candles[Math.floor(candles.length / 2)].h;
+  const _midLow = candles[Math.floor(candles.length / 2)].l;
   
   // Determine minimum move (1.5% of price range)
   const allHighs = candles.map(c => c.h);
@@ -132,7 +132,7 @@ Return ONLY this JSON (no extra text):
   "totalCandles":int
 }`;
 
-async function detectPivots(candleData: string, timeoutMs: number = 60000): Promise<Pivot[]> {
+async function _detectPivots(candleData: string, _timeoutMs: number = 60000): Promise<Pivot[]> {
   const startTime = Date.now();
   console.log(`⏱️ CALL 1 START: Sending to Grok-4 for pivot detection...`);
   
@@ -238,7 +238,7 @@ export interface GrokWaveAnalysis {
   error?: string;
 }
 
-const ELLIOTT_WAVE_SYSTEM_PROMPT = `You are Grok-4 acting as the world's strictest Elliott Wave engine. Detect and label ONLY the single most probable pattern (complete or incomplete) from this exhaustive list, enforcing every rule with zero tolerance:
+const _ELLIOTT_WAVE_SYSTEM_PROMPT = `You are Grok-4 acting as the world's strictest Elliott Wave engine. Detect and label ONLY the single most probable pattern (complete or incomplete) from this exhaustive list, enforcing every rule with zero tolerance:
 
 PATTERN TYPES YOU MUST CONSIDER:
 - Bullish / Bearish Impulse (5 waves)
@@ -281,8 +281,8 @@ export async function analyzeChartWithGrok(
   timeframe: string,
   existingLabels?: string,
   candleData?: string,
-  degreeContext?: string,
-  visibleRange?: string
+  _degreeContext?: string,
+  _visibleRange?: string
 ): Promise<GrokWaveAnalysis> {
   // API disabled - feature not available
   throw new Error("AI analysis is temporarily disabled. API configuration required.");
@@ -293,13 +293,13 @@ export async function analyzeChartWithGrok(
   
   for (const line of rawData.split('\n')) {
     const match = line.match(/\[(\d+)\]\s*H:([\d.]+)\s*L:([\d.]+)/);
-    if (match) {
-      candles.push({
-        i: parseInt(match[1]),
-        h: parseFloat(match[2]),
-        l: parseFloat(match[3])
-      });
-    }
+    if (!match || !match[1] || !match[2] || !match[3]) continue;
+    
+    candles.push({
+      i: parseInt(match[1]),
+      h: parseFloat(match[2]),
+      l: parseFloat(match[3])
+    });
   }
   
   // Limit to max 100 candles (take most recent)
@@ -323,7 +323,7 @@ Return ONLY valid JSON:
   
   try {
     // Use text-only model when no image is provided
-    const hasImage = base64Image && base64Image.length > 0;
+    const hasImage = base64Image && base64Image!.length > 0;
     
     // Use grok-4 for all tasks (supports both text and vision)
     const modelToUse = hasImage ? "grok-4" : "grok-4";
@@ -336,12 +336,12 @@ Return ONLY valid JSON:
       },
     ];
     
-    if (hasImage) {
+    if (hasImage && base64Image) {
       messages.push({
         role: "user",
         content: [
           { type: "text", text: userPrompt },
-          { type: "image_url", image_url: { url: base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}` } },
+          { type: "image_url", image_url: { url: base64Image!.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}` } },
         ],
       });
     } else {
@@ -359,7 +359,7 @@ Return ONLY valid JSON:
     }
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    if (!jsonMatch || !jsonMatch[0]) {
       console.error("❌ CALL 2: No JSON in response:", content.substring(0, 200));
       throw new Error("Invalid JSON response from Grok");
     }
@@ -369,7 +369,7 @@ Return ONLY valid JSON:
     // Log what we got back
     console.log(`✅ CALL 2 RESULT: ${analysis.patternType} (${analysis.direction || 'unknown'}) - confidence ${analysis.confidence}`);
     console.log(`   Labels: ${analysis.suggestedLabels?.length || 0} points`);
-    if (analysis.validations) {
+    if (analysis.validations && analysis.validations.length > 0) {
       console.log(`   Validations: ${analysis.validations.slice(0, 2).join(', ')}...`);
     }
     if (analysis.error) {
@@ -444,7 +444,7 @@ What is the most likely next wave and price target? Respond with JSON:
   }
 
   const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+  if (!jsonMatch || !jsonMatch[0]) {
     throw new Error("Invalid JSON response");
   }
 

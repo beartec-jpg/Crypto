@@ -355,7 +355,7 @@ export class DatabaseStorage implements IStorage {
     await db
       .update(trackedTrades)
       .set({ status })
-      .where(eq(trackedTrades.id, id));
+      .where(eq(trackedTrades.id, String(id)));
   }
 
   async getPushSubscriptionsByUserId(userId: number): Promise<any[]> {
@@ -364,7 +364,7 @@ export class DatabaseStorage implements IStorage {
     const subs = await db
       .select()
       .from(pushSubscriptions)
-      .where(eq(pushSubscriptions.userId, userId));
+      .where(eq(pushSubscriptions.userId, String(userId)));
     
     return subs;
   }
@@ -385,7 +385,7 @@ export class DatabaseStorage implements IStorage {
     
     await db
       .delete(pushSubscriptions)
-      .where(eq(pushSubscriptions.id, id));
+      .where(eq(pushSubscriptions.id, String(id)));
   }
 
   // Indicator Alert State operations for CCI/ADX monitoring
@@ -506,7 +506,7 @@ export class DatabaseStorage implements IStorage {
   async deleteElliottWaveLabel(id: string): Promise<boolean> {
     const { elliottWaveLabels } = await import("@shared/schema");
     
-    const result = await db
+    const _result = await db
       .delete(elliottWaveLabels)
       .where(eq(elliottWaveLabels.id, id));
     
@@ -642,8 +642,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRealtimeAnalytics(): Promise<any> {
-    const { analyticsEvents, apiUsageLog } = await import("@shared/schema");
-    const { sql, gte, count } = await import("drizzle-orm");
+    const { analyticsEvents, apiUsageLog: _apiUsageLog } = await import("@shared/schema");
+    const { sql: _sql, gte, count } = await import("drizzle-orm");
     
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
