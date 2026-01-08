@@ -168,18 +168,18 @@ export class MemStorage implements IStorage {
       zoneType: insertProject.zoneType || null,
       testPressure: insertProject.testPressure ? String(insertProject.testPressure) : null,
       testResult: insertProject.testResult || null,
-      maxPressureDrop: insertProject.maxPressureDrop || null,
+      maxPressureDrop: (insertProject as any).maxPressureDrop || null,
       maxPressureDropPercent: insertProject.maxPressureDropPercent || null,
       actualPressureDrop: insertProject.actualPressureDrop || null,
       stabilizationTime: insertProject.stabilizationTime || null,
-      complianceNotes: insertProject.complianceNotes || null,
-      isCompliant: insertProject.isCompliant ?? false,
-      totalSystemVolume: insertProject.totalSystemVolume || null,
-      totalPipeLength: insertProject.totalPipeLength || null,
-      totalPurgeVolume: insertProject.totalPurgeVolume || null,
-      directPurgeVolume: insertProject.directPurgeVolume || null,
-      letByVolume: insertProject.letByVolume || null,
-      purgeRate: insertProject.purgeRate || null,
+      complianceNotes: (insertProject as any).complianceNotes || null,
+      isCompliant: (insertProject as any).isCompliant ?? false,
+      totalSystemVolume: (insertProject as any).totalSystemVolume || null,
+      totalPipeLength: (insertProject as any).totalPipeLength || null,
+      totalPurgeVolume: (insertProject as any).totalPurgeVolume || null,
+      directPurgeVolume: (insertProject as any).directPurgeVolume || null,
+      letByVolume: (insertProject as any).letByVolume || null,
+      purgeRate: (insertProject as any).purgeRate || null,
       purgeResult: insertProject.purgeResult || null,
       createdAt: now,
       updatedAt: now,
@@ -205,7 +205,7 @@ export class MemStorage implements IStorage {
         ? (typeof updateData.maxIncidentalPressure === 'number' ? String(updateData.maxIncidentalPressure) : updateData.maxIncidentalPressure) 
         : existing.maxIncidentalPressure,
       updatedAt: new Date(),
-    };
+    } as Partial<Project>;
 
     const updated: Project = {
       ...existing,
@@ -300,7 +300,7 @@ export class MemStorage implements IStorage {
         ? (typeof insertCalculation.mplr === 'number' ? String(insertCalculation.mplr) : insertCalculation.mplr) 
         : null,
       calculatedAt: new Date(),
-    };
+    } as Calculation;
     this.calculations.set(id, calculation);
     return calculation;
   }
@@ -335,7 +335,7 @@ export class MemStorage implements IStorage {
       ...brandingData,
       createdAt: existingBranding?.createdAt || now,
       updatedAt: now,
-    };
+    } as CompanyBranding;
     
     this.companyBrandings.set(branding.id, branding);
     return branding;

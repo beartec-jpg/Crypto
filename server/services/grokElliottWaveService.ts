@@ -293,7 +293,7 @@ export async function analyzeChartWithGrok(
   
   for (const line of rawData.split('\n')) {
     const match = line.match(/\[(\d+)\]\s*H:([\d.]+)\s*L:([\d.]+)/);
-    if (match) {
+    if (match && match[1] && match[2] && match[3]) {
       candles.push({
         i: parseInt(match[1]),
         h: parseFloat(match[2]),
@@ -336,7 +336,7 @@ Return ONLY valid JSON:
       },
     ];
     
-    if (hasImage) {
+    if (hasImage && base64Image) {
       messages.push({
         role: "user",
         content: [
@@ -359,7 +359,7 @@ Return ONLY valid JSON:
     }
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    if (!jsonMatch || !jsonMatch[0]) {
       console.error("❌ CALL 2: No JSON in response:", content.substring(0, 200));
       throw new Error("Invalid JSON response from Grok");
     }
@@ -369,7 +369,7 @@ Return ONLY valid JSON:
     // Log what we got back
     console.log(`✅ CALL 2 RESULT: ${analysis.patternType} (${analysis.direction || 'unknown'}) - confidence ${analysis.confidence}`);
     console.log(`   Labels: ${analysis.suggestedLabels?.length || 0} points`);
-    if (analysis.validations) {
+    if (analysis.validations && analysis.validations.length > 0) {
       console.log(`   Validations: ${analysis.validations.slice(0, 2).join(', ')}...`);
     }
     if (analysis.error) {
@@ -444,7 +444,7 @@ What is the most likely next wave and price target? Respond with JSON:
   }
 
   const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+  if (!jsonMatch || !jsonMatch[0]) {
     throw new Error("Invalid JSON response");
   }
 

@@ -929,7 +929,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const coinglassApiKeyLiq = process.env.COINGLASS_API_KEY;
       
       let liquidations: any[] = [];
-      let _liquidationSource = 'none';
+      let liquidationSource = 'none';
       
       // Try Coinalyze first
       if (coinalyzeApiKey) {
@@ -3468,13 +3468,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         branding = await storage.upsertCompanyBranding({
           userId: brandingUserId,  // Use the correct user ID
           companyName: "Your Company", // Default name for new branding
-          logoUrl: normalizedLogoUrl
+          logoUrl: normalizedLogoUrl,
+          primaryColor: "#2563eb",
+          secondaryColor: "#64748b",
+          isActive: true
         });
       } else {
         branding = await storage.upsertCompanyBranding({
           ...branding,
           userId: brandingUserId, // Use the correct user ID from database
-          logoUrl: normalizedLogoUrl
+          logoUrl: normalizedLogoUrl,
+          primaryColor: branding.primaryColor ?? "#2563eb",
+          secondaryColor: branding.secondaryColor ?? "#64748b",
+          isActive: branding.isActive ?? true
         });
       }
       
@@ -5506,7 +5512,14 @@ Return ONLY valid JSON in this exact format:
       const tier = subscription?.tier || 'free';
 
       // Tier-based limits with progressive feature unlocking
-      const tierLimits = {
+      const tierLimits: {
+        [key: string]: {
+          maxTickers: number;
+          allowedAlertTypes: string[];
+          allowedGrades: string[];
+          allowedTimeframes: string[];
+        };
+      } = {
         free: { 
           maxTickers: 0, 
           allowedAlertTypes: [],
@@ -6086,7 +6099,7 @@ Return ONLY valid JSON in this exact format:
   // Create a new wave label
   app.post("/api/crypto/elliott-wave/labels", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {
-      const { symbol, timeframe, degree, patternType, points, isComplete, fibonacciMode, validationResult, metadata } = req.body;
+      const { symbol, timeframe, degree, patternType, points, fibonacciMode, validationResult, metadata } = req.body;
       
       if (!symbol || !timeframe || !degree || !patternType || !points) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -6100,9 +6113,9 @@ Return ONLY valid JSON in this exact format:
         degree,
         patternType,
         points,
-        isComplete: isComplete ?? false,
-        fibonacciMode: fibonacciMode ?? 'measured',
-        validationResult,
+        fibMode: fibonacciMode ?? 'measured',
+        validationStatus: validationResult?.status ?? 'valid',
+        validationErrors: validationResult?.errors ?? [],
         metadata,
       });
       
@@ -7045,8 +7058,8 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
           console.log(`📊 Extracted synopsis from malformed JSON: "${synopsisMatch[1].slice(0, 80)}..."`);
           analysis = {
             synopsis: synopsisMatch[1],
-            recommendationsTable: [],
-            aiBestFit: [],
+            recommendationsTable: [] as any[],
+            aiBestFit: [] as any[],
             parseError: 'Partial extraction from malformed response'
           };
           
