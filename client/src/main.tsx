@@ -2,6 +2,12 @@ import ReactDOM from 'react-dom/client'
 import { ClerkProvider } from '@clerk/clerk-react'
 import App from './App.tsx'
 import './index.css'
+import { setupPerformanceMonitoring } from '@/lib/monitoring'
+import { setupErrorTracking } from '@/lib/errorTracking'
+
+// Initialize monitoring
+setupPerformanceMonitoring();
+setupErrorTracking();
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 

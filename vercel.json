@@ -32,6 +32,33 @@
         { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,PATCH,DELETE,OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type,Authorization" }
       ]
+    },
+    {
+      "source": "/assets/js/vendor-*.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/assets/js/d3-vendor-*.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/assets/js/main-*.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "max-age=3600, must-revalidate"
+        }
+      ]
     }
   ]
 }
