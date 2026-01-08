@@ -2,7 +2,7 @@
   "version": 2,
   "installCommand": "npm install --include=dev",
   "buildCommand": "npx vite build",
-  "outputDirectory": "client/dist",
+  "outputDirectory": "dist",
   "functions": {
     "api/**/*.ts": {
       "memory": 1024,
