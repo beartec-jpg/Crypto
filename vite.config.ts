@@ -34,7 +34,7 @@ export default defineConfig({
   },
 
   build: {
-    outDir: '../client/dist',   // ← Critical: goes one level UP from client/ → root/client/dist
+    outDir: '../dist',   // ← Critical: goes one level UP from client/ → root/dist
     emptyOutDir: true,
     sourcemap: false,
     minify: 'esbuild',
