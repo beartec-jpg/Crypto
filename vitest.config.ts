@@ -13,7 +13,7 @@ export default defineConfig({
     environment: 'jsdom',
     
     // Setup file for global test configuration
-    setupFiles: ['./client/src/__tests__/setup.ts'],
+    setupFiles: [path.resolve(__dirname, 'client/src/__tests__/setup.ts')],
     
     // Enable global test APIs (describe, it, expect, etc.)
     globals: true,
@@ -21,7 +21,7 @@ export default defineConfig({
     // Coverage configuration
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text', 'json', 'html', 'lcov'],
       reportsDirectory: './coverage',
       // Coverage thresholds
       thresholds: {
