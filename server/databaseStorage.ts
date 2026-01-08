@@ -355,7 +355,7 @@ export class DatabaseStorage implements IStorage {
     await db
       .update(trackedTrades)
       .set({ status })
-      .where(eq(trackedTrades.id, id));
+      .where(eq(trackedTrades.id, String(id)));
   }
 
   async getPushSubscriptionsByUserId(userId: number): Promise<any[]> {
@@ -364,7 +364,7 @@ export class DatabaseStorage implements IStorage {
     const subs = await db
       .select()
       .from(pushSubscriptions)
-      .where(eq(pushSubscriptions.userId, userId));
+      .where(eq(pushSubscriptions.userId, String(userId)));
     
     return subs;
   }
@@ -385,7 +385,7 @@ export class DatabaseStorage implements IStorage {
     
     await db
       .delete(pushSubscriptions)
-      .where(eq(pushSubscriptions.id, id));
+      .where(eq(pushSubscriptions.id, String(id)));
   }
 
   // Indicator Alert State operations for CCI/ADX monitoring
