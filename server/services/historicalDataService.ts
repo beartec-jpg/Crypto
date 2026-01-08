@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import type { InsertCachedCandles, CachedCandles } from "@shared/schema";
+import type { InsertCachedCandles } from "@shared/schema";
 
 interface OHLCCandle {
   time: number;

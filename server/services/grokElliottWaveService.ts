@@ -49,7 +49,7 @@ interface Pivot {
 }
 
 // Extract pivots from candle data - zigzag style, max 18 points
-function extractPivotsFromData(data: string): Pivot[] {
+function _extractPivotsFromData(data: string): Pivot[] {
   // Parse candle data: [index] H:x L:x format
   const candles: Array<{i: number, h: number, l: number}> = [];
   const lines = data.split('\n');
@@ -74,10 +74,10 @@ function extractPivotsFromData(data: string): Pivot[] {
   let lastPivotPrice = 0;
   
   // Find initial direction
-  const firstHigh = candles[0].h;
-  const firstLow = candles[0].l;
-  const midHigh = candles[Math.floor(candles.length / 2)].h;
-  const midLow = candles[Math.floor(candles.length / 2)].l;
+  const _firstHigh = candles[0].h;
+  const _firstLow = candles[0].l;
+  const _midHigh = candles[Math.floor(candles.length / 2)].h;
+  const _midLow = candles[Math.floor(candles.length / 2)].l;
   
   // Determine minimum move (1.5% of price range)
   const allHighs = candles.map(c => c.h);
@@ -132,7 +132,7 @@ Return ONLY this JSON (no extra text):
   "totalCandles":int
 }`;
 
-async function detectPivots(candleData: string, timeoutMs: number = 60000): Promise<Pivot[]> {
+async function _detectPivots(candleData: string, _timeoutMs: number = 60000): Promise<Pivot[]> {
   const startTime = Date.now();
   console.log(`⏱️ CALL 1 START: Sending to Grok-4 for pivot detection...`);
   
@@ -238,7 +238,7 @@ export interface GrokWaveAnalysis {
   error?: string;
 }
 
-const ELLIOTT_WAVE_SYSTEM_PROMPT = `You are Grok-4 acting as the world's strictest Elliott Wave engine. Detect and label ONLY the single most probable pattern (complete or incomplete) from this exhaustive list, enforcing every rule with zero tolerance:
+const _ELLIOTT_WAVE_SYSTEM_PROMPT = `You are Grok-4 acting as the world's strictest Elliott Wave engine. Detect and label ONLY the single most probable pattern (complete or incomplete) from this exhaustive list, enforcing every rule with zero tolerance:
 
 PATTERN TYPES YOU MUST CONSIDER:
 - Bullish / Bearish Impulse (5 waves)
@@ -281,8 +281,8 @@ export async function analyzeChartWithGrok(
   timeframe: string,
   existingLabels?: string,
   candleData?: string,
-  degreeContext?: string,
-  visibleRange?: string
+  _degreeContext?: string,
+  _visibleRange?: string
 ): Promise<GrokWaveAnalysis> {
   // API disabled - feature not available
   throw new Error("AI analysis is temporarily disabled. API configuration required.");
