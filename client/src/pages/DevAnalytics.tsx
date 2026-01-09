@@ -43,7 +43,8 @@ interface TopPage {
   page: string;
   views: number;
   name?: string;
-  [key: string]: any; // Index signature for recharts compatibility
+  // Recharts compatibility - allow additional numeric/string properties
+  [key: string]: string | number | undefined;
 }
 
 interface TopSymbol {
