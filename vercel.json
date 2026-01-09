@@ -34,29 +34,11 @@
       ]
     },
     {
-      "source": "/assets/js/vendor-*.js",
+      "source": "/assets/(.*)",
       "headers": [
         {
           "key": "Cache-Control",
           "value": "max-age=31536000, immutable"
-        }
-      ]
-    },
-    {
-      "source": "/assets/js/d3-vendor-*.js",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "max-age=31536000, immutable"
-        }
-      ]
-    },
-    {
-      "source": "/assets/js/main-*.js",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "max-age=3600, must-revalidate"
         }
       ]
     }
