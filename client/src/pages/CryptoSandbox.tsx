@@ -1810,14 +1810,31 @@ export default function CryptoSandbox() {
     
     // Check legacy channels (top and bottom lines)
     for (const ch of drawnChannels) {
-      const x1Top = xScaleRef.current(new Date(ch.topLine.p1.time)) + MARGIN.left;
-      const y1Top = yScaleRef.current(ch.topLine.p1.price) + MARGIN.top;
-      const x2Top = xScaleRef.current(new Date(ch.topLine.p2.time)) + MARGIN.left;
-      const y2Top = yScaleRef.current(ch.topLine.p2.price) + MARGIN.top;
-      const x1Bot = xScaleRef.current(new Date(ch.bottomLine.p1.time)) + MARGIN.left;
-      const y1Bot = yScaleRef.current(ch.bottomLine.p1.price) + MARGIN.top;
-      const x2Bot = xScaleRef.current(new Date(ch.bottomLine.p2.time)) + MARGIN.left;
-      const y2Bot = yScaleRef.current(ch.bottomLine.p2.price) + MARGIN.top;
+      const x1 = xScaleRef.current(new Date(ch.p1.time)) + MARGIN.left;
+      const y1 = yScaleRef.current(ch.p1.price) + MARGIN.top;
+      const x2 = xScaleRef.current(new Date(ch.p2.time)) + MARGIN.left;
+      const y2 = yScaleRef.current(ch.p2.price) + MARGIN.top;
+      
+      // Calculate perpendicular offset for parallel lines (matching rendering logic)
+      const widthPx = ch.width;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const nx = len > 0 ? -dy / len * widthPx / 2 : 0;
+      const ny = len > 0 ? dx / len * widthPx / 2 : widthPx / 2;
+      
+      // Top line (offset up)
+      const x1Top = x1 - nx;
+      const y1Top = y1 - ny;
+      const x2Top = x2 - nx;
+      const y2Top = y2 - ny;
+      
+      // Bottom line (offset down)
+      const x1Bot = x1 + nx;
+      const y1Bot = y1 + ny;
+      const x2Bot = x2 + nx;
+      const y2Bot = y2 + ny;
+      
       if (distToSegment(clickX, clickY, x1Top, y1Top, x2Top, y2Top) <= threshold ||
           distToSegment(clickX, clickY, x1Bot, y1Bot, x2Bot, y2Bot) <= threshold) {
         candidates.push({ id: ch.id, type: 'channel' });
@@ -2046,9 +2063,9 @@ export default function CryptoSandbox() {
     }, [activeTool, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTrendFibSelect, handleTextLabelSelect]);
   
   // Main selection dispatcher for tap events
-  const handleSvgTapSelection = useCallback((clickX: number, clickY: number) => {
+  const handleSvgTapSelection = useCallback((clickX: number, clickY: number): boolean => {
     // Don't select if in drawing mode
-    if (activeTool) return;
+    if (activeTool) return false;
     
     // Show tap feedback circle (only if not already showing)
     // Use functional update to check current state and prevent double-pulse
@@ -2071,6 +2088,7 @@ export default function CryptoSandbox() {
       setSelectionCandidates(candidates);
       setSelectionPickerPos({ x: pickerX, y: pickerY });
       setSelectionPickerClickPos({ x: clickX, y: clickY });
+      return true;
     } else if (candidates.length === 1) {
       // Single element - select directly
       const candidate = candidates[0];
@@ -2100,6 +2118,7 @@ export default function CryptoSandbox() {
           handleTextLabelSelect(candidate.id, clickX, clickY);
           break;
       }
+      return true;
     } else {
       // Clicked on empty space - close all menus and deselect
       console.log('🔄 Closing all menus (clicked empty space)');
@@ -2123,6 +2142,7 @@ export default function CryptoSandbox() {
       setMovingWholeLine(null);
       setSelectionPickerPos(null);
       setSelectionCandidates([]);
+      return false;
     }
   }, [activeTool, collectHitCandidates, dimensions, handleTrendlineSelect, handleHorizontalSelect, handleChannelSelect, handleHChannelSelect, handleSChannelSelect, handleFibSelect, handleTrendFibSelect, handleTextLabelSelect, closeTrendlineMenu, closeHorizontalMenu]);
   
@@ -2225,6 +2245,9 @@ export default function CryptoSandbox() {
     const yScale = chartScales.yScale;
     xScaleRef.current = xScale;
     yScaleRef.current = yScale;
+    
+    // Guard against null scales
+    if (!xScale || !yScale) return;
     
     // Background
     g.append('rect')
@@ -3244,8 +3267,8 @@ export default function CryptoSandbox() {
         const extDir = fib.extendDirection || 'both';
         const anchorMinX = Math.min(anchor1X, anchor2X);
         const anchorMaxX = Math.max(anchor1X, anchor2X);
-        let lineX1 = MARGIN.left;
-        let lineX2 = dimensions.width - MARGIN.right;
+        let lineX1: number = MARGIN.left;
+        let lineX2: number = dimensions.width - MARGIN.right;
         if (extDir === 'none') {
           lineX1 = anchorMinX; lineX2 = anchorMaxX;
         } else if (extDir === 'left') {
@@ -3361,8 +3384,8 @@ export default function CryptoSandbox() {
         const extDir = tfib.extendDirection || 'both';
         const anchorMinX = Math.min(p1X, p2X, p3X);
         const anchorMaxX = Math.max(p1X, p2X, p3X);
-        let lineX1 = MARGIN.left;
-        let lineX2 = dimensions.width - MARGIN.right;
+        let lineX1: number = MARGIN.left;
+        let lineX2: number = dimensions.width - MARGIN.right;
         if (extDir === 'none') {
           lineX1 = anchorMinX; lineX2 = anchorMaxX;
         } else if (extDir === 'left') {
@@ -4384,7 +4407,7 @@ export default function CryptoSandbox() {
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
                   // Store where the touch started
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
                   // Store where crosshair currently is (or center if not set)
                   crosshairStartRef.current = crosshairPos || { 
                     x: dimensions.width / 2, 
@@ -4675,7 +4698,7 @@ export default function CryptoSandbox() {
                 onTouchStart={(e) => {
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
                   touchMovedRef.current = false;
                   if (e.touches.length >= 2) {
                     const t1 = e.touches[0]; const t2 = e.touches[1];
@@ -4741,7 +4764,7 @@ export default function CryptoSandbox() {
                 onTouchStart={(e) => {
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
                   touchMovedRef.current = false;
                   if (e.touches.length >= 2) {
                     const t1 = e.touches[0]; const t2 = e.touches[1];
@@ -5252,7 +5275,7 @@ export default function CryptoSandbox() {
                 onTouchStart={(e) => {
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
                   touchMovedRef.current = false;
                   if (e.touches.length >= 2) {
                     const t1 = e.touches[0]; const t2 = e.touches[1];
@@ -5610,8 +5633,8 @@ export default function CryptoSandbox() {
                   {selectedLine?.label?.text && (
                     <button
                       onClick={() => {
-                        const { label, ...rest } = drawnTrendlines.find(l => l.id === selectedTrendline) || {};
-                        if (rest.id) setDrawnTrendlines(prev => prev.map(l => l.id === selectedTrendline ? { ...l, label: undefined } : l));
+                        const trendline = drawnTrendlines.find(l => l.id === selectedTrendline);
+                        if (trendline) setDrawnTrendlines(prev => prev.map(l => l.id === selectedTrendline ? { ...l, label: undefined } : l));
                       }}
                       className="w-full mt-2 px-2 py-1 text-xs bg-red-600 text-white rounded"
                     >
