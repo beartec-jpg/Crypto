@@ -837,9 +837,9 @@ export default function CryptoIndicators() {
     if (drawingMode !== 'draw' || !currentTool) return;
     
     setTempDrawing(prev => {
-      if (!prev) return { points: [{ time: point.time, price: point.price, snapType: point.snapType }] };
+      if (!prev) return { points: [{ time: point.time as number, price: point.price, snapType: point.snapType }] };
       
-      const newPoints = [...prev.points, { time: point.time, price: point.price, snapType: point.snapType }];
+      const newPoints = [...prev.points, { time: point.time as number, price: point.price, snapType: point.snapType }];
       const requiredPoints = currentTool === 'horizontal' ? 1 : currentTool === 'trend_fib' ? 3 : 2;
       
       // If we have enough points, save the drawing
@@ -885,7 +885,7 @@ export default function CryptoIndicators() {
   // Gesture controller hook for touch/click handling
   const gestureController = useChartGestures({
     enabled: drawingMode === 'draw' && activeTool !== null,
-    data: candles,
+    data: candles.map(c => ({ ...c, time: c.time as Time })),
     onPointCommit: handlePointCommit,
     onCrosshairModeChange: setCrosshairModeActive,
     autoSnapEnabled,
