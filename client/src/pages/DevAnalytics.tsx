@@ -344,8 +344,8 @@ export default function DevAnalytics() {
                         <tbody>
                           {topPages.map((page: any, idx: number) => (
                             <tr key={idx} className="border-t border-slate-700">
-                              <td className="py-2 text-white">{page.name || '(unknown)'}</td>
-                              <td className="py-2 text-right text-[#00c4b4] font-bold">{page.count}</td>
+                              <td className="py-2 text-white">{page.name || page.page || '(unknown)'}</td>
+                              <td className="py-2 text-right text-[#00c4b4] font-bold">{page.views || page.count || 0}</td>
                             </tr>
                           ))}
                         </tbody>
