@@ -11,37 +11,96 @@ import { Helmet } from 'react-helmet-async';
 
 const COLORS = ['#00c4b4', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899'];
 
+// TypeScript interfaces for API responses
+interface RealtimeAnalytics {
+  error?: string;
+  lastHour?: {
+    events?: number;
+    activeSessions?: number;
+  };
+  last24Hours?: {
+    events?: number;
+  };
+}
+
+interface AnalyticsDashboard {
+  error?: string;
+  totalPageViews?: number;
+  uniqueUsers?: number;
+  totalRegisteredUsers?: number;
+  totalApiCalls?: number;
+  totalAiCalls?: number;
+  totalAiTokens?: number;
+  estimatedAiCost?: number;
+}
+
+interface TopFeature {
+  feature: string;
+  count: number;
+}
+
+interface TopPage {
+  page: string;
+  views: number;
+  name?: string;
+  [key: string]: any; // Index signature for recharts compatibility
+}
+
+interface TopSymbol {
+  symbol: string;
+  count: number;
+}
+
+interface TopClick {
+  target: string;
+  count: number;
+}
+
+interface ApiCostBreakdown {
+  breakdown?: Array<{
+    model: string;
+    calls: number;
+    tokens: number;
+    cost: number;
+  }>;
+  totals?: {
+    totalCalls: number;
+    totalTokens: number;
+    totalCost: number;
+  };
+}
+
 export default function DevAnalytics() {
   const [, setLocation] = useLocation();
   const [timeRange, setTimeRange] = useState('7d');
   
-  const { data: dashboard, isLoading: dashboardLoading } = useQuery({
+  const { data: dashboard, isLoading: dashboardLoading } = useQuery<AnalyticsDashboard>({
     queryKey: ['/api/analytics/dashboard', timeRange],
     refetchInterval: 30000,
   });
   
-  const { data: realtime } = useQuery({
+  const { data: realtime } = useQuery<RealtimeAnalytics>({
     queryKey: ['/api/analytics/realtime'],
     refetchInterval: 10000,
   });
   
-  const { data: topFeatures } = useQuery({
+  const { data: topFeatures } = useQuery<TopFeature[]>({
     queryKey: ['/api/analytics/top', 'features'],
   });
   
-  const { data: topPages } = useQuery({
+  const { data: topPages } = useQuery<TopPage[]>({
     queryKey: ['/api/analytics/top', 'pages'],
   });
   
-  const { data: topSymbols } = useQuery({
+  const { data: topSymbols } = useQuery<TopSymbol[]>({
     queryKey: ['/api/analytics/top', 'symbols'],
   });
   
-  const { data: topClicks } = useQuery({
+  const { data: topClicks } = useQuery<TopClick[]>({
     queryKey: ['/api/analytics/top', 'clicks'],
   });
   
-  const { data: apiCosts } = useQuery({
+  const { data: apiCosts } = useQuery<ApiCostBreakdown>({
     queryKey: ['/api/analytics/api-costs', timeRange],
   });
   
@@ -259,12 +318,12 @@ export default function DevAnalytics() {
                       <RechartsPie>
                         <Pie
                           data={topPages}
-                          dataKey="count"
-                          nameKey="name"
+                          dataKey="views"
+                          nameKey="page"
                           cx="50%"
                           cy="50%"
                           outerRadius={100}
-                          label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                          label={({ name, percent }) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}
                         >
                           {topPages.map((_: any, index: number) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -364,15 +423,15 @@ export default function DevAnalytics() {
                     <div className="grid grid-cols-3 gap-4 mb-6">
                       <div className="bg-slate-700/50 rounded-lg p-4 text-center">
                         <p className="text-gray-400 text-sm">Total API Calls</p>
-                        <p className="text-2xl font-bold text-white">{apiCosts.totals.totalCalls}</p>
+                        <p className="text-2xl font-bold text-white">{apiCosts.totals?.totalCalls || 0}</p>
                       </div>
                       <div className="bg-slate-700/50 rounded-lg p-4 text-center">
                         <p className="text-gray-400 text-sm">Total Tokens</p>
-                        <p className="text-2xl font-bold text-purple-400">{apiCosts.totals.totalTokens.toLocaleString()}</p>
+                        <p className="text-2xl font-bold text-purple-400">{(apiCosts.totals?.totalTokens || 0).toLocaleString()}</p>
                       </div>
                       <div className="bg-slate-700/50 rounded-lg p-4 text-center">
                         <p className="text-gray-400 text-sm">Total Cost</p>
-                        <p className="text-2xl font-bold text-green-400">${apiCosts.totals.totalCost.toFixed(4)}</p>
+                        <p className="text-2xl font-bold text-green-400">${(apiCosts.totals?.totalCost || 0).toFixed(4)}</p>
                       </div>
                     </div>
                     <table className="w-full">

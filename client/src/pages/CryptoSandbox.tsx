@@ -11,6 +11,9 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Crosshair, ChevronDown, TrendingUp } from 'lucide-react';
 import { useElliottWave } from '@/hooks/useElliottWave';
 import { useDrawingState } from '@/hooks/useDrawingState';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorHandler } from '@/lib/errorHandler';
 import { TrendlineMenu, HorizontalMenu, ChannelMenu } from '@/components/menus';
 import {
   constrainLabelPosition,
@@ -163,7 +166,7 @@ export default function CryptoSandbox() {
   // Trendline selection and menu state
   const [selectedTrendline, setSelectedTrendline] = useState<string | null>(null);
   const [trendlineMenuPos, setTrendlineMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | 'h-color' | 'h-label' | 'ch-color' | 'ch-lines' | 'hch-lines' | 'sch-lines' | 'tl-color' | 'tl-text' | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<'color' | 'extend' | 'label' | 'h-color' | 'h-label' | 'ch-color' | 'ch-lines' | 'hch-lines' | 'hch-top' | 'hch-bottom' | 'hch-internal' | 'hch-label' | 'hch-extend' | 'sch-lines' | 'sch-top' | 'sch-bottom' | 'sch-internal' | 'sch-label' | 'sch-extend' | 'fib-setup' | 'fib-lines' | 'fib-extend' | 'fib-labels' | 'trendfib-setup' | 'trendfib-lines' | 'trendfib-extend' | 'trendfib-labels' | 'tl-color' | 'tl-text' | null>(null);
   const [movingTrendline, setMovingTrendline] = useState<string | null>(null);
   const [draggingMenu, setDraggingMenu] = useState(false);
   const menuDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
