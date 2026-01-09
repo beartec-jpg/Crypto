@@ -13889,14 +13889,14 @@ export default function CryptoIndicators() {
                                 ? 'bg-yellow-900/20' 
                                 : item.isBull ? 'bg-green-900/20' : 'bg-red-900/20';
                               
-                              const showDate = item.time !== lastDate;
+                              // Only show time if it's changed from last row
+                              const showTime = item.time !== lastDate;
                               lastDate = item.time || '';
                               
                               return (
                                 <tr key={idx} className={`border-b border-slate-700/50 ${cellBg}`}>
                                 <td className="text-gray-300 py-1 px-1 font-mono text-[10px]">
-                                  {showDate && <span className="text-gray-500 mr-1">{item.time}</span>}
-                                  {item.time}
+                                  {showTime ? item.time : ''}
                                 </td>
                               <td className={`text-right py-1 px-1 font-mono font-semibold ${item.delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
                                 {item.delta > 0 ? '+' : ''}{(item.delta / 1000).toFixed(1)}k
