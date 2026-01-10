@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries, ISeriesApi, createSeriesMarkers } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries, ISeriesApi, createSeriesMarkers, LineWidth, Time } from 'lightweight-charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -967,7 +967,7 @@ export default function CryptoIndicators() {
     { id: 'ema1', period: 21, timeframe: 'current', color: '#3b82f6' }
   ]);
   const [emaInputs, setEmaInputs] = useState<Record<string, string>>({ ema1: '21' });
-  const emaSeriesRefs = useRef<Record<string, LineSeries | null>>({});
+  const emaSeriesRefs = useRef<Record<string, ISeriesApi<'Line'> | null>>({});
   const emaHTFDataCache = useRef<Record<string, CandleData[]>>({});
   // Legacy state for backwards compatibility with trading strategies
   const emaFastPeriod = emaConfigs[0]?.period || 21;
@@ -1010,16 +1010,16 @@ export default function CryptoIndicators() {
   
   // ========== NEW INDICATORS ==========
   // Series refs for chart rendering
-  const supertrendSeriesRef = useRef<LineSeries | null>(null);
-  const vwapBandsUpperRef = useRef<LineSeries | null>(null);
-  const vwapBandsLowerRef = useRef<LineSeries | null>(null);
-  const sessionVWAPAsiaRef = useRef<LineSeries | null>(null);
-  const sessionVWAPLondonRef = useRef<LineSeries | null>(null);
-  const sessionVWAPNYRef = useRef<LineSeries | null>(null);
+  const supertrendSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const vwapBandsUpperRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const vwapBandsLowerRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const sessionVWAPAsiaRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const sessionVWAPLondonRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const sessionVWAPNYRef = useRef<ISeriesApi<'Line'> | null>(null);
   
   // Batch 2 SMC indicator refs
   const orderBlocksRefs = useRef<Array<{ upper: LineSeries; lower: LineSeries; fill: HistogramSeries }>>([]);
-  const premiumDiscountRefs = useRef<{ equilibrium: LineSeries | null; premium: LineSeries | null; discount: LineSeries | null }>({ equilibrium: null, premium: null, discount: null });
+  const premiumDiscountRefs = useRef<{ equilibrium: ISeriesApi<'Line'> | null; premium: ISeriesApi<'Line'> | null; discount: ISeriesApi<'Line'> | null }>({ equilibrium: null, premium: null, discount: null });
   
   // Batch 3 Trend Tools & Oscillators refs
   const smaFastRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -1041,7 +1041,7 @@ export default function CryptoIndicators() {
   const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
     { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
   ]);
-  const smaSeriesRefs = useRef<Record<string, LineSeries | null>>({});
+  const smaSeriesRefs = useRef<Record<string, ISeriesApi<'Line'> | null>>({});
   const smaHTFDataCache = useRef<Record<string, CandleData[]>>({});
   // Legacy state for backwards compatibility
   const smaFastPeriod = smaConfigs[0]?.period || 20;
@@ -1639,7 +1639,7 @@ export default function CryptoIndicators() {
     tp1: { type: 'ema', emaFast: 10, emaSlow: 40, emaExitMode: 'crossover', positionPercent: 100 },
     tp2: { type: 'structure', positionPercent: 30 },
     tp3: { type: 'atr', atrMultiplier: 2.5, positionPercent: 20 },
-    sl: { type: 'fixed_distance', distancePercent: 2.0 }
+    sl: { type: 'fixed_distance', fixedDistance: 2.0 }
   });
   
   // R/S Flip Bot Configuration
@@ -3278,6 +3278,10 @@ export default function CryptoIndicators() {
     bypassToggle = false,
     overrideSettings?: {
       swingLength?: number;
+      wickRatio?: number;
+      confirmCandles?: number;
+      useWickFilter?: boolean;
+      useConfirmCandles?: boolean;
       trendFilter?: 'none' | 'ema' | 'structure' | 'both';
       directionFilter?: 'both' | 'bull' | 'bear';
       tpslConfig?: typeof liqGrabTPSL;
@@ -7708,7 +7712,7 @@ export default function CryptoIndicators() {
       data: { time: number; value: number }[],
       color: string,
       lineStyle: number = 0,
-      lineWidth: number = 2
+      lineWidth: LineWidth = 2 as LineWidth
     ) => {
       if (show) {
         if (!refs[key]) {
@@ -7740,9 +7744,9 @@ export default function CryptoIndicators() {
     };
 
     const bbData = calculateBollingerBands(candles, bbPeriod, bbStdDev);
-    manageBBLine('upper', showBB, bbData.upper, '#9333ea', 0, 1.5);
-    manageBBLine('middle', showBB, bbData.middle, '#9333ea', 2, 1);
-    manageBBLine('lower', showBB, bbData.lower, '#9333ea', 0, 1.5);
+    manageBBLine('upper', showBB, bbData.upper, '#9333ea', 0, 1 as LineWidth);
+    manageBBLine('middle', showBB, bbData.middle, '#9333ea', 2, 1 as LineWidth);
+    manageBBLine('lower', showBB, bbData.lower, '#9333ea', 0, 1 as LineWidth);
   }, [chartReady, candles, showBB, bbPeriod, bbStdDev, calculateBollingerBands]);
 
   // ========== BATCH 1 INDICATORS ==========
