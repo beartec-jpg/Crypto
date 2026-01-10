@@ -169,14 +169,14 @@ interface CHoCH {
 }
 
 // Bot-specific TP/SL Configuration Types
-type TPType = 'structure' | 'trailing' | 'atr' | 'fixed_rr' | 'vwap' | 'ema';
-type SLType = 'structure' | 'fixed' | 'atr';
+type TPType = 'structure' | 'trailing' | 'atr' | 'fixed_rr' | 'vwap' | 'ema' | 'projection';
+type SLType = 'structure' | 'fixed' | 'atr' | 'fixed_distance';
 
 interface TradeSignal {
   id: string;
   time: number;
   type: 'LONG' | 'SHORT';
-  strategy: 'liquidity_grab' | 'choch_fvg' | 'vwap_rejection' | 'structure_break' | 'rs_flip' | 'bos_trend';
+  strategy: 'liquidity_grab' | 'choch_fvg' | 'vwap_rejection' | 'structure_break' | 'rs_flip' | 'bos_trend' | 'ema_trading';
   entry: number;
   stopLoss: number;
   tp1: number;
@@ -232,7 +232,7 @@ interface BacktestTrade {
   tp1: number;
   tp2: number;
   tp3: number;
-  outcome: 'TP1' | 'TP2' | 'TP3' | 'SL' | 'Breakeven' | 'EMA Exit';
+  outcome: 'TP1' | 'TP2' | 'TP3' | 'SL' | 'Breakeven' | 'EMA Exit' | 'VWAP Exit';
   rr: number;
   profitLoss: number;
   winner: boolean;
@@ -3938,12 +3938,12 @@ export default function CryptoIndicators() {
     let slowEMA: number | null = null;
     
     if (emaEntryMode === 'bounce' || emaEntryMode === 'cross') {
-      const emaValues = calculateEMA(data, emaSinglePeriod);
+      const emaValues = calculateEMA(data.map(c => c.close), emaSinglePeriod);
       if (emaValues.length < 3) return null;
       emaLevel = emaValues[emaValues.length - 1];
     } else {
-      const fastEMAValues = calculateEMA(data, emaFastPeriod);
-      const slowEMAValues = calculateEMA(data, emaSlowPeriod);
+      const fastEMAValues = calculateEMA(data.map(c => c.close), emaFastPeriod);
+      const slowEMAValues = calculateEMA(data.map(c => c.close), emaSlowPeriod);
       if (fastEMAValues.length < 3 || slowEMAValues.length < 3) return null;
       fastEMA = fastEMAValues[fastEMAValues.length - 1];
       slowEMA = slowEMAValues[slowEMAValues.length - 1];
@@ -3971,7 +3971,7 @@ export default function CryptoIndicators() {
       } else if (slConfig.type === 'structure') {
         const swings = calculateSwings(data, emaTradingSLSwingLength);
         const recentSwings = swings.slice(-10);
-        const swingLevels = signal === 'LONG' ? recentSwings.filter(s => s.type === 'low').map(s => s.price) : recentSwings.filter(s => s.type === 'high').map(s => s.price);
+        const swingLevels = signal === 'LONG' ? recentSwings.filter(s => s.type === 'low').map(s => s.value) : recentSwings.filter(s => s.type === 'high').map(s => s.value);
         stopLoss = signal === 'LONG' ? (swingLevels.length > 0 ? Math.max(...swingLevels) : entry - atr) : (swingLevels.length > 0 ? Math.min(...swingLevels) : entry + atr);
       } else {
         const distancePercent = (slConfig.fixedDistance || 1.0) / 100;
@@ -6260,6 +6260,10 @@ export default function CryptoIndicators() {
         results: backtestResults,
         configDescription: desc,
         swingLength: config.swingLength,
+        wickRatio: config.wickRatio || 100,
+        confirmCandles: config.confirmCandles || 0,
+        useWickFilter: config.useWickFilter || false,
+        useConfirmCandles: config.useConfirmCandles || false,
         trendFilter: config.trendFilter,
         allowedDirections: config.direction
       });
@@ -6299,7 +6303,9 @@ export default function CryptoIndicators() {
     setLiqGrabSwingLength(result.swingLength);
     setLiqGrabSwingLengthInput(result.swingLength.toString());
     setLiqGrabTrendFilter(result.trendFilter);
-    setLiqGrabDirectionFilter(result.allowedDirections);
+    // Convert 'long'/'short' to 'bull'/'bear'
+    const directionFilter = result.allowedDirections === 'long' ? 'bull' : result.allowedDirections === 'short' ? 'bear' : 'both';
+    setLiqGrabDirectionFilter(directionFilter);
     
     // Apply TP/SL swing lengths from config if they're structure type
     if (result.config.tp1.type === 'structure' && result.config.tp1.swingLength) {
@@ -7357,7 +7363,8 @@ export default function CryptoIndicators() {
     manageVWAP('daily', showVWAPDaily, calculatePeriodicVWAP(candles, 'daily', true), '#fb923c', 'Daily VWAP');
     manageVWAP('weekly', showVWAPWeekly, calculatePeriodicVWAP(candles, 'weekly', true), '#10b981', 'Weekly VWAP');
     manageVWAP('monthly', showVWAPMonthly, calculatePeriodicVWAP(candles, 'monthly', true), '#3b82f6', 'Monthly VWAP');
-    manageVWAP('rolling', showVWAPRolling, calculateRollingVWAP(candles, vwapRollingPeriod), '#ec4899', `rVWAP(${vwapRollingPeriod})`);
+    const rollingKey = vwapRollingPeriod === 10 ? 'rolling10' : vwapRollingPeriod === 50 ? 'rolling50' : 'rolling20';
+    manageVWAP(rollingKey, showVWAPRolling, calculateRollingVWAP(candles, vwapRollingPeriod), '#ec4899', `rVWAP(${vwapRollingPeriod})`);
   }, [chartReady, candles, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
 
   // Update FVGs with shaded rectangles
