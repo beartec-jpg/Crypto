@@ -6,7 +6,8 @@ import type {
   Time,
   IChartApi,
   ISeriesApi,
-  SeriesType
+  SeriesType,
+  Coordinate
 } from 'lightweight-charts';
 
 interface DrawingPoint {
@@ -97,11 +98,11 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
           
           if (extendLeft) {
             drawX1 = 0;
-            drawY1 = y1 - slope * x1;
+            drawY1 = (y1 - slope * x1) as Coordinate;
           }
           if (extendRight) {
             drawX2 = chartWidth;
-            drawY2 = y1 + slope * (chartWidth - x1);
+            drawY2 = (y1 + slope * (chartWidth - x1)) as Coordinate;
           }
         }
       }
