@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries, ISeriesApi, createSeriesMarkers } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries, ISeriesApi, createSeriesMarkers, LineWidth, Time } from 'lightweight-charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -169,14 +169,14 @@ interface CHoCH {
 }
 
 // Bot-specific TP/SL Configuration Types
-type TPType = 'structure' | 'trailing' | 'atr' | 'fixed_rr' | 'vwap' | 'ema';
-type SLType = 'structure' | 'fixed' | 'atr';
+type TPType = 'structure' | 'trailing' | 'atr' | 'fixed_rr' | 'vwap' | 'ema' | 'projection';
+type SLType = 'structure' | 'fixed' | 'atr' | 'fixed_distance';
 
 interface TradeSignal {
   id: string;
   time: number;
   type: 'LONG' | 'SHORT';
-  strategy: 'liquidity_grab' | 'choch_fvg' | 'vwap_rejection' | 'structure_break' | 'rs_flip' | 'bos_trend';
+  strategy: 'liquidity_grab' | 'choch_fvg' | 'vwap_rejection' | 'structure_break' | 'rs_flip' | 'bos_trend' | 'ema_trading';
   entry: number;
   stopLoss: number;
   tp1: number;
@@ -232,7 +232,7 @@ interface BacktestTrade {
   tp1: number;
   tp2: number;
   tp3: number;
-  outcome: 'TP1' | 'TP2' | 'TP3' | 'SL' | 'Breakeven' | 'EMA Exit';
+  outcome: 'TP1' | 'TP2' | 'TP3' | 'SL' | 'Breakeven' | 'EMA Exit' | 'VWAP Exit';
   rr: number;
   profitLoss: number;
   winner: boolean;
@@ -967,7 +967,7 @@ export default function CryptoIndicators() {
     { id: 'ema1', period: 21, timeframe: 'current', color: '#3b82f6' }
   ]);
   const [emaInputs, setEmaInputs] = useState<Record<string, string>>({ ema1: '21' });
-  const emaSeriesRefs = useRef<Record<string, LineSeries | null>>({});
+  const emaSeriesRefs = useRef<Record<string, ISeriesApi<'Line'> | null>>({});
   const emaHTFDataCache = useRef<Record<string, CandleData[]>>({});
   // Legacy state for backwards compatibility with trading strategies
   const emaFastPeriod = emaConfigs[0]?.period || 21;
@@ -1010,16 +1010,16 @@ export default function CryptoIndicators() {
   
   // ========== NEW INDICATORS ==========
   // Series refs for chart rendering
-  const supertrendSeriesRef = useRef<LineSeries | null>(null);
-  const vwapBandsUpperRef = useRef<LineSeries | null>(null);
-  const vwapBandsLowerRef = useRef<LineSeries | null>(null);
-  const sessionVWAPAsiaRef = useRef<LineSeries | null>(null);
-  const sessionVWAPLondonRef = useRef<LineSeries | null>(null);
-  const sessionVWAPNYRef = useRef<LineSeries | null>(null);
+  const supertrendSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const vwapBandsUpperRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const vwapBandsLowerRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const sessionVWAPAsiaRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const sessionVWAPLondonRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const sessionVWAPNYRef = useRef<ISeriesApi<'Line'> | null>(null);
   
   // Batch 2 SMC indicator refs
   const orderBlocksRefs = useRef<Array<{ upper: LineSeries; lower: LineSeries; fill: HistogramSeries }>>([]);
-  const premiumDiscountRefs = useRef<{ equilibrium: LineSeries | null; premium: LineSeries | null; discount: LineSeries | null }>({ equilibrium: null, premium: null, discount: null });
+  const premiumDiscountRefs = useRef<{ equilibrium: ISeriesApi<'Line'> | null; premium: ISeriesApi<'Line'> | null; discount: ISeriesApi<'Line'> | null }>({ equilibrium: null, premium: null, discount: null });
   
   // Batch 3 Trend Tools & Oscillators refs
   const smaFastRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -1041,7 +1041,7 @@ export default function CryptoIndicators() {
   const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
     { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
   ]);
-  const smaSeriesRefs = useRef<Record<string, LineSeries | null>>({});
+  const smaSeriesRefs = useRef<Record<string, ISeriesApi<'Line'> | null>>({});
   const smaHTFDataCache = useRef<Record<string, CandleData[]>>({});
   // Legacy state for backwards compatibility
   const smaFastPeriod = smaConfigs[0]?.period || 20;
@@ -1639,7 +1639,7 @@ export default function CryptoIndicators() {
     tp1: { type: 'ema', emaFast: 10, emaSlow: 40, emaExitMode: 'crossover', positionPercent: 100 },
     tp2: { type: 'structure', positionPercent: 30 },
     tp3: { type: 'atr', atrMultiplier: 2.5, positionPercent: 20 },
-    sl: { type: 'fixed_distance', distancePercent: 2.0 }
+    sl: { type: 'fixed_distance', fixedDistance: 2.0 }
   });
   
   // R/S Flip Bot Configuration
@@ -3278,6 +3278,10 @@ export default function CryptoIndicators() {
     bypassToggle = false,
     overrideSettings?: {
       swingLength?: number;
+      wickRatio?: number;
+      confirmCandles?: number;
+      useWickFilter?: boolean;
+      useConfirmCandles?: boolean;
       trendFilter?: 'none' | 'ema' | 'structure' | 'both';
       directionFilter?: 'both' | 'bull' | 'bear';
       tpslConfig?: typeof liqGrabTPSL;
@@ -3938,12 +3942,12 @@ export default function CryptoIndicators() {
     let slowEMA: number | null = null;
     
     if (emaEntryMode === 'bounce' || emaEntryMode === 'cross') {
-      const emaValues = calculateEMA(data, emaSinglePeriod);
+      const emaValues = calculateEMA(data.map(c => c.close), emaSinglePeriod);
       if (emaValues.length < 3) return null;
       emaLevel = emaValues[emaValues.length - 1];
     } else {
-      const fastEMAValues = calculateEMA(data, emaFastPeriod);
-      const slowEMAValues = calculateEMA(data, emaSlowPeriod);
+      const fastEMAValues = calculateEMA(data.map(c => c.close), emaFastPeriod);
+      const slowEMAValues = calculateEMA(data.map(c => c.close), emaSlowPeriod);
       if (fastEMAValues.length < 3 || slowEMAValues.length < 3) return null;
       fastEMA = fastEMAValues[fastEMAValues.length - 1];
       slowEMA = slowEMAValues[slowEMAValues.length - 1];
@@ -3971,7 +3975,7 @@ export default function CryptoIndicators() {
       } else if (slConfig.type === 'structure') {
         const swings = calculateSwings(data, emaTradingSLSwingLength);
         const recentSwings = swings.slice(-10);
-        const swingLevels = signal === 'LONG' ? recentSwings.filter(s => s.type === 'low').map(s => s.price) : recentSwings.filter(s => s.type === 'high').map(s => s.price);
+        const swingLevels = signal === 'LONG' ? recentSwings.filter(s => s.type === 'low').map(s => s.value) : recentSwings.filter(s => s.type === 'high').map(s => s.value);
         stopLoss = signal === 'LONG' ? (swingLevels.length > 0 ? Math.max(...swingLevels) : entry - atr) : (swingLevels.length > 0 ? Math.min(...swingLevels) : entry + atr);
       } else {
         const distancePercent = (slConfig.fixedDistance || 1.0) / 100;
@@ -6260,6 +6264,10 @@ export default function CryptoIndicators() {
         results: backtestResults,
         configDescription: desc,
         swingLength: config.swingLength,
+        wickRatio: config.wickRatio || 100,
+        confirmCandles: config.confirmCandles || 0,
+        useWickFilter: config.useWickFilter || false,
+        useConfirmCandles: config.useConfirmCandles || false,
         trendFilter: config.trendFilter,
         allowedDirections: config.direction
       });
@@ -6299,7 +6307,9 @@ export default function CryptoIndicators() {
     setLiqGrabSwingLength(result.swingLength);
     setLiqGrabSwingLengthInput(result.swingLength.toString());
     setLiqGrabTrendFilter(result.trendFilter);
-    setLiqGrabDirectionFilter(result.allowedDirections);
+    // Convert 'long'/'short' to 'bull'/'bear'
+    const directionFilter = result.allowedDirections === 'long' ? 'bull' : result.allowedDirections === 'short' ? 'bear' : 'both';
+    setLiqGrabDirectionFilter(directionFilter);
     
     // Apply TP/SL swing lengths from config if they're structure type
     if (result.config.tp1.type === 'structure' && result.config.tp1.swingLength) {
@@ -7357,7 +7367,8 @@ export default function CryptoIndicators() {
     manageVWAP('daily', showVWAPDaily, calculatePeriodicVWAP(candles, 'daily', true), '#fb923c', 'Daily VWAP');
     manageVWAP('weekly', showVWAPWeekly, calculatePeriodicVWAP(candles, 'weekly', true), '#10b981', 'Weekly VWAP');
     manageVWAP('monthly', showVWAPMonthly, calculatePeriodicVWAP(candles, 'monthly', true), '#3b82f6', 'Monthly VWAP');
-    manageVWAP('rolling', showVWAPRolling, calculateRollingVWAP(candles, vwapRollingPeriod), '#ec4899', `rVWAP(${vwapRollingPeriod})`);
+    const rollingKey = vwapRollingPeriod === 10 ? 'rolling10' : vwapRollingPeriod === 50 ? 'rolling50' : 'rolling20';
+    manageVWAP(rollingKey, showVWAPRolling, calculateRollingVWAP(candles, vwapRollingPeriod), '#ec4899', `rVWAP(${vwapRollingPeriod})`);
   }, [chartReady, candles, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
 
   // Update FVGs with shaded rectangles
@@ -7701,7 +7712,7 @@ export default function CryptoIndicators() {
       data: { time: number; value: number }[],
       color: string,
       lineStyle: number = 0,
-      lineWidth: number = 2
+      lineWidth: LineWidth = 2 as LineWidth
     ) => {
       if (show) {
         if (!refs[key]) {
@@ -7733,9 +7744,9 @@ export default function CryptoIndicators() {
     };
 
     const bbData = calculateBollingerBands(candles, bbPeriod, bbStdDev);
-    manageBBLine('upper', showBB, bbData.upper, '#9333ea', 0, 1.5);
-    manageBBLine('middle', showBB, bbData.middle, '#9333ea', 2, 1);
-    manageBBLine('lower', showBB, bbData.lower, '#9333ea', 0, 1.5);
+    manageBBLine('upper', showBB, bbData.upper, '#9333ea', 0, 1 as LineWidth);
+    manageBBLine('middle', showBB, bbData.middle, '#9333ea', 2, 1 as LineWidth);
+    manageBBLine('lower', showBB, bbData.lower, '#9333ea', 0, 1 as LineWidth);
   }, [chartReady, candles, showBB, bbPeriod, bbStdDev, calculateBollingerBands]);
 
   // ========== BATCH 1 INDICATORS ==========

@@ -1,10 +1,10 @@
 // Web Vitals tracking
-import { onCLS, onFID, onFCP, onLCP, onTTFB, type Metric } from 'web-vitals';
+import { onCLS, onINP, onFCP, onLCP, onTTFB, type Metric } from 'web-vitals';
 
 export function setupPerformanceMonitoring() {
   // Track Core Web Vitals
   onCLS(reportWebVital);
-  onFID(reportWebVital);
+  onINP(reportWebVital);
   onFCP(reportWebVital);
   onLCP(reportWebVital);
   onTTFB(reportWebVital);

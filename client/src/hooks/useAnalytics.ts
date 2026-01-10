@@ -29,11 +29,12 @@ export function useAnalytics() {
     try {
       await apiRequest('/api/analytics/event', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...options,
           sessionId: sessionId.current,
         }),
-      });
+      } as RequestInit);
     } catch (error) {
       // Silent fail - don't break the app for analytics
       console.debug('Analytics event failed:', error);
@@ -74,6 +75,7 @@ export function useAnalytics() {
   const trackApiCall = useCallback((apiType: string, endpoint?: string, symbol?: string, interval?: string, tokensUsed?: number, estimatedCost?: number, responseTime?: number, success?: boolean, errorMessage?: string) => {
     apiRequest('/api/analytics/api-usage', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         apiType,
         endpoint,
@@ -85,7 +87,7 @@ export function useAnalytics() {
         success: success ?? true,
         errorMessage,
       }),
-    }).catch(() => {});
+    } as RequestInit).catch(() => {});
   }, []);
   
   return {
