@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { createChart, IChartApi, ISeriesApi, ColorType, CrosshairMode, CandlestickSeries, LineSeries, createSeriesMarkers } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, ColorType, CrosshairMode, CandlestickSeries, LineSeries, createSeriesMarkers, LineWidth, Time } from 'lightweight-charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -377,7 +377,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     const formingInfo = formingSequences[seq];
     const isForming = !!formingInfo;
     // Show primary expected wave in badge, but track all possibilities
-    const expectedNextWave = formingInfo?.expectedNextWaves?.[0]?.wave || undefined;
+    const expectedNextWave = formingInfo?.expectedNextWaves?.[0]?.wave as 'W3' | 'W4' | 'W5' | 'C' | 'Y' | undefined;
     const allExpectedWaves = formingInfo?.expectedNextWaves || [];
     
     // Compute predictive context for forming patterns (uses primary wave's ratios)
@@ -845,7 +845,7 @@ function groupWaveStructures(entries: WaveStackEntry[]): GroupedStructure[] {
     // Update the map with final indices for each wave entry
     s.entries.forEach(entry => {
       const entryKey = `${s.degree}-${entry.startTime}`;
-      waveEntryToStructureIndex[entryKey] = s.displayIndex;
+      waveEntryToStructureIndex[entryKey] = s.displayIndex!;
     });
   });
   
@@ -2842,7 +2842,7 @@ export default function CryptoElliottWave() {
   // Gesture controller for drawing tools with smart snap
   const gestureController = useChartGestures({
     enabled: drawingMode === 'draw' && activeTool !== null,
-    data: candles as BarData[],
+    data: candles.map(c => ({ ...c, time: c.time as Time })) as BarData[],
     onPointCommit: handleDrawingPointCommit,
     onPreviewPoint: (point) => {
       if (point) {
@@ -3232,7 +3232,7 @@ export default function CryptoElliottWave() {
         degree: label.degree,
         patternType: label.patternType,
         waveCount: getWaveCount(label.patternType),
-        direction: priceAtMaxTime > priceAtMinTime ? 'up' : 'down',
+        direction: (priceAtMaxTime > priceAtMinTime ? 'up' : 'down') as 'up' | 'down',
         startPrice: priceAtMinTime,
         endPrice: priceAtMaxTime,
         startTime: minTime,
@@ -4487,7 +4487,6 @@ const aiAnalyze = useMutation({
                 const aWavePattern = savedLabelsRef.current.find(label => {
                   if (label.degree !== selectedDegree) return false;
                   if (label.patternType !== 'correction' && label.patternType !== 'impulse') return false;
-                  if (label.patternType === 'triangle') return false; // Skip triangles, they're B wave
                   const labelStartTime = label.points[0]?.time || 0;
                   return labelStartTime >= higherW5Time;
                 });
@@ -6957,7 +6956,7 @@ const aiAnalyze = useMutation({
         const line = candleSeries.createPriceLine({
           price: proj.price,
           color: proj.color,
-          lineWidth: proj.lineWidth,
+          lineWidth: proj.lineWidth as LineWidth,
           lineStyle: proj.lineStyle,
           axisLabelVisible: proj.axisLabelVisible,
           title: proj.title,
@@ -7189,10 +7188,13 @@ const aiAnalyze = useMutation({
 
     // 1. Try official lightweight-charts method first (fastest)
     try {
-      const image = await chartRef.current.takeScreenshot();
-      if (image && image.startsWith('data:') && image.length > 100) {
-        console.log('[Screenshot] Built-in takeScreenshot() succeeded');
-        return image; // Already perfect base64 PNG
+      const canvas = await chartRef.current.takeScreenshot();
+      if (canvas) {
+        const imageData = canvas.toDataURL('image/png');
+        if (imageData && imageData.startsWith('data:') && imageData.length > 100) {
+          console.log('[Screenshot] Built-in takeScreenshot() succeeded');
+          return imageData; // Already perfect base64 PNG
+        }
       }
     } catch (err) {
       console.warn('[Screenshot] Built-in method failed (continuing to fallback):', err);
@@ -7306,11 +7308,11 @@ const aiAnalyze = useMutation({
     }
 
     // Find first visible candle index
-    let visibleStartIdx = allCandles.findIndex(c => c.time >= visibleRange.from);
+    let visibleStartIdx = allCandles.findIndex(c => c.time >= (visibleRange.from as number));
     if (visibleStartIdx === -1) visibleStartIdx = 0;
 
     const visibleCandles = allCandles.filter(
-      c => c.time >= visibleRange.from && c.time <= visibleRange.to
+      c => c.time >= (visibleRange.from as number) && c.time <= (visibleRange.to as number)
     );
 
     if (visibleCandles.length < 10) {
@@ -7337,7 +7339,7 @@ const aiAnalyze = useMutation({
       visibleStartIndex: visibleStartIdx,
       symbol,
       timeframe,
-      degreeContext: degreeContextString,
+      degreeContext: degreeContextString || '',
       existingLabels:
         currentPoints.length > 0
           ? currentPoints
@@ -8810,7 +8812,7 @@ const aiAnalyze = useMutation({
                     if (!visibleRange) { toast({ title: 'Zoom required', description: 'Please zoom/pan the chart first', variant: 'destructive' }); return; }
                     const allCandles = candlesRef.current || candles;
                     const lastRealCandleTime = allCandles.length > 0 ? allCandles[allCandles.length - 1].time : 0;
-                    const visibleCandles = allCandles.filter(c => c.time >= visibleRange.from && c.time <= Math.min(visibleRange.to, lastRealCandleTime));
+                    const visibleCandles = allCandles.filter(c => c.time >= (visibleRange.from as number) && c.time <= Math.min((visibleRange.to as number), lastRealCandleTime));
                     if (visibleCandles.length < 10) { toast({ title: 'Not enough data', description: `Only ${visibleCandles.length} visible candles. Need at least 10.`, variant: 'destructive' }); return; }
                     const dynamicPivotLength = Math.max(3, Math.min(20, Math.floor(visibleCandles.length / 40)));
                     const pivotsToSend = calculatePivots(visibleCandles, dynamicPivotLength);
