@@ -258,7 +258,7 @@ export default function CryptoAI() {
 
   // Cached Multi-TF analysis query - allows viewing previous multi-TF analysis without credits
   const { data: cachedMultiTF, refetch: refetchCachedMultiTF } = useQuery<{
-    cached: { multiTFInsights: any; bestTrades: any[]; confluence: string; updatedAt: string } | null;
+    cached: { multiTFInsights: any; tradeAlerts: any[]; confluence: string; updatedAt: string } | null;
   }>({
     queryKey: ['/api/crypto/ai-analysis/cached-multi-tf', symbol],
     queryFn: async () => {
@@ -1580,8 +1580,8 @@ export default function CryptoAI() {
         setMarketInsights(null);
         // Show cached results and warning toast
         setMultiTFInsights(cachedMultiTF.cached.multiTFInsights);
-        if (cachedMultiTF.cached.bestTrades?.length > 0) {
-          setTradeAlerts(cachedMultiTF.cached.bestTrades);
+        if (cachedMultiTF.cached.tradeAlerts?.length > 0) {
+          setTradeAlerts(cachedMultiTF.cached.tradeAlerts);
         }
         
         toast({
@@ -2211,7 +2211,7 @@ export default function CryptoAI() {
     });
     
     const line = chart.addSeries(LineSeries, { color: '#ffa726', lineWidth: 2 });
-    line.setData(calculateRSI(data, rsiPeriod));
+    line.setData(calculateRSI(data, rsiPeriod).map(d => ({ time: d.time as Time, value: d.value })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
@@ -2248,9 +2248,9 @@ export default function CryptoAI() {
     
     const { macd, signal, histogram } = calculateMACD(data, macdFast, macdSlow, macdSignal);
     const validHistogram = histogram.filter(h => h !== undefined && h !== null);
-    chart.addSeries(LineSeries, { color: '#26a69a', lineWidth: 2 }).setData(macd);
-    chart.addSeries(LineSeries, { color: '#ef5350', lineWidth: 2 }).setData(signal);
-    chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(validHistogram);
+    chart.addSeries(LineSeries, { color: '#26a69a', lineWidth: 2 }).setData(macd.map(d => ({ time: d.time as Time, value: d.value })));
+    chart.addSeries(LineSeries, { color: '#ef5350', lineWidth: 2 }).setData(signal.map(d => ({ time: d.time as Time, value: d.value })));
+    chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(validHistogram.map(d => ({ time: d.time as Time, value: d.value, color: d.color })));
     
     return () => chart.remove();
   }, [data, macdFast, macdSlow, macdSignal, calculateMACD, macdOpen]);
@@ -2279,7 +2279,7 @@ export default function CryptoAI() {
       },
     });
     
-    chart.addSeries(LineSeries, { color: '#9580ff', lineWidth: 2 }).setData(calculateOBV(data));
+    chart.addSeries(LineSeries, { color: '#9580ff', lineWidth: 2 }).setData(calculateOBV(data).map(d => ({ time: d.time as Time, value: d.value })));
     
     return () => chart.remove();
   }, [data, calculateOBV, obvOpen]);
@@ -2309,7 +2309,7 @@ export default function CryptoAI() {
     });
     
     const line = chart.addSeries(LineSeries, { color: '#00bcd4', lineWidth: 2 });
-    line.setData(calculateMFI(data, mfiPeriod));
+    line.setData(calculateMFI(data, mfiPeriod).map(d => ({ time: d.time as Time, value: d.value })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
@@ -2345,7 +2345,7 @@ export default function CryptoAI() {
     });
     
     const line = chart.addSeries(LineSeries, { color: '#ec4899', lineWidth: 2 });
-    line.setData(calculateCCI(data.map(d => ({ ...d, volume: d.volume })), cciPeriod));
+    line.setData(calculateCCI(data.map(d => ({ ...d, volume: d.volume })), cciPeriod).map(d => ({ time: d.time as Time, value: d.value })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
