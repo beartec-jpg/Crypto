@@ -19,6 +19,7 @@ interface DrawingPoint {
 interface DrawingStyle {
   color: string;
   lineWidth?: number;
+  lineStyle?: 'solid' | 'dashed' | 'dotted';
   extendLeft?: boolean;
   extendRight?: boolean;
   labelPosition?: 'left' | 'right';
