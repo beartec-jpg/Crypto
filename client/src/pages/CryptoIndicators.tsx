@@ -837,9 +837,9 @@ export default function CryptoIndicators() {
     if (drawingMode !== 'draw' || !currentTool) return;
     
     setTempDrawing(prev => {
-      if (!prev) return { points: [{ time: point.time, price: point.price, snapType: point.snapType }] };
+      if (!prev) return { points: [{ time: point.time as number, price: point.price, snapType: point.snapType }] };
       
-      const newPoints = [...prev.points, { time: point.time, price: point.price, snapType: point.snapType }];
+      const newPoints = [...prev.points, { time: point.time as number, price: point.price, snapType: point.snapType }];
       const requiredPoints = currentTool === 'horizontal' ? 1 : currentTool === 'trend_fib' ? 3 : 2;
       
       // If we have enough points, save the drawing
@@ -885,7 +885,7 @@ export default function CryptoIndicators() {
   // Gesture controller hook for touch/click handling
   const gestureController = useChartGestures({
     enabled: drawingMode === 'draw' && activeTool !== null,
-    data: candles,
+    data: candles as unknown as { time: Time; open: number; high: number; low: number; close: number }[],
     onPointCommit: handlePointCommit,
     onCrosshairModeChange: setCrosshairModeActive,
     autoSnapEnabled,
@@ -1018,7 +1018,7 @@ export default function CryptoIndicators() {
   const sessionVWAPNYRef = useRef<ISeriesApi<'Line'> | null>(null);
   
   // Batch 2 SMC indicator refs
-  const orderBlocksRefs = useRef<Array<{ upper: LineSeries; lower: LineSeries; fill: HistogramSeries }>>([]);
+  const orderBlocksRefs = useRef<Array<{ upper: ISeriesApi<'Line'>; lower: ISeriesApi<'Line'>; fill: ISeriesApi<'Histogram'> }>>([]);
   const premiumDiscountRefs = useRef<{ equilibrium: ISeriesApi<'Line'> | null; premium: ISeriesApi<'Line'> | null; discount: ISeriesApi<'Line'> | null }>({ equilibrium: null, premium: null, discount: null });
   
   // Batch 3 Trend Tools & Oscillators refs
@@ -13900,13 +13900,13 @@ export default function CryptoIndicators() {
                                 ? 'bg-yellow-900/20' 
                                 : item.isBull ? 'bg-green-900/20' : 'bg-red-900/20';
                               
-                              const showDate = item.date !== lastDate;
-                              lastDate = item.date || '';
+                              const showDate = item.time !== lastDate;
+                              lastDate = item.time || '';
                               
                               return (
                                 <tr key={idx} className={`border-b border-slate-700/50 ${cellBg}`}>
                                 <td className="text-gray-300 py-1 px-1 font-mono text-[10px]">
-                                  {showDate && <span className="text-gray-500 mr-1">{item.date}</span>}
+                                  {showDate && <span className="text-gray-500 mr-1">{item.time}</span>}
                                   {item.time}
                                 </td>
                               <td className={`text-right py-1 px-1 font-mono font-semibold ${item.delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -14033,7 +14033,7 @@ export default function CryptoIndicators() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={(e) => { e.stopPropagation(); setShowAlertSettings(true); }}
+                    onClick={(e) => { e.stopPropagation(); setAlertSettingsOpen(true); }}
                     className="text-gray-400 hover:text-white h-8 px-2"
                     data-testid="button-market-alerts-settings"
                   >
