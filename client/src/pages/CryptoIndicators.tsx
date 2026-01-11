@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries, ISeriesApi, createSeriesMarkers, LineWidth, Time } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries, ISeriesApi, createSeriesMarkers, ISeriesMarkersPluginApi, LineWidth, Time } from 'lightweight-charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -347,7 +347,7 @@ export default function CryptoIndicators() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const seriesMarkersRef = useRef<ReturnType<typeof createSeriesMarkers> | null>(null);
+  const seriesMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fetchGenerationRef = useRef(0); // Track latest fetch to prevent stale updates
   const abortControllerRef = useRef<AbortController | null>(null); // Cancel pending requests
@@ -9196,7 +9196,7 @@ export default function CryptoIndicators() {
       });
       
       // Stop Loss marker (red) - only show if we have a numeric stop loss
-      if (stopLoss !== undefined && stopLoss !== null && stopLoss !== 'N/A' && typeof stopLoss === 'number') {
+      if (stopLoss !== undefined && stopLoss !== null && typeof stopLoss === 'number') {
         allMarkers.push({
           time: entryTime,
           position: isLong ? 'belowBar' : 'aboveBar',
@@ -9716,13 +9716,13 @@ export default function CryptoIndicators() {
     }
     
     const line = chart.addSeries(LineSeries, { color: '#ffa726', lineWidth: 2 });
-    line.setData(calculateRSI(candles, rsiPeriod));
+    line.setData(calculateRSI(candles, rsiPeriod).map(d => ({ ...d, time: d.time as Time })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
     // Add overbought/oversold lines
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 70 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 30 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 70 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 30 })));
     
     return () => {
       oscillatorChartsRef.current.delete('RSI');
@@ -9765,9 +9765,9 @@ export default function CryptoIndicators() {
     }
     
     const { macd, signal, hist } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
-    chart.addSeries(LineSeries, { color: '#26a69a', lineWidth: 2 }).setData(macd);
-    chart.addSeries(LineSeries, { color: '#ef5350', lineWidth: 2 }).setData(signal);
-    chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(hist);
+    chart.addSeries(LineSeries, { color: '#26a69a', lineWidth: 2 }).setData(macd.map(d => ({ ...d, time: d.time as Time })));
+    chart.addSeries(LineSeries, { color: '#ef5350', lineWidth: 2 }).setData(signal.map(d => ({ ...d, time: d.time as Time })));
+    chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(hist.map(d => ({ ...d, time: d.time as Time })));
     
     return () => {
       oscillatorChartsRef.current.delete('MACD');
@@ -9809,7 +9809,7 @@ export default function CryptoIndicators() {
       } catch (e) { /* ignore */ }
     }
     
-    chart.addSeries(LineSeries, { color: '#9580ff', lineWidth: 2 }).setData(calculateOBV(candles));
+    chart.addSeries(LineSeries, { color: '#9580ff', lineWidth: 2 }).setData(calculateOBV(candles).map(d => ({ ...d, time: d.time as Time })));
     
     return () => {
       oscillatorChartsRef.current.delete('OBV');
@@ -9855,14 +9855,14 @@ export default function CryptoIndicators() {
     const kLine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2, title: '%K' });
     const dLine = chart.addSeries(LineSeries, { color: '#f97316', lineWidth: 2, title: '%D' });
     
-    kLine.setData(stochData.map(d => ({ time: d.time, value: d.k })));
-    dLine.setData(stochData.map(d => ({ time: d.time, value: d.d })));
+    kLine.setData(stochData.map(d => ({ time: d.time as Time, value: d.k })));
+    dLine.setData(stochData.map(d => ({ time: d.time as Time, value: d.d })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
     // Add overbought/oversold lines (80/20 for Stoch RSI)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 80 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 20 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 80 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 20 })));
     
     return () => {
       oscillatorChartsRef.current.delete('StochRSI');
@@ -9905,13 +9905,13 @@ export default function CryptoIndicators() {
     }
     
     const line = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2 });
-    line.setData(calculateWilliamsR(candles, williamsRPeriod));
+    line.setData(calculateWilliamsR(candles, williamsRPeriod).map(d => ({ ...d, time: d.time as Time })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
     // Add overbought/oversold lines (-20/-80 for Williams %R)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: -20 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: -80 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: -20 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: -80 })));
     
     return () => {
       oscillatorChartsRef.current.delete('WilliamsR');
@@ -9954,13 +9954,13 @@ export default function CryptoIndicators() {
     }
     
     const line = chart.addSeries(LineSeries, { color: '#00bcd4', lineWidth: 2 });
-    line.setData(calculateMFI(candles, mfiPeriod));
+    line.setData(calculateMFI(candles, mfiPeriod).map(d => ({ ...d, time: d.time as Time })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
     // Add overbought/oversold lines (80/20 for MFI)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 80 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 20 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 80 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 20 })));
     
     return () => {
       oscillatorChartsRef.current.delete('MFI');
@@ -10003,14 +10003,14 @@ export default function CryptoIndicators() {
     }
     
     const line = chart.addSeries(LineSeries, { color: '#ec4899', lineWidth: 2 });
-    line.setData(calculateCCI(candles, cciPeriod));
+    line.setData(calculateCCI(candles, cciPeriod).map(d => ({ ...d, time: d.time as Time })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
     // Add overbought/oversold lines (+100/-100 for CCI)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 100 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: -100 })));
-    chart.addSeries(LineSeries, { color: '#444', lineStyle: 2, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 0 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 100 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: -100 })));
+    chart.addSeries(LineSeries, { color: '#444', lineStyle: 2, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 0 })));
     
     return () => {
       oscillatorChartsRef.current.delete('CCI');
@@ -10057,14 +10057,14 @@ export default function CryptoIndicators() {
     const plusDILine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, title: '+DI' });
     const minusDILine = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, title: '-DI' });
     
-    adxLine.setData(adxData.map(d => ({ time: d.time, value: d.adx })));
-    plusDILine.setData(adxData.map(d => ({ time: d.time, value: d.plusDI })));
-    minusDILine.setData(adxData.map(d => ({ time: d.time, value: d.minusDI })));
+    adxLine.setData(adxData.map(d => ({ time: d.time as Time, value: d.adx })));
+    plusDILine.setData(adxData.map(d => ({ time: d.time as Time, value: d.plusDI })));
+    minusDILine.setData(adxData.map(d => ({ time: d.time as Time, value: d.minusDI })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
     // Add strength level line (25 is typically considered strong trend)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time, value: 25 })));
+    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 25 })));
     
     return () => {
       oscillatorChartsRef.current.delete('ADX');
