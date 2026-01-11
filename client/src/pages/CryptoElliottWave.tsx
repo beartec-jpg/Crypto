@@ -3652,7 +3652,7 @@ export default function CryptoElliottWave() {
   // AI-powered analysis mutation using Grok (with centralized auth)
 const aiAnalyze = useMutation({
     mutationFn: async (data: { 
-      chartImage: string; 
+      chartImage?: string; 
       symbol: string; 
       timeframe: string; 
       existingLabels?: string; 
