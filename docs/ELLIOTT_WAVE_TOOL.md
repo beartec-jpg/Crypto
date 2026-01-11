@@ -41,11 +41,14 @@ The Elliott Wave Impulse tool has been integrated into CryptoSandbox, allowing u
 #### Simulated W2 Candles
 - **Color**: Translucent cyan (#00ffff) with 60% opacity
 - **Z-index**: Rendered BEFORE real candles (lower z-index)
-- **Labels**: W2.A, W2.B, W2.C displayed above each candle
-- **Structure**:
-  - W2.A: 61.8% of W1→W2 move
-  - W2.B: 50% retracement of W2.A
-  - W2.C: Completes to W2 endpoint
+- **Count**: ~20-30 candles forming realistic ABC correction
+- **Timeframe**: Uses actual chart timeframe (1m, 5m, 1h, 4h, 1d)
+- **Labels**: W2.A, W2.B, W2.C displayed on final candle of each wave
+- **Structure** (5-3-5 wave pattern):
+  - **Wave A**: 5-wave impulse, ~40% of candles (8-12), moves 61.8% towards W2
+  - **Wave B**: 3-wave corrective, ~25% of candles (5-8), retraces 50% of Wave A
+  - **Wave C**: 5-wave impulse, ~35% of candles (7-10), completes to W2 endpoint
+- **OHLC Data**: Realistic open/high/low/close values with wicks (5-15% of body)
 
 #### Trendlines
 - **Color**: Cyan (#00ffff) with 80% opacity
@@ -150,6 +153,40 @@ interface UseElliottWaveResult {
 - [ ] No interference with other drawing tools
 - [ ] Touch gestures work correctly
 - [ ] Zoom/pan updates rendering correctly
+
+## Recent Updates (January 2026)
+
+### Fix: Realistic ABC Correction Candle Generation
+
+**Problem**: The original implementation only generated 3 simple candles (one per wave label) with hardcoded 1-hour intervals and no sub-wave structure.
+
+**Solution**: Completely rewrote the simulated candle generation in `useElliottWave.ts` to create realistic ABC corrections:
+
+#### Changes Made:
+1. **Added timeframe parameter** to `useElliottWave(timeframe)` hook
+2. **Created `intervalToMs()` helper** to convert timeframe strings to milliseconds
+3. **Rewrote candle generation** to produce 20-30 candles with:
+   - Proper timeframe intervals (not hardcoded)
+   - Realistic 5-3-5 wave structure (Wave A, B, C)
+   - Sub-wave patterns within each wave
+   - OHLC data with wicks (5-15% of body)
+   - Fibonacci proportions (A=61.8%, B=50% retrace, C=complete)
+
+#### Technical Details:
+- **Wave A**: 5-wave impulse, ~40% of candles (8-12)
+- **Wave B**: 3-wave corrective, ~25% of candles (5-8)
+- **Wave C**: 5-wave impulse, ~35% of candles (7-10)
+- **Total**: 20-30 candles distributed between W1.time and W2.time
+
+#### Files Modified:
+- `client/src/hooks/useElliottWave.ts` - Rewrote candle generation (lines 156-204 replaced with 156-311)
+- `client/src/pages/CryptoSandbox.tsx` - Pass interval to hook (line 133)
+
+#### Testing:
+✅ TypeScript compilation passes  
+✅ Candle distribution logic verified (40/25/35% split)  
+✅ Timeframe conversion tested (1m, 5m, 1h, 4h, 1d)  
+⏳ Manual testing required (see Testing Checklist above)
 
 ## Future Enhancements
 
