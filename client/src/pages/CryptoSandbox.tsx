@@ -1808,8 +1808,8 @@ export default function CryptoSandbox() {
       }
     }
     
-    // Check legacy channels (top and bottom lines)
-    for (const ch of drawnChannels) {
+    // Check sloped channels (top and bottom lines)
+    for (const ch of drawnSChannels) {
       const x1Top = xScaleRef.current(new Date(ch.topLine.p1.time)) + MARGIN.left;
       const y1Top = yScaleRef.current(ch.topLine.p1.price) + MARGIN.top;
       const x2Top = xScaleRef.current(new Date(ch.topLine.p2.time)) + MARGIN.left;
@@ -1820,7 +1820,7 @@ export default function CryptoSandbox() {
       const y2Bot = yScaleRef.current(ch.bottomLine.p2.price) + MARGIN.top;
       if (distToSegment(clickX, clickY, x1Top, y1Top, x2Top, y2Top) <= threshold ||
           distToSegment(clickX, clickY, x1Bot, y1Bot, x2Bot, y2Bot) <= threshold) {
-        candidates.push({ id: ch.id, type: 'channel' });
+        candidates.push({ id: ch.id, type: 'schannel' });
       }
     }
     
@@ -2233,18 +2233,20 @@ export default function CryptoSandbox() {
       .attr('fill', '#0f172a');
     
     // Grid lines
-    g.append('g')
-      .attr('class', 'grid-y')
-      .selectAll('line')
-      .data(yScale.ticks(10))
-      .enter()
-      .append('line')
-      .attr('x1', 0)
-      .attr('x2', innerWidth)
-      .attr('y1', d => yScale(d))
-      .attr('y2', d => yScale(d))
-      .attr('stroke', '#1e293b')
-      .attr('stroke-width', 1);
+    if (yScale) {
+      g.append('g')
+        .attr('class', 'grid-y')
+        .selectAll('line')
+        .data(yScale.ticks(10))
+        .enter()
+        .append('line')
+        .attr('x1', 0)
+        .attr('x2', innerWidth)
+        .attr('y1', d => yScale(d))
+        .attr('y2', d => yScale(d))
+        .attr('stroke', '#1e293b')
+        .attr('stroke-width', 1);
+    }
     
     // Elliott Wave simulated candles group (drawn BEFORE real candles for lower z-index)
     const elliottWaveGroup = g.append('g')
@@ -2294,7 +2296,9 @@ export default function CryptoSandbox() {
         .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444');
     };
     
-    drawCandles(xScale, yScale);
+    if (xScale && yScale) {
+      drawCandles(xScale, yScale);
+    }
     
     // Function to draw Elliott Wave elements
     const drawElliottWave = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
@@ -2465,7 +2469,9 @@ export default function CryptoSandbox() {
       }
     };
     
-    drawElliottWave(xScale, yScale);
+    if (xScale && yScale) {
+      drawElliottWave(xScale, yScale);
+    }
     
     // Drawings group (above candles, below axes overlays)
     const drawingsGroup = g.append('g')
@@ -3244,14 +3250,14 @@ export default function CryptoSandbox() {
         const extDir = fib.extendDirection || 'both';
         const anchorMinX = Math.min(anchor1X, anchor2X);
         const anchorMaxX = Math.max(anchor1X, anchor2X);
-        let lineX1 = MARGIN.left;
-        let lineX2 = dimensions.width - MARGIN.right;
+        let lineX1 = MARGIN.left as number;
+        let lineX2 = (dimensions.width - MARGIN.right) as number;
         if (extDir === 'none') {
           lineX1 = anchorMinX; lineX2 = anchorMaxX;
         } else if (extDir === 'left') {
-          lineX1 = MARGIN.left; lineX2 = anchorMaxX;
+          lineX1 = MARGIN.left as number; lineX2 = anchorMaxX;
         } else if (extDir === 'right') {
-          lineX1 = anchorMinX; lineX2 = dimensions.width - MARGIN.right;
+          lineX1 = anchorMinX; lineX2 = (dimensions.width - MARGIN.right) as number;
         }
         
         // Draw each level (visibility controlled entirely by level.visible)
@@ -3361,14 +3367,14 @@ export default function CryptoSandbox() {
         const extDir = tfib.extendDirection || 'both';
         const anchorMinX = Math.min(p1X, p2X, p3X);
         const anchorMaxX = Math.max(p1X, p2X, p3X);
-        let lineX1 = MARGIN.left;
-        let lineX2 = dimensions.width - MARGIN.right;
+        let lineX1 = MARGIN.left as number;
+        let lineX2 = (dimensions.width - MARGIN.right) as number;
         if (extDir === 'none') {
           lineX1 = anchorMinX; lineX2 = anchorMaxX;
         } else if (extDir === 'left') {
-          lineX1 = MARGIN.left; lineX2 = anchorMaxX;
+          lineX1 = MARGIN.left as number; lineX2 = anchorMaxX;
         } else if (extDir === 'right') {
-          lineX1 = anchorMinX; lineX2 = dimensions.width - MARGIN.right;
+          lineX1 = anchorMinX; lineX2 = (dimensions.width - MARGIN.right) as number;
         }
         
         // Draw impulse line (p1 to p2)
@@ -3533,38 +3539,44 @@ export default function CryptoSandbox() {
     };
     
     // Initial draw (zoom k = 1 at initial load)
-    drawDrawings(xScale, yScale, 1);
+    if (xScale && yScale) {
+      drawDrawings(xScale, yScale, 1);
+    }
     
     // Store drawDrawings for zoom handler
     const drawDrawingsRef = drawDrawings;
     
     // X Axis (bottom)
-    const xAxisGroup = g.append('g')
-      .attr('class', 'x-axis')
-      .attr('transform', `translate(0,${innerHeight})`)
-      .call(d3.axisBottom(xScale).ticks(8).tickFormat(d => {
-        const date = d as Date;
-        // Show date and time for better readability
-        if (interval === '1d' || interval === '4h') {
-          return d3.timeFormat('%b %d')(date);
-        }
-        return d3.timeFormat('%b %d %H:%M')(date);
-      }))
-      .call(g => g.selectAll('text').attr('fill', '#94a3b8').attr('font-size', '11px'))
-      .call(g => g.selectAll('line').attr('stroke', '#475569'))
-      .call(g => g.select('.domain').attr('stroke', '#475569'));
+    if (xScale) {
+      const xAxisGroup = g.append('g')
+        .attr('class', 'x-axis')
+        .attr('transform', `translate(0,${innerHeight})`)
+        .call(d3.axisBottom(xScale).ticks(8).tickFormat(d => {
+          const date = d as Date;
+          // Show date and time for better readability
+          if (interval === '1d' || interval === '4h') {
+            return d3.timeFormat('%b %d')(date);
+          }
+          return d3.timeFormat('%b %d %H:%M')(date);
+        }))
+        .call(g => g.selectAll('text').attr('fill', '#94a3b8').attr('font-size', '11px'))
+        .call(g => g.selectAll('line').attr('stroke', '#475569'))
+        .call(g => g.select('.domain').attr('stroke', '#475569'));
+    }
     
     // Y Axis (right side - price scale)
-    const yAxisGroup = g.append('g')
-      .attr('class', 'y-axis')
-      .attr('transform', `translate(${innerWidth},0)`)
-      .call(d3.axisRight(yScale).ticks(10).tickFormat(d => {
-        const price = d as number;
-        return price >= 1000 ? d3.format(',.0f')(price) : d3.format('.4f')(price);
-      }))
-      .call(g => g.selectAll('text').attr('fill', '#94a3b8').attr('font-size', '11px'))
-      .call(g => g.selectAll('line').attr('stroke', '#475569'))
-      .call(g => g.select('.domain').attr('stroke', '#475569'));
+    if (yScale) {
+      const yAxisGroup = g.append('g')
+        .attr('class', 'y-axis')
+        .attr('transform', `translate(${innerWidth},0)`)
+        .call(d3.axisRight(yScale).ticks(10).tickFormat(d => {
+          const price = d as number;
+          return price >= 1000 ? d3.format(',.0f')(price) : d3.format('.4f')(price);
+        }))
+        .call(g => g.selectAll('text').attr('fill', '#94a3b8').attr('font-size', '11px'))
+        .call(g => g.selectAll('line').attr('stroke', '#475569'))
+        .call(g => g.select('.domain').attr('stroke', '#475569'));
+    }
     
     // Track zoom start for tap detection (selection only - drawing handled by overlay)
     let zoomStartTime = 0;
@@ -3723,7 +3735,7 @@ export default function CryptoSandbox() {
     
     // Current price line
     const lastCandle = candles[candles.length - 1];
-    if (lastCandle) {
+    if (lastCandle && yScale) {
       const priceLineColor = lastCandle.close >= lastCandle.open ? '#22c55e' : '#ef4444';
       
       // Dashed horizontal line at current price
@@ -3917,10 +3929,8 @@ export default function CryptoSandbox() {
                   if (elapsed < TAP_MAX_DURATION) {
                     // This was a tap - do hit testing
                     console.log('👆 Triggering tap selection at:', svgTapStartRef.current.x, svgTapStartRef.current.y);
-                    const selected = handleSvgTapSelection(svgTapStartRef.current.x, svgTapStartRef.current.y);
-                    if (selected) {
-                      e.stopPropagation();
-                    }
+                    handleSvgTapSelection(svgTapStartRef.current.x, svgTapStartRef.current.y);
+                    e.stopPropagation();
                   }
                   svgTapStartRef.current = null;
                 }
@@ -4367,14 +4377,9 @@ export default function CryptoSandbox() {
                     }
                   } else {
                     // Check for any drawing elements at click location
-                    const selected = handleSvgTapSelection(crosshairPos.x, crosshairPos.y);
-                    if (selected) {
-                      e.stopPropagation();
-                    } else {
-                      // Click on empty space - close any open menu
-                      closeSelectionPicker();
-                      closeTrendlineMenu();
-                    }
+                    handleSvgTapSelection(crosshairPos.x, crosshairPos.y);
+                    // Note: the selection logic inside handleSvgTapSelection will handle
+                    // whether to stop propagation based on what was selected
                   }
                 }
               }}
@@ -4384,7 +4389,7 @@ export default function CryptoSandbox() {
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
                   // Store where the touch started
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
                   // Store where crosshair currently is (or center if not set)
                   crosshairStartRef.current = crosshairPos || { 
                     x: dimensions.width / 2, 
@@ -4675,7 +4680,7 @@ export default function CryptoSandbox() {
                 onTouchStart={(e) => {
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
                   touchMovedRef.current = false;
                   if (e.touches.length >= 2) {
                     const t1 = e.touches[0]; const t2 = e.touches[1];
@@ -4741,7 +4746,7 @@ export default function CryptoSandbox() {
                 onTouchStart={(e) => {
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
                   touchMovedRef.current = false;
                   if (e.touches.length >= 2) {
                     const t1 = e.touches[0]; const t2 = e.touches[1];
@@ -5252,7 +5257,7 @@ export default function CryptoSandbox() {
                 onTouchStart={(e) => {
                   const touch = e.touches[0];
                   const rect = e.currentTarget.getBoundingClientRect();
-                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+                  touchStartRef.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
                   touchMovedRef.current = false;
                   if (e.touches.length >= 2) {
                     const t1 = e.touches[0]; const t2 = e.touches[1];
@@ -5610,8 +5615,11 @@ export default function CryptoSandbox() {
                   {selectedLine?.label?.text && (
                     <button
                       onClick={() => {
-                        const { label, ...rest } = drawnTrendlines.find(l => l.id === selectedTrendline) || {};
-                        if (rest.id) setDrawnTrendlines(prev => prev.map(l => l.id === selectedTrendline ? { ...l, label: undefined } : l));
+                        const line = drawnTrendlines.find(l => l.id === selectedTrendline);
+                        if (line) {
+                          const { label, ...rest } = line;
+                          setDrawnTrendlines(prev => prev.map(l => l.id === selectedTrendline ? { ...l, label: undefined } : l));
+                        }
                       }}
                       className="w-full mt-2 px-2 py-1 text-xs bg-red-600 text-white rounded"
                     >
