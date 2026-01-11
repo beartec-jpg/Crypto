@@ -130,7 +130,7 @@ export default function CryptoSandbox() {
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   
   // Elliott Wave hook
-  const elliottWave = useElliottWave();
+  const elliottWave = useElliottWave({ timeframe: interval });
   
   // Drawing state hook - manages all drawings, undo/redo, and selection
   const drawingState = useDrawingState();
