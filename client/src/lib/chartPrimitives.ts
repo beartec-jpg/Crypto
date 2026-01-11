@@ -662,7 +662,17 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         ctx.beginPath();
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
-        ctx.setLineDash(level === 0 || level === 1 ? [] : [3, 3]);
+        
+        // Apply line style from data (not hardcoded)
+        const lineStyle = this._style.lineStyle || 'dashed';
+        if (lineStyle === 'solid') {
+          ctx.setLineDash([]);
+        } else if (lineStyle === 'dotted') {
+          ctx.setLineDash([2, 2]);
+        } else {
+          ctx.setLineDash([5, 5]); // dashed
+        }
+        
         ctx.moveTo(lineLeft, y);
         ctx.lineTo(lineRight, y);
         ctx.stroke();

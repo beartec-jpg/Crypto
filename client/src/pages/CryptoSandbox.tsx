@@ -320,6 +320,30 @@ export default function CryptoSandbox() {
     }
   });
 
+  // Default Fibonacci Retracement settings (loaded from localStorage)
+  const [fibRetracementDefaults, setFibRetracementDefaults] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fibRetracementDefaults');
+      return saved ? JSON.parse(saved) : { color: '#facc15', opacity: 0.8, lineStyle: 'dashed' as LineStyle };
+    } catch {
+      return { color: '#facc15', opacity: 0.8, lineStyle: 'dashed' as LineStyle };
+    }
+  });
+
+  // Save fib retracement as favorite
+  const saveFibRetracementAsFavorite = useCallback(() => {
+    const selectedFibObj = drawnFibRetraces.find(f => f.id === selectedFib);
+    if (selectedFibObj) {
+      const defaults = { 
+        color: selectedFibObj.color, 
+        opacity: selectedFibObj.opacity, 
+        lineStyle: selectedFibObj.lineStyle 
+      };
+      setFibRetracementDefaults(defaults);
+      localStorage.setItem('fibRetracementDefaults', JSON.stringify(defaults));
+    }
+  }, [drawnFibRetraces, selectedFib]);
+
   // Default text label settings
   const [textLabelDefaults, setTextLabelDefaults] = useState(() => {
     try {
@@ -6725,6 +6749,11 @@ export default function CryptoSandbox() {
                     <button onClick={() => updateFib(selectedFib, { showPrices: !fib?.showPrices })} className={`p-2 hover:bg-slate-700 rounded text-white ${fib?.showPrices ? 'bg-slate-600' : ''}`} title="Toggle Prices" data-testid="button-fib-prices">
                       <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
                         <text x="4" y="15" fontSize="14" fill="currentColor" stroke="none" fontWeight="bold">$</text>
+                      </svg>
+                    </button>
+                    <button onClick={saveFibRetracementAsFavorite} className="p-2 hover:bg-slate-700 rounded text-yellow-400" title="Save as Default" data-testid="button-fib-favorite">
+                      <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+                        <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z" />
                       </svg>
                     </button>
                   </div>
