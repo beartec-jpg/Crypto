@@ -2398,8 +2398,8 @@ export default function CryptoSandbox() {
           .attr('x2', innerWidth)
           .attr('y1', d => yS(d.price))
           .attr('y2', d => yS(d.price))
-          .attr('stroke', '#facc15')
-          .attr('stroke-opacity', 0.5)
+          .attr('stroke', '#00ffff')
+          .attr('stroke-opacity', 0.7)
           .attr('stroke-width', 1)
           .attr('stroke-dasharray', '5,5');
         
@@ -2412,8 +2412,8 @@ export default function CryptoSandbox() {
           .attr('x', innerWidth - 5)
           .attr('y', d => yS(d.price) - 2)
           .attr('text-anchor', 'end')
-          .attr('font-size', '10px')
-          .attr('fill', '#facc15')
+          .attr('font-size', '11px')
+          .attr('fill', '#00ffff')
           .text(d => d.label);
       }
       
@@ -2436,9 +2436,9 @@ export default function CryptoSandbox() {
             .attr('y1', y1)
             .attr('x2', x2)
             .attr('y2', y2)
-            .attr('stroke', '#00ffff')
+            .attr('stroke', '#facc15')
             .attr('stroke-width', 2)
-            .attr('stroke-opacity', 0.8);
+            .attr('stroke-opacity', 1);
           
           // If this is the W1 → W2 line, add retracement percentage
           if (i === 1 && points.length >= 3) {
@@ -2457,8 +2457,8 @@ export default function CryptoSandbox() {
               .attr('x', midX)
               .attr('y', midY - 10)
               .attr('text-anchor', 'middle')
-              .attr('font-size', '11px')
-              .attr('fill', '#00ffff')
+              .attr('font-size', '14px')
+              .attr('fill', '#facc15')
               .attr('font-weight', 'bold')
               .text(`${retracementPercent}%`);
           }
@@ -2472,10 +2472,10 @@ export default function CryptoSandbox() {
           .attr('class', 'elliott-point')
           .attr('cx', d => xS(new Date(d.time)))
           .attr('cy', d => yS(d.price))
-          .attr('r', 4)
-          .attr('fill', '#00ffff')
-          .attr('stroke', '#ffffff')
-          .attr('stroke-width', 1);
+          .attr('r', 8)
+          .attr('fill', '#facc15')
+          .attr('stroke', '#000')
+          .attr('stroke-width', 2);
         
         // Point labels
         elliottWaveGroup.selectAll('.elliott-point-label')
@@ -2484,10 +2484,10 @@ export default function CryptoSandbox() {
           .append('text')
           .attr('class', 'elliott-point-label')
           .attr('x', d => xS(new Date(d.time)))
-          .attr('y', d => yS(d.price) - 10)
+          .attr('y', d => yS(d.price) - 15)
           .attr('text-anchor', 'middle')
-          .attr('font-size', '11px')
-          .attr('fill', '#00ffff')
+          .attr('font-size', '14px')
+          .attr('fill', '#facc15')
           .attr('font-weight', 'bold')
           .text(d => d.label);
       }
