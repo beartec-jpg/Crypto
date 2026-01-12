@@ -1,3 +1,22 @@
+# ⚠️ CRITICAL WARNING - INTEGRATION IS BROKEN ⚠️
+
+**DO NOT TRUST THE REST OF THIS DOCUMENT.**
+
+The Elliott Wave tool integration described below was NEVER ACTUALLY IMPLEMENTED in `CryptoSandbox.tsx`. The hook exists at `client/src/hooks/useElliottWave.ts` but:
+
+- ❌ `useElliottWave` is NOT imported in CryptoSandbox.tsx
+- ❌ `handleElliottWaveClick` function does NOT exist
+- ❌ No click overlay captures chart clicks for Elliott Wave
+- ❌ No D3 rendering code for Elliott Wave elements exists
+- ❌ The toolbar button does NOT call `elliottWave.activateMode()`
+
+**RESULT**: When user clicks Elliott Wave button and clicks on chart, NOTHING HAPPENS.
+
+## TO FIX THIS:
+See `docs/ELLIOTT_WAVE_INTEGRATION_REQUIRED.md` for the actual code that needs to be added.
+
+---
+
 # Elliott Wave Tool Integration - CryptoSandbox
 
 ## Overview
