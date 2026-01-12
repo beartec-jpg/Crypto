@@ -1,8 +1,19 @@
-# Elliott Wave Tool Integration - Implementation Complete
+# Elliott Wave Tool Integration - Implementation Summary
 
 ## Summary
 
-Successfully integrated the Elliott Wave impulse tool into CryptoSandbox with full D3 rendering, interactive placement, and Fibonacci retracement support.
+### Elliott Wave Tool
+**STATUS: ❌ NOT INTEGRATED**
+
+The `useElliottWave` hook exists but was NEVER connected to CryptoSandbox.tsx.
+- Hook file: `client/src/hooks/useElliottWave.ts` ✅ EXISTS
+- Integration in CryptoSandbox.tsx: ❌ MISSING
+
+See `docs/ELLIOTT_WAVE_INTEGRATION_REQUIRED.md` for fix instructions.
+
+---
+
+## What Was Originally Planned (BUT NOT IMPLEMENTED)
 
 ## What Was Built
 
