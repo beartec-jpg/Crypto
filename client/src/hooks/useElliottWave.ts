@@ -296,129 +296,138 @@ export function useElliottWave(params: UseElliottWaveParams = {}): UseElliottWav
   }, []);
 
   const placePoint = useCallback((time: number, price: number, snappedToHigh: boolean, snapType?: 'candle' | 'fib') => {
-    if (mode === 'placing_w0') {
-      const point: ElliottWavePoint = { time, price, snappedToHigh, label: 'W0' };
-      setPlacedPoints([point]);
-      setMode('placing_w1');
-    } else if (mode === 'placing_w1') {
-      const point: ElliottWavePoint = { time, price, snappedToHigh, label: 'W1' };
-      setPlacedPoints(prev => [...prev, point]);
-      
-      // Calculate Fibonacci retracement levels for W2
-      const w0 = placedPoints[0];
-      const w1 = point;
-      const wave1Range = Math.abs(w1.price - w0.price);
-      const direction = w1.price > w0.price ? 'up' : 'down';
-      
-      const fibRatios = [0.236, 0.382, 0.5, 0.618, 0.786];
-      const levels = fibRatios.map(ratio => {
-        const retracementPrice = direction === 'up' 
-          ? w1.price - (wave1Range * ratio)
-          : w1.price + (wave1Range * ratio);
-        return {
-          ratio,
-          price: retracementPrice,
-          label: `${(ratio * 100).toFixed(1)}%`
-        };
-      });
-      setFibLevels(levels);
-      setMode('placing_w2');
-    } else if (mode === 'placing_w2') {
-      const point: ElliottWavePoint = { time, price, snappedToHigh, label: 'W2' };
-      setPlacedPoints(prev => [...prev, point]);
-      
-      // Only generate simulated candles if clicked on fib level, NOT on real candle
-      if (snapType === 'fib') {
-        // Generate simulated W2 ABC correction candles
-        const w1 = placedPoints[1];
-        const w2 = point;
+    setPlacedPoints(prev => {
+      // Use the length of prev to determine which point we're placing
+      if (prev.length === 0) {
+        // Placing W0
+        const point: ElliottWavePoint = { time, price, snappedToHigh, label: 'W0' };
+        setMode('placing_w1');
+        return [point];
+      } else if (prev.length === 1) {
+        // Placing W1
+        const point: ElliottWavePoint = { time, price, snappedToHigh, label: 'W1' };
         
-        // Calculate candle interval from timeframe
-        const intervalMs = intervalToMs(timeframe);
+        // Calculate Fibonacci retracement levels for W2
+        const w0 = prev[0];
+        const w1 = point;
+        const wave1Range = Math.abs(w1.price - w0.price);
+        const direction = w1.price > w0.price ? 'up' : 'down';
         
-        // Calculate time span and target number of candles
-        const timeSpan = Math.abs(w2.time - w1.time);
-        const targetCandles = Math.max(20, Math.min(30, Math.floor(timeSpan / intervalMs)));
+        const fibRatios = [0.236, 0.382, 0.5, 0.618, 0.786];
+        const levels = fibRatios.map(ratio => {
+          const retracementPrice = direction === 'up' 
+            ? w1.price - (wave1Range * ratio)
+            : w1.price + (wave1Range * ratio);
+          return {
+            ratio,
+            price: retracementPrice,
+            label: `${(ratio * 100).toFixed(1)}%`
+          };
+        });
+        setFibLevels(levels);
+        setMode('placing_w2');
+        return [...prev, point];
+      } else if (prev.length === 2) {
+        // Placing W2
+        const point: ElliottWavePoint = { time, price, snappedToHigh, label: 'W2' };
         
-        // Handle edge case where time span is very small
-        const actualCandles = Math.max(20, Math.min(targetCandles, 30));
-        
-        // Distribute candles: Wave A ~40%, Wave B ~25%, Wave C ~35%
-        const numWaveA = Math.max(8, Math.floor(actualCandles * 0.40));
-        const numWaveB = Math.max(5, Math.floor(actualCandles * 0.25));
-        const numWaveC = actualCandles - numWaveA - numWaveB;
-        
-        // Determine direction (W2 retraces opposite to W1)
-        const w1Direction = w1.price > placedPoints[0].price ? 'up' : 'down';
-        const w2Direction = w1Direction === 'up' ? 'down' : 'up';
-        
-        // Calculate wave endpoints
-        // Wave A ends at ~61.8% of W1→W2 move
-        const w2Range = w2.price - w1.price;
-        const waveAEndPrice = w1.price + w2Range * 0.618;
-        
-        // Wave B retraces ~50% of Wave A (back towards W1)
-        const waveAMove = waveAEndPrice - w1.price;
-        const waveBEndPrice = waveAEndPrice - waveAMove * 0.50;
-        
-        // Wave C completes to W2
-        const waveCEndPrice = w2.price;
-        
-        const allCandles: SimulatedCandle[] = [];
-        let currentTime = w1.time;
-        
-        // Generate Wave A (5-wave impulse structure)
-        const waveACandles = generate5WaveImpulse(
-          currentTime,
-          w1.price,
-          waveAEndPrice,
-          numWaveA,
-          intervalMs,
-          w2Direction
-        );
-        allCandles.push(...waveACandles);
-        currentTime += numWaveA * intervalMs;
-        
-        // Generate Wave B (3-wave corrective structure)
-        const waveBDirection = w2Direction === 'down' ? 'up' : 'down';
-        const waveBCandles = generate3WaveCorrection(
-          currentTime,
-          waveAEndPrice,
-          waveBEndPrice,
-          numWaveB,
-          intervalMs,
-          waveBDirection
-        );
-        allCandles.push(...waveBCandles);
-        currentTime += numWaveB * intervalMs;
-        
-        // Generate Wave C (5-wave impulse structure)
-        const waveCCandles = generate5WaveImpulse(
-          currentTime,
-          waveBEndPrice,
-          waveCEndPrice,
-          numWaveC,
-          intervalMs,
-          w2Direction
-        );
-        allCandles.push(...waveCCandles);
-        
-        // Add labels to endpoint candles
-        if (allCandles.length > 0) {
-          allCandles[numWaveA - 1].label = 'W2.A';
-          allCandles[numWaveA + numWaveB - 1].label = 'W2.B';
-          allCandles[allCandles.length - 1].label = 'W2.C';
+        // Only generate simulated candles if clicked on fib level, NOT on real candle
+        if (snapType === 'fib') {
+          // Generate simulated W2 ABC correction candles
+          const w1 = prev[1];
+          const w2 = point;
+          
+          // Calculate candle interval from timeframe
+          const intervalMs = intervalToMs(timeframe);
+          
+          // Calculate time span and target number of candles
+          const timeSpan = Math.abs(w2.time - w1.time);
+          const targetCandles = Math.max(20, Math.min(30, Math.floor(timeSpan / intervalMs)));
+          
+          // Handle edge case where time span is very small
+          const actualCandles = Math.max(20, Math.min(targetCandles, 30));
+          
+          // Distribute candles: Wave A ~40%, Wave B ~25%, Wave C ~35%
+          const numWaveA = Math.max(8, Math.floor(actualCandles * 0.40));
+          const numWaveB = Math.max(5, Math.floor(actualCandles * 0.25));
+          const numWaveC = actualCandles - numWaveA - numWaveB;
+          
+          // Determine direction (W2 retraces opposite to W1)
+          const w1Direction = w1.price > prev[0].price ? 'up' : 'down';
+          const w2Direction = w1Direction === 'up' ? 'down' : 'up';
+          
+          // Calculate wave endpoints
+          // Wave A ends at ~61.8% of W1→W2 move
+          const w2Range = w2.price - w1.price;
+          const waveAEndPrice = w1.price + w2Range * 0.618;
+          
+          // Wave B retraces ~50% of Wave A (back towards W1)
+          const waveAMove = waveAEndPrice - w1.price;
+          const waveBEndPrice = waveAEndPrice - waveAMove * 0.50;
+          
+          // Wave C completes to W2
+          const waveCEndPrice = w2.price;
+          
+          const allCandles: SimulatedCandle[] = [];
+          let currentTime = w1.time;
+          
+          // Generate Wave A (5-wave impulse structure)
+          const waveACandles = generate5WaveImpulse(
+            currentTime,
+            w1.price,
+            waveAEndPrice,
+            numWaveA,
+            intervalMs,
+            w2Direction
+          );
+          allCandles.push(...waveACandles);
+          currentTime += numWaveA * intervalMs;
+          
+          // Generate Wave B (3-wave corrective structure)
+          const waveBDirection = w2Direction === 'down' ? 'up' : 'down';
+          const waveBCandles = generate3WaveCorrection(
+            currentTime,
+            waveAEndPrice,
+            waveBEndPrice,
+            numWaveB,
+            intervalMs,
+            waveBDirection
+          );
+          allCandles.push(...waveBCandles);
+          currentTime += numWaveB * intervalMs;
+          
+          // Generate Wave C (5-wave impulse structure)
+          const waveCCandles = generate5WaveImpulse(
+            currentTime,
+            waveBEndPrice,
+            waveCEndPrice,
+            numWaveC,
+            intervalMs,
+            w2Direction
+          );
+          allCandles.push(...waveCCandles);
+          
+          // Add labels to endpoint candles
+          if (allCandles.length > 0) {
+            allCandles[numWaveA - 1].label = 'W2.A';
+            allCandles[numWaveA + numWaveB - 1].label = 'W2.B';
+            allCandles[allCandles.length - 1].label = 'W2.C';
+          }
+          
+          setSimulatedCandles(allCandles);
+        } else {
+          // Clicked on real candle - no simulated candles, just trendline + retracement %
+          setSimulatedCandles([]);
         }
         
-        setSimulatedCandles(allCandles);
-      } else {
-        // Clicked on real candle - no simulated candles, just trendline + retracement %
-        setSimulatedCandles([]);
+        setMode('complete');
+        return [...prev, point];
       }
       
-      setMode('complete');
-    }
-  }, [mode, placedPoints, timeframe]);
+      // If more than 3 points, ignore
+      return prev;
+    });
+  }, [timeframe]);
 
   const getStatusText = useCallback(() => {
     switch (mode) {
