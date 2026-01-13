@@ -340,16 +340,17 @@ export function useElliottWave(params: UseElliottWaveParams = {}): UseElliottWav
           // Calculate candle interval from timeframe
           const intervalMs = intervalToMs(timeframe);
           
-          // Calculate time span and target number of candles
+          // Calculate time span and number of candles proportional to the distance
           const timeSpan = Math.abs(w2.time - w1.time);
-          const targetCandles = Math.max(20, Math.min(30, Math.floor(timeSpan / intervalMs)));
+          const candleCount = Math.floor(timeSpan / intervalMs);
           
-          // Handle edge case where time span is very small
-          const actualCandles = Math.max(20, Math.min(targetCandles, 30));
+          // Ensure minimum of 12 candles for proper ABC structure (A=5, B=3, C=4 minimum)
+          // No maximum limit - let it scale naturally with time distance
+          const actualCandles = Math.max(12, candleCount);
           
-          // Distribute candles: Wave A ~40%, Wave B ~25%, Wave C ~35%
-          const numWaveA = Math.max(8, Math.floor(actualCandles * 0.40));
-          const numWaveB = Math.max(5, Math.floor(actualCandles * 0.25));
+          // Distribute candles: Wave A ~38%, Wave B ~24%, Wave C ~38%
+          const numWaveA = Math.max(4, Math.floor(actualCandles * 0.38));
+          const numWaveB = Math.max(2, Math.floor(actualCandles * 0.24));
           const numWaveC = actualCandles - numWaveA - numWaveB;
           
           // Determine direction (W2 retraces opposite to W1)
