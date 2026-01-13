@@ -73,8 +73,11 @@ const CANDLE_PARAMS = {
  * Returns a deterministic RNG function for testing
  */
 function createSeededRNG(seed: number): () => number {
+  // Copy seed to avoid mutation of the original parameter
+  let state = seed;
   return function(): number {
-    let t = seed += 0x6D2B79F5;
+    state = state + 0x6D2B79F5;
+    let t = state;
     t = Math.imul(t ^ t >>> 15, t | 1);
     t ^= t + Math.imul(t ^ t >>> 7, t | 61);
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
@@ -177,9 +180,11 @@ function generateMomentumCandle(
   
   // Autocorrelation: large candles tend to cluster
   const volatilityScale = estimateVolatilityScale(recentCandles);
-  const autocorrelation = recentCandles.length > 0
-    ? Math.abs(recentCandles[recentCandles.length - 1].close - recentCandles[recentCandles.length - 1].open) / currentPrice
-    : 0;
+  let autocorrelation = 0;
+  if (recentCandles.length > 0) {
+    const lastCandle = recentCandles[recentCandles.length - 1];
+    autocorrelation = Math.abs(lastCandle.close - lastCandle.open) / currentPrice;
+  }
   const clusteringFactor = 1.0 + (autocorrelation * CANDLE_PARAMS.AUTOCORRELATION_STRENGTH);
   
   // Counter-trend candles should be smaller
@@ -277,7 +282,9 @@ function generateConsolidationCandle(
  * Generate 5-wave impulse structure for Wave A or Wave C (Zigzag pattern)
  * Returns array of candles with realistic sub-wave structure
  * Large momentum candles, ~75% same direction, ~25% counter-trend
- * direction parameter kept for API consistency but derived from prices
+ * 
+ * Note: direction parameter is kept for backward API compatibility but not used in logic.
+ * Direction is derived from startPrice and endPrice (totalMove = endPrice - startPrice).
  */
 function generate5WaveImpulse(
   startTime: number,
@@ -285,7 +292,7 @@ function generate5WaveImpulse(
   endPrice: number,
   numCandles: number,
   intervalMs: number,
-  direction: 'down' | 'up', // Kept for API consistency
+  direction: 'down' | 'up', // Kept for backward API compatibility
   rng: () => number = Math.random
 ): SimulatedCandle[] {
   const candles: SimulatedCandle[] = [];
@@ -397,7 +404,9 @@ function generate5WaveImpulse(
  * Generate 3-wave corrective structure for Wave B
  * Returns array of candles with realistic ABC sub-structure
  * patternType: 'zigzag' = low B wave (38-50% retrace), 'flat' = high B wave (78-100% retrace)
- * direction parameter kept for API consistency but derived from prices
+ * 
+ * Note: direction parameter is kept for backward API compatibility but not used in logic.
+ * Direction is derived from startPrice and endPrice (totalMove = endPrice - startPrice).
  */
 function generate3WaveCorrection(
   startTime: number,
@@ -405,7 +414,7 @@ function generate3WaveCorrection(
   endPrice: number,
   numCandles: number,
   intervalMs: number,
-  direction: 'down' | 'up', // Kept for API consistency
+  direction: 'down' | 'up', // Kept for backward API compatibility
   patternType: 'zigzag' | 'flat',
   rng: () => number = Math.random
 ): SimulatedCandle[] {
