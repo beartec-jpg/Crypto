@@ -344,7 +344,7 @@ export function useElliottWave(params: UseElliottWaveParams = {}): UseElliottWav
           const timeSpan = Math.abs(w2.time - w1.time);
           const candleCount = Math.floor(timeSpan / intervalMs);
           
-          // Ensure minimum of 12 candles for proper ABC structure (A=5, B=3, C=4 minimum)
+          // Ensure minimum of 12 candles for proper ABC structure (A=4, B=2, C=6 minimum)
           // No maximum limit - let it scale naturally with time distance
           const actualCandles = Math.max(12, candleCount);
           
