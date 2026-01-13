@@ -149,4 +149,72 @@ describe('useElliottWave', () => {
     expect(result.current.mode).toBe('idle');
     expect(result.current.isActive).toBe(false);
   });
+
+  it('should generate fewer candles for shorter W1→W2 time spans', () => {
+    const { result } = renderHook(() => useElliottWave({ timeframe: '1h' }));
+    const oneHourMs = 60 * 60 * 1000;
+    
+    act(() => {
+      result.current.activateMode();
+      result.current.placePoint(1000000, 50000, false, 'candle'); // W0
+      result.current.placePoint(2000000, 55000, true, 'candle'); // W1
+      // W2 is 10 hours away from W1 - should generate ~10 candles
+      result.current.placePoint(2000000 + (10 * oneHourMs), 52500, false, 'fib');
+    });
+    
+    expect(result.current.mode).toBe('complete');
+    expect(result.current.simulatedCandles.length).toBeGreaterThanOrEqual(10);
+    expect(result.current.simulatedCandles.length).toBeLessThan(20);
+  });
+
+  it('should generate more candles for longer W1→W2 time spans', () => {
+    const { result } = renderHook(() => useElliottWave({ timeframe: '1h' }));
+    const oneHourMs = 60 * 60 * 1000;
+    
+    act(() => {
+      result.current.activateMode();
+      result.current.placePoint(1000000, 50000, false, 'candle'); // W0
+      result.current.placePoint(2000000, 55000, true, 'candle'); // W1
+      // W2 is 100 hours away from W1 - should generate ~100 candles
+      result.current.placePoint(2000000 + (100 * oneHourMs), 52500, false, 'fib');
+    });
+    
+    expect(result.current.mode).toBe('complete');
+    expect(result.current.simulatedCandles.length).toBeGreaterThanOrEqual(80);
+    expect(result.current.simulatedCandles.length).toBeLessThanOrEqual(100);
+  });
+
+  it('should maintain ABC proportions regardless of candle count', () => {
+    const { result } = renderHook(() => useElliottWave({ timeframe: '1h' }));
+    const oneHourMs = 60 * 60 * 1000;
+    
+    act(() => {
+      result.current.activateMode();
+      result.current.placePoint(1000000, 50000, false, 'candle'); // W0
+      result.current.placePoint(2000000, 55000, true, 'candle'); // W1
+      result.current.placePoint(2000000 + (50 * oneHourMs), 52500, false, 'fib');
+    });
+    
+    const candles = result.current.simulatedCandles;
+    expect(candles.length).toBeGreaterThan(0);
+    
+    // Find the labeled candles
+    const waveAEndIndex = candles.findIndex(c => c.label === 'W2.A');
+    const waveBEndIndex = candles.findIndex(c => c.label === 'W2.B');
+    const waveCEndIndex = candles.findIndex(c => c.label === 'W2.C');
+    
+    expect(waveAEndIndex).toBeGreaterThan(-1);
+    expect(waveBEndIndex).toBeGreaterThan(waveAEndIndex);
+    expect(waveCEndIndex).toBe(candles.length - 1);
+    
+    // Wave A should be roughly 38% of total
+    const waveAPercent = (waveAEndIndex + 1) / candles.length;
+    expect(waveAPercent).toBeGreaterThan(0.30);
+    expect(waveAPercent).toBeLessThan(0.45);
+    
+    // Wave B should be roughly 24% of total
+    const waveBPercent = (waveBEndIndex - waveAEndIndex) / candles.length;
+    expect(waveBPercent).toBeGreaterThan(0.15);
+    expect(waveBPercent).toBeLessThan(0.35);
+  });
 });

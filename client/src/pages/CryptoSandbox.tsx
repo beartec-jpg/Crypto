@@ -4270,39 +4270,6 @@ export default function CryptoSandbox() {
               
               <div className="h-px bg-slate-600 my-1" />
               
-              {/* Impulse (12345) */}
-              <button
-                onClick={() => setActiveTool(activeTool === 'impulse' ? null : 'impulse')}
-                className={`p-2 rounded transition-all ${
-                  activeTool === 'impulse' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
-                }`}
-                title="Impulse (12345)"
-                data-testid="btn-impulse"
-              >
-                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <polyline points="2,16 5,10 7,12 12,3 15,8 18,4" strokeLinejoin="round" />
-                  <circle cx="5" cy="10" r="1.5" fill="currentColor" />
-                  <circle cx="12" cy="3" r="1.5" fill="currentColor" />
-                </svg>
-              </button>
-              
-              {/* ABC */}
-              <button
-                onClick={() => setActiveTool(activeTool === 'abc' ? null : 'abc')}
-                className={`p-2 rounded transition-all ${
-                  activeTool === 'abc' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-slate-700'
-                }`}
-                title="ABC Correction"
-                data-testid="btn-abc"
-              >
-                <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <polyline points="2,5 10,15 18,3" strokeLinejoin="round" />
-                  <text x="1" y="4" fontSize="5" fill="currentColor" stroke="none">A</text>
-                  <text x="8" y="18" fontSize="5" fill="currentColor" stroke="none">B</text>
-                  <text x="15" y="4" fontSize="5" fill="currentColor" stroke="none">C</text>
-                </svg>
-              </button>
-              
               {/* WXY */}
               <button
                 onClick={() => setActiveTool(activeTool === 'wxy' ? null : 'wxy')}
