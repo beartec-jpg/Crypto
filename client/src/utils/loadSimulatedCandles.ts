@@ -154,5 +154,31 @@ function parseCSV(text: string): SimulatedCandle[] {
  * Load simulated candles from inline data (for testing or embedded scenarios).
  */
 export function loadSimulatedCandlesFromData(data: any[]): SimulatedCandle[] {
-  return parseJSON(JSON.stringify(data));
+  if (!Array.isArray(data)) {
+    throw new Error('Data must be an array');
+  }
+  
+  return data.map((item, index) => {
+    // Support both timestamp_ms and time fields
+    const time = item.timestamp_ms || item.time;
+    
+    if (typeof time !== 'number') {
+      throw new Error(`Invalid timestamp at index ${index}: ${time}`);
+    }
+    
+    if (typeof item.open !== 'number' || typeof item.high !== 'number' ||
+        typeof item.low !== 'number' || typeof item.close !== 'number') {
+      throw new Error(`Invalid OHLC data at index ${index}`);
+    }
+    
+    return {
+      time,
+      open: item.open,
+      high: item.high,
+      low: item.low,
+      close: item.close,
+      volume: item.volume,
+      label: item.label || undefined,
+    };
+  });
 }

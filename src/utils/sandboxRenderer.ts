@@ -129,6 +129,11 @@ export function drawTrialCandles(
 
 /**
  * Legacy compatibility: drawMedianCandles now calls drawSimulatedCandles.
+ * This function is maintained for backward compatibility with existing code
+ * that may reference the "median" terminology from the old trial-based system.
+ * New code should use drawSimulatedCandles directly.
+ * 
+ * @deprecated Use drawSimulatedCandles instead
  */
 export function drawMedianCandles(
   ctx: CanvasRenderingContext2D,

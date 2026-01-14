@@ -99,22 +99,20 @@ def generate_zigzag_abc(
         a_idx = find_closest_candle_idx(candles, a_time)
         if a_idx is not None:
             candles[a_idx]['label'] = 'W2.A'
+            # B-start is the candle right after A
+            if a_idx + 1 < len(candles):
+                candles[a_idx + 1]['label'] = 'W2.B-start'
+        
         # Find candle closest to B endpoint  
         b_idx = find_closest_candle_idx(candles, b_time)
         if b_idx is not None:
             candles[b_idx]['label'] = 'W2.B'
+            # C-start is the candle right after B
+            if b_idx + 1 < len(candles):
+                candles[b_idx + 1]['label'] = 'W2.C-start'
+        
         # Last candle is C
         candles[-1]['label'] = 'W2.C'
-        
-        # Mark B-start
-        if b_idx is not None and b_idx + 1 < len(candles):
-            candles[b_idx + 1]['label'] = 'W2.B-start'
-        # Mark C-start
-        if b_idx is not None:
-            for i in range(b_idx + 1, len(candles)):
-                if candles[i].get('label') != 'W2.B':
-                    candles[i]['label'] = 'W2.C-start'
-                    break
     
     return candles
 
@@ -231,6 +229,9 @@ def generate_wave_candles(
     """
     random.seed(seed)
     
+    # Fallback volatility factor when drift is zero
+    FALLBACK_VOLATILITY_FACTOR = 0.01
+    
     candles = []
     current_time = start_time
     current_price = start_price
@@ -258,7 +259,8 @@ def generate_wave_candles(
             close_price = end_price
         
         # Generate high and low with intrabar volatility
-        intrabar_vol = volatility * abs(close_price - open_price) if abs(close_price - open_price) > 0 else volatility * abs(current_price) * 0.01
+        intrabar_vol = (volatility * abs(close_price - open_price) if abs(close_price - open_price) > 0 
+                       else volatility * abs(current_price) * FALLBACK_VOLATILITY_FACTOR)
         high_price = max(open_price, close_price) + abs(random.gauss(0, intrabar_vol))
         low_price = min(open_price, close_price) - abs(random.gauss(0, intrabar_vol))
         
