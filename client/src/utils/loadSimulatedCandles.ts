@@ -131,7 +131,7 @@ export async function loadSimulatedCandles(filePath: string): Promise<SimulatedC
         return parseJson(content);
       } catch (jsonError) {
         // If JSON parsing fails, try CSV as fallback
-        console.warn('JSON parsing failed, attempting CSV fallback:', jsonError);
+        console.warn('JSON parsing failed, attempting CSV fallback');
         return parseCsv(content);
       }
     }
@@ -144,7 +144,8 @@ export async function loadSimulatedCandles(filePath: string): Promise<SimulatedC
       return parseCsv(content);
     }
   } catch (error) {
-    throw new Error(`Failed to load simulated candles from ${filePath}: ${error}`);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to load simulated candles: ${errorMessage}`);
   }
 }
 
