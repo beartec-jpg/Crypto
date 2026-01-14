@@ -8,6 +8,7 @@ import { CryptoAuthGate } from '@/components/CryptoAuthGate';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { lazy, Suspense } from 'react';
+import '@/utils/sandboxBootstrap';
 
 // Lazy load all route components for code splitting
 const CryptoLanding = lazy(() => import('@/pages/CryptoLanding'));
