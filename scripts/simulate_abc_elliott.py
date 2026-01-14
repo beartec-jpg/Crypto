@@ -1,396 +1,564 @@
 #!/usr/bin/env python3
 """
-Elliott-aware ABC (W2) simulator for crypto candles.
-Generates a realistic Elliott Wave 2 corrective pattern (ABC) with proper sub-wave labels.
-Supports both zigzag and flat patterns with configurable volatility.
+ABC Elliott Wave Simulator
+
+Generates realistic ABC correction sequences for Elliott Wave W2 analysis.
+Implements Elliott-friendly rules for zigzag (5-3-5) and flat (3-3-5) patterns.
+
+Usage:
+    python simulate_abc_elliott.py \\
+        --w1-time 1704067200000 \\
+        --w1-price 50000.0 \\
+        --w2-time 1704240000000 \\
+        --w2-price 47000.0 \\
+        --interval 1h \\
+        --pattern zigzag \\
+        --volatility 0.01 \\
+        --seed 42 \\
+        --output-format json
+
+Arguments:
+    --w1-time:        W1 endpoint timestamp (epoch milliseconds)
+    --w1-price:       W1 endpoint price (float)
+    --w2-time:        W2 endpoint timestamp (epoch milliseconds)
+    --w2-price:       W2 endpoint price (float)
+    --interval:       Candle interval (e.g., '1m', '5m', '15m', '1h', '4h', '1d')
+    --pattern:        ABC pattern type: 'zigzag' (default) or 'flat'
+    --volatility:     Base volatility multiplier (default: 0.01)
+    --seed:           Random seed for deterministic output (default: 42)
+    --output-format:  Output format: 'csv' (default) or 'json'
+
+Output:
+    CSV format: time,open,high,low,close,volume,label
+    JSON format: [{"timestamp_ms": ..., "open": ..., "high": ..., "low": ..., "close": ..., "volume": ..., "label": "..."}]
+
+Labels:
+    Only sub-wave endpoints are labeled:
+    - W2.A-start: Start of wave A
+    - W2.A: End of wave A
+    - W2.B-start: Start of wave B (same as W2.A)
+    - W2.B: End of wave B
+    - W2.C-start: Start of wave C (same as W2.B)
+    - W2.C: End of wave C (same as W2)
+
+Elliott Rules:
+    Zigzag (5-3-5):
+        - Wave A: 5 impulse sub-waves (strong momentum)
+        - Wave B: 3 corrective sub-waves (retrace 38.2%-61.8% of A)
+        - Wave C: 5 impulse sub-waves (similar length to A, typically 100%-161.8% of A)
+    
+    Flat (3-3-5):
+        - Wave A: 3 corrective sub-waves (less momentum)
+        - Wave B: 3 corrective sub-waves (retrace 90%-100% of A)
+        - Wave C: 5 impulse sub-waves (shorter, typically 61.8%-100% of A)
 """
 
 import argparse
-import json
 import csv
-import sys
+import json
 import random
-import math
-from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, Optional
+import sys
+from typing import List, Dict, Tuple, Any
 
 
-def parse_interval_ms(interval: str) -> int:
-    """Convert interval string (e.g., '1h', '15m', '1d') to milliseconds."""
-    unit = interval[-1]
-    value = int(interval[:-1])
+def interval_to_ms(interval: str) -> int:
+    """Convert interval string to milliseconds."""
+    interval = interval.lower()
+    if interval.endswith('m'):
+        return int(interval[:-1]) * 60 * 1000
+    elif interval.endswith('h'):
+        return int(interval[:-1]) * 60 * 60 * 1000
+    elif interval.endswith('d'):
+        return int(interval[:-1]) * 24 * 60 * 60 * 1000
+    elif interval.endswith('w'):
+        return int(interval[:-1]) * 7 * 24 * 60 * 60 * 1000
+    else:
+        # Default to 1 hour
+        return 60 * 60 * 1000
+
+
+def enforce_ohlc(candle: Dict[str, Any]) -> Dict[str, Any]:
+    """Enforce OHLC invariants: high >= max(open, close), low <= min(open, close)."""
+    candle['high'] = max(candle['high'], candle['open'], candle['close'])
+    candle['low'] = min(candle['low'], candle['open'], candle['close'])
     
-    multipliers = {
-        'm': 60 * 1000,
-        'h': 60 * 60 * 1000,
-        'd': 24 * 60 * 60 * 1000,
+    # Pad tiny ranges (at least 0.01% of price)
+    min_range = max(candle['open'], candle['close']) * 0.0001
+    if candle['high'] - candle['low'] < min_range:
+        midpoint = (candle['high'] + candle['low']) / 2
+        candle['high'] = midpoint + min_range / 2
+        candle['low'] = midpoint - min_range / 2
+    
+    return candle
+
+
+def generate_momentum_candle(
+    time: int,
+    current_price: float,
+    direction: str,
+    volatility: float,
+    rng: random.Random,
+    is_counter_trend: bool = False
+) -> Dict[str, Any]:
+    """Generate a momentum candle (for impulse waves)."""
+    # Body size with volatility
+    body_multiplier = 0.3 if is_counter_trend else 1.0
+    body_size = current_price * (0.003 + rng.random() * 0.005) * volatility * body_multiplier
+    
+    if is_counter_trend:
+        # Counter-trend: opposite direction
+        if direction == 'down':
+            close = current_price + body_size * rng.random()
+            open_price = close - body_size
+        else:
+            close = current_price - body_size * rng.random()
+            open_price = close + body_size
+    else:
+        # Trend candle
+        if direction == 'down':
+            open_price = current_price
+            close = current_price - body_size
+        else:
+            open_price = current_price
+            close = current_price + body_size
+    
+    # Wicks: smaller for momentum candles
+    wick_ratio = 0.05 + rng.random() * 0.10
+    upper_wick = body_size * wick_ratio * (0.5 + rng.random())
+    lower_wick = body_size * wick_ratio * (0.5 + rng.random())
+    
+    high = max(open_price, close) + upper_wick
+    low = min(open_price, close) - lower_wick
+    
+    candle = {
+        'timestamp_ms': time,
+        'open': open_price,
+        'high': high,
+        'low': low,
+        'close': close,
+        'volume': int(1000000 + rng.random() * 500000),
+        'label': ''
     }
     
-    if unit not in multipliers:
-        raise ValueError(f"Invalid interval unit: {unit}. Use 'm', 'h', or 'd'.")
-    
-    return value * multipliers[unit]
+    return enforce_ohlc(candle)
 
 
-def generate_zigzag_abc(
-    w1_time: int,
-    w2_time: int,
-    w1_price: float,
-    w2_price: float,
-    interval_ms: int,
+def generate_consolidation_candle(
+    time: int,
+    current_price: float,
     volatility: float,
-    seed: int
-) -> List[Dict]:
-    """
-    Generate a zigzag ABC pattern.
-    In zigzag: A is strong, B is weak (~50% of A), C extends beyond A.
-    """
-    random.seed(seed)
+    rng: random.Random,
+    is_doji: bool = False
+) -> Dict[str, Any]:
+    """Generate a consolidation/corrective candle (for corrective waves)."""
+    # Body size: smaller for consolidation
+    body_size = (current_price * 0.0005 * rng.random() if is_doji 
+                else current_price * (0.001 + rng.random() * 0.001) * volatility)
     
-    # Calculate W1 characteristics
-    w1_range = abs(w2_price - w1_price)
-    w1_direction = 1 if w2_price > w1_price else -1
-    
-    # ABC proportions for zigzag (Fibonacci-like)
-    # A wave: 61.8% retracement of W1
-    # B wave: 38.2-50% retracement of A
-    # C wave: extends to 100-161.8% of A
-    
-    a_retrace_pct = 0.618
-    b_retrace_pct = 0.382 + random.uniform(0, 0.118)  # 38.2-50%
-    c_extension_pct = 1.0 + random.uniform(0, 0.618)  # 100-161.8%
-    
-    # Calculate prices
-    a_price = w1_price - (w1_direction * w1_range * a_retrace_pct)
-    b_price = a_price + (w1_direction * (w1_price - a_price) * b_retrace_pct)
-    c_price = a_price - (w1_direction * abs(a_price - w1_price) * c_extension_pct)
-    
-    # Calculate time divisions (A: 33%, B: 27%, C: 40%)
-    total_time = w2_time - w1_time
-    a_time = w1_time + int(total_time * 0.33)
-    b_time = a_time + int(total_time * 0.27)
-    c_time = w2_time
-    
-    # Generate candles for each wave
-    candles = []
-    
-    # Wave A (W1 -> A)
-    a_candles = generate_wave_candles(
-        w1_time, a_time, w1_price, a_price, interval_ms, volatility, -w1_direction, seed
-    )
-    candles.extend(a_candles)
-    
-    # Wave B (A -> B)
-    b_candles = generate_wave_candles(
-        a_time, b_time, a_price, b_price, interval_ms, volatility, w1_direction, seed + 1000
-    )
-    candles.extend(b_candles)
-    
-    # Wave C (B -> C)
-    c_candles = generate_wave_candles(
-        b_time, c_time, b_price, c_price, interval_ms, volatility, -w1_direction, seed + 2000
-    )
-    candles.extend(c_candles)
-    
-    # Add labels only at sub-wave endpoints
-    if candles:
-        candles[0]['label'] = 'W2.A-start'
-        # Find candle closest to A endpoint
-        a_idx = find_closest_candle_idx(candles, a_time)
-        if a_idx is not None:
-            candles[a_idx]['label'] = 'W2.A'
-            # B-start is the candle right after A
-            if a_idx + 1 < len(candles):
-                candles[a_idx + 1]['label'] = 'W2.B-start'
-        
-        # Find candle closest to B endpoint  
-        b_idx = find_closest_candle_idx(candles, b_time)
-        if b_idx is not None:
-            candles[b_idx]['label'] = 'W2.B'
-            # C-start is the candle right after B
-            if b_idx + 1 < len(candles):
-                candles[b_idx + 1]['label'] = 'W2.C-start'
-        
-        # Last candle is C
-        candles[-1]['label'] = 'W2.C'
-    
-    return candles
-
-
-def generate_flat_abc(
-    w1_time: int,
-    w2_time: int,
-    w1_price: float,
-    w2_price: float,
-    interval_ms: int,
-    volatility: float,
-    seed: int
-) -> List[Dict]:
-    """
-    Generate a flat ABC pattern.
-    In flat: A and B are nearly equal (~90-100% retracement), C is shorter.
-    """
-    random.seed(seed)
-    
-    # Calculate W1 characteristics
-    w1_range = abs(w2_price - w1_price)
-    w1_direction = 1 if w2_price > w1_price else -1
-    
-    # ABC proportions for flat
-    # A wave: 50% retracement of W1
-    # B wave: 90-100% retracement of A (nearly flat)
-    # C wave: 61.8% extension of A
-    
-    a_retrace_pct = 0.5
-    b_retrace_pct = 0.9 + random.uniform(0, 0.1)  # 90-100%
-    c_extension_pct = 0.618
-    
-    # Calculate prices
-    a_price = w1_price - (w1_direction * w1_range * a_retrace_pct)
-    b_price = a_price + (w1_direction * (w1_price - a_price) * b_retrace_pct)
-    c_price = a_price - (w1_direction * abs(a_price - w1_price) * c_extension_pct)
-    
-    # Calculate time divisions (A: 35%, B: 35%, C: 30%)
-    total_time = w2_time - w1_time
-    a_time = w1_time + int(total_time * 0.35)
-    b_time = a_time + int(total_time * 0.35)
-    c_time = w2_time
-    
-    # Generate candles for each wave
-    candles = []
-    
-    # Wave A
-    a_candles = generate_wave_candles(
-        w1_time, a_time, w1_price, a_price, interval_ms, volatility, -w1_direction, seed
-    )
-    candles.extend(a_candles)
-    
-    # Wave B
-    b_candles = generate_wave_candles(
-        a_time, b_time, a_price, b_price, interval_ms, volatility, w1_direction, seed + 1000
-    )
-    candles.extend(b_candles)
-    
-    # Wave C
-    c_candles = generate_wave_candles(
-        b_time, c_time, b_price, c_price, interval_ms, volatility, -w1_direction, seed + 2000
-    )
-    candles.extend(c_candles)
-    
-    # Add labels only at sub-wave endpoints
-    if candles:
-        candles[0]['label'] = 'W2.A-start'
-        a_idx = find_closest_candle_idx(candles, a_time)
-        if a_idx is not None:
-            candles[a_idx]['label'] = 'W2.A'
-        b_idx = find_closest_candle_idx(candles, b_time)
-        if b_idx is not None:
-            candles[b_idx]['label'] = 'W2.B'
-        candles[-1]['label'] = 'W2.C'
-        
-        # Mark B-start and C-start
-        if a_idx is not None and a_idx + 1 < len(candles):
-            candles[a_idx + 1]['label'] = 'W2.B-start'
-        if b_idx is not None and b_idx + 1 < len(candles):
-            candles[b_idx + 1]['label'] = 'W2.C-start'
-    
-    return candles
-
-
-def find_closest_candle_idx(candles: List[Dict], target_time: int) -> Optional[int]:
-    """Find the index of the candle closest to target_time."""
-    if not candles:
-        return None
-    
-    min_diff = float('inf')
-    closest_idx = 0
-    
-    for i, candle in enumerate(candles):
-        diff = abs(candle['timestamp_ms'] - target_time)
-        if diff < min_diff:
-            min_diff = diff
-            closest_idx = i
-    
-    return closest_idx
-
-
-def generate_wave_candles(
-    start_time: int,
-    end_time: int,
-    start_price: float,
-    end_price: float,
-    interval_ms: int,
-    volatility: float,
-    direction: int,
-    seed: int
-) -> List[Dict]:
-    """
-    Generate OHLC candles for a single wave segment with realistic price action.
-    """
-    random.seed(seed)
-    
-    # Fallback volatility factor when drift is zero
-    FALLBACK_VOLATILITY_FACTOR = 0.01
-    
-    candles = []
-    current_time = start_time
-    current_price = start_price
-    
-    # Calculate total bars needed
-    time_range = end_time - start_time
-    num_bars = max(1, int(time_range / interval_ms))
-    
-    # Price movement per bar (with drift toward target)
-    price_range = end_price - start_price
-    drift_per_bar = price_range / num_bars if num_bars > 0 else 0
-    
-    for i in range(num_bars):
-        # Add some noise around the drift
-        noise_factor = volatility * abs(drift_per_bar) if drift_per_bar != 0 else volatility
-        noise = random.gauss(0, noise_factor)
-        
-        # Calculate open (previous close or start price)
+    # Random direction
+    is_green = rng.random() > 0.5
+    if is_green:
         open_price = current_price
+        close = current_price + body_size
+    else:
+        open_price = current_price
+        close = current_price - body_size
+    
+    # Wicks: longer for consolidation
+    wick_ratio = 0.2 + rng.random() * 0.3
+    upper_wick = body_size * wick_ratio * (1.0 + rng.random() * 2.0)
+    lower_wick = body_size * wick_ratio * (1.0 + rng.random() * 2.0)
+    
+    high = max(open_price, close) + upper_wick
+    low = min(open_price, close) - lower_wick
+    
+    candle = {
+        'timestamp_ms': time,
+        'open': open_price,
+        'high': high,
+        'low': low,
+        'close': close,
+        'volume': int(800000 + rng.random() * 400000),
+        'label': ''
+    }
+    
+    return enforce_ohlc(candle)
+
+
+def generate_abc_zigzag(
+    w1_time: int,
+    w1_price: float,
+    w2_time: int,
+    w2_price: float,
+    interval_ms: int,
+    volatility: float,
+    rng: random.Random
+) -> List[Dict[str, Any]]:
+    """
+    Generate ABC zigzag pattern (5-3-5).
+    Wave A: 5 impulse sub-waves (strong momentum down)
+    Wave B: 3 corrective sub-waves (retrace 38.2%-61.8% of A)
+    Wave C: 5 impulse sub-waves (similar length to A)
+    """
+    candles = []
+    total_duration = w2_time - w1_time
+    direction = 'down' if w2_price < w1_price else 'up'
+    total_move = w2_price - w1_price
+    
+    # Calculate ABC proportions for zigzag
+    # Wave A: ~38.2% of total time, ~50% of total move
+    # Wave B: ~23.6% of total time, retraces 50% of A
+    # Wave C: ~38.2% of total time, completes remaining move
+    
+    wave_a_duration = int(total_duration * 0.382)
+    wave_b_duration = int(total_duration * 0.236)
+    wave_c_duration = total_duration - wave_a_duration - wave_b_duration
+    
+    wave_a_move = total_move * 0.618  # A moves 61.8% of total
+    b_retrace_ratio = 0.382 + rng.random() * 0.236  # B retraces 38.2%-61.8% of A
+    wave_b_move = -wave_a_move * b_retrace_ratio
+    wave_c_move = total_move - wave_a_move - wave_b_move
+    
+    wave_a_end_price = w1_price + wave_a_move
+    wave_b_end_price = wave_a_end_price + wave_b_move
+    
+    current_time = w1_time
+    current_price = w1_price
+    
+    # === WAVE A: 5 impulse sub-waves ===
+    wave_a_candle_count = max(5, wave_a_duration // interval_ms)
+    for i in range(wave_a_candle_count):
+        current_time += interval_ms
+        progress = i / wave_a_candle_count
+        target_price = w1_price + wave_a_move * progress
         
-        # Calculate close with drift and noise
-        close_price = current_price + drift_per_bar + noise
+        # 25% chance of counter-trend candle
+        is_counter = rng.random() < 0.25
         
-        # Ensure we hit the target on the last bar
-        if i == num_bars - 1:
-            close_price = end_price
+        candle = generate_momentum_candle(
+            current_time, current_price, direction, volatility, rng, is_counter
+        )
         
-        # Generate high and low with intrabar volatility
-        if abs(close_price - open_price) > 0:
-            intrabar_vol = volatility * abs(close_price - open_price)
-        else:
-            intrabar_vol = volatility * abs(current_price) * FALLBACK_VOLATILITY_FACTOR
+        # Adjust close to stay on track
+        if not is_counter:
+            candle['close'] = current_price + (target_price - current_price) * (0.8 + rng.random() * 0.4)
+            candle['high'] = max(candle['high'], candle['close'])
+            candle['low'] = min(candle['low'], candle['close'])
         
-        high_price = max(open_price, close_price) + abs(random.gauss(0, intrabar_vol))
-        low_price = min(open_price, close_price) - abs(random.gauss(0, intrabar_vol))
+        current_price = candle['close']
         
-        # Ensure OHLC consistency
-        high_price = max(high_price, open_price, close_price)
-        low_price = min(low_price, open_price, close_price)
-        
-        candle = {
-            'timestamp_ms': current_time,
-            'open': round(open_price, 8),
-            'high': round(high_price, 8),
-            'low': round(low_price, 8),
-            'close': round(close_price, 8),
-            'label': ''  # Empty by default, only endpoints get labels
-        }
+        # Label endpoints
+        if i == 0:
+            candle['label'] = 'W2.A-start'
+        elif i == wave_a_candle_count - 1:
+            candle['label'] = 'W2.A'
+            candle['close'] = wave_a_end_price
+            candle['high'] = max(candle['high'], wave_a_end_price)
+            candle['low'] = min(candle['low'], wave_a_end_price)
+            current_price = wave_a_end_price
         
         candles.append(candle)
-        current_price = close_price
+    
+    # === WAVE B: 3 corrective sub-waves ===
+    wave_b_candle_count = max(3, wave_b_duration // interval_ms)
+    opposite_direction = 'up' if direction == 'down' else 'down'
+    
+    for i in range(wave_b_candle_count):
         current_time += interval_ms
+        progress = i / wave_b_candle_count
+        target_price = wave_a_end_price + wave_b_move * progress
+        
+        is_doji = rng.random() < 0.3
+        candle = generate_consolidation_candle(
+            current_time, current_price, volatility, rng, is_doji
+        )
+        
+        # Adjust close to stay on track
+        candle['close'] = current_price + (target_price - current_price) * (0.8 + rng.random() * 0.4)
+        candle['high'] = max(candle['high'], candle['close'], candle['open'])
+        candle['low'] = min(candle['low'], candle['close'], candle['open'])
+        
+        current_price = candle['close']
+        
+        # Label endpoints
+        if i == 0:
+            candle['label'] = 'W2.B-start'
+        elif i == wave_b_candle_count - 1:
+            candle['label'] = 'W2.B'
+            candle['close'] = wave_b_end_price
+            candle['high'] = max(candle['high'], wave_b_end_price)
+            candle['low'] = min(candle['low'], wave_b_end_price)
+            current_price = wave_b_end_price
+        
+        candles.append(candle)
+    
+    # === WAVE C: 5 impulse sub-waves ===
+    wave_c_candle_count = max(5, wave_c_duration // interval_ms)
+    
+    for i in range(wave_c_candle_count):
+        current_time += interval_ms
+        progress = i / wave_c_candle_count
+        target_price = wave_b_end_price + wave_c_move * progress
+        
+        is_counter = rng.random() < 0.25
+        candle = generate_momentum_candle(
+            current_time, current_price, direction, volatility, rng, is_counter
+        )
+        
+        # Adjust close to stay on track
+        if not is_counter:
+            candle['close'] = current_price + (target_price - current_price) * (0.8 + rng.random() * 0.4)
+            candle['high'] = max(candle['high'], candle['close'])
+            candle['low'] = min(candle['low'], candle['close'])
+        
+        current_price = candle['close']
+        
+        # Label endpoints
+        if i == 0:
+            candle['label'] = 'W2.C-start'
+        elif i == wave_c_candle_count - 1:
+            candle['label'] = 'W2.C'
+            # Snap final close to W2 price
+            candle['close'] = w2_price
+            candle['high'] = max(candle['high'], w2_price)
+            candle['low'] = min(candle['low'], w2_price)
+        
+        candles.append(candle)
     
     return candles
 
 
-def write_json(candles: List[Dict], output_path: str):
-    """Write candles to JSON file."""
-    with open(output_path, 'w') as f:
-        json.dump(candles, f, indent=2)
-    print(f"✅ Generated {len(candles)} candles -> {output_path} (JSON)")
+def generate_abc_flat(
+    w1_time: int,
+    w1_price: float,
+    w2_time: int,
+    w2_price: float,
+    interval_ms: int,
+    volatility: float,
+    rng: random.Random
+) -> List[Dict[str, Any]]:
+    """
+    Generate ABC flat pattern (3-3-5).
+    Wave A: 3 corrective sub-waves (less momentum)
+    Wave B: 3 corrective sub-waves (retrace 90%-100% of A)
+    Wave C: 5 impulse sub-waves (shorter, typically 61.8%-100% of A)
+    """
+    candles = []
+    total_duration = w2_time - w1_time
+    direction = 'down' if w2_price < w1_price else 'up'
+    total_move = w2_price - w1_price
+    
+    # Calculate ABC proportions for flat
+    # Wave A: ~30% of total time, ~30% of total move
+    # Wave B: ~30% of total time, retraces 90%-100% of A
+    # Wave C: ~40% of total time, completes remaining move
+    
+    wave_a_duration = int(total_duration * 0.30)
+    wave_b_duration = int(total_duration * 0.30)
+    wave_c_duration = total_duration - wave_a_duration - wave_b_duration
+    
+    wave_a_move = total_move * 0.45  # A moves 45% of total
+    b_retrace_ratio = 0.90 + rng.random() * 0.10  # B retraces 90%-100% of A
+    wave_b_move = -wave_a_move * b_retrace_ratio
+    wave_c_move = total_move - wave_a_move - wave_b_move
+    
+    wave_a_end_price = w1_price + wave_a_move
+    wave_b_end_price = wave_a_end_price + wave_b_move
+    
+    current_time = w1_time
+    current_price = w1_price
+    
+    # === WAVE A: 3 corrective sub-waves ===
+    wave_a_candle_count = max(3, wave_a_duration // interval_ms)
+    
+    for i in range(wave_a_candle_count):
+        current_time += interval_ms
+        progress = i / wave_a_candle_count
+        target_price = w1_price + wave_a_move * progress
+        
+        is_doji = rng.random() < 0.3
+        candle = generate_consolidation_candle(
+            current_time, current_price, volatility, rng, is_doji
+        )
+        
+        # Adjust close to stay on track
+        candle['close'] = current_price + (target_price - current_price) * (0.8 + rng.random() * 0.4)
+        candle['high'] = max(candle['high'], candle['close'], candle['open'])
+        candle['low'] = min(candle['low'], candle['close'], candle['open'])
+        
+        current_price = candle['close']
+        
+        # Label endpoints
+        if i == 0:
+            candle['label'] = 'W2.A-start'
+        elif i == wave_a_candle_count - 1:
+            candle['label'] = 'W2.A'
+            candle['close'] = wave_a_end_price
+            candle['high'] = max(candle['high'], wave_a_end_price)
+            candle['low'] = min(candle['low'], wave_a_end_price)
+            current_price = wave_a_end_price
+        
+        candles.append(candle)
+    
+    # === WAVE B: 3 corrective sub-waves ===
+    wave_b_candle_count = max(3, wave_b_duration // interval_ms)
+    
+    for i in range(wave_b_candle_count):
+        current_time += interval_ms
+        progress = i / wave_b_candle_count
+        target_price = wave_a_end_price + wave_b_move * progress
+        
+        is_doji = rng.random() < 0.3
+        candle = generate_consolidation_candle(
+            current_time, current_price, volatility, rng, is_doji
+        )
+        
+        # Adjust close to stay on track
+        candle['close'] = current_price + (target_price - current_price) * (0.8 + rng.random() * 0.4)
+        candle['high'] = max(candle['high'], candle['close'], candle['open'])
+        candle['low'] = min(candle['low'], candle['close'], candle['open'])
+        
+        current_price = candle['close']
+        
+        # Label endpoints
+        if i == 0:
+            candle['label'] = 'W2.B-start'
+        elif i == wave_b_candle_count - 1:
+            candle['label'] = 'W2.B'
+            candle['close'] = wave_b_end_price
+            candle['high'] = max(candle['high'], wave_b_end_price)
+            candle['low'] = min(candle['low'], wave_b_end_price)
+            current_price = wave_b_end_price
+        
+        candles.append(candle)
+    
+    # === WAVE C: 5 impulse sub-waves ===
+    wave_c_candle_count = max(5, wave_c_duration // interval_ms)
+    
+    for i in range(wave_c_candle_count):
+        current_time += interval_ms
+        progress = i / wave_c_candle_count
+        target_price = wave_b_end_price + wave_c_move * progress
+        
+        is_counter = rng.random() < 0.25
+        candle = generate_momentum_candle(
+            current_time, current_price, direction, volatility, rng, is_counter
+        )
+        
+        # Adjust close to stay on track
+        if not is_counter:
+            candle['close'] = current_price + (target_price - current_price) * (0.8 + rng.random() * 0.4)
+            candle['high'] = max(candle['high'], candle['close'])
+            candle['low'] = min(candle['low'], candle['close'])
+        
+        current_price = candle['close']
+        
+        # Label endpoints
+        if i == 0:
+            candle['label'] = 'W2.C-start'
+        elif i == wave_c_candle_count - 1:
+            candle['label'] = 'W2.C'
+            # Snap final close to W2 price
+            candle['close'] = w2_price
+            candle['high'] = max(candle['high'], w2_price)
+            candle['low'] = min(candle['low'], w2_price)
+        
+        candles.append(candle)
+    
+    return candles
 
 
-def write_csv(candles: List[Dict], output_path: str):
-    """Write candles to CSV file."""
-    if not candles:
-        print("⚠️  No candles to write")
-        return
+def write_csv(candles: List[Dict[str, Any]], output_file=None):
+    """Write candles to CSV format."""
+    writer = csv.writer(sys.stdout if output_file is None else output_file)
+    writer.writerow(['time', 'open', 'high', 'low', 'close', 'volume', 'label'])
     
-    fieldnames = ['timestamp_ms', 'open', 'high', 'low', 'close', 'label']
-    
-    with open(output_path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(candles)
-    
-    print(f"✅ Generated {len(candles)} candles -> {output_path} (CSV)")
+    for candle in candles:
+        writer.writerow([
+            candle['timestamp_ms'],
+            f"{candle['open']:.8f}",
+            f"{candle['high']:.8f}",
+            f"{candle['low']:.8f}",
+            f"{candle['close']:.8f}",
+            candle['volume'],
+            candle['label']
+        ])
+
+
+def write_json(candles: List[Dict[str, Any]], output_file=None):
+    """Write candles to JSON format."""
+    json_output = json.dumps(candles, indent=2)
+    if output_file is None:
+        print(json_output)
+    else:
+        output_file.write(json_output)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Simulate Elliott Wave ABC (W2) corrective pattern with realistic candles'
+        description='Generate ABC Elliott Wave correction sequences',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
     )
     
     parser.add_argument('--w1-time', type=int, required=True,
-                        help='W1 timestamp in milliseconds (start of ABC)')
-    parser.add_argument('--w2-time', type=int, required=True,
-                        help='W2 timestamp in milliseconds (end of ABC)')
+                       help='W1 endpoint timestamp (epoch milliseconds)')
     parser.add_argument('--w1-price', type=float, required=True,
-                        help='W1 price (start of ABC)')
+                       help='W1 endpoint price')
+    parser.add_argument('--w2-time', type=int, required=True,
+                       help='W2 endpoint timestamp (epoch milliseconds)')
     parser.add_argument('--w2-price', type=float, required=True,
-                        help='W2 price (end of ABC)')
+                       help='W2 endpoint price')
     parser.add_argument('--interval', type=str, default='1h',
-                        help='Candle interval (e.g., 1h, 15m, 1d). Default: 1h')
-    parser.add_argument('--pattern', type=str, choices=['zigzag', 'flat'], default='zigzag',
-                        help='ABC pattern type: zigzag (deep) or flat (shallow). Default: zigzag')
+                       help='Candle interval (e.g., 1m, 5m, 15m, 1h, 4h, 1d)')
+    parser.add_argument('--pattern', type=str, default='zigzag',
+                       choices=['zigzag', 'flat'],
+                       help='ABC pattern type: zigzag or flat')
     parser.add_argument('--volatility', type=float, default=0.01,
-                        help='Price volatility factor (0.001-0.1). Default: 0.01')
+                       help='Base volatility multiplier (default: 0.01)')
     parser.add_argument('--seed', type=int, default=42,
-                        help='Random seed for reproducibility. Default: 42')
-    parser.add_argument('--output', type=str, default='abc_simulation.json',
-                        help='Output file path. Default: abc_simulation.json')
-    parser.add_argument('--output-format', type=str, choices=['json', 'csv'], default='json',
-                        help='Output format. Default: json')
+                       help='Random seed for deterministic output')
+    parser.add_argument('--output-format', type=str, default='csv',
+                       choices=['csv', 'json'],
+                       help='Output format: csv or json')
+    parser.add_argument('-o', '--output', type=str,
+                       help='Output file path (default: stdout)')
     
     args = parser.parse_args()
     
-    # Validate inputs
-    if args.w2_time <= args.w1_time:
-        print("❌ Error: w2-time must be greater than w1-time", file=sys.stderr)
-        sys.exit(1)
+    # Initialize random number generator with seed
+    rng = random.Random(args.seed)
     
-    if args.w1_price <= 0 or args.w2_price <= 0:
-        print("❌ Error: prices must be positive", file=sys.stderr)
-        sys.exit(1)
+    # Convert interval to milliseconds
+    interval_ms = interval_to_ms(args.interval)
     
-    if args.volatility <= 0:
-        print("❌ Error: volatility must be positive", file=sys.stderr)
-        sys.exit(1)
-    
-    # Parse interval
-    try:
-        interval_ms = parse_interval_ms(args.interval)
-    except ValueError as e:
-        print(f"❌ Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    
-    # Generate pattern
-    print(f"🔧 Generating {args.pattern} ABC pattern...")
-    print(f"   W1: {args.w1_price} @ {datetime.fromtimestamp(args.w1_time/1000).isoformat()}")
-    print(f"   W2: {args.w2_price} @ {datetime.fromtimestamp(args.w2_time/1000).isoformat()}")
-    print(f"   Interval: {args.interval} ({interval_ms}ms)")
-    print(f"   Volatility: {args.volatility}")
-    print(f"   Seed: {args.seed}")
-    
+    # Generate ABC candles based on pattern
     if args.pattern == 'zigzag':
-        candles = generate_zigzag_abc(
-            args.w1_time, args.w2_time, args.w1_price, args.w2_price,
-            interval_ms, args.volatility, args.seed
+        candles = generate_abc_zigzag(
+            args.w1_time, args.w1_price,
+            args.w2_time, args.w2_price,
+            interval_ms, args.volatility, rng
         )
     else:  # flat
-        candles = generate_flat_abc(
-            args.w1_time, args.w2_time, args.w1_price, args.w2_price,
-            interval_ms, args.volatility, args.seed
+        candles = generate_abc_flat(
+            args.w1_time, args.w1_price,
+            args.w2_time, args.w2_price,
+            interval_ms, args.volatility, rng
         )
     
     # Write output
-    if args.output_format == 'json':
-        write_json(candles, args.output)
-    else:
-        write_csv(candles, args.output)
+    output_file = None
+    if args.output:
+        output_file = open(args.output, 'w', newline='')
     
-    # Print summary
-    labeled_candles = [c for c in candles if c.get('label')]
-    print(f"\n📊 Summary:")
-    print(f"   Total candles: {len(candles)}")
-    print(f"   Labeled points: {len(labeled_candles)}")
-    if labeled_candles:
-        print(f"   Labels: {', '.join([c['label'] for c in labeled_candles if c['label']])}")
+    try:
+        if args.output_format == 'json':
+            write_json(candles, output_file)
+        else:
+            write_csv(candles, output_file)
+    finally:
+        if output_file:
+            output_file.close()
 
 
 if __name__ == '__main__':

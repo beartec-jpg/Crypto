@@ -2360,55 +2360,58 @@ export default function CryptoSandbox() {
         const cyanColor = '#00ffff';
         const opacity = 0.7;
         
-        // Draw simulated candles with same geometry as real candles
-        elliottWave.simulatedCandles.forEach(d => {
-          const x = xS(new Date(d.time));
-          const openY = yS(d.open);
-          const closeY = yS(d.close);
-          const highY = yS(d.high);
-          const lowY = yS(d.low);
-          const isUp = d.close >= d.open;
-          
-          // Wick (high-low line)
-          elliottWaveGroup.append('line')
-            .attr('class', 'elliott-wick')
-            .attr('x1', x)
-            .attr('x2', x)
-            .attr('y1', highY)
-            .attr('y2', lowY)
-            .attr('stroke', cyanColor)
-            .attr('stroke-opacity', opacity)
-            .attr('stroke-width', 1);
-          
-          // Body (open-close rect)
-          const bodyTop = Math.min(openY, closeY);
-          const bodyHeight = Math.max(1, Math.abs(closeY - openY));
-          
-          elliottWaveGroup.append('rect')
-            .attr('class', 'elliott-body')
-            .attr('x', x - dynamicCandleWidth / 2)
-            .attr('y', bodyTop)
-            .attr('width', dynamicCandleWidth)
-            .attr('height', bodyHeight)
-            .attr('fill', cyanColor)
-            .attr('fill-opacity', opacity)
-            .attr('stroke', cyanColor)
-            .attr('stroke-opacity', opacity * 0.9)
-            .attr('stroke-width', 1);
-          
-          // Label only if present (sub-wave endpoints only)
-          if (d.label) {
-            elliottWaveGroup.append('text')
-              .attr('class', 'elliott-label')
-              .attr('x', x)
-              .attr('y', highY - 8)
-              .attr('text-anchor', 'middle')
-              .attr('font-size', '10px')
-              .attr('fill', cyanColor)
-              .attr('font-weight', 'bold')
-              .text(d.label);
-          }
+        // Filter visible simulated candles based on time range
+        const visibleSimulatedCandles = elliottWave.simulatedCandles.filter(d => {
+          const date = new Date(d.time);
+          return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
         });
+        
+        // Calculate candle width based on visible simulated candles for consistent geometry
+        const simulatedCandleWidth = Math.max(1, Math.min(20, (innerWidth / visibleSimulatedCandles.length) * 0.8));
+        
+        // Wicks for simulated candles - matching real candle geometry
+        elliottWaveGroup.selectAll('.elliott-wick')
+          .data(visibleSimulatedCandles)
+          .enter()
+          .append('line')
+          .attr('class', 'elliott-wick')
+          .attr('x1', d => xS(new Date(d.time)))
+          .attr('x2', d => xS(new Date(d.time)))
+          .attr('y1', d => yS(d.high))
+          .attr('y2', d => yS(d.low))
+          .attr('stroke', cyanColor)
+          .attr('stroke-opacity', opacity)
+          .attr('stroke-width', 1);
+        
+        // Bodies for simulated candles - matching real candle geometry
+        elliottWaveGroup.selectAll('.elliott-body')
+          .data(visibleSimulatedCandles)
+          .enter()
+          .append('rect')
+          .attr('class', 'elliott-body')
+          .attr('x', d => xS(new Date(d.time)) - simulatedCandleWidth / 2)
+          .attr('y', d => yS(Math.max(d.open, d.close)))
+          .attr('width', simulatedCandleWidth)
+          .attr('height', d => Math.max(1, Math.abs(yS(d.open) - yS(d.close))))
+          .attr('fill', cyanColor)
+          .attr('fill-opacity', opacity)
+          .attr('stroke', cyanColor)
+          .attr('stroke-opacity', opacity * 0.8)
+          .attr('stroke-width', 1);
+        
+        // Labels on simulated candles - only show non-empty labels
+        elliottWaveGroup.selectAll('.elliott-label')
+          .data(visibleSimulatedCandles.filter(d => d.label && d.label.trim() !== ''))
+          .enter()
+          .append('text')
+          .attr('class', 'elliott-label')
+          .attr('x', d => xS(new Date(d.time)))
+          .attr('y', d => yS(d.high) - 5) // Slightly above the candle
+          .attr('text-anchor', 'middle')
+          .attr('font-size', '10px')
+          .attr('fill', cyanColor)
+          .attr('font-weight', 'bold')
+          .text(d => d.label);
       }
       
       // Draw Fibonacci retracement levels for W2

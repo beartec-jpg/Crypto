@@ -1,184 +1,192 @@
-// client/src/utils/loadSimulatedCandles.ts
-// Loader for simulated ABC Elliott wave candles from CSV or JSON files
+/**
+ * Utility for loading simulated ABC Elliott Wave candle data
+ * 
+ * Reads CSV or JSON files produced by scripts/simulate_abc_elliott.py
+ * and returns data in the frontend SimulatedCandle format.
+ */
 
+import { readFile } from 'fs/promises';
+import { parse } from 'path';
+
+/**
+ * SimulatedCandle interface matching frontend shape
+ * Note: label is required (empty string for non-labeled candles)
+ */
 export interface SimulatedCandle {
-  time: number; // milliseconds (epoch timestamp)
+  time: number;        // epoch milliseconds
   open: number;
   high: number;
   low: number;
   close: number;
   volume?: number;
-  label?: string;
+  label: string;       // Empty string if no label
 }
 
 /**
- * Load simulated candles from a JSON or CSV file.
- * Prefers JSON for .json extension, otherwise tries JSON then falls back to CSV.
+ * JSON format from simulator
+ */
+interface SimulatorJsonCandle {
+  timestamp_ms: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  label: string;
+}
+
+/**
+ * Parse CSV line into SimulatedCandle
+ */
+function parseCsvLine(line: string, headers: string[]): SimulatedCandle | null {
+  const values = line.split(',');
+  if (values.length < headers.length) {
+    return null;
+  }
+  
+  const candle: SimulatedCandle = {
+    time: parseInt(values[0], 10),
+    open: parseFloat(values[1]),
+    high: parseFloat(values[2]),
+    low: parseFloat(values[3]),
+    close: parseFloat(values[4]),
+    label: '',  // Default empty label
+  };
+  
+  // Optional volume
+  if (values.length > 5 && values[5]) {
+    candle.volume = parseInt(values[5], 10);
+  }
+  
+  // Optional label (overwrite default if present)
+  if (values.length > 6 && values[6]) {
+    candle.label = values[6];
+  }
+  
+  return candle;
+}
+
+/**
+ * Parse CSV content into SimulatedCandle array
+ */
+function parseCsv(content: string): SimulatedCandle[] {
+  const lines = content.trim().split('\n');
+  if (lines.length < 2) {
+    return [];
+  }
+  
+  // First line is header
+  const headers = lines[0].split(',');
+  const candles: SimulatedCandle[] = [];
+  
+  for (let i = 1; i < lines.length; i++) {
+    const candle = parseCsvLine(lines[i], headers);
+    if (candle) {
+      candles.push(candle);
+    }
+  }
+  
+  return candles;
+}
+
+/**
+ * Parse JSON content into SimulatedCandle array
+ */
+function parseJson(content: string): SimulatedCandle[] {
+  const jsonData: SimulatorJsonCandle[] = JSON.parse(content);
+  
+  return jsonData.map(candle => ({
+    time: candle.timestamp_ms,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: candle.volume,
+    label: candle.label || ''  // Convert undefined/empty to empty string
+  }));
+}
+
+/**
+ * Load simulated candles from a file
  * 
- * @param filePath - Path or URL to the simulated candles file
- * @returns Promise resolving to array of SimulatedCandle objects
+ * @param filePath - Path to CSV or JSON file
+ * @returns Promise resolving to array of SimulatedCandle
+ * 
+ * @example
+ * ```typescript
+ * const candles = await loadSimulatedCandles('./data/abc_zigzag.json');
+ * console.log(`Loaded ${candles.length} candles`);
+ * ```
  */
 export async function loadSimulatedCandles(filePath: string): Promise<SimulatedCandle[]> {
-  const isJsonFile = filePath.endsWith('.json');
-  
   try {
-    const response = await fetch(filePath);
+    const content = await readFile(filePath, 'utf-8');
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${filePath}: ${response.status} ${response.statusText}`);
-    }
+    // Check file extension
+    const { ext } = parse(filePath);
     
-    const text = await response.text();
-    
-    // Try JSON first for .json files, or if content looks like JSON
-    if (isJsonFile || text.trim().startsWith('[') || text.trim().startsWith('{')) {
+    // Prefer JSON parsing if extension is .json
+    if (ext.toLowerCase() === '.json') {
       try {
-        return parseJSON(text);
+        return parseJson(content);
       } catch (jsonError) {
-        if (isJsonFile) {
-          throw jsonError; // If it's a .json file, don't fall back to CSV
-        }
-        // Otherwise, try CSV as fallback
-        console.warn('JSON parse failed, trying CSV format...', jsonError);
+        // If JSON parsing fails, try CSV as fallback
+        console.warn('JSON parsing failed, attempting CSV fallback');
+        return parseCsv(content);
       }
     }
     
-    // Try CSV format
-    return parseCSV(text);
-    
+    // Try JSON parse first (more structured), then CSV fallback
+    try {
+      return parseJson(content);
+    } catch (jsonError) {
+      // Not JSON, try CSV
+      return parseCsv(content);
+    }
   } catch (error) {
-    console.error('Failed to load simulated candles:', error);
-    throw error;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to load simulated candles: ${errorMessage}`);
   }
 }
 
 /**
- * Parse JSON format simulated candles.
- * Expected format: array of objects with timestamp_ms, open, high, low, close, label fields.
+ * Load simulated candles synchronously (for Node.js environments)
+ * 
+ * @param content - File content as string
+ * @param format - Explicit format: 'json' | 'csv' | 'auto' (default: 'auto')
+ * @returns Array of SimulatedCandle
  */
-function parseJSON(text: string): SimulatedCandle[] {
-  const data = JSON.parse(text);
-  
-  if (!Array.isArray(data)) {
-    throw new Error('JSON data must be an array');
+export function loadSimulatedCandlesSync(
+  content: string,
+  format: 'json' | 'csv' | 'auto' = 'auto'
+): SimulatedCandle[] {
+  if (format === 'json') {
+    return parseJson(content);
   }
   
-  return data.map((item, index) => {
-    // Support both timestamp_ms and time fields
-    const time = item.timestamp_ms || item.time;
-    
-    if (typeof time !== 'number') {
-      throw new Error(`Invalid timestamp at index ${index}: ${time}`);
-    }
-    
-    if (typeof item.open !== 'number' || typeof item.high !== 'number' ||
-        typeof item.low !== 'number' || typeof item.close !== 'number') {
-      throw new Error(`Invalid OHLC data at index ${index}`);
-    }
-    
-    return {
-      time,
-      open: item.open,
-      high: item.high,
-      low: item.low,
-      close: item.close,
-      volume: item.volume,
-      label: item.label || undefined,
-    };
-  });
+  if (format === 'csv') {
+    return parseCsv(content);
+  }
+  
+  // Auto-detect: try JSON first, then CSV
+  try {
+    return parseJson(content);
+  } catch {
+    return parseCsv(content);
+  }
 }
 
 /**
- * Parse CSV format simulated candles.
- * Expected format: timestamp_ms,open,high,low,close,label
+ * Validate that candles have proper OHLC relationships
  */
-function parseCSV(text: string): SimulatedCandle[] {
-  const lines = text.trim().split('\n');
-  
-  if (lines.length < 2) {
-    throw new Error('CSV must have at least a header and one data row');
+export function validateCandles(candles: SimulatedCandle[]): boolean {
+  for (const candle of candles) {
+    if (candle.high < Math.max(candle.open, candle.close)) {
+      return false;
+    }
+    if (candle.low > Math.min(candle.open, candle.close)) {
+      return false;
+    }
   }
-  
-  // Parse header
-  const header = lines[0].split(',').map(h => h.trim().toLowerCase());
-  const timeIdx = header.findIndex(h => h === 'timestamp_ms' || h === 'time');
-  const openIdx = header.indexOf('open');
-  const highIdx = header.indexOf('high');
-  const lowIdx = header.indexOf('low');
-  const closeIdx = header.indexOf('close');
-  const labelIdx = header.indexOf('label');
-  const volumeIdx = header.indexOf('volume');
-  
-  if (timeIdx === -1 || openIdx === -1 || highIdx === -1 || lowIdx === -1 || closeIdx === -1) {
-    throw new Error('CSV must have timestamp_ms (or time), open, high, low, and close columns');
-  }
-  
-  // Parse data rows
-  return lines.slice(1).map((line, index) => {
-    const fields = line.split(',').map(f => f.trim());
-    
-    const time = parseFloat(fields[timeIdx]);
-    const open = parseFloat(fields[openIdx]);
-    const high = parseFloat(fields[highIdx]);
-    const low = parseFloat(fields[lowIdx]);
-    const close = parseFloat(fields[closeIdx]);
-    
-    if (isNaN(time) || isNaN(open) || isNaN(high) || isNaN(low) || isNaN(close)) {
-      throw new Error(`Invalid numeric data at row ${index + 2}`);
-    }
-    
-    const candle: SimulatedCandle = {
-      time,
-      open,
-      high,
-      low,
-      close,
-    };
-    
-    if (labelIdx !== -1 && fields[labelIdx]) {
-      candle.label = fields[labelIdx];
-    }
-    
-    if (volumeIdx !== -1 && fields[volumeIdx]) {
-      const volume = parseFloat(fields[volumeIdx]);
-      if (!isNaN(volume)) {
-        candle.volume = volume;
-      }
-    }
-    
-    return candle;
-  });
-}
-
-/**
- * Load simulated candles from inline data (for testing or embedded scenarios).
- */
-export function loadSimulatedCandlesFromData(data: any[]): SimulatedCandle[] {
-  if (!Array.isArray(data)) {
-    throw new Error('Data must be an array');
-  }
-  
-  return data.map((item, index) => {
-    // Support both timestamp_ms and time fields
-    const time = item.timestamp_ms || item.time;
-    
-    if (typeof time !== 'number') {
-      throw new Error(`Invalid timestamp at index ${index}: ${time}`);
-    }
-    
-    if (typeof item.open !== 'number' || typeof item.high !== 'number' ||
-        typeof item.low !== 'number' || typeof item.close !== 'number') {
-      throw new Error(`Invalid OHLC data at index ${index}`);
-    }
-    
-    return {
-      time,
-      open: item.open,
-      high: item.high,
-      low: item.low,
-      close: item.close,
-      volume: item.volume,
-      label: item.label || undefined,
-    };
-  });
+  return true;
 }
