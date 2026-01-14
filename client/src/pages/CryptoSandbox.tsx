@@ -2302,6 +2302,42 @@ export default function CryptoSandbox() {
       .attr('class', 'candles')
       .attr('clip-path', 'url(#chart-clip)');
     
+    // Helper to compute safe candle width based on actual pixel spacing
+    const computeSafeCandleWidth = (
+      xS: d3.ScaleTime<number, number>,
+      visibleCandles: CandleData[],
+      innerW: number,
+      opts?: { widthFactor?: number; gapPx?: number; maxPx?: number }
+    ): number => {
+      const { widthFactor = 0.8, gapPx = 0, maxPx = 20 } = opts || {};
+      
+      // Fallback for single or no candles
+      if (visibleCandles.length <= 1) {
+        return Math.round(Math.max(1, Math.min(maxPx, (innerW / Math.max(1, visibleCandles.length)) * widthFactor)));
+      }
+      
+      // Map candles to x positions
+      const xPositions = visibleCandles.map(d => xS(new Date(d.time)));
+      
+      // Find minimum adjacent dx (skip zero values)
+      let minDx = Infinity;
+      for (let i = 1; i < xPositions.length; i++) {
+        const dx = Math.abs(xPositions[i] - xPositions[i - 1]);
+        if (dx > 0 && dx < minDx) {
+          minDx = dx;
+        }
+      }
+      
+      // If no valid dx found, fallback to average spacing
+      if (!isFinite(minDx) || minDx === 0) {
+        return Math.round(Math.max(1, Math.min(maxPx, (innerW / visibleCandles.length) * widthFactor)));
+      }
+      
+      // Compute width: (minDx * widthFactor) - gapPx, clamped to [1, maxPx]
+      const width = Math.max(1, Math.min(maxPx, minDx * widthFactor - gapPx));
+      return Math.round(width);
+    };
+    
     // Draw candles
     const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
       candlesGroup.selectAll('*').remove();
@@ -2312,7 +2348,7 @@ export default function CryptoSandbox() {
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
       
-      const dynamicCandleWidth = Math.max(1, Math.min(20, (innerWidth / visibleCandles.length) * 0.8));
+      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleCandles, innerWidth, { widthFactor: 0.8, gapPx: 0, maxPx: 20 });
       
       // Wicks
       candlesGroup.selectAll('.wick')
@@ -2320,12 +2356,13 @@ export default function CryptoSandbox() {
         .enter()
         .append('line')
         .attr('class', 'wick')
-        .attr('x1', d => xS(new Date(d.time)))
-        .attr('x2', d => xS(new Date(d.time)))
-        .attr('y1', d => yS(d.high))
-        .attr('y2', d => yS(d.low))
+        .attr('x1', d => Math.round(xS(new Date(d.time))))
+        .attr('x2', d => Math.round(xS(new Date(d.time))))
+        .attr('y1', d => Math.round(yS(d.high)))
+        .attr('y2', d => Math.round(yS(d.low)))
         .attr('stroke', d => d.close >= d.open ? '#22c55e' : '#ef4444')
-        .attr('stroke-width', 1);
+        .attr('stroke-width', 1)
+        .attr('shape-rendering', 'crispEdges');
       
       // Bodies
       candlesGroup.selectAll('.body')
@@ -2333,11 +2370,12 @@ export default function CryptoSandbox() {
         .enter()
         .append('rect')
         .attr('class', 'body')
-        .attr('x', d => xS(new Date(d.time)) - dynamicCandleWidth / 2)
-        .attr('y', d => yS(Math.max(d.open, d.close)))
-        .attr('width', dynamicCandleWidth)
-        .attr('height', d => Math.max(1, Math.abs(yS(d.open) - yS(d.close))))
-        .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444');
+        .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
+        .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
+        .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
+        .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
+        .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444')
+        .attr('shape-rendering', 'crispEdges');
     };
     
     drawCandles(xScale, yScale);
@@ -2354,7 +2392,7 @@ export default function CryptoSandbox() {
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
       // Use same candle width calculation as real candles for perfect alignment
-      const dynamicCandleWidth = Math.max(1, Math.min(20, (innerWidth / visibleCandles.length) * 0.8));
+      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleCandles, innerWidth, { widthFactor: 0.8, gapPx: 0, maxPx: 20 });
       
       // Draw simulated W2 candles as standard candlesticks with consistent geometry
       if (elliottWave.simulatedCandles.length > 0) {
@@ -2376,13 +2414,14 @@ export default function CryptoSandbox() {
           .enter()
           .append('line')
           .attr('class', 'elliott-wick')
-          .attr('x1', d => xS(new Date(d.time)))
-          .attr('x2', d => xS(new Date(d.time)))
-          .attr('y1', d => yS(d.high))
-          .attr('y2', d => yS(d.low))
+          .attr('x1', d => Math.round(xS(new Date(d.time))))
+          .attr('x2', d => Math.round(xS(new Date(d.time))))
+          .attr('y1', d => Math.round(yS(d.high)))
+          .attr('y2', d => Math.round(yS(d.low)))
           .attr('stroke', cyanColor)
           .attr('stroke-opacity', opacity)
-          .attr('stroke-width', 1);
+          .attr('stroke-width', 1)
+          .attr('shape-rendering', 'crispEdges');
         
         // Bodies for simulated candles - using same width as real candles for perfect alignment
         elliottWaveGroup.selectAll('.elliott-body')
@@ -2390,15 +2429,16 @@ export default function CryptoSandbox() {
           .enter()
           .append('rect')
           .attr('class', 'elliott-body')
-          .attr('x', d => xS(new Date(d.time)) - dynamicCandleWidth / 2)
-          .attr('y', d => yS(Math.max(d.open, d.close)))
-          .attr('width', dynamicCandleWidth)
-          .attr('height', d => Math.max(1, Math.abs(yS(d.open) - yS(d.close))))
+          .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
+          .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
+          .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
+          .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
           .attr('fill', cyanColor)
           .attr('fill-opacity', opacity)
           .attr('stroke', cyanColor)
           .attr('stroke-opacity', opacity * 0.8)
-          .attr('stroke-width', 1);
+          .attr('stroke-width', 1)
+          .attr('shape-rendering', 'crispEdges');
         
         // Labels on simulated candles - only show non-empty labels
         elliottWaveGroup.selectAll('.elliott-label')
