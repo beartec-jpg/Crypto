@@ -7,50 +7,13 @@
 //  - 'sandboxEnsembleReady'       -> detail: { ensemble, patternVariant, startPrice }
 
 import { generateWaveEnsemble } from './generateWaveEnsemble';
+import { findChartContainer, findOverlayCanvas } from './sandboxDomHelpers';
 
 type EnsembleEventDetail = {
   ensemble: any;
   patternVariant: 'flat' | 'zigzag';
   startPrice: number;
 };
-
-function findChartContainer() {
-  return (
-    document.querySelector('.chart-container') ||
-    document.querySelector('#chart') ||
-    document.querySelector('[data-role="chart"]') ||
-    document.querySelector('.crypto-chart') ||
-    document.querySelector('main')
-  ) as HTMLElement | null;
-}
-
-function findOverlayCanvas(container: HTMLElement | null) {
-  if (!container) return null;
-  const byClass = container.querySelector('canvas.overlay');
-  if (byClass) return byClass as HTMLCanvasElement;
-  const firstCanvas = container.querySelector('canvas');
-  return firstCanvas as HTMLCanvasElement | null;
-}
-
-function findNearestCandleFromGlobal(time: number, price: number, radiusPx = 30) {
-  const arr = (window as any).__SANDBOX_CANDLES__ as Array<any> | undefined;
-  if (!arr || !arr.length) return null;
-  let best = null as any;
-  let bestScore = Infinity;
-  for (const c of arr) {
-    const ct = c.time ?? c.t ?? 0;
-    const cp = c.close ?? c.c ?? c.price ?? (c.high + c.low) / 2;
-    const dt = Math.abs(ct - time);
-    const dp = Math.abs(cp - price);
-    const score = dt + dp * 1000;
-    if (score < bestScore) {
-      bestScore = score;
-      best = { time: ct, price: cp, raw: c, score };
-    }
-  }
-  if (bestScore < 1e12) return best;
-  return null;
-}
 
 export async function initSandboxClickBinderAuto() {
   const container = findChartContainer();
@@ -73,7 +36,25 @@ export async function initSandboxClickBinderAuto() {
       const clickedTime = getTimeForX ? getTimeForX(cx) : Date.now();
       const clickedPrice = getPriceForY ? getPriceForY(cy) : (window as any).__SANDBOX_LAST_CLOSE__ ?? 0;
 
-      const candle = findNearestCandleFromGlobal(clickedTime, clickedPrice, 30);
+      const candle = (function findNearestCandleFromGlobal(time: number, price: number, radiusPx = 30) {
+        const arr = (window as any).__SANDBOX_CANDLES__ as Array<any> | undefined;
+        if (!arr || !arr.length) return null;
+        let best = null as any;
+        let bestScore = Infinity;
+        for (const c of arr) {
+          const ct = c.time ?? c.t ?? 0;
+          const cp = c.close ?? c.c ?? c.price ?? (c.high + c.low) / 2;
+          const dt = Math.abs(ct - time);
+          const dp = Math.abs(cp - price);
+          const score = dt + dp * 1000;
+          if (score < bestScore) {
+            bestScore = score;
+            best = { time: ct, price: cp, raw: c, score };
+          }
+        }
+        if (bestScore < 1e12) return best;
+        return null;
+      })(clickedTime, clickedPrice, 30);
 
       if (candle) {
         const evDetail = { mode: 'trendline', to: { time: candle.time, price: candle.price } };

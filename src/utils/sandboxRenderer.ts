@@ -83,6 +83,8 @@ export function drawEnsembleOnCanvas(
   if (!ctx) return;
   const width = canvas.width;
   const height = canvas.height;
+  // Guard against zero or negative canvas dimensions to avoid unexpected drawing behavior.
+  if (width <= 0 || height <= 0) return;
   clearCanvas(ctx, width, height);
   drawTrialCandles(ctx, ensemble.trials, xForIndex, yForPrice, options?.trialCandleWidth ?? 4, options?.trialAlpha ?? 0.03);
   drawMedianCandles(ctx, ensemble.median, xForIndex, yForPrice, options?.medianCandleWidth ?? 8);

@@ -2,24 +2,7 @@
 // Auto-inits a listener for 'sandboxEnsembleReady' events and draws them using mapping helpers exposed on window or best-effort fallbacks.
 
 import { drawEnsembleOnCanvas } from './sandboxRenderer';
-
-function findChartContainer() {
-  return (
-    document.querySelector('.chart-container') ||
-    document.querySelector('#chart') ||
-    document.querySelector('[data-role="chart"]') ||
-    document.querySelector('.crypto-chart') ||
-    document.querySelector('main')
-  ) as HTMLElement | null;
-}
-
-function findOverlayCanvas(container: HTMLElement | null) {
-  if (!container) return null;
-  const byClass = container.querySelector('canvas.overlay');
-  if (byClass) return byClass as HTMLCanvasElement;
-  const firstCanvas = container.querySelector('canvas');
-  return firstCanvas as HTMLCanvasElement | null;
-}
+import { findChartContainer, findOverlayCanvas } from './sandboxDomHelpers';
 
 export function initSandboxRendererAuto() {
   const container = findChartContainer();
