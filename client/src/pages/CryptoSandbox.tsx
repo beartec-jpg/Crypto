@@ -99,9 +99,9 @@ export default function CryptoSandbox() {
     let mounted = true;
     import('@shared/utils/sandboxBootstrap')
       .then((mod) => {
-        const fn = mod.default || mod.initSandboxBootstrap || mod.initSandbox;
-        if (fn && mounted) {
-          handle = fn({ autoInit: true });
+        // Use default export (which is initSandboxBootstrap)
+        if (mod.default && mounted) {
+          handle = mod.default({ autoInit: true });
         }
       })
       .catch((err) => console.warn('Failed to load sandbox bootstrap', err));
