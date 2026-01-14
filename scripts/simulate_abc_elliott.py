@@ -253,6 +253,8 @@ def generate_abc_zigzag(
         elif i == wave_a_candle_count - 1:
             candle['label'] = 'W2.A'
             candle['close'] = wave_a_end_price
+            candle['high'] = max(candle['high'], wave_a_end_price)
+            candle['low'] = min(candle['low'], wave_a_end_price)
             current_price = wave_a_end_price
         
         candles.append(candle)
@@ -284,6 +286,8 @@ def generate_abc_zigzag(
         elif i == wave_b_candle_count - 1:
             candle['label'] = 'W2.B'
             candle['close'] = wave_b_end_price
+            candle['high'] = max(candle['high'], wave_b_end_price)
+            candle['low'] = min(candle['low'], wave_b_end_price)
             current_price = wave_b_end_price
         
         candles.append(candle)
@@ -390,6 +394,8 @@ def generate_abc_flat(
         elif i == wave_a_candle_count - 1:
             candle['label'] = 'W2.A'
             candle['close'] = wave_a_end_price
+            candle['high'] = max(candle['high'], wave_a_end_price)
+            candle['low'] = min(candle['low'], wave_a_end_price)
             current_price = wave_a_end_price
         
         candles.append(candle)
@@ -420,6 +426,8 @@ def generate_abc_flat(
         elif i == wave_b_candle_count - 1:
             candle['label'] = 'W2.B'
             candle['close'] = wave_b_end_price
+            candle['high'] = max(candle['high'], wave_b_end_price)
+            candle['low'] = min(candle['low'], wave_b_end_price)
             current_price = wave_b_end_price
         
         candles.append(candle)
