@@ -246,7 +246,8 @@ def generate_wave_candles(
     
     for i in range(num_bars):
         # Add some noise around the drift
-        noise = random.gauss(0, volatility * abs(drift_per_bar) if drift_per_bar != 0 else volatility)
+        noise_factor = volatility * abs(drift_per_bar) if drift_per_bar != 0 else volatility
+        noise = random.gauss(0, noise_factor)
         
         # Calculate open (previous close or start price)
         open_price = current_price
@@ -259,8 +260,11 @@ def generate_wave_candles(
             close_price = end_price
         
         # Generate high and low with intrabar volatility
-        intrabar_vol = (volatility * abs(close_price - open_price) if abs(close_price - open_price) > 0 
-                       else volatility * abs(current_price) * FALLBACK_VOLATILITY_FACTOR)
+        if abs(close_price - open_price) > 0:
+            intrabar_vol = volatility * abs(close_price - open_price)
+        else:
+            intrabar_vol = volatility * abs(current_price) * FALLBACK_VOLATILITY_FACTOR
+        
         high_price = max(open_price, close_price) + abs(random.gauss(0, intrabar_vol))
         low_price = min(open_price, close_price) - abs(random.gauss(0, intrabar_vol))
         
