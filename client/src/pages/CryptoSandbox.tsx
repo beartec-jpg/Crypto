@@ -2353,6 +2353,7 @@ export default function CryptoSandbox() {
         const date = new Date(d.time);
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
+      // Use same candle width calculation as real candles for perfect alignment
       const dynamicCandleWidth = Math.max(1, Math.min(20, (innerWidth / visibleCandles.length) * 0.8));
       
       // Draw simulated W2 candles as standard candlesticks with consistent geometry
@@ -2366,10 +2367,10 @@ export default function CryptoSandbox() {
           return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
         });
         
-        // Calculate candle width based on visible simulated candles for consistent geometry
-        const simulatedCandleWidth = Math.max(1, Math.min(20, (innerWidth / visibleSimulatedCandles.length) * 0.8));
+        // Use the same candle width as real candles - DO NOT recalculate based on simulated count
+        // This ensures perfect alignment between real and simulated candles across all timeframes
         
-        // Wicks for simulated candles - matching real candle geometry
+        // Wicks for simulated candles - using same width as real candles for perfect alignment
         elliottWaveGroup.selectAll('.elliott-wick')
           .data(visibleSimulatedCandles)
           .enter()
@@ -2383,15 +2384,15 @@ export default function CryptoSandbox() {
           .attr('stroke-opacity', opacity)
           .attr('stroke-width', 1);
         
-        // Bodies for simulated candles - matching real candle geometry
+        // Bodies for simulated candles - using same width as real candles for perfect alignment
         elliottWaveGroup.selectAll('.elliott-body')
           .data(visibleSimulatedCandles)
           .enter()
           .append('rect')
           .attr('class', 'elliott-body')
-          .attr('x', d => xS(new Date(d.time)) - simulatedCandleWidth / 2)
+          .attr('x', d => xS(new Date(d.time)) - dynamicCandleWidth / 2)
           .attr('y', d => yS(Math.max(d.open, d.close)))
-          .attr('width', simulatedCandleWidth)
+          .attr('width', dynamicCandleWidth)
           .attr('height', d => Math.max(1, Math.abs(yS(d.open) - yS(d.close))))
           .attr('fill', cyanColor)
           .attr('fill-opacity', opacity)
