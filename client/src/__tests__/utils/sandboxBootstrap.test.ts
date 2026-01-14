@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { initSandbox, cleanupSandbox, isSandboxAvailable } from '@/utils/sandboxBootstrap'
+import { initSandboxBootstrap, isSandboxAvailable } from '@/utils/sandboxBootstrap'
 
 describe('sandboxBootstrap', () => {
   beforeEach(() => {
@@ -7,48 +7,38 @@ describe('sandboxBootstrap', () => {
     vi.clearAllMocks()
   })
 
-  describe('initSandbox', () => {
-    it('should return initialized handle in browser environment', async () => {
-      // Test runs in jsdom, which has window and document
-      const handle = await initSandbox()
+  describe('initSandboxBootstrap', () => {
+    it('should return handle without initializing when autoInit is false', () => {
+      const handle = initSandboxBootstrap({ autoInit: false })
       
       expect(handle).toBeDefined()
-      expect(handle.initialized).toBe(true)
-      expect(handle.environment).toBe('browser')
-      expect(handle.timestamp).toBeGreaterThan(0)
+      expect(handle.disconnect).toBeDefined()
+      expect(typeof handle.disconnect).toBe('function')
     })
 
-    it('should accept options parameter', async () => {
+    it('should return handle when autoInit is true in browser environment', () => {
+      const handle = initSandboxBootstrap({ autoInit: true })
+      
+      expect(handle).toBeDefined()
+      expect(handle.disconnect).toBeDefined()
+      expect(typeof handle.disconnect).toBe('function')
+    })
+
+    it('should accept options parameter', () => {
       const options = {
-        debug: true,
-        performance: { enabled: true, sampleRate: 0.1 }
+        autoInit: false,
+        skipLabels: true,
+        rootSelector: '#root'
       }
       
-      const handle = await initSandbox(options)
+      const handle = initSandboxBootstrap(options)
       
       expect(handle).toBeDefined()
-      expect(handle.initialized).toBe(true)
+      expect(handle.disconnect).toBeDefined()
     })
 
-    it('should return handle with timestamp', async () => {
-      const beforeTime = Date.now()
-      const handle = await initSandbox()
-      const afterTime = Date.now()
-      
-      expect(handle.timestamp).toBeGreaterThanOrEqual(beforeTime)
-      expect(handle.timestamp).toBeLessThanOrEqual(afterTime)
-    })
-  })
-
-  describe('cleanupSandbox', () => {
-    it('should execute without errors', () => {
-      expect(() => cleanupSandbox()).not.toThrow()
-    })
-
-    it('should be safe to call multiple times', () => {
-      cleanupSandbox()
-      cleanupSandbox()
-      expect(() => cleanupSandbox()).not.toThrow()
+    it('should not throw when called without options', () => {
+      expect(() => initSandboxBootstrap()).not.toThrow()
     })
   })
 
@@ -66,13 +56,11 @@ describe('sandboxBootstrap', () => {
   })
 
   describe('default export', () => {
-    it('should export all functions', async () => {
+    it('should export the initializer function', async () => {
       const sandboxBootstrap = await import('@/utils/sandboxBootstrap')
       
       expect(sandboxBootstrap.default).toBeDefined()
-      expect(sandboxBootstrap.default.initSandbox).toBe(initSandbox)
-      expect(sandboxBootstrap.default.cleanupSandbox).toBe(cleanupSandbox)
-      expect(sandboxBootstrap.default.isSandboxAvailable).toBe(isSandboxAvailable)
+      expect(typeof sandboxBootstrap.default).toBe('function')
     })
   })
 })
