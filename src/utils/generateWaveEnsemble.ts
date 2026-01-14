@@ -23,6 +23,7 @@ interface EnsembleOpts {
   roughness?: number;
   direction?: 1 | -1;
   anchors?: { t: number; price: number }[]; // optional user anchors to respect
+  patternVariant?: 'flat' | 'zigzag'; // bias sampling for corrective patterns
 }
 
 interface EnsembleResult {
@@ -126,7 +127,7 @@ function aggregateToOHLC(dense: number[], totalBars: number, microTicksPerBar: n
 
 // Sample pivot sets for impulse5 and abc templates
 function samplePivots(opts: EnsembleOpts, randNormal: () => number, rand: () => number) {
-  const { template = 'impulse5', totalBars, startPrice, sizeStd = 0.12, timeStd = 0.15, direction = 1, anchors } = opts;
+  const { template = 'impulse5', totalBars, startPrice, sizeStd = 0.12, timeStd = 0.15, direction = 1, anchors, patternVariant = 'zigzag' } = opts as EnsembleOpts & { patternVariant?: 'flat' | 'zigzag' };
   // Fibonacci-like priors (relative amplitudes)
   const impulsePriors = [0.38, 0.24, 0.62, 0.20, 1.0];
   const abcPriors = [0.5, 0.38, 0.62];
@@ -159,10 +160,27 @@ function samplePivots(opts: EnsembleOpts, randNormal: () => number, rand: () => 
     return pivots;
   } else {
     // abc
-    let durations = abcPriors.map(p => Math.max(0.03, p * (1 + randNormal() * timeStd)));
+    // adjust sampling based on requested pattern variant
+    let durations = abcPriors.map(p => Math.max(0.03, p * (1 + randNormal() * (patternVariant === 'flat' ? timeStd * 0.6 : timeStd))));
     const sum = durations.reduce((a, b) => a + b, 0);
     const durBars = durations.map(d => Math.max(1, Math.round((d / sum) * totalBars)));
-    let amps = abcPriors.map(p => (p * (1 + randNormal() * sizeStd)));
+
+    // bias amplitudes for flat vs zigzag
+    let amps: number[];
+    if (patternVariant === 'flat') {
+      // B leg near-equal to A (flat tends to have B ~ A), reduce variance
+      amps = abcPriors.map((p, idx) => {
+        if (idx === 1) return p * (1.0 + randNormal() * (sizeStd * 0.4));
+        return p * (1 + randNormal() * sizeStd);
+      });
+    } else {
+      // zigzag: B is typically smaller and C deeper -> make B smaller
+      amps = abcPriors.map((p, idx) => {
+        if (idx === 1) return p * (0.5 + Math.abs(randNormal()) * sizeStd); // smaller B
+        return p * (1 + randNormal() * sizeStd);
+      });
+    }
+
     const pivots: { t: number; price: number }[] = [{ t: 0, price: startPrice }];
     let t = 0; let price = startPrice; let dir = direction;
     for (let i = 0; i < amps.length; i++) {
