@@ -2360,9 +2360,18 @@ export default function CryptoSandbox() {
         const cyanColor = '#00ffff';
         const opacity = 0.6;
         
-        // Wicks for simulated candles
+        // Filter visible simulated candles based on time range
+        const visibleSimulatedCandles = elliottWave.simulatedCandles.filter(d => {
+          const date = new Date(d.time);
+          return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
+        });
+        
+        // Calculate candle width based on visible simulated candles for consistent geometry
+        const simulatedCandleWidth = Math.max(1, Math.min(20, (innerWidth / visibleSimulatedCandles.length) * 0.8));
+        
+        // Wicks for simulated candles - matching real candle geometry
         elliottWaveGroup.selectAll('.elliott-wick')
-          .data(elliottWave.simulatedCandles)
+          .data(visibleSimulatedCandles)
           .enter()
           .append('line')
           .attr('class', 'elliott-wick')
@@ -2374,15 +2383,15 @@ export default function CryptoSandbox() {
           .attr('stroke-opacity', opacity)
           .attr('stroke-width', 1);
         
-        // Bodies for simulated candles
+        // Bodies for simulated candles - matching real candle geometry
         elliottWaveGroup.selectAll('.elliott-body')
-          .data(elliottWave.simulatedCandles)
+          .data(visibleSimulatedCandles)
           .enter()
           .append('rect')
           .attr('class', 'elliott-body')
-          .attr('x', d => xS(new Date(d.time)) - dynamicCandleWidth / 2)
+          .attr('x', d => xS(new Date(d.time)) - simulatedCandleWidth / 2)
           .attr('y', d => yS(Math.max(d.open, d.close)))
-          .attr('width', dynamicCandleWidth)
+          .attr('width', simulatedCandleWidth)
           .attr('height', d => Math.max(1, Math.abs(yS(d.open) - yS(d.close))))
           .attr('fill', cyanColor)
           .attr('fill-opacity', opacity)
@@ -2390,9 +2399,9 @@ export default function CryptoSandbox() {
           .attr('stroke-opacity', opacity * 0.8)
           .attr('stroke-width', 1);
         
-        // Labels on simulated candles
+        // Labels on simulated candles - only show non-empty labels
         elliottWaveGroup.selectAll('.elliott-label')
-          .data(elliottWave.simulatedCandles)
+          .data(visibleSimulatedCandles.filter(d => d.label && d.label.trim() !== ''))
           .enter()
           .append('text')
           .attr('class', 'elliott-label')
