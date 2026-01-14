@@ -8,6 +8,14 @@
  */
 
 /**
+ * Helper to detect if code is running in a browser environment.
+ * @internal
+ */
+function isBrowserEnvironment(): boolean {
+  return typeof window !== 'undefined' && typeof document !== 'undefined';
+}
+
+/**
  * Configuration options for sandbox initialization
  */
 export interface SandboxOptions {
@@ -50,6 +58,7 @@ export interface SandboxHandle {
   
   /**
    * Environment type where sandbox is running
+   * Note: Currently 'ssr' is reserved for future use; non-browser environments return 'build'
    */
   environment: 'browser' | 'ssr' | 'build';
 }
@@ -87,10 +96,11 @@ export interface SandboxHandle {
  */
 export async function initSandbox(options?: SandboxOptions): Promise<SandboxHandle> {
   // Detect environment
-  const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
-  const environment = isBrowser ? 'browser' : (typeof process !== 'undefined' ? 'build' : 'ssr');
+  const isBrowser = isBrowserEnvironment();
+  // Non-browser environments are classified as 'build' (includes SSR, build time, Node tests)
+  const environment: 'browser' | 'ssr' | 'build' = isBrowser ? 'browser' : 'build';
   
-  // Safe no-op for SSR/build environments
+  // Safe no-op for non-browser environments
   if (!isBrowser) {
     return {
       initialized: false,
@@ -100,7 +110,8 @@ export async function initSandbox(options?: SandboxOptions): Promise<SandboxHand
   }
   
   // Browser environment - safe initialization
-  if (options?.debug) {
+  if (options?.debug && import.meta.env?.DEV !== false) {
+    // Only log in development mode
     console.log('[SandboxBootstrap] Initializing sandbox with options:', options);
   }
   
@@ -140,9 +151,7 @@ export async function initSandbox(options?: SandboxOptions): Promise<SandboxHand
  * ```
  */
 export function cleanupSandbox(): void {
-  const isBrowser = typeof window !== 'undefined';
-  
-  if (!isBrowser) {
+  if (!isBrowserEnvironment()) {
     return;
   }
   
@@ -155,7 +164,10 @@ export function cleanupSandbox(): void {
 }
 
 /**
- * Check if the sandbox is currently initialized.
+ * Check if the sandbox environment is available.
+ * 
+ * Returns true when running in a browser environment where sandbox features
+ * can be safely used (window and document are available).
  * 
  * @returns true if running in a browser environment, false otherwise
  * 
@@ -169,7 +181,7 @@ export function cleanupSandbox(): void {
  * ```
  */
 export function isSandboxAvailable(): boolean {
-  return typeof window !== 'undefined' && typeof document !== 'undefined';
+  return isBrowserEnvironment();
 }
 
 /**
