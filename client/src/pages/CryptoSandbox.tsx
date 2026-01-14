@@ -93,6 +93,24 @@ export default function CryptoSandbox() {
   // Error handling hook
   const { error: errorMessage, handleError, clearError, exportLogs } = useErrorHandler();
   
+  // Lazy-load sandbox bootstrap only when this page is mounted
+  useEffect(() => {
+    let handle: { disconnect?: () => void } | null = null;
+    let mounted = true;
+    import('@shared/utils/sandboxBootstrap')
+      .then((mod) => {
+        const fn = mod.default || mod.initSandboxBootstrap || mod.initSandbox;
+        if (fn && mounted) {
+          handle = fn({ autoInit: true });
+        }
+      })
+      .catch((err) => console.warn('Failed to load sandbox bootstrap', err));
+    return () => {
+      mounted = false;
+      if (handle && handle.disconnect) handle.disconnect();
+    };
+  }, []);
+  
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
