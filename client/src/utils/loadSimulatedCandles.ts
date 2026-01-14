@@ -10,6 +10,7 @@ import { parse } from 'path';
 
 /**
  * SimulatedCandle interface matching frontend shape
+ * Note: label is required (empty string for non-labeled candles)
  */
 export interface SimulatedCandle {
   time: number;        // epoch milliseconds
@@ -18,7 +19,7 @@ export interface SimulatedCandle {
   low: number;
   close: number;
   volume?: number;
-  label?: string;
+  label: string;       // Empty string if no label
 }
 
 /**
@@ -49,6 +50,7 @@ function parseCsvLine(line: string, headers: string[]): SimulatedCandle | null {
     high: parseFloat(values[2]),
     low: parseFloat(values[3]),
     close: parseFloat(values[4]),
+    label: '',  // Default empty label
   };
   
   // Optional volume
@@ -56,7 +58,7 @@ function parseCsvLine(line: string, headers: string[]): SimulatedCandle | null {
     candle.volume = parseInt(values[5], 10);
   }
   
-  // Optional label
+  // Optional label (overwrite default if present)
   if (values.length > 6 && values[6]) {
     candle.label = values[6];
   }
@@ -100,7 +102,7 @@ function parseJson(content: string): SimulatedCandle[] {
     low: candle.low,
     close: candle.close,
     volume: candle.volume,
-    label: candle.label || undefined
+    label: candle.label || ''  // Convert undefined/empty to empty string
   }));
 }
 
