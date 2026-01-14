@@ -2355,10 +2355,10 @@ export default function CryptoSandbox() {
       });
       const dynamicCandleWidth = Math.max(1, Math.min(20, (innerWidth / visibleCandles.length) * 0.8));
       
-      // Draw simulated W2 candles (translucent cyan)
+      // Draw simulated W2 candles as standard candlesticks with consistent geometry
       if (elliottWave.simulatedCandles.length > 0) {
         const cyanColor = '#00ffff';
-        const opacity = 0.6;
+        const opacity = 0.7;
         
         // Filter visible simulated candles based on time range
         const visibleSimulatedCandles = elliottWave.simulatedCandles.filter(d => {
