@@ -2292,7 +2292,7 @@ export default function CryptoSandbox() {
       .attr('stroke', '#1e293b')
       .attr('stroke-width', 1);
     
-    // Elliott Wave simulated candles group (drawn BEFORE real candles for lower z-index)
+    // Elliott Wave dedicated group for predicted visuals (drawn BEFORE real candles for lower z-index)
     const elliottWaveGroup = g.append('g')
       .attr('class', 'elliott-wave')
       .attr('clip-path', 'url(#chart-clip)');
@@ -2405,10 +2405,10 @@ export default function CryptoSandbox() {
       const visibleTimes = visibleCandles.map(c => c.time);
       const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
       
-      // Draw simulated W2 candles as standard candlesticks with consistent geometry
+      // Draw simulated W2 candles - simplified rendering to avoid zoom/pan interference
+      // Removed candle bodies (both wicks and filled/hollow rectangles) that caused heavy repainting
       if (elliottWave.simulatedCandles.length > 0) {
         const cyanColor = '#00ffff';
-        const bodyVisible = dynamicCandleWidth >= 3;
         
         // Filter visible simulated candles based on time range
         const visibleSimulatedCandles = elliottWave.simulatedCandles.filter(d => {
@@ -2416,43 +2416,8 @@ export default function CryptoSandbox() {
           return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
         });
         
-        // Use the same candle width as real candles - DO NOT recalculate based on simulated count
-        // This ensures perfect alignment between real and simulated candles across all timeframes
-        
-        // Wicks for simulated candles - always drawn as 1px lines
-        elliottWaveGroup.selectAll('.elliott-wick')
-          .data(visibleSimulatedCandles)
-          .enter()
-          .append('line')
-          .attr('class', 'elliott-wick')
-          .attr('x1', d => Math.round(xS(new Date(d.time))))
-          .attr('x2', d => Math.round(xS(new Date(d.time))))
-          .attr('y1', d => Math.round(yS(d.high)))
-          .attr('y2', d => Math.round(yS(d.low)))
-          .attr('stroke', cyanColor)
-          .attr('stroke-opacity', 0.5)
-          .attr('stroke-width', 1)
-          .attr('shape-rendering', 'crispEdges');
-        
-        // Bodies for simulated candles - hollow with 50% stroke opacity, only draw if width >= 3px
-        if (bodyVisible) {
-          elliottWaveGroup.selectAll('.elliott-body')
-            .data(visibleSimulatedCandles)
-            .enter()
-            .append('rect')
-            .attr('class', 'elliott-body')
-            .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
-            .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
-            .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
-            .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
-            .attr('fill', 'none')
-            .attr('stroke', cyanColor)
-            .attr('stroke-opacity', 0.5)
-            .attr('stroke-width', 1)
-            .attr('shape-rendering', 'crispEdges');
-        }
-        
         // Labels on simulated candles - only show non-empty labels
+        // This provides visual feedback without heavy DOM manipulation
         elliottWaveGroup.selectAll('.elliott-label')
           .data(visibleSimulatedCandles.filter(d => d.label && d.label.trim() !== ''))
           .enter()
@@ -2558,7 +2523,7 @@ export default function CryptoSandbox() {
             .text(point.label);
         });
         
-        // Add percentage label next to W2 if we have W0, W1, and W2
+        // Add percentage label below W2 if we have W0, W1, and W2
         if (points.length >= 3) {
           const w0 = points[0];
           const w1 = points[1];
@@ -2567,16 +2532,17 @@ export default function CryptoSandbox() {
           const retracementRange = Math.abs(w2.price - w1.price);
           const retracementPercent = (retracementRange / wave1Range * 100).toFixed(1);
           
-          // Position label adjacent to W2 label (to its right)
+          // Position label below W2 label (same x, below with additional spacing)
           const w2X = xS(new Date(w2.time));
           const w2Y = yS(w2.price);
-          const labelY = Math.round(w2Y) + LABEL_OFFSET;
+          const additionalSpacing = 3; // Small additional spacing below W2 label
+          const labelY = Math.round(w2Y) + LABEL_OFFSET + additionalSpacing;
           
           elliottWaveGroup.append('text')
-            .attr('x', Math.round(w2X + PCT_OFFSET_X))
+            .attr('x', Math.round(w2X))
             .attr('y', labelY)
-            .attr('text-anchor', 'start')
-            .attr('alignment-baseline', 'hanging')
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'hanging')
             .attr('font-size', '10px')
             .attr('fill', '#00ffff')
             .attr('font-weight', 'bold')
