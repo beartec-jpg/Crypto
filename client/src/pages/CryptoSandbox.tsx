@@ -2356,8 +2356,9 @@ export default function CryptoSandbox() {
       
       const visibleTimes = visibleCandles.map(c => c.time);
       const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
+      const bodyVisible = dynamicCandleWidth >= 3;
       
-      // Wicks
+      // Wicks - always drawn as 1px lines
       candlesGroup.selectAll('.wick')
         .data(visibleCandles)
         .enter()
@@ -2371,18 +2372,20 @@ export default function CryptoSandbox() {
         .attr('stroke-width', 1)
         .attr('shape-rendering', 'crispEdges');
       
-      // Bodies
-      candlesGroup.selectAll('.body')
-        .data(visibleCandles)
-        .enter()
-        .append('rect')
-        .attr('class', 'body')
-        .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
-        .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
-        .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
-        .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
-        .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444')
-        .attr('shape-rendering', 'crispEdges');
+      // Bodies - only draw if width >= 3px
+      if (bodyVisible) {
+        candlesGroup.selectAll('.body')
+          .data(visibleCandles)
+          .enter()
+          .append('rect')
+          .attr('class', 'body')
+          .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
+          .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
+          .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
+          .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
+          .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444')
+          .attr('shape-rendering', 'crispEdges');
+      }
     };
     
     drawCandles(xScale, yScale);
@@ -2405,7 +2408,7 @@ export default function CryptoSandbox() {
       // Draw simulated W2 candles as standard candlesticks with consistent geometry
       if (elliottWave.simulatedCandles.length > 0) {
         const cyanColor = '#00ffff';
-        const opacity = 0.7;
+        const bodyVisible = dynamicCandleWidth >= 3;
         
         // Filter visible simulated candles based on time range
         const visibleSimulatedCandles = elliottWave.simulatedCandles.filter(d => {
@@ -2416,7 +2419,7 @@ export default function CryptoSandbox() {
         // Use the same candle width as real candles - DO NOT recalculate based on simulated count
         // This ensures perfect alignment between real and simulated candles across all timeframes
         
-        // Wicks for simulated candles - using same width as real candles for perfect alignment
+        // Wicks for simulated candles - always drawn as 1px lines
         elliottWaveGroup.selectAll('.elliott-wick')
           .data(visibleSimulatedCandles)
           .enter()
@@ -2427,26 +2430,27 @@ export default function CryptoSandbox() {
           .attr('y1', d => Math.round(yS(d.high)))
           .attr('y2', d => Math.round(yS(d.low)))
           .attr('stroke', cyanColor)
-          .attr('stroke-opacity', opacity)
+          .attr('stroke-opacity', 0.5)
           .attr('stroke-width', 1)
           .attr('shape-rendering', 'crispEdges');
         
-        // Bodies for simulated candles - using same width as real candles for perfect alignment
-        elliottWaveGroup.selectAll('.elliott-body')
-          .data(visibleSimulatedCandles)
-          .enter()
-          .append('rect')
-          .attr('class', 'elliott-body')
-          .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
-          .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
-          .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
-          .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
-          .attr('fill', cyanColor)
-          .attr('fill-opacity', opacity)
-          .attr('stroke', cyanColor)
-          .attr('stroke-opacity', opacity * 0.8)
-          .attr('stroke-width', 1)
-          .attr('shape-rendering', 'crispEdges');
+        // Bodies for simulated candles - hollow with 50% stroke opacity, only draw if width >= 3px
+        if (bodyVisible) {
+          elliottWaveGroup.selectAll('.elliott-body')
+            .data(visibleSimulatedCandles)
+            .enter()
+            .append('rect')
+            .attr('class', 'elliott-body')
+            .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
+            .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
+            .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
+            .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
+            .attr('fill', 'none')
+            .attr('stroke', cyanColor)
+            .attr('stroke-opacity', 0.5)
+            .attr('stroke-width', 1)
+            .attr('shape-rendering', 'crispEdges');
+        }
         
         // Labels on simulated candles - only show non-empty labels
         elliottWaveGroup.selectAll('.elliott-label')
@@ -2496,6 +2500,8 @@ export default function CryptoSandbox() {
       // Draw trendlines connecting W0 → W1 → W2
       if (elliottWave.placedPoints.length >= 2) {
         const points = elliottWave.placedPoints;
+        const LABEL_OFFSET = 12; // Offset for labels below candles
+        const PCT_OFFSET_X = 6; // Horizontal offset for percentage label next to W2
         
         for (let i = 0; i < points.length - 1; i++) {
           const p1 = points[i];
@@ -2515,29 +2521,6 @@ export default function CryptoSandbox() {
             .attr('stroke', '#00ffff')
             .attr('stroke-width', 2)
             .attr('stroke-opacity', 0.8);
-          
-          // If this is the W1 → W2 line, add retracement percentage
-          if (i === 1 && points.length >= 3) {
-            const w0 = points[0];
-            const w1 = points[1];
-            const w2 = points[2];
-            const wave1Range = Math.abs(w1.price - w0.price);
-            const retracementRange = Math.abs(w2.price - w1.price);
-            const retracementPercent = (retracementRange / wave1Range * 100).toFixed(1);
-            
-            // Place label at midpoint of W1→W2 line
-            const midX = (x1 + x2) / 2;
-            const midY = (y1 + y2) / 2;
-            
-            elliottWaveGroup.append('text')
-              .attr('x', midX)
-              .attr('y', midY - 10)
-              .attr('text-anchor', 'middle')
-              .attr('font-size', '11px')
-              .attr('fill', '#00ffff')
-              .attr('font-weight', 'bold')
-              .text(`${retracementPercent}%`);
-          }
         }
         
         // Draw point circles
@@ -2553,19 +2536,52 @@ export default function CryptoSandbox() {
           .attr('stroke', '#ffffff')
           .attr('stroke-width', 1);
         
-        // Point labels
-        elliottWaveGroup.selectAll('.elliott-point-label')
-          .data(points)
-          .enter()
-          .append('text')
-          .attr('class', 'elliott-point-label')
-          .attr('x', d => xS(new Date(d.time)))
-          .attr('y', d => yS(d.price) - 10)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '11px')
-          .attr('fill', '#00ffff')
-          .attr('font-weight', 'bold')
-          .text(d => d.label);
+        // Point labels - position W0 and W2 below the candles
+        points.forEach((point, idx) => {
+          const x = xS(new Date(point.time));
+          const y = yS(point.price);
+          
+          // For W0 (idx 0) and W2 (idx 2), position below
+          // For W1 (idx 1), position above
+          const isBelow = idx === 0 || idx === 2;
+          const labelY = isBelow ? Math.round(y) + LABEL_OFFSET : y - 10;
+          
+          elliottWaveGroup.append('text')
+            .attr('class', 'elliott-point-label')
+            .attr('x', x)
+            .attr('y', labelY)
+            .attr('text-anchor', 'middle')
+            .attr('alignment-baseline', isBelow ? 'hanging' : 'auto')
+            .attr('font-size', '11px')
+            .attr('fill', '#00ffff')
+            .attr('font-weight', 'bold')
+            .text(point.label);
+        });
+        
+        // Add percentage label next to W2 if we have W0, W1, and W2
+        if (points.length >= 3) {
+          const w0 = points[0];
+          const w1 = points[1];
+          const w2 = points[2];
+          const wave1Range = Math.abs(w1.price - w0.price);
+          const retracementRange = Math.abs(w2.price - w1.price);
+          const retracementPercent = (retracementRange / wave1Range * 100).toFixed(1);
+          
+          // Position label adjacent to W2 label (to its right)
+          const w2X = xS(new Date(w2.time));
+          const w2Y = yS(w2.price);
+          const labelY = Math.round(w2Y) + LABEL_OFFSET;
+          
+          elliottWaveGroup.append('text')
+            .attr('x', w2X + PCT_OFFSET_X)
+            .attr('y', labelY)
+            .attr('text-anchor', 'start')
+            .attr('alignment-baseline', 'hanging')
+            .attr('font-size', '10px')
+            .attr('fill', '#00ffff')
+            .attr('font-weight', 'bold')
+            .text(`(${retracementPercent}%)`);
+        }
       }
     };
     
