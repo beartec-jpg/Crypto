@@ -1,11 +1,14 @@
-import { useAdaptiveTimeframe, TimeframeInterval } from 'your-hook-library';
+import { useAdaptiveTimeframe } from '@/hooks/useAdaptiveTimeframe';
+import type { TimeframeInterval } from '@/types/timeframes';
 
-const symbol = 'YOUR_SYMBOL';
-const baseTimeframe = TimeframeInterval.HOURLY;
-const visibleCandleCount = 100;
-const chartWidth = 800;
-const zoomScale = 1.0;
-
-const { adaptiveTimeframe, setAdaptiveTimeframe } = useAdaptiveTimeframe(symbol, baseTimeframe, visibleCandleCount, chartWidth, zoomScale, onTimeframeChange);
-
-// Your component or additional code here
+const adaptiveTimeframe = useAdaptiveTimeframe({
+  symbol: symbol || 'XRPUSDT',
+  baseTimeframe: interval as TimeframeInterval,
+  visibleCandleCount: data?.length || 100,
+  chartWidth: innerWidth || 1000,
+  zoomScale: 1,
+  onTimeframeChange: (newTf, oldTf) => {
+    console.log(`📊 Timeframe switched: ${oldTf} → ${newTf}`);
+    setInterval(newTf);
+  }
+});
