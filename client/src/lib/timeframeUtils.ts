@@ -1,0 +1,166 @@
+/**
+ * Utility functions for adaptive timeframe system
+ */
+
+import type { TimeframeInterval, TimeframeMetrics } from '@/types/timeframes';
+import { TIMEFRAME_CONFIGS, TIMEFRAME_HIERARCHY, OPTIMAL_CANDLE_WIDTH, OPTIMAL_CANDLE_COUNT } from '@/constants/timeframes';
+
+/**
+ * Calculate timeframe metrics from current chart state
+ */
+export function calculateTimeframeMetrics(
+  visibleCandleCount: number,
+  chartWidth: number,
+  zoomScale: number = 1
+): TimeframeMetrics {
+  const candleWidth = visibleCandleCount > 0 ? chartWidth / visibleCandleCount : 0;
+  
+  return {
+    visibleCandles: visibleCandleCount,
+    candleWidth,
+    chartWidth,
+    zoomScale
+  };
+}
+
+/**
+ * Determine the optimal timeframe based on current metrics
+ */
+export function determineOptimalTimeframe(
+  metrics: TimeframeMetrics,
+  currentTimeframe: TimeframeInterval
+): TimeframeInterval {
+  const { visibleCandles, candleWidth } = metrics;
+  
+  // Check if current timeframe is still optimal
+  const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
+  
+  // If candle width is too small, suggest larger timeframe
+  if (candleWidth < currentConfig.minCandleWidth || visibleCandles > currentConfig.maxCandles) {
+    // Find the next appropriate larger timeframe
+    for (let i = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe) + 1; i < TIMEFRAME_HIERARCHY.length; i++) {
+      const nextInterval = TIMEFRAME_HIERARCHY[i];
+      const nextConfig = TIMEFRAME_CONFIGS[nextInterval];
+      
+      // Estimate how many candles we'd have at this timeframe
+      const estimatedCandles = Math.floor(visibleCandles / getTimeframeRatio(currentTimeframe, nextInterval));
+      const estimatedCandleWidth = estimatedCandles > 0 ? metrics.chartWidth / estimatedCandles : 0;
+      
+      if (estimatedCandleWidth >= nextConfig.minCandleWidth && 
+          estimatedCandles >= nextConfig.minCandles && 
+          estimatedCandles <= nextConfig.maxCandles) {
+        return nextInterval;
+      }
+    }
+    // If no better timeframe found, return the largest
+    return TIMEFRAME_HIERARCHY[TIMEFRAME_HIERARCHY.length - 1];
+  }
+  
+  // If candle width is too large, suggest smaller timeframe
+  if (candleWidth > OPTIMAL_CANDLE_WIDTH.max || visibleCandles < currentConfig.minCandles) {
+    // Find the next appropriate smaller timeframe
+    for (let i = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe) - 1; i >= 0; i--) {
+      const prevInterval = TIMEFRAME_HIERARCHY[i];
+      const prevConfig = TIMEFRAME_CONFIGS[prevInterval];
+      
+      // Estimate how many candles we'd have at this timeframe
+      const estimatedCandles = Math.floor(visibleCandles * getTimeframeRatio(prevInterval, currentTimeframe));
+      const estimatedCandleWidth = estimatedCandles > 0 ? metrics.chartWidth / estimatedCandles : 0;
+      
+      if (estimatedCandleWidth >= prevConfig.minCandleWidth && 
+          estimatedCandles >= prevConfig.minCandles && 
+          estimatedCandles <= prevConfig.maxCandles) {
+        return prevInterval;
+      }
+    }
+    // If no better timeframe found, return the smallest
+    return TIMEFRAME_HIERARCHY[0];
+  }
+  
+  // Current timeframe is still optimal
+  return currentTimeframe;
+}
+
+/**
+ * Get the ratio between two timeframes
+ * For example: 1h to 4h = 4, 15m to 1h = 4
+ */
+export function getTimeframeRatio(from: TimeframeInterval, to: TimeframeInterval): number {
+  const timeframes: Record<TimeframeInterval, number> = {
+    '1m': 1,
+    '5m': 5,
+    '15m': 15,
+    '1h': 60,
+    '4h': 240,
+    '1d': 1440
+  };
+  
+  return timeframes[to] / timeframes[from];
+}
+
+/**
+ * Check if a timeframe switch should occur
+ */
+export function shouldSwitchTimeframe(
+  currentTimeframe: TimeframeInterval,
+  suggestedTimeframe: TimeframeInterval,
+  metrics: TimeframeMetrics
+): boolean {
+  // Don't switch if already on suggested timeframe
+  if (currentTimeframe === suggestedTimeframe) {
+    return false;
+  }
+  
+  const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
+  const { candleWidth, visibleCandles } = metrics;
+  
+  // Switch if current conditions are significantly outside optimal range
+  const isTooSmall = candleWidth < currentConfig.minCandleWidth * 0.8;
+  const isTooLarge = candleWidth > OPTIMAL_CANDLE_WIDTH.max * 1.2;
+  const tooManyCandlewidth = visibleCandles > currentConfig.maxCandles * 1.2;
+  const tooFewCandles = visibleCandles < currentConfig.minCandles * 0.8;
+  
+  return isTooSmall || isTooLarge || tooManyCandlewidth || tooFewCandles;
+}
+
+/**
+ * Format timeframe interval for display
+ */
+export function formatTimeframe(interval: TimeframeInterval): string {
+  return TIMEFRAME_CONFIGS[interval].displayName;
+}
+
+/**
+ * Get timeframe duration in milliseconds
+ */
+export function getTimeframeDuration(interval: TimeframeInterval): number {
+  const durations: Record<TimeframeInterval, number> = {
+    '1m': 60 * 1000,
+    '5m': 5 * 60 * 1000,
+    '15m': 15 * 60 * 1000,
+    '1h': 60 * 60 * 1000,
+    '4h': 4 * 60 * 60 * 1000,
+    '1d': 24 * 60 * 60 * 1000
+  };
+  
+  return durations[interval];
+}
+
+/**
+ * Calculate how many candles of target timeframe would fit in the time range
+ */
+export function calculateTimeframeCandleCount(
+  sourceCandleCount: number,
+  sourceInterval: TimeframeInterval,
+  targetInterval: TimeframeInterval
+): number {
+  const ratio = getTimeframeRatio(sourceInterval, targetInterval);
+  return Math.ceil(sourceCandleCount / ratio);
+}
+
+/**
+ * Validate if a timeframe is supported
+ */
+export function isValidTimeframe(interval: string): interval is TimeframeInterval {
+  return TIMEFRAME_HIERARCHY.includes(interval as TimeframeInterval);
+}
