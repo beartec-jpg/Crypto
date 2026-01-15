@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useChartScales } from '@/hooks/useChartScales';
+import { useAdaptiveTimeframe } from '@/hooks/useAdaptiveTimeframe';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,6 +15,8 @@ import { useDrawingState } from '@/hooks/useDrawingState';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { TimeframeIndicator } from '@/components/TimeframeIndicator';
+import type { TimeframeInterval } from '@/types/timeframes';
 import { TrendlineMenu, HorizontalMenu, ChannelMenu } from '@/components/menus';
 import {
   constrainLabelPosition,
@@ -115,13 +118,40 @@ export default function CryptoSandbox() {
   const containerRef = useRef<HTMLDivElement>(null);
   
   const [symbol, setSymbol] = useState('BTCUSDT');
-  const [interval, setInterval] = useState('1h');
+  const [interval, setInterval] = useState<TimeframeInterval>('1h');
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [loading, setLoading] = useState(true);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
   // Use chart scales hook for D3 scale management
   const chartScales = useChartScales(dimensions, MARGIN, candles);
+  
+  // Calculate visible candle count for adaptive timeframe
+  const visibleCandleCount = candles.length > 0 && xScaleRef.current 
+    ? candles.filter(c => {
+        const x = xScaleRef.current!(new Date(c.time));
+        return x >= 0 && x <= dimensions.width - MARGIN.left - MARGIN.right;
+      }).length
+    : 100; // Default estimate
+  
+  // Adaptive timeframe hook
+  const adaptiveTimeframe = useAdaptiveTimeframe({
+    symbol,
+    baseTimeframe: interval,
+    visibleCandleCount,
+    chartWidth: dimensions.width - MARGIN.left - MARGIN.right,
+    zoomScale: zoomTransformRef.current?.k ?? 1,
+    options: {
+      enabled: false, // Start with adaptive mode disabled (user can enable)
+      debounceDelay: 500,
+      enableTransitions: true,
+      transitionDuration: 300
+    },
+    onTimeframeChange: (newTimeframe, previousTimeframe) => {
+      console.log(`📊 Timeframe changed: ${previousTimeframe} → ${newTimeframe}`);
+      setInterval(newTimeframe);
+    }
+  });
   
   // Scales refs for zoom/pan - these track the current (potentially zoomed) scales
   const xScaleRef = useRef<d3.ScaleTime<number, number> | null>(null);
@@ -477,6 +507,16 @@ export default function CryptoSandbox() {
   // Fetch candle data - use backend proxy for reliable data (up to 5000+ candles)
   const fetchCandles = useCallback(async () => {
     setLoading(true);
+    
+    // Check cache first
+    const cached = adaptiveTimeframe.getCachedData(interval);
+    if (cached && cached.length > 0) {
+      console.log(`📦 Using cached data for ${interval}: ${cached.length} candles`);
+      setCandles(cached);
+      setLoading(false);
+      return;
+    }
+    
     try {
       // Use backend proxy which handles CORS and can fetch more data
       // First batch - most recent 1000
@@ -524,13 +564,16 @@ export default function CryptoSandbox() {
       }));
       
       setCandles(formattedCandles);
+      
+      // Cache the data
+      adaptiveTimeframe.setCachedData(interval, formattedCandles);
     } catch (error: any) {
       handleError('data-fetch', `Failed to load candles: ${error.message}`, { symbol, interval, error: error.toString() });
       console.error('Error fetching candles:', error);
     } finally {
       setLoading(false);
     }
-  }, [symbol, interval, handleError]);
+  }, [symbol, interval, handleError, adaptiveTimeframe]);
   
   useEffect(() => {
     fetchCandles();
@@ -3907,7 +3950,11 @@ export default function CryptoSandbox() {
           </SelectContent>
         </Select>
         
-        <Select value={interval} onValueChange={setInterval}>
+        <Select value={interval} onValueChange={(val) => {
+          setInterval(val as TimeframeInterval);
+          // When manually changing timeframe, disable adaptive mode
+          adaptiveTimeframe.setManualTimeframe(val as TimeframeInterval);
+        }}>
           <SelectTrigger className="w-24 bg-slate-800 border-slate-600" data-testid="select-interval">
             <SelectValue />
           </SelectTrigger>
@@ -3917,6 +3964,17 @@ export default function CryptoSandbox() {
             ))}
           </SelectContent>
         </Select>
+        
+        {/* Adaptive Timeframe Indicator */}
+        <TimeframeIndicator
+          currentTimeframe={adaptiveTimeframe.currentTimeframe}
+          isAdaptiveMode={adaptiveTimeframe.isAdaptiveMode}
+          isTransitioning={adaptiveTimeframe.isTransitioning}
+          previousTimeframe={adaptiveTimeframe.state.previousTimeframe}
+          suggestedTimeframe={adaptiveTimeframe.state.suggestedTimeframe}
+          onToggleAdaptive={() => adaptiveTimeframe.setAdaptiveMode(!adaptiveTimeframe.isAdaptiveMode)}
+          compact={false}
+        />
         
         <Button 
           onClick={fetchCandles} 
