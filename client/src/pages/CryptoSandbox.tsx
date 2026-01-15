@@ -2466,7 +2466,6 @@ export default function CryptoSandbox() {
       if (elliottWave.placedPoints.length >= 2) {
         const points = elliottWave.placedPoints;
         const LABEL_OFFSET = 12; // Offset for labels below candles
-        const PCT_OFFSET_X = 6; // Horizontal offset for percentage label next to W2
         
         for (let i = 0; i < points.length - 1; i++) {
           const p1 = points[i];
@@ -2542,7 +2541,7 @@ export default function CryptoSandbox() {
             .attr('x', Math.round(w2X))
             .attr('y', labelY)
             .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'hanging')
+            .attr('alignment-baseline', 'hanging')
             .attr('font-size', '10px')
             .attr('fill', '#00ffff')
             .attr('font-weight', 'bold')
