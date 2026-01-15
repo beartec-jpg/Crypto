@@ -2548,7 +2548,7 @@ export default function CryptoSandbox() {
           
           elliottWaveGroup.append('text')
             .attr('class', 'elliott-point-label')
-            .attr('x', x)
+            .attr('x', Math.round(x))
             .attr('y', labelY)
             .attr('text-anchor', 'middle')
             .attr('alignment-baseline', isBelow ? 'hanging' : 'auto')
@@ -2573,7 +2573,7 @@ export default function CryptoSandbox() {
           const labelY = Math.round(w2Y) + LABEL_OFFSET;
           
           elliottWaveGroup.append('text')
-            .attr('x', w2X + PCT_OFFSET_X)
+            .attr('x', Math.round(w2X + PCT_OFFSET_X))
             .attr('y', labelY)
             .attr('text-anchor', 'start')
             .attr('alignment-baseline', 'hanging')
