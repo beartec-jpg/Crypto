@@ -2303,38 +2303,44 @@ export default function CryptoSandbox() {
       .attr('clip-path', 'url(#chart-clip)');
     
     // Helper to compute safe candle width based on actual pixel spacing
+    // Returns integer pixel width that is deterministic and safe for gaps
     const computeSafeCandleWidth = (
-      xS: d3.ScaleTime<number, number>,
-      visibleCandles: CandleData[],
-      innerW: number,
-      opts?: { widthFactor?: number; gapPx?: number; maxPx?: number }
+      xScale: d3.ScaleTime<number, number>,
+      visibleTimes: number[],
+      opts?: { widthFactor?: number; gapPx?: number; minPx?: number; maxPx?: number }
     ): number => {
-      const { widthFactor = 0.8, gapPx = 0, maxPx = 20 } = opts || {};
+      const { widthFactor = 0.65, gapPx = 1, minPx = 3, maxPx = 40 } = opts || {};
       
-      // Fallback for single or no candles
-      if (visibleCandles.length <= 1) {
-        return Math.round(Math.max(1, Math.min(maxPx, (innerW / Math.max(1, visibleCandles.length)) * widthFactor)));
+      // Fallback for missing or insufficient data
+      if (!visibleTimes || visibleTimes.length < 2) {
+        return Math.max(minPx, Math.round(widthFactor * (maxPx || 10)));
       }
       
-      // Map candles to x positions
-      const xPositions = visibleCandles.map(d => xS(new Date(d.time)));
+      // Map times to pixel positions
+      const xPositions = visibleTimes.map(t => xScale(new Date(t)));
       
-      // Find minimum adjacent dx (skip zero values)
+      // Find minimum positive dx between adjacent positions
       let minDx = Infinity;
       for (let i = 1; i < xPositions.length; i++) {
-        const dx = Math.abs(xPositions[i] - xPositions[i - 1]);
+        const dx = xPositions[i] - xPositions[i - 1];
         if (dx > 0 && dx < minDx) {
           minDx = dx;
         }
       }
       
-      // If no valid dx found, fallback to average spacing
-      if (!isFinite(minDx) || minDx === 0) {
-        return Math.round(Math.max(1, Math.min(maxPx, (innerW / visibleCandles.length) * widthFactor)));
+      // If no positive dx found, estimate from first-last span
+      if (!isFinite(minDx) || minDx <= 0) {
+        const span = xPositions[xPositions.length - 1] - xPositions[0];
+        minDx = span > 0 ? span / (xPositions.length - 1) : 1;
       }
       
-      // Compute width: (minDx * widthFactor) - gapPx, clamped to [1, maxPx]
-      const width = Math.max(1, Math.min(maxPx, minDx * widthFactor - gapPx));
+      // Compute raw width and max allowed (to preserve gap)
+      const raw = Math.round(minDx * widthFactor);
+      const maxAllowed = Math.max(1, Math.floor(minDx - gapPx));
+      
+      // Clamp to [minPx, maxPx] and respect maxAllowed
+      const width = Math.min(maxPx, Math.max(minPx, Math.min(raw, maxAllowed)));
+      
       return Math.round(width);
     };
     
@@ -2348,7 +2354,8 @@ export default function CryptoSandbox() {
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
       
-      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleCandles, innerWidth, { widthFactor: 0.8, gapPx: 0, maxPx: 20 });
+      const visibleTimes = visibleCandles.map(c => c.time);
+      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
       
       // Wicks
       candlesGroup.selectAll('.wick')
@@ -2392,7 +2399,8 @@ export default function CryptoSandbox() {
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
       // Use same candle width calculation as real candles for perfect alignment
-      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleCandles, innerWidth, { widthFactor: 0.8, gapPx: 0, maxPx: 20 });
+      const visibleTimes = visibleCandles.map(c => c.time);
+      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
       
       // Draw simulated W2 candles as standard candlesticks with consistent geometry
       if (elliottWave.simulatedCandles.length > 0) {
@@ -3670,7 +3678,7 @@ export default function CryptoSandbox() {
     
     // Zoom behavior - DISABLED when drawing tool is active
     const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.5, 20])
+      .scaleExtent([0.5, 200])
       .translateExtent([[-100, 0], [width + 100, height]])
       .filter((event) => {
         // Disable d3 zoom when a drawing tool is active - overlay handles everything
