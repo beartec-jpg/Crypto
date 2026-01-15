@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useAdaptiveTimeframe } from '@/hooks/useAdaptiveTimeframe';
 import type { TimeframeInterval } from '@/types/timeframes';
@@ -9,6 +9,15 @@ import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { RefreshCw } from 'lucide-react';
+
+interface CandleData {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
 
 const INTERVALS = [
   { label: '1m', value: '1m' },
@@ -33,7 +42,7 @@ export default function CryptoSandbox() {
   // State declarations
   const [symbol, setSymbol] = useState<string>('XRPUSDT');
   const [interval, setInterval] = useState<TimeframeInterval>('1h');
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<CandleData[]>([]);
   const [innerWidth, setInnerWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1000);
   const [loading, setLoading] = useState(false);
 
@@ -61,7 +70,7 @@ export default function CryptoSandbox() {
   });
 
   // Fetch candle data
-  const fetchCandles = async () => {
+  const fetchCandles = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch(
@@ -76,12 +85,12 @@ export default function CryptoSandbox() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [symbol, interval]);
 
   // Fetch data on mount and when symbol/interval changes
   useEffect(() => {
     fetchCandles();
-  }, [symbol, interval]);
+  }, [fetchCandles]);
 
   return (
     <>
