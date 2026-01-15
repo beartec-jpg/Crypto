@@ -217,9 +217,10 @@ export default function CryptoSandbox() {
                           </tr>
                         </thead>
                         <tbody className="text-white">
-                          {data.slice(0, 50).map((candle, idx) => (
-                            <tr key={idx} className="border-b border-purple-500/10">
+                          {data.slice(0, 50).map((candle) => (
+                            <tr key={candle.time} className="border-b border-purple-500/10">
                               <td className="p-2">
+                                {/* candle.time is in Unix seconds, convert to milliseconds for Date */}
                                 {new Date(candle.time * 1000).toLocaleString()}
                               </td>
                               <td className="p-2 text-right font-mono">{candle.open}</td>
