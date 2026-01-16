@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useChartScales } from '@/hooks/useChartScales';
@@ -14,6 +14,9 @@ import { useDrawingState } from '@/hooks/useDrawingState';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { useAdaptiveTimeframe } from '@/hooks/useAdaptiveTimeframe';
+import { TimeframeIndicator } from '@/components/TimeframeIndicator';
+import type { TimeframeInterval } from '@/types/timeframes';
 import { TrendlineMenu, HorizontalMenu, ChannelMenu } from '@/components/menus';
 import {
   constrainLabelPosition,
@@ -128,6 +131,43 @@ export default function CryptoSandbox() {
   const yScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const zoomTransformRef = useRef<d3.ZoomTransform | null>(null);
+  
+  // Calculate visible candles for adaptive timeframe (based on current xScale domain)
+  const visibleCandles = useMemo(() => {
+    if (!xScaleRef.current || !candles.length) return candles;
+    
+    try {
+      const [xMin, xMax] = xScaleRef.current.domain();
+      return candles.filter(c => {
+        const date = new Date(c.time);
+        return date >= xMin && date <= xMax;
+      });
+    } catch (error) {
+      console.warn('Error calculating visible candles:', error);
+      return candles;
+    }
+  }, [candles, xScaleRef.current]); // Note: xScaleRef changes trigger via useEffect
+  
+  // Adaptive timeframe hook - automatically switches timeframes on zoom
+  const adaptiveTimeframe = useAdaptiveTimeframe({
+    symbol: symbol || 'XRPUSDT',
+    baseTimeframe: interval as TimeframeInterval,
+    visibleCandleCount: visibleCandles.length,
+    chartWidth: dimensions.width - MARGIN.left - MARGIN.right || 1000,
+    zoomScale: 1, // TODO Phase 3: Track actual D3 zoom scale
+    options: {
+      enabled: true,              // Start with adaptive mode enabled
+      debounceDelay: 500,         // Wait 500ms before switching
+      enableTransitions: true,    // Smooth transitions
+      transitionDuration: 300,    // 300ms animation
+      enablePrefetch: true,       // Pre-load adjacent timeframes
+      cacheMaxAge: 5 * 60 * 1000  // Cache for 5 minutes
+    },
+    onTimeframeChange: (newTf, oldTf) => {
+      console.log(`📊 Timeframe auto-switched: ${oldTf} → ${newTf}`);
+      setInterval(newTf);
+    }
+  });
   
   
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
@@ -476,6 +516,15 @@ export default function CryptoSandbox() {
   
   // Fetch candle data - use backend proxy for reliable data (up to 5000+ candles)
   const fetchCandles = useCallback(async () => {
+    // Check cache first
+    const cached = adaptiveTimeframe.getCachedData(interval as TimeframeInterval);
+    if (cached && cached.length > 0) {
+      console.log(`📦 Using cached data for ${interval}`);
+      setCandles(cached);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       // Use backend proxy which handles CORS and can fetch more data
@@ -524,13 +573,17 @@ export default function CryptoSandbox() {
       }));
       
       setCandles(formattedCandles);
+      
+      // Store in cache for future use
+      adaptiveTimeframe.setCachedData(interval as TimeframeInterval, formattedCandles);
+      console.log(`💾 Cached ${formattedCandles.length} candles for ${interval}`);
     } catch (error: any) {
       handleError('data-fetch', `Failed to load candles: ${error.message}`, { symbol, interval, error: error.toString() });
       console.error('Error fetching candles:', error);
     } finally {
       setLoading(false);
     }
-  }, [symbol, interval, handleError]);
+  }, [symbol, interval, handleError, adaptiveTimeframe]);
   
   useEffect(() => {
     fetchCandles();
@@ -3877,7 +3930,15 @@ export default function CryptoSandbox() {
           </SelectContent>
         </Select>
         
-        <Select value={interval} onValueChange={setInterval}>
+        <Select value={interval} onValueChange={(value) => {
+          console.log(`👆 Manual timeframe selection: ${value}`);
+          setInterval(value);
+          
+          // Temporarily disable adaptive mode on manual selection
+          if (adaptiveTimeframe.isAdaptiveMode) {
+            adaptiveTimeframe.setManualTimeframe(value as TimeframeInterval);
+          }
+        }}>
           <SelectTrigger className="w-24 bg-slate-800 border-slate-600" data-testid="select-interval">
             <SelectValue />
           </SelectTrigger>
@@ -3887,6 +3948,23 @@ export default function CryptoSandbox() {
             ))}
           </SelectContent>
         </Select>
+        
+        {/* Adaptive Timeframe Indicator */}
+        <div className="flex items-center gap-2">
+          <TimeframeIndicator
+            currentTimeframe={adaptiveTimeframe.currentTimeframe}
+            isAdaptiveMode={adaptiveTimeframe.isAdaptiveMode}
+            isTransitioning={adaptiveTimeframe.isTransitioning}
+            previousTimeframe={adaptiveTimeframe.state.previousTimeframe}
+            suggestedTimeframe={adaptiveTimeframe.state.suggestedTimeframe}
+            onToggleAdaptive={() => {
+              const newMode = !adaptiveTimeframe.isAdaptiveMode;
+              adaptiveTimeframe.setAdaptiveMode(newMode);
+              console.log(`🔄 Adaptive mode: ${newMode ? 'enabled' : 'disabled'}`);
+            }}
+            compact={false}
+          />
+        </div>
         
         <Button 
           onClick={fetchCandles} 
