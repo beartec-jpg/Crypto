@@ -2412,9 +2412,21 @@ export default function CryptoSandbox() {
       
       const visibleTimes = visibleCandles.map(c => c.time);
       const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
-      const bodyVisible = dynamicCandleWidth >= 3;
       
-      // Wicks - always drawn as 1px lines
+      // Determine if we should render bodies based on mode and width
+      const isAdaptiveModeActive = adaptiveTimeframe.isAdaptiveMode;
+      const shouldRenderBodies = isAdaptiveModeActive || dynamicCandleWidth >= 3;
+      
+      // Console logging for debugging
+      console.log(`🕯️ Candle Rendering:
+  Mode: ${isAdaptiveModeActive ? '🔄 Adaptive' : '🔒 Manual'}
+  Timeframe: ${interval}
+  Visible Candles: ${visibleCandles.length}
+  Candle Width: ${dynamicCandleWidth.toFixed(1)}px
+  Bodies: ${shouldRenderBodies ? '✅ Visible' : '❌ Hidden (wicks only)'}
+`);
+      
+      // ALWAYS render wicks (vertical lines)
       candlesGroup.selectAll('.wick')
         .data(visibleCandles)
         .enter()
@@ -2428,8 +2440,9 @@ export default function CryptoSandbox() {
         .attr('stroke-width', 1)
         .attr('shape-rendering', 'crispEdges');
       
-      // Bodies - only draw if width >= 3px
-      if (bodyVisible) {
+      // CONDITIONALLY render bodies
+      if (shouldRenderBodies) {
+        // Render full candle bodies
         candlesGroup.selectAll('.body')
           .data(visibleCandles)
           .enter()
@@ -2441,6 +2454,9 @@ export default function CryptoSandbox() {
           .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
           .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444')
           .attr('shape-rendering', 'crispEdges');
+      } else {
+        // Bodies are not rendered (wicks-only mode)
+        console.log('📉 Zoomed out: Rendering wicks only (bodies hidden for clarity)');
       }
     };
     
@@ -4607,8 +4623,12 @@ export default function CryptoSandbox() {
             {/* Trendline drawing overlay - handles all events when tool is active */}
             {activeTool === 'trendline' && trendlineMode && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ touchAction: 'none' }}
+                className="absolute inset-0 z-[25]"
+                style={{ 
+                  pointerEvents: activeTool === 'trendline' ? 'auto' : 'none',
+                  cursor: activeTool === 'trendline' ? 'crosshair' : 'default',
+                  touchAction: 'none'
+                }}
                 data-drawing-overlay
                 onClick={(e) => {
                   // Skip if touch was recently handled (prevents touch+click double-fire)
@@ -4784,8 +4804,12 @@ export default function CryptoSandbox() {
             {/* Horizontal line drawing overlay - handles all events when tool is active */}
             {activeTool === 'horizontal' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ touchAction: 'none' }}
+                className="absolute inset-0 z-[25]"
+                style={{ 
+                  pointerEvents: activeTool === 'horizontal' ? 'auto' : 'none',
+                  cursor: activeTool === 'horizontal' ? 'crosshair' : 'default',
+                  touchAction: 'none'
+                }}
                 data-drawing-overlay
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -4854,8 +4878,12 @@ export default function CryptoSandbox() {
             {/* Channel drawing overlay - handles all events when tool is active */}
             {activeTool === 'channel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ touchAction: 'none' }}
+                className="absolute inset-0 z-[25]"
+                style={{ 
+                  pointerEvents: activeTool === 'channel' ? 'auto' : 'none',
+                  cursor: activeTool === 'channel' ? 'crosshair' : 'default',
+                  touchAction: 'none'
+                }}
                 data-drawing-overlay
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -4940,8 +4968,12 @@ export default function CryptoSandbox() {
             {/* Horizontal Channel drawing overlay - handles all events when tool is active */}
             {activeTool === 'hchannel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ touchAction: 'none' }}
+                className="absolute inset-0 z-[25]"
+                style={{ 
+                  pointerEvents: activeTool === 'hchannel' ? 'auto' : 'none',
+                  cursor: activeTool === 'hchannel' ? 'crosshair' : 'default',
+                  touchAction: 'none'
+                }}
                 data-drawing-overlay
                 onClick={(e) => {
                   if (touchHandledRef.current) {
@@ -5041,8 +5073,12 @@ export default function CryptoSandbox() {
             {/* Sloped Channel drawing overlay - handles all events when tool is active */}
             {activeTool === 'schannel' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ touchAction: 'none' }}
+                className="absolute inset-0 z-[25]"
+                style={{ 
+                  pointerEvents: activeTool === 'schannel' ? 'auto' : 'none',
+                  cursor: activeTool === 'schannel' ? 'crosshair' : 'default',
+                  touchAction: 'none'
+                }}
                 data-drawing-overlay
                 onClick={(e) => {
                   if (touchHandledRef.current) {
@@ -5173,8 +5209,12 @@ export default function CryptoSandbox() {
             {/* Fibonacci Retracement drawing overlay */}
             {activeTool === 'fibretracement' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ touchAction: 'none' }}
+                className="absolute inset-0 z-[25]"
+                style={{ 
+                  pointerEvents: activeTool === 'fibretracement' ? 'auto' : 'none',
+                  cursor: activeTool === 'fibretracement' ? 'crosshair' : 'default',
+                  touchAction: 'none'
+                }}
                 data-drawing-overlay
                 onClick={(e) => {
                   if (touchHandledRef.current) {
@@ -5274,8 +5314,12 @@ export default function CryptoSandbox() {
             {/* Trend-Based Fib Extension drawing overlay (3-click) */}
             {activeTool === 'trendfib' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ touchAction: 'none' }}
+                className="absolute inset-0 z-[25]"
+                style={{ 
+                  pointerEvents: activeTool === 'trendfib' ? 'auto' : 'none',
+                  cursor: activeTool === 'trendfib' ? 'crosshair' : 'default',
+                  touchAction: 'none'
+                }}
                 data-drawing-overlay
                 onClick={(e) => {
                   if (touchHandledRef.current) {
@@ -5385,8 +5429,12 @@ export default function CryptoSandbox() {
             {/* Text label drawing overlay - handles all events when tool is active */}
             {activeTool === 'label' && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ touchAction: 'none' }}
+                className="absolute inset-0 z-[25]"
+                style={{ 
+                  pointerEvents: activeTool === 'label' ? 'auto' : 'none',
+                  cursor: activeTool === 'label' ? 'crosshair' : 'default',
+                  touchAction: 'none'
+                }}
                 data-drawing-overlay
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -5455,8 +5503,12 @@ export default function CryptoSandbox() {
             {/* Elliott Wave drawing overlay - handles all events when tool is active */}
             {activeTool === 'elliottwave' && elliottWave.isActive && (
               <div 
-                className="absolute inset-0 cursor-crosshair z-[25]"
-                style={{ touchAction: 'none' }}
+                className="absolute inset-0 z-[25]"
+                style={{ 
+                  pointerEvents: activeTool === 'elliottwave' ? 'auto' : 'none',
+                  cursor: activeTool === 'elliottwave' ? 'crosshair' : 'default',
+                  touchAction: 'none'
+                }}
                 data-drawing-overlay
                 onClick={(e) => {
                   if (touchHandledRef.current) {
