@@ -1659,6 +1659,12 @@ export default function CryptoSandbox() {
     // Only update if scale changed significantly (>1% change)
     // Prevents excessive re-renders during smooth zoom
     setZoomScale((prevScale) => {
+      // Safety check to prevent division by zero
+      if (prevScale === 0) {
+        console.log(`🔍 Zoom scale initialized: ${newScale.toFixed(2)}`);
+        return newScale;
+      }
+      
       const delta = Math.abs(newScale - prevScale);
       const percentChange = delta / prevScale;
       
