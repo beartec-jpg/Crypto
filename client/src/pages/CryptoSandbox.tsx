@@ -12,9 +12,11 @@ import { Loader2, Crosshair, ChevronDown, TrendingUp } from 'lucide-react';
 import { useElliottWave } from '@/hooks/useElliottWave';
 import { useDrawingState } from '@/hooks/useDrawingState';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { useAdaptiveTimeframe } from '@/hooks/useAdaptiveTimeframe';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { TrendlineMenu, HorizontalMenu, ChannelMenu } from '@/components/menus';
+import { TimeframeIndicator } from '@/components/TimeframeIndicator';
 import {
   constrainLabelPosition,
   formatFibonacciLabel,
@@ -43,6 +45,7 @@ import type {
   DrawingState, 
   SelectionCandidate 
 } from '@/types/drawing';
+import type { TimeframeInterval } from '@/types/timeframes';
 
 interface CandleData {
   time: number;
@@ -129,6 +132,11 @@ export default function CryptoSandbox() {
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const zoomTransformRef = useRef<d3.ZoomTransform | null>(null);
   
+  // Track D3 zoom scale for adaptive timeframe
+  const [zoomScale, setZoomScale] = useState<number>(1);
+  
+  // Track visible candles for adaptive timeframe
+  const [visibleCandleCount, setVisibleCandleCount] = useState<number>(100);
   
   // Crosshair state - toggle mode instead of long press (conflicts with D3 zoom)
   const [crosshairMode, setCrosshairMode] = useState(false);
@@ -149,6 +157,27 @@ export default function CryptoSandbox() {
   
   // Elliott Wave hook
   const elliottWave = useElliottWave({ timeframe: interval });
+  
+  // Adaptive timeframe hook - manages automatic timeframe switching based on zoom
+  const adaptiveTimeframe = useAdaptiveTimeframe({
+    symbol: symbol || 'XRPUSDT',
+    baseTimeframe: interval as TimeframeInterval,
+    visibleCandleCount: visibleCandleCount,
+    chartWidth: dimensions.width || 1000,
+    zoomScale: zoomScale,
+    options: {
+      enabled: false, // Start disabled (user enables)
+      debounceDelay: 500,
+      enableTransitions: true,
+      transitionDuration: 300,
+      enablePrefetch: true,
+      cacheMaxAge: 5 * 60 * 1000
+    },
+    onTimeframeChange: (newTf, oldTf) => {
+      console.log(`📊 Timeframe auto-switched: ${oldTf} → ${newTf}`);
+      setInterval(newTf);
+    }
+  });
   
   // Drawing state hook - manages all drawings, undo/redo, and selection
   const drawingState = useDrawingState();
@@ -1619,6 +1648,27 @@ export default function CryptoSandbox() {
     // Place the point in Elliott Wave state with snap type
     elliottWave.placePoint(time, price, snappedToHigh, snapType);
   }, [elliottWave, candles, findMagnetPoint]);
+  
+  /**
+   * Handle D3 zoom scale changes
+   * Extracts transform.k and updates state for adaptive timeframe
+   */
+  const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
+    const newScale = transform.k;
+    
+    // Only update if scale changed significantly (>1% change)
+    // Prevents excessive re-renders during smooth zoom
+    setZoomScale((prevScale) => {
+      const delta = Math.abs(newScale - prevScale);
+      const percentChange = delta / prevScale;
+      
+      if (percentChange > 0.01) {
+        console.log(`🔍 Zoom scale: ${prevScale.toFixed(2)} → ${newScale.toFixed(2)}`);
+        return newScale;
+      }
+      return prevScale;
+    });
+  }, []);
   
   // Move whole line - places center at click position
   const moveWholeLine = useCallback((clickX: number, clickY: number) => {
@@ -3715,6 +3765,9 @@ export default function CryptoSandbox() {
       .on('zoom', (event) => {
         const transform = event.transform;
         
+        // NEW: Track zoom scale for adaptive timeframe
+        handleZoomChange(transform);
+        
         // Update x scale based on zoom
         const newXScale = transform.rescaleX(xScale);
         xScaleRef.current = newXScale;
@@ -3725,6 +3778,9 @@ export default function CryptoSandbox() {
           const date = new Date(d.time);
           return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
         });
+        
+        // NEW: Update visible candle count for adaptive timeframe
+        setVisibleCandleCount(visibleCandles.length);
         
         if (visibleCandles.length > 0) {
           const newPriceExtent = [
@@ -3917,6 +3973,16 @@ export default function CryptoSandbox() {
             ))}
           </SelectContent>
         </Select>
+        
+        {/* Adaptive Timeframe Indicator */}
+        <TimeframeIndicator
+          currentTimeframe={adaptiveTimeframe.currentTimeframe}
+          isAdaptiveMode={adaptiveTimeframe.isAdaptiveMode}
+          isTransitioning={adaptiveTimeframe.isTransitioning}
+          previousTimeframe={adaptiveTimeframe.state.previousTimeframe}
+          suggestedTimeframe={adaptiveTimeframe.state.suggestedTimeframe}
+          onToggleAdaptive={() => adaptiveTimeframe.setAdaptiveMode(!adaptiveTimeframe.isAdaptiveMode)}
+        />
         
         <Button 
           onClick={fetchCandles} 
@@ -4594,6 +4660,10 @@ export default function CryptoSandbox() {
                       const newX = midX - midX * (newK / currentTransform.k) + currentTransform.x * (newK / currentTransform.k);
                       const newTransform = d3.zoomIdentity.translate(newX, 0).scale(newK);
                       d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      
+                      // NEW: Update zoom scale state for adaptive timeframe
+                      handleZoomChange(newTransform);
+                      
                       touchStartRef.current.pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
@@ -4618,6 +4688,7 @@ export default function CryptoSandbox() {
                         const currentTransform = d3.zoomTransform(svgRef.current);
                         const newTransform = d3.zoomIdentity.translate(currentTransform.x + dx, 0).scale(currentTransform.k);
                         d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                        handleZoomChange(newTransform);
                       }
                     }
                     // Always update current position (for lift placement)
@@ -4738,7 +4809,9 @@ export default function CryptoSandbox() {
                       const midX = (touchStartRef.current as any).pinchMidX;
                       const ct = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, ct.k * scale));
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       (touchStartRef.current as any).pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
@@ -4746,7 +4819,9 @@ export default function CryptoSandbox() {
                     if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
                       touchMovedRef.current = true;
                       const ct = d3.zoomTransform(svgRef.current);
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      const newTransform = d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       touchStartRef.current.x = e.touches[0].clientX - rect.left;
                     }
                   }
@@ -4804,7 +4879,9 @@ export default function CryptoSandbox() {
                       const midX = (touchStartRef.current as any).pinchMidX;
                       const ct = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, ct.k * scale));
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       (touchStartRef.current as any).pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
@@ -4812,7 +4889,9 @@ export default function CryptoSandbox() {
                     if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
                       touchMovedRef.current = true;
                       const ct = d3.zoomTransform(svgRef.current);
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      const newTransform = d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       touchStartRef.current.x = e.touches[0].clientX - rect.left;
                     }
                   }
@@ -4895,7 +4974,9 @@ export default function CryptoSandbox() {
                       const midX = touchStartRef.current.pinchMidX || 0;
                       const ct = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, ct.k * scale));
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       touchStartRef.current.pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
@@ -4910,7 +4991,9 @@ export default function CryptoSandbox() {
                       if (zoomRef.current && svgRef.current) {
                         const dx = currentX - touchStartRef.current.x;
                         const ct = d3.zoomTransform(svgRef.current);
-                        d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                        const newTransform = d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k);
+                        d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                        handleZoomChange(newTransform);
                       }
                     }
                     touchStartRef.current.x = currentX;
@@ -4992,7 +5075,9 @@ export default function CryptoSandbox() {
                       const midX = touchStartRef.current.pinchMidX || 0;
                       const ct = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, ct.k * scale));
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       touchStartRef.current.pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
@@ -5007,7 +5092,9 @@ export default function CryptoSandbox() {
                       if (zoomRef.current && svgRef.current) {
                         const dx = currentX - touchStartRef.current.x;
                         const ct = d3.zoomTransform(svgRef.current);
-                        d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                        const newTransform = d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k);
+                        d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                        handleZoomChange(newTransform);
                       }
                     }
                     touchStartRef.current.x = currentX;
@@ -5120,7 +5207,9 @@ export default function CryptoSandbox() {
                       const midX = touchStartRef.current.pinchMidX || 0;
                       const ct = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, ct.k * scale));
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       touchStartRef.current.pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
@@ -5135,7 +5224,9 @@ export default function CryptoSandbox() {
                       if (zoomRef.current && svgRef.current) {
                         const dx = currentX - touchStartRef.current.x;
                         const ct = d3.zoomTransform(svgRef.current);
-                        d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                        const newTransform = d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k);
+                        d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                        handleZoomChange(newTransform);
                       }
                     }
                     touchStartRef.current.x = currentX;
@@ -5217,7 +5308,9 @@ export default function CryptoSandbox() {
                       const midX = touchStartRef.current.pinchMidX || 0;
                       const ct = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, ct.k * scale));
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       touchStartRef.current.pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
@@ -5232,7 +5325,9 @@ export default function CryptoSandbox() {
                       if (zoomRef.current && svgRef.current) {
                         const dx = currentX - touchStartRef.current.x;
                         const ct = d3.zoomTransform(svgRef.current);
-                        d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                        const newTransform = d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k);
+                        d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                        handleZoomChange(newTransform);
                       }
                     }
                     touchStartRef.current.x = currentX;
@@ -5315,7 +5410,9 @@ export default function CryptoSandbox() {
                       const midX = (touchStartRef.current as any).pinchMidX;
                       const ct = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, ct.k * scale));
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       (touchStartRef.current as any).pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
@@ -5323,7 +5420,9 @@ export default function CryptoSandbox() {
                     if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
                       touchMovedRef.current = true;
                       const ct = d3.zoomTransform(svgRef.current);
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      const newTransform = d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       touchStartRef.current.x = e.touches[0].clientX - rect.left;
                     }
                   }
@@ -5386,7 +5485,9 @@ export default function CryptoSandbox() {
                       const midX = (touchStartRef.current as any).pinchMidX;
                       const ct = d3.zoomTransform(svgRef.current);
                       const newK = Math.max(0.5, Math.min(20, ct.k * scale));
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK));
+                      const newTransform = d3.zoomIdentity.translate(midX - midX * (newK / ct.k) + ct.x * (newK / ct.k), 0).scale(newK);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       (touchStartRef.current as any).pinchDist = newDist;
                     }
                   } else if (e.touches.length === 1 && touchStartRef.current) {
@@ -5394,7 +5495,9 @@ export default function CryptoSandbox() {
                     if (Math.abs(dx) > TOUCH_THRESHOLD && zoomRef.current && svgRef.current) {
                       touchMovedRef.current = true;
                       const ct = d3.zoomTransform(svgRef.current);
-                      d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k));
+                      const newTransform = d3.zoomIdentity.translate(ct.x + dx, 0).scale(ct.k);
+                      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+                      handleZoomChange(newTransform);
                       touchStartRef.current.x = e.touches[0].clientX - rect.left;
                     }
                   }
