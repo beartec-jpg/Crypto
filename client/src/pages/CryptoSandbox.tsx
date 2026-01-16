@@ -160,7 +160,6 @@ export default function CryptoSandbox() {
   const xScaleRef = useRef<d3.ScaleTime<number, number> | null>(null);
   const yScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
-  const zoomTransformRef = useRef<d3.ZoomTransform | null>(null);
   
   // Store current transform to persist across renders (fixes zoom/pan revert issue)
   const currentTransformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
@@ -802,7 +801,7 @@ export default function CryptoSandbox() {
         thickness: trendlineDefaults.thickness,
         extendLeft: false,
         extendRight: false,
-        createdAtZoomScale: zoomTransformRef.current?.k ?? 1,
+        createdAtZoomScale: currentTransformRef.current?.k ?? 1,
       };
       drawingState.addDrawing('trendline', newTrendline);
       setTrendlinePoints([]);
@@ -902,7 +901,7 @@ export default function CryptoSandbox() {
       opacity: horizontalDefaults.opacity,
       lineStyle: horizontalDefaults.lineStyle,
       thickness: horizontalDefaults.thickness,
-      createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Capture zoom level
+      createdAtZoomScale: currentTransformRef.current?.k ?? 1, // Capture zoom level
     };
     drawingState.addDrawing('horizontal', newLine);
   }, [horizontalDefaults, findMagnetPoint, drawingState]);
@@ -1003,7 +1002,7 @@ export default function CryptoSandbox() {
         internalLineStyle: channelDefaults.internalLineStyle,
         internalLineColor: channelDefaults.internalLineColor,
         showExternalLines: true,
-        createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Capture zoom level
+        createdAtZoomScale: currentTransformRef.current?.k ?? 1, // Capture zoom level
       };
       drawingState.addDrawing('channel', newChannel);
       setChannelPoints([]);
@@ -1142,7 +1141,7 @@ export default function CryptoSandbox() {
         showLabelRight: hchDefaults.showLabelRight,
         extendLeft: hchDefaults.extendLeft,
         extendRight: hchDefaults.extendRight,
-        createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Capture zoom level
+        createdAtZoomScale: currentTransformRef.current?.k ?? 1, // Capture zoom level
       };
       drawingState.addDrawing('hchannel', newHChannel);
       setHChannelPoints([]);
@@ -1331,7 +1330,7 @@ export default function CryptoSandbox() {
         showLabelRight: schDefaults.showLabelRight,
         extendLeft: schDefaults.extendLeft,
         extendRight: schDefaults.extendRight,
-        createdAtZoomScale: zoomTransformRef.current?.k ?? 1, // Capture zoom level
+        createdAtZoomScale: currentTransformRef.current?.k ?? 1, // Capture zoom level
       };
       drawingState.addDrawing('schannel', newSChannel);
       setSChannelPoints([]);
@@ -1428,7 +1427,7 @@ export default function CryptoSandbox() {
         showExtensions: false,
         extendDirection: 'both',
         levels: DEFAULT_FIB_LEVELS.map(l => ({ ...l })),
-        createdAtZoomScale: zoomTransformRef.current?.k ?? 1,
+        createdAtZoomScale: currentTransformRef.current?.k ?? 1,
       };
 
       drawingState.addDrawing('fibretracement', newFib);
@@ -1520,7 +1519,7 @@ export default function CryptoSandbox() {
         showExtensions: true,
         extendDirection: 'both',
         levels: DEFAULT_TRENDFIB_LEVELS.map(l => ({ ...l })),
-        createdAtZoomScale: zoomTransformRef.current?.k ?? 1,
+        createdAtZoomScale: currentTransformRef.current?.k ?? 1,
       };
 
       drawingState.addDrawing('trendfib', newTrendFib);
@@ -1586,7 +1585,7 @@ export default function CryptoSandbox() {
     }
     
     // Capture current zoom scale for dynamic visibility
-    const currentZoomScale = zoomTransformRef.current?.k ?? 1;
+    const currentZoomScale = currentTransformRef.current?.k ?? 1;
     
     const newLabel: TextLabelData = {
       id: `txt-${Date.now()}`,
@@ -1959,7 +1958,7 @@ export default function CryptoSandbox() {
     
     // Check trendlines - account for extensions when detecting hits
     // Also check visibility based on zoom level
-    const currentK = zoomTransformRef.current?.k ?? 1;
+    const currentK = currentTransformRef.current?.k ?? 1;
     console.log('🎯 Hit detection:', { clickX, clickY, currentK, trendlineCount: drawnTrendlines.length });
     for (const line of drawnTrendlines) {
       // Calculate visibility based on zoom level when created
@@ -2409,7 +2408,7 @@ export default function CryptoSandbox() {
     // Save current zoom transform before clearing
     const currentTransform = d3.zoomTransform(svgRef.current);
     if (currentTransform.k !== 1 || currentTransform.x !== 0 || currentTransform.y !== 0) {
-      zoomTransformRef.current = currentTransform;
+      currentTransformRef.current = currentTransform;
     }
     
     svg.selectAll('*').remove();
@@ -3994,10 +3993,13 @@ export default function CryptoSandbox() {
     zoomRef.current = zoom;
     svg.call(zoom);
     
-    // CRITICAL: Restore saved transform from ref
-    if (currentTransformRef.current && currentTransformRef.current.k !== 1) {
+    // CRITICAL: Restore saved transform from ref (check scale AND translation)
+    if (currentTransformRef.current && 
+        (currentTransformRef.current.k !== 1 || 
+         currentTransformRef.current.x !== 0 || 
+         currentTransformRef.current.y !== 0)) {
       svg.call(zoom.transform, currentTransformRef.current);
-      console.log(`🔄 Zoom transform restored: scale=${currentTransformRef.current.k.toFixed(2)}, x=${currentTransformRef.current.x.toFixed(2)}`);
+      console.log(`🔄 Zoom transform restored: scale=${currentTransformRef.current.k.toFixed(2)}, x=${currentTransformRef.current.x.toFixed(2)}, y=${currentTransformRef.current.y.toFixed(2)}`);
     } else {
       console.log('✅ D3 zoom behavior initialized (default transform)');
     }
