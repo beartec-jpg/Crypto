@@ -4048,7 +4048,7 @@ export default function CryptoSandbox() {
       console.error('D3 rendering error:', err);
     }
     
-  }, [candles, dimensions, interval, chartScales, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive, handleError]);
+  }, [candles, dimensions, interval, xScaleBase, yScaleBase, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive, handleError]);
   
   // Show loading while checking auth
   if (authLoading) {
