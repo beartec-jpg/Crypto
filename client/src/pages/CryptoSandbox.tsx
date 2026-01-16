@@ -1650,6 +1650,62 @@ export default function CryptoSandbox() {
   }, [elliottWave, candles, findMagnetPoint]);
   
   /**
+   * Redraw chart without triggering React re-render
+   * Uses refs instead of state for immediate visual updates
+   * This prevents the zoom revert issue caused by setState during zoom events
+   */
+  const redrawChart = useCallback((xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+    if (!svgRef.current || !d3) return;
+    
+    const svg = d3.select(svgRef.current);
+    
+    // Calculate visible candles from transformed x scale
+    const visibleTimeRange = xS.domain();
+    const visibleCandles = candles.filter(d => {
+      const date = new Date(d.time);
+      return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
+    });
+    
+    // Recalculate y scale based on visible data
+    let updatedYScale = yS;
+    if (visibleCandles.length > 0) {
+      const visiblePrices = visibleCandles.flatMap(d => [d.low, d.high]);
+      updatedYScale = d3.scaleLinear()
+        .domain([
+          (d3.min(visiblePrices) || 0) * 0.999,
+          (d3.max(visiblePrices) || 0) * 1.001
+        ])
+        .range([dimensions.height - MARGIN.top - MARGIN.bottom, 0]);
+      yScaleRef.current = updatedYScale;
+    }
+    
+    // Update axes (D3 selection, no React state)
+    svg.select<SVGGElement>('.x-axis')
+      .call(d3.axisBottom(xS).ticks(8).tickFormat(d => {
+        const date = d as Date;
+        if (interval === '1d' || interval === '4h') {
+          return d3.timeFormat('%b %d')(date);
+        }
+        return d3.timeFormat('%b %d %H:%M')(date);
+      }))
+      .call(g => g.selectAll('text').attr('fill', '#94a3b8').attr('font-size', '11px'))
+      .call(g => g.selectAll('line').attr('stroke', '#475569'))
+      .call(g => g.select('.domain').attr('stroke', '#475569'));
+    
+    svg.select<SVGGElement>('.y-axis')
+      .call(d3.axisRight(updatedYScale).ticks(10).tickFormat(d => {
+        const price = d as number;
+        return price >= 1000 ? d3.format(',.0f')(price) : d3.format('.4f')(price);
+      }))
+      .call(g => g.selectAll('text').attr('fill', '#94a3b8').attr('font-size', '11px'))
+      .call(g => g.selectAll('line').attr('stroke', '#475569'))
+      .call(g => g.select('.domain').attr('stroke', '#475569'));
+    
+    // Note: Actual redrawing of candles, Elliott Wave, and drawings happens in the zoom handler
+    // This function primarily updates axes during zoom
+  }, [candles, dimensions.height, interval, d3]);
+  
+  /**
    * Handle D3 zoom scale changes
    * Extracts transform.k and updates state for adaptive timeframe
    */
@@ -3787,22 +3843,16 @@ export default function CryptoSandbox() {
       .on('zoom', (event) => {
         const transform = event.transform;
         
-        // NEW: Track zoom scale for adaptive timeframe
-        handleZoomChange(transform);
-        
-        // Update x scale based on zoom
+        // 1. Apply transform to x scale immediately (ref update, no state)
         const newXScale = transform.rescaleX(xScale);
         xScaleRef.current = newXScale;
         
-        // Recalculate y scale based on visible candles
+        // 2. Calculate visible candles
         const visibleTimeRange = newXScale.domain();
         const visibleCandles = candles.filter(d => {
           const date = new Date(d.time);
           return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
         });
-        
-        // NEW: Update visible candle count for adaptive timeframe
-        setVisibleCandleCount(visibleCandles.length);
         
         if (visibleCandles.length > 0) {
           const newPriceExtent = [
@@ -3871,10 +3921,20 @@ export default function CryptoSandbox() {
           // Redraw drawings with new scales and current zoom k (D3 native, no React re-render needed)
           drawDrawingsRef(newXScale, newYScale, transform.k);
         }
+        
+        // 3. Defer state updates until AFTER zoom event completes
+        //    This prevents re-render during zoom which would reset the transform
+        requestAnimationFrame(() => {
+          // Update state (triggers re-render AFTER zoom is done)
+          handleZoomChange(transform);
+          setVisibleCandleCount(visibleCandles.length);
+        });
       });
     
     zoomRef.current = zoom;
     svg.call(zoom);
+    
+    console.log('✅ D3 zoom behavior initialized');
     
     // NOTE: Tap detection is handled in the zoom 'end' event handler above.
     // We removed duplicate touchstart.tap/touchend.tap handlers that were causing double-tap issues.
@@ -3882,6 +3942,7 @@ export default function CryptoSandbox() {
     // Restore saved zoom transform if it exists
     if (zoomTransformRef.current) {
       svg.call(zoom.transform, zoomTransformRef.current);
+      console.log('🔄 Zoom transform restored:', { k: zoomTransformRef.current.k, x: zoomTransformRef.current.x });
     }
     
     // Current price line
@@ -4623,10 +4684,8 @@ export default function CryptoSandbox() {
             {/* Trendline drawing overlay - handles all events when tool is active */}
             {activeTool === 'trendline' && trendlineMode && (
               <div 
-                className="absolute inset-0 z-[25]"
+                className="absolute inset-0 z-[25] cursor-crosshair"
                 style={{ 
-                  pointerEvents: activeTool === 'trendline' ? 'auto' : 'none',
-                  cursor: activeTool === 'trendline' ? 'crosshair' : 'default',
                   touchAction: 'none'
                 }}
                 data-drawing-overlay
@@ -4804,10 +4863,8 @@ export default function CryptoSandbox() {
             {/* Horizontal line drawing overlay - handles all events when tool is active */}
             {activeTool === 'horizontal' && (
               <div 
-                className="absolute inset-0 z-[25]"
+                className="absolute inset-0 z-[25] cursor-crosshair"
                 style={{ 
-                  pointerEvents: activeTool === 'horizontal' ? 'auto' : 'none',
-                  cursor: activeTool === 'horizontal' ? 'crosshair' : 'default',
                   touchAction: 'none'
                 }}
                 data-drawing-overlay
@@ -4878,10 +4935,8 @@ export default function CryptoSandbox() {
             {/* Channel drawing overlay - handles all events when tool is active */}
             {activeTool === 'channel' && (
               <div 
-                className="absolute inset-0 z-[25]"
+                className="absolute inset-0 z-[25] cursor-crosshair"
                 style={{ 
-                  pointerEvents: activeTool === 'channel' ? 'auto' : 'none',
-                  cursor: activeTool === 'channel' ? 'crosshair' : 'default',
                   touchAction: 'none'
                 }}
                 data-drawing-overlay
@@ -4968,10 +5023,8 @@ export default function CryptoSandbox() {
             {/* Horizontal Channel drawing overlay - handles all events when tool is active */}
             {activeTool === 'hchannel' && (
               <div 
-                className="absolute inset-0 z-[25]"
+                className="absolute inset-0 z-[25] cursor-crosshair"
                 style={{ 
-                  pointerEvents: activeTool === 'hchannel' ? 'auto' : 'none',
-                  cursor: activeTool === 'hchannel' ? 'crosshair' : 'default',
                   touchAction: 'none'
                 }}
                 data-drawing-overlay
@@ -5073,10 +5126,8 @@ export default function CryptoSandbox() {
             {/* Sloped Channel drawing overlay - handles all events when tool is active */}
             {activeTool === 'schannel' && (
               <div 
-                className="absolute inset-0 z-[25]"
+                className="absolute inset-0 z-[25] cursor-crosshair"
                 style={{ 
-                  pointerEvents: activeTool === 'schannel' ? 'auto' : 'none',
-                  cursor: activeTool === 'schannel' ? 'crosshair' : 'default',
                   touchAction: 'none'
                 }}
                 data-drawing-overlay
@@ -5209,10 +5260,8 @@ export default function CryptoSandbox() {
             {/* Fibonacci Retracement drawing overlay */}
             {activeTool === 'fibretracement' && (
               <div 
-                className="absolute inset-0 z-[25]"
+                className="absolute inset-0 z-[25] cursor-crosshair"
                 style={{ 
-                  pointerEvents: activeTool === 'fibretracement' ? 'auto' : 'none',
-                  cursor: activeTool === 'fibretracement' ? 'crosshair' : 'default',
                   touchAction: 'none'
                 }}
                 data-drawing-overlay
@@ -5314,10 +5363,8 @@ export default function CryptoSandbox() {
             {/* Trend-Based Fib Extension drawing overlay (3-click) */}
             {activeTool === 'trendfib' && (
               <div 
-                className="absolute inset-0 z-[25]"
+                className="absolute inset-0 z-[25] cursor-crosshair"
                 style={{ 
-                  pointerEvents: activeTool === 'trendfib' ? 'auto' : 'none',
-                  cursor: activeTool === 'trendfib' ? 'crosshair' : 'default',
                   touchAction: 'none'
                 }}
                 data-drawing-overlay
@@ -5429,10 +5476,8 @@ export default function CryptoSandbox() {
             {/* Text label drawing overlay - handles all events when tool is active */}
             {activeTool === 'label' && (
               <div 
-                className="absolute inset-0 z-[25]"
+                className="absolute inset-0 z-[25] cursor-crosshair"
                 style={{ 
-                  pointerEvents: activeTool === 'label' ? 'auto' : 'none',
-                  cursor: activeTool === 'label' ? 'crosshair' : 'default',
                   touchAction: 'none'
                 }}
                 data-drawing-overlay
@@ -5503,10 +5548,8 @@ export default function CryptoSandbox() {
             {/* Elliott Wave drawing overlay - handles all events when tool is active */}
             {activeTool === 'elliottwave' && elliottWave.isActive && (
               <div 
-                className="absolute inset-0 z-[25]"
+                className="absolute inset-0 z-[25] cursor-crosshair"
                 style={{ 
-                  pointerEvents: activeTool === 'elliottwave' ? 'auto' : 'none',
-                  cursor: activeTool === 'elliottwave' ? 'crosshair' : 'default',
                   touchAction: 'none'
                 }}
                 data-drawing-overlay
