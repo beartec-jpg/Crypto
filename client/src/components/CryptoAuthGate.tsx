@@ -4,8 +4,9 @@ import { lazy, Suspense } from 'react';
 
 const isDevelopment = typeof window !== 'undefined' && 
   (window.location.hostname.includes('replit') || 
-   window.location.hostname.includes('localhost') ||
-   window.location.hostname.includes('127.0.0.1'));
+   window.location. hostname.includes('localhost') ||
+   window.location.hostname.includes('127.0.0.1') ||
+   window.location. pathname.includes('/dev'));
 
 interface CryptoAuthGateProps {
   children: React.ReactNode;
