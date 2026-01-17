@@ -46,6 +46,7 @@ import type {
   SelectionCandidate 
 } from '@/types/drawing';
 import type { TimeframeInterval } from '@/types/timeframes';
+import { TIMEFRAME_HIERARCHY } from '@/constants/timeframes';
 
 interface CandleData {
   time: number;
@@ -616,7 +617,7 @@ export default function CryptoSandbox() {
   // Fetch all timeframes in parallel for smooth auto-zoom
   const fetchAllTimeframes = useCallback(async () => {
     setLoading(true);
-    const timeframes = ['15m', '1h', '4h', '1d'] as const;
+    const timeframes = TIMEFRAME_HIERARCHY;
     
     try {
       console.log('🔄 Fetching all timeframes in parallel...');
@@ -4228,7 +4229,7 @@ export default function CryptoSandbox() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {['15m', '1h', '4h', '1d'].map(i => (
+              {TIMEFRAME_HIERARCHY.map(i => (
                 <SelectItem key={i} value={i}>{i}</SelectItem>
               ))}
             </SelectContent>
