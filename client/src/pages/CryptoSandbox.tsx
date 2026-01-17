@@ -132,7 +132,13 @@ export default function CryptoSandbox() {
     '1d': CandleData[];
   }>({ '15m': [], '1h': [], '4h': [], '1d': [] });
   
-  const [autoTimeframe, setAutoTimeframe] = useState(false); // Auto mode toggle
+  const [autoTimeframeEnabled, setAutoTimeframeEnabled] = useState(true); // Auto mode toggle (renamed for clarity)
+  const [isLoadingTimeframes, setIsLoadingTimeframes] = useState(false); // Loading state for multi-timeframe fetch
+  
+  // CRITICAL: Use refs to prevent re-render loops during auto-zoom
+  const activeTimeframeRef = useRef<'15m' | '1h' | '4h' | '1d'>('1h');
+  const lastSwitchTimeRef = useRef(0);
+  const isSwitchingRef = useRef(false);
   
   // Stable base domain for scales - prevents recreation on data changes
   const [baseDomain, setBaseDomain] = useState<{
@@ -201,7 +207,8 @@ export default function CryptoSandbox() {
   // Elliott Wave hook
   const elliottWave = useElliottWave({ timeframe: interval });
   
-  // Adaptive timeframe hook - manages automatic timeframe switching based on zoom
+  // Adaptive timeframe hook - used only for the old adaptive mode UI indicator
+  // The new implementation uses direct D3 zoom integration
   const adaptiveTimeframe = useAdaptiveTimeframe({
     symbol: symbol || 'XRPUSDT',
     baseTimeframe: interval as TimeframeInterval,
@@ -209,26 +216,15 @@ export default function CryptoSandbox() {
     chartWidth: dimensions.width || 1000,
     zoomScale: zoomScale,
     options: {
-      enabled: autoTimeframe, // Controlled by autoTimeframe state
-      debounceDelay: 300, // Faster response for smoother switching
+      enabled: false, // Disabled - using new direct implementation
+      debounceDelay: 300,
       enableTransitions: true,
       transitionDuration: 300,
       enablePrefetch: true,
       cacheMaxAge: 5 * 60 * 1000
     },
     onTimeframeChange: (newTf, oldTf) => {
-      console.log(`📊 Auto-switching: ${oldTf} → ${newTf} (Auto TF enabled)`);
-      setInterval(newTf);
-      
-      // Use cached data if available, otherwise will be fetched
-      const cachedData = multiTimeframeData[newTf as keyof typeof multiTimeframeData];
-      if (cachedData && cachedData.length > 0) {
-        setCandles(cachedData);
-        console.log(`✅ Using cached ${newTf} data (${cachedData.length} candles)`);
-      }
-      
-      // Reset base domain for new timeframe (will be recalculated when new data loads)
-      setBaseDomain({ time: null, price: null });
+      // Not used in new implementation
     }
   });
   
@@ -616,27 +612,32 @@ export default function CryptoSandbox() {
   
   // Fetch all timeframes in parallel for smooth auto-zoom
   const fetchAllTimeframes = useCallback(async () => {
-    setLoading(true);
-    const timeframes = TIMEFRAME_HIERARCHY;
+    setIsLoadingTimeframes(true);
+    const timeframes: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
     
     try {
-      console.log('🔄 Fetching all timeframes in parallel...');
+      console.log('📊 Loading all timeframes...');
+      
       const results = await Promise.all(
         timeframes.map(async (tf) => {
           try {
             const url = `/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=1000`;
             const response = await fetch(url);
-            if (!response.ok) throw new Error(`Failed to fetch ${tf}`);
+            if (!response.ok) {
+              console.error(`Failed to fetch ${tf}: HTTP ${response.status}`);
+              return { timeframe: tf, data: [] };
+            }
             const data = await response.json();
-            return { timeframe: tf, data, error: null };
-          } catch (err: any) {
-            console.error(`❌ Failed to fetch ${tf}:`, err.message);
-            return { timeframe: tf, data: [], error: err.message };
+            console.log(`✅ Loaded ${tf}: ${data.length} candles`);
+            return { timeframe: tf, data };
+          } catch (error) {
+            console.error(`Error fetching ${tf}:`, error);
+            return { timeframe: tf, data: [] };
           }
         })
       );
       
-      // Store all timeframes
+      // Process all timeframe data
       const tfData = results.reduce((acc, { timeframe, data }) => {
         acc[timeframe] = data.map((k: any) => ({
           time: k[0],
@@ -651,31 +652,27 @@ export default function CryptoSandbox() {
       
       setMultiTimeframeData(tfData);
       
-      // Set initial candles based on current interval
-      const currentTfData = tfData[interval as keyof typeof tfData];
-      if (currentTfData && currentTfData.length > 0) {
-        setCandles(currentTfData);
-        console.log(`✅ Multi-timeframe data loaded. Current: ${interval} (${currentTfData.length} candles)`);
+      // Set initial candles to current interval
+      const initialTF = interval as '15m' | '1h' | '4h' | '1d';
+      if (tfData[initialTF] && tfData[initialTF].length > 0) {
+        setCandles(tfData[initialTF]);
+        activeTimeframeRef.current = initialTF;
+        console.log(`📈 Initial timeframe: ${initialTF} (${tfData[initialTF].length} candles)`);
       } else {
-        // Fallback to single fetch if multi-fetch failed
+        console.error(`⚠️ No data for initial timeframe ${initialTF}`);
+        // Fallback to single fetch
         await fetchCandles();
       }
       
-      // Cache data in adaptive timeframe hook
-      Object.entries(tfData).forEach(([tf, data]) => {
-        if (data && Array.isArray(data) && data.length > 0) {
-          adaptiveTimeframe.setCachedData(tf as TimeframeInterval, data);
-        }
-      });
     } catch (error: any) {
-      handleError('data-fetch', `Failed to load multi-timeframe data: ${error.message}`, { symbol, error: error.toString() });
+      handleError('data-fetch', `Failed to load timeframes: ${error.message}`);
       console.error('Error fetching multi-timeframe data:', error);
-      // Fallback to single interval fetch
+      // Fallback to single fetch
       await fetchCandles();
     } finally {
-      setLoading(false);
+      setIsLoadingTimeframes(false);
     }
-  }, [symbol, interval, handleError, fetchCandles, adaptiveTimeframe]);
+  }, [symbol, interval, handleError, fetchCandles]);
   
   useEffect(() => {
     fetchAllTimeframes();
@@ -1869,6 +1866,114 @@ export default function CryptoSandbox() {
     });
   }, []);
   
+  // ===== MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
+  
+  // Timeframe configuration
+  const TIMEFRAME_ORDER: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
+  const SWITCH_COOLDOWN_MS = 500; // Minimum time between switches
+  const MIN_CANDLE_WIDTH = 1.5; // Minimum pixels per candle
+  const SWITCH_UP_THRESHOLD = 1.0; // Switch to higher TF when candles reach this width
+  const SWITCH_DOWN_THRESHOLD = 8.0; // Switch to lower TF when candles reach this width
+  
+  // Calculate current candle width
+  const calculateCandleWidth = useCallback((
+    xScale: d3.ScaleTime<number, number>, 
+    candleData: CandleData[], 
+    chartWidth: number
+  ): number => {
+    if (candleData.length < 2) return 10;
+    
+    const visibleRange = xScale.domain();
+    const visibleCandles = candleData.filter(d => {
+      const date = new Date(d.time);
+      return date >= visibleRange[0] && date <= visibleRange[1];
+    });
+    
+    if (visibleCandles.length === 0) return 10;
+    
+    const calculatedWidth = (chartWidth / visibleCandles.length) * 0.8;
+    return calculatedWidth;
+  }, []);
+  
+  // Determine if we should switch timeframes
+  const shouldSwitchTimeframe = useCallback((
+    currentWidth: number,
+    currentTF: '15m' | '1h' | '4h' | '1d'
+  ): '15m' | '1h' | '4h' | '1d' | null => {
+    // Don't switch if auto mode is off
+    if (!autoTimeframeEnabled) return null;
+    
+    // Don't switch if we're already switching
+    if (isSwitchingRef.current) return null;
+    
+    // Debounce - don't switch too frequently
+    const now = Date.now();
+    if (now - lastSwitchTimeRef.current < SWITCH_COOLDOWN_MS) {
+      return null;
+    }
+    
+    const currentIndex = TIMEFRAME_ORDER.indexOf(currentTF);
+    
+    // Switch to HIGHER timeframe if candles too narrow (zooming out)
+    if (currentWidth <= SWITCH_UP_THRESHOLD && currentIndex < TIMEFRAME_ORDER.length - 1) {
+      const nextTF = TIMEFRAME_ORDER[currentIndex + 1];
+      
+      // Validate target timeframe has data
+      if (!multiTimeframeData[nextTF] || multiTimeframeData[nextTF].length === 0) {
+        console.warn(`⚠️ No data for ${nextTF}, staying on ${currentTF}`);
+        return null;
+      }
+      
+      console.log(`📊 Auto-switch UP: ${currentTF} → ${nextTF} (width: ${currentWidth.toFixed(2)}px)`);
+      return nextTF;
+    }
+    
+    // Switch to LOWER timeframe if candles too wide (zooming in) - with hysteresis
+    if (currentWidth >= SWITCH_DOWN_THRESHOLD && currentIndex > 0) {
+      const prevTF = TIMEFRAME_ORDER[currentIndex - 1];
+      
+      // Validate target timeframe has data
+      if (!multiTimeframeData[prevTF] || multiTimeframeData[prevTF].length === 0) {
+        console.warn(`⚠️ No data for ${prevTF}, staying on ${currentTF}`);
+        return null;
+      }
+      
+      console.log(`📊 Auto-switch DOWN: ${currentTF} → ${prevTF} (width: ${currentWidth.toFixed(2)}px)`);
+      return prevTF;
+    }
+    
+    return null; // No switch needed
+  }, [autoTimeframeEnabled, multiTimeframeData]);
+  
+  // Execute timeframe switch (SAFE - no loops)
+  const executeTimeframeSwitch = useCallback((newTF: '15m' | '1h' | '4h' | '1d') => {
+    if (isSwitchingRef.current) return;
+    
+    isSwitchingRef.current = true;
+    lastSwitchTimeRef.current = Date.now();
+    
+    // Update ref immediately (doesn't cause re-render)
+    activeTimeframeRef.current = newTF;
+    
+    // Update candles data
+    const newCandles = multiTimeframeData[newTF];
+    if (newCandles && newCandles.length > 0) {
+      setCandles(newCandles);
+      setInterval(newTF); // Update UI display
+      
+      console.log(`✅ Switched to ${newTF} (${newCandles.length} candles)`);
+    } else {
+      console.error(`❌ Failed to switch to ${newTF} - no data available`);
+    }
+    
+    // Reset switching flag after a delay
+    setTimeout(() => {
+      isSwitchingRef.current = false;
+    }, 100);
+  }, [multiTimeframeData]);
+  
+  // ===== END MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
+  
   // Move whole line - places center at click position
   const moveWholeLine = useCallback((clickX: number, clickY: number) => {
     if (!movingWholeLine || !xScaleRef.current || !yScaleRef.current) return;
@@ -2603,21 +2708,14 @@ export default function CryptoSandbox() {
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
       
-      const visibleTimes = visibleCandles.map(c => c.time);
-      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
+      // Calculate width with HARD MINIMUM
+      const calculatedWidth = (innerWidth / visibleCandles.length) * 0.8;
+      const dynamicCandleWidth = Math.max(MIN_CANDLE_WIDTH, Math.min(20, calculatedWidth));
       
-      // Determine if we should render bodies based on mode and width
-      const isAdaptiveModeActive = adaptiveTimeframe.isAdaptiveMode;
-      const shouldRenderBodies = isAdaptiveModeActive || dynamicCandleWidth >= 3;
+      // If calculated width is below minimum, we should be on a higher timeframe
+      // But don't switch here - that's handled in zoom handler
       
-      // Console logging for debugging
-      console.log(`🕯️ Candle Rendering:
-  Mode: ${isAdaptiveModeActive ? '🔄 Adaptive' : '🔒 Manual'}
-  Timeframe: ${interval}
-  Visible Candles: ${visibleCandles.length}
-  Candle Width: ${dynamicCandleWidth.toFixed(1)}px
-  Bodies: ${shouldRenderBodies ? '✅ Visible' : '❌ Hidden (wicks only)'}
-`);
+      console.log(`🕯️ Rendering ${visibleCandles.length} ${activeTimeframeRef.current} candles @ ${dynamicCandleWidth.toFixed(2)}px`);
       
       // ALWAYS render wicks (vertical lines)
       candlesGroup.selectAll('.wick')
@@ -2625,32 +2723,24 @@ export default function CryptoSandbox() {
         .enter()
         .append('line')
         .attr('class', 'wick')
-        .attr('x1', d => Math.round(xS(new Date(d.time))))
-        .attr('x2', d => Math.round(xS(new Date(d.time))))
-        .attr('y1', d => Math.round(yS(d.high)))
-        .attr('y2', d => Math.round(yS(d.low)))
+        .attr('x1', d => xS(new Date(d.time)))
+        .attr('x2', d => xS(new Date(d.time)))
+        .attr('y1', d => yS(d.high))
+        .attr('y2', d => yS(d.low))
         .attr('stroke', d => d.close >= d.open ? '#22c55e' : '#ef4444')
-        .attr('stroke-width', 1)
-        .attr('shape-rendering', 'crispEdges');
+        .attr('stroke-width', Math.max(1, dynamicCandleWidth * 0.1)); // Scale wick with candle
       
-      // CONDITIONALLY render bodies
-      if (shouldRenderBodies) {
-        // Render full candle bodies
-        candlesGroup.selectAll('.body')
-          .data(visibleCandles)
-          .enter()
-          .append('rect')
-          .attr('class', 'body')
-          .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
-          .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
-          .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
-          .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
-          .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444')
-          .attr('shape-rendering', 'crispEdges');
-      } else {
-        // Bodies are not rendered (wicks-only mode)
-        console.log('📉 Zoomed out: Rendering wicks only (bodies hidden for clarity)');
-      }
+      // Render full candle bodies
+      candlesGroup.selectAll('.body')
+        .data(visibleCandles)
+        .enter()
+        .append('rect')
+        .attr('class', 'body')
+        .attr('x', d => xS(new Date(d.time)) - dynamicCandleWidth / 2)
+        .attr('y', d => yS(Math.max(d.open, d.close)))
+        .attr('width', dynamicCandleWidth)
+        .attr('height', d => Math.max(1, Math.abs(yS(d.open) - yS(d.close))))
+        .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444');
     };
     
     drawCandles(xScale, yScale);
@@ -4001,6 +4091,18 @@ export default function CryptoSandbox() {
           return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
         });
         
+        // Check if we should switch timeframes (only if auto mode enabled)
+        if (autoTimeframeEnabled && !isSwitchingRef.current) {
+          const currentWidth = calculateCandleWidth(newXScale, candles, innerWidth);
+          const targetTF = shouldSwitchTimeframe(currentWidth, activeTimeframeRef.current);
+          
+          if (targetTF && targetTF !== activeTimeframeRef.current) {
+            // Execute switch and RETURN (let React re-render with new data)
+            executeTimeframeSwitch(targetTF);
+            return; // CRITICAL: Don't continue with old data
+          }
+        }
+        
         if (visibleCandles.length > 0) {
           const newPriceExtent = [
             d3.min(visibleCandles, d => d.low) as number * 0.999,
@@ -4033,7 +4135,7 @@ export default function CryptoSandbox() {
           .call(g => g.selectAll('line').attr('stroke', '#475569'))
           .call(g => g.select('.domain').attr('stroke', '#475569'));
           
-          // Redraw candles
+          // Redraw candles with MINIMUM WIDTH enforced
           drawCandles(newXScale, newYScale);
           
           // Redraw Elliott Wave elements
@@ -4197,65 +4299,74 @@ export default function CryptoSandbox() {
         </Select>
         
         {/* Auto Timeframe Toggle with manual selector */}
-        <div className="flex items-center gap-2">
-          <Switch 
-            checked={autoTimeframe} 
-            onCheckedChange={(checked) => {
-              setAutoTimeframe(checked);
-              adaptiveTimeframe.setAdaptiveMode(checked);
-              console.log(`🔄 Auto TF mode: ${checked ? 'enabled' : 'disabled'}`);
-            }}
-            data-testid="switch-auto-timeframe"
-          />
-          <Label className="text-sm text-white">Auto TF</Label>
+        <div className="flex items-center gap-3">
+          {/* Auto TF Toggle */}
+          <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded border border-slate-600">
+            <Switch 
+              checked={autoTimeframeEnabled} 
+              onCheckedChange={(checked) => {
+                setAutoTimeframeEnabled(checked);
+                console.log(`🔄 Auto-timeframe: ${checked ? 'ON' : 'OFF'}`);
+              }}
+              data-testid="switch-auto-timeframe"
+            />
+            <Label className="text-xs text-white cursor-pointer">Auto TF</Label>
+          </div>
           
+          {/* Manual Timeframe Selector */}
           <Select 
             value={interval} 
             onValueChange={(val) => {
-              setInterval(val);
-              setAutoTimeframe(false); // Disable auto when manually selecting
-              adaptiveTimeframe.setAdaptiveMode(false);
-              console.log(`📍 Manual timeframe selected: ${val} (Auto TF disabled)`);
+              const newTF = val as '15m' | '1h' | '4h' | '1d';
+              console.log(`👆 Manual selection: ${newTF}`);
               
-              // Load cached data if available
-              const cachedData = multiTimeframeData[val as keyof typeof multiTimeframeData];
-              if (cachedData && cachedData.length > 0) {
-                setCandles(cachedData);
+              // Disable auto mode when manually selecting
+              setAutoTimeframeEnabled(false);
+              
+              // Update active timeframe
+              activeTimeframeRef.current = newTF;
+              setInterval(newTF);
+              
+              // Load new candles
+              if (multiTimeframeData[newTF] && multiTimeframeData[newTF].length > 0) {
+                setCandles(multiTimeframeData[newTF]);
+                console.log(`✅ Loaded ${newTF} manually`);
+              } else {
+                console.warn(`⚠️ No data for ${newTF}`);
               }
             }}
-            disabled={autoTimeframe}
+            disabled={isLoadingTimeframes}
           >
             <SelectTrigger className="w-24 bg-slate-800 border-slate-600" data-testid="select-interval">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {TIMEFRAME_HIERARCHY.map(i => (
-                <SelectItem key={i} value={i}>{i}</SelectItem>
+              {TIMEFRAME_ORDER.map(tf => (
+                <SelectItem key={tf} value={tf}>
+                  {tf}
+                  {multiTimeframeData[tf]?.length > 0 && (
+                    <span className="ml-1 text-xs text-gray-400">
+                      ({multiTimeframeData[tf].length})
+                    </span>
+                  )}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
           
-          {/* Show current timeframe when auto mode is active */}
-          {autoTimeframe && (
-            <div className="text-xs text-blue-400 bg-blue-900/30 px-2 py-1 rounded" data-testid="auto-tf-indicator">
-              Auto: {adaptiveTimeframe.currentTimeframe}
+          {/* Current TF Indicator (when auto mode) */}
+          {autoTimeframeEnabled && (
+            <div className="flex items-center gap-1 bg-blue-900/30 border border-blue-500/50 px-2 py-1 rounded text-xs">
+              <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+              <span className="text-blue-300 font-medium">{activeTimeframeRef.current}</span>
             </div>
           )}
+          
+          {/* Loading indicator */}
+          {isLoadingTimeframes && (
+            <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+          )}
         </div>
-        
-        {/* Adaptive Timeframe Indicator */}
-        <TimeframeIndicator
-          currentTimeframe={adaptiveTimeframe.currentTimeframe}
-          isAdaptiveMode={adaptiveTimeframe.isAdaptiveMode}
-          isTransitioning={adaptiveTimeframe.isTransitioning}
-          previousTimeframe={adaptiveTimeframe.state.previousTimeframe}
-          suggestedTimeframe={adaptiveTimeframe.state.suggestedTimeframe}
-          onToggleAdaptive={() => {
-            const newMode = !adaptiveTimeframe.isAdaptiveMode;
-            setAutoTimeframe(newMode);
-            adaptiveTimeframe.setAdaptiveMode(newMode);
-          }}
-        />
         
         <Button 
           onClick={fetchAllTimeframes} 
