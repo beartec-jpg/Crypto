@@ -35,17 +35,6 @@ export function determineOptimalTimeframe(
   const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
   const currentIndex = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe);
   
-  // Check if current timeframe is still within acceptable range
-  const isCandleWidthOk = candleWidth >= currentConfig.minCandleWidth && 
-                          candleWidth <= OPTIMAL_CANDLE_WIDTH.max * 1.2;
-  const isCandleCountOk = visibleCandles >= currentConfig.minCandles * 0.8 && 
-                          visibleCandles <= currentConfig.maxCandles * 1.2;
-  
-  // If current timeframe is acceptable, keep it
-  if (isCandleWidthOk && isCandleCountOk) {
-    return currentTimeframe;
-  }
-  
   // If candles are too small/crowded, step UP to next larger timeframe
   if (candleWidth < currentConfig.minCandleWidth * 0.9 || 
       visibleCandles > currentConfig.maxCandles * 1.1) {
@@ -66,7 +55,7 @@ export function determineOptimalTimeframe(
     return currentTimeframe; // Already at smallest
   }
   
-  // Default: keep current timeframe
+  // Current timeframe is still within acceptable range
   return currentTimeframe;
 }
 
