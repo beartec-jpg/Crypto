@@ -3844,7 +3844,9 @@ export default function CryptoSandbox() {
     // Calculate dynamic zoom limits based on candle density to prevent sub-pixel rendering
     const minCandleWidth = 1; // Don't allow candles smaller than 1px
     const maxVisibleCandles = Math.floor(innerWidth / minCandleWidth);
-    const minZoomScale = Math.max(0.5, maxVisibleCandles / candles.length);
+    const minZoomScale = candles.length > 0 
+      ? Math.max(0.5, maxVisibleCandles / candles.length)
+      : 0.5; // Fallback to default minimum if no candles
     
     // Zoom behavior - DISABLED when drawing tool is active
     const zoom = d3.zoom<SVGSVGElement, unknown>()
