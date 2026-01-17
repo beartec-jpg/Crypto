@@ -7,48 +7,49 @@ import type { TimeframeConfig, TimeframeInterval, AdaptiveTimeframeOptions } fro
 /**
  * Timeframe hierarchy with switching thresholds
  * Each timeframe has optimal candle count and width ranges
+ * IMPORTANT: minCandleWidth ensures candles NEVER render below specified pixels
  */
 export const TIMEFRAME_CONFIGS: Record<TimeframeInterval, TimeframeConfig> = {
   '1m': {
     interval: '1m',
-    minCandles: 120,  // Was: 100 - tighter threshold
-    maxCandles: 250,  // Was: 300 - tighter threshold
-    minCandleWidth: 3,
+    minCandles: 120,
+    maxCandles: 250,
+    minCandleWidth: 1.5, // MINIMUM 1.5px - candles never shrink below this
     displayName: '1 Minute'
   },
   '5m': {
     interval: '5m',
-    minCandles: 100,  // Was: 80 - tighter threshold
-    maxCandles: 200,  // Was: 250 - tighter threshold
-    minCandleWidth: 4,
+    minCandles: 100,
+    maxCandles: 200,
+    minCandleWidth: 1.5, // MINIMUM 1.5px
     displayName: '5 Minutes'
   },
   '15m': {
     interval: '15m',
-    minCandles: 80,   // Was: 60 - tighter threshold
-    maxCandles: 160,  // Was: 200 - tighter threshold
-    minCandleWidth: 5,
+    minCandles: 80,
+    maxCandles: 160,
+    minCandleWidth: 1.5, // MINIMUM 1.5px
     displayName: '15 Minutes'
   },
   '1h': {
     interval: '1h',
-    minCandles: 60,   // Was: 40 - tighter threshold
-    maxCandles: 120,  // Was: 150 - tighter threshold
-    minCandleWidth: 6,
+    minCandles: 60,
+    maxCandles: 120,
+    minCandleWidth: 1.5, // MINIMUM 1.5px
     displayName: '1 Hour'
   },
   '4h': {
     interval: '4h',
-    minCandles: 40,   // Was: 30 - tighter threshold
-    maxCandles: 80,   // Was: 100 - tighter threshold
-    minCandleWidth: 8,
+    minCandles: 40,
+    maxCandles: 80,
+    minCandleWidth: 1.5, // MINIMUM 1.5px
     displayName: '4 Hours'
   },
   '1d': {
     interval: '1d',
-    minCandles: 30,   // Was: 20 - tighter threshold
-    maxCandles: 60,   // Was: 80 - tighter threshold
-    minCandleWidth: 10,
+    minCandles: 30,
+    maxCandles: 60,
+    minCandleWidth: 1.5, // MINIMUM 1.5px
     displayName: '1 Day'
   }
 };

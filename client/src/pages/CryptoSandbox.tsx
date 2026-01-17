@@ -123,6 +123,16 @@ export default function CryptoSandbox() {
   const [loading, setLoading] = useState(true);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
+  // Multi-timeframe data management for smooth auto-zoom
+  const [multiTimeframeData, setMultiTimeframeData] = useState<{
+    '15m': CandleData[];
+    '1h': CandleData[];
+    '4h': CandleData[];
+    '1d': CandleData[];
+  }>({ '15m': [], '1h': [], '4h': [], '1d': [] });
+  
+  const [autoTimeframe, setAutoTimeframe] = useState(false); // Auto mode toggle
+  
   // Stable base domain for scales - prevents recreation on data changes
   const [baseDomain, setBaseDomain] = useState<{
     time: [number, number] | null;
@@ -198,16 +208,23 @@ export default function CryptoSandbox() {
     chartWidth: dimensions.width || 1000,
     zoomScale: zoomScale,
     options: {
-      enabled: false, // Start disabled (user enables)
-      debounceDelay: 500,
+      enabled: autoTimeframe, // Controlled by autoTimeframe state
+      debounceDelay: 300, // Faster response for smoother switching
       enableTransitions: true,
       transitionDuration: 300,
       enablePrefetch: true,
       cacheMaxAge: 5 * 60 * 1000
     },
     onTimeframeChange: (newTf, oldTf) => {
-      console.log(`📊 Timeframe auto-switched: ${oldTf} → ${newTf}`);
+      console.log(`📊 Auto-switching: ${oldTf} → ${newTf} (Auto TF enabled)`);
       setInterval(newTf);
+      
+      // Use cached data if available, otherwise will be fetched
+      const cachedData = multiTimeframeData[newTf as keyof typeof multiTimeframeData];
+      if (cachedData && cachedData.length > 0) {
+        setCandles(cachedData);
+        console.log(`✅ Using cached ${newTf} data (${cachedData.length} candles)`);
+      }
       
       // Reset base domain for new timeframe (will be recalculated when new data loads)
       setBaseDomain({ time: null, price: null });
@@ -596,9 +613,72 @@ export default function CryptoSandbox() {
     }
   }, [symbol, interval, handleError]);
   
+  // Fetch all timeframes in parallel for smooth auto-zoom
+  const fetchAllTimeframes = useCallback(async () => {
+    setLoading(true);
+    const timeframes = ['15m', '1h', '4h', '1d'] as const;
+    
+    try {
+      console.log('🔄 Fetching all timeframes in parallel...');
+      const results = await Promise.all(
+        timeframes.map(async (tf) => {
+          try {
+            const url = `/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=1000`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Failed to fetch ${tf}`);
+            const data = await response.json();
+            return { timeframe: tf, data, error: null };
+          } catch (err: any) {
+            console.error(`❌ Failed to fetch ${tf}:`, err.message);
+            return { timeframe: tf, data: [], error: err.message };
+          }
+        })
+      );
+      
+      // Store all timeframes
+      const tfData = results.reduce((acc, { timeframe, data }) => {
+        acc[timeframe] = data.map((k: any) => ({
+          time: k[0],
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4]),
+          volume: parseFloat(k[5])
+        }));
+        return acc;
+      }, {} as any);
+      
+      setMultiTimeframeData(tfData);
+      
+      // Set initial candles based on current interval
+      const currentTfData = tfData[interval as keyof typeof tfData];
+      if (currentTfData && currentTfData.length > 0) {
+        setCandles(currentTfData);
+        console.log(`✅ Multi-timeframe data loaded. Current: ${interval} (${currentTfData.length} candles)`);
+      } else {
+        // Fallback to single fetch if multi-fetch failed
+        await fetchCandles();
+      }
+      
+      // Cache data in adaptive timeframe hook
+      Object.entries(tfData).forEach(([tf, data]) => {
+        if (data && Array.isArray(data) && data.length > 0) {
+          adaptiveTimeframe.setCachedData(tf as TimeframeInterval, data);
+        }
+      });
+    } catch (error: any) {
+      handleError('data-fetch', `Failed to load multi-timeframe data: ${error.message}`, { symbol, error: error.toString() });
+      console.error('Error fetching multi-timeframe data:', error);
+      // Fallback to single interval fetch
+      await fetchCandles();
+    } finally {
+      setLoading(false);
+    }
+  }, [symbol, interval, handleError, fetchCandles, adaptiveTimeframe]);
+  
   useEffect(() => {
-    fetchCandles();
-  }, [fetchCandles]);
+    fetchAllTimeframes();
+  }, [fetchAllTimeframes]);
   
   // Initialize base domain once when data first loads
   useEffect(() => {
@@ -4115,16 +4195,52 @@ export default function CryptoSandbox() {
           </SelectContent>
         </Select>
         
-        <Select value={interval} onValueChange={setInterval}>
-          <SelectTrigger className="w-24 bg-slate-800 border-slate-600" data-testid="select-interval">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {INTERVALS.map(i => (
-              <SelectItem key={i} value={i}>{i}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Auto Timeframe Toggle with manual selector */}
+        <div className="flex items-center gap-2">
+          <Switch 
+            checked={autoTimeframe} 
+            onCheckedChange={(checked) => {
+              setAutoTimeframe(checked);
+              adaptiveTimeframe.setAdaptiveMode(checked);
+              console.log(`🔄 Auto TF mode: ${checked ? 'enabled' : 'disabled'}`);
+            }}
+            data-testid="switch-auto-timeframe"
+          />
+          <Label className="text-sm text-white">Auto TF</Label>
+          
+          <Select 
+            value={interval} 
+            onValueChange={(val) => {
+              setInterval(val);
+              setAutoTimeframe(false); // Disable auto when manually selecting
+              adaptiveTimeframe.setAdaptiveMode(false);
+              console.log(`📍 Manual timeframe selected: ${val} (Auto TF disabled)`);
+              
+              // Load cached data if available
+              const cachedData = multiTimeframeData[val as keyof typeof multiTimeframeData];
+              if (cachedData && cachedData.length > 0) {
+                setCandles(cachedData);
+              }
+            }}
+            disabled={autoTimeframe}
+          >
+            <SelectTrigger className="w-24 bg-slate-800 border-slate-600" data-testid="select-interval">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {['15m', '1h', '4h', '1d'].map(i => (
+                <SelectItem key={i} value={i}>{i}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* Show current timeframe when auto mode is active */}
+          {autoTimeframe && (
+            <div className="text-xs text-blue-400 bg-blue-900/30 px-2 py-1 rounded" data-testid="auto-tf-indicator">
+              Auto: {adaptiveTimeframe.currentTimeframe}
+            </div>
+          )}
+        </div>
         
         {/* Adaptive Timeframe Indicator */}
         <TimeframeIndicator
@@ -4133,11 +4249,15 @@ export default function CryptoSandbox() {
           isTransitioning={adaptiveTimeframe.isTransitioning}
           previousTimeframe={adaptiveTimeframe.state.previousTimeframe}
           suggestedTimeframe={adaptiveTimeframe.state.suggestedTimeframe}
-          onToggleAdaptive={() => adaptiveTimeframe.setAdaptiveMode(!adaptiveTimeframe.isAdaptiveMode)}
+          onToggleAdaptive={() => {
+            const newMode = !adaptiveTimeframe.isAdaptiveMode;
+            setAutoTimeframe(newMode);
+            adaptiveTimeframe.setAdaptiveMode(newMode);
+          }}
         />
         
         <Button 
-          onClick={fetchCandles} 
+          onClick={fetchAllTimeframes} 
           variant="outline" 
           className="bg-slate-800 border-slate-600 hover:bg-slate-700"
           data-testid="btn-refresh"
