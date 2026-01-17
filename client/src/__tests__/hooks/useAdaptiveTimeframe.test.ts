@@ -58,15 +58,14 @@ describe('useAdaptiveTimeframe', () => {
       onTimeframeChange
     });
 
-    // Wait for debounce
-    act(() => {
-      vi.advanceTimersByTime(600);
+    // Wait for debounce and advance all timers
+    await act(async () => {
+      vi.advanceTimersByTime(1000); // Advance past debounce and transition
+      await Promise.resolve(); // Flush promises
     });
 
-    // Should switch to larger timeframe
-    await waitFor(() => {
-      expect(['4h', '1d']).toContain(result.current.currentTimeframe);
-    });
+    // Should switch to larger timeframe (only adjacent - 4h)
+    expect(result.current.currentTimeframe).toBe('4h');
   });
 
   it('should switch to smaller timeframe when zoomed in', async () => {
@@ -93,15 +92,14 @@ describe('useAdaptiveTimeframe', () => {
       onTimeframeChange
     });
 
-    // Wait for debounce
-    act(() => {
-      vi.advanceTimersByTime(600);
+    // Wait for debounce and advance all timers
+    await act(async () => {
+      vi.advanceTimersByTime(1000); // Advance past debounce and transition
+      await Promise.resolve(); // Flush promises
     });
 
-    // Should switch to smaller timeframe
-    await waitFor(() => {
-      expect(['15m', '5m', '1m']).toContain(result.current.currentTimeframe);
-    });
+    // Should switch to smaller timeframe (only adjacent - 15m)
+    expect(result.current.currentTimeframe).toBe('15m');
   });
 
   it('should not switch when adaptive mode is disabled', async () => {
@@ -295,12 +293,12 @@ describe('useAdaptiveTimeframe', () => {
       onTimeframeChange
     });
 
-    act(() => {
-      vi.advanceTimersByTime(600);
+    // Wait for debounce and advance all timers
+    await act(async () => {
+      vi.advanceTimersByTime(1000); // Advance past debounce and transition
+      await Promise.resolve(); // Flush promises
     });
 
-    await waitFor(() => {
-      expect(onTimeframeChange).toHaveBeenCalled();
-    });
+    expect(onTimeframeChange).toHaveBeenCalled();
   });
 });
