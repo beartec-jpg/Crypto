@@ -6,6 +6,20 @@ import type { TimeframeInterval, TimeframeMetrics } from '@/types/timeframes';
 import { TIMEFRAME_CONFIGS, TIMEFRAME_HIERARCHY, OPTIMAL_CANDLE_WIDTH, OPTIMAL_CANDLE_COUNT } from '@/constants/timeframes';
 
 /**
+ * Hysteresis thresholds for smooth timeframe switching
+ * These prevent flickering between timeframes
+ */
+const SWITCH_UP_THRESHOLD_PX = 1.0; // Switch to larger timeframe when candles reach this width
+const SWITCH_DOWN_THRESHOLD_PX = 8.0; // Switch to smaller timeframe when candles reach this width
+
+/**
+ * Thresholds for shouldSwitchTimeframe decision
+ */
+const TOO_MANY_CANDLES_MULTIPLIER = 1.2; // 20% over max
+const TOO_FEW_CANDLES_MULTIPLIER = 0.7; // 30% under min
+const TOO_LARGE_WIDTH_PX = 10.0; // Candles are very wide
+
+/**
  * Calculate timeframe metrics from current chart state
  */
 export function calculateTimeframeMetrics(
@@ -26,36 +40,39 @@ export function calculateTimeframeMetrics(
 /**
  * Determine the optimal timeframe based on current metrics
  * Returns only adjacent timeframes for smooth step-by-step transitions
+ * Uses hysteresis to prevent flickering between timeframes
+ * PRIMARY focus is on candle WIDTH, not count
  */
 export function determineOptimalTimeframe(
   metrics: TimeframeMetrics,
   currentTimeframe: TimeframeInterval
 ): TimeframeInterval {
-  const { visibleCandles, candleWidth } = metrics;
-  const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
+  const { candleWidth } = metrics;
   const currentIndex = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe);
   
-  // If candles are too small/crowded, step UP to next larger timeframe
-  if (candleWidth < currentConfig.minCandleWidth * 0.9 || 
-      visibleCandles > currentConfig.maxCandles * 1.1) {
+  // If candles are too small (approaching minimum 1.5px), step UP to next larger timeframe
+  // This prevents candles from rendering below 1px
+  if (candleWidth <= SWITCH_UP_THRESHOLD_PX) {
     const nextIndex = currentIndex + 1;
     if (nextIndex < TIMEFRAME_HIERARCHY.length) {
+      console.log(`📊 Suggesting UP: ${currentTimeframe} → ${TIMEFRAME_HIERARCHY[nextIndex]} (width: ${candleWidth.toFixed(2)}px)`);
       return TIMEFRAME_HIERARCHY[nextIndex]; // ALWAYS adjacent step up
     }
     return currentTimeframe; // Already at largest
   }
   
   // If candles are too large/sparse, step DOWN to next smaller timeframe
-  if (candleWidth > OPTIMAL_CANDLE_WIDTH.max * 1.1 || 
-      visibleCandles < currentConfig.minCandles * 0.9) {
+  // Wide hysteresis prevents immediate switch back
+  if (candleWidth >= SWITCH_DOWN_THRESHOLD_PX) {
     const prevIndex = currentIndex - 1;
     if (prevIndex >= 0) {
+      console.log(`📊 Suggesting DOWN: ${currentTimeframe} → ${TIMEFRAME_HIERARCHY[prevIndex]} (width: ${candleWidth.toFixed(2)}px)`);
       return TIMEFRAME_HIERARCHY[prevIndex]; // ALWAYS adjacent step down
     }
     return currentTimeframe; // Already at smallest
   }
   
-  // Current timeframe is still within acceptable range
+  // Current timeframe is still within acceptable range (between 1px and 8px)
   return currentTimeframe;
 }
 
@@ -78,6 +95,7 @@ export function getTimeframeRatio(from: TimeframeInterval, to: TimeframeInterval
 
 /**
  * Check if a timeframe switch should occur
+ * Uses stricter thresholds to ensure switches happen decisively
  */
 export function shouldSwitchTimeframe(
   currentTimeframe: TimeframeInterval,
@@ -89,16 +107,27 @@ export function shouldSwitchTimeframe(
     return false;
   }
   
-  const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
   const { candleWidth, visibleCandles } = metrics;
+  const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
   
   // Switch if current conditions are significantly outside optimal range
-  const isTooSmall = candleWidth < currentConfig.minCandleWidth * 0.8;
-  const isTooLarge = candleWidth > OPTIMAL_CANDLE_WIDTH.max * 1.2;
-  const tooManyCandlewidth = visibleCandles > currentConfig.maxCandles * 1.2;
-  const tooFewCandles = visibleCandles < currentConfig.minCandles * 0.8;
+  // More aggressive thresholds for clearer switches
+  const isTooSmall = candleWidth <= SWITCH_UP_THRESHOLD_PX; // Candles at or below 1px
+  const tooManyCandles = visibleCandles > currentConfig.maxCandles * TOO_MANY_CANDLES_MULTIPLIER;
+  const isTooLarge = candleWidth >= TOO_LARGE_WIDTH_PX; // Candles very wide
+  const tooFewCandles = visibleCandles < currentConfig.minCandles * TOO_FEW_CANDLES_MULTIPLIER;
   
-  return isTooSmall || isTooLarge || tooManyCandlewidth || tooFewCandles;
+  const shouldSwitch = isTooSmall || tooManyCandles || isTooLarge || tooFewCandles;
+  
+  if (shouldSwitch) {
+    console.log(`🔄 Switch decision: ${currentTimeframe} → ${suggestedTimeframe}`, {
+      width: `${candleWidth.toFixed(2)}px`,
+      candles: visibleCandles,
+      reason: isTooSmall ? 'too small' : tooManyCandles ? 'too many' : isTooLarge ? 'too large' : 'too few'
+    });
+  }
+  
+  return shouldSwitch;
 }
 
 /**
