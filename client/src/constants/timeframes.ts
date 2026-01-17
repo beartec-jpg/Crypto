@@ -56,10 +56,9 @@ export const TIMEFRAME_CONFIGS: Record<TimeframeInterval, TimeframeConfig> = {
 
 /**
  * Ordered list of timeframes from smallest to largest
+ * Only includes the timeframes used in the multi-timeframe auto-zoom feature
  */
 export const TIMEFRAME_HIERARCHY: TimeframeInterval[] = [
-  '1m',
-  '5m', 
   '15m',
   '1h',
   '4h',

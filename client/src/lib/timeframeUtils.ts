@@ -27,13 +27,13 @@ export function calculateTimeframeMetrics(
  * Determine the optimal timeframe based on current metrics
  * Returns only adjacent timeframes for smooth step-by-step transitions
  * Uses hysteresis to prevent flickering between timeframes
+ * PRIMARY focus is on candle WIDTH, not count
  */
 export function determineOptimalTimeframe(
   metrics: TimeframeMetrics,
   currentTimeframe: TimeframeInterval
 ): TimeframeInterval {
-  const { visibleCandles, candleWidth } = metrics;
-  const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
+  const { candleWidth } = metrics;
   const currentIndex = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe);
   
   // HYSTERESIS THRESHOLDS for smooth switching
@@ -42,10 +42,9 @@ export function determineOptimalTimeframe(
   // Switch DOWN (to smaller timeframe) at 8.0px threshold (wider hysteresis)
   const switchDownThreshold = 8.0;
   
-  // If candles are too small/crowded, step UP to next larger timeframe
+  // If candles are too small (approaching minimum 1.5px), step UP to next larger timeframe
   // This prevents candles from rendering below 1px
-  if (candleWidth <= switchUpThreshold || 
-      visibleCandles > currentConfig.maxCandles * 1.1) {
+  if (candleWidth <= switchUpThreshold) {
     const nextIndex = currentIndex + 1;
     if (nextIndex < TIMEFRAME_HIERARCHY.length) {
       console.log(`📊 Suggesting UP: ${currentTimeframe} → ${TIMEFRAME_HIERARCHY[nextIndex]} (width: ${candleWidth.toFixed(2)}px)`);
@@ -56,8 +55,7 @@ export function determineOptimalTimeframe(
   
   // If candles are too large/sparse, step DOWN to next smaller timeframe
   // Wide hysteresis prevents immediate switch back
-  if (candleWidth >= switchDownThreshold || 
-      visibleCandles < currentConfig.minCandles * 0.9) {
+  if (candleWidth >= switchDownThreshold) {
     const prevIndex = currentIndex - 1;
     if (prevIndex >= 0) {
       console.log(`📊 Suggesting DOWN: ${currentTimeframe} → ${TIMEFRAME_HIERARCHY[prevIndex]} (width: ${candleWidth.toFixed(2)}px)`);
@@ -66,7 +64,7 @@ export function determineOptimalTimeframe(
     return currentTimeframe; // Already at smallest
   }
   
-  // Current timeframe is still within acceptable range
+  // Current timeframe is still within acceptable range (between 1px and 8px)
   return currentTimeframe;
 }
 
