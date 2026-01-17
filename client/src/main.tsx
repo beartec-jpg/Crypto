@@ -12,9 +12,10 @@ setupErrorTracking();
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
 const isDevelopment = 
-  window.location.hostname.includes('replit') || 
-  window.location.hostname.includes('localhost') ||
-  window.location.hostname.includes('127.0.0.1');
+  window.location. hostname.includes('replit') || 
+  window. location.hostname.includes('localhost') ||
+  window.location. hostname.includes('127.0.0.1') ||
+  window.location.pathname.includes('/dev');
 
 // In production, require the key
 if (!isDevelopment && !PUBLISHABLE_KEY) {
