@@ -11,43 +11,43 @@ import type { TimeframeConfig, TimeframeInterval, AdaptiveTimeframeOptions } fro
 export const TIMEFRAME_CONFIGS: Record<TimeframeInterval, TimeframeConfig> = {
   '1m': {
     interval: '1m',
-    minCandles: 100,
-    maxCandles: 300,
+    minCandles: 120,  // Was: 100 - tighter threshold
+    maxCandles: 250,  // Was: 300 - tighter threshold
     minCandleWidth: 3,
     displayName: '1 Minute'
   },
   '5m': {
     interval: '5m',
-    minCandles: 80,
-    maxCandles: 250,
+    minCandles: 100,  // Was: 80 - tighter threshold
+    maxCandles: 200,  // Was: 250 - tighter threshold
     minCandleWidth: 4,
     displayName: '5 Minutes'
   },
   '15m': {
     interval: '15m',
-    minCandles: 60,
-    maxCandles: 200,
+    minCandles: 80,   // Was: 60 - tighter threshold
+    maxCandles: 160,  // Was: 200 - tighter threshold
     minCandleWidth: 5,
     displayName: '15 Minutes'
   },
   '1h': {
     interval: '1h',
-    minCandles: 40,
-    maxCandles: 150,
+    minCandles: 60,   // Was: 40 - tighter threshold
+    maxCandles: 120,  // Was: 150 - tighter threshold
     minCandleWidth: 6,
     displayName: '1 Hour'
   },
   '4h': {
     interval: '4h',
-    minCandles: 30,
-    maxCandles: 100,
+    minCandles: 40,   // Was: 30 - tighter threshold
+    maxCandles: 80,   // Was: 100 - tighter threshold
     minCandleWidth: 8,
     displayName: '4 Hours'
   },
   '1d': {
     interval: '1d',
-    minCandles: 20,
-    maxCandles: 80,
+    minCandles: 30,   // Was: 20 - tighter threshold
+    maxCandles: 60,   // Was: 80 - tighter threshold
     minCandleWidth: 10,
     displayName: '1 Day'
   }
@@ -70,7 +70,7 @@ export const TIMEFRAME_HIERARCHY: TimeframeInterval[] = [
  */
 export const DEFAULT_ADAPTIVE_OPTIONS: AdaptiveTimeframeOptions = {
   enabled: true,
-  debounceDelay: 500, // ms to wait before switching timeframe
+  debounceDelay: 300, // Was: 500 - faster response
   enableTransitions: true,
   transitionDuration: 300, // ms for fade transitions
   enablePrefetch: true,

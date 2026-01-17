@@ -25,59 +25,48 @@ export function calculateTimeframeMetrics(
 
 /**
  * Determine the optimal timeframe based on current metrics
+ * Returns only adjacent timeframes for smooth step-by-step transitions
  */
 export function determineOptimalTimeframe(
   metrics: TimeframeMetrics,
   currentTimeframe: TimeframeInterval
 ): TimeframeInterval {
   const { visibleCandles, candleWidth } = metrics;
-  
-  // Check if current timeframe is still optimal
   const currentConfig = TIMEFRAME_CONFIGS[currentTimeframe];
+  const currentIndex = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe);
   
-  // If candle width is too small, suggest larger timeframe
-  if (candleWidth < currentConfig.minCandleWidth || visibleCandles > currentConfig.maxCandles) {
-    // Find the next appropriate larger timeframe
-    for (let i = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe) + 1; i < TIMEFRAME_HIERARCHY.length; i++) {
-      const nextInterval = TIMEFRAME_HIERARCHY[i];
-      const nextConfig = TIMEFRAME_CONFIGS[nextInterval];
-      
-      // Estimate how many candles we'd have at this timeframe
-      const estimatedCandles = Math.floor(visibleCandles / getTimeframeRatio(currentTimeframe, nextInterval));
-      const estimatedCandleWidth = estimatedCandles > 0 ? metrics.chartWidth / estimatedCandles : 0;
-      
-      if (estimatedCandleWidth >= nextConfig.minCandleWidth && 
-          estimatedCandles >= nextConfig.minCandles && 
-          estimatedCandles <= nextConfig.maxCandles) {
-        return nextInterval;
-      }
-    }
-    // If no better timeframe found, return the largest
-    return TIMEFRAME_HIERARCHY[TIMEFRAME_HIERARCHY.length - 1];
+  // Check if current timeframe is still within acceptable range
+  const isCandleWidthOk = candleWidth >= currentConfig.minCandleWidth && 
+                          candleWidth <= OPTIMAL_CANDLE_WIDTH.max * 1.2;
+  const isCandleCountOk = visibleCandles >= currentConfig.minCandles * 0.8 && 
+                          visibleCandles <= currentConfig.maxCandles * 1.2;
+  
+  // If current timeframe is acceptable, keep it
+  if (isCandleWidthOk && isCandleCountOk) {
+    return currentTimeframe;
   }
   
-  // If candle width is too large, suggest smaller timeframe
-  if (candleWidth > OPTIMAL_CANDLE_WIDTH.max || visibleCandles < currentConfig.minCandles) {
-    // Find the next appropriate smaller timeframe
-    for (let i = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe) - 1; i >= 0; i--) {
-      const prevInterval = TIMEFRAME_HIERARCHY[i];
-      const prevConfig = TIMEFRAME_CONFIGS[prevInterval];
-      
-      // Estimate how many candles we'd have at this timeframe
-      const estimatedCandles = Math.floor(visibleCandles * getTimeframeRatio(prevInterval, currentTimeframe));
-      const estimatedCandleWidth = estimatedCandles > 0 ? metrics.chartWidth / estimatedCandles : 0;
-      
-      if (estimatedCandleWidth >= prevConfig.minCandleWidth && 
-          estimatedCandles >= prevConfig.minCandles && 
-          estimatedCandles <= prevConfig.maxCandles) {
-        return prevInterval;
-      }
+  // If candles are too small/crowded, step UP to next larger timeframe
+  if (candleWidth < currentConfig.minCandleWidth * 0.9 || 
+      visibleCandles > currentConfig.maxCandles * 1.1) {
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < TIMEFRAME_HIERARCHY.length) {
+      return TIMEFRAME_HIERARCHY[nextIndex]; // ALWAYS adjacent step up
     }
-    // If no better timeframe found, return the smallest
-    return TIMEFRAME_HIERARCHY[0];
+    return currentTimeframe; // Already at largest
   }
   
-  // Current timeframe is still optimal
+  // If candles are too large/sparse, step DOWN to next smaller timeframe
+  if (candleWidth > OPTIMAL_CANDLE_WIDTH.max * 1.1 || 
+      visibleCandles < currentConfig.minCandles * 0.9) {
+    const prevIndex = currentIndex - 1;
+    if (prevIndex >= 0) {
+      return TIMEFRAME_HIERARCHY[prevIndex]; // ALWAYS adjacent step down
+    }
+    return currentTimeframe; // Already at smallest
+  }
+  
+  // Default: keep current timeframe
   return currentTimeframe;
 }
 
