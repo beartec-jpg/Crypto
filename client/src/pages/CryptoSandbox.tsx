@@ -226,6 +226,7 @@ const adaptiveTimeframe = useAdaptiveTimeframe({
     hysteresis:  0.3 // Prevent timeframe flickering
   }, // ← ADD THIS COMMA
   onTimeframeChange: (newTf, oldTf) => {
+    console. log(`🚨 onTimeframeChange FIRED: ${oldTf} → ${newTf}`);
     console.log(`🔄 Smooth timeframe switch: ${oldTf} → ${newTf}`);
     
     // Capture current zoom state BEFORE switching
