@@ -216,7 +216,7 @@ export default function CryptoSandbox() {
     chartWidth: dimensions.width || 1000,
     zoomScale: zoomScale,
     options: {
-      enabled: false, // Disabled - using new direct implementation
+      enabled: autoTimeframeEnabled, // Use the toggle state
       debounceDelay: 300,
       enableTransitions: true,
       transitionDuration: 300,
@@ -224,8 +224,17 @@ export default function CryptoSandbox() {
       cacheMaxAge: 5 * 60 * 1000
     },
     onTimeframeChange: (newTf, oldTf) => {
-      // Not used in new implementation
-    }
+  console.log(`🔄 Auto-timeframe switch: ${oldTf} → ${newTf}`);
+  // Update active timeframe
+  activeTimeframeRef.current = newTf as '15m' | '1h' | '4h' | '1d';
+  setInterval(newTf);
+  
+  // Load new candles if available
+  if (multiTimeframeData[newTf as '15m' | '1h' | '4h' | '1d']?.length > 0) {
+    setCandles(multiTimeframeData[newTf as '15m' | '1h' | '4h' | '1d']);
+    console.log(`✅ Switched to ${newTf} (${multiTimeframeData[newTf as '15m' | '1h' | '4h' | '1d']. length} candles)`);
+  }
+}
   });
   
   // Drawing state hook - manages all drawings, undo/redo, and selection
