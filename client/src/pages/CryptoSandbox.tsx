@@ -610,94 +610,118 @@ export default function CryptoSandbox() {
     }
   }, [symbol, interval, handleError]);
   
-  // Fetch all timeframes in parallel for smooth auto-zoom
-  const fetchAllTimeframes = useCallback(async () => {
-    setIsLoadingTimeframes(true);
-    const timeframes: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
+// Fetch all timeframes sequentially for smooth auto-zoom
+const fetchAllTimeframes = useCallback(async () => {
+  setIsLoadingTimeframes(true);
+  const timeframes: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
+  
+  try {
+    console.log('📊 Loading all timeframes.. .');
     
+    // Load current interval first, then others sequentially
+    const results = [];
+    const currentTF = interval as '15m' | '1h' | '4h' | '1d';
+    const otherTFs = timeframes.filter(tf => tf !== currentTF);
+
+    // Load current timeframe FIRST
     try {
-      console.log('📊 Loading all timeframes...');
-      
-      const results = await Promise.all(
-        timeframes.map(async (tf) => {
-          try {
-            const url = `/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=1000`;
-            const response = await fetch(url);
-            if (!response.ok) {
-              console.error(`Failed to fetch ${tf}: HTTP ${response.status}`);
-              return { timeframe: tf, data: [] };
-            }
-            const data = await response.json();
-            console.log(`✅ Loaded ${tf}: ${data.length} candles`);
-            return { timeframe: tf, data };
-          } catch (error) {
-            console.error(`Error fetching ${tf}:`, error);
-            return { timeframe: tf, data: [] };
-          }
-        })
-      );
-      
-      // Process all timeframe data
-      const tfData = results.reduce((acc, { timeframe, data }) => {
-        acc[timeframe] = data.map((k: any) => ({
-          time: k[0],
-          open: parseFloat(k[1]),
-          high: parseFloat(k[2]),
-          low: parseFloat(k[3]),
-          close: parseFloat(k[4]),
-          volume: parseFloat(k[5])
-        }));
-        return acc;
-      }, {} as any);
-      
-      setMultiTimeframeData(tfData);
-      
-      // Set initial candles to current interval
-      const initialTF = interval as '15m' | '1h' | '4h' | '1d';
-      if (tfData[initialTF] && tfData[initialTF].length > 0) {
-        setCandles(tfData[initialTF]);
-        activeTimeframeRef.current = initialTF;
-        console.log(`📈 Initial timeframe: ${initialTF} (${tfData[initialTF].length} candles)`);
+      console. log(`📊 Loading current timeframe: ${currentTF}... `);
+      const url = `/api/binance/klines? symbol=${symbol}&interval=${currentTF}&limit=1000`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        results.push({ timeframe: currentTF, data });
+        console.log(`✅ Current TF loaded: ${currentTF} (${data.length} candles)`);
       } else {
-        console.error(`⚠️ No data for initial timeframe ${initialTF}`);
-        // Fallback to single fetch
-        await fetchCandles();
+        console.error(`Failed to fetch ${currentTF}: HTTP ${response.status}`);
+        results.push({ timeframe: currentTF, data: [] });
       }
-      
-    } catch (error: any) {
-      handleError('data-fetch', `Failed to load timeframes: ${error.message}`);
-      console.error('Error fetching multi-timeframe data:', error);
+    } catch (error) {
+      console.error(`Error fetching current TF ${currentTF}: `, error);
+      results.push({ timeframe: currentTF, data: [] });
+    }
+
+    // Load other timeframes sequentially in background
+    for (const tf of otherTFs) {
+      try {
+        console.log(`📊 Background loading: ${tf}...`);
+        const url = `/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=1000`;
+        const response = await fetch(url);
+        if (response. ok) {
+          const data = await response.json();
+          results.push({ timeframe: tf, data });
+          console.log(`✅ Background loaded: ${tf} (${data.length} candles)`);
+        } else {
+          console.error(`Failed to fetch ${tf}: HTTP ${response.status}`);
+          results.push({ timeframe: tf, data:  [] });
+        }
+      } catch (error) {
+        console.error(`Error fetching ${tf}:`, error);
+        results.push({ timeframe: tf, data: [] });
+      }
+    }
+    
+    // Process all timeframe data
+    const tfData = results.reduce((acc, { timeframe, data }) => {
+      acc[timeframe] = data.map((k: any) => ({
+        time: k[0],
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5])
+      }));
+      return acc;
+    }, {} as any);
+    
+    setMultiTimeframeData(tfData);
+    
+    // Set initial candles to current interval
+    const initialTF = interval as '15m' | '1h' | '4h' | '1d';
+    if (tfData[initialTF] && tfData[initialTF].length > 0) {
+      setCandles(tfData[initialTF]);
+      activeTimeframeRef.current = initialTF;
+      console. log(`📈 Initial timeframe: ${initialTF} (${tfData[initialTF].length} candles)`);
+    } else {
+      console.error(`⚠️ No data for initial timeframe ${initialTF}`);
       // Fallback to single fetch
       await fetchCandles();
-    } finally {
-      setIsLoadingTimeframes(false);
     }
-  }, [symbol, interval, handleError, fetchCandles]);
-  
-  useEffect(() => {
-    fetchAllTimeframes();
-  }, [fetchAllTimeframes]);
-  
-  // Initialize base domain once when data first loads
-  useEffect(() => {
-    if (candles.length > 0 && !baseDomain.time) {
-      const timeExtent = d3.extent(candles, d => d.time) as [number, number];
-      const priceExtent: [number, number] = [
-        d3.min(candles, d => d.low) as number * 0.999,
-        d3.max(candles, d => d.high) as number * 1.001
-      ];
-      
-      setBaseDomain({
-        time: timeExtent,
-        price: priceExtent
-      });
-      
-      console.log('✅ Base domain set (stable reference):', { 
-        time: timeExtent, 
-        price: priceExtent 
-      });
-    }
-  }, [candles, baseDomain.time]);
+    
+  } catch (error: any) {
+    handleError('data-fetch', `Failed to load timeframes: ${error.message}`);
+    console.error('Error fetching multi-timeframe data:', error);
+    // Fallback to single fetch
+    await fetchCandles();
+  } finally {
+    setIsLoadingTimeframes(false);
+  }
+}, [symbol, interval, handleError, fetchCandles]);
+
+useEffect(() => {
+  fetchAllTimeframes();
+}, [fetchAllTimeframes]);
+
+// Initialize base domain once when data first loads
+useEffect(() => {
+  if (candles.length > 0 && !baseDomain.time) {
+    const timeExtent = d3.extent(candles, d => d.time) as [number, number];
+    const priceExtent: [number, number] = [
+      d3.min(candles, d => d.low) as number * 0.999,
+      d3.max(candles, d => d.high) as number * 1.001
+    ];
+    
+    setBaseDomain({
+      time: timeExtent,
+      price: priceExtent
+    });
+    
+    console.log('✅ Base domain set (stable reference):', { 
+      time: timeExtent, 
+      price: priceExtent 
+    });
+  }
+}, [candles, baseDomain. time]);
   
   // Document-level handlers for menu dragging and click-off to deselect
   useEffect(() => {
