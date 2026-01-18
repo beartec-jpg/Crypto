@@ -676,7 +676,7 @@ const fetchAllTimeframes = useCallback(async () => {
     // Load current timeframe FIRST
     try {
       console. log(`📊 Loading current timeframe: ${currentTF}... `);
-      const url = `/api/binance/klines? symbol=${symbol}&interval=${currentTF}&limit=1000`;
+      const url = `/api/binance/klines?symbol=${symbol}&interval=${currentTF}&limit=1000`;
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
