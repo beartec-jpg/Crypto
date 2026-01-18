@@ -274,7 +274,7 @@ onTimeframeChange: (newTf, oldTf) => {
       }, 100);
     }
   }
-}
+});
   
   // Drawing state hook - manages all drawings, undo/redo, and selection
   const drawingState = useDrawingState();
