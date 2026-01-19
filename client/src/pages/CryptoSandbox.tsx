@@ -4436,68 +4436,75 @@ useEffect(() => {
           {candles.length} candles loaded
         </div>
       </div>
-      
       {/* Chart Container */}
-      <div 
-        ref={containerRef} 
-        className="w-full flex-1 overflow-hidden"
-      >
-        {loading ? (
-          <div className="h-full flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-          </div>
-        ) : (
-          <div className="relative w-full h-full chart-background" onClick={handleChartBackgroundClick}>
-            <svg 
-              ref={svgRef} 
-              width={dimensions.width} 
-              height={dimensions.height}
-              style={{ display: 'block', cursor: activeTool ? 'crosshair' : 'grab', touchAction: 'none' }}
-              className="chart-background"
-              data-testid="sandbox-chart"
-              onTouchStart={(e) => {
-                console.log('👆 TouchStart:', { crosshairMode, activeTool, touches: e.touches.length });
-                // Only track taps when not in crosshair mode (crosshair handles its own events)
-                if (!crosshairMode && !activeTool && e.touches[0]) {
-                  const touch = e.touches[0];
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  svgTapStartRef.current = {
-                    x: touch.clientX - rect.left,
-                    y: touch.clientY - rect.top,
-                    time: Date.now()
-                  };
-                  console.log('👆 Tap tracking started:', svgTapStartRef.current);
-                }
-              }}
-              onTouchMove={(e) => {
-                // If moved significantly, cancel the tap
-                if (svgTapStartRef.current && e.touches[0]) {
-                  const touch = e.touches[0];
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const dx = (touch.clientX - rect.left) - svgTapStartRef.current.x;
-                  const dy = (touch.clientY - rect.top) - svgTapStartRef.current.y;
-                  if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) {
-                    console.log('👆 Tap cancelled - moved too much:', { dx, dy });
-                    svgTapStartRef.current = null; // Cancel tap - this is a pan gesture
-                  }
-                }
-              }}
-              onTouchEnd={(e) => {
-                console.log('👆 TouchEnd:', { hasStart: !!svgTapStartRef.current });
-                // Check if this was a quick tap (not a drag)
-                if (svgTapStartRef.current) {
-                  const elapsed = Date.now() - svgTapStartRef.current.time;
-                  console.log('👆 Tap elapsed:', elapsed, 'max:', TAP_MAX_DURATION);
-                  if (elapsed < TAP_MAX_DURATION) {
-                    // This was a tap - do hit testing
-                    console.log('👆 Triggering tap selection at:', svgTapStartRef.current.x, svgTapStartRef.current.y);
-                    handleSvgTapSelection(svgTapStartRef.current.x, svgTapStartRef.current.y);
-                    e.stopPropagation();
-                  }
-                  svgTapStartRef.current = null;
-                }
-              }}
-            />
+<div 
+  ref={containerRef} 
+  className="w-full flex-1 overflow-hidden"
+>
+  {console.log('🎨 Chart container rendering, loading:', loading)}
+  {loading ? (
+    <div className="h-full flex items-center justify-center">
+      {console.log('🎨 Showing loading spinner')}
+      <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+    </div>
+  ) : (
+    <div className="relative w-full h-full chart-background" onClick={handleChartBackgroundClick}>
+      {console.log('🎨 Rendering SVG container, dimensions:', dimensions)}
+      <svg 
+        ref={svgRef} 
+        width={dimensions.width} 
+        height={dimensions. height}
+        style={{ display:  'block', cursor: activeTool ? 'crosshair' : 'grab', touchAction:  'none' }}
+        className="chart-background"
+        data-testid="sandbox-chart"
+        onLoad={() => console.log('🎨 SVG mounted and loaded!')}
+        ref={(el) => {
+          console.log('🎨 SVG ref callback:', !!el);
+          svgRef.current = el;
+        }}
+        onTouchStart={(e) => {
+          console.log('👆 TouchStart:', { crosshairMode, activeTool, touches: e.touches.length });
+          // Only track taps when not in crosshair mode (crosshair handles its own events)
+          if (!crosshairMode && ! activeTool && e.touches[0]) {
+            const touch = e.touches[0];
+            const rect = e.currentTarget. getBoundingClientRect();
+            svgTapStartRef.current = {
+              x: touch. clientX - rect.left,
+              y: touch.clientY - rect.top,
+              time: Date.now()
+            };
+            console.log('👆 Tap tracking started:', svgTapStartRef.current);
+          }
+        }}
+        onTouchMove={(e) => {
+          // If moved significantly, cancel the tap
+          if (svgTapStartRef.current && e. touches[0]) {
+            const touch = e.touches[0];
+            const rect = e.currentTarget.getBoundingClientRect();
+            const dx = (touch. clientX - rect.left) - svgTapStartRef.current.x;
+            const dy = (touch.clientY - rect. top) - svgTapStartRef.current.y;
+            if (Math.abs(dx) > TOUCH_THRESHOLD || Math.abs(dy) > TOUCH_THRESHOLD) {
+              console.log('👆 Tap cancelled - moved too much:', { dx, dy });
+              svgTapStartRef.current = null; // Cancel tap - this is a pan gesture
+            }
+          }
+        }}
+        onTouchEnd={(e) => {
+          console.log('👆 TouchEnd:', { hasStart: !!svgTapStartRef.current });
+          // Check if this was a quick tap (not a drag)
+          if (svgTapStartRef.current) {
+            const elapsed = Date.now() - svgTapStartRef.current. time;
+            console.log('👆 Tap elapsed:', elapsed, 'max:', TAP_MAX_DURATION);
+            if (elapsed < TAP_MAX_DURATION) {
+              // This was a tap - do hit testing
+              console.log('👆 Triggering tap selection at:', svgTapStartRef.current. x, svgTapStartRef.current.y);
+              handleSvgTapSelection(svgTapStartRef.current. x, svgTapStartRef.current.y);
+              e.stopPropagation();
+            }
+            svgTapStartRef.current = null;
+          }
+        }}
+      />
             
             {/* Top indicator dropdowns */}
             <div className="absolute top-2 left-14 flex gap-2 z-20">
