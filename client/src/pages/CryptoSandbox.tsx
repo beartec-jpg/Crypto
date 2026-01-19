@@ -205,77 +205,132 @@ export default function CryptoSandbox() {
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   
   // Elliott Wave hook
-  const elliottWave = useElliottWave({ timeframe: interval });
+const elliottWave = useElliottWave({ timeframe: interval });
+
+// Add protective refs for circuit breaker
+const lastAdaptiveChangeRef = useRef(0);
+const isAdaptiveSwitchingRef = useRef(false);
+
+// Debounced zoom scale to prevent excessive updates
+const [debouncedZoomScale, setDebouncedZoomScale] = useState(1);
+
+// Debounce zoom scale updates
+useEffect(() => {
+  const timer = setTimeout(() => {
+    setDebouncedZoomScale(zoomScale);
+  }, 150); // 150ms debounce
   
-// Adaptive timeframe hook - used only for the old adaptive mode UI indicator
-// The new implementation uses direct D3 zoom integration
+  return () => clearTimeout(timer);
+}, [zoomScale]);
+
+// Memoized timeframe change callback to prevent re-creation
+const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
+  console.log(`🚨 onTimeframeChange FIRED: ${oldTf} → ${newTf}`);
+  
+  // Circuit breaker - prevent rapid successive calls
+  const now = Date.now();
+  if (now - lastAdaptiveChangeRef.current < 500) {
+    console.log(`⚠️ Adaptive change too soon (${now - lastAdaptiveChangeRef. current}ms), skipping`);
+    return;
+  }
+  
+  // Prevent cascading if already switching
+  if (isAdaptiveSwitchingRef. current) {
+    console.log(`⚠️ Already switching timeframes, skipping`);
+    return;
+  }
+  
+  // Check if we're already on the target timeframe
+  if (activeTimeframeRef.current === newTf) {
+    console.log(`⚠️ Already on ${newTf}, skipping`);
+    return;
+  }
+  
+  lastAdaptiveChangeRef.current = now;
+  isAdaptiveSwitchingRef.current = true;
+  
+  console.log(`🔄 Smooth timeframe switch:  ${oldTf} → ${newTf}`);
+  
+  try {
+    // Capture current zoom state BEFORE switching
+    let currentTransform = null;
+    if (svgRef.current) {
+      const zoomGroup = d3.select(svgRef.current).select('. zoom-group');
+      if (zoomGroup.node()) {
+        currentTransform = d3.zoomTransform(zoomGroup.node());
+      }
+    }
+    
+    // Update active timeframe REF FIRST (prevents cascading)
+    activeTimeframeRef.current = newTf as '15m' | '1h' | '4h' | '1d';
+    
+    // Update state - batch updates using React's automatic batching
+    const newTimeframe = newTf as '15m' | '1h' | '4h' | '1d';
+    if (multiTimeframeData[newTimeframe]?.length > 0) {
+      setInterval(newTf);
+      setCandles(multiTimeframeData[newTimeframe]);
+      
+      // Apply zoom transition after state settles
+      if (currentTransform && svgRef.current) {
+        // Use requestAnimationFrame to wait for React updates
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            if (! svgRef.current) return;
+            
+            const timeframeRatios:  Record<string, Record<string, number>> = {
+              '15m': { '1h': 4, '4h':  16, '1d': 96 },
+              '1h': { '15m': 0.25, '4h': 4, '1d':  24 },
+              '4h': { '15m': 0.0625, '1h': 0.25, '1d': 6 },
+              '1d': { '15m': 0.0104, '1h':  0.0417, '4h': 0.167 }
+            };
+            
+            const ratio = timeframeRatios[oldTf]?.[newTf] || 1;
+            
+            const svg = d3.select(svgRef. current);
+            const newTransform = d3.zoomIdentity
+              .translate(currentTransform.x, currentTransform.y)
+              .scale(currentTransform.k * ratio);
+              
+            svg.transition()
+              .duration(300)
+              .call(d3.zoom<SVGSVGElement, unknown>().transform, newTransform)
+              .on('end', () => {
+                // Reset switching flag after transition completes
+                isAdaptiveSwitchingRef.current = false;
+                console.log(`✅ Smooth transition to ${newTf} complete`);
+              });
+          }, 50); // Small delay to let React state settle
+        });
+      } else {
+        // No transition needed, reset flag immediately
+        isAdaptiveSwitchingRef.current = false;
+      }
+    } else {
+      isAdaptiveSwitchingRef.current = false;
+    }
+  } catch (error) {
+    console.error('Error in adaptive timeframe change:', error);
+    isAdaptiveSwitchingRef. current = false;
+  }
+}, [multiTimeframeData]); // Only depend on multiTimeframeData
+
+// Adaptive timeframe hook with optimized configuration
 const adaptiveTimeframe = useAdaptiveTimeframe({
   symbol: symbol || 'XRPUSDT',
   baseTimeframe: interval as TimeframeInterval,
   visibleCandleCount: visibleCandleCount,
   chartWidth: dimensions.width || 1000,
-  zoomScale: zoomScale,
+  zoomScale: debouncedZoomScale, // Use debounced value
   options: {
     enabled: autoTimeframeEnabled,
-    debounceDelay: 150,
+    debounceDelay: 200, // Increased debounce
     enableTransitions: true,
     transitionDuration: 300,
     enablePrefetch: true,
     cacheMaxAge: 5 * 60 * 1000,
     hysteresis: 0.3
   },
-  onTimeframeChange: (newTf, oldTf) => {
-    console.log(`🚨 onTimeframeChange FIRED: ${oldTf} → ${newTf}`);
-    console.log(`🔄 Smooth timeframe switch: ${oldTf} → ${newTf}`);
-    
-    // Capture current zoom state BEFORE switching
-    let currentTransform = null;
-    if (svgRef.current) {
-      const zoomGroup = d3.select(svgRef. current).select('. zoom-group');
-      if (zoomGroup.node()) {
-        currentTransform = d3.zoomTransform(zoomGroup.node());
-      }
-    }
-    
-    // Update active timeframe
-    activeTimeframeRef.current = newTf as '15m' | '1h' | '4h' | '1d';
-    setInterval(newTf);
-    
-    // Switch to new timeframe data silently
-    if (multiTimeframeData[newTf as '15m' | '1h' | '4h' | '1d']?.length > 0) {
-      setCandles(multiTimeframeData[newTf as '15m' | '1h' | '4h' | '1d']);
-      
-      // Restore equivalent zoom position with smooth transition
-      if (currentTransform && svgRef.current) {
-        setTimeout(() => {
-          // Calculate timeframe ratio for zoom adjustment
-          const timeframeRatios:  Record<string, Record<string, number>> = {
-            '15m': { '1h': 4, '4h': 16, '1d': 96 },
-            '1h':  { '15m': 0.25, '4h': 4, '1d': 24 },
-            '4h':  { '15m': 0.0625, '1h': 0.25, '1d': 6 },
-            '1d':  { '15m': 0.0104, '1h': 0.0417, '4h': 0.167 }
-          };
-          
-          const ratio = timeframeRatios[oldTf]?.[newTf] || 1;
-          
-          // Apply smooth zoom transition
-          const svg = d3.select(svgRef.current);
-          const newTransform = d3.zoomIdentity
-            .translate(currentTransform. x, currentTransform.y)
-            .scale(currentTransform.k * ratio);
-            
-          svg.transition()
-            .duration(300)
-            .call(
-              d3.zoom<SVGSVGElement, unknown>().transform,
-              newTransform
-            );
-            
-          console.log(`✅ Smooth transition to ${newTf} complete`);
-        }, 100);
-      }
-    }
-  }
+  onTimeframeChange: handleTimeframeChange // Use memoized callback
 });
 
   
@@ -2659,17 +2714,17 @@ useEffect(() => {
       return { x, y };
     });
   }, []);
-  
- // Render D3 chart - D3's built-in zoom handles pan/zoom
+
+// Render D3 chart - D3's built-in zoom handles pan/zoom
 useEffect(() => {
   console.log('🎨 D3 useEffect starting... ', { 
-    hasCanvas: !!svgRef.current, 
+    hasCanvas: !! svgRef.current, 
     candlesCount: candles. length, 
     width: dimensions.width 
   });
 
-  if (!svgRef.current || candles.length === 0 || dimensions. width === 0) {
-    console. log('❌ D3 useEffect early return');
+  if (!svgRef.current || candles.length === 0 || dimensions.width === 0) {
+    console.log('❌ D3 useEffect early return');
     return;
   }
   
@@ -2681,29 +2736,29 @@ useEffect(() => {
     // Save current zoom transform before clearing
     console.log('🎨 Getting zoom transform.. .');
     const currentTransform = d3.zoomTransform(svgRef. current);
-    if (currentTransform. k !== 1 || currentTransform. x !== 0 || currentTransform. y !== 0) {
+    if (currentTransform.k !== 1 || currentTransform.x !== 0 || currentTransform.y !== 0) {
       currentTransformRef.current = currentTransform;
     }
-    console.log('🎨 Zoom transform saved');
+    console. log('🎨 Zoom transform saved');
     
     console.log('🎨 Clearing SVG...');
     svg.selectAll('*').remove();
     console.log('🎨 SVG cleared');
     
     const width = dimensions.width;
-    const height = dimensions.height;
-    const innerWidth = width - MARGIN. left - MARGIN. right;
+    const height = dimensions. height;
+    const innerWidth = width - MARGIN.left - MARGIN.right;
     const innerHeight = height - MARGIN.top - MARGIN.bottom;
     console.log('🎨 Dimensions calculated:', { width, height, innerWidth, innerHeight });
     
     // Create main group with margins
     console.log('🎨 Creating main group...');
-    const g = svg. append('g')
+    const g = svg.append('g')
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
     console.log('🎨 Main group created');
     
     // Create clip path for chart area
-    console.log('🎨 Creating clip path...');
+    console. log('🎨 Creating clip path...');
     svg.append('defs')
       .append('clipPath')
       .attr('id', 'chart-clip')
@@ -2713,10 +2768,10 @@ useEffect(() => {
     console.log('🎨 Clip path created');
     
     // Get scales - use stable base scales if available, fallback to hook scales
-    console.log('🎨 Getting scales... ', { hasXScaleBase: !! xScaleBase, hasYScaleBase: !!yScaleBase });
+    console.log('🎨 Getting scales... ', { hasXScaleBase:  !! xScaleBase, hasYScaleBase: !!yScaleBase });
     const xScale = xScaleBase || chartScales.xScale;
     const yScale = yScaleBase || chartScales.yScale;
-    console.log('🎨 Scales retrieved:', { hasXScale: !!xScale, hasYScale:  !!yScale });
+    console.log('🎨 Scales retrieved:', { hasXScale: !!xScale, hasYScale: !!yScale });
     
     // Guard against null scales
     if (!xScale || ! yScale) {
@@ -2727,10 +2782,10 @@ useEffect(() => {
     console.log('🎨 Setting scale refs...');
     xScaleRef.current = xScale;
     yScaleRef.current = yScale;
-    console. log('🎨 Scale refs set');
+    console.log('🎨 Scale refs set');
     
     // Background
-    console. log('🎨 Creating background...');
+    console.log('🎨 Creating background...');
     g.append('rect')
       .attr('width', innerWidth)
       .attr('height', innerHeight)
@@ -2738,7 +2793,7 @@ useEffect(() => {
     console.log('🎨 Background created');
     
     // Grid lines
-    console. log('🎨 Creating grid lines.. .');
+    console.log('🎨 Creating grid lines.. .');
     g.append('g')
       .attr('class', 'grid-y')
       .selectAll('line')
@@ -2775,7 +2830,7 @@ useEffect(() => {
       const { widthFactor = 0.65, gapPx = 1, minPx = 3, maxPx = 40 } = opts || {};
       
       // Fallback for missing or insufficient data
-      if (!visibleTimes || visibleTimes.length < 2) {
+      if (! visibleTimes || visibleTimes.length < 2) {
         return Math.max(minPx, Math.round(widthFactor * (maxPx || 10)));
       }
       
@@ -2799,14 +2854,14 @@ useEffect(() => {
       
       // Compute raw width and max allowed (to preserve gap)
       const raw = Math.round(minDx * widthFactor);
-      const maxAllowed = Math.max(1, Math.floor(minDx - gapPx));
+      const maxAllowed = Math.max(1, Math. floor(minDx - gapPx));
       
       // Clamp to [minPx, maxPx] and respect maxAllowed
       const width = Math.min(maxPx, Math.max(minPx, Math.min(raw, maxAllowed)));
       
-      return Math.round(width);
+      return Math. round(width);
     };
-    
+
     // Draw candles
     const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
       candlesGroup.selectAll('*').remove();
@@ -4349,7 +4404,37 @@ useEffect(() => {
       console.error('D3 rendering error:', err);
     }
     
-  }, [candles, dimensions, interval, xScaleBase, yScaleBase, drawnTrendlines, drawnHorizontals, drawnChannels, drawnHChannels, drawnSChannels, drawnTextLabels, selectedTrendline, selectedHorizontal, selectedChannel, selectedHChannel, selectedSChannel, selectedTextLabel, moveMode, movingTrendline, movingWholeLine, handleDrawingClick, handleTextLabelSelect, handleEndpointClick, elliottWave.placedPoints, elliottWave.simulatedCandles, elliottWave.fibLevels, elliottWave.mode, elliottWave.isActive, handleError]);
+}, [
+  // OPTIMIZED DEPENDENCY ARRAY - Fix 2
+  candles,
+  dimensions.width, 
+  dimensions. height,
+  interval,
+  xScaleBase, 
+  yScaleBase,
+  drawnTrendlines, 
+  drawnHorizontals, 
+  drawnChannels, 
+  drawnHChannels, 
+  drawnSChannels, 
+  drawnTextLabels,
+  selectedTrendline, 
+  selectedHorizontal, 
+  selectedChannel, 
+  selectedHChannel, 
+  selectedSChannel, 
+  selectedTextLabel,
+  elliottWave. placedPoints,
+  elliottWave.simulatedCandles,
+  elliottWave.fibLevels,
+  elliottWave. mode,
+  elliottWave.isActive,
+  handleError,
+  handleDrawingClick,
+  handleTextLabelSelect,
+  handleEndpointClick,
+  // REMOVED: moveMode, movingTrendline, movingWholeLine (these change frequently)
+]);
   
   // Show loading while checking auth
   if (authLoading) {
