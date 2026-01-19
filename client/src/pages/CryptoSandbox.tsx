@@ -2590,55 +2590,85 @@ useEffect(() => {
     });
   }, []);
   
-  // Render D3 chart - D3's built-in zoom handles pan/zoom
-  useEffect(() => {
-    if (!svgRef.current || candles.length === 0 || dimensions.width === 0) return;
-    
-    try {
-      const svg = d3.select(svgRef.current);
-    
+ // Render D3 chart - D3's built-in zoom handles pan/zoom
+useEffect(() => {
+  console.log('🎨 D3 useEffect starting... ', { 
+    hasCanvas: !!svgRef.current, 
+    candlesCount: candles. length, 
+    width: dimensions.width 
+  });
+
+  if (!svgRef.current || candles.length === 0 || dimensions. width === 0) {
+    console. log('❌ D3 useEffect early return');
+    return;
+  }
+  
+  try {
+    console.log('🎨 Creating D3 chart...');
+    const svg = d3.select(svgRef.current);
+    console.log('🎨 D3 svg selected');
+
     // Save current zoom transform before clearing
-    const currentTransform = d3.zoomTransform(svgRef.current);
-    if (currentTransform.k !== 1 || currentTransform.x !== 0 || currentTransform.y !== 0) {
+    console.log('🎨 Getting zoom transform.. .');
+    const currentTransform = d3.zoomTransform(svgRef. current);
+    if (currentTransform. k !== 1 || currentTransform. x !== 0 || currentTransform. y !== 0) {
       currentTransformRef.current = currentTransform;
     }
+    console.log('🎨 Zoom transform saved');
     
+    console.log('🎨 Clearing SVG...');
     svg.selectAll('*').remove();
+    console.log('🎨 SVG cleared');
     
     const width = dimensions.width;
     const height = dimensions.height;
-    const innerWidth = width - MARGIN.left - MARGIN.right;
+    const innerWidth = width - MARGIN. left - MARGIN. right;
     const innerHeight = height - MARGIN.top - MARGIN.bottom;
+    console.log('🎨 Dimensions calculated:', { width, height, innerWidth, innerHeight });
     
     // Create main group with margins
-    const g = svg.append('g')
+    console.log('🎨 Creating main group...');
+    const g = svg. append('g')
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
+    console.log('🎨 Main group created');
     
     // Create clip path for chart area
+    console.log('🎨 Creating clip path...');
     svg.append('defs')
       .append('clipPath')
       .attr('id', 'chart-clip')
       .append('rect')
       .attr('width', innerWidth)
       .attr('height', innerHeight);
+    console.log('🎨 Clip path created');
     
     // Get scales - use stable base scales if available, fallback to hook scales
+    console.log('🎨 Getting scales... ', { hasXScaleBase: !! xScaleBase, hasYScaleBase: !!yScaleBase });
     const xScale = xScaleBase || chartScales.xScale;
     const yScale = yScaleBase || chartScales.yScale;
+    console.log('🎨 Scales retrieved:', { hasXScale: !!xScale, hasYScale:  !!yScale });
     
     // Guard against null scales
-    if (!xScale || !yScale) return;
+    if (!xScale || ! yScale) {
+      console.log('❌ Missing scales, returning');
+      return;
+    }
     
+    console.log('🎨 Setting scale refs...');
     xScaleRef.current = xScale;
     yScaleRef.current = yScale;
+    console. log('🎨 Scale refs set');
     
     // Background
+    console. log('🎨 Creating background...');
     g.append('rect')
       .attr('width', innerWidth)
       .attr('height', innerHeight)
       .attr('fill', '#0f172a');
+    console.log('🎨 Background created');
     
     // Grid lines
+    console. log('🎨 Creating grid lines.. .');
     g.append('g')
       .attr('class', 'grid-y')
       .selectAll('line')
@@ -2651,6 +2681,9 @@ useEffect(() => {
       .attr('y2', d => yScale(d))
       .attr('stroke', '#1e293b')
       .attr('stroke-width', 1);
+    console.log('🎨 Grid lines created');
+    
+    console.log('✅ D3 setup phase complete, continuing.. .');
     
     // Elliott Wave dedicated group for predicted visuals (drawn BEFORE real candles for lower z-index)
     const elliottWaveGroup = g.append('g')
