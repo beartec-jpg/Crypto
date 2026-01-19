@@ -2021,7 +2021,7 @@ const calculateCandleWidth = useCallback((
   
   if (visibleCandles. length === 0) return 10;
   
-  // FIXED: Use actual pixel spacing between candles instead of simple division
+  Use actual pixel spacing between candles instead of simple division
   if (visibleCandles.length < 2) {
     const calculatedWidth = (chartWidth / visibleCandles.length) * 0.8;
     return calculatedWidth;
@@ -2898,22 +2898,7 @@ useEffect(() => {
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
       
-      // FIXED: Dynamic candle width calculation that prevents bunching
-const calculateDynamicCandleWidth = (xScale: any, visibleCandles: any[]) => {
-  if (visibleCandles.length < 2) return 1.5;
-  
-  const firstCandle = xScale(new Date(visibleCandles[0].time));
-  const secondCandle = xScale(new Date(visibleCandles[1].time)); 
-  const spacing = Math.abs(secondCandle - firstCandle);
-  
-  // Ensure minimum spacing and proportional scaling
-  const candleWidth = Math. max(0.8, Math. min(spacing * 0.7, 15));
-  
-  console.log(`🕯️ Candle calc: spacing=${spacing. toFixed(2)}px, width=${candleWidth.toFixed(2)}px`);
-  return candleWidth;
-};
-
-const dynamicCandleWidth = calculateDynamicCandleWidth(xS, visibleCandles);
+      const dynamicCandleWidth = calculateDynamicCandleWidth(xS, visibleCandles);
       
       // If calculated width is below minimum, we should be on a higher timeframe
       // But don't switch here - that's handled in zoom handler
