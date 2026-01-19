@@ -230,12 +230,12 @@ const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
   // Circuit breaker - prevent rapid successive calls
   const now = Date.now();
   if (now - lastAdaptiveChangeRef.current < 100) { // Reduced from 500ms to 100ms
-    console.log(`⚠️ Adaptive change too soon (${now - lastAdaptiveChangeRef. current}ms), skipping`);
+    console.log(`⚠️ Adaptive change too soon (${now - lastAdaptiveChangeRef.current}ms), skipping`);
     return;
   }
   
   // Prevent cascading if already switching
-  if (isAdaptiveSwitchingRef. current) {
+  if (isAdaptiveSwitchingRef.current) {
     console.log(`⚠️ Already switching timeframes, skipping`);
     return;
   }
