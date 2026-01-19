@@ -2002,9 +2002,9 @@ useEffect(() => {
 // SMOOTH Timeframe configuration - prevents flickering
 const TIMEFRAME_ORDER:  Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
 const SWITCH_COOLDOWN_MS = 1000; // Increased from 500ms - less aggressive switching
-const MIN_CANDLE_WIDTH = 1. 5; // Minimum pixels per candle
+const MIN_CANDLE_WIDTH = 1.5; // Minimum pixels per candle
 const SWITCH_UP_THRESHOLD = 0.8; // More aggressive UP (to higher TF when zooming out)
-const SWITCH_DOWN_THRESHOLD = 12. 0; // Less aggressive DOWN (to lower TF when zooming in)
+const SWITCH_DOWN_THRESHOLD = 15.0; // Less aggressive DOWN (to lower TF when zooming in)
 const HYSTERESIS = 0.3; // Prevent ping-pong switching between timeframes
 
 // Calculate current candle width - FIXED to use actual spacing
