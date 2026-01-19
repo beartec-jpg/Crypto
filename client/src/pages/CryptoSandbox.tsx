@@ -2898,7 +2898,21 @@ useEffect(() => {
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
       
-      const dynamicCandleWidth = calculateDynamicCandleWidth(xS, visibleCandles);
+      // FIXED: Dynamic candle width calculation that prevents bunching
+const calculateDynamicCandleWidth = (xScale: any, visibleCandles:  any[]) => {
+  if (visibleCandles.length < 2) return 1. 5;
+  
+  const firstCandle = xScale(new Date(visibleCandles[0].time));
+  const secondCandle = xScale(new Date(visibleCandles[1]. time)); 
+  const spacing = Math.abs(secondCandle - firstCandle);
+  
+  // Ensure minimum spacing and proportional scaling
+  const candleWidth = Math.max(0.8, Math.min(spacing * 0.7, 15));
+  
+  return candleWidth;
+};
+
+const dynamicCandleWidth = calculateDynamicCandleWidth(xS, visibleCandles);
       
       // If calculated width is below minimum, we should be on a higher timeframe
       // But don't switch here - that's handled in zoom handler
