@@ -1970,33 +1970,41 @@ useEffect(() => {
     // This function primarily updates axes during zoom
   }, [candles, dimensions.height, interval, d3]);
   
-  /**
-   * Handle D3 zoom scale changes
-   * Extracts transform.k and updates state for adaptive timeframe
-   */
-  const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
-    const newScale = transform.k;
-    
-    // Only update if scale changed significantly (>1% change)
-    // Prevents excessive re-renders during smooth zoom
+// Handle D3 zoom scale changes - THROTTLED to prevent excessive re-renders
+const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
+  const newScale = transform.k;
+  
+  // CRITICAL: Only update React state every 200ms to prevent re-render spam
+  const now = Date.now();
+  const lastUpdate = handleZoomChange.lastUpdate || 0;
+  
+  if (now - lastUpdate > 200) { // Throttle to 5fps max
     setZoomScale((prevScale) => {
-      // Safety check to prevent division by zero
-      if (prevScale === 0) {
-        console.log(`🔍 Zoom scale initialized: ${newScale.toFixed(2)}`);
-        return newScale;
-      }
-      
       const delta = Math.abs(newScale - prevScale);
-      const percentChange = delta / prevScale;
+      const percentChange = prevScale > 0 ? delta / prevScale : 1;
       
-      if (percentChange > 0.01) {
-        console.log(`🔍 Zoom scale: ${prevScale.toFixed(2)} → ${newScale.toFixed(2)}`);
+      // Only update if significant change (>5% change)
+      if (percentChange > 0.05) {
+        console.log(`🔍 Zoom scale: ${prevScale. toFixed(2)} → ${newScale.toFixed(2)}`);
+        handleZoomChange. lastUpdate = now;
         return newScale;
       }
       return prevScale;
     });
-  }, []);
-  
+    
+    // Update visible candle count less frequently
+    setVisibleCandleCount(prev => {
+      // Only update if significantly different
+      if (Math.abs(prev - newScale * 50) > 10) {
+        return Math.round(newScale * 50);
+      }
+      return prev;
+    });
+  }
+}, []);
+
+// Add lastUpdate property to function
+handleZoomChange.lastUpdate = 0;
 // ===== MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
 
 // SMOOTH Timeframe configuration - prevents flickering
@@ -4340,13 +4348,12 @@ const dynamicCandleWidth = calculateDynamicCandleWidth(xS, visibleCandles);
           drawDrawingsRef(newXScale, newYScale, transform.k);
         }
         
-        // 3. Defer state updates until AFTER zoom event completes
-        //    This prevents re-render during zoom which would reset the transform
-        requestAnimationFrame(() => {
-          // Update state (triggers re-render AFTER zoom is done)
-          handleZoomChange(transform);
-          setVisibleCandleCount(visibleCandles.length);
-        });
+        // 3. THROTTLED state updates - much less frequent
+        if (Math.random() < 0.1) { // Only 10% of zoom events trigger React updates
+          requestAnimationFrame(() => {
+            handleZoomChange(transform);
+          });
+        }
       });
     
     zoomRef.current = zoom;
