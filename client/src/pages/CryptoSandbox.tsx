@@ -2116,7 +2116,7 @@ const executeTimeframeSwitch = useCallback((newTF: '15m' | '1h' | '4h' | '1d') =
    // React.startTransition(() => {
       setCandles(newCandles);
       setInterval(newTF); // Update UI display
-    });
+  //  });
     
     console.log(`✅ Seamless → ${newTF} (${newCandles. length} candles)`);
   } else {
