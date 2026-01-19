@@ -2113,7 +2113,7 @@ const executeTimeframeSwitch = useCallback((newTF: '15m' | '1h' | '4h' | '1d') =
   const newCandles = multiTimeframeData[newTF];
   if (newCandles && newCandles.length > 0) {
     // Use React. startTransition for smooth, non-blocking updates
-   // React.startTransition(() => {
+   // React.startTransition(() => { 
       setCandles(newCandles);
       setInterval(newTF); // Update UI display
   //  });
