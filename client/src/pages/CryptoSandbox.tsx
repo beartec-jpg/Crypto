@@ -4190,107 +4190,126 @@ const dynamicCandleWidth = calculateDynamicCandleWidth(xS, visibleCandles);
     let zoomStartK = 1;
     
     // Calculate dynamic zoom limits based on candle density to prevent sub-pixel rendering
-    const minCandleWidth = 1; // Don't allow candles smaller than 1px
-    const maxVisibleCandles = Math.floor(innerWidth / minCandleWidth);
-    const minZoomScale = candles.length > 0 
-      ? Math.max(0.5, maxVisibleCandles / candles.length)
-      : 0.5; // Fallback to default minimum if no candles
-    
-    // Zoom behavior - DISABLED when drawing tool is active
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-  .scaleExtent([minZoomScale, 200])
+    // FIXED: Zoom limits based on candle visual constraints only
+const minCandleWidth = 1; // Minimum 1px candle width
+const minGap = 1; // Minimum 1px gap between candles
+const minSpacing = minCandleWidth + minGap; // 2px minimum spacing total
+
+// Hard zoom limits - let candle width calculation handle the visual constraints
+const minZoomScale = 0.1; // Hard minimum - allows maximum zoom out
+const maxZoomScale = 200; // Maximum zoom in
+
+// Zoom behavior - DISABLED when drawing tool is active
+const zoom = d3.zoom<SVGSVGElement, unknown>()
+  .scaleExtent([minZoomScale, maxZoomScale])
   .translateExtent([[-innerWidth, 0], [innerWidth * 2, height]]) // Allow more panning
-      .filter((event) => {
-        // Disable d3 zoom when a drawing tool is active - overlay handles everything
-        if (activeTool) return false;
-        // Default d3 filter behavior
-        return (!event.ctrlKey || event.type === 'wheel') && !event.button;
-      })
-      .on('start', (event) => {
-        zoomStartTime = Date.now();
-        const sourceEvent = event.sourceEvent;
-        if (sourceEvent) {
-          if (sourceEvent.touches && sourceEvent.touches[0]) {
-            zoomStartX = sourceEvent.touches[0].clientX;
-            zoomStartY = sourceEvent.touches[0].clientY;
-          } else if (sourceEvent.clientX !== undefined) {
-            zoomStartX = sourceEvent.clientX;
-            zoomStartY = sourceEvent.clientY;
-          }
+  .filter((event) => {
+    // Disable d3 zoom when a drawing tool is active - overlay handles everything
+    if (activeTool) return false;
+    // Default d3 filter behavior
+    return (!event.ctrlKey || event.type === 'wheel') && !event.button;
+  })
+  .on('start', (event) => {
+    zoomStartTime = Date.now();
+    const sourceEvent = event. sourceEvent;
+    if (sourceEvent) {
+      if (sourceEvent.touches && sourceEvent.touches[0]) {
+        zoomStartX = sourceEvent.touches[0].clientX;
+        zoomStartY = sourceEvent.touches[0].clientY;
+      } else if (sourceEvent.clientX !== undefined) {
+        zoomStartX = sourceEvent.clientX;
+        zoomStartY = sourceEvent.clientY;
+      }
+    }
+    zoomStartK = event.transform. k;
+  })
+  .on('end', (event) => {
+    const elapsed = Date. now() - zoomStartTime;
+    const sourceEvent = event. sourceEvent;
+    let endX = zoomStartX;
+    let endY = zoomStartY;
+    if (sourceEvent) {
+      if (sourceEvent. changedTouches && sourceEvent.changedTouches[0]) {
+        endX = sourceEvent.changedTouches[0].clientX;
+        endY = sourceEvent.changedTouches[0].clientY;
+      } else if (sourceEvent.clientX !== undefined) {
+        endX = sourceEvent.clientX;
+        endY = sourceEvent.clientY;
+      }
+    }
+    const dx = Math.abs(endX - zoomStartX);
+    const dy = Math.abs(endY - zoomStartY);
+    const scaleChanged = Math.abs(event.transform.k - zoomStartK) > 0.01;
+    
+    // Selection tap only (no tool active) - drawing taps handled by overlay
+    if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD && !scaleChanged && !activeTool && !crosshairMode) {
+      const svgElement = svgRef.current;
+      if (svgElement && endX > 0 && endY > 0) {
+        const rect = svgElement. getBoundingClientRect();
+        const clickX = endX - rect.left;
+        const clickY = endY - rect.top;
+        if (clickX > 0 && clickY > 0 && clickX < rect.width && clickY < rect.height) {
+          handleSvgTapSelection(clickX, clickY);
         }
-        zoomStartK = event.transform.k;
-      })
-      .on('end', (event) => {
-        const elapsed = Date.now() - zoomStartTime;
-        const sourceEvent = event.sourceEvent;
-        let endX = zoomStartX;
-        let endY = zoomStartY;
-        if (sourceEvent) {
-          if (sourceEvent.changedTouches && sourceEvent.changedTouches[0]) {
-            endX = sourceEvent.changedTouches[0].clientX;
-            endY = sourceEvent.changedTouches[0].clientY;
-          } else if (sourceEvent.clientX !== undefined) {
-            endX = sourceEvent.clientX;
-            endY = sourceEvent.clientY;
-          }
-        }
-        const dx = Math.abs(endX - zoomStartX);
-        const dy = Math.abs(endY - zoomStartY);
-        const scaleChanged = Math.abs(event.transform.k - zoomStartK) > 0.01;
-        
-        // Selection tap only (no tool active) - drawing taps handled by overlay
-        if (elapsed < TAP_MAX_DURATION && dx < TOUCH_THRESHOLD && dy < TOUCH_THRESHOLD && !scaleChanged && !activeTool && !crosshairMode) {
-          const svgElement = svgRef.current;
-          if (svgElement && endX > 0 && endY > 0) {
-            const rect = svgElement.getBoundingClientRect();
-            const clickX = endX - rect.left;
-            const clickY = endY - rect.top;
-            if (clickX > 0 && clickY > 0 && clickX < rect.width && clickY < rect.height) {
-              handleSvgTapSelection(clickX, clickY);
-            }
-          }
-        }
-      })
-      .on('zoom', (event) => {
-        const transform = event.transform;
-        
-        // Store transform in ref (persists across renders)
-        currentTransformRef.current = transform;
-        
-        // 1. Apply transform to x scale immediately (ref update, no state)
-        const newXScale = transform.rescaleX(xScale);
-        xScaleRef.current = newXScale;
-        
-        // 2. Calculate visible candles
-        const visibleTimeRange = newXScale.domain();
-        const visibleCandles = candles.filter(d => {
-          const date = new Date(d.time);
-          return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
-        });
-        
-        // Check if we should switch timeframes (only if auto mode enabled)
-        if (autoTimeframeEnabled && !isSwitchingRef.current) {
-          const currentWidth = calculateCandleWidth(newXScale, candles, innerWidth);
-          const targetTF = shouldSwitchTimeframe(currentWidth, activeTimeframeRef.current);
-          
-          if (targetTF && targetTF !== activeTimeframeRef.current) {
-            // Execute switch and RETURN (let React re-render with new data)
-            executeTimeframeSwitch(targetTF);
-            return; // CRITICAL: Don't continue with old data
-          }
-        }
-        
-        if (visibleCandles.length > 0) {
-          const newPriceExtent = [
-            d3.min(visibleCandles, d => d.low) as number * 0.999,
-            d3.max(visibleCandles, d => d.high) as number * 1.001
-          ];
-          
-          const newYScale = d3.scaleLinear()
-            .domain(newPriceExtent)
-            .range([innerHeight, 0])
-            .nice();
-          yScaleRef.current = newYScale;
+      }
+    }
+  })
+  .on('zoom', (event) => {
+    const transform = event. transform;
+    
+    // Store transform in ref (persists across renders)
+    currentTransformRef.current = transform;
+    
+    // 1. Apply transform to x scale immediately (ref update, no state)
+    const newXScale = transform.rescaleX(xScale);
+    xScaleRef.current = newXScale;
+    
+    // 2. Calculate visible candles and check spacing constraints
+    const visibleTimeRange = newXScale.domain();
+    const visibleCandles = candles.filter(d => {
+      const date = new Date(d.time);
+      return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
+    });
+    
+    // DYNAMIC ZOOM LIMITING: Check if we've hit minimum candle spacing
+    if (visibleCandles.length >= 2) {
+      const firstCandleX = newXScale(new Date(visibleCandles[0].time));
+      const secondCandleX = newXScale(new Date(visibleCandles[1].time));
+      const currentSpacing = Math.abs(secondCandleX - firstCandleX);
+      
+      // If spacing is below minimum (2px), prevent further zoom out
+      if (currentSpacing < minSpacing && transform.k <= currentTransformRef.current.k) {
+        console.log(`🚫 Zoom limit reached: ${currentSpacing.toFixed(1)}px spacing (min: ${minSpacing}px)`);
+        // Don't process this zoom event - keeps previous transform
+        return;
+      }
+    }
+    
+    // Check if we should switch timeframes (only if auto mode enabled)
+    if (autoTimeframeEnabled && ! isSwitchingRef.current) {
+      const currentWidth = calculateCandleWidth(newXScale, candles, innerWidth);
+      const targetTF = shouldSwitchTimeframe(currentWidth, activeTimeframeRef.current);
+      
+      if (targetTF && targetTF !== activeTimeframeRef.current) {
+        // Execute switch and RETURN (let React re-render with new data)
+        executeTimeframeSwitch(targetTF);
+        return; // CRITICAL: Don't continue with old data
+      }
+    }
+    
+    if (visibleCandles.length > 0) {
+      const newPriceExtent = [
+        d3.min(visibleCandles, d => d.low) as number * 0.999,
+        d3.max(visibleCandles, d => d.high) as number * 1.001
+      ];
+      
+      const newYScale = d3.scaleLinear()
+        .domain(newPriceExtent)
+        .range([innerHeight, 0])
+        .nice();
+      yScaleRef.current = newYScale;
+      
+      // Update axes...  (rest of zoom handler stays the same)
           
           // Update axes
           xAxisGroup.call(d3.axisBottom(newXScale).ticks(8).tickFormat(d => {
