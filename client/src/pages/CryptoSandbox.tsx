@@ -2021,7 +2021,7 @@ const calculateCandleWidth = useCallback((
   
   if (visibleCandles. length === 0) return 10;
   
-  Use actual pixel spacing between candles instead of simple division
+ // Use actual pixel spacing between candles instead of simple division
   if (visibleCandles.length < 2) {
     const calculatedWidth = (chartWidth / visibleCandles.length) * 0.8;
     return calculatedWidth;
