@@ -2003,8 +2003,8 @@ useEffect(() => {
   const TIMEFRAME_ORDER: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
   const SWITCH_COOLDOWN_MS = 500; // Minimum time between switches
   const MIN_CANDLE_WIDTH = 1.5; // Minimum pixels per candle
-  const SWITCH_UP_THRESHOLD = 1.0; // Switch to higher TF when candles reach this width
-  const SWITCH_DOWN_THRESHOLD = 8.0; // Switch to lower TF when candles reach this width
+  const SWITCH_UP_THRESHOLD = 1.2; // Switch to higher TF when candles reach this width
+  const SWITCH_DOWN_THRESHOLD = 6.0; // Switch to lower TF when candles reach this width
   
   // Calculate current candle width
   const calculateCandleWidth = useCallback((
@@ -2872,9 +2872,22 @@ useEffect(() => {
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
       
-      // Calculate width with HARD MINIMUM
-      const calculatedWidth = (innerWidth / visibleCandles.length) * 0.8;
-      const dynamicCandleWidth = Math.max(MIN_CANDLE_WIDTH, Math.min(20, calculatedWidth));
+      // FIXED: Dynamic candle width calculation that prevents bunching
+const calculateDynamicCandleWidth = (xScale: any, visibleCandles: any[]) => {
+  if (visibleCandles.length < 2) return 1.5;
+  
+  const firstCandle = xScale(new Date(visibleCandles[0].time));
+  const secondCandle = xScale(new Date(visibleCandles[1].time)); 
+  const spacing = Math.abs(secondCandle - firstCandle);
+  
+  // Ensure minimum spacing and proportional scaling
+  const candleWidth = Math. max(0.8, Math. min(spacing * 0.7, 15));
+  
+  console.log(`🕯️ Candle calc: spacing=${spacing. toFixed(2)}px, width=${candleWidth.toFixed(2)}px`);
+  return candleWidth;
+};
+
+const dynamicCandleWidth = calculateDynamicCandleWidth(xS, visibleCandles);
       
       // If calculated width is below minimum, we should be on a higher timeframe
       // But don't switch here - that's handled in zoom handler
@@ -2923,33 +2936,6 @@ useEffect(() => {
       // Use same candle width calculation as real candles for perfect alignment
       const visibleTimes = visibleCandles.map(c => c.time);
       const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
-      
-      // Draw simulated W2 candles - simplified rendering to avoid zoom/pan interference
-      // Removed candle bodies (both wicks and filled/hollow rectangles) that caused heavy repainting
-      if (elliottWave.simulatedCandles.length > 0) {
-        const cyanColor = '#00ffff';
-        
-        // Filter visible simulated candles based on time range
-        const visibleSimulatedCandles = elliottWave.simulatedCandles.filter(d => {
-          const date = new Date(d.time);
-          return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
-        });
-        
-        // Labels on simulated candles - only show non-empty labels
-        // This provides visual feedback without heavy DOM manipulation
-        elliottWaveGroup.selectAll('.elliott-label')
-          .data(visibleSimulatedCandles.filter(d => d.label && d.label.trim() !== ''))
-          .enter()
-          .append('text')
-          .attr('class', 'elliott-label')
-          .attr('x', d => xS(new Date(d.time)))
-          .attr('y', d => yS(d.high) - 5) // Slightly above the candle
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '10px')
-          .attr('fill', cyanColor)
-          .attr('font-weight', 'bold')
-          .text(d => d.label);
-      }
       
       // Draw Fibonacci retracement levels for W2
       if (elliottWave.mode === 'placing_w2' && elliottWave.fibLevels.length > 0) {
@@ -4185,8 +4171,8 @@ useEffect(() => {
     
     // Zoom behavior - DISABLED when drawing tool is active
     const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([minZoomScale, 200])
-      .translateExtent([[-100, 0], [width + 100, height]])
+  .scaleExtent([minZoomScale, 200])
+  .translateExtent([[-innerWidth, 0], [innerWidth * 2, height]]) // Allow more panning
       .filter((event) => {
         // Disable d3 zoom when a drawing tool is active - overlay handles everything
         if (activeTool) return false;
