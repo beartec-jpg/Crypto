@@ -2048,18 +2048,25 @@ const calculateCandleWidth = useCallback((
 
 // Determine if we should switch timeframes - with hysteresis to prevent ping-pong
 const shouldSwitchTimeframe = useCallback((
-  currentWidth:  number,
+  currentWidth: number,
   currentTF: '15m' | '1h' | '4h' | '1d'
 ): '15m' | '1h' | '4h' | '1d' | null => {
   // Don't switch if auto mode is off
-  if (!autoTimeframeEnabled) return null;
+  if (!autoTimeframeEnabled) {
+    console.log(`⏭️ Auto mode OFF`);
+    return null;
+  }
   
   // Don't switch if we're already switching
-  if (isSwitchingRef. current) return null;
+  if (isSwitchingRef. current) {
+    console.log(`⏭️ Already switching`);
+    return null;
+  }
   
   // Debounce - don't switch too frequently (increased cooldown)
   const now = Date.now();
   if (now - lastSwitchTimeRef.current < SWITCH_COOLDOWN_MS) {
+    console.log(`⏭️ Cooldown active (${now - lastSwitchTimeRef.current}ms < ${SWITCH_COOLDOWN_MS}ms)`);
     return null;
   }
   
@@ -2068,6 +2075,8 @@ const shouldSwitchTimeframe = useCallback((
   // Apply hysteresis to thresholds to prevent ping-pong switching
   const upThreshold = SWITCH_UP_THRESHOLD * (1 + HYSTERESIS);
   const downThreshold = SWITCH_DOWN_THRESHOLD * (1 - HYSTERESIS);
+  
+  console.log(`📊 TF Check: ${currentTF} (${currentWidth.toFixed(2)}px) | UP<=${upThreshold. toFixed(1)} | DOWN>=${downThreshold.toFixed(1)}`);
   
   // Switch to HIGHER timeframe if candles too narrow (zooming out)
   if (currentWidth <= upThreshold && currentIndex < TIMEFRAME_ORDER.length - 1) {
@@ -2079,7 +2088,7 @@ const shouldSwitchTimeframe = useCallback((
       return null;
     }
     
-    console.log(`📊 Smooth UP: ${currentTF} → ${nextTF} (${currentWidth.toFixed(2)}px)`);
+    console.log(`📊 🔼 UP: ${currentTF} → ${nextTF} (${currentWidth.toFixed(2)}px <= ${upThreshold.toFixed(1)}px)`);
     return nextTF;
   }
   
@@ -2093,7 +2102,7 @@ const shouldSwitchTimeframe = useCallback((
       return null;
     }
     
-    console.log(`📊 Smooth DOWN: ${currentTF} → ${prevTF} (${currentWidth.toFixed(2)}px)`);
+    console.log(`📊 🔽 DOWN: ${currentTF} → ${prevTF} (${currentWidth.toFixed(2)}px >= ${downThreshold.toFixed(1)}px)`);
     return prevTF;
   }
   
@@ -4285,17 +4294,30 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
       }
     }
     
-    // Check if we should switch timeframes (only if auto mode enabled)
-    if (autoTimeframeEnabled && ! isSwitchingRef.current) {
-      const currentWidth = calculateCandleWidth(newXScale, candles, innerWidth);
-      const targetTF = shouldSwitchTimeframe(currentWidth, activeTimeframeRef.current);
-      
-      if (targetTF && targetTF !== activeTimeframeRef.current) {
-        // Execute switch and RETURN (let React re-render with new data)
-        executeTimeframeSwitch(targetTF);
-        return; // CRITICAL: Don't continue with old data
-      }
-    }
+    // Check if we should switch timeframes (only if auto mode enabled) - WITH DEBUG
+if (autoTimeframeEnabled && !isSwitchingRef.current) {
+  const currentWidth = calculateCandleWidth(newXScale, candles, innerWidth);
+  
+  // DEBUG: Log current state
+  console. log(`🔍 AUTO TF DEBUG: `, {
+    currentTF:  activeTimeframeRef. current,
+    currentWidth: currentWidth. toFixed(2),
+    zoomScale: transform.k.toFixed(2),
+    upThreshold: SWITCH_UP_THRESHOLD,
+    downThreshold: SWITCH_DOWN_THRESHOLD,
+    visibleCandles: visibleCandles.length
+  });
+  
+  const targetTF = shouldSwitchTimeframe(currentWidth, activeTimeframeRef.current);
+  
+  if (targetTF) {
+    console.log(`🚨 AUTO SWITCH TRIGGERED: ${activeTimeframeRef. current} → ${targetTF}`);
+    executeTimeframeSwitch(targetTF);
+    return;
+  } else {
+    console.log(`✋ No switch needed (width: ${currentWidth. toFixed(2)}px)`);
+  }
+}
     
     if (visibleCandles.length > 0) {
       const newPriceExtent = [
