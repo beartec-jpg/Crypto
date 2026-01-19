@@ -677,6 +677,7 @@ const fetchAllTimeframes = useCallback(async () => {
     await fetchCandles();
   } finally {
     setIsLoadingTimeframes(false);
+    setLoading(false);
   }
 }, [symbol, interval, handleError, fetchCandles]);
 
@@ -4451,17 +4452,15 @@ useEffect(() => {
     <div className="relative w-full h-full chart-background" onClick={handleChartBackgroundClick}>
       {console.log('🎨 Rendering SVG container, dimensions:', dimensions)}
       <svg 
-        ref={svgRef} 
-        width={dimensions.width} 
-        height={dimensions. height}
-        style={{ display:  'block', cursor: activeTool ? 'crosshair' : 'grab', touchAction:  'none' }}
-        className="chart-background"
-        data-testid="sandbox-chart"
-        onLoad={() => console.log('🎨 SVG mounted and loaded!')}
-        ref={(el) => {
-          console.log('🎨 SVG ref callback:', !!el);
-          svgRef.current = el;
-        }}
+  width={dimensions.width} 
+  height={dimensions.height}
+  style={{ display: 'block', cursor: activeTool ? 'crosshair' : 'grab', touchAction: 'none' }}
+  className="chart-background"
+  data-testid="sandbox-chart"
+  ref={(el) => {
+    console.log('🎨 SVG ref callback:', !!el);
+    svgRef.current = el;
+  }}
         onTouchStart={(e) => {
           console.log('👆 TouchStart:', { crosshairMode, activeTool, touches: e.touches.length });
           // Only track taps when not in crosshair mode (crosshair handles its own events)
