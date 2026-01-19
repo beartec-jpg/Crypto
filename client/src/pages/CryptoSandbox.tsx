@@ -277,16 +277,6 @@ const adaptiveTimeframe = useAdaptiveTimeframe({
     }
   }
 });
-
-// Move the debug line OUTSIDE and AFTER the hook call: 
-console.log('🔧 Adaptive timeframe hook state:', {
-  enabled:  autoTimeframeEnabled,
-  symbol,
-  interval,
-  visibleCandleCount,
-  chartWidth:  dimensions.width,
-  zoomScale
-});
   
   // Drawing state hook - manages all drawings, undo/redo, and selection
   const drawingState = useDrawingState();
