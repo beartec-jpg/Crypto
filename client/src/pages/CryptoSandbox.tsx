@@ -210,28 +210,58 @@ export default function CryptoSandbox() {
   // Adaptive timeframe hook - used only for the old adaptive mode UI indicator
   // The new implementation uses direct D3 zoom integration
 
-const adaptiveTimeframe = useAdaptiveTimeframe({
-  symbol: symbol || 'XRPUSDT',
-  baseTimeframe: interval as TimeframeInterval,
-  visibleCandleCount:  visibleCandleCount,
-  chartWidth: dimensions.width || 1000,
-  zoomScale: zoomScale,
-  options: {
-    enabled: autoTimeframeEnabled,
-    debounceDelay: 150,
-    enableTransitions: true,
-    transitionDuration: 300,
-    enablePrefetch: true,
-    cacheMaxAge:  5 * 60 * 1000,
-    hysteresis: 0.3
-  },
-  onTimeframeChange: (newTf, oldTf) => {
-    console.log(`🚨 onTimeframeChange FIRED: ${oldTf} → ${newTf}`);
-    console.log(`🔄 Smooth timeframe switch: ${oldTf} → ${newTf}`);
-    
-    // ... rest of your smooth transition code
+onTimeframeChange: (newTf, oldTf) => {
+  console.log(`🚨 onTimeframeChange FIRED: ${oldTf} → ${newTf}`);
+  console.log(`🔄 Smooth timeframe switch: ${oldTf} → ${newTf}`);
+  
+  // Capture current zoom state BEFORE switching
+  let currentTransform = null;
+  if (svgRef. current) {
+    const zoomGroup = d3.select(svgRef.current).select('. zoom-group');
+    if (zoomGroup. node()) {
+      currentTransform = d3.zoomTransform(zoomGroup.node());
+    }
   }
-});
+  
+  // Update active timeframe
+  activeTimeframeRef.current = newTf as '15m' | '1h' | '4h' | '1d';
+  setInterval(newTf);
+  
+  // Switch to new timeframe data silently
+  if (multiTimeframeData[newTf as '15m' | '1h' | '4h' | '1d']?.length > 0) {
+    setCandles(multiTimeframeData[newTf as '15m' | '1h' | '4h' | '1d']);
+    
+    // Restore equivalent zoom position with smooth transition
+    if (currentTransform && svgRef.current) {
+      setTimeout(() => {
+        // Calculate timeframe ratio for zoom adjustment
+        const timeframeRatios:  Record<string, Record<string, number>> = {
+          '15m': { '1h': 4, '4h':  16, '1d': 96 },
+          '1h': { '15m': 0.25, '4h':  4, '1d':  24 },
+          '4h': { '15m': 0.0625, '1h': 0.25, '1d':  6 },
+          '1d': { '15m': 0.0104, '1h':  0.0417, '4h':  0.167 }
+        };
+        
+        const ratio = timeframeRatios[oldTf]?.[newTf] || 1;
+        
+        // Apply smooth zoom transition
+        const svg = d3.select(svgRef. current);
+        const newTransform = d3.zoomIdentity
+          .translate(currentTransform.x, currentTransform.y)
+          .scale(currentTransform.k * ratio);
+          
+        svg.transition()
+          .duration(300)
+          .call(
+            d3.zoom<SVGSVGElement, unknown>().transform,
+            newTransform
+          );
+          
+        console.log(`✅ Smooth transition to ${newTf} complete`);
+      }, 100);
+    }
+  }
+}
 
 // Move the debug line OUTSIDE and AFTER the hook call:
 console.log('🔧 Adaptive timeframe hook state:', {
