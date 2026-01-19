@@ -1997,113 +1997,132 @@ useEffect(() => {
     });
   }, []);
   
-  // ===== MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
+// ===== MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
+
+// SMOOTH Timeframe configuration - prevents flickering
+const TIMEFRAME_ORDER:  Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
+const SWITCH_COOLDOWN_MS = 1000; // Increased from 500ms - less aggressive switching
+const MIN_CANDLE_WIDTH = 1. 5; // Minimum pixels per candle
+const SWITCH_UP_THRESHOLD = 0.8; // More aggressive UP (to higher TF when zooming out)
+const SWITCH_DOWN_THRESHOLD = 12. 0; // Less aggressive DOWN (to lower TF when zooming in)
+const HYSTERESIS = 0.3; // Prevent ping-pong switching between timeframes
+
+// Calculate current candle width - FIXED to use actual spacing
+const calculateCandleWidth = useCallback((
+  xScale: d3.ScaleTime<number, number>, 
+  candleData: CandleData[], 
+  chartWidth: number
+): number => {
+  if (candleData.length < 2) return 10;
   
-  // Timeframe configuration
-  const TIMEFRAME_ORDER: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
-  const SWITCH_COOLDOWN_MS = 500; // Minimum time between switches
-  const MIN_CANDLE_WIDTH = 1.5; // Minimum pixels per candle
-  const SWITCH_UP_THRESHOLD = 1.2; // Switch to higher TF when candles reach this width
-  const SWITCH_DOWN_THRESHOLD = 6.0; // Switch to lower TF when candles reach this width
+  const visibleRange = xScale.domain();
+  const visibleCandles = candleData.filter(d => {
+    const date = new Date(d.time);
+    return date >= visibleRange[0] && date <= visibleRange[1];
+  });
   
-  // Calculate current candle width
-  const calculateCandleWidth = useCallback((
-    xScale: d3.ScaleTime<number, number>, 
-    candleData: CandleData[], 
-    chartWidth: number
-  ): number => {
-    if (candleData.length < 2) return 10;
-    
-    const visibleRange = xScale.domain();
-    const visibleCandles = candleData.filter(d => {
-      const date = new Date(d.time);
-      return date >= visibleRange[0] && date <= visibleRange[1];
-    });
-    
-    if (visibleCandles.length === 0) return 10;
-    
+  if (visibleCandles. length === 0) return 10;
+  
+  // FIXED: Use actual pixel spacing between candles instead of simple division
+  if (visibleCandles.length < 2) {
     const calculatedWidth = (chartWidth / visibleCandles.length) * 0.8;
     return calculatedWidth;
-  }, []);
+  }
   
-  // Determine if we should switch timeframes
-  const shouldSwitchTimeframe = useCallback((
-    currentWidth: number,
-    currentTF: '15m' | '1h' | '4h' | '1d'
-  ): '15m' | '1h' | '4h' | '1d' | null => {
-    // Don't switch if auto mode is off
-    if (!autoTimeframeEnabled) return null;
+  // Calculate real spacing between first two visible candles
+  const firstCandleX = xScale(new Date(visibleCandles[0].time));
+  const secondCandleX = xScale(new Date(visibleCandles[1].time));
+  const actualSpacing = Math.abs(secondCandleX - firstCandleX);
+  
+  // Return the actual candle width (70% of spacing)
+  return actualSpacing * 0.7;
+}, []);
+
+// Determine if we should switch timeframes - with hysteresis to prevent ping-pong
+const shouldSwitchTimeframe = useCallback((
+  currentWidth:  number,
+  currentTF: '15m' | '1h' | '4h' | '1d'
+): '15m' | '1h' | '4h' | '1d' | null => {
+  // Don't switch if auto mode is off
+  if (!autoTimeframeEnabled) return null;
+  
+  // Don't switch if we're already switching
+  if (isSwitchingRef. current) return null;
+  
+  // Debounce - don't switch too frequently (increased cooldown)
+  const now = Date.now();
+  if (now - lastSwitchTimeRef.current < SWITCH_COOLDOWN_MS) {
+    return null;
+  }
+  
+  const currentIndex = TIMEFRAME_ORDER.indexOf(currentTF);
+  
+  // Apply hysteresis to thresholds to prevent ping-pong switching
+  const upThreshold = SWITCH_UP_THRESHOLD * (1 + HYSTERESIS);
+  const downThreshold = SWITCH_DOWN_THRESHOLD * (1 - HYSTERESIS);
+  
+  // Switch to HIGHER timeframe if candles too narrow (zooming out)
+  if (currentWidth <= upThreshold && currentIndex < TIMEFRAME_ORDER.length - 1) {
+    const nextTF = TIMEFRAME_ORDER[currentIndex + 1];
     
-    // Don't switch if we're already switching
-    if (isSwitchingRef.current) return null;
-    
-    // Debounce - don't switch too frequently
-    const now = Date.now();
-    if (now - lastSwitchTimeRef.current < SWITCH_COOLDOWN_MS) {
+    // Validate target timeframe has data
+    if (!multiTimeframeData[nextTF] || multiTimeframeData[nextTF].length === 0) {
+      console.warn(`⚠️ No data for ${nextTF}, staying on ${currentTF}`);
       return null;
     }
     
-    const currentIndex = TIMEFRAME_ORDER.indexOf(currentTF);
-    
-    // Switch to HIGHER timeframe if candles too narrow (zooming out)
-    if (currentWidth <= SWITCH_UP_THRESHOLD && currentIndex < TIMEFRAME_ORDER.length - 1) {
-      const nextTF = TIMEFRAME_ORDER[currentIndex + 1];
-      
-      // Validate target timeframe has data
-      if (!multiTimeframeData[nextTF] || multiTimeframeData[nextTF].length === 0) {
-        console.warn(`⚠️ No data for ${nextTF}, staying on ${currentTF}`);
-        return null;
-      }
-      
-      console.log(`📊 Auto-switch UP: ${currentTF} → ${nextTF} (width: ${currentWidth.toFixed(2)}px)`);
-      return nextTF;
-    }
-    
-    // Switch to LOWER timeframe if candles too wide (zooming in) - with hysteresis
-    if (currentWidth >= SWITCH_DOWN_THRESHOLD && currentIndex > 0) {
-      const prevTF = TIMEFRAME_ORDER[currentIndex - 1];
-      
-      // Validate target timeframe has data
-      if (!multiTimeframeData[prevTF] || multiTimeframeData[prevTF].length === 0) {
-        console.warn(`⚠️ No data for ${prevTF}, staying on ${currentTF}`);
-        return null;
-      }
-      
-      console.log(`📊 Auto-switch DOWN: ${currentTF} → ${prevTF} (width: ${currentWidth.toFixed(2)}px)`);
-      return prevTF;
-    }
-    
-    return null; // No switch needed
-  }, [autoTimeframeEnabled, multiTimeframeData]);
+    console.log(`📊 Smooth UP: ${currentTF} → ${nextTF} (${currentWidth.toFixed(2)}px)`);
+    return nextTF;
+  }
   
-  // Execute timeframe switch (SAFE - no loops)
-  const executeTimeframeSwitch = useCallback((newTF: '15m' | '1h' | '4h' | '1d') => {
-    if (isSwitchingRef.current) return;
+  // Switch to LOWER timeframe if candles too wide (zooming in) - with hysteresis
+  if (currentWidth >= downThreshold && currentIndex > 0) {
+    const prevTF = TIMEFRAME_ORDER[currentIndex - 1];
     
-    isSwitchingRef.current = true;
-    lastSwitchTimeRef.current = Date.now();
+    // Validate target timeframe has data
+    if (! multiTimeframeData[prevTF] || multiTimeframeData[prevTF].length === 0) {
+      console.warn(`⚠️ No data for ${prevTF}, staying on ${currentTF}`);
+      return null;
+    }
     
-    // Update ref immediately (doesn't cause re-render)
-    activeTimeframeRef.current = newTF;
-    
-    // Update candles data
-    const newCandles = multiTimeframeData[newTF];
-    if (newCandles && newCandles.length > 0) {
+    console.log(`📊 Smooth DOWN: ${currentTF} → ${prevTF} (${currentWidth.toFixed(2)}px)`);
+    return prevTF;
+  }
+  
+  return null; // No switch needed
+}, [autoTimeframeEnabled, multiTimeframeData]);
+
+// SEAMLESS Execute timeframe switch - no loading screens, smooth transitions
+const executeTimeframeSwitch = useCallback((newTF: '15m' | '1h' | '4h' | '1d') => {
+  if (isSwitchingRef.current) return;
+  
+  isSwitchingRef.current = true;
+  lastSwitchTimeRef.current = Date.now();
+  
+  // Update ref immediately (doesn't cause re-render)
+  activeTimeframeRef.current = newTF;
+  
+  // SEAMLESS switch - all data should already be loaded
+  const newCandles = multiTimeframeData[newTF];
+  if (newCandles && newCandles.length > 0) {
+    // Use React. startTransition for smooth, non-blocking updates
+    React.startTransition(() => {
       setCandles(newCandles);
       setInterval(newTF); // Update UI display
-      
-      console.log(`✅ Switched to ${newTF} (${newCandles.length} candles)`);
-    } else {
-      console.error(`❌ Failed to switch to ${newTF} - no data available`);
-    }
+    });
     
-    // Reset switching flag after a delay
-    setTimeout(() => {
-      isSwitchingRef.current = false;
-    }, 100);
-  }, [multiTimeframeData]);
+    console.log(`✅ Seamless → ${newTF} (${newCandles. length} candles)`);
+  } else {
+    console. error(`❌ Failed to switch to ${newTF} - no data available`);
+  }
   
-  // ===== END MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
+  // Quick reset - no long delay
+  setTimeout(() => {
+    isSwitchingRef. current = false;
+  }, 50); // Reduced from 100ms
+}, [multiTimeframeData]);
+
+// ===== END MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
   
   // Move whole line - places center at click position
   const moveWholeLine = useCallback((clickX: number, clickY: number) => {
