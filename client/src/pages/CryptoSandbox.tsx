@@ -229,7 +229,7 @@ const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
   
   // Circuit breaker - prevent rapid successive calls
   const now = Date.now();
-  if (now - lastAdaptiveChangeRef.current < 500) {
+  if (now - lastAdaptiveChangeRef.current < 100) { // Reduced from 500ms to 100ms
     console.log(`⚠️ Adaptive change too soon (${now - lastAdaptiveChangeRef. current}ms), skipping`);
     return;
   }
@@ -4280,44 +4280,28 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
       return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
     });
     
-    // DYNAMIC ZOOM LIMITING: Check if we've hit minimum candle spacing
+    // Check if we should switch timeframes FIRST (before zoom limits)
+    if (autoTimeframeEnabled && !isSwitchingRef.current) {
+      const currentWidth = calculateCandleWidth(newXScale, candles, innerWidth);
+      const targetTF = shouldSwitchTimeframe(currentWidth, activeTimeframeRef.current);
+      
+      if (targetTF && targetTF !== activeTimeframeRef.current) {
+        executeTimeframeSwitch(targetTF);
+        return;
+      }
+    }
+    
+    // DYNAMIC ZOOM LIMITING: Check spacing (AFTER timeframe check)
     if (visibleCandles.length >= 2) {
       const firstCandleX = newXScale(new Date(visibleCandles[0].time));
       const secondCandleX = newXScale(new Date(visibleCandles[1].time));
       const currentSpacing = Math.abs(secondCandleX - firstCandleX);
       
-      // If spacing is below minimum (2px), prevent further zoom out
       if (currentSpacing < minSpacing && transform.k <= currentTransformRef.current.k) {
         console.log(`🚫 Zoom limit reached: ${currentSpacing.toFixed(1)}px spacing (min: ${minSpacing}px)`);
-        // Don't process this zoom event - keeps previous transform
         return;
       }
     }
-    
-    // Check if we should switch timeframes (only if auto mode enabled) - WITH DEBUG
-if (autoTimeframeEnabled && !isSwitchingRef.current) {
-  const currentWidth = calculateCandleWidth(newXScale, candles, innerWidth);
-  
-  // DEBUG: Log current state
-  console. log(`🔍 AUTO TF DEBUG: `, {
-    currentTF:  activeTimeframeRef. current,
-    currentWidth: currentWidth. toFixed(2),
-    zoomScale: transform.k.toFixed(2),
-    upThreshold: SWITCH_UP_THRESHOLD,
-    downThreshold: SWITCH_DOWN_THRESHOLD,
-    visibleCandles: visibleCandles.length
-  });
-  
-  const targetTF = shouldSwitchTimeframe(currentWidth, activeTimeframeRef.current);
-  
-  if (targetTF) {
-    console.log(`🚨 AUTO SWITCH TRIGGERED: ${activeTimeframeRef. current} → ${targetTF}`);
-    executeTimeframeSwitch(targetTF);
-    return;
-  } else {
-    console.log(`✋ No switch needed (width: ${currentWidth. toFixed(2)}px)`);
-  }
-}
     
     if (visibleCandles.length > 0) {
       const newPriceExtent = [
