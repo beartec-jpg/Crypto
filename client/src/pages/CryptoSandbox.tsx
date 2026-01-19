@@ -1969,12 +1969,11 @@ useEffect(() => {
     // Note: Actual redrawing of candles, Elliott Wave, and drawings happens in the zoom handler
     // This function primarily updates axes during zoom
   }, [candles, dimensions.height, interval, d3]);
-  
 // Handle D3 zoom scale changes - THROTTLED to prevent excessive re-renders
 const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
   const newScale = transform.k;
   
-  // CRITICAL: Only update React state every 200ms to prevent re-render spam
+  // CRITICAL:  Only update React state every 200ms to prevent re-render spam
   const now = Date.now();
   const lastUpdate = handleZoomChange.lastUpdate || 0;
   
@@ -1985,26 +1984,17 @@ const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
       
       // Only update if significant change (>5% change)
       if (percentChange > 0.05) {
-        console.log(`🔍 Zoom scale: ${prevScale. toFixed(2)} → ${newScale.toFixed(2)}`);
-        handleZoomChange. lastUpdate = now;
+        handleZoomChange.lastUpdate = now;
         return newScale;
       }
       return prevScale;
-    });
-    
-    // Update visible candle count less frequently
-    setVisibleCandleCount(prev => {
-      // Only update if significantly different
-      if (Math.abs(prev - newScale * 50) > 10) {
-        return Math.round(newScale * 50);
-      }
-      return prev;
     });
   }
 }, []);
 
 // Add lastUpdate property to function
 handleZoomChange.lastUpdate = 0;
+
 // ===== MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
 
 // SMOOTH Timeframe configuration - prevents flickering
@@ -4373,13 +4363,13 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           drawDrawingsRef(newXScale, newYScale, transform.k);
         }
         
-        // 3. THROTTLED state updates - much less frequent
-        if (Math.random() < 0.1) { // Only 10% of zoom events trigger React updates
-          requestAnimationFrame(() => {
-            handleZoomChange(transform);
-          });
-        }
+        // 3.  THROTTLED state updates - much less frequent
+    if (Math.random() < 0.1) { // Only 10% of zoom events trigger React updates
+      requestAnimationFrame(() => {
+        handleZoomChange(transform);
       });
+    }
+  });
     
     zoomRef.current = zoom;
     svg.call(zoom);
