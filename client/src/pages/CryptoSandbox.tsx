@@ -212,22 +212,36 @@ export default function CryptoSandbox() {
 
 const adaptiveTimeframe = useAdaptiveTimeframe({
   symbol: symbol || 'XRPUSDT',
-  baseTimeframe:  interval as TimeframeInterval,
+  baseTimeframe: interval as TimeframeInterval,
   visibleCandleCount:  visibleCandleCount,
   chartWidth: dimensions.width || 1000,
   zoomScale: zoomScale,
   options: {
     enabled: autoTimeframeEnabled,
-    debounceDelay: 150, // Faster response
+    debounceDelay: 150,
     enableTransitions: true,
     transitionDuration: 300,
     enablePrefetch: true,
-    cacheMaxAge: 5 * 60 * 1000,
-    hysteresis:  0.3 // Prevent timeframe flickering
-  }, // ← ADD THIS COMMA
+    cacheMaxAge:  5 * 60 * 1000,
+    hysteresis: 0.3
+  },
   onTimeframeChange: (newTf, oldTf) => {
-    console. log(`🚨 onTimeframeChange FIRED: ${oldTf} → ${newTf}`);
+    console.log(`🚨 onTimeframeChange FIRED: ${oldTf} → ${newTf}`);
     console.log(`🔄 Smooth timeframe switch: ${oldTf} → ${newTf}`);
+    
+    // ... rest of your smooth transition code
+  }
+});
+
+// Move the debug line OUTSIDE and AFTER the hook call:
+console.log('🔧 Adaptive timeframe hook state:', {
+  enabled: autoTimeframeEnabled,
+  symbol,
+  interval,
+  visibleCandleCount,
+  chartWidth:  dimensions.width,
+  zoomScale
+});
     
     // Capture current zoom state BEFORE switching
     let currentTransform = null;
