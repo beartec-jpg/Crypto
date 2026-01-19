@@ -2900,7 +2900,7 @@ useEffect(() => {
       
       // FIXED: Dynamic candle width calculation that prevents bunching
 const calculateDynamicCandleWidth = (xScale: any, visibleCandles:  any[]) => {
-  if (visibleCandles.length < 2) return 1. 5;
+  if (visibleCandles.length < 2) return 1.5;
   
   const firstCandle = xScale(new Date(visibleCandles[0].time));
   const secondCandle = xScale(new Date(visibleCandles[1]. time)); 
