@@ -773,70 +773,93 @@ const fetchBaseCandles = useCallback(async () => {
 }, [symbol, handleError]);
 
 // ============================================================================
-// CINEMATIC BUILD ANIMATION - 10 seconds total, timeframes change as it zooms
+// CINEMATIC BUILD ANIMATION - 3 slow candles, then exponential to 1 week
 // ============================================================================
 const hasPlayedIntroRef = useRef(false);
 const introAnimationRef = useRef<number | null>(null);
 const baseCandlesRef = useRef<CandleData[]>([]);
+const animationCompleteRef = useRef(false);
+
+const ONE_WEEK_CANDLES = 2016; // 7 days * 24 hours * 12 (5-min candles per hour)
 
 const playBuildAnimation = useCallback(() => {
-  if (!svgRef.current) return;
+  if (! svgRef.current) return;
   if (hasPlayedIntroRef.current) return;
   if (baseCandlesRef. current.length === 0) return;
   
   hasPlayedIntroRef.current = true;
-  console.log('🎬 Starting 10-second build animation...');
+  console.log('🎬 Starting build animation.. .');
   
-  const ANIMATION_DURATION_MS = 10000; // 10 seconds total
-  const TARGET_FPS = 60;
-  const FRAME_MS = 1000 / TARGET_FPS; // ~16.67ms per frame
-  const TOTAL_FRAMES = ANIMATION_DURATION_MS / FRAME_MS; // ~600 frames
-  
-  let frame = 0;
   const startTime = performance.now();
   
-  // Timeframe thresholds (based on percentage of animation)
+  // Phase 1: Slow intro (0-3 seconds, candles 1-3)
+  // Phase 2: Exponential (3-10 seconds, candles 4 to ONE_WEEK_CANDLES)
+  
+  const SLOW_PHASE_DURATION = 3000; // 3 seconds
+  const FAST_PHASE_DURATION = 7000; // 7 seconds
+  const TOTAL_DURATION = SLOW_PHASE_DURATION + FAST_PHASE_DURATION; // 10 seconds
+  
+  // Timeframe thresholds based on visible candles
   const timeframeLevels = [
-    { maxPercent: 5, binMs: 5 * ONE_MINUTE_MS, name: '5m' },       // 0-5%:  5-min
-    { maxPercent: 15, binMs: 15 * ONE_MINUTE_MS, name:  '15m' },    // 5-15%: 15-min  
-    { maxPercent: 40, binMs: ONE_HOUR_MS, name: '1h' },            // 15-40%: 1-hour
-    { maxPercent: 100, binMs: 4 * ONE_HOUR_MS, name: '4h' }        // 40-100%: 4-hour
+    { maxCandles: 50, binMs: 5 * ONE_MINUTE_MS, name: '5m' },
+    { maxCandles: 200, binMs: 15 * ONE_MINUTE_MS, name: '15m' },
+    { maxCandles: 800, binMs: ONE_HOUR_MS, name:  '1h' },
+    { maxCandles:  Infinity, binMs:  4 * ONE_HOUR_MS, name: '4h' }
   ];
   
   let lastTimeframeName = '';
+  let lastVisibleCount = 0;
   
   const animate = () => {
     const currentData = baseCandlesRef.current;
-    const totalBase = currentData.length;
+    const totalBase = currentData. length;
     
     if (totalBase === 0) {
-      introAnimationRef.current = window.setTimeout(animate, 100);
+      introAnimationRef.current = window.requestAnimationFrame(animate);
       return;
     }
     
-    // Calculate progress using easing (slow start, fast middle, slow end)
     const elapsed = performance.now() - startTime;
-    const linearProgress = Math.min(1, elapsed / ANIMATION_DURATION_MS);
+    let visibleCount:  number;
     
-    // Ease-in-out cubic:  slow → fast → slow
-    const easedProgress = linearProgress < 0.5
-      ? 4 * linearProgress * linearProgress * linearProgress
-      :  1 - Math.pow(-2 * linearProgress + 2, 3) / 2;
+    if (elapsed < SLOW_PHASE_DURATION) {
+      // Phase 1: Slow intro - 1 candle per second
+      // 0-1s = 1 candle, 1-2s = 2 candles, 2-3s = 3 candles
+      visibleCount = Math.min(3, Math.floor(elapsed / 1000) + 1);
+    } else {
+      // Phase 2: Exponential acceleration (3-10 seconds)
+      const fastElapsed = elapsed - SLOW_PHASE_DURATION;
+      const fastProgress = Math.min(1, fastElapsed / FAST_PHASE_DURATION);
+      
+      // Exponential curve: starts slow, accelerates rapidly
+      // Using x^3 for aggressive exponential feel
+      const exponentialProgress = Math.pow(fastProgress, 3);
+      
+      // From candle 4 to ONE_WEEK_CANDLES
+      const remainingCandles = ONE_WEEK_CANDLES - 3;
+      visibleCount = 3 + Math.floor(exponentialProgress * remainingCandles);
+    }
     
-    // How many candles to show based on progress
-    const visibleCount = Math.max(1, Math. floor(easedProgress * totalBase));
-    const percentComplete = Math.round(linearProgress * 100);
+    // Cap at available data or week target
+    visibleCount = Math.min(visibleCount, totalBase, ONE_WEEK_CANDLES);
+    
+    // Only update if count changed (performance optimization)
+    if (visibleCount === lastVisibleCount && elapsed < TOTAL_DURATION) {
+      introAnimationRef.current = window.requestAnimationFrame(animate);
+      return;
+    }
+    lastVisibleCount = visibleCount;
     
     // Get candles from the END (most recent first, building backwards)
     const startIndex = Math.max(0, totalBase - visibleCount);
     const visibleBaseCandles = currentData.slice(startIndex);
     
-    // Determine timeframe based on percentage complete
-    const level = timeframeLevels.find(l => percentComplete <= l.maxPercent) 
+    // Determine timeframe based on visible count
+    const level = timeframeLevels.find(l => visibleCount <= l.maxCandles) 
       || timeframeLevels[timeframeLevels. length - 1];
     
     if (level.name !== lastTimeframeName) {
-      console.log(`🎬 ${percentComplete}% - Switching to ${level.name} (${visibleCount. toLocaleString()} candles)`);
+      console. log(`🎬 Switching to ${level. name} at ${visibleCount. toLocaleString()} candles`);
       lastTimeframeName = level.name;
     }
     
@@ -845,28 +868,49 @@ const playBuildAnimation = useCallback(() => {
     setCandles(animCandles);
     setCurrentBinMs(level.binMs);
     
-    // Update domain
+    // Update domain to fit visible candles
     if (animCandles.length > 0) {
-      const priceMin = Math.min(... animCandles.map(c => c. low)) * 0.998;
-      const priceMax = Math.max(...animCandles. map(c => c.high)) * 1.002;
+      const priceMin = Math.min(...animCandles. map(c => c.low)) * 0.998;
+      const priceMax = Math. max(...animCandles. map(c => c.high)) * 1.002;
       setBaseDomain({
-        time: [animCandles[0]. time, animCandles[animCandles. length - 1]. time],
+        time:  [animCandles[0].time, animCandles[animCandles.length - 1].time],
         price: [priceMin, priceMax]
       });
     }
     
-    // Check if done
-    if (linearProgress >= 1) {
-      console.log(`🎬 Animation complete! ${totalBase. toLocaleString()} candles in 10 seconds`);
+    // Log progress
+    if (visibleCount <= 3) {
+      console.log(`🎬 Candle ${visibleCount} appeared`);
+    } else if (visibleCount % 500 === 0 || visibleCount === ONE_WEEK_CANDLES) {
+      console.log(`🎬 ${visibleCount.toLocaleString()} candles (${((elapsed / 1000).toFixed(1))}s)`);
+    }
+    
+    // Check if animation complete (reached 1 week or 10 seconds)
+    if (elapsed >= TOTAL_DURATION || visibleCount >= ONE_WEEK_CANDLES) {
+      console.log(`🎬 Animation complete! 1 week (${ONE_WEEK_CANDLES. toLocaleString()} candles) in view`);
+      animationCompleteRef. current = true;
+      
+      // Set final view to user's selected interval
       const finalBinMs = getBinMsFromInterval(interval);
-      const finalCandles = aggregateCandles(currentData, finalBinMs);
+      const weekCandles = currentData.slice(-ONE_WEEK_CANDLES);
+      const finalCandles = aggregateCandles(weekCandles, finalBinMs);
       setCandles(finalCandles);
       setCurrentBinMs(finalBinMs);
-      return;
+      
+      // Update domain to show exactly 1 week
+      if (finalCandles.length > 0) {
+        const priceMin = Math.min(...finalCandles.map(c => c.low)) * 0.998;
+        const priceMax = Math. max(...finalCandles.map(c => c.high)) * 1.002;
+        setBaseDomain({
+          time: [finalCandles[0].time, finalCandles[finalCandles.length - 1].time],
+          price: [priceMin, priceMax]
+        });
+      }
+      
+      return; // Stop animation, but data keeps loading in background
     }
     
     // Next frame
-    frame++;
     introAnimationRef.current = window.requestAnimationFrame(animate);
   };
   
@@ -884,13 +928,14 @@ useEffect(() => {
   };
 }, []);
 
-// Trigger animation when first batch loads
+// Trigger animation when first batch loads, keep ref updated as more loads
 useEffect(() => {
-  if (baseCandles.length > 0 && !hasPlayedIntroRef.current) {
-    baseCandlesRef. current = baseCandles; // Sync ref with state
-    playBuildAnimation();
-  } else if (baseCandles.length > 0) {
-    baseCandlesRef. current = baseCandles; // Keep ref updated as more data loads
+  if (baseCandles.length > 0) {
+    baseCandlesRef. current = baseCandles;
+    
+    if (!hasPlayedIntroRef.current) {
+      playBuildAnimation();
+    }
   }
 }, [baseCandles, playBuildAnimation]);
   
