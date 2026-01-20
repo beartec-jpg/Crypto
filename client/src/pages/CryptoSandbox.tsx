@@ -4610,7 +4610,7 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           )}
           
           {/* Loading indicator */}
-          {isLoadingTimeframes && (
+          {loading && (
             <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
           )}
         </div>
