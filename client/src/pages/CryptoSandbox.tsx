@@ -328,6 +328,11 @@ const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
     // Update active timeframe REF FIRST (prevents cascading)
     activeTimeframeRef.current = newTf as '15m' | '1h' | '4h' | '1d';
     
+    // Trigger layer cross-fade animation if layered rendering is active
+    if (typeof (window as any).__switchTimeframeLayer === 'function') {
+      (window as any).__switchTimeframeLayer(newTf as '15m' | '1h' | '4h' | '1d');
+    }
+    
     // Update state - batch updates using React's automatic batching
     const newTimeframe = newTf as '15m' | '1h' | '4h' | '1d';
     if (multiTimeframeData[newTimeframe]?.length > 0) {
@@ -2073,6 +2078,17 @@ const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
   }
 }, []);
 
+// Helper: Schedule zoom state update with throttling (at most every 120ms)
+const scheduleZoomStateUpdate = useCallback((transform: d3.ZoomTransform) => {
+  const now = Date.now();
+  if (now - lastZoomStateUpdateRef.current > 120) {
+    lastZoomStateUpdateRef.current = now;
+    requestAnimationFrame(() => {
+      handleZoomChange(transform);
+    });
+  }
+}, [handleZoomChange]);
+
 // ===== MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
 
 // SMOOTH Timeframe configuration - prevents flickering
@@ -2919,7 +2935,19 @@ useEffect(() => {
       .attr('class', 'elliott-wave')
       .attr('clip-path', 'url(#chart-clip)');
     
-    // Candles group with clip path
+    // Layered rendering infrastructure for smooth timeframe transitions
+    // Create a layers group that will contain separate layers for each timeframe
+    const layersGroup = g.append('g')
+      .attr('class', 'layers-container')
+      .attr('clip-path', 'url(#chart-clip)');
+    
+    // Create individual layers for each timeframe (initially hidden with opacity 0)
+    const layer15m = layersGroup.append('g').attr('class', 'layer-15m').attr('opacity', 0);
+    const layer1h = layersGroup.append('g').attr('class', 'layer-1h').attr('opacity', 0);
+    const layer4h = layersGroup.append('g').attr('class', 'layer-4h').attr('opacity', 0);
+    const layer1d = layersGroup.append('g').attr('class', 'layer-1d').attr('opacity', 0);
+    
+    // Legacy single-layer candles group for backward compatibility (will be phased out)
     const candlesGroup = g.append('g')
       .attr('class', 'candles')
       .attr('clip-path', 'url(#chart-clip)');
@@ -2966,12 +2994,18 @@ useEffect(() => {
       return Math.round(width);
     };
 
-    // Draw candles
-    const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
-      candlesGroup.selectAll('*').remove();
+    // Refactored helper: Draw candles into any D3 group (enables layered rendering)
+    const drawCandlesIntoGroup = (
+      parentG: d3.Selection<SVGGElement, unknown, null, undefined>,
+      xS: d3.ScaleTime<number, number>,
+      yS: d3.ScaleLinear<number, number>,
+      candlesData: CandleData[]
+    ) => {
+      // Clear existing content in this group
+      parentG.selectAll('*').remove();
       
       const visibleTimeRange = xS.domain();
-      const visibleCandles = candles.filter(d => {
+      const visibleCandles = candlesData.filter(d => {
         const date = new Date(d.time);
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
@@ -2981,10 +3015,8 @@ useEffect(() => {
       const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
       const bodyVisible = dynamicCandleWidth >= 3;
       
-      console.log(`🕯️ Rendering ${visibleCandles.length} ${activeTimeframeRef.current} candles @ ${dynamicCandleWidth.toFixed(2)}px (bodies ${bodyVisible ? 'visible' : 'hidden'})`);
-      
       // ALWAYS render wicks as 1px lines with rounded integer coordinates
-      candlesGroup.selectAll('.wick')
+      parentG.selectAll('.wick')
         .data(visibleCandles)
         .enter()
         .append('line')
@@ -2996,9 +3028,9 @@ useEffect(() => {
         .attr('stroke', d => d.close >= d.open ? '#22c55e' : '#ef4444')
         .attr('stroke-width', 1);
       
-      // Render candle bodies only when width >= 3px
+      // Render candle bodies only when width >= 3px (hide tiny bodies)
       if (bodyVisible) {
-        candlesGroup.selectAll('.body')
+        parentG.selectAll('.body')
           .data(visibleCandles)
           .enter()
           .append('rect')
@@ -3009,6 +3041,23 @@ useEffect(() => {
           .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
           .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444');
       }
+      // When bodies are too small, skip creating elements entirely (performance optimization)
+    };
+
+    // Legacy draw candles function (delegates to drawCandlesIntoGroup)
+    const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+      const visibleTimeRange = xS.domain();
+      const visibleCandles = candles.filter(d => {
+        const date = new Date(d.time);
+        return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
+      });
+      const visibleTimes = visibleCandles.map(c => c.time);
+      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
+      const bodyVisible = dynamicCandleWidth >= 3;
+      
+      console.log(`🕯️ Rendering ${visibleCandles.length} ${activeTimeframeRef.current} candles @ ${dynamicCandleWidth.toFixed(2)}px (bodies ${bodyVisible ? 'visible' : 'hidden'})`);
+      
+      drawCandlesIntoGroup(candlesGroup, xS, yS, candles);
     };
     
     drawCandles(xScale, yScale);
@@ -3212,6 +3261,123 @@ useEffect(() => {
     };
     
     drawElliottWave(xScale, yScale);
+    
+    // Populate all timeframe layers with pre-existing data for smooth transitions
+    const populateTimeframeLayers = () => {
+      console.log('🎨 Populating timeframe layers for smooth transitions...');
+      
+      // Map of layer groups to their corresponding timeframe data
+      const layerMap: Record<'15m' | '1h' | '4h' | '1d', d3.Selection<SVGGElement, unknown, null, undefined>> = {
+        '15m': layer15m,
+        '1h': layer1h,
+        '4h': layer4h,
+        '1d': layer1d
+      };
+      
+      // Render each timeframe's data into its layer
+      const timeframes: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
+      timeframes.forEach(tf => {
+        const layerGroup = layerMap[tf];
+        const tfData = multiTimeframeData[tf];
+        
+        if (tfData && tfData.length > 0) {
+          // Build a scale for this timeframe's data
+          const tfTimeExtent = d3.extent(tfData, d => d.time) as [number, number];
+          const tfPriceExtent: [number, number] = [
+            d3.min(tfData, d => d.low) as number * 0.999,
+            d3.max(tfData, d => d.high) as number * 1.001
+          ];
+          
+          const tfXScale = d3.scaleTime()
+            .domain([new Date(tfTimeExtent[0]), new Date(tfTimeExtent[1])])
+            .range([0, innerWidth]);
+          
+          const tfYScale = d3.scaleLinear()
+            .domain(tfPriceExtent)
+            .range([innerHeight, 0])
+            .nice();
+          
+          // Render candles into this layer
+          drawCandlesIntoGroup(layerGroup, tfXScale, tfYScale, tfData);
+          
+          // Show only the active timeframe's layer
+          layerGroup.attr('opacity', tf === activeTimeframeRef.current ? 1 : 0);
+          
+          console.log(`  ✓ Layer ${tf}: ${tfData.length} candles rendered (${tf === activeTimeframeRef.current ? 'visible' : 'hidden'})`);
+        } else {
+          console.log(`  ⚠ Layer ${tf}: No data available`);
+          layerGroup.attr('opacity', 0);
+        }
+      });
+      
+      // Hide legacy candlesGroup since we're using layers now
+      candlesGroup.attr('opacity', 0);
+      
+      console.log('✅ All timeframe layers populated');
+    };
+    
+    // Initial population of layers if we have multi-timeframe data
+    if (Object.values(multiTimeframeData).some(data => data && data.length > 0)) {
+      populateTimeframeLayers();
+    }
+    
+    // Function to smoothly cross-fade between timeframe layers
+    const switchTimeframeLayer = (targetTf: '15m' | '1h' | '4h' | '1d') => {
+      console.log(`🎬 Cross-fading to layer: ${targetTf}`);
+      
+      const layerMap: Record<'15m' | '1h' | '4h' | '1d', d3.Selection<SVGGElement, unknown, null, undefined>> = {
+        '15m': layer15m,
+        '1h': layer1h,
+        '4h': layer4h,
+        '1d': layer1d
+      };
+      
+      const targetLayer = layerMap[targetTf];
+      
+      // Cross-fade animation: fade out all other layers, fade in target layer
+      const FADE_DURATION = 300; // milliseconds
+      
+      Object.entries(layerMap).forEach(([tf, layer]) => {
+        if (tf === targetTf) {
+          // Fade in target layer
+          layer.transition()
+            .duration(FADE_DURATION)
+            .attr('opacity', 1);
+        } else {
+          // Fade out other layers
+          layer.transition()
+            .duration(FADE_DURATION)
+            .attr('opacity', 0);
+        }
+      });
+      
+      console.log(`✅ Layer transition to ${targetTf} initiated`);
+    };
+    
+    // Store the layer switch function in a ref so it can be called from outside this effect
+    // This is a workaround since we can't easily access D3 selections from React callbacks
+    (window as any).__switchTimeframeLayer = switchTimeframeLayer;
+    
+    // Function to update the currently active layer during zoom/pan
+    const updateActiveLayer = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+      const activeTf = activeTimeframeRef.current;
+      const layerMap: Record<'15m' | '1h' | '4h' | '1d', d3.Selection<SVGGElement, unknown, null, undefined>> = {
+        '15m': layer15m,
+        '1h': layer1h,
+        '4h': layer4h,
+        '1d': layer1d
+      };
+      
+      const activeLayer = layerMap[activeTf];
+      const activeData = multiTimeframeData[activeTf];
+      
+      if (activeData && activeData.length > 0) {
+        drawCandlesIntoGroup(activeLayer, xS, yS, activeData);
+      }
+    };
+    
+    // Store the update function so it can be called from zoom handler
+    (window as any).__updateActiveLayer = updateActiveLayer;
     
     // Drawings group (above candles, below axes overlays)
     const drawingsGroup = g.append('g')
@@ -4458,7 +4624,12 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           .call(g => g.select('.domain').attr('stroke', '#475569'));
           
           // Redraw candles with MINIMUM WIDTH enforced
-          drawCandles(newXScale, newYScale);
+          // Use layered rendering if available, otherwise fall back to legacy
+          if (typeof (window as any).__updateActiveLayer === 'function') {
+            (window as any).__updateActiveLayer(newXScale, newYScale);
+          } else {
+            drawCandles(newXScale, newYScale);
+          }
           
           // Redraw Elliott Wave elements
           drawElliottWave(newXScale, newYScale);
@@ -4493,14 +4664,8 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           drawDrawingsRef(newXScale, newYScale, transform.k);
         }
         
-        // 3. THROTTLED state updates - only update React state at most every 120ms
-        const now = Date.now();
-        if (now - lastZoomStateUpdateRef.current > 120) {
-          lastZoomStateUpdateRef.current = now;
-          requestAnimationFrame(() => {
-            handleZoomChange(transform);
-          });
-        }
+        // 3. THROTTLED state updates - use scheduleZoomStateUpdate helper
+        scheduleZoomStateUpdate(transform);
   });
     
     zoomRef.current = zoom;
