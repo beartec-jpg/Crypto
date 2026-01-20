@@ -796,7 +796,7 @@ const DRAMATIC_DELAYS = [
 ];
 
 // Harmonic acceleration phase configuration
-const HARMONIC_BASE_MS = 400;
+const HARMONIC_BASE_MS = 846;
 
 const playBuildAnimation = useCallback(() => {
   if (! svgRef.current) return;
