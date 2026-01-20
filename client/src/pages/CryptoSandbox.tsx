@@ -799,13 +799,13 @@ const playBuildAnimation = useCallback(() => {
   const FAST_PHASE_DURATION = 7000; // 7 seconds
   const TOTAL_DURATION = SLOW_PHASE_DURATION + FAST_PHASE_DURATION; // 10 seconds
   
-  // Timeframe thresholds based on visible candles
-  const timeframeLevels = [
-    { maxCandles: 50, binMs: 5 * ONE_MINUTE_MS, name: '5m' },
-    { maxCandles: 200, binMs: 15 * ONE_MINUTE_MS, name: '15m' },
-    { maxCandles: 800, binMs: ONE_HOUR_MS, name:  '1h' },
-    { maxCandles:  Infinity, binMs:  4 * ONE_HOUR_MS, name: '4h' }
-  ];
+  // Timeframe thresholds - change later for smoother feel
+const timeframeLevels = [
+  { maxCandles:  150, binMs: 5 * ONE_MINUTE_MS, name: '5m' },      // Stay 5m longer
+  { maxCandles: 500, binMs: 15 * ONE_MINUTE_MS, name: '15m' },    // 15m kicks in later
+  { maxCandles: 1200, binMs: ONE_HOUR_MS, name: '1h' },           // 1h near the end
+  { maxCandles:  Infinity, binMs: 4 * ONE_HOUR_MS, name: '4h' }    // 4h only for final view
+];
   
   let lastTimeframeName = '';
   let lastVisibleCount = 0;
