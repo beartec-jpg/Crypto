@@ -3370,6 +3370,27 @@ useEffect(() => {
     // This is a workaround since we can't easily access D3 selections from React callbacks
     (window as any).__switchTimeframeLayer = switchTimeframeLayer;
     
+    // Function to update the currently active layer during zoom/pan
+    const updateActiveLayer = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+      const activeTf = activeTimeframeRef.current;
+      const layerMap: Record<'15m' | '1h' | '4h' | '1d', d3.Selection<SVGGElement, unknown, null, undefined>> = {
+        '15m': layer15m,
+        '1h': layer1h,
+        '4h': layer4h,
+        '1d': layer1d
+      };
+      
+      const activeLayer = layerMap[activeTf];
+      const activeData = multiTimeframeData[activeTf];
+      
+      if (activeData && activeData.length > 0) {
+        drawCandlesIntoGroup(activeLayer, xS, yS, activeData);
+      }
+    };
+    
+    // Store the update function so it can be called from zoom handler
+    (window as any).__updateActiveLayer = updateActiveLayer;
+    
     // Drawings group (above candles, below axes overlays)
     const drawingsGroup = g.append('g')
       .attr('class', 'drawings')
@@ -4615,7 +4636,12 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           .call(g => g.select('.domain').attr('stroke', '#475569'));
           
           // Redraw candles with MINIMUM WIDTH enforced
-          drawCandles(newXScale, newYScale);
+          // Use layered rendering if available, otherwise fall back to legacy
+          if (typeof (window as any).__updateActiveLayer === 'function') {
+            (window as any).__updateActiveLayer(newXScale, newYScale);
+          } else {
+            drawCandles(newXScale, newYScale);
+          }
           
           // Redraw Elliott Wave elements
           drawElliottWave(newXScale, newYScale);
