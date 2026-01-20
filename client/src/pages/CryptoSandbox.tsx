@@ -868,31 +868,39 @@ const playBuildAnimation = useCallback(() => {
     setCandles(animCandles);
     setCurrentBinMs(level.binMs);
     
-    // =========================================================================
-// PRESENT CANDLE PUSHES RIGHT - history builds to the left
+   // =========================================================================
+// CANDLE 1 STARTS CENTERED, WALKS RIGHT as history builds
 // =========================================================================
-if (animCandles. length > 0) {
-  const priceMin = Math.min(...animCandles.map(c => c.low)) * 0.998;
-  const priceMax = Math.max(...animCandles.map(c => c. high)) * 1.002;
+if (animCandles.length > 0) {
+  const priceMin = Math.min(...animCandles. map(c => c.low)) * 0.998;
+  const priceMax = Math.max(... animCandles.map(c => c. high)) * 1.002;
   
   const oldestTime = animCandles[0].time; // oldest (left side)
   const newestTime = animCandles[animCandles.length - 1].time; // NOW (right side)
   const timeSpan = newestTime - oldestTime || level.binMs;
   
   // How many candles fit on screen? 
-  const chartWidth = svgRef.current?.clientWidth || 600;
+  const chartWidth = svgRef. current?.clientWidth || 600;
   const candleWidth = 6;
   const maxVisibleCandles = Math.floor(chartWidth / candleWidth);
   
   let timeStart:  number;
-  let timeEnd:  number;
+  let timeEnd: number;
   
-  if (animCandles.length < maxVisibleCandles) {
-    // ===== PRESENT AT RIGHT, HISTORY BUILDS LEFT =====
+  if (animCandles. length < maxVisibleCandles) {
+    // ===== CENTERED, WALKING RIGHT =====
     const fullTimeSpan = maxVisibleCandles * level.binMs;
-    const rightPadding = fullTimeSpan - timeSpan;
+    const totalPadding = fullTimeSpan - timeSpan;
     
-    timeStart = oldestTime;
+    // Start with equal padding, shift right as candles build
+    // Progress:  0 = centered, 1 = right edge
+    const progress = animCandles.length / maxVisibleCandles;
+    
+    // Left padding grows, right padding shrinks
+    const leftPadding = totalPadding * (0. 5 + progress * 0.5);
+    const rightPadding = totalPadding - leftPadding;
+    
+    timeStart = oldestTime - leftPadding;
     timeEnd = newestTime + rightPadding;
   } else {
     // ===== NORMAL MODE - screen is full =====
