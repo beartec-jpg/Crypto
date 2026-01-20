@@ -2873,7 +2873,7 @@ useEffect(() => {
       
       // Render candle bodies only when width >= 3px
       if (bodyVisible) {
-        candlesGroup.selectAll('. body')
+        candlesGroup.selectAll('.body')
           .data(visibleCandles)
           .enter()
           .append('rect')
