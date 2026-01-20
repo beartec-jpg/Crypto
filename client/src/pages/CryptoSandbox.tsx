@@ -285,6 +285,22 @@ export default function CryptoSandbox() {
   // Elliott Wave hook
 const elliottWave = useElliottWave({ timeframe: interval })
 
+  // Auto timeframe toggle state
+const [autoTimeframeEnabled, setAutoTimeframeEnabled] = useState(false);
+
+// Helper: Convert interval string to milliseconds
+function getBinMsFromInterval(interval: string): number {
+  switch (interval) {
+    case '1m':  return ONE_MINUTE_MS;
+    case '5m': return 5 * ONE_MINUTE_MS;
+    case '15m': return 15 * ONE_MINUTE_MS;
+    case '1h': return ONE_HOUR_MS;
+    case '4h': return 4 * ONE_HOUR_MS;
+    case '1d': return ONE_DAY_MS;
+    default: return 5 * ONE_MINUTE_MS;
+  }
+}
+  
 // Helper: Get chart center pixel position (accounts for left margin)
 const chartCenterPx = useCallback((innerWidth: number, marginLeft: number): number => {
   return marginLeft + innerWidth / 2;
