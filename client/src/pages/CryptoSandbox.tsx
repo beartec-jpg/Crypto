@@ -183,6 +183,7 @@ export default function CryptoSandbox() {
   
   // Throttle zoom state updates
   const lastZoomStateUpdateRef = useRef<number>(0);
+  const lastZoomChangeCallRef = useRef<number>(0);
   
   // Track D3 zoom scale for adaptive timeframe
   const [zoomScale, setZoomScale] = useState<number>(1);
@@ -1978,25 +1979,21 @@ const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
   
   // CRITICAL: Only update React state every 120ms to prevent re-render spam
   const now = Date.now();
-  const lastUpdate = handleZoomChange.lastUpdate || 0;
   
-  if (now - lastUpdate > 120) { // Throttle to ~8fps max
+  if (now - lastZoomChangeCallRef.current > 120) { // Throttle to ~8fps max
+    lastZoomChangeCallRef.current = now;
     setZoomScale((prevScale) => {
       const delta = Math.abs(newScale - prevScale);
       const percentChange = prevScale > 0 ? delta / prevScale : 1;
       
       // Only update if significant change (>5% change)
       if (percentChange > 0.05) {
-        handleZoomChange.lastUpdate = now;
         return newScale;
       }
       return prevScale;
     });
   }
 }, []);
-
-// Add lastUpdate property to function
-handleZoomChange.lastUpdate = 0;
 
 // ===== MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
 
