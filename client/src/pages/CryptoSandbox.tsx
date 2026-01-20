@@ -897,7 +897,7 @@ if (animCandles.length > 0) {
     const progress = animCandles.length / maxVisibleCandles;
     
     // Left padding grows, right padding shrinks
-    const leftPadding = totalPadding * (0. 5 + progress * 0.5);
+    const leftPadding = totalPadding * (0.5 + progress * 0.5);
     const rightPadding = totalPadding - leftPadding;
     
     timeStart = oldestTime - leftPadding;
