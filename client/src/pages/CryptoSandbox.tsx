@@ -56,6 +56,8 @@ const ONE_MINUTE_MS = 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * ONE_HOUR_MS;
 const ONE_WEEK_MS = 7 * ONE_DAY_MS;
+const MAX_BASE_CANDLES = 50000;  // ~6 months of 5m data
+
 
 const BIN_THRESHOLDS = [
   { visibleMs: 30 * ONE_DAY_MS, binMs: ONE_DAY_MS },
@@ -700,65 +702,67 @@ const updateZoomTranslateExtent = useCallback((
 // ============================================================================
 const fetchBaseCandles = useCallback(async () => {
   setLoading(true);
+  hasPlayedIntroRef.current = false;
+  baseCandlesRef. current = [];
   
   try {
-    console.log(`📊 Loading base candles (5m) for ${symbol}... `);
+    console.log(`📊 Loading base candles (5m) for ${symbol}...`);
     
-    const allCandles:  CandleData[] = [];
     let endTime = Date.now();
-    const targetStart = Date.now() - ONE_WEEK_MS; // 1 week of 5m data
-    const maxIterations = 10; // Safety limit
-    let iteration = 0;
+    const maxIterations = Math.ceil(MAX_BASE_CANDLES / 1000); // 50 iterations
     
-    // Fetch in chunks (Binance 1000 limit per request)
-    while (endTime > targetStart && iteration < maxIterations) {
-      try {
-        const url = `/api/binance/klines?symbol=${symbol}&interval=5m&limit=1000&endTime=${endTime}`;
-        const response = await fetch(url);
-        
-        if (! response.ok) {
-          console.error(`Failed to fetch chunk:  HTTP ${response.status}`);
-          break;
-        }
-        
-        const data = await response.json();
-        if (! data || data.length === 0) break;
-        
-        const formatted = data.map((k: any) => ({
-          time:  k[0],
-          open: parseFloat(k[1]),
-          high: parseFloat(k[2]),
-          low: parseFloat(k[3]),
-          close: parseFloat(k[4]),
-          volume: parseFloat(k[5])
-        }));
-        
-        allCandles.unshift(...formatted);
-        endTime = data[0][0] - 1; // Go further back
-        iteration++;
-        
-        console.log(`📊 Loaded chunk ${iteration}:  ${formatted.length} candles (total: ${allCandles.length})`);
-        
-        // Small delay to avoid rate limiting
-        await new Promise(r => setTimeout(r, 50));
-        
-      } catch (error) {
-        console. error('Error fetching chunk:', error);
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      const url = `/api/binance/klines?symbol=${symbol}&interval=5m&limit=1000&endTime=${endTime}`;
+      const response = await fetch(url);
+      
+      if (!response. ok) {
+        console.error(`Failed to fetch chunk: HTTP ${response.status}`);
         break;
       }
+      
+      const data = await response.json();
+      if (! data || data.length === 0) break;
+      
+      const formatted = data.map((k: any) => ({
+        time: k[0],
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5])
+      }));
+      
+      // Add to START of array (older candles go first)
+      baseCandlesRef. current = [...formatted, ...baseCandlesRef.current];
+      
+      // Remove duplicates and sort
+      const uniqueMap = new Map(baseCandlesRef.current.map(c => [c.time, c]));
+      baseCandlesRef. current = Array.from(uniqueMap. values()).sort((a, b) => a.time - b. time);
+      
+      console.log(`📊 Batch ${iteration + 1}:  ${formatted.length} candles (total: ${baseCandlesRef.current. length})`);
+      
+      // Update state for animation to use
+      setBaseCandles([...baseCandlesRef.current]);
+      
+      // START ANIMATION after first batch! 
+      if (iteration === 0) {
+        console.log('🎬 First batch ready - starting animation! ');
+        setLoading(false);
+      }
+      
+      endTime = data[0][0] - 1;
+      
+      // Stop if we have enough
+      if (baseCandlesRef.current.length >= MAX_BASE_CANDLES) {
+        console.log(`📊 Reached max candles:  ${MAX_BASE_CANDLES}`);
+        break;
+      }
+      
+      // Small delay between batches to avoid rate limiting
+      await new Promise(r => setTimeout(r, 50));
     }
     
-    // Remove duplicates and sort
-    const uniqueMap = new Map(allCandles.map(c => [c.time, c]));
-    const sorted = Array.from(uniqueMap.values()).sort((a, b) => a.time - b.time);
-    
-    console.log(`✅ Base candles loaded: ${sorted.length} total (5m resolution)`);
-    
-    // Set base candles (high-resolution source)
-    setBaseCandles(sorted);
-    // Don't set candles here - let animation build them one by one
-    setCandles([]); // Start empty
-    console.log(`📈 Ready for build animation:  ${sorted.length} base candles`);
+    console. log(`✅ All data loaded:  ${baseCandlesRef.current.length} candles`);
     
   } catch (error:  any) {
     handleError('data-fetch', `Failed to load candles: ${error. message}`);
@@ -766,94 +770,129 @@ const fetchBaseCandles = useCallback(async () => {
   } finally {
     setLoading(false);
   }
-}, [symbol, interval, handleError]);
+}, [symbol, handleError]);
 
-  // ============================================================================
-// CINEMATIC BUILD ANIMATION - Candles appear one by one, speeding up
+// ============================================================================
+// CINEMATIC BUILD ANIMATION - 10 seconds total, timeframes change as it zooms
 // ============================================================================
 const hasPlayedIntroRef = useRef(false);
-const introAnimationRef = useRef<NodeJS.Timeout | null>(null);
+const introAnimationRef = useRef<number | null>(null);
+const baseCandlesRef = useRef<CandleData[]>([]);
 
 const playBuildAnimation = useCallback(() => {
-  if (! svgRef.current || baseCandles.length === 0) return;
-  if (hasPlayedIntroRef. current) return;
+  if (!svgRef.current) return;
+  if (hasPlayedIntroRef.current) return;
+  if (baseCandlesRef. current.length === 0) return;
   
   hasPlayedIntroRef.current = true;
-  console.log('🎬 Starting build animation...');
+  console.log('🎬 Starting 10-second build animation...');
   
-  const totalCandles = baseCandles.length;
-  let visibleCount = 1;
-  let delay = 150; // Start slow:  150ms per candle
-  const minDelay = 1; // End fast: 1ms per candle
-  const speedUp = 0.96; // Gets 4% faster each step
+  const ANIMATION_DURATION_MS = 10000; // 10 seconds total
+  const TARGET_FPS = 60;
+  const FRAME_MS = 1000 / TARGET_FPS; // ~16.67ms per frame
+  const TOTAL_FRAMES = ANIMATION_DURATION_MS / FRAME_MS; // ~600 frames
   
-  const addNextCandle = () => {
-    // Get candles from the END (most recent first, building backwards in time)
-    const startIndex = totalCandles - visibleCount;
-    const visibleBaseCandles = baseCandles.slice(startIndex);
+  let frame = 0;
+  const startTime = performance.now();
+  
+  // Timeframe thresholds (based on percentage of animation)
+  const timeframeLevels = [
+    { maxPercent: 5, binMs: 5 * ONE_MINUTE_MS, name: '5m' },       // 0-5%:  5-min
+    { maxPercent: 15, binMs: 15 * ONE_MINUTE_MS, name:  '15m' },    // 5-15%: 15-min  
+    { maxPercent: 40, binMs: ONE_HOUR_MS, name: '1h' },            // 15-40%: 1-hour
+    { maxPercent: 100, binMs: 4 * ONE_HOUR_MS, name: '4h' }        // 40-100%: 4-hour
+  ];
+  
+  let lastTimeframeName = '';
+  
+  const animate = () => {
+    const currentData = baseCandlesRef.current;
+    const totalBase = currentData.length;
     
-    // Show at 5-minute resolution during animation
-    const animCandles = aggregateCandles(visibleBaseCandles, 5 * ONE_MINUTE_MS);
+    if (totalBase === 0) {
+      introAnimationRef.current = window.setTimeout(animate, 100);
+      return;
+    }
+    
+    // Calculate progress using easing (slow start, fast middle, slow end)
+    const elapsed = performance.now() - startTime;
+    const linearProgress = Math.min(1, elapsed / ANIMATION_DURATION_MS);
+    
+    // Ease-in-out cubic:  slow → fast → slow
+    const easedProgress = linearProgress < 0.5
+      ? 4 * linearProgress * linearProgress * linearProgress
+      :  1 - Math.pow(-2 * linearProgress + 2, 3) / 2;
+    
+    // How many candles to show based on progress
+    const visibleCount = Math.max(1, Math. floor(easedProgress * totalBase));
+    const percentComplete = Math.round(linearProgress * 100);
+    
+    // Get candles from the END (most recent first, building backwards)
+    const startIndex = Math.max(0, totalBase - visibleCount);
+    const visibleBaseCandles = currentData.slice(startIndex);
+    
+    // Determine timeframe based on percentage complete
+    const level = timeframeLevels.find(l => percentComplete <= l.maxPercent) 
+      || timeframeLevels[timeframeLevels. length - 1];
+    
+    if (level.name !== lastTimeframeName) {
+      console.log(`🎬 ${percentComplete}% - Switching to ${level.name} (${visibleCount. toLocaleString()} candles)`);
+      lastTimeframeName = level.name;
+    }
+    
+    // Aggregate and display
+    const animCandles = aggregateCandles(visibleBaseCandles, level.binMs);
     setCandles(animCandles);
-    setCurrentBinMs(5 * ONE_MINUTE_MS);
+    setCurrentBinMs(level.binMs);
     
-    // Update domain to fit visible candles (so chart auto-scales)
+    // Update domain
     if (animCandles.length > 0) {
-      const priceMin = Math.min(...animCandles.map(c => c.low)) * 0.998;
+      const priceMin = Math.min(... animCandles.map(c => c. low)) * 0.998;
       const priceMax = Math.max(...animCandles. map(c => c.high)) * 1.002;
-      const timeMin = animCandles[0].time;
-      const timeMax = animCandles[animCandles.length - 1].time;
-      
       setBaseDomain({
-        time: [timeMin, timeMax],
+        time: [animCandles[0]. time, animCandles[animCandles. length - 1]. time],
         price: [priceMin, priceMax]
       });
     }
     
-    // Log progress every 100 candles
-    if (visibleCount % 100 === 0 || visibleCount === 1) {
-      console.log(`🎬 Building:  ${visibleCount}/${totalCandles} candles (${delay. toFixed(0)}ms)`);
-    }
-    
     // Check if done
-    if (visibleCount >= totalCandles) {
-      console.log('🎬 Build animation complete!');
-      // Switch to user's selected interval
+    if (linearProgress >= 1) {
+      console.log(`🎬 Animation complete! ${totalBase. toLocaleString()} candles in 10 seconds`);
       const finalBinMs = getBinMsFromInterval(interval);
-      const finalCandles = aggregateCandles(baseCandles, finalBinMs);
+      const finalCandles = aggregateCandles(currentData, finalBinMs);
       setCandles(finalCandles);
       setCurrentBinMs(finalBinMs);
       return;
     }
     
-    // Add next candle
-    visibleCount++;
-    delay = Math.max(minDelay, delay * speedUp);
-    
-    introAnimationRef.current = setTimeout(addNextCandle, delay);
+    // Next frame
+    frame++;
+    introAnimationRef.current = window.requestAnimationFrame(animate);
   };
   
-  // Start the animation
-  addNextCandle();
+  // Start animation
+  animate();
   
-}, [baseCandles, interval]);
+}, [interval]);
 
-// Cleanup animation on unmount
+// Cleanup
 useEffect(() => {
   return () => {
     if (introAnimationRef.current) {
-      clearTimeout(introAnimationRef.current);
+      cancelAnimationFrame(introAnimationRef.current);
     }
   };
 }, []);
 
-// Trigger animation when base candles load
+// Trigger animation when first batch loads
 useEffect(() => {
   if (baseCandles.length > 0 && !hasPlayedIntroRef.current) {
-    const timer = setTimeout(playBuildAnimation, 300);
-    return () => clearTimeout(timer);
+    baseCandlesRef. current = baseCandles; // Sync ref with state
+    playBuildAnimation();
+  } else if (baseCandles.length > 0) {
+    baseCandlesRef. current = baseCandles; // Keep ref updated as more data loads
   }
-}, [baseCandles. length, playBuildAnimation]);
+}, [baseCandles, playBuildAnimation]);
   
   // Helper to convert interval string to milliseconds
 function getBinMsFromInterval(intervalStr: string): number {
