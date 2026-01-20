@@ -181,6 +181,9 @@ export default function CryptoSandbox() {
   // Store current transform to persist across renders (fixes zoom/pan revert issue)
   const currentTransformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
   
+  // Throttle zoom state updates
+  const lastZoomStateUpdateRef = useRef<number>(0);
+  
   // Track D3 zoom scale for adaptive timeframe
   const [zoomScale, setZoomScale] = useState<number>(1);
   
@@ -1973,11 +1976,11 @@ useEffect(() => {
 const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
   const newScale = transform.k;
   
-  // CRITICAL:  Only update React state every 200ms to prevent re-render spam
+  // CRITICAL: Only update React state every 120ms to prevent re-render spam
   const now = Date.now();
   const lastUpdate = handleZoomChange.lastUpdate || 0;
   
-  if (now - lastUpdate > 200) { // Throttle to 5fps max
+  if (now - lastUpdate > 120) { // Throttle to ~8fps max
     setZoomScale((prevScale) => {
       const delta = Math.abs(newScale - prevScale);
       const percentChange = prevScale > 0 ? delta / prevScale : 1;
@@ -2901,39 +2904,122 @@ useEffect(() => {
       // Use computeSafeCandleWidth for consistent candle width calculation
       const visibleTimes = visibleCandles.map(c => c.time);
       const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
+      const bodyVisible = dynamicCandleWidth >= 3;
       
-      // If calculated width is below minimum, we should be on a higher timeframe
-      // But don't switch here - that's handled in zoom handler
+      console.log(`🕯️ Rendering ${visibleCandles.length} ${activeTimeframeRef.current} candles @ ${dynamicCandleWidth.toFixed(2)}px (bodies ${bodyVisible ? 'visible' : 'hidden'})`);
       
-      console.log(`🕯️ Rendering ${visibleCandles.length} ${activeTimeframeRef.current} candles @ ${dynamicCandleWidth.toFixed(2)}px`);
-      
-      // ALWAYS render wicks (vertical lines)
+      // ALWAYS render wicks as 1px lines with rounded integer coordinates
       candlesGroup.selectAll('.wick')
         .data(visibleCandles)
         .enter()
         .append('line')
         .attr('class', 'wick')
-        .attr('x1', d => xS(new Date(d.time)))
-        .attr('x2', d => xS(new Date(d.time)))
-        .attr('y1', d => yS(d.high))
-        .attr('y2', d => yS(d.low))
+        .attr('x1', d => Math.round(xS(new Date(d.time))))
+        .attr('x2', d => Math.round(xS(new Date(d.time))))
+        .attr('y1', d => Math.round(yS(d.high)))
+        .attr('y2', d => Math.round(yS(d.low)))
         .attr('stroke', d => d.close >= d.open ? '#22c55e' : '#ef4444')
-        .attr('stroke-width', Math.max(1, dynamicCandleWidth * 0.1)); // Scale wick with candle
+        .attr('stroke-width', 1);
       
-      // Render full candle bodies
-      candlesGroup.selectAll('.body')
-        .data(visibleCandles)
-        .enter()
-        .append('rect')
-        .attr('class', 'body')
-        .attr('x', d => xS(new Date(d.time)) - dynamicCandleWidth / 2)
-        .attr('y', d => yS(Math.max(d.open, d.close)))
-        .attr('width', dynamicCandleWidth)
-        .attr('height', d => Math.max(1, Math.abs(yS(d.open) - yS(d.close))))
-        .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444');
+      // Render candle bodies only when width >= 3px
+      if (bodyVisible) {
+        candlesGroup.selectAll('.body')
+          .data(visibleCandles)
+          .enter()
+          .append('rect')
+          .attr('class', 'body')
+          .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
+          .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
+          .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
+          .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
+          .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444');
+      }
     };
     
     drawCandles(xScale, yScale);
+    
+    // Helper to render Elliott Wave predicted visuals as non-interactive polylines
+    const renderElliottPredicted = (
+      parentG: d3.Selection<SVGGElement, unknown, null, undefined>,
+      w0: { time: number; price: number },
+      w1: { time: number; price: number },
+      w2: { time: number; price: number },
+      xS: d3.ScaleTime<number, number>,
+      yS: d3.ScaleLinear<number, number>,
+      simulatedColor: string = '#00ffff'
+    ) => {
+      // Create/clear predicted group with pointer-events='none'
+      let predictedGroup = parentG.select<SVGGElement>('.elliott-predicted');
+      if (predictedGroup.empty()) {
+        predictedGroup = parentG.append('g').attr('class', 'elliott-predicted');
+      } else {
+        predictedGroup.selectAll('*').remove();
+      }
+      predictedGroup.attr('pointer-events', 'none');
+      
+      // Draw white trendline polyline W0 → W1 → W2
+      const trendPoints = [w0, w1, w2].map(p => 
+        `${Math.round(xS(new Date(p.time)))},${Math.round(yS(p.price))}`
+      ).join(' ');
+      
+      predictedGroup.append('polyline')
+        .attr('points', trendPoints)
+        .attr('fill', 'none')
+        .attr('stroke', '#ffffff')
+        .attr('stroke-width', 1)
+        .attr('stroke-opacity', 0.5);
+      
+      // Compute retracement percentage
+      const wave1Range = Math.abs(w1.price - w0.price);
+      const retracementRange = Math.abs(w2.price - w1.price);
+      const retracementPct = (retracementRange / wave1Range) * 100;
+      
+      // Simple ABC correction prediction (heuristic)
+      // If retracement >= 50%, draw flat correction; else zigzag
+      const w2X = Math.round(xS(new Date(w2.time)));
+      const w2Y = Math.round(yS(w2.price));
+      const projectionLength = Math.abs(w2X - Math.round(xS(new Date(w1.time)))) * 1.5;
+      
+      let abcPoints: string;
+      if (retracementPct >= 50) {
+        // Flat correction: A-B-C roughly horizontal
+        const aX = w2X + projectionLength * 0.3;
+        const bX = w2X + projectionLength * 0.6;
+        const cX = w2X + projectionLength;
+        const aY = w2Y + (Math.round(yS(w1.price)) - w2Y) * 0.3;
+        const bY = w2Y;
+        const cY = w2Y + (Math.round(yS(w1.price)) - w2Y) * 0.3;
+        abcPoints = `${w2X},${w2Y} ${Math.round(aX)},${Math.round(aY)} ${Math.round(bX)},${Math.round(bY)} ${Math.round(cX)},${Math.round(cY)}`;
+      } else {
+        // Zigzag correction: sharp A-B-C
+        const aX = w2X + projectionLength * 0.4;
+        const bX = w2X + projectionLength * 0.7;
+        const cX = w2X + projectionLength;
+        const aY = w2Y + (Math.round(yS(w1.price)) - w2Y) * 0.5;
+        const bY = w2Y + (Math.round(yS(w1.price)) - w2Y) * 0.2;
+        const cY = Math.round(yS(w1.price));
+        abcPoints = `${w2X},${w2Y} ${Math.round(aX)},${Math.round(aY)} ${Math.round(bX)},${Math.round(bY)} ${Math.round(cX)},${Math.round(cY)}`;
+      }
+      
+      predictedGroup.append('polyline')
+        .attr('points', abcPoints)
+        .attr('fill', 'none')
+        .attr('stroke', simulatedColor)
+        .attr('stroke-width', 1)
+        .attr('stroke-opacity', 0.5)
+        .attr('stroke-dasharray', '3,3');
+      
+      // Draw percentage label centered below W2
+      const LABEL_OFFSET_Y = 25;
+      predictedGroup.append('text')
+        .attr('x', w2X)
+        .attr('y', w2Y + LABEL_OFFSET_Y)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', '10px')
+        .attr('fill', simulatedColor)
+        .attr('font-weight', 'bold')
+        .text(`(${retracementPct.toFixed(1)}%)`);
+    };
     
     // Function to draw Elliott Wave elements
     const drawElliottWave = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
@@ -2989,12 +3075,12 @@ useEffect(() => {
           const p1 = points[i];
           const p2 = points[i + 1];
           
-          const x1 = xS(new Date(p1.time));
-          const y1 = yS(p1.price);
-          const x2 = xS(new Date(p2.time));
-          const y2 = yS(p2.price);
+          const x1 = Math.round(xS(new Date(p1.time)));
+          const y1 = Math.round(yS(p1.price));
+          const x2 = Math.round(xS(new Date(p2.time)));
+          const y2 = Math.round(yS(p2.price));
           
-          // Draw trendline
+          // Draw trendline with rounded coordinates
           elliottWaveGroup.append('line')
             .attr('x1', x1)
             .attr('y1', y1)
@@ -3005,14 +3091,14 @@ useEffect(() => {
             .attr('stroke-opacity', 0.8);
         }
         
-        // Draw point circles
+        // Draw point circles with rounded coordinates
         elliottWaveGroup.selectAll('.elliott-point')
           .data(points)
           .enter()
           .append('circle')
           .attr('class', 'elliott-point')
-          .attr('cx', d => xS(new Date(d.time)))
-          .attr('cy', d => yS(d.price))
+          .attr('cx', d => Math.round(xS(new Date(d.time))))
+          .attr('cy', d => Math.round(yS(d.price)))
           .attr('r', 4)
           .attr('fill', '#00ffff')
           .attr('stroke', '#ffffff')
@@ -3020,17 +3106,17 @@ useEffect(() => {
         
         // Point labels - position W0 and W2 below the candles
         points.forEach((point, idx) => {
-          const x = xS(new Date(point.time));
-          const y = yS(point.price);
+          const x = Math.round(xS(new Date(point.time)));
+          const y = Math.round(yS(point.price));
           
           // For W0 (idx 0) and W2 (idx 2), position below
           // For W1 (idx 1), position above
           const isBelow = idx === 0 || idx === 2;
-          const labelY = isBelow ? Math.round(y) + LABEL_OFFSET : y - 10;
+          const labelY = isBelow ? y + LABEL_OFFSET : y - 10;
           
           elliottWaveGroup.append('text')
             .attr('class', 'elliott-point-label')
-            .attr('x', Math.round(x))
+            .attr('x', x)
             .attr('y', labelY)
             .attr('text-anchor', 'middle')
             .attr('alignment-baseline', isBelow ? 'hanging' : 'auto')
@@ -3040,30 +3126,12 @@ useEffect(() => {
             .text(point.label);
         });
         
-        // Add percentage label below W2 if we have W0, W1, and W2
+        // Render predicted visuals as non-interactive polylines when W0, W1, W2 are placed
         if (points.length >= 3) {
           const w0 = points[0];
           const w1 = points[1];
           const w2 = points[2];
-          const wave1Range = Math.abs(w1.price - w0.price);
-          const retracementRange = Math.abs(w2.price - w1.price);
-          const retracementPercent = (retracementRange / wave1Range * 100).toFixed(1);
-          
-          // Position label below W2 label (same x, below with additional spacing)
-          const w2X = xS(new Date(w2.time));
-          const w2Y = yS(w2.price);
-          const additionalSpacing = 3; // Small additional spacing below W2 label
-          const labelY = Math.round(w2Y) + LABEL_OFFSET + additionalSpacing;
-          
-          elliottWaveGroup.append('text')
-            .attr('x', Math.round(w2X))
-            .attr('y', labelY)
-            .attr('text-anchor', 'middle')
-            .attr('alignment-baseline', 'hanging')
-            .attr('font-size', '10px')
-            .attr('fill', '#00ffff')
-            .attr('font-weight', 'bold')
-            .text(`(${retracementPercent}%)`);
+          renderElliottPredicted(elliottWaveGroup, w0, w1, w2, xS, yS, '#00ffff');
         }
       }
     };
@@ -4350,12 +4418,14 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           drawDrawingsRef(newXScale, newYScale, transform.k);
         }
         
-        // 3.  THROTTLED state updates - much less frequent
-    if (Math.random() < 0.1) { // Only 10% of zoom events trigger React updates
-      requestAnimationFrame(() => {
-        handleZoomChange(transform);
-      });
-    }
+        // 3. THROTTLED state updates - only update React state at most every 120ms
+        const now = Date.now();
+        if (now - lastZoomStateUpdateRef.current > 120) {
+          lastZoomStateUpdateRef.current = now;
+          requestAnimationFrame(() => {
+            handleZoomChange(transform);
+          });
+        }
   });
     
     zoomRef.current = zoom;
