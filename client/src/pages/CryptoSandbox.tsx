@@ -227,6 +227,75 @@ useEffect(() => {
   return () => clearTimeout(timer);
 }, [zoomScale]);
 
+// Helper: Get chart center pixel position (accounts for left margin)
+const chartCenterPx = useCallback((innerWidth: number, marginLeft: number): number => {
+  return marginLeft + innerWidth / 2;
+}, []);
+
+// Helper: Preserve center anchor when scale changes (e.g., timeframe switch)
+const preserveCenterAnchorOnScaleChange = useCallback((
+  svgEl: SVGSVGElement,
+  zoom: d3.ZoomBehavior<SVGSVGElement, unknown>,
+  oldXScale: d3.ScaleTime<number, number>,
+  newXScale: d3.ScaleTime<number, number>,
+  centerScreenPx: number
+) => {
+  // Read current d3 transform
+  const t = d3.zoomTransform(svgEl);
+  
+  // Compute the time at the center of the viewport using the old scale
+  const anchorTime = oldXScale.invert((centerScreenPx - t.x) / t.k).getTime();
+  
+  // Compute where that time maps to in the new scale
+  const anchorPxNew = newXScale(new Date(anchorTime));
+  
+  // Keep the same zoom level
+  const desiredK = t.k;
+  
+  // Calculate new translation to keep the anchor at the center
+  const newTx = centerScreenPx - desiredK * anchorPxNew;
+  
+  // Create and apply the new transform
+  const newTransform = d3.zoomIdentity.translate(newTx, 0).scale(desiredK);
+  d3.select(svgEl).call(zoom.transform, newTransform);
+}, []);
+
+// Helper: Update zoom translate extent for dynamic pan limits
+const updateZoomTranslateExtent = useCallback((
+  svgEl: SVGSVGElement,
+  zoom: d3.ZoomBehavior<SVGSVGElement, unknown>,
+  xScale: d3.ScaleTime<number, number>,
+  dataMinMs: number,
+  dataMaxMs: number,
+  innerWidth: number,
+  leftPadding: number = 0,
+  rightPadding: number = 0
+) => {
+  // Get current transform to read current zoom level
+  const t = d3.zoomTransform(svgEl);
+  const k = t.k;
+  
+  // Map data extent to pixel positions in the base scale
+  const pxMin = xScale(new Date(dataMinMs));
+  const pxMax = xScale(new Date(dataMaxMs));
+  
+  // Define edge positions
+  const rightEdgePx = innerWidth - rightPadding;
+  const leftEdgePx = leftPadding;
+  
+  // Calculate translation limits
+  // When earliest candle is at right edge: rightEdgePx = k * pxMin + tx => tx = rightEdgePx - k * pxMin
+  const txMin = rightEdgePx - k * pxMin;
+  // When latest candle is at left edge: leftEdgePx = k * pxMax + tx => tx = leftEdgePx - k * pxMax
+  const txMax = leftEdgePx - k * pxMax;
+  
+  // Set translate extent with some buffer for safety
+  zoom.translateExtent([
+    [Math.min(txMin, txMax) - 1000, -1e6],
+    [Math.max(txMin, txMax) + 1000, 1e6]
+  ]);
+}, []);
+
 // Memoized timeframe change callback to prevent re-creation
 const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
   console.log(`🚨 onTimeframeChange FIRED: ${oldTf} → ${newTf}`);
@@ -253,18 +322,9 @@ const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
   lastAdaptiveChangeRef.current = now;
   isAdaptiveSwitchingRef.current = true;
   
-  console.log(`🔄 Smooth timeframe switch:  ${oldTf} → ${newTf}`);
+  console.log(`🔄 Smooth timeframe switch with center anchor preservation:  ${oldTf} → ${newTf}`);
   
   try {
-    // Capture current zoom state BEFORE switching
-    let currentTransform = null;
-    if (svgRef.current) {
-      const zoomGroup = d3.select(svgRef.current).select('. zoom-group');
-      if (zoomGroup.node()) {
-        currentTransform = d3.zoomTransform(zoomGroup.node());
-      }
-    }
-    
     // Update active timeframe REF FIRST (prevents cascading)
     activeTimeframeRef.current = newTf as '15m' | '1h' | '4h' | '1d';
     
@@ -274,35 +334,53 @@ const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
       setInterval(newTf);
       setCandles(multiTimeframeData[newTimeframe]);
       
-      // Apply zoom transition after state settles
-      if (currentTransform && svgRef.current) {
-        // Use requestAnimationFrame to wait for React updates
+      // Apply center-preserving transform after state settles
+      if (svgRef.current && xScaleRef.current && zoomRef.current && innerWidth > 0) {
+        // Use requestAnimationFrame to wait for React updates and scale rebuild
         requestAnimationFrame(() => {
           setTimeout(() => {
-            if (! svgRef.current) return;
+            if (!svgRef.current || !xScaleRef.current || !zoomRef.current) return;
             
-            const timeframeRatios:  Record<string, Record<string, number>> = {
-              '15m': { '1h': 4, '4h':  16, '1d': 96 },
-              '1h': { '15m': 0.25, '4h': 4, '1d':  24 },
-              '4h': { '15m': 0.0625, '1h': 0.25, '1d': 6 },
-              '1d': { '15m': 0.0104, '1h':  0.0417, '4h': 0.167 }
-            };
+            // Capture old scale and center position BEFORE scale rebuild
+            const oldXScale = xScaleRef.current;
+            const centerPx = chartCenterPx(innerWidth, MARGIN.left);
             
-            const ratio = timeframeRatios[oldTf]?.[newTf] || 1;
-            
-            const svg = d3.select(svgRef. current);
-            const newTransform = d3.zoomIdentity
-              .translate(currentTransform.x, currentTransform.y)
-              .scale(currentTransform.k * ratio);
+            // Wait for the scale to be rebuilt by the effect (xScaleBase will update)
+            // In the meantime, we'll build a temporary new scale based on the new data
+            const newData = multiTimeframeData[newTimeframe];
+            if (newData && newData.length > 0) {
+              const timeExtent = d3.extent(newData, d => d.time) as [number, number];
+              const newXScale = d3.scaleTime()
+                .domain([new Date(timeExtent[0]), new Date(timeExtent[1])])
+                .range([0, innerWidth]);
               
-            svg.transition()
-              .duration(300)
-              .call(d3.zoom<SVGSVGElement, unknown>().transform, newTransform)
-              .on('end', () => {
-                // Reset switching flag after transition completes
-                isAdaptiveSwitchingRef.current = false;
-                console.log(`✅ Smooth transition to ${newTf} complete`);
-              });
+              // Preserve center anchor with the new scale
+              preserveCenterAnchorOnScaleChange(
+                svgRef.current,
+                zoomRef.current,
+                oldXScale,
+                newXScale,
+                centerPx
+              );
+              
+              // Update translate extent for dynamic panning
+              updateZoomTranslateExtent(
+                svgRef.current,
+                zoomRef.current,
+                newXScale,
+                timeExtent[0],
+                timeExtent[1],
+                innerWidth,
+                0,
+                0
+              );
+              
+              // Reset switching flag
+              isAdaptiveSwitchingRef.current = false;
+              console.log(`✅ Center-preserving transition to ${newTf} complete`);
+            } else {
+              isAdaptiveSwitchingRef.current = false;
+            }
           }, 50); // Small delay to let React state settle
         });
       } else {
@@ -316,7 +394,7 @@ const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
     console.error('Error in adaptive timeframe change:', error);
     isAdaptiveSwitchingRef. current = false;
   }
-}, [multiTimeframeData]); // Only depend on multiTimeframeData
+}, [multiTimeframeData, innerWidth, chartCenterPx, preserveCenterAnchorOnScaleChange, updateZoomTranslateExtent]); // Add new dependencies
 
 // Adaptive timeframe hook with optimized configuration
 const adaptiveTimeframe = useAdaptiveTimeframe({
@@ -4439,6 +4517,23 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
       console.log('✅ D3 zoom behavior initialized (default transform)');
     }
     
+    // Update translate extent for dynamic panning (allows full pan range)
+    if (candles.length > 0) {
+      const dataMinMs = candles[0].time;
+      const dataMaxMs = candles[candles.length - 1].time;
+      updateZoomTranslateExtent(
+        svgRef.current,
+        zoom,
+        xScale,
+        dataMinMs,
+        dataMaxMs,
+        innerWidth,
+        0,
+        0
+      );
+      console.log('✅ Dynamic translate extent set for full pan range');
+    }
+    
     // NOTE: Tap detection is handled in the zoom 'end' event handler above.
     // We removed duplicate touchstart.tap/touchend.tap handlers that were causing double-tap issues.
     
@@ -4514,6 +4609,7 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
   handleDrawingClick,
   handleTextLabelSelect,
   handleEndpointClick,
+  updateZoomTranslateExtent, // Added for dynamic pan limits
   // REMOVED: moveMode, movingTrendline, movingWholeLine (these change frequently)
 ]);
   
