@@ -12,7 +12,6 @@ import { Loader2, Crosshair, ChevronDown, TrendingUp } from 'lucide-react';
 import { useElliottWave } from '@/hooks/useElliottWave';
 import { useDrawingState } from '@/hooks/useDrawingState';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
-import { useAdaptiveTimeframe } from '@/hooks/useAdaptiveTimeframe';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { TrendlineMenu, HorizontalMenu, ChannelMenu } from '@/components/menus';
@@ -47,6 +46,89 @@ import type {
 } from '@/types/drawing';
 import type { TimeframeInterval } from '@/types/timeframes';
 import { TIMEFRAME_HIERARCHY } from '@/constants/timeframes';
+
+// ============================================================================
+// DYNAMIC AGGREGATION UTILITIES (NEW)
+// ============================================================================
+
+const BASE_RESOLUTION_MS = 5 * 60 * 1000; // 5-minute base
+const ONE_MINUTE_MS = 60 * 1000;
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const ONE_DAY_MS = 24 * ONE_HOUR_MS;
+const ONE_WEEK_MS = 7 * ONE_DAY_MS;
+
+const BIN_THRESHOLDS = [
+  { visibleMs: 30 * ONE_DAY_MS, binMs: ONE_DAY_MS },
+  { visibleMs: 7 * ONE_DAY_MS, binMs: 4 * ONE_HOUR_MS },
+  { visibleMs:  2 * ONE_DAY_MS, binMs: ONE_HOUR_MS },
+  { visibleMs: 12 * ONE_HOUR_MS, binMs: 15 * ONE_MINUTE_MS },
+  { visibleMs: 3 * ONE_HOUR_MS, binMs: 5 * ONE_MINUTE_MS },
+  { visibleMs: 0, binMs: BASE_RESOLUTION_MS },
+];
+
+interface AggregatedCandle extends CandleData {
+  binMs: number;
+  candleCount: number;
+}
+
+function aggregateCandles(
+  baseCandles: CandleData[],
+  binMs: number,
+  visibleDomain?:  [Date, Date]
+): AggregatedCandle[] {
+  if (!baseCandles. length || binMs <= 0) return [];
+
+  let candles = baseCandles;
+  if (visibleDomain) {
+    const startTs = visibleDomain[0]. getTime();
+    const endTs = visibleDomain[1].getTime();
+    const buffer = binMs * 2;
+    candles = baseCandles.filter(c => 
+      c.time >= startTs - buffer && c.time <= endTs + buffer
+    );
+  }
+
+  if (candles.length === 0) return [];
+
+  const bins = new Map<number, CandleData[]>();
+  
+  for (const candle of candles) {
+    const binStart = Math.floor(candle.time / binMs) * binMs;
+    if (!bins.has(binStart)) {
+      bins.set(binStart, []);
+    }
+    bins.get(binStart)!.push(candle);
+  }
+
+  const aggregated: AggregatedCandle[] = [];
+  
+  for (const [binStart, binCandles] of bins) {
+    if (binCandles. length === 0) continue;
+    binCandles.sort((a, b) => a.time - b.time);
+    
+    aggregated.push({
+      time: binStart,
+      open: binCandles[0].open,
+      high: Math.max(...binCandles.map(c => c.high)),
+      low: Math.min(...binCandles.map(c => c.low)),
+      close: binCandles[binCandles.length - 1].close,
+      volume: binCandles.reduce((sum, c) => sum + c.volume, 0),
+      binMs,
+      candleCount: binCandles. length,
+    });
+  }
+
+  return aggregated. sort((a, b) => a.time - b.time);
+}
+
+function getBinMs(visibleMs: number): number {
+  for (const threshold of BIN_THRESHOLDS) {
+    if (visibleMs >= threshold.visibleMs) {
+      return threshold.binMs;
+    }
+  }
+  return BASE_RESOLUTION_MS;
+}
 
 interface CandleData {
   time: number;
@@ -123,22 +205,14 @@ export default function CryptoSandbox() {
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [loading, setLoading] = useState(true);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  
-  // Multi-timeframe data management for smooth auto-zoom
-  const [multiTimeframeData, setMultiTimeframeData] = useState<{
-    '15m': CandleData[];
-    '1h': CandleData[];
-    '4h': CandleData[];
-    '1d': CandleData[];
-  }>({ '15m': [], '1h': [], '4h': [], '1d': [] });
-  
-  const [autoTimeframeEnabled, setAutoTimeframeEnabled] = useState(true); // Auto mode toggle (renamed for clarity)
-  const [isLoadingTimeframes, setIsLoadingTimeframes] = useState(false); // Loading state for multi-timeframe fetch
-  
-  // CRITICAL: Use refs to prevent re-render loops during auto-zoom
-  const activeTimeframeRef = useRef<'15m' | '1h' | '4h' | '1d'>('1h');
-  const lastSwitchTimeRef = useRef(0);
-  const isSwitchingRef = useRef(false);
+    // ============================================================================
+  // NEW:  Dynamic Aggregation State (replaces multi-timeframe layers)
+  // ============================================================================
+  const [baseCandles, setBaseCandles] = useState<CandleData[]>([]);
+  const [currentBinMs, setCurrentBinMs] = useState(BASE_RESOLUTION_MS);
+  const [visibleDomain, setVisibleDomain] = useState<[Date, Date] | null>(null);
+  const prevBinMsRef = useRef(BASE_RESOLUTION_MS);
+  const binChangeDebounceRef = useRef<NodeJS.Timeout | null>(null);
   
   // Stable base domain for scales - prevents recreation on data changes
   const [baseDomain, setBaseDomain] = useState<{
@@ -209,23 +283,7 @@ export default function CryptoSandbox() {
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   
   // Elliott Wave hook
-const elliottWave = useElliottWave({ timeframe: interval });
-
-// Add protective refs for circuit breaker
-const lastAdaptiveChangeRef = useRef(0);
-const isAdaptiveSwitchingRef = useRef(false);
-
-// Debounced zoom scale to prevent excessive updates
-const [debouncedZoomScale, setDebouncedZoomScale] = useState(1);
-
-// Debounce zoom scale updates
-useEffect(() => {
-  const timer = setTimeout(() => {
-    setDebouncedZoomScale(zoomScale);
-  }, 150); // 150ms debounce
-  
-  return () => clearTimeout(timer);
-}, [zoomScale]);
+const elliottWave = useElliottWave({ timeframe: interval })
 
 // Helper: Get chart center pixel position (accounts for left margin)
 const chartCenterPx = useCallback((innerWidth: number, marginLeft: number): number => {
@@ -296,131 +354,6 @@ const updateZoomTranslateExtent = useCallback((
   ]);
 }, []);
 
-// Memoized timeframe change callback to prevent re-creation
-const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
-  console.log(`🚨 onTimeframeChange FIRED: ${oldTf} → ${newTf}`);
-  
-  // Circuit breaker - prevent rapid successive calls
-  const now = Date.now();
-  if (now - lastAdaptiveChangeRef.current < 100) { // Reduced from 500ms to 100ms
-    console.log(`⚠️ Adaptive change too soon (${now - lastAdaptiveChangeRef.current}ms), skipping`);
-    return;
-  }
-  
-  // Prevent cascading if already switching
-  if (isAdaptiveSwitchingRef.current) {
-    console.log(`⚠️ Already switching timeframes, skipping`);
-    return;
-  }
-  
-  // Check if we're already on the target timeframe
-  if (activeTimeframeRef.current === newTf) {
-    console.log(`⚠️ Already on ${newTf}, skipping`);
-    return;
-  }
-  
-  lastAdaptiveChangeRef.current = now;
-  isAdaptiveSwitchingRef.current = true;
-  
-  console.log(`🔄 Smooth timeframe switch with center anchor preservation:  ${oldTf} → ${newTf}`);
-  
-  try {
-    // Update active timeframe REF FIRST (prevents cascading)
-    activeTimeframeRef.current = newTf as '15m' | '1h' | '4h' | '1d';
-    
-    // Trigger layer cross-fade animation if layered rendering is active
-    if (typeof (window as any).__switchTimeframeLayer === 'function') {
-      (window as any).__switchTimeframeLayer(newTf as '15m' | '1h' | '4h' | '1d');
-    }
-    
-    // Update state - batch updates using React's automatic batching
-    const newTimeframe = newTf as '15m' | '1h' | '4h' | '1d';
-    if (multiTimeframeData[newTimeframe]?.length > 0) {
-      setInterval(newTf);
-      setCandles(multiTimeframeData[newTimeframe]);
-      
-      // Apply center-preserving transform after state settles
-      if (svgRef.current && xScaleRef.current && zoomRef.current && innerWidth > 0) {
-        // Use requestAnimationFrame to wait for React updates and scale rebuild
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            if (!svgRef.current || !xScaleRef.current || !zoomRef.current) return;
-            
-            // Capture old scale and center position BEFORE scale rebuild
-            const oldXScale = xScaleRef.current;
-            const centerPx = chartCenterPx(innerWidth, MARGIN.left);
-            
-            // Wait for the scale to be rebuilt by the effect (xScaleBase will update)
-            // In the meantime, we'll build a temporary new scale based on the new data
-            const newData = multiTimeframeData[newTimeframe];
-            if (newData && newData.length > 0) {
-              const timeExtent = d3.extent(newData, d => d.time) as [number, number];
-              const newXScale = d3.scaleTime()
-                .domain([new Date(timeExtent[0]), new Date(timeExtent[1])])
-                .range([0, innerWidth]);
-              
-              // Preserve center anchor with the new scale
-              preserveCenterAnchorOnScaleChange(
-                svgRef.current,
-                zoomRef.current,
-                oldXScale,
-                newXScale,
-                centerPx
-              );
-              
-              // Update translate extent for dynamic panning
-              updateZoomTranslateExtent(
-                svgRef.current,
-                zoomRef.current,
-                newXScale,
-                timeExtent[0],
-                timeExtent[1],
-                innerWidth,
-                0,
-                0
-              );
-              
-              // Reset switching flag
-              isAdaptiveSwitchingRef.current = false;
-              console.log(`✅ Center-preserving transition to ${newTf} complete`);
-            } else {
-              isAdaptiveSwitchingRef.current = false;
-            }
-          }, 50); // Small delay to let React state settle
-        });
-      } else {
-        // No transition needed, reset flag immediately
-        isAdaptiveSwitchingRef.current = false;
-      }
-    } else {
-      isAdaptiveSwitchingRef.current = false;
-    }
-  } catch (error) {
-    console.error('Error in adaptive timeframe change:', error);
-    isAdaptiveSwitchingRef. current = false;
-  }
-}, [multiTimeframeData, innerWidth, chartCenterPx, preserveCenterAnchorOnScaleChange, updateZoomTranslateExtent]); // Add new dependencies
-
-// Adaptive timeframe hook with optimized configuration
-const adaptiveTimeframe = useAdaptiveTimeframe({
-  symbol: symbol || 'XRPUSDT',
-  baseTimeframe: interval as TimeframeInterval,
-  visibleCandleCount: visibleCandleCount,
-  chartWidth: dimensions.width || 1000,
-  zoomScale: debouncedZoomScale, // Use debounced value
-  options: {
-    enabled: autoTimeframeEnabled,
-    debounceDelay: 200, // Increased debounce
-    enableTransitions: true,
-    transitionDuration: 300,
-    enablePrefetch: true,
-    cacheMaxAge: 5 * 60 * 1000,
-    hysteresis: 0.3
-  },
-  onTimeframeChange: handleTimeframeChange // Use memoized callback
-});
-
-  
   // Drawing state hook - manages all drawings, undo/redo, and selection
   const drawingState = useDrawingState();
   const { state: drawingStateData, setState: setDrawingStateData, undo, redo, canUndo, canRedo } = drawingState;
@@ -804,104 +737,109 @@ const adaptiveTimeframe = useAdaptiveTimeframe({
   }, [symbol, interval, handleError]);
   
 // Fetch all timeframes sequentially for smooth auto-zoom
-const fetchAllTimeframes = useCallback(async () => {
-  setIsLoadingTimeframes(true);
-  const timeframes: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
+// ============================================================================
+// NEW: Fetch 5-minute base candles (replaces fetchAllTimeframes)
+// ============================================================================
+const fetchBaseCandles = useCallback(async () => {
+  setLoading(true);
   
   try {
-    console.log('📊 Loading all timeframes.. .');
+    console.log(`📊 Loading base candles (5m) for ${symbol}... `);
     
-    // Load current interval first, then others sequentially
-    const results = [];
-    const currentTF = interval as '15m' | '1h' | '4h' | '1d';
-    const otherTFs = timeframes.filter(tf => tf !== currentTF);
-
-    // Load current timeframe FIRST
-    try {
-      console. log(`📊 Loading current timeframe: ${currentTF}... `);
-      const url = `/api/binance/klines?symbol=${symbol}&interval=${currentTF}&limit=1000`;
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        results.push({ timeframe: currentTF, data });
-        console.log(`✅ Current TF loaded: ${currentTF} (${data.length} candles)`);
-      } else {
-        console.error(`Failed to fetch ${currentTF}: HTTP ${response.status}`);
-        results.push({ timeframe: currentTF, data: [] });
-      }
-    } catch (error) {
-      console.error(`Error fetching current TF ${currentTF}: `, error);
-      results.push({ timeframe: currentTF, data: [] });
-    }
-
-    // Load other timeframes sequentially in background
-    for (const tf of otherTFs) {
+    const allCandles:  CandleData[] = [];
+    let endTime = Date.now();
+    const targetStart = Date.now() - ONE_WEEK_MS; // 1 week of 5m data
+    const maxIterations = 10; // Safety limit
+    let iteration = 0;
+    
+    // Fetch in chunks (Binance 1000 limit per request)
+    while (endTime > targetStart && iteration < maxIterations) {
       try {
-        console.log(`📊 Background loading: ${tf}...`);
-        const url = `/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=1000`;
+        const url = `/api/binance/klines? symbol=${symbol}&interval=5m&limit=1000&endTime=${endTime}`;
         const response = await fetch(url);
-        if (response. ok) {
-          const data = await response.json();
-          results.push({ timeframe: tf, data });
-          console.log(`✅ Background loaded: ${tf} (${data.length} candles)`);
-        } else {
-          console.error(`Failed to fetch ${tf}: HTTP ${response.status}`);
-          results.push({ timeframe: tf, data:  [] });
+        
+        if (! response.ok) {
+          console.error(`Failed to fetch chunk:  HTTP ${response.status}`);
+          break;
         }
+        
+        const data = await response.json();
+        if (! data || data.length === 0) break;
+        
+        const formatted = data.map((k: any) => ({
+          time:  k[0],
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4]),
+          volume: parseFloat(k[5])
+        }));
+        
+        allCandles.unshift(...formatted);
+        endTime = data[0][0] - 1; // Go further back
+        iteration++;
+        
+        console.log(`📊 Loaded chunk ${iteration}:  ${formatted.length} candles (total: ${allCandles.length})`);
+        
+        // Small delay to avoid rate limiting
+        await new Promise(r => setTimeout(r, 50));
+        
       } catch (error) {
-        console.error(`Error fetching ${tf}:`, error);
-        results.push({ timeframe: tf, data: [] });
+        console. error('Error fetching chunk:', error);
+        break;
       }
     }
     
-    // Process all timeframe data
-    const tfData = results.reduce((acc, { timeframe, data }) => {
-      acc[timeframe] = data.map((k: any) => ({
-        time: k[0],
-        open: parseFloat(k[1]),
-        high: parseFloat(k[2]),
-        low: parseFloat(k[3]),
-        close: parseFloat(k[4]),
-        volume: parseFloat(k[5])
-      }));
-      return acc;
-    }, {} as any);
+    // Remove duplicates and sort
+    const uniqueMap = new Map(allCandles.map(c => [c.time, c]));
+    const sorted = Array.from(uniqueMap.values()).sort((a, b) => a.time - b.time);
     
-    setMultiTimeframeData(tfData);
+    console.log(`✅ Base candles loaded: ${sorted.length} total (5m resolution)`);
     
-    // Set initial candles to current interval
-    const initialTF = interval as '15m' | '1h' | '4h' | '1d';
-    if (tfData[initialTF] && tfData[initialTF].length > 0) {
-      setCandles(tfData[initialTF]);
-      activeTimeframeRef.current = initialTF;
-      console. log(`📈 Initial timeframe: ${initialTF} (${tfData[initialTF].length} candles)`);
-    } else {
-      console.error(`⚠️ No data for initial timeframe ${initialTF}`);
-      // Fallback to single fetch
-      await fetchCandles();
-    }
+    // Set base candles (high-resolution source)
+    setBaseCandles(sorted);
     
-  } catch (error: any) {
-    handleError('data-fetch', `Failed to load timeframes: ${error.message}`);
-    console.error('Error fetching multi-timeframe data:', error);
-    // Fallback to single fetch
-    await fetchCandles();
+    // Also set candles for backward compatibility with drawings
+    // Aggregate to current interval for initial display
+    const initialBinMs = getBinMsFromInterval(interval);
+    const aggregated = aggregateCandles(sorted, initialBinMs);
+    setCandles(aggregated);
+    setCurrentBinMs(initialBinMs);
+    
+    console.log(`📈 Initial display: ${aggregated. length} candles (${interval} aggregation)`);
+    
+  } catch (error:  any) {
+    handleError('data-fetch', `Failed to load candles: ${error. message}`);
+    console.error('Error fetching base candles:', error);
   } finally {
-    setIsLoadingTimeframes(false);
     setLoading(false);
   }
-}, [symbol, interval, handleError, fetchCandles]);
+}, [symbol, interval, handleError]);
 
+// Helper to convert interval string to milliseconds
+function getBinMsFromInterval(intervalStr: string): number {
+  const map:  Record<string, number> = {
+    '1m': ONE_MINUTE_MS,
+    '5m': 5 * ONE_MINUTE_MS,
+    '15m': 15 * ONE_MINUTE_MS,
+    '1h': ONE_HOUR_MS,
+    '4h': 4 * ONE_HOUR_MS,
+    '1d': ONE_DAY_MS,
+  };
+  return map[intervalStr] || ONE_HOUR_MS;
+}
+
+// Fetch base candles on mount and symbol change
 useEffect(() => {
-  fetchAllTimeframes();
-}, [fetchAllTimeframes]);
+  fetchBaseCandles();
+}, [fetchBaseCandles]);
 
 // Initialize base domain once when data first loads
 useEffect(() => {
-  if (candles.length > 0 && !baseDomain.time) {
+  if (candles. length > 0 && !baseDomain.time) {
     const timeExtent = d3.extent(candles, d => d.time) as [number, number];
     const priceExtent: [number, number] = [
-      d3.min(candles, d => d.low) as number * 0.999,
+      d3.min(candles, d => d. low) as number * 0.999,
       d3.max(candles, d => d.high) as number * 1.001
     ];
     
@@ -910,7 +848,7 @@ useEffect(() => {
       price: priceExtent
     });
     
-    console.log('✅ Base domain set (stable reference):', { 
+    console. log('✅ Base domain set (stable reference):', { 
       time: timeExtent, 
       price: priceExtent 
     });
@@ -2129,101 +2067,6 @@ const calculateCandleWidth = useCallback((
   // Return the actual candle width (70% of spacing)
   return actualSpacing * 0.7;
 }, []);
-
-// Determine if we should switch timeframes - with hysteresis to prevent ping-pong
-const shouldSwitchTimeframe = useCallback((
-  currentWidth: number,
-  currentTF: '15m' | '1h' | '4h' | '1d'
-): '15m' | '1h' | '4h' | '1d' | null => {
-  // Don't switch if auto mode is off
-  if (!autoTimeframeEnabled) {
-    console.log(`⏭️ Auto mode OFF`);
-    return null;
-  }
-  
-  // Don't switch if we're already switching
-  if (isSwitchingRef. current) {
-    console.log(`⏭️ Already switching`);
-    return null;
-  }
-  
-  // Debounce - don't switch too frequently (increased cooldown)
-  const now = Date.now();
-  if (now - lastSwitchTimeRef.current < SWITCH_COOLDOWN_MS) {
-    console.log(`⏭️ Cooldown active (${now - lastSwitchTimeRef.current}ms < ${SWITCH_COOLDOWN_MS}ms)`);
-    return null;
-  }
-  
-  const currentIndex = TIMEFRAME_ORDER.indexOf(currentTF);
-  
-  // Apply hysteresis to thresholds to prevent ping-pong switching
-  const upThreshold = SWITCH_UP_THRESHOLD * (1 + HYSTERESIS);
-  const downThreshold = SWITCH_DOWN_THRESHOLD * (1 - HYSTERESIS);
-  
-  console.log(`📊 TF Check: ${currentTF} (${currentWidth.toFixed(2)}px) | UP<=${upThreshold. toFixed(1)} | DOWN>=${downThreshold.toFixed(1)}`);
-  
-  // Switch to HIGHER timeframe if candles too narrow (zooming out)
-  if (currentWidth <= upThreshold && currentIndex < TIMEFRAME_ORDER.length - 1) {
-    const nextTF = TIMEFRAME_ORDER[currentIndex + 1];
-    
-    // Validate target timeframe has data
-    if (!multiTimeframeData[nextTF] || multiTimeframeData[nextTF].length === 0) {
-      console.warn(`⚠️ No data for ${nextTF}, staying on ${currentTF}`);
-      return null;
-    }
-    
-    console.log(`📊 🔼 UP: ${currentTF} → ${nextTF} (${currentWidth.toFixed(2)}px <= ${upThreshold.toFixed(1)}px)`);
-    return nextTF;
-  }
-  
-  // Switch to LOWER timeframe if candles too wide (zooming in) - with hysteresis
-  if (currentWidth >= downThreshold && currentIndex > 0) {
-    const prevTF = TIMEFRAME_ORDER[currentIndex - 1];
-    
-    // Validate target timeframe has data
-    if (! multiTimeframeData[prevTF] || multiTimeframeData[prevTF].length === 0) {
-      console.warn(`⚠️ No data for ${prevTF}, staying on ${currentTF}`);
-      return null;
-    }
-    
-    console.log(`📊 🔽 DOWN: ${currentTF} → ${prevTF} (${currentWidth.toFixed(2)}px >= ${downThreshold.toFixed(1)}px)`);
-    return prevTF;
-  }
-  
-  return null; // No switch needed
-}, [autoTimeframeEnabled, multiTimeframeData]);
-
-// SEAMLESS Execute timeframe switch - no loading screens, smooth transitions
-const executeTimeframeSwitch = useCallback((newTF: '15m' | '1h' | '4h' | '1d') => {
-  if (isSwitchingRef.current) return;
-  
-  isSwitchingRef.current = true;
-  lastSwitchTimeRef.current = Date.now();
-  
-  // Update ref immediately (doesn't cause re-render)
-  activeTimeframeRef.current = newTF;
-  
-  // SEAMLESS switch - all data should already be loaded
-  const newCandles = multiTimeframeData[newTF];
-  if (newCandles && newCandles.length > 0) {
-    // Use React. startTransition for smooth, non-blocking updates
-   // React.startTransition(() => { 
-      setCandles(newCandles);
-      setInterval(newTF); // Update UI display
-  //  });
-    
-    console.log(`✅ Seamless → ${newTF} (${newCandles. length} candles)`);
-  } else {
-    console. error(`❌ Failed to switch to ${newTF} - no data available`);
-  }
-  
-  // Quick reset - no long delay
-  setTimeout(() => {
-    isSwitchingRef. current = false;
-  }, 50); // Reduced from 100ms
-}, [multiTimeframeData]);
-
-// ===== END MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
   
   // Move whole line - places center at click position
   const moveWholeLine = useCallback((clickX: number, clickY: number) => {
@@ -2935,19 +2778,7 @@ useEffect(() => {
       .attr('class', 'elliott-wave')
       .attr('clip-path', 'url(#chart-clip)');
     
-    // Layered rendering infrastructure for smooth timeframe transitions
-    // Create a layers group that will contain separate layers for each timeframe
-    const layersGroup = g.append('g')
-      .attr('class', 'layers-container')
-      .attr('clip-path', 'url(#chart-clip)');
-    
-    // Create individual layers for each timeframe (initially hidden with opacity 0)
-    const layer15m = layersGroup.append('g').attr('class', 'layer-15m').attr('opacity', 0);
-    const layer1h = layersGroup.append('g').attr('class', 'layer-1h').attr('opacity', 0);
-    const layer4h = layersGroup.append('g').attr('class', 'layer-4h').attr('opacity', 0);
-    const layer1d = layersGroup.append('g').attr('class', 'layer-1d').attr('opacity', 0);
-    
-    // Legacy single-layer candles group for backward compatibility (will be phased out)
+   // Candles group - renders aggregated candles
     const candlesGroup = g.append('g')
       .attr('class', 'candles')
       .attr('clip-path', 'url(#chart-clip)');
@@ -2993,71 +2824,50 @@ useEffect(() => {
       
       return Math.round(width);
     };
-
-    // Refactored helper: Draw candles into any D3 group (enables layered rendering)
-    const drawCandlesIntoGroup = (
-      parentG: d3.Selection<SVGGElement, unknown, null, undefined>,
-      xS: d3.ScaleTime<number, number>,
-      yS: d3.ScaleLinear<number, number>,
-      candlesData: CandleData[]
-    ) => {
-      // Clear existing content in this group
-      parentG.selectAll('*').remove();
+    
+        // Draw candles function - renders aggregated candles directly
+    const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+      // Clear existing candles
+      candlesGroup.selectAll('*').remove();
       
       const visibleTimeRange = xS.domain();
-      const visibleCandles = candlesData.filter(d => {
+      const visibleCandles = candles.filter(d => {
         const date = new Date(d.time);
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
       
-      // Use computeSafeCandleWidth for consistent candle width calculation
-      const visibleTimes = visibleCandles.map(c => c.time);
+      const visibleTimes = visibleCandles.map(c => c. time);
       const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
       const bodyVisible = dynamicCandleWidth >= 3;
       
+      console.log(`🕯️ Rendering ${visibleCandles.length} candles @ ${dynamicCandleWidth.toFixed(2)}px (bodies ${bodyVisible ? 'visible' : 'hidden'})`);
+      
       // ALWAYS render wicks as 1px lines with rounded integer coordinates
-      parentG.selectAll('.wick')
+      candlesGroup. selectAll('.wick')
         .data(visibleCandles)
         .enter()
         .append('line')
         .attr('class', 'wick')
         .attr('x1', d => Math.round(xS(new Date(d.time))))
         .attr('x2', d => Math.round(xS(new Date(d.time))))
-        .attr('y1', d => Math.round(yS(d.high)))
+        .attr('y1', d => Math. round(yS(d.high)))
         .attr('y2', d => Math.round(yS(d.low)))
-        .attr('stroke', d => d.close >= d.open ? '#22c55e' : '#ef4444')
+        .attr('stroke', d => d.close >= d. open ? '#22c55e' : '#ef4444')
         .attr('stroke-width', 1);
       
-      // Render candle bodies only when width >= 3px (hide tiny bodies)
+      // Render candle bodies only when width >= 3px
       if (bodyVisible) {
-        parentG.selectAll('.body')
+        candlesGroup.selectAll('. body')
           .data(visibleCandles)
           .enter()
           .append('rect')
           .attr('class', 'body')
           .attr('x', d => Math.round(xS(new Date(d.time)) - dynamicCandleWidth / 2))
-          .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
+          .attr('y', d => Math. round(yS(Math.max(d.open, d. close))))
           .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
           .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
-          .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444');
+          .attr('fill', d => d.close >= d. open ? '#22c55e' : '#ef4444');
       }
-      // When bodies are too small, skip creating elements entirely (performance optimization)
-    };
-
-    // Legacy draw candles function (delegates to drawCandlesIntoGroup)
-    const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
-      const visibleTimeRange = xS.domain();
-      const visibleCandles = candles.filter(d => {
-        const date = new Date(d.time);
-        return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
-      });
-      const visibleTimes = visibleCandles.map(c => c.time);
-      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
-      const bodyVisible = dynamicCandleWidth >= 3;
-      
-      console.log(`🕯️ Rendering ${visibleCandles.length} ${activeTimeframeRef.current} candles @ ${dynamicCandleWidth.toFixed(2)}px (bodies ${bodyVisible ? 'visible' : 'hidden'})`);
-      
-      drawCandlesIntoGroup(candlesGroup, xS, yS, candles);
     };
     
     drawCandles(xScale, yScale);
@@ -3261,123 +3071,6 @@ useEffect(() => {
     };
     
     drawElliottWave(xScale, yScale);
-    
-    // Populate all timeframe layers with pre-existing data for smooth transitions
-    const populateTimeframeLayers = () => {
-      console.log('🎨 Populating timeframe layers for smooth transitions...');
-      
-      // Map of layer groups to their corresponding timeframe data
-      const layerMap: Record<'15m' | '1h' | '4h' | '1d', d3.Selection<SVGGElement, unknown, null, undefined>> = {
-        '15m': layer15m,
-        '1h': layer1h,
-        '4h': layer4h,
-        '1d': layer1d
-      };
-      
-      // Render each timeframe's data into its layer
-      const timeframes: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
-      timeframes.forEach(tf => {
-        const layerGroup = layerMap[tf];
-        const tfData = multiTimeframeData[tf];
-        
-        if (tfData && tfData.length > 0) {
-          // Build a scale for this timeframe's data
-          const tfTimeExtent = d3.extent(tfData, d => d.time) as [number, number];
-          const tfPriceExtent: [number, number] = [
-            d3.min(tfData, d => d.low) as number * 0.999,
-            d3.max(tfData, d => d.high) as number * 1.001
-          ];
-          
-          const tfXScale = d3.scaleTime()
-            .domain([new Date(tfTimeExtent[0]), new Date(tfTimeExtent[1])])
-            .range([0, innerWidth]);
-          
-          const tfYScale = d3.scaleLinear()
-            .domain(tfPriceExtent)
-            .range([innerHeight, 0])
-            .nice();
-          
-          // Render candles into this layer
-          drawCandlesIntoGroup(layerGroup, tfXScale, tfYScale, tfData);
-          
-          // Show only the active timeframe's layer
-          layerGroup.attr('opacity', tf === activeTimeframeRef.current ? 1 : 0);
-          
-          console.log(`  ✓ Layer ${tf}: ${tfData.length} candles rendered (${tf === activeTimeframeRef.current ? 'visible' : 'hidden'})`);
-        } else {
-          console.log(`  ⚠ Layer ${tf}: No data available`);
-          layerGroup.attr('opacity', 0);
-        }
-      });
-      
-      // Hide legacy candlesGroup since we're using layers now
-      candlesGroup.attr('opacity', 0);
-      
-      console.log('✅ All timeframe layers populated');
-    };
-    
-    // Initial population of layers if we have multi-timeframe data
-    if (Object.values(multiTimeframeData).some(data => data && data.length > 0)) {
-      populateTimeframeLayers();
-    }
-    
-    // Function to smoothly cross-fade between timeframe layers
-    const switchTimeframeLayer = (targetTf: '15m' | '1h' | '4h' | '1d') => {
-      console.log(`🎬 Cross-fading to layer: ${targetTf}`);
-      
-      const layerMap: Record<'15m' | '1h' | '4h' | '1d', d3.Selection<SVGGElement, unknown, null, undefined>> = {
-        '15m': layer15m,
-        '1h': layer1h,
-        '4h': layer4h,
-        '1d': layer1d
-      };
-      
-      const targetLayer = layerMap[targetTf];
-      
-      // Cross-fade animation: fade out all other layers, fade in target layer
-      const FADE_DURATION = 300; // milliseconds
-      
-      Object.entries(layerMap).forEach(([tf, layer]) => {
-        if (tf === targetTf) {
-          // Fade in target layer
-          layer.transition()
-            .duration(FADE_DURATION)
-            .attr('opacity', 1);
-        } else {
-          // Fade out other layers
-          layer.transition()
-            .duration(FADE_DURATION)
-            .attr('opacity', 0);
-        }
-      });
-      
-      console.log(`✅ Layer transition to ${targetTf} initiated`);
-    };
-    
-    // Store the layer switch function in a ref so it can be called from outside this effect
-    // This is a workaround since we can't easily access D3 selections from React callbacks
-    (window as any).__switchTimeframeLayer = switchTimeframeLayer;
-    
-    // Function to update the currently active layer during zoom/pan
-    const updateActiveLayer = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
-      const activeTf = activeTimeframeRef.current;
-      const layerMap: Record<'15m' | '1h' | '4h' | '1d', d3.Selection<SVGGElement, unknown, null, undefined>> = {
-        '15m': layer15m,
-        '1h': layer1h,
-        '4h': layer4h,
-        '1d': layer1d
-      };
-      
-      const activeLayer = layerMap[activeTf];
-      const activeData = multiTimeframeData[activeTf];
-      
-      if (activeData && activeData.length > 0) {
-        drawCandlesIntoGroup(activeLayer, xS, yS, activeData);
-      }
-    };
-    
-    // Store the update function so it can be called from zoom handler
-    (window as any).__updateActiveLayer = updateActiveLayer;
     
     // Drawings group (above candles, below axes overlays)
     const drawingsGroup = g.append('g')
@@ -4566,16 +4259,33 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
       return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
     });
     
-    // Check if we should switch timeframes FIRST (before zoom limits)
-    if (autoTimeframeEnabled && !isSwitchingRef.current) {
-      const currentWidth = calculateCandleWidth(newXScale, candles, innerWidth);
-      const targetTF = shouldSwitchTimeframe(currentWidth, activeTimeframeRef.current);
-      
-      if (targetTF && targetTF !== activeTimeframeRef.current) {
-        executeTimeframeSwitch(targetTF);
-        return;
+        // ============================================================================
+    // NEW: Dynamic aggregation on zoom (replaces layer switching)
+    // ============================================================================
+    const visibleMs = visibleTimeRange[1]. getTime() - visibleTimeRange[0]. getTime();
+    const newBinMs = getBinMs(visibleMs);
+    
+    // Debounced bin change to prevent flickering
+    if (newBinMs !== prevBinMsRef.current) {
+      if (binChangeDebounceRef.current) {
+        clearTimeout(binChangeDebounceRef.current);
       }
+      
+      binChangeDebounceRef.current = setTimeout(() => {
+        console.log(`📊 Bin change:  ${prevBinMsRef.current / 60000}m → ${newBinMs / 60000}m`);
+        
+        // Re-aggregate from base candles
+        const newAggregated = aggregateCandles(baseCandles, newBinMs, [visibleTimeRange[0], visibleTimeRange[1]]);
+        setCandles(newAggregated);
+        setCurrentBinMs(newBinMs);
+        prevBinMsRef.current = newBinMs;
+      }, 200);
     }
+    
+    // Update visible domain state (deferred to prevent React/D3 conflict)
+    requestAnimationFrame(() => {
+      setVisibleDomain([visibleTimeRange[0], visibleTimeRange[1]]);
+    });
     
     // DYNAMIC ZOOM LIMITING: Check spacing (AFTER timeframe check)
     if (visibleCandles.length >= 2) {
@@ -4624,12 +4334,8 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           .call(g => g.select('.domain').attr('stroke', '#475569'));
           
           // Redraw candles with MINIMUM WIDTH enforced
-          // Use layered rendering if available, otherwise fall back to legacy
-          if (typeof (window as any).__updateActiveLayer === 'function') {
-            (window as any).__updateActiveLayer(newXScale, newYScale);
-          } else {
-            drawCandles(newXScale, newYScale);
-          }
+          // Draw candles (no more layer switching)
+          drawCandles(newXScale, newYScale);
           
           // Redraw Elliott Wave elements
           drawElliottWave(newXScale, newYScale);
@@ -4853,39 +4559,28 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           <Select 
             value={interval} 
             onValueChange={(val) => {
-              const newTF = val as '15m' | '1h' | '4h' | '1d';
+              const newTF = val as '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
               console.log(`👆 Manual selection: ${newTF}`);
               
               // Disable auto mode when manually selecting
               setAutoTimeframeEnabled(false);
-              
-              // Update active timeframe
-              activeTimeframeRef.current = newTF;
               setInterval(newTF);
               
-              // Load new candles
-              if (multiTimeframeData[newTF] && multiTimeframeData[newTF].length > 0) {
-                setCandles(multiTimeframeData[newTF]);
-                console.log(`✅ Loaded ${newTF} manually`);
-              } else {
-                console.warn(`⚠️ No data for ${newTF}`);
-              }
+              // Re-aggregate base candles to new interval
+              const newBinMs = getBinMsFromInterval(newTF);
+              const newAggregated = aggregateCandles(baseCandles, newBinMs);
+              setCandles(newAggregated);
+              setCurrentBinMs(newBinMs);
+              console.log(`✅ Switched to ${newTF} (${newAggregated.length} candles)`);
             }}
-            disabled={isLoadingTimeframes}
+            disabled={loading}
           >
             <SelectTrigger className="w-24 bg-slate-800 border-slate-600" data-testid="select-interval">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {TIMEFRAME_ORDER.map(tf => (
-                <SelectItem key={tf} value={tf}>
-                  {tf}
-                  {multiTimeframeData[tf]?.length > 0 && (
-                    <span className="ml-1 text-xs text-gray-400">
-                      ({multiTimeframeData[tf].length})
-                    </span>
-                  )}
-                </SelectItem>
+              {['1m', '5m', '15m', '1h', '4h', '1d'].map(tf => (
+                <SelectItem key={tf} value={tf}>{tf}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -4894,7 +4589,7 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           {autoTimeframeEnabled && (
             <div className="flex items-center gap-1 bg-blue-900/30 border border-blue-500/50 px-2 py-1 rounded text-xs">
               <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-              <span className="text-blue-300 font-medium">{activeTimeframeRef.current}</span>
+              <span className="text-blue-300 font-medium">{interval}</span>
             </div>
           )}
           
@@ -4905,7 +4600,7 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
         </div>
         
         <Button 
-          onClick={fetchAllTimeframes} 
+          onClick={fetchBaseCandles} 
           variant="outline" 
           className="bg-slate-800 border-slate-600 hover:bg-slate-700"
           data-testid="btn-refresh"
