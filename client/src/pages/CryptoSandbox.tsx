@@ -694,64 +694,6 @@ const updateZoomTranslateExtent = useCallback((
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
   
-  // Fetch candle data - use backend proxy for reliable data (up to 5000+ candles)
-  const fetchCandles = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Use backend proxy which handles CORS and can fetch more data
-      // First batch - most recent 1000
-      const url1 = `/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000`;
-      const response1 = await fetch(url1);
-      if (!response1.ok) {
-        handleError('data-fetch', `Failed to fetch data: HTTP ${response1.status}`, { url: url1, status: response1.status });
-        throw new Error(`HTTP ${response1.status}`);
-      }
-      const data1 = await response1.json();
-      
-      let allData = [...data1];
-      console.log(`📊 Batch 1: ${data1.length} candles`);
-      
-      // Fetch additional batches for more history
-      const batchCount = 5; // Total 5 batches = up to 5000 candles
-      let lastEndTime = data1.length > 0 ? data1[0][0] - 1 : null;
-      
-      for (let i = 2; i <= batchCount && lastEndTime; i++) {
-        const url = `/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000&endTime=${lastEndTime}`;
-        const response = await fetch(url);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.length > 0) {
-            console.log(`📊 Batch ${i}: ${data.length} candles`);
-            allData = [...data, ...allData];
-            lastEndTime = data[0][0] - 1;
-          } else {
-            break; // No more data available
-          }
-        } else {
-          break;
-        }
-      }
-      
-      console.log(`✅ Total candles loaded: ${allData.length}`);
-      
-      const formattedCandles: CandleData[] = allData.map((k: any) => ({
-        time: k[0],
-        open: parseFloat(k[1]),
-        high: parseFloat(k[2]),
-        low: parseFloat(k[3]),
-        close: parseFloat(k[4]),
-        volume: parseFloat(k[5])
-      }));
-      
-      setCandles(formattedCandles);
-    } catch (error: any) {
-      handleError('data-fetch', `Failed to load candles: ${error.message}`, { symbol, interval, error: error.toString() });
-      console.error('Error fetching candles:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [symbol, interval, handleError]);
-  
 // Fetch all timeframes sequentially for smooth auto-zoom
 // ============================================================================
 // NEW: Fetch 5-minute base candles (replaces fetchAllTimeframes)
@@ -814,15 +756,9 @@ const fetchBaseCandles = useCallback(async () => {
     
     // Set base candles (high-resolution source)
     setBaseCandles(sorted);
-    
-    // Also set candles for backward compatibility with drawings
-    // Aggregate to current interval for initial display
-    const initialBinMs = getBinMsFromInterval(interval);
-    const aggregated = aggregateCandles(sorted, initialBinMs);
-    setCandles(aggregated);
-    setCurrentBinMs(initialBinMs);
-    
-    console.log(`📈 Initial display: ${aggregated. length} candles (${interval} aggregation)`);
+    // Don't set candles here - let animation build them one by one
+    setCandles([]); // Start empty
+    console.log(`📈 Ready for build animation:  ${sorted.length} base candles`);
     
   } catch (error:  any) {
     handleError('data-fetch', `Failed to load candles: ${error. message}`);
@@ -832,7 +768,94 @@ const fetchBaseCandles = useCallback(async () => {
   }
 }, [symbol, interval, handleError]);
 
-// Helper to convert interval string to milliseconds
+  // ============================================================================
+// CINEMATIC BUILD ANIMATION - Candles appear one by one, speeding up
+// ============================================================================
+const hasPlayedIntroRef = useRef(false);
+const introAnimationRef = useRef<NodeJS.Timeout | null>(null);
+
+const playBuildAnimation = useCallback(() => {
+  if (! svgRef.current || baseCandles.length === 0) return;
+  if (hasPlayedIntroRef. current) return;
+  
+  hasPlayedIntroRef.current = true;
+  console.log('🎬 Starting build animation...');
+  
+  const totalCandles = baseCandles.length;
+  let visibleCount = 1;
+  let delay = 150; // Start slow:  150ms per candle
+  const minDelay = 1; // End fast: 1ms per candle
+  const speedUp = 0.96; // Gets 4% faster each step
+  
+  const addNextCandle = () => {
+    // Get candles from the END (most recent first, building backwards in time)
+    const startIndex = totalCandles - visibleCount;
+    const visibleBaseCandles = baseCandles.slice(startIndex);
+    
+    // Show at 5-minute resolution during animation
+    const animCandles = aggregateCandles(visibleBaseCandles, 5 * ONE_MINUTE_MS);
+    setCandles(animCandles);
+    setCurrentBinMs(5 * ONE_MINUTE_MS);
+    
+    // Update domain to fit visible candles (so chart auto-scales)
+    if (animCandles.length > 0) {
+      const priceMin = Math.min(...animCandles.map(c => c.low)) * 0.998;
+      const priceMax = Math.max(...animCandles. map(c => c.high)) * 1.002;
+      const timeMin = animCandles[0].time;
+      const timeMax = animCandles[animCandles.length - 1].time;
+      
+      setBaseDomain({
+        time: [timeMin, timeMax],
+        price: [priceMin, priceMax]
+      });
+    }
+    
+    // Log progress every 100 candles
+    if (visibleCount % 100 === 0 || visibleCount === 1) {
+      console.log(`🎬 Building:  ${visibleCount}/${totalCandles} candles (${delay. toFixed(0)}ms)`);
+    }
+    
+    // Check if done
+    if (visibleCount >= totalCandles) {
+      console.log('🎬 Build animation complete!');
+      // Switch to user's selected interval
+      const finalBinMs = getBinMsFromInterval(interval);
+      const finalCandles = aggregateCandles(baseCandles, finalBinMs);
+      setCandles(finalCandles);
+      setCurrentBinMs(finalBinMs);
+      return;
+    }
+    
+    // Add next candle
+    visibleCount++;
+    delay = Math.max(minDelay, delay * speedUp);
+    
+    introAnimationRef.current = setTimeout(addNextCandle, delay);
+  };
+  
+  // Start the animation
+  addNextCandle();
+  
+}, [baseCandles, interval]);
+
+// Cleanup animation on unmount
+useEffect(() => {
+  return () => {
+    if (introAnimationRef.current) {
+      clearTimeout(introAnimationRef.current);
+    }
+  };
+}, []);
+
+// Trigger animation when base candles load
+useEffect(() => {
+  if (baseCandles.length > 0 && !hasPlayedIntroRef.current) {
+    const timer = setTimeout(playBuildAnimation, 300);
+    return () => clearTimeout(timer);
+  }
+}, [baseCandles. length, playBuildAnimation]);
+  
+  // Helper to convert interval string to milliseconds
 function getBinMsFromInterval(intervalStr: string): number {
   const map:  Record<string, number> = {
     '1m': ONE_MINUTE_MS,
@@ -870,6 +893,10 @@ useEffect(() => {
     });
   }
 }, [candles, baseDomain. time]);
+
+
+
+
   
   // Document-level handlers for menu dragging and click-off to deselect
   useEffect(() => {
