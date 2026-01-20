@@ -2073,6 +2073,17 @@ const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
   }
 }, []);
 
+// Helper: Schedule zoom state update with throttling (at most every 120ms)
+const scheduleZoomStateUpdate = useCallback((transform: d3.ZoomTransform) => {
+  const now = Date.now();
+  if (now - lastZoomStateUpdateRef.current > 120) {
+    lastZoomStateUpdateRef.current = now;
+    requestAnimationFrame(() => {
+      handleZoomChange(transform);
+    });
+  }
+}, [handleZoomChange]);
+
 // ===== MULTI-TIMEFRAME AUTO-ZOOM FUNCTIONS =====
 
 // SMOOTH Timeframe configuration - prevents flickering
@@ -2919,7 +2930,19 @@ useEffect(() => {
       .attr('class', 'elliott-wave')
       .attr('clip-path', 'url(#chart-clip)');
     
-    // Candles group with clip path
+    // Layered rendering infrastructure for smooth timeframe transitions
+    // Create a layers group that will contain separate layers for each timeframe
+    const layersGroup = g.append('g')
+      .attr('class', 'layers-container')
+      .attr('clip-path', 'url(#chart-clip)');
+    
+    // Create individual layers for each timeframe (initially hidden with opacity 0)
+    const layer15m = layersGroup.append('g').attr('class', 'layer-15m').attr('opacity', 0);
+    const layer1h = layersGroup.append('g').attr('class', 'layer-1h').attr('opacity', 0);
+    const layer4h = layersGroup.append('g').attr('class', 'layer-4h').attr('opacity', 0);
+    const layer1d = layersGroup.append('g').attr('class', 'layer-1d').attr('opacity', 0);
+    
+    // Legacy single-layer candles group for backward compatibility (will be phased out)
     const candlesGroup = g.append('g')
       .attr('class', 'candles')
       .attr('clip-path', 'url(#chart-clip)');
@@ -2966,12 +2989,18 @@ useEffect(() => {
       return Math.round(width);
     };
 
-    // Draw candles
-    const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
-      candlesGroup.selectAll('*').remove();
+    // Refactored helper: Draw candles into any D3 group (enables layered rendering)
+    const drawCandlesIntoGroup = (
+      parentG: d3.Selection<SVGGElement, unknown, null, undefined>,
+      xS: d3.ScaleTime<number, number>,
+      yS: d3.ScaleLinear<number, number>,
+      candlesData: CandleData[]
+    ) => {
+      // Clear existing content in this group
+      parentG.selectAll('*').remove();
       
       const visibleTimeRange = xS.domain();
-      const visibleCandles = candles.filter(d => {
+      const visibleCandles = candlesData.filter(d => {
         const date = new Date(d.time);
         return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
       });
@@ -2981,10 +3010,8 @@ useEffect(() => {
       const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
       const bodyVisible = dynamicCandleWidth >= 3;
       
-      console.log(`🕯️ Rendering ${visibleCandles.length} ${activeTimeframeRef.current} candles @ ${dynamicCandleWidth.toFixed(2)}px (bodies ${bodyVisible ? 'visible' : 'hidden'})`);
-      
       // ALWAYS render wicks as 1px lines with rounded integer coordinates
-      candlesGroup.selectAll('.wick')
+      parentG.selectAll('.wick')
         .data(visibleCandles)
         .enter()
         .append('line')
@@ -2996,9 +3023,9 @@ useEffect(() => {
         .attr('stroke', d => d.close >= d.open ? '#22c55e' : '#ef4444')
         .attr('stroke-width', 1);
       
-      // Render candle bodies only when width >= 3px
+      // Render candle bodies only when width >= 3px (hide tiny bodies)
       if (bodyVisible) {
-        candlesGroup.selectAll('.body')
+        parentG.selectAll('.body')
           .data(visibleCandles)
           .enter()
           .append('rect')
@@ -3008,7 +3035,36 @@ useEffect(() => {
           .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
           .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
           .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444');
+      } else {
+        // When bodies are too small, still create rect elements but set display='none'
+        parentG.selectAll('.body')
+          .data(visibleCandles)
+          .enter()
+          .append('rect')
+          .attr('class', 'body')
+          .attr('x', d => Math.round(xS(new Date(d.time)) - 1))
+          .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
+          .attr('width', 1)
+          .attr('height', 1)
+          .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444')
+          .attr('display', 'none');
       }
+    };
+
+    // Legacy draw candles function (delegates to drawCandlesIntoGroup)
+    const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+      const visibleTimeRange = xS.domain();
+      const visibleCandles = candles.filter(d => {
+        const date = new Date(d.time);
+        return date >= visibleTimeRange[0] && date <= visibleTimeRange[1];
+      });
+      const visibleTimes = visibleCandles.map(c => c.time);
+      const dynamicCandleWidth = computeSafeCandleWidth(xS, visibleTimes, { widthFactor: 0.65, gapPx: 1, minPx: 3, maxPx: 40 });
+      const bodyVisible = dynamicCandleWidth >= 3;
+      
+      console.log(`🕯️ Rendering ${visibleCandles.length} ${activeTimeframeRef.current} candles @ ${dynamicCandleWidth.toFixed(2)}px (bodies ${bodyVisible ? 'visible' : 'hidden'})`);
+      
+      drawCandlesIntoGroup(candlesGroup, xS, yS, candles);
     };
     
     drawCandles(xScale, yScale);
@@ -4493,14 +4549,8 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
           drawDrawingsRef(newXScale, newYScale, transform.k);
         }
         
-        // 3. THROTTLED state updates - only update React state at most every 120ms
-        const now = Date.now();
-        if (now - lastZoomStateUpdateRef.current > 120) {
-          lastZoomStateUpdateRef.current = now;
-          requestAnimationFrame(() => {
-            handleZoomChange(transform);
-          });
-        }
+        // 3. THROTTLED state updates - use scheduleZoomStateUpdate helper
+        scheduleZoomStateUpdate(transform);
   });
     
     zoomRef.current = zoom;
