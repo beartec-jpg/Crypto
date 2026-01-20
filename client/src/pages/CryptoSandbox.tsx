@@ -2856,7 +2856,7 @@ useEffect(() => {
       const { widthFactor = 0.65, gapPx = 1, minPx = 3, maxPx = 40 } = opts || {};
       
       // Fallback for missing or insufficient data
-      if (! visibleTimes || visibleTimes.length < 2) {
+      if (!visibleTimes || visibleTimes.length < 2) {
         return Math.max(minPx, Math.round(widthFactor * (maxPx || 10)));
       }
       
@@ -2880,12 +2880,12 @@ useEffect(() => {
       
       // Compute raw width and max allowed (to preserve gap)
       const raw = Math.round(minDx * widthFactor);
-      const maxAllowed = Math.max(1, Math. floor(minDx - gapPx));
+      const maxAllowed = Math.max(1, Math.floor(minDx - gapPx));
       
       // Clamp to [minPx, maxPx] and respect maxAllowed
       const width = Math.min(maxPx, Math.max(minPx, Math.min(raw, maxAllowed)));
       
-      return Math. round(width);
+      return Math.round(width);
     };
 
     // Draw candles
