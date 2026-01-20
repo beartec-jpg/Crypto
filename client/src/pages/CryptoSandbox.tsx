@@ -773,7 +773,7 @@ const fetchBaseCandles = useCallback(async () => {
 }, [symbol, handleError]);
 
 // ============================================================================
-// CINEMATIC BUILD ANIMATION - 3 slow candles, then exponential to 1 week
+// CINEMATIC BUILD ANIMATION - Harmonic timing with dramatic intro
 // ============================================================================
 const hasPlayedIntroRef = useRef(false);
 const introAnimationRef = useRef<number | null>(null);
@@ -782,22 +782,31 @@ const animationCompleteRef = useRef(false);
 
 const ONE_WEEK_CANDLES = 2016; // 7 days * 24 hours * 12 (5-min candles per hour)
 
+// Dramatic intro phase configuration
+const DRAMATIC_CANDLES = 8;
+const DRAMATIC_DELAYS = [
+  1200,  // Candle 1: Long pause - builds anticipation
+  800,   // Candle 2: Still slow
+  600,   // Candle 3: Getting going
+  450,   // Candle 4
+  350,   // Candle 5
+  280,   // Candle 6
+  220,   // Candle 7
+  180,   // Candle 8: Transition to harmonic
+];
+
+// Harmonic acceleration phase configuration
+const HARMONIC_BASE_MS = 846;
+
 const playBuildAnimation = useCallback(() => {
   if (! svgRef.current) return;
   if (hasPlayedIntroRef.current) return;
   if (baseCandlesRef. current.length === 0) return;
   
   hasPlayedIntroRef.current = true;
-  console.log('🎬 Starting build animation.. .');
+  console.log('🎬 Starting build animation with harmonic timing...');
   
-  const startTime = performance.now();
-  
-  // Phase 1: Slow intro (0-3 seconds, candles 1-3)
-  // Phase 2: Exponential (3-10 seconds, candles 4 to ONE_WEEK_CANDLES)
-  
-  const SLOW_PHASE_DURATION = 3000; // 3 seconds
-  const FAST_PHASE_DURATION = 7000; // 7 seconds
-  const TOTAL_DURATION = SLOW_PHASE_DURATION + FAST_PHASE_DURATION; // 10 seconds
+  const animationStartTime = performance.now();
   
   // Timeframe thresholds - change later for smoother feel
 const timeframeLevels = [
@@ -808,7 +817,17 @@ const timeframeLevels = [
 ];
   
   let lastTimeframeName = '';
-  let lastVisibleCount = 0;
+  let currentCandleCount = 0;
+  let lastUpdateTime = performance.now();
+  
+  // Helper function to get delay for a given candle index
+  const getDelay = (candleIndex: number): number => {
+    if (candleIndex < DRAMATIC_CANDLES) {
+      return DRAMATIC_DELAYS[candleIndex];
+    }
+    // Harmonic formula: delay = HARMONIC_BASE_MS / (candleIndex - DRAMATIC_CANDLES + 1)
+    return HARMONIC_BASE_MS / (candleIndex - DRAMATIC_CANDLES + 1);
+  };
   
 const animate = () => {
   const currentData = baseCandlesRef.current;
@@ -819,54 +838,35 @@ const animate = () => {
     return;
   }
   
-  const elapsed = performance.now() - startTime;
-  let visibleCount:  number;
+  const now = performance.now();
+  const timeSinceLastUpdate = now - lastUpdateTime;
   
-  // =========================================================================
-  // NEW TIMING:  1s pause, then stepped acceleration
-  // =========================================================================
-  if (elapsed < 1000) {
-    // 0-1s:  PAUSE - show nothing yet
-    visibleCount = 0;
-  } else if (elapsed < 6000) {
-    // 1-6s:  Candles 1-5, one per second
-    visibleCount = Math.floor((elapsed - 1000) / 1000) + 1;
-  } else if (elapsed < 8500) {
-    // 6-8.5s: Candles 6-10, one per 0.5s
-    visibleCount = 5 + Math.floor((elapsed - 6000) / 500) + 1;
-  } else if (elapsed < 11000) {
-    // 8.5-11s: Candles 11-20, one per 0.25s
-    visibleCount = 10 + Math.floor((elapsed - 8500) / 250) + 1;
-  } else if (elapsed < 13000) {
-    // 11-13s: Candles 21-40, one per 0.1s
-    visibleCount = 20 + Math.floor((elapsed - 11000) / 100) + 1;
-  } else if (elapsed < 15000) {
-    // 13-15s:  Candles 41-100, one per 0.033s (30fps)
-    visibleCount = 40 + Math.floor((elapsed - 13000) / 33) + 1;
-  } else {
-    // 15s+: Exponential to finish
-    const expElapsed = elapsed - 15000;
-    const expDuration = 5000; // 5 more seconds to finish
-    const progress = Math.min(1, expElapsed / expDuration);
-    const exponential = Math.pow(progress, 2);
-    visibleCount = 100 + Math. floor(exponential * (ONE_WEEK_CANDLES - 100));
+  // Check if enough time has passed for the next candle
+  if (currentCandleCount < ONE_WEEK_CANDLES) {
+    const requiredDelay = getDelay(currentCandleCount);
+    
+    if (timeSinceLastUpdate >= requiredDelay) {
+      currentCandleCount++;
+      lastUpdateTime = now;
+      
+      // Log progress with phase indicators
+      const phase = currentCandleCount <= DRAMATIC_CANDLES ? '🎭 DRAMATIC' : '⚡ HARMONIC';
+      const elapsedSeconds = ((now - animationStartTime) / 1000).toFixed(1);
+      
+      if (currentCandleCount <= 10 || currentCandleCount % 100 === 0 || currentCandleCount === ONE_WEEK_CANDLES) {
+        console.log(`${phase} Candle ${currentCandleCount.toLocaleString()} (${elapsedSeconds}s)`);
+      }
+    }
   }
   
   // Cap at available data or week target
-  visibleCount = Math.min(visibleCount, totalBase, ONE_WEEK_CANDLES);
+  const visibleCount = Math.min(currentCandleCount, totalBase, ONE_WEEK_CANDLES);
   
-  // Handle pause phase
+  // Handle pause phase or if count hasn't changed yet
   if (visibleCount <= 0) {
     introAnimationRef.current = window.requestAnimationFrame(animate);
     return;
   }
-  
-  // Only update if count changed
-  if (visibleCount === lastVisibleCount) {
-    introAnimationRef.current = window.requestAnimationFrame(animate);
-    return;
-  }
-  lastVisibleCount = visibleCount;
   
   // Get candles from the END (most recent first, building backwards)
   const startIndex = Math.max(0, totalBase - visibleCount);
@@ -938,11 +938,6 @@ const animate = () => {
       time: [timeStart, timeEnd],
       price:  [priceMin, priceMax]
     });
-  }
-  
-  // Log progress
-  if (visibleCount <= 10 || visibleCount % 100 === 0 || visibleCount === ONE_WEEK_CANDLES) {
-    console.log(`🎬 ${visibleCount.toLocaleString()} candles (${(elapsed / 1000).toFixed(1)}s)`);
   }
   
   // Check if animation complete
