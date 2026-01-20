@@ -3040,20 +3040,8 @@ useEffect(() => {
           .attr('width', Math.max(1, Math.round(dynamicCandleWidth)))
           .attr('height', d => Math.max(1, Math.round(Math.abs(yS(d.open) - yS(d.close)))))
           .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444');
-      } else {
-        // When bodies are too small, still create rect elements but set display='none'
-        parentG.selectAll('.body')
-          .data(visibleCandles)
-          .enter()
-          .append('rect')
-          .attr('class', 'body')
-          .attr('x', d => Math.round(xS(new Date(d.time)) - 1))
-          .attr('y', d => Math.round(yS(Math.max(d.open, d.close))))
-          .attr('width', 1)
-          .attr('height', 1)
-          .attr('fill', d => d.close >= d.open ? '#22c55e' : '#ef4444')
-          .attr('display', 'none');
       }
+      // When bodies are too small, skip creating elements entirely (performance optimization)
     };
 
     // Legacy draw candles function (delegates to drawCandlesIntoGroup)
