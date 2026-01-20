@@ -810,145 +810,167 @@ const timeframeLevels = [
   let lastTimeframeName = '';
   let lastVisibleCount = 0;
   
-  const animate = () => {
-    const currentData = baseCandlesRef.current;
-    const totalBase = currentData. length;
-    
-    if (totalBase === 0) {
-      introAnimationRef.current = window.requestAnimationFrame(animate);
-      return;
-    }
-    
-    const elapsed = performance.now() - startTime;
-    let visibleCount:  number;
-    
-    if (elapsed < SLOW_PHASE_DURATION) {
-      // Phase 1: Slow intro - 1 candle per second
-      // 0-1s = 1 candle, 1-2s = 2 candles, 2-3s = 3 candles
-      visibleCount = Math.min(3, Math.floor(elapsed / 1000) + 1);
-    } else {
-      // Phase 2: Exponential acceleration (3-10 seconds)
-      const fastElapsed = elapsed - SLOW_PHASE_DURATION;
-      const fastProgress = Math.min(1, fastElapsed / FAST_PHASE_DURATION);
-      
-      // Exponential curve: starts slow, accelerates rapidly
-      // Using x^3 for aggressive exponential feel
-      const exponentialProgress = Math.pow(fastProgress, 3);
-      
-      // From candle 4 to ONE_WEEK_CANDLES
-      const remainingCandles = ONE_WEEK_CANDLES - 3;
-      visibleCount = 3 + Math.floor(exponentialProgress * remainingCandles);
-    }
-    
-    // Cap at available data or week target
-    visibleCount = Math.min(visibleCount, totalBase, ONE_WEEK_CANDLES);
-    
-    // Only update if count changed (performance optimization)
-    if (visibleCount === lastVisibleCount && elapsed < TOTAL_DURATION) {
-      introAnimationRef.current = window.requestAnimationFrame(animate);
-      return;
-    }
-    lastVisibleCount = visibleCount;
-    
-    // Get candles from the END (most recent first, building backwards)
-    const startIndex = Math.max(0, totalBase - visibleCount);
-    const visibleBaseCandles = currentData.slice(startIndex);
-    
-    // Determine timeframe based on visible count
-    const level = timeframeLevels.find(l => visibleCount <= l.maxCandles) 
-      || timeframeLevels[timeframeLevels. length - 1];
-    
-    if (level.name !== lastTimeframeName) {
-      console. log(`🎬 Switching to ${level. name} at ${visibleCount. toLocaleString()} candles`);
-      lastTimeframeName = level.name;
-    }
-    
-    // Aggregate and display
-    const animCandles = aggregateCandles(visibleBaseCandles, level.binMs);
-    setCandles(animCandles);
-    setCurrentBinMs(level.binMs);
-    
-   // =========================================================================
-// CANDLE 1 STARTS CENTERED, WALKS RIGHT as history builds
-// =========================================================================
-if (animCandles.length > 0) {
-  const priceMin = Math.min(...animCandles. map(c => c.low)) * 0.998;
-  const priceMax = Math.max(... animCandles.map(c => c. high)) * 1.002;
+const animate = () => {
+  const currentData = baseCandlesRef.current;
+  const totalBase = currentData.length;
   
-  const oldestTime = animCandles[0].time; // oldest (left side)
-  const newestTime = animCandles[animCandles.length - 1].time; // NOW (right side)
-  const timeSpan = newestTime - oldestTime || level.binMs;
-  
-  // How many candles fit on screen? 
-  const chartWidth = svgRef. current?.clientWidth || 600;
-  const candleWidth = 6;
-  const maxVisibleCandles = Math.floor(chartWidth / candleWidth);
-  
-  let timeStart:  number;
-  let timeEnd: number;
-  
-  if (animCandles. length < maxVisibleCandles) {
-    // ===== CENTERED, WALKING RIGHT =====
-    const fullTimeSpan = maxVisibleCandles * level.binMs;
-    const totalPadding = fullTimeSpan - timeSpan;
-    
-    // Start with equal padding, shift right as candles build
-    // Progress:  0 = centered, 1 = right edge
-    const progress = animCandles.length / maxVisibleCandles;
-    
-    // Left padding grows, right padding shrinks
-    const leftPadding = totalPadding * (0.5 + progress * 0.5);
-    const rightPadding = totalPadding - leftPadding;
-    
-    timeStart = oldestTime - leftPadding;
-    timeEnd = newestTime + rightPadding;
-  } else {
-    // ===== NORMAL MODE - screen is full =====
-    timeStart = oldestTime;
-    timeEnd = newestTime;
+  if (totalBase === 0) {
+    introAnimationRef.current = window.requestAnimationFrame(animate);
+    return;
   }
   
-  setBaseDomain({
-    time: [timeStart, timeEnd],
-    price: [priceMin, priceMax]
-  });
-}
-    
-    // Log progress
-    if (visibleCount <= 3) {
-      console.log(`🎬 Candle ${visibleCount} appeared`);
-    } else if (visibleCount % 500 === 0 || visibleCount === ONE_WEEK_CANDLES) {
-      console.log(`🎬 ${visibleCount.toLocaleString()} candles (${((elapsed / 1000).toFixed(1))}s)`);
-    }
-    
-    // Check if animation complete (reached 1 week or 10 seconds)
-    if (elapsed >= TOTAL_DURATION || visibleCount >= ONE_WEEK_CANDLES) {
-      console.log(`🎬 Animation complete! 1 week (${ONE_WEEK_CANDLES. toLocaleString()} candles) in view`);
-      animationCompleteRef. current = true;
-      
-      // Set final view to user's selected interval
-      const finalBinMs = getBinMsFromInterval(interval);
-      const weekCandles = currentData.slice(-ONE_WEEK_CANDLES);
-      const finalCandles = aggregateCandles(weekCandles, finalBinMs);
-      setCandles(finalCandles);
-      setCurrentBinMs(finalBinMs);
-      
-      // Update domain to show exactly 1 week
-      if (finalCandles.length > 0) {
-        const priceMin = Math.min(...finalCandles.map(c => c.low)) * 0.998;
-        const priceMax = Math. max(...finalCandles.map(c => c.high)) * 1.002;
-        setBaseDomain({
-          time: [finalCandles[0].time, finalCandles[finalCandles.length - 1].time],
-          price: [priceMin, priceMax]
-        });
-      }
-      
-      return; // Stop animation, but data keeps loading in background
-    }
-    
-    // Next frame
+  const elapsed = performance.now() - startTime;
+  let visibleCount:  number;
+  
+  // =========================================================================
+  // NEW TIMING:  1s pause, then stepped acceleration
+  // =========================================================================
+  if (elapsed < 1000) {
+    // 0-1s:  PAUSE - show nothing yet
+    visibleCount = 0;
+  } else if (elapsed < 6000) {
+    // 1-6s:  Candles 1-5, one per second
+    visibleCount = Math.floor((elapsed - 1000) / 1000) + 1;
+  } else if (elapsed < 8500) {
+    // 6-8.5s: Candles 6-10, one per 0.5s
+    visibleCount = 5 + Math.floor((elapsed - 6000) / 500) + 1;
+  } else if (elapsed < 11000) {
+    // 8.5-11s: Candles 11-20, one per 0.25s
+    visibleCount = 10 + Math.floor((elapsed - 8500) / 250) + 1;
+  } else if (elapsed < 13000) {
+    // 11-13s: Candles 21-40, one per 0.1s
+    visibleCount = 20 + Math.floor((elapsed - 11000) / 100) + 1;
+  } else if (elapsed < 15000) {
+    // 13-15s:  Candles 41-100, one per 0.033s (30fps)
+    visibleCount = 40 + Math.floor((elapsed - 13000) / 33) + 1;
+  } else {
+    // 15s+: Exponential to finish
+    const expElapsed = elapsed - 15000;
+    const expDuration = 5000; // 5 more seconds to finish
+    const progress = Math.min(1, expElapsed / expDuration);
+    const exponential = Math.pow(progress, 2);
+    visibleCount = 100 + Math. floor(exponential * (ONE_WEEK_CANDLES - 100));
+  }
+  
+  // Cap at available data or week target
+  visibleCount = Math.min(visibleCount, totalBase, ONE_WEEK_CANDLES);
+  
+  // Handle pause phase
+  if (visibleCount <= 0) {
     introAnimationRef.current = window.requestAnimationFrame(animate);
-  };
+    return;
+  }
+  
+  // Only update if count changed
+  if (visibleCount === lastVisibleCount) {
+    introAnimationRef.current = window.requestAnimationFrame(animate);
+    return;
+  }
+  lastVisibleCount = visibleCount;
+  
+  // Get candles from the END (most recent first, building backwards)
+  const startIndex = Math.max(0, totalBase - visibleCount);
+  const visibleBaseCandles = currentData. slice(startIndex);
+  
+  // Determine timeframe based on visible count
+  const level = timeframeLevels. find(l => visibleCount <= l.maxCandles) 
+    || timeframeLevels[timeframeLevels. length - 1];
+  
+  if (level. name !== lastTimeframeName) {
+    console.log(`🎬 Switching to ${level.name} at ${visibleCount. toLocaleString()} candles`);
+    lastTimeframeName = level.name;
+  }
+  
+  // Aggregate and display
+  const animCandles = aggregateCandles(visibleBaseCandles, level. binMs);
+  setCandles(animCandles);
+  setCurrentBinMs(level.binMs);
+  
+  // =========================================================================
+  // FIXED SIZE: Keep candles same size throughout intro (first 20 candles)
+  // =========================================================================
+  if (animCandles.length > 0) {
+    const priceMin = Math.min(... animCandles.map(c => c. low)) * 0.998;
+    const priceMax = Math. max(...animCandles.map(c => c.high)) * 1.002;
+    
+    const oldestTime = animCandles[0].time;
+    const newestTime = animCandles[animCandles.length - 1].time;
+    
+    // How many candles fit on screen? 
+    const chartWidth = svgRef.current?. clientWidth || 600;
+    const candleWidth = 6;
+    const maxVisibleCandles = Math.floor(chartWidth / candleWidth);
+    
+    let timeStart:  number;
+    let timeEnd: number;
+    
+    // FIXED: Always show space for at least 20 candles during intro
+    const minDisplayCandles = Math.max(20, animCandles.length);
+    
+    if (animCandles.length < maxVisibleCandles) {
+      // Calculate time span as if we have minDisplayCandles
+      const displayTimeSpan = minDisplayCandles * level.binMs;
+      const actualTimeSpan = newestTime - oldestTime || level.binMs;
+      
+      // Full screen time span
+      const fullTimeSpan = maxVisibleCandles * level.binMs;
+      const totalPadding = fullTimeSpan - displayTimeSpan;
+      
+      // Progress for walking right (based on how full the "20 candle" view is)
+      const progress = Math.min(1, animCandles.length / minDisplayCandles);
+      
+      // Left padding grows, right padding shrinks (walk right)
+      const leftPadding = totalPadding * (0.5 + progress * 0.5);
+      const rightPadding = totalPadding - leftPadding;
+      
+      // Center the actual candles within the display space
+      const displayPadding = (displayTimeSpan - actualTimeSpan) / 2;
+      
+      timeStart = oldestTime - leftPadding - displayPadding;
+      timeEnd = newestTime + rightPadding + displayPadding;
+    } else {
+      // Normal mode - screen is full
+      timeStart = oldestTime;
+      timeEnd = newestTime;
+    }
+    
+    setBaseDomain({
+      time: [timeStart, timeEnd],
+      price:  [priceMin, priceMax]
+    });
+  }
+  
+  // Log progress
+  if (visibleCount <= 10 || visibleCount % 100 === 0 || visibleCount === ONE_WEEK_CANDLES) {
+    console.log(`🎬 ${visibleCount.toLocaleString()} candles (${(elapsed / 1000).toFixed(1)}s)`);
+  }
+  
+  // Check if animation complete
+  if (visibleCount >= ONE_WEEK_CANDLES) {
+    console.log(`🎬 Animation complete!`);
+    animationCompleteRef.current = true;
+    
+    const finalBinMs = getBinMsFromInterval(interval);
+    const weekCandles = currentData.slice(-ONE_WEEK_CANDLES);
+    const finalCandles = aggregateCandles(weekCandles, finalBinMs);
+    setCandles(finalCandles);
+    setCurrentBinMs(finalBinMs);
+    
+    if (finalCandles.length > 0) {
+      setBaseDomain({
+        time: [finalCandles[0].time, finalCandles[finalCandles.length - 1].time],
+        price:  [
+          Math.min(... finalCandles.map(c => c. low)) * 0.998,
+          Math.max(...finalCandles.map(c => c.high)) * 1.002
+        ]
+      });
+    }
+    
+    return;
+  }
+  
+  introAnimationRef.current = window.requestAnimationFrame(animate);
+};
   
   // Start animation
   animate();
