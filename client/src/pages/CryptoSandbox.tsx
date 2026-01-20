@@ -771,7 +771,7 @@ const fetchBaseCandles = useCallback(async () => {
     // Fetch in chunks (Binance 1000 limit per request)
     while (endTime > targetStart && iteration < maxIterations) {
       try {
-        const url = `/api/binance/klines? symbol=${symbol}&interval=5m&limit=1000&endTime=${endTime}`;
+        const url = `/api/binance/klines?symbol=${symbol}&interval=5m&limit=1000&endTime=${endTime}`;
         const response = await fetch(url);
         
         if (! response.ok) {
