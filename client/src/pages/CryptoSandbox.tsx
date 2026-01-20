@@ -868,15 +868,43 @@ const playBuildAnimation = useCallback(() => {
     setCandles(animCandles);
     setCurrentBinMs(level.binMs);
     
-    // Update domain to fit visible candles
-    if (animCandles.length > 0) {
-      const priceMin = Math.min(...animCandles. map(c => c.low)) * 0.998;
-      const priceMax = Math. max(...animCandles. map(c => c.high)) * 1.002;
-      setBaseDomain({
-        time:  [animCandles[0].time, animCandles[animCandles.length - 1].time],
-        price: [priceMin, priceMax]
-      });
-    }
+    // =========================================================================
+// PRESENT CANDLE PUSHES RIGHT - history builds to the left
+// =========================================================================
+if (animCandles. length > 0) {
+  const priceMin = Math.min(...animCandles.map(c => c.low)) * 0.998;
+  const priceMax = Math.max(...animCandles.map(c => c. high)) * 1.002;
+  
+  const oldestTime = animCandles[0].time; // oldest (left side)
+  const newestTime = animCandles[animCandles.length - 1].time; // NOW (right side)
+  const timeSpan = newestTime - oldestTime || level.binMs;
+  
+  // How many candles fit on screen? 
+  const chartWidth = svgRef.current?.clientWidth || 600;
+  const candleWidth = 6;
+  const maxVisibleCandles = Math.floor(chartWidth / candleWidth);
+  
+  let timeStart:  number;
+  let timeEnd:  number;
+  
+  if (animCandles.length < maxVisibleCandles) {
+    // ===== PRESENT AT RIGHT, HISTORY BUILDS LEFT =====
+    const fullTimeSpan = maxVisibleCandles * level.binMs;
+    const rightPadding = fullTimeSpan - timeSpan;
+    
+    timeStart = oldestTime;
+    timeEnd = newestTime + rightPadding;
+  } else {
+    // ===== NORMAL MODE - screen is full =====
+    timeStart = oldestTime;
+    timeEnd = newestTime;
+  }
+  
+  setBaseDomain({
+    time: [timeStart, timeEnd],
+    price: [priceMin, priceMax]
+  });
+}
     
     // Log progress
     if (visibleCount <= 3) {
