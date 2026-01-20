@@ -328,6 +328,11 @@ const handleTimeframeChange = useCallback((newTf: string, oldTf: string) => {
     // Update active timeframe REF FIRST (prevents cascading)
     activeTimeframeRef.current = newTf as '15m' | '1h' | '4h' | '1d';
     
+    // Trigger layer cross-fade animation if layered rendering is active
+    if (typeof (window as any).__switchTimeframeLayer === 'function') {
+      (window as any).__switchTimeframeLayer(newTf as '15m' | '1h' | '4h' | '1d');
+    }
+    
     // Update state - batch updates using React's automatic batching
     const newTimeframe = newTf as '15m' | '1h' | '4h' | '1d';
     if (multiTimeframeData[newTimeframe]?.length > 0) {
@@ -3268,6 +3273,102 @@ useEffect(() => {
     };
     
     drawElliottWave(xScale, yScale);
+    
+    // Populate all timeframe layers with pre-existing data for smooth transitions
+    const populateTimeframeLayers = () => {
+      console.log('🎨 Populating timeframe layers for smooth transitions...');
+      
+      // Map of layer groups to their corresponding timeframe data
+      const layerMap: Record<'15m' | '1h' | '4h' | '1d', d3.Selection<SVGGElement, unknown, null, undefined>> = {
+        '15m': layer15m,
+        '1h': layer1h,
+        '4h': layer4h,
+        '1d': layer1d
+      };
+      
+      // Render each timeframe's data into its layer
+      const timeframes: Array<'15m' | '1h' | '4h' | '1d'> = ['15m', '1h', '4h', '1d'];
+      timeframes.forEach(tf => {
+        const layerGroup = layerMap[tf];
+        const tfData = multiTimeframeData[tf];
+        
+        if (tfData && tfData.length > 0) {
+          // Build a scale for this timeframe's data
+          const tfTimeExtent = d3.extent(tfData, d => d.time) as [number, number];
+          const tfPriceExtent: [number, number] = [
+            d3.min(tfData, d => d.low) as number * 0.999,
+            d3.max(tfData, d => d.high) as number * 1.001
+          ];
+          
+          const tfXScale = d3.scaleTime()
+            .domain([new Date(tfTimeExtent[0]), new Date(tfTimeExtent[1])])
+            .range([0, innerWidth]);
+          
+          const tfYScale = d3.scaleLinear()
+            .domain(tfPriceExtent)
+            .range([innerHeight, 0])
+            .nice();
+          
+          // Render candles into this layer
+          drawCandlesIntoGroup(layerGroup, tfXScale, tfYScale, tfData);
+          
+          // Show only the active timeframe's layer
+          layerGroup.attr('opacity', tf === activeTimeframeRef.current ? 1 : 0);
+          
+          console.log(`  ✓ Layer ${tf}: ${tfData.length} candles rendered (${tf === activeTimeframeRef.current ? 'visible' : 'hidden'})`);
+        } else {
+          console.log(`  ⚠ Layer ${tf}: No data available`);
+          layerGroup.attr('opacity', 0);
+        }
+      });
+      
+      // Hide legacy candlesGroup since we're using layers now
+      candlesGroup.attr('opacity', 0);
+      
+      console.log('✅ All timeframe layers populated');
+    };
+    
+    // Initial population of layers if we have multi-timeframe data
+    if (Object.values(multiTimeframeData).some(data => data && data.length > 0)) {
+      populateTimeframeLayers();
+    }
+    
+    // Function to smoothly cross-fade between timeframe layers
+    const switchTimeframeLayer = (targetTf: '15m' | '1h' | '4h' | '1d') => {
+      console.log(`🎬 Cross-fading to layer: ${targetTf}`);
+      
+      const layerMap: Record<'15m' | '1h' | '4h' | '1d', d3.Selection<SVGGElement, unknown, null, undefined>> = {
+        '15m': layer15m,
+        '1h': layer1h,
+        '4h': layer4h,
+        '1d': layer1d
+      };
+      
+      const targetLayer = layerMap[targetTf];
+      
+      // Cross-fade animation: fade out all other layers, fade in target layer
+      const FADE_DURATION = 300; // milliseconds
+      
+      Object.entries(layerMap).forEach(([tf, layer]) => {
+        if (tf === targetTf) {
+          // Fade in target layer
+          layer.transition()
+            .duration(FADE_DURATION)
+            .attr('opacity', 1);
+        } else {
+          // Fade out other layers
+          layer.transition()
+            .duration(FADE_DURATION)
+            .attr('opacity', 0);
+        }
+      });
+      
+      console.log(`✅ Layer transition to ${targetTf} initiated`);
+    };
+    
+    // Store the layer switch function in a ref so it can be called from outside this effect
+    // This is a workaround since we can't easily access D3 selections from React callbacks
+    (window as any).__switchTimeframeLayer = switchTimeframeLayer;
     
     // Drawings group (above candles, below axes overlays)
     const drawingsGroup = g.append('g')
