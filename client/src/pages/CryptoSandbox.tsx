@@ -59,18 +59,40 @@ const ONE_WEEK_MS = 7 * ONE_DAY_MS;
 const MAX_BASE_CANDLES = 50000;  // ~6 months of 5m data
 
 
-const BIN_THRESHOLDS = [
-  { visibleMs: 21 * ONE_DAY_MS,    binMs: ONE_WEEK_MS,        name: '1W' },   // 3+ weeks visible
-  { visibleMs: 14 * ONE_DAY_MS,    binMs: 3 * ONE_DAY_MS,     name: '3D' },   // 2-3 weeks
-  { visibleMs: 7 * ONE_DAY_MS,     binMs: 2 * ONE_DAY_MS,     name: '2D' },   // 1-2 weeks
-  { visibleMs: 4 * ONE_DAY_MS,     binMs: ONE_DAY_MS,         name: '1D' },   // 4-7 days
-  { visibleMs: 2 * ONE_DAY_MS,     binMs: 12 * ONE_HOUR_MS,   name: '12h' },  // 2-4 days
-  { visibleMs: ONE_DAY_MS,         binMs: 4 * ONE_HOUR_MS,    name: '4h' },   // 1-2 days
-  { visibleMs: 12 * ONE_HOUR_MS,   binMs: 2 * ONE_HOUR_MS,    name: '2h' },   // 12-24 hours
-  { visibleMs: 6 * ONE_HOUR_MS,    binMs: ONE_HOUR_MS,        name: '1h' },   // 6-12 hours
-  { visibleMs: 3 * ONE_HOUR_MS,    binMs: 30 * ONE_MINUTE_MS, name: '30m' },  // 3-6 hours
-  { visibleMs: 90 * ONE_MINUTE_MS, binMs: 15 * ONE_MINUTE_MS, name: '15m' },  // 1.5-3 hours
-  { visibleMs: 0,                  binMs: 5 * ONE_MINUTE_MS,  name: '5m' },   // < 1.5 hours
+// OLD: Time-based thresholds (DEPRECATED - kept for reference)
+// const BIN_THRESHOLDS = [
+//   { visibleMs: 21 * ONE_DAY_MS,    binMs: ONE_WEEK_MS,        name: '1W' },
+//   { visibleMs: 14 * ONE_DAY_MS,    binMs: 3 * ONE_DAY_MS,     name: '3D' },
+//   { visibleMs: 7 * ONE_DAY_MS,     binMs: 2 * ONE_DAY_MS,     name: '2D' },
+//   { visibleMs: 4 * ONE_DAY_MS,     binMs: ONE_DAY_MS,         name: '1D' },
+//   { visibleMs: 2 * ONE_DAY_MS,     binMs: 12 * ONE_HOUR_MS,   name: '12h' },
+//   { visibleMs: ONE_DAY_MS,         binMs: 4 * ONE_HOUR_MS,    name: '4h' },
+//   { visibleMs: 12 * ONE_HOUR_MS,   binMs: 2 * ONE_HOUR_MS,    name: '2h' },
+//   { visibleMs: 6 * ONE_HOUR_MS,    binMs: ONE_HOUR_MS,        name: '1h' },
+//   { visibleMs: 3 * ONE_HOUR_MS,    binMs: 30 * ONE_MINUTE_MS, name: '30m' },
+//   { visibleMs: 90 * ONE_MINUTE_MS, binMs: 15 * ONE_MINUTE_MS, name: '15m' },
+//   { visibleMs: 0,                  binMs: 5 * ONE_MINUTE_MS,  name: '5m' },
+// ];
+
+// Constants for candle width thresholds
+const MIN_CANDLE_WIDTH_PX = 3;   // Switch UP to higher TF when candles get smaller than this
+const MAX_CANDLE_WIDTH_PX = 15;  // Switch DOWN to lower TF when candles get bigger than this
+const IDEAL_CANDLE_WIDTH_PX = 8; // Target width for initial view
+const CANDLE_WIDTH_RATIO = 0.7;  // Gap factor: 70% width, 30% gap between candles
+
+// Ordered list of available timeframes (smallest to largest)
+const TIMEFRAME_BINS = [
+  { binMs: 5 * ONE_MINUTE_MS,  name: '5m' },
+  { binMs: 15 * ONE_MINUTE_MS, name: '15m' },
+  { binMs: 30 * ONE_MINUTE_MS, name: '30m' },
+  { binMs: ONE_HOUR_MS,        name: '1h' },
+  { binMs: 2 * ONE_HOUR_MS,    name: '2h' },
+  { binMs: 4 * ONE_HOUR_MS,    name: '4h' },
+  { binMs: 12 * ONE_HOUR_MS,   name: '12h' },
+  { binMs: ONE_DAY_MS,         name: '1D' },
+  { binMs: 2 * ONE_DAY_MS,     name: '2D' },
+  { binMs: 3 * ONE_DAY_MS,     name: '3D' },
+  { binMs: ONE_WEEK_MS,        name: '1W' },
 ];
 
 interface AggregatedCandle extends CandleData {
@@ -128,14 +150,29 @@ function aggregateCandles(
   return aggregated. sort((a, b) => a.time - b.time);
 }
 
-function getBinMs(visibleMs: number): number {
-  for (const threshold of BIN_THRESHOLDS) {
-    if (visibleMs >= threshold.visibleMs) {
-      return threshold.binMs;
-    }
+// Calculate candle width in pixels for a given timeframe
+function calculateCandleWidth(
+  visibleMs: number,
+  binMs: number,
+  chartWidthPx: number
+): number {
+  // Guard against invalid inputs
+  if (visibleMs <= 0 || binMs <= 0 || chartWidthPx <= 0) {
+    return IDEAL_CANDLE_WIDTH_PX;
   }
-  return BASE_RESOLUTION_MS;
+  const numCandles = visibleMs / binMs;
+  return (chartWidthPx / numCandles) * CANDLE_WIDTH_RATIO;
 }
+
+// OLD: Time-based function (DEPRECATED - kept for reference)
+// function getBinMs(visibleMs: number): number {
+//   for (const threshold of BIN_THRESHOLDS) {
+//     if (visibleMs >= threshold.visibleMs) {
+//       return threshold.binMs;
+//     }
+//   }
+//   return BASE_RESOLUTION_MS;
+// }
 
 interface CandleData {
   time: number;
@@ -221,6 +258,8 @@ export default function CryptoSandbox() {
   const prevBinMsRef = useRef(BASE_RESOLUTION_MS);
   const binChangeDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const aggregationCacheRef = useRef<Map<number, CandleData[]>>(new Map());
+  const lastSwitchTimeRef = useRef<number>(0); // For hysteresis to prevent flickering
+  const SWITCH_COOLDOWN_MS = 500; // Don't switch again for 500ms after a switch
   
   // Stable base domain for scales - prevents recreation on data changes
   const [baseDomain, setBaseDomain] = useState<{
@@ -779,7 +818,68 @@ const fetchBaseCandles = useCallback(async () => {
 }, [symbol, handleError]);
 
 // ============================================================================
-// CINEMATIC BUILD ANIMATION - Harmonic timing with dramatic intro
+// NEW: Pixel-Width Based Timeframe Switching
+// ============================================================================
+
+// Get optimal bin size based on candle pixel width
+const getBinMsForPixelWidth = useCallback((
+  visibleMs: number,
+  chartWidthPx: number,
+  currentBinMs: number
+): number => {
+  // Hysteresis: don't switch if we just switched
+  const now = Date.now();
+  if (now - lastSwitchTimeRef.current < SWITCH_COOLDOWN_MS) {
+    return currentBinMs;
+  }
+  
+  const currentIdx = TIMEFRAME_BINS.findIndex(t => t.binMs === currentBinMs);
+  const currentWidth = calculateCandleWidth(visibleMs, currentBinMs, chartWidthPx);
+  
+  // If candles are too small, switch to higher timeframe
+  if (currentWidth < MIN_CANDLE_WIDTH_PX && currentIdx < TIMEFRAME_BINS.length - 1) {
+    // Find the first timeframe where candles would be >= MIN_CANDLE_WIDTH_PX
+    for (let i = currentIdx + 1; i < TIMEFRAME_BINS.length; i++) {
+      const width = calculateCandleWidth(visibleMs, TIMEFRAME_BINS[i].binMs, chartWidthPx);
+      
+      if (width >= MIN_CANDLE_WIDTH_PX) {
+        console.log(`📊 Candles too small (${currentWidth.toFixed(1)}px) → switching to ${TIMEFRAME_BINS[i].name}`);
+        lastSwitchTimeRef.current = now;
+        return TIMEFRAME_BINS[i].binMs;
+      }
+    }
+    const largestBinMs = TIMEFRAME_BINS[TIMEFRAME_BINS.length - 1].binMs;
+    if (largestBinMs !== currentBinMs) {
+      lastSwitchTimeRef.current = now;
+    }
+    return largestBinMs; // Use largest
+  }
+  
+  // If candles are too fat, switch to lower timeframe
+  if (currentWidth > MAX_CANDLE_WIDTH_PX && currentIdx > 0) {
+    // Find the lowest timeframe where candles would still be <= MAX_CANDLE_WIDTH_PX
+    for (let i = currentIdx - 1; i >= 0; i--) {
+      const width = calculateCandleWidth(visibleMs, TIMEFRAME_BINS[i].binMs, chartWidthPx);
+      
+      if (width <= MAX_CANDLE_WIDTH_PX) {
+        console.log(`📊 Candles too fat (${currentWidth.toFixed(1)}px) → switching to ${TIMEFRAME_BINS[i].name}`);
+        lastSwitchTimeRef.current = now;
+        return TIMEFRAME_BINS[i].binMs;
+      }
+    }
+    const smallestBinMs = TIMEFRAME_BINS[0].binMs;
+    if (smallestBinMs !== currentBinMs) {
+      lastSwitchTimeRef.current = now;
+    }
+    return smallestBinMs; // Use smallest
+  }
+  
+  // Candles are in good range (3-15px), stay on current timeframe
+  return currentBinMs;
+}, []);
+
+// ============================================================================
+// INTRO ANIMATION - Smooth 8-second candle reveal
 // ============================================================================
 const hasPlayedIntroRef = useRef(false);
 const introAnimationRef = useRef<number | null>(null);
@@ -788,200 +888,89 @@ const animationCompleteRef = useRef(false);
 
 const ONE_WEEK_CANDLES = 2016; // 7 days * 24 hours * 12 (5-min candles per hour)
 
-// Dramatic intro phase configuration
-const DRAMATIC_CANDLES = 8;
-const DRAMATIC_DELAYS = [
-  1200,  // Candle 1: Long pause - builds anticipation
-  800,   // Candle 2: Still slow
-  600,   // Candle 3: Getting going
-  450,   // Candle 4
-  350,   // Candle 5
-  280,   // Candle 6
-  220,   // Candle 7
-  180,   // Candle 8: Transition to harmonic
-];
-
-// Harmonic acceleration phase configuration
-const HARMONIC_BASE_MS = 846;
-
 const playBuildAnimation = useCallback(() => {
-  if (! svgRef.current) return;
+  if (!svgRef.current) return;
   if (hasPlayedIntroRef.current) return;
-  if (baseCandlesRef. current.length === 0) return;
+  if (baseCandlesRef.current.length === 0) return;
   
   hasPlayedIntroRef.current = true;
-  console.log('🎬 Starting build animation with harmonic timing...');
+  console.log('🎬 Starting build animation...');
   
-  const animationStartTime = performance.now();
+  const startTime = performance.now();
+  const TOTAL_DURATION = 8000; // 8 seconds total
   
-  // Timeframe thresholds - change later for smoother feel
-const timeframeLevels = [
-  { maxCandles: 100,  binMs: 5 * ONE_MINUTE_MS,  name: '5m' },
-  { maxCandles: 200,  binMs: 15 * ONE_MINUTE_MS, name: '15m' },
-  { maxCandles: 350,  binMs: 30 * ONE_MINUTE_MS, name: '30m' },
-  { maxCandles: 500,  binMs: ONE_HOUR_MS,        name: '1h' },
-  { maxCandles: 700,  binMs: 2 * ONE_HOUR_MS,    name: '2h' },
-  { maxCandles: 1000, binMs: 4 * ONE_HOUR_MS,    name: '4h' },
-  { maxCandles: 1400, binMs: 12 * ONE_HOUR_MS,   name: '12h' },
-  { maxCandles: 1800, binMs: ONE_DAY_MS,         name: '1D' },
-  { maxCandles: Infinity, binMs: 2 * ONE_DAY_MS, name: '2D' },
-];
+  // Calculate the appropriate timeframe for 1 week of data on this screen
+  const chartWidth = svgRef.current?.clientWidth || 600;
+  const weekMs = ONE_WEEK_MS;
   
-  let lastTimeframeName = '';
-  let currentCandleCount = 0;
-  let lastUpdateTime = performance.now();
-  
-  // Helper function to get delay for a given candle index
-  const getDelay = (candleIndex: number): number => {
-    if (candleIndex < DRAMATIC_CANDLES) {
-      return DRAMATIC_DELAYS[candleIndex];
+  // Find timeframe that gives ~8px candles for 1 week view
+  let targetBinMs = ONE_HOUR_MS; // Default to 1h
+  for (const tf of TIMEFRAME_BINS) {
+    const candleWidth = calculateCandleWidth(weekMs, tf.binMs, chartWidth);
+    if (candleWidth >= 6 && candleWidth <= 12) {
+      targetBinMs = tf.binMs;
+      break;
     }
-    // Harmonic formula: delay = HARMONIC_BASE_MS / (candleIndex - DRAMATIC_CANDLES + 1)
-    return HARMONIC_BASE_MS / (candleIndex - DRAMATIC_CANDLES + 1);
-  };
-  
-const animate = () => {
-  const currentData = baseCandlesRef.current;
-  const totalBase = currentData.length;
-  
-  if (totalBase === 0) {
-    introAnimationRef.current = window.requestAnimationFrame(animate);
-    return;
   }
   
-  const now = performance.now();
-  const timeSinceLastUpdate = now - lastUpdateTime;
+  // Get 1 week of data from the end
+  const currentData = baseCandlesRef.current;
+  const weekStartIdx = Math.max(0, currentData.length - ONE_WEEK_CANDLES);
+  const weekData = currentData.slice(weekStartIdx);
   
-  // Check if enough time has passed for the next candle
-  if (currentCandleCount < ONE_WEEK_CANDLES) {
-    const requiredDelay = getDelay(currentCandleCount);
+  // Pre-aggregate to target timeframe
+  const finalCandles = aggregateCandles(weekData, targetBinMs);
+  const totalCandles = finalCandles.length;
+  
+  let lastRenderedCount = 0;
+  
+  const animate = () => {
+    const elapsed = performance.now() - startTime;
+    const progress = Math.min(1, elapsed / TOTAL_DURATION);
     
-    if (timeSinceLastUpdate >= requiredDelay) {
-      currentCandleCount++;
-      lastUpdateTime = now;
+    // Easing function: slow start, fast middle, slow end
+    const eased = progress < 0.5
+      ? 4 * progress * progress * progress  // Slow start
+      : 1 - Math.pow(-2 * progress + 2, 3) / 2; // Slow end
+    
+    const visibleCount = Math.max(1, Math.floor(eased * totalCandles));
+    
+    if (visibleCount !== lastRenderedCount) {
+      lastRenderedCount = visibleCount;
       
-      // Log progress with phase indicators
-      const phase = currentCandleCount <= DRAMATIC_CANDLES ? '🎭 DRAMATIC' : '⚡ HARMONIC';
-      const elapsedSeconds = ((now - animationStartTime) / 1000).toFixed(1);
+      // Show candles from the END (most recent)
+      const startIdx = Math.max(0, totalCandles - visibleCount);
+      const visibleCandles = finalCandles.slice(startIdx);
       
-      if (currentCandleCount <= 10 || currentCandleCount % 100 === 0 || currentCandleCount === ONE_WEEK_CANDLES) {
-        console.log(`${phase} Candle ${currentCandleCount.toLocaleString()} (${elapsedSeconds}s)`);
+      setCandles(visibleCandles);
+      setCurrentBinMs(targetBinMs);
+      
+      // Update domain to show visible candles
+      if (visibleCandles.length > 0) {
+        const priceMin = Math.min(...visibleCandles.map(c => c.low)) * 0.998;
+        const priceMax = Math.max(...visibleCandles.map(c => c.high)) * 1.002;
+        const oldestTime = visibleCandles[0].time;
+        const newestTime = visibleCandles[visibleCandles.length - 1].time;
+        
+        setBaseDomain({
+          time: [oldestTime, newestTime],
+          price: [priceMin, priceMax]
+        });
       }
     }
-  }
-  
-  // Cap at available data or week target
-  const visibleCount = Math.min(currentCandleCount, totalBase, ONE_WEEK_CANDLES);
-  
-  // Handle pause phase or if count hasn't changed yet
-  if (visibleCount <= 0) {
-    introAnimationRef.current = window.requestAnimationFrame(animate);
-    return;
-  }
-  
-  // Get candles from the END (most recent first, building backwards)
-  const startIndex = Math.max(0, totalBase - visibleCount);
-  const visibleBaseCandles = currentData. slice(startIndex);
-  
-  // Determine timeframe based on visible count
-  const level = timeframeLevels. find(l => visibleCount <= l.maxCandles) 
-    || timeframeLevels[timeframeLevels. length - 1];
-  
-  if (level. name !== lastTimeframeName) {
-    console.log(`🎬 Switching to ${level.name} at ${visibleCount. toLocaleString()} candles`);
-    lastTimeframeName = level.name;
-  }
-  
-  // Aggregate and display
-  const animCandles = aggregateCandles(visibleBaseCandles, level. binMs);
-  setCandles(animCandles);
-  setCurrentBinMs(level.binMs);
-  
-  // =========================================================================
-  // FIXED SIZE: Keep candles same size throughout intro (first 20 candles)
-  // =========================================================================
-  if (animCandles.length > 0) {
-    const priceMin = Math.min(... animCandles.map(c => c. low)) * 0.998;
-    const priceMax = Math. max(...animCandles.map(c => c.high)) * 1.002;
     
-    const oldestTime = animCandles[0].time;
-    const newestTime = animCandles[animCandles.length - 1].time;
-    
-    // How many candles fit on screen? 
-    const chartWidth = svgRef.current?. clientWidth || 600;
-    const candleWidth = 6;
-    const maxVisibleCandles = Math.floor(chartWidth / candleWidth);
-    
-    let timeStart:  number;
-    let timeEnd: number;
-    
-    // FIXED: Always show space for at least 20 candles during intro
-    const minDisplayCandles = Math.max(20, animCandles.length);
-    
-    if (animCandles.length < maxVisibleCandles) {
-      // Calculate time span as if we have minDisplayCandles
-      const displayTimeSpan = minDisplayCandles * level.binMs;
-      const actualTimeSpan = newestTime - oldestTime || level.binMs;
-      
-      // Full screen time span
-      const fullTimeSpan = maxVisibleCandles * level.binMs;
-      const totalPadding = fullTimeSpan - displayTimeSpan;
-      
-      // Progress for walking right (based on how full the "20 candle" view is)
-      const progress = Math.min(1, animCandles.length / minDisplayCandles);
-      
-      // Left padding grows, right padding shrinks (walk right)
-      const leftPadding = totalPadding * (0.5 + progress * 0.5);
-      const rightPadding = totalPadding - leftPadding;
-      
-      // Center the actual candles within the display space
-      const displayPadding = (displayTimeSpan - actualTimeSpan) / 2;
-      
-      timeStart = oldestTime - leftPadding - displayPadding;
-      timeEnd = newestTime + rightPadding + displayPadding;
+    // Continue animation
+    if (progress < 1) {
+      introAnimationRef.current = window.requestAnimationFrame(animate);
     } else {
-      // Normal mode - screen is full
-      timeStart = oldestTime;
-      timeEnd = newestTime;
+      console.log('🎬 Animation complete!');
+      animationCompleteRef.current = true;
+      prevBinMsRef.current = targetBinMs;
     }
-    
-    setBaseDomain({
-      time: [timeStart, timeEnd],
-      price:  [priceMin, priceMax]
-    });
-  }
+  };
   
-  // Check if animation complete
-  if (visibleCount >= ONE_WEEK_CANDLES) {
-    console.log(`🎬 Animation complete!`);
-    animationCompleteRef.current = true;
-    
-    const finalBinMs = getBinMsFromInterval(interval);
-    const weekCandles = currentData.slice(-ONE_WEEK_CANDLES);
-    const finalCandles = aggregateCandles(weekCandles, finalBinMs);
-    setCandles(finalCandles);
-    setCurrentBinMs(finalBinMs);
-    
-    if (finalCandles.length > 0) {
-      setBaseDomain({
-        time: [finalCandles[0].time, finalCandles[finalCandles.length - 1].time],
-        price:  [
-          Math.min(... finalCandles.map(c => c. low)) * 0.998,
-          Math.max(...finalCandles.map(c => c.high)) * 1.002
-        ]
-      });
-    }
-    
-    return;
-  }
-  
-  introAnimationRef.current = window.requestAnimationFrame(animate);
-};
-  
-  // Start animation
   animate();
-  
-}, [interval]);
+}, []);
 
 // Cleanup
 useEffect(() => {
@@ -4456,7 +4445,8 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
       if (xScaleRef.current) {
         const visibleTimeRange = xScaleRef.current.domain();
         const visibleMs = visibleTimeRange[1].getTime() - visibleTimeRange[0].getTime();
-        const finalBinMs = getBinMs(visibleMs);
+        const chartWidthPx = innerWidth;
+        const finalBinMs = getBinMsForPixelWidth(visibleMs, chartWidthPx, currentBinMs);
         
         if (finalBinMs !== currentBinMs) {
           const cached = aggregationCacheRef.current.get(finalBinMs);
@@ -4494,7 +4484,8 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
     // NEW: Dynamic aggregation on zoom (replaces layer switching)
     // ============================================================================
     const visibleMs = visibleTimeRange[1]. getTime() - visibleTimeRange[0]. getTime();
-    const newBinMs = getBinMs(visibleMs);
+    const chartWidthPx = innerWidth;
+    const newBinMs = getBinMsForPixelWidth(visibleMs, chartWidthPx, currentBinMs);
     
     // Debounced bin change to prevent flickering
     if (newBinMs !== prevBinMsRef.current) {
