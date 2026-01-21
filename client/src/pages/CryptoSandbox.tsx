@@ -882,22 +882,6 @@ const animationCompleteRef = useRef(false);
 
 const ONE_WEEK_CANDLES = 2016; // 7 days * 24 hours * 12 (5-min candles per hour)
 
-// Dramatic intro phase configuration
-const DRAMATIC_CANDLES = 8;
-const DRAMATIC_DELAYS = [
-  1200,  // Candle 1: Long pause - builds anticipation
-  800,   // Candle 2: Still slow
-  600,   // Candle 3: Getting going
-  450,   // Candle 4
-  350,   // Candle 5
-  280,   // Candle 6
-  220,   // Candle 7
-  180,   // Candle 8: Transition to harmonic
-];
-
-// Harmonic acceleration phase configuration
-const HARMONIC_BASE_MS = 846;
-
 const playBuildAnimation = useCallback(() => {
   if (!svgRef.current) return;
   if (hasPlayedIntroRef.current) return;
