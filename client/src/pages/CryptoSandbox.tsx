@@ -2879,6 +2879,14 @@ useEffect(() => {
     console. log('❌ D3 useEffect early return - not ready');
     return;
   }
+
+  // ========== ADD THIS CHECK ==========
+  // Wait for baseDomain to be set before creating chart
+  if (!baseDomain. time || !baseDomain.price) {
+    console.log('⏳ D3 useEffect waiting for baseDomain...');
+    return;
+  }
+  // =====================================
   
   // Check if we have valid scales before proceeding
   if (!xScaleBase && !chartScales.xScale) {
