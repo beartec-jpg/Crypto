@@ -60,12 +60,17 @@ const MAX_BASE_CANDLES = 50000;  // ~6 months of 5m data
 
 
 const BIN_THRESHOLDS = [
-  { visibleMs: 30 * ONE_DAY_MS, binMs: ONE_DAY_MS },
-  { visibleMs: 7 * ONE_DAY_MS, binMs: 4 * ONE_HOUR_MS },
-  { visibleMs:  2 * ONE_DAY_MS, binMs: ONE_HOUR_MS },
-  { visibleMs: 12 * ONE_HOUR_MS, binMs: 15 * ONE_MINUTE_MS },
-  { visibleMs: 3 * ONE_HOUR_MS, binMs: 5 * ONE_MINUTE_MS },
-  { visibleMs: 0, binMs: BASE_RESOLUTION_MS },
+  { visibleMs: 21 * ONE_DAY_MS,    binMs: ONE_WEEK_MS,        name: '1W' },   // 3+ weeks visible
+  { visibleMs: 14 * ONE_DAY_MS,    binMs: 3 * ONE_DAY_MS,     name: '3D' },   // 2-3 weeks
+  { visibleMs: 7 * ONE_DAY_MS,     binMs: 2 * ONE_DAY_MS,     name: '2D' },   // 1-2 weeks
+  { visibleMs: 4 * ONE_DAY_MS,     binMs: ONE_DAY_MS,         name: '1D' },   // 4-7 days
+  { visibleMs: 2 * ONE_DAY_MS,     binMs: 12 * ONE_HOUR_MS,   name: '12h' },  // 2-4 days
+  { visibleMs: ONE_DAY_MS,         binMs: 4 * ONE_HOUR_MS,    name: '4h' },   // 1-2 days
+  { visibleMs: 12 * ONE_HOUR_MS,   binMs: 2 * ONE_HOUR_MS,    name: '2h' },   // 12-24 hours
+  { visibleMs: 6 * ONE_HOUR_MS,    binMs: ONE_HOUR_MS,        name: '1h' },   // 6-12 hours
+  { visibleMs: 3 * ONE_HOUR_MS,    binMs: 30 * ONE_MINUTE_MS, name: '30m' },  // 3-6 hours
+  { visibleMs: 90 * ONE_MINUTE_MS, binMs: 15 * ONE_MINUTE_MS, name: '15m' },  // 1.5-3 hours
+  { visibleMs: 0,                  binMs: 5 * ONE_MINUTE_MS,  name: '5m' },   // < 1.5 hours
 ];
 
 interface AggregatedCandle extends CandleData {
@@ -215,6 +220,7 @@ export default function CryptoSandbox() {
   const [visibleDomain, setVisibleDomain] = useState<[Date, Date] | null>(null);
   const prevBinMsRef = useRef(BASE_RESOLUTION_MS);
   const binChangeDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const aggregationCacheRef = useRef<Map<number, CandleData[]>>(new Map());
   
   // Stable base domain for scales - prevents recreation on data changes
   const [baseDomain, setBaseDomain] = useState<{
@@ -810,10 +816,15 @@ const playBuildAnimation = useCallback(() => {
   
   // Timeframe thresholds - change later for smoother feel
 const timeframeLevels = [
-  { maxCandles:  150, binMs: 5 * ONE_MINUTE_MS, name: '5m' },      // Stay 5m longer
-  { maxCandles: 500, binMs: 15 * ONE_MINUTE_MS, name: '15m' },    // 15m kicks in later
-  { maxCandles: 1200, binMs: ONE_HOUR_MS, name: '1h' },           // 1h near the end
-  { maxCandles:  Infinity, binMs: 4 * ONE_HOUR_MS, name: '4h' }    // 4h only for final view
+  { maxCandles: 100,  binMs: 5 * ONE_MINUTE_MS,  name: '5m' },
+  { maxCandles: 200,  binMs: 15 * ONE_MINUTE_MS, name: '15m' },
+  { maxCandles: 350,  binMs: 30 * ONE_MINUTE_MS, name: '30m' },
+  { maxCandles: 500,  binMs: ONE_HOUR_MS,        name: '1h' },
+  { maxCandles: 700,  binMs: 2 * ONE_HOUR_MS,    name: '2h' },
+  { maxCandles: 1000, binMs: 4 * ONE_HOUR_MS,    name: '4h' },
+  { maxCandles: 1400, binMs: 12 * ONE_HOUR_MS,   name: '12h' },
+  { maxCandles: 1800, binMs: ONE_DAY_MS,         name: '1D' },
+  { maxCandles: Infinity, binMs: 2 * ONE_DAY_MS, name: '2D' },
 ];
   
   let lastTimeframeName = '';
@@ -991,6 +1002,25 @@ useEffect(() => {
     }
   }
 }, [baseCandles, playBuildAnimation]);
+
+// Pre-compute all timeframe aggregations when base data loads
+useEffect(() => {
+  if (baseCandles.length > 0) {
+    const cache = new Map<number, CandleData[]>();
+    
+    // Pre-aggregate all timeframes (runs once on load)
+    const timeframeMins = [5, 15, 30, 60, 120, 240, 720, 1440, 2880, 4320, 10080];
+    
+    console.log('🔄 Pre-computing timeframe aggregations...');
+    timeframeMins.forEach(mins => {
+      const binMs = mins * ONE_MINUTE_MS;
+      cache.set(binMs, aggregateCandles(baseCandles, binMs));
+    });
+    
+    aggregationCacheRef.current = cache;
+    console.log(`✅ Pre-computed ${timeframeMins.length} timeframe aggregations`);
+  }
+}, [baseCandles]);
   
   // Helper to convert interval string to milliseconds
 function getBinMsFromInterval(intervalStr: string): number {
@@ -2178,10 +2208,10 @@ useEffect(() => {
 const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
   const newScale = transform.k;
   
-  // CRITICAL: Only update React state every 120ms to prevent re-render spam
+  // CRITICAL: Only update React state every 200ms to prevent re-render spam
   const now = Date.now();
   
-  if (now - lastZoomChangeCallRef.current > 120) { // Throttle to ~8fps max
+  if (now - lastZoomChangeCallRef.current > 200) { // Throttle to ~5fps max
     lastZoomChangeCallRef.current = now;
     setZoomScale((prevScale) => {
       const delta = Math.abs(newScale - prevScale);
@@ -2196,10 +2226,10 @@ const handleZoomChange = useCallback((transform: d3.ZoomTransform) => {
   }
 }, []);
 
-// Helper: Schedule zoom state update with throttling (at most every 120ms)
+// Helper: Schedule zoom state update with throttling (at most every 200ms)
 const scheduleZoomStateUpdate = useCallback((transform: d3.ZoomTransform) => {
   const now = Date.now();
-  if (now - lastZoomStateUpdateRef.current > 120) {
+  if (now - lastZoomStateUpdateRef.current > 200) {
     lastZoomStateUpdateRef.current = now;
     requestAnimationFrame(() => {
       handleZoomChange(transform);
@@ -4421,6 +4451,32 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
         }
       }
     }
+    
+    // Force any pending aggregation to complete
+    if (binChangeDebounceRef.current) {
+      clearTimeout(binChangeDebounceRef.current);
+      binChangeDebounceRef.current = null;
+      
+      // Get current visible range and compute final bin
+      if (xScaleRef.current) {
+        const visibleTimeRange = xScaleRef.current.domain();
+        const visibleMs = visibleTimeRange[1].getTime() - visibleTimeRange[0].getTime();
+        const finalBinMs = getBinMs(visibleMs);
+        
+        if (finalBinMs !== currentBinMs) {
+          const cached = aggregationCacheRef.current.get(finalBinMs);
+          if (cached) {
+            setCandles(cached);
+          } else {
+            const newAggregated = aggregateCandles(baseCandles, finalBinMs);
+            setCandles(newAggregated);
+            aggregationCacheRef.current.set(finalBinMs, newAggregated);
+          }
+          setCurrentBinMs(finalBinMs);
+          prevBinMsRef.current = finalBinMs;
+        }
+      }
+    }
   })
   .on('zoom', (event) => {
     const transform = event. transform;
@@ -4454,12 +4510,21 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
       binChangeDebounceRef.current = setTimeout(() => {
         console.log(`📊 Bin change:  ${prevBinMsRef.current / 60000}m → ${newBinMs / 60000}m`);
         
-        // Re-aggregate from base candles
-        const newAggregated = aggregateCandles(baseCandles, newBinMs, [visibleTimeRange[0], visibleTimeRange[1]]);
-        setCandles(newAggregated);
+        // Use cached aggregation if available (instant), otherwise compute
+        const cached = aggregationCacheRef.current.get(newBinMs);
+        if (cached) {
+          console.log(`⚡ Using cached ${newBinMs / 60000}m aggregation (${cached.length} candles)`);
+          setCandles(cached);
+        } else {
+          console.log(`🔄 Computing ${newBinMs / 60000}m aggregation...`);
+          const newAggregated = aggregateCandles(baseCandles, newBinMs);
+          setCandles(newAggregated);
+          // Cache for future use
+          aggregationCacheRef.current.set(newBinMs, newAggregated);
+        }
         setCurrentBinMs(newBinMs);
         prevBinMsRef.current = newBinMs;
-      }, 200);
+      }, 300); // Increased debounce from 200ms to 300ms
     }
     
     // Update visible domain state (deferred to prevent React/D3 conflict)
