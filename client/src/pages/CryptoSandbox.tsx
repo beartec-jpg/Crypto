@@ -897,7 +897,10 @@ const playBuildAnimation = useCallback(() => {
   console.log('🎬 Starting build animation...');
   
   const startTime = performance.now();
-  const TOTAL_DURATION = 8000; // 8 seconds total
+  // === CONFIGURATION ===
+  const TOTAL_DURATION_MS = 4000;      // 4 seconds total
+  const DRAMATIC_PHASE_MS = 1200;      // First 1.2 seconds for slow intro
+  const DRAMATIC_CANDLE_COUNT = 5;     // Show 5 candles slowly at start
   
   // Calculate the appropriate timeframe for 1 week of data on this screen
   const chartWidth = svgRef.current?. clientWidth || 600;
@@ -944,14 +947,27 @@ const playBuildAnimation = useCallback(() => {
   
   const animate = () => {
     const elapsed = performance.now() - startTime;
-    const progress = Math.min(1, elapsed / TOTAL_DURATION);
     
-    // Easing function:  slow start, fast middle, slow end
-    const eased = progress < 0.5
-      ? 4 * progress * progress * progress
-      : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-    
-    const visibleCount = Math.max(1, Math.floor(eased * totalCandles));
+    // Two-phase animation approach
+    let visibleCount: number;
+
+    if (elapsed < DRAMATIC_PHASE_MS) {
+      // PHASE 1: SLOW DRAMATIC INTRO
+      const dramaticProgress = elapsed / DRAMATIC_PHASE_MS;
+      const eased = 1 - Math.pow(1 - dramaticProgress, 2); // Ease-out
+      visibleCount = Math.max(1, Math.ceil(eased * DRAMATIC_CANDLE_COUNT));
+    } else {
+      // PHASE 2: ACCELERATE TO FINISH
+      const accelElapsed = elapsed - DRAMATIC_PHASE_MS;
+      const accelDuration = TOTAL_DURATION_MS - DRAMATIC_PHASE_MS;
+      const accelProgress = Math.min(1, accelElapsed / accelDuration);
+      const eased = accelProgress * accelProgress; // Ease-in (accelerates)
+      
+      const remainingCandles = totalCandles - DRAMATIC_CANDLE_COUNT;
+      visibleCount = DRAMATIC_CANDLE_COUNT + Math.ceil(eased * remainingCandles);
+    }
+
+    visibleCount = Math.min(visibleCount, totalCandles);
     
     if (visibleCount !== lastRenderedCount) {
       lastRenderedCount = visibleCount;
@@ -978,10 +994,10 @@ const playBuildAnimation = useCallback(() => {
     }
     
     // Continue animation
-    if (progress < 1) {
+    if (elapsed < TOTAL_DURATION_MS && visibleCount < totalCandles) {
       introAnimationRef.current = window.requestAnimationFrame(animate);
     } else {
-      console.log('🎬 Animation complete! ');
+      console.log('🎬 Animation complete!');
       animationCompleteRef.current = true;
       prevBinMsRef.current = targetBinMs;
     }
