@@ -4435,6 +4435,14 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
         }
       }
     }
+
+    // ========== ADD THIS GUARD RIGHT HERE ==========
+    // Guard against null scales (can happen if animation hasn't initialized them yet)
+    if (!xScaleRef.current || !yScaleRef.current) {
+      console.log('⏭️ Zoom end skipped - scales not initialized');
+      return;
+    }
+    // ================================================
     
     // Force any pending aggregation to complete
     if (binChangeDebounceRef.current) {
