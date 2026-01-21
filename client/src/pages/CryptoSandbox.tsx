@@ -839,16 +839,13 @@ const getBinMsForPixelWidth = useCallback((
   // If candles are too small, switch to higher timeframe
   if (currentWidth < MIN_CANDLE_WIDTH_PX && currentIdx < TIMEFRAME_BINS.length - 1) {
     // Find the first timeframe where candles would be >= MIN_CANDLE_WIDTH_PX
-    // Pre-calculate common values to avoid repeated calculations
     for (let i = currentIdx + 1; i < TIMEFRAME_BINS.length; i++) {
-      const binMs = TIMEFRAME_BINS[i].binMs;
-      const numCandles = visibleMs / binMs;
-      const width = numCandles > 0 ? (chartWidthPx / numCandles) * CANDLE_WIDTH_RATIO : IDEAL_CANDLE_WIDTH_PX;
+      const width = calculateCandleWidth(visibleMs, TIMEFRAME_BINS[i].binMs, chartWidthPx);
       
       if (width >= MIN_CANDLE_WIDTH_PX) {
         console.log(`📊 Candles too small (${currentWidth.toFixed(1)}px) → switching to ${TIMEFRAME_BINS[i].name}`);
         lastSwitchTimeRef.current = now;
-        return binMs;
+        return TIMEFRAME_BINS[i].binMs;
       }
     }
     const largestBinMs = TIMEFRAME_BINS[TIMEFRAME_BINS.length - 1].binMs;
@@ -861,16 +858,13 @@ const getBinMsForPixelWidth = useCallback((
   // If candles are too fat, switch to lower timeframe
   if (currentWidth > MAX_CANDLE_WIDTH_PX && currentIdx > 0) {
     // Find the lowest timeframe where candles would still be <= MAX_CANDLE_WIDTH_PX
-    // Pre-calculate common values to avoid repeated calculations
     for (let i = currentIdx - 1; i >= 0; i--) {
-      const binMs = TIMEFRAME_BINS[i].binMs;
-      const numCandles = visibleMs / binMs;
-      const width = numCandles > 0 ? (chartWidthPx / numCandles) * CANDLE_WIDTH_RATIO : IDEAL_CANDLE_WIDTH_PX;
+      const width = calculateCandleWidth(visibleMs, TIMEFRAME_BINS[i].binMs, chartWidthPx);
       
       if (width <= MAX_CANDLE_WIDTH_PX) {
         console.log(`📊 Candles too fat (${currentWidth.toFixed(1)}px) → switching to ${TIMEFRAME_BINS[i].name}`);
         lastSwitchTimeRef.current = now;
-        return binMs;
+        return TIMEFRAME_BINS[i].binMs;
       }
     }
     const smallestBinMs = TIMEFRAME_BINS[0].binMs;
@@ -885,7 +879,7 @@ const getBinMsForPixelWidth = useCallback((
 }, []);
 
 // ============================================================================
-// CINEMATIC BUILD ANIMATION - Harmonic timing with dramatic intro
+// INTRO ANIMATION - Smooth 8-second candle reveal
 // ============================================================================
 const hasPlayedIntroRef = useRef(false);
 const introAnimationRef = useRef<number | null>(null);
