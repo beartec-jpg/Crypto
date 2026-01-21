@@ -2874,6 +2874,18 @@ const calculateCandleWidth = useCallback((
 
 // Render D3 chart - D3's built-in zoom handles pan/zoom
 useEffect(() => {
+  // ========== EARLY EXIT IF NOT READY ==========
+  if (!svgRef.current || candles.length === 0 || dimensions.width === 0) {
+    console. log('❌ D3 useEffect early return - not ready');
+    return;
+  }
+  
+  // Check if we have valid scales before proceeding
+  if (!xScaleBase && !chartScales.xScale) {
+    console.log('❌ D3 useEffect early return - no scales available');
+    return;
+  }
+  // ==============================================
   console.log('🎨 D3 useEffect starting... ', { 
     hasCanvas: !! svgRef.current, 
     candlesCount: candles. length, 
