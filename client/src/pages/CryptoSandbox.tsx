@@ -900,13 +900,13 @@ const playBuildAnimation = useCallback(() => {
   const TOTAL_DURATION = 8000; // 8 seconds total
   
   // Calculate the appropriate timeframe for 1 week of data on this screen
-  const chartWidth = svgRef.current?.clientWidth || 600;
+  const chartWidth = svgRef.current?. clientWidth || 600;
   const weekMs = ONE_WEEK_MS;
   
   // Find timeframe that gives ~8px candles for 1 week view
   let targetBinMs = ONE_HOUR_MS; // Default to 1h
   for (const tf of TIMEFRAME_BINS) {
-    const candleWidth = calculateCandleWidth(weekMs, tf.binMs, chartWidth);
+    const candleWidth = calculateCandleWidth(weekMs, tf. binMs, chartWidth);
     if (candleWidth >= 6 && candleWidth <= 12) {
       targetBinMs = tf.binMs;
       break;
@@ -915,12 +915,30 @@ const playBuildAnimation = useCallback(() => {
   
   // Get 1 week of data from the end
   const currentData = baseCandlesRef.current;
-  const weekStartIdx = Math.max(0, currentData.length - ONE_WEEK_CANDLES);
+  const weekStartIdx = Math.max(0, currentData. length - ONE_WEEK_CANDLES);
   const weekData = currentData.slice(weekStartIdx);
   
   // Pre-aggregate to target timeframe
   const finalCandles = aggregateCandles(weekData, targetBinMs);
-  const totalCandles = finalCandles.length;
+  const totalCandles = finalCandles. length;
+  
+  console.log(`🎬 Animation:  ${totalCandles} candles at ${targetBinMs / 60000}m timeframe`);
+  
+  // ========== FIX: Set initial baseDomain BEFORE starting animation ==========
+  if (finalCandles.length > 0) {
+    const priceMin = Math.min(...finalCandles. map(c => c.low)) * 0.998;
+    const priceMax = Math.max(...finalCandles.map(c => c.high)) * 1.002;
+    const oldestTime = finalCandles[0]. time;
+    const newestTime = finalCandles[finalCandles.length - 1].time;
+    
+    // Set domain FIRST - this creates the scales before D3 effect runs
+    setBaseDomain({
+      time: [oldestTime, newestTime],
+      price:  [priceMin, priceMax]
+    });
+    console.log('🎬 Initial baseDomain set');
+  }
+  // ===========================================================================
   
   let lastRenderedCount = 0;
   
@@ -928,10 +946,10 @@ const playBuildAnimation = useCallback(() => {
     const elapsed = performance.now() - startTime;
     const progress = Math.min(1, elapsed / TOTAL_DURATION);
     
-    // Easing function: slow start, fast middle, slow end
+    // Easing function:  slow start, fast middle, slow end
     const eased = progress < 0.5
-      ? 4 * progress * progress * progress  // Slow start
-      : 1 - Math.pow(-2 * progress + 2, 3) / 2; // Slow end
+      ? 4 * progress * progress * progress
+      : 1 - Math.pow(-2 * progress + 2, 3) / 2;
     
     const visibleCount = Math.max(1, Math.floor(eased * totalCandles));
     
@@ -942,37 +960,40 @@ const playBuildAnimation = useCallback(() => {
       const startIdx = Math.max(0, totalCandles - visibleCount);
       const visibleCandles = finalCandles.slice(startIdx);
       
-      setCandles(visibleCandles);
-      setCurrentBinMs(targetBinMs);
-      
-      // Update domain to show visible candles
+      // Update domain for visible candles
       if (visibleCandles.length > 0) {
         const priceMin = Math.min(...visibleCandles.map(c => c.low)) * 0.998;
-        const priceMax = Math.max(...visibleCandles.map(c => c.high)) * 1.002;
+        const priceMax = Math. max(...visibleCandles.map(c => c.high)) * 1.002;
         const oldestTime = visibleCandles[0].time;
         const newestTime = visibleCandles[visibleCandles.length - 1].time;
         
         setBaseDomain({
-          time: [oldestTime, newestTime],
+          time:  [oldestTime, newestTime],
           price: [priceMin, priceMax]
         });
       }
+      
+      setCandles(visibleCandles);
+      setCurrentBinMs(targetBinMs);
     }
     
     // Continue animation
     if (progress < 1) {
       introAnimationRef.current = window.requestAnimationFrame(animate);
     } else {
-      console.log('🎬 Animation complete!');
+      console.log('🎬 Animation complete! ');
       animationCompleteRef.current = true;
       prevBinMsRef.current = targetBinMs;
     }
   };
   
-  animate();
+  // Start animation after a short delay to let baseDomain propagate
+  setTimeout(() => {
+    animate();
+  }, 50);
 }, []);
 
-// Cleanup
+// Cleanup animation on unmount
 useEffect(() => {
   return () => {
     if (introAnimationRef.current) {
@@ -981,10 +1002,10 @@ useEffect(() => {
   };
 }, []);
 
-// Trigger animation when first batch loads, keep ref updated as more loads
+// Trigger animation when first batch loads
 useEffect(() => {
   if (baseCandles.length > 0) {
-    baseCandlesRef. current = baseCandles;
+    baseCandlesRef.current = baseCandles;
     
     if (!hasPlayedIntroRef.current) {
       playBuildAnimation();
@@ -997,7 +1018,6 @@ useEffect(() => {
   if (baseCandles.length > 0) {
     const cache = new Map<number, CandleData[]>();
     
-    // Pre-aggregate all timeframes (runs once on load)
     const timeframeMins = [5, 15, 30, 60, 120, 240, 720, 1440, 2880, 4320, 10080];
     
     console.log('🔄 Pre-computing timeframe aggregations...');
@@ -1010,13 +1030,13 @@ useEffect(() => {
     console.log(`✅ Pre-computed ${timeframeMins.length} timeframe aggregations`);
   }
 }, [baseCandles]);
-  
-  // Helper to convert interval string to milliseconds
+
+// Helper to convert interval string to milliseconds
 function getBinMsFromInterval(intervalStr: string): number {
   const map:  Record<string, number> = {
     '1m': ONE_MINUTE_MS,
     '5m': 5 * ONE_MINUTE_MS,
-    '15m': 15 * ONE_MINUTE_MS,
+    '15m':  15 * ONE_MINUTE_MS,
     '1h': ONE_HOUR_MS,
     '4h': 4 * ONE_HOUR_MS,
     '1d': ONE_DAY_MS,
@@ -1029,30 +1049,8 @@ useEffect(() => {
   fetchBaseCandles();
 }, [fetchBaseCandles]);
 
-// Initialize base domain once when data first loads
-useEffect(() => {
-  if (candles. length > 0 && !baseDomain.time) {
-    const timeExtent = d3.extent(candles, d => d.time) as [number, number];
-    const priceExtent: [number, number] = [
-      d3.min(candles, d => d. low) as number * 0.999,
-      d3.max(candles, d => d.high) as number * 1.001
-    ];
-    
-    setBaseDomain({
-      time: timeExtent,
-      price: priceExtent
-    });
-    
-    console. log('✅ Base domain set (stable reference):', { 
-      time: timeExtent, 
-      price: priceExtent 
-    });
-  }
-}, [candles, baseDomain. time]);
-
-
-
-
+// REMOVED: The duplicate "Initialize base domain" useEffect
+// Animation now handles baseDomain initialization
   
   // Document-level handlers for menu dragging and click-off to deselect
   useEffect(() => {
