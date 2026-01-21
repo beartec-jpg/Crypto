@@ -4472,6 +4472,13 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
     }
   })
   .on('zoom', (event) => {
+    // ========== GUARD AGAINST NULL SCALES ==========
+  if (!xScale || !yScale) {
+    console.log('⏭️ Zoom event skipped - scales not initialized');
+    return;
+  }
+  // ================================================
+
     const transform = event. transform;
     
     // Store transform in ref (persists across renders)
