@@ -27,6 +27,22 @@ export default function PasskeyAuthModal({ onClose, onSuccess }: PasskeyAuthModa
 
   const supportsWebAuthn = browserSupportsWebAuthn();
 
+  // Helper function to convert Uint8Array to base64url encoding
+  const encodeBase64Url = (data: Uint8Array): string => {
+    // Convert Uint8Array to binary string in chunks to avoid stack overflow
+    const chunkSize = 0x8000; // 32KB chunks
+    let binaryString = '';
+    for (let i = 0; i < data.length; i += chunkSize) {
+      const chunk = data.subarray(i, Math.min(i + chunkSize, data.length));
+      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    // Convert to base64 and make it URL-safe
+    return btoa(binaryString)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+  };
+
   // Generate registration options (in production, get from server)
   const generateRegistrationOptions = (): PublicKeyCredentialCreationOptionsJSON => {
     // In production, these options would come from your server
@@ -35,13 +51,13 @@ export default function PasskeyAuthModal({ onClose, onSuccess }: PasskeyAuthModa
     const userId = crypto.getRandomValues(new Uint8Array(16));
 
     return {
-      challenge: btoa(String.fromCharCode.apply(null, Array.from(challenge))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
+      challenge: encodeBase64Url(challenge),
       rp: {
         name: 'BearTec Sovereign Wallet',
         id: window.location.hostname,
       },
       user: {
-        id: btoa(String.fromCharCode.apply(null, Array.from(userId))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
+        id: encodeBase64Url(userId),
         name: `wallet_${Date.now()}`,
         displayName: 'Sovereign Wallet User',
       },
@@ -65,7 +81,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess }: PasskeyAuthModa
     const storedCredentialId = localStorage.getItem('passkey_credential_id');
 
     return {
-      challenge: btoa(String.fromCharCode.apply(null, Array.from(challenge))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
+      challenge: encodeBase64Url(challenge),
       timeout: 60000,
       rpId: window.location.hostname,
       userVerification: 'required',
