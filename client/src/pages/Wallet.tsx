@@ -4,10 +4,10 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect, useBalance } from 'wagmi';
 import { metaMask, walletConnect } from 'wagmi/connectors';
-import WalletDashboard from '../components/wallet/WalletDashboard';
-import ReceiveSection from '../components/wallet/ReceiveSection';
-import SendForm from '../components/wallet/SendForm';
-import PasskeyAuthModal from '../components/wallet/PasskeyAuthModal';
+import WalletDashboard from '../components/Wallet/WalletDashboard';
+import ReceiveSection from '../components/Wallet/ReceiveSection';
+import SendForm from '../components/Wallet/SendForm';
+import PasskeyAuthModal from '../components/Wallet/PasskeyAuthModal';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle } from 'lucide-react';
 
 type WalletTab = 'dashboard' | 'send' | 'receive' | 'settings';
