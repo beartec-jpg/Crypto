@@ -2159,7 +2159,8 @@ useEffect(() => {
    */
   const redrawChart = useCallback((xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
     if (!svgRef.current || !d3) return;
-    if (!xS || !yS) return; // Guard against null scales
+    // Guard against null scales (can happen during animation phase when scales are being recreated)
+    if (!xS || !yS) return;
     
     const svg = d3.select(svgRef.current);
     
@@ -2253,7 +2254,8 @@ const calculateCandleWidth = useCallback((
   chartWidth: number
 ): number => {
   if (candleData.length < 2) return 10;
-  if (!xScale) return 10; // Guard against null scale
+  // Guard against null scale (can happen during animation phase when scales are being recreated)
+  if (!xScale) return 10;
   
   const visibleRange = xScale.domain();
   const visibleCandles = candleData.filter(d => {
@@ -4517,10 +4519,6 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
     
     // 1. Apply transform to x scale immediately (ref update, no state)
     const newXScale = transform.rescaleX(xScaleRef.current);
-    if (!newXScale) {
-      console.log('⏭️ Zoom rescaleX failed - newXScale is null');
-      return;
-    }
     xScaleRef.current = newXScale;
     
     // 2. Calculate visible candles and check spacing constraints
