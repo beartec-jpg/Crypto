@@ -49,6 +49,8 @@ export default defineConfig({
           'react-vendor': ['react', 'react-dom', 'react/jsx-runtime'],
           // Router
           'router': ['wouter'],
+          // Web3/Wagmi
+          'web3-vendor': ['wagmi', 'viem'],
           // UI libraries
           'ui-vendor': [
             '@radix-ui/react-dialog',
