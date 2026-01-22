@@ -4489,11 +4489,12 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
   })
   .on('zoom', (event) => {
     // ========== GUARD AGAINST NULL SCALES ==========
-  if (!xScale || !yScale) {
-    console.log('⏭️ Zoom event skipped - scales not initialized');
-    return;
-  }
-  // ================================================
+    // Use refs instead of local variables to ensure we have valid scales
+    if (!xScaleRef.current || !yScaleRef.current) {
+      console.log('⏭️ Zoom event skipped - scales not initialized');
+      return;
+    }
+    // ================================================
 
     const transform = event. transform;
     
@@ -4501,7 +4502,7 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
     currentTransformRef.current = transform;
     
     // 1. Apply transform to x scale immediately (ref update, no state)
-    const newXScale = transform.rescaleX(xScale);
+    const newXScale = transform.rescaleX(xScaleRef.current);
     xScaleRef.current = newXScale;
     
     // 2. Calculate visible candles and check spacing constraints
