@@ -35,13 +35,13 @@ export default function PasskeyAuthModal({ onClose, onSuccess }: PasskeyAuthModa
     const userId = crypto.getRandomValues(new Uint8Array(16));
 
     return {
-      challenge: btoa(String.fromCharCode(...challenge)),
+      challenge: btoa(String.fromCharCode.apply(null, Array.from(challenge))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
       rp: {
         name: 'BearTec Sovereign Wallet',
         id: window.location.hostname,
       },
       user: {
-        id: btoa(String.fromCharCode(...userId)),
+        id: btoa(String.fromCharCode.apply(null, Array.from(userId))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
         name: `wallet_${Date.now()}`,
         displayName: 'Sovereign Wallet User',
       },
@@ -65,7 +65,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess }: PasskeyAuthModa
     const storedCredentialId = localStorage.getItem('passkey_credential_id');
 
     return {
-      challenge: btoa(String.fromCharCode(...challenge)),
+      challenge: btoa(String.fromCharCode.apply(null, Array.from(challenge))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
       timeout: 60000,
       rpId: window.location.hostname,
       userVerification: 'required',
