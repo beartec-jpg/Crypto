@@ -2159,6 +2159,8 @@ useEffect(() => {
    */
   const redrawChart = useCallback((xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
     if (!svgRef.current || !d3) return;
+    // Guard against null scales (can happen during animation phase when scales are being recreated)
+    if (!xS || !yS) return;
     
     const svg = d3.select(svgRef.current);
     
@@ -2252,6 +2254,8 @@ const calculateCandleWidth = useCallback((
   chartWidth: number
 ): number => {
   if (candleData.length < 2) return 10;
+  // Guard against null scale (can happen during animation phase when scales are being recreated)
+  if (!xScale) return 10;
   
   const visibleRange = xScale.domain();
   const visibleCandles = candleData.filter(d => {
@@ -3037,6 +3041,12 @@ useEffect(() => {
     
         // Draw candles function - renders aggregated candles directly
     const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+      // Guard against null scales
+      if (!xS || !yS) {
+        console.log('⏭️ drawCandles skipped - invalid scales');
+        return;
+      }
+      
       // Clear existing candles
       candlesGroup.selectAll('*').remove();
       
@@ -3170,6 +3180,12 @@ useEffect(() => {
       elliottWaveGroup.selectAll('*').remove();
       
       if (!elliottWave.isActive) return;
+      
+      // Guard against null scales
+      if (!xS || !yS) {
+        console.log('⏭️ drawElliottWave skipped - invalid scales');
+        return;
+      }
       
       const visibleTimeRange = xS.domain();
       const visibleCandles = candles.filter(d => {
