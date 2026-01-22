@@ -26,6 +26,8 @@ const CryptoElliottWaveLessons = lazy(() => import('@/pages/CryptoElliottWaveLes
 const DevAnalytics = lazy(() => import('@/pages/DevAnalytics'));
 const CryptoSandbox = lazy(() => import('@/pages/CryptoSandbox'));
 const NotFound = lazy(() => import('@/pages/not-found'));
+// 1. Add with other lazy imports (around line 22)
+const Wallet = lazy(() => import('@/pages/Wallet'));
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   return (
@@ -103,6 +105,9 @@ function App() {
             </Route>
             <Route path="/dev/sandbox">
               <ProtectedRoute component={CryptoSandbox} />
+            </Route>
+            <Route path="/wallet">
+              <ProtectedRoute component={Wallet} />
             </Route>
             
             <Route>
