@@ -38,7 +38,7 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     minify: 'esbuild',
-    target: 'es2015',
+    target: 'es2020',
     // Asset inline threshold - inline assets < 4KB as base64
     assetsInlineLimit: 4096,
     rollupOptions: {
