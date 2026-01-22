@@ -2159,6 +2159,7 @@ useEffect(() => {
    */
   const redrawChart = useCallback((xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
     if (!svgRef.current || !d3) return;
+    if (!xS || !yS) return; // Guard against null scales
     
     const svg = d3.select(svgRef.current);
     
@@ -2252,6 +2253,7 @@ const calculateCandleWidth = useCallback((
   chartWidth: number
 ): number => {
   if (candleData.length < 2) return 10;
+  if (!xScale) return 10; // Guard against null scale
   
   const visibleRange = xScale.domain();
   const visibleCandles = candleData.filter(d => {
@@ -3037,6 +3039,12 @@ useEffect(() => {
     
         // Draw candles function - renders aggregated candles directly
     const drawCandles = (xS: d3.ScaleTime<number, number>, yS: d3.ScaleLinear<number, number>) => {
+      // Guard against null scales
+      if (!xS || !yS) {
+        console.log('⏭️ drawCandles skipped - invalid scales');
+        return;
+      }
+      
       // Clear existing candles
       candlesGroup.selectAll('*').remove();
       
@@ -3170,6 +3178,12 @@ useEffect(() => {
       elliottWaveGroup.selectAll('*').remove();
       
       if (!elliottWave.isActive) return;
+      
+      // Guard against null scales
+      if (!xS || !yS) {
+        console.log('⏭️ drawElliottWave skipped - invalid scales');
+        return;
+      }
       
       const visibleTimeRange = xS.domain();
       const visibleCandles = candles.filter(d => {
@@ -4503,6 +4517,10 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
     
     // 1. Apply transform to x scale immediately (ref update, no state)
     const newXScale = transform.rescaleX(xScaleRef.current);
+    if (!newXScale) {
+      console.log('⏭️ Zoom rescaleX failed - newXScale is null');
+      return;
+    }
     xScaleRef.current = newXScale;
     
     // 2. Calculate visible candles and check spacing constraints
