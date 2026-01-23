@@ -130,27 +130,35 @@ export async function fetchBSCBalance(address: string): Promise<string> {
 /**
  * Fetch XRP balance via XRPL public node
  */
-export async function fetchXRPBalance(address: string): Promise<string> {
+export async function fetchXRPBalance(address: string, useMainnet = true): Promise<string> {
   try {
-    const response = await axios.post('https://s1.ripple.com:51234/', {
+    const rpcUrl = useMainnet 
+      ? 'https://s1.ripple.com:51234/'           // Mainnet (default)
+      : 'https://s.altnet.rippletest.net:51234/'; // Testnet
+    
+    console.log(`🔍 Fetching XRP balance from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
+    
+    const response = await axios.post(rpcUrl, {
       method: 'account_info',
-      params: [
-        {
-          account: address,
-          ledger_index: 'validated',
-        },
-      ],
+      params: [{
+        account: address,
+        ledger_index: 'validated',
+      }],
     });
 
+    console.log('📦 XRP API Response:', response.data);
+
     if (response.data.result?.account_data?.Balance) {
-      // Balance is in drops, convert to XRP (1 XRP = 1,000,000 drops)
       const balanceDrops = parseInt(response.data.result.account_data.Balance);
       const balanceXRP = balanceDrops / 1000000;
+      console.log('✅ XRP Balance:', balanceXRP, 'XRP');
       return balanceXRP.toFixed(6);
     }
+    
+    console.warn('⚠️ XRP account not found or no balance');
     return '0';
   } catch (error) {
-    console.error('Failed to fetch XRP balance:', error);
+    console.error('❌ Failed to fetch XRP balance:', error);
     return '0';
   }
 }
