@@ -7,25 +7,14 @@ import { formatEther } from 'viem';
 import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, Clock, Loader2 } from 'lucide-react';
 import { 
   fetchAllBalances, 
-  fetchChainBalance, 
-  fetchPrices,
   getCachedBalances,
   type ChainBalance,
   type Chain 
 } from '@/lib/balanceService';
-
-interface Transaction {
-  hash: string;
-  type: 'send' | 'receive';
-  amount: string;
-  token: string;
-  to: string;
-  from: string;
-  timestamp: Date;
-  status: 'pending' | 'confirmed' | 'failed';
-  chain: Chain;
-  category?: string;
-}
+import { 
+  fetchChainTransactions, 
+  type Transaction 
+} from '@/lib/transactionService';
 
 interface WalletDashboardProps {
   address: `0x${string}` | undefined;
@@ -50,6 +39,28 @@ export default function WalletDashboard({
 
   const { data: blockNumber } = useBlockNumber({ watch: true });
 
+  // Clean up old mock cache on mount
+  useEffect(() => {
+    const keysToRemove = Object.keys(localStorage).filter(key => 
+      key.startsWith('txs_') && !key.includes('cached')
+    );
+    
+    keysToRemove.forEach(key => {
+      console.log('🧹 Removing old cache:', key);
+      localStorage.removeItem(key);
+    });
+  }, []);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🔍 Dashboard State:', {
+      selectedChain,
+      sovereignWallet: sovereignWallet ? 'EXISTS' : 'NULL',
+      hasAddresses: !!sovereignWallet?.addresses,
+      currentAddress: sovereignWallet?.addresses?.[selectedChain],
+    });
+  }, [sovereignWallet, selectedChain]);
+
   // Get chain config for display
   const getChainConfig = (chain: Chain) => {
     switch (chain) {
@@ -71,26 +82,27 @@ export default function WalletDashboard({
   // Fetch all balances for sovereign wallet
   useEffect(() => {
     const loadBalances = async () => {
-      if (!sovereignWallet) return;
+      if (!sovereignWallet?.addresses) {
+        console.log('⚠️ No sovereign wallet addresses');
+        setChainBalances([]);
+        setCurrentBalance(null);
+        return;
+      }
 
       setIsLoading(true);
       try {
-        // Try cache first
-        const cached = getCachedBalances();
-        if (cached) {
-          setChainBalances(cached);
-          const current = cached.find(b => b.chain === selectedChain);
-          setCurrentBalance(current || null);
-        }
-
-        // Fetch fresh data
+        console.log('🔄 Fetching balances...');
         const balances = await fetchAllBalances(sovereignWallet.addresses);
+        console.log('✅ Balances loaded:', balances);
+        
         setChainBalances(balances);
         
         const current = balances.find(b => b.chain === selectedChain);
         setCurrentBalance(current || null);
       } catch (error) {
-        console.error('Failed to load balances:', error);
+        console.error('❌ Failed to load balances:', error);
+        setChainBalances([]);
+        setCurrentBalance(null);
       } finally {
         setIsLoading(false);
       }
@@ -101,7 +113,7 @@ export default function WalletDashboard({
 
   // Refresh balances
   const handleRefresh = async () => {
-    if (!sovereignWallet) return;
+    if (!sovereignWallet?.addresses) return;
     
     setIsRefreshing(true);
     try {
@@ -117,68 +129,38 @@ export default function WalletDashboard({
     }
   };
 
-  // Fetch transactions (mock for now - integrate with block explorers later)
+  // Fetch real transactions - NO MOCK DATA
   useEffect(() => {
-    const fetchTransactions = async () => {
-      if (!address && !sovereignWallet) return;
+    const loadTransactions = async () => {
+      if (!sovereignWallet?.addresses) {
+        console.log('⚠️ No sovereign wallet - transactions cleared');
+        setTransactions([]);
+        return;
+      }
+
+      const currentAddress = sovereignWallet.addresses[selectedChain];
+      if (!currentAddress) {
+        console.log('⚠️ No address for chain:', selectedChain);
+        setTransactions([]);
+        return;
+      }
 
       try {
-        // Mock transactions filtered by chain
-        const mockTxs: Transaction[] = [
-          {
-            hash: '0x1234...5678',
-            type: 'receive',
-            amount: '0.5',
-            token: 'ETH',
-            to: address || sovereignWallet?.addresses.ethereum || '',
-            from: '0xabcd...efgh',
-            timestamp: new Date(Date.now() - 3600000),
-            status: 'confirmed',
-            chain: 'ethereum',
-          },
-          {
-            hash: '0x8765...4321',
-            type: 'send',
-            amount: '0.1',
-            token: 'ETH',
-            to: '0x9876...5432',
-            from: address || sovereignWallet?.addresses.ethereum || '',
-            timestamp: new Date(Date.now() - 7200000),
-            status: 'confirmed',
-            chain: 'ethereum',
-          },
-        ];
-
-        // Filter by selected chain
-        const filtered = mockTxs.filter(tx => tx.chain === selectedChain);
-        setTransactions(filtered);
+        console.log(`🔍 Fetching transactions for ${selectedChain}: ${currentAddress}`);
+        const txs = await fetchChainTransactions(selectedChain, currentAddress);
+        console.log(`✅ Loaded ${txs.length} real transactions`);
+        setTransactions(txs);
       } catch (error) {
-        console.error('Failed to fetch transactions:', error);
+        console.error('❌ Transaction fetch failed:', error);
+        setTransactions([]);
       }
     };
-
-    fetchTransactions();
-  }, [address, sovereignWallet, blockNumber, selectedChain]);
+    
+    loadTransactions();
+  }, [sovereignWallet, selectedChain, blockNumber]);
 
   // Format balance for display
   const formatBalance = (bal: string | undefined) => {
     if (!bal) return '0.000000';
     const num = parseFloat(bal);
-    return num.toFixed(6);
-  };
-
-  // Get display balance
-  const displayBalance = currentBalance?.balance || 
-                        (balance ? formatEther(balance.value) : '0');
-
-  return (
-    <div className="space-y-6">
-      {/* Balance Card */}
-      <div className="bg-gradient-to-br from-emerald-900/30 to-cyan-900/30 rounded-2xl p-6 border border-emerald-700/30">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm text-gray-400">Total Balance</h3>
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing || isLoading}
-            className="p*
 
