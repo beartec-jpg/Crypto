@@ -23,7 +23,6 @@ export interface Transaction {
  */
 export async function fetchEthereumTransactions(address: string): Promise<Transaction[]> {
   try {
-    // Using public Etherscan API (rate limited - consider getting API key)
     const response = await axios.get(
       `https://api-sepolia.etherscan.io/api`,
       {
@@ -34,7 +33,7 @@ export async function fetchEthereumTransactions(address: string): Promise<Transa
           startblock: 0,
           endblock: 99999999,
           page: 1,
-          offset: 10, // Last 10 transactions
+          offset: 10,
           sort: 'desc',
         },
       }
@@ -73,15 +72,13 @@ export async function fetchBitcoinTransactions(address: string): Promise<Transac
       `https://blockstream.info/api/address/${address}/txs`
     );
 
-    const txs = response.data.slice(0, 10); // Last 10 transactions
+    const txs = response.data.slice(0, 10);
 
     return txs.map((tx: any) => {
-      // Determine if send or receive
       const isReceive = tx.vout.some((out: any) => 
         out.scriptpubkey_address === address
       );
 
-      // Calculate amount
       let amount = 0;
       if (isReceive) {
         tx.vout.forEach((out: any) => {
@@ -100,7 +97,7 @@ export async function fetchBitcoinTransactions(address: string): Promise<Transac
       return {
         hash: tx.txid,
         type: isReceive ? 'receive' : 'send',
-        amount: (amount / 100000000).toFixed(8), // Satoshis to BTC
+        amount: (amount / 100000000).toFixed(8),
         token: 'BTC',
         to: tx.vout[0]?.scriptpubkey_address || 'Multiple',
         from: tx.vin[0]?.prevout?.scriptpubkey_address || 'Multiple',
@@ -194,7 +191,7 @@ export async function fetchXRPTransactions(address: string): Promise<Transaction
         token: 'XRP',
         to: tx.Destination,
         from: tx.Account,
-        timestamp: new Date((tx.date + 946684800) * 1000), // Ripple epoch
+        timestamp: new Date((tx.date + 946684800) * 1000),
         status: meta.TransactionResult === 'tesSUCCESS' ? 'confirmed' : 'failed',
         chain: 'xrp' as const,
         blockNumber: tx.ledger_index,
@@ -228,12 +225,10 @@ export async function fetchSolanaTransactions(address: string): Promise<Transact
       return [];
     }
 
-    // Note: This only gets signatures, not full transaction details
-    // For production, you'd need to call getTransaction for each signature
     return response.data.result.map((sig: any) => ({
       hash: sig.signature,
-      type: 'send', // Would need full tx to determine
-      amount: '0', // Would need full tx to get amount
+      type: 'send',
+      amount: '0',
       token: 'SOL',
       to: 'Unknown',
       from: address,
@@ -290,11 +285,9 @@ export async function fetchAllTransactions(addresses: {
       fetchSolanaTransactions(addresses.solana),
     ]);
 
-    // Combine and sort by timestamp
     const allTxs = [...ethTxs, ...btcTxs, ...bscTxs, ...xrpTxs, ...solTxs];
     allTxs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
-    // Cache transactions
     localStorage.setItem('cached_transactions', JSON.stringify({
       transactions: allTxs,
       timestamp: Date.now(),
@@ -310,5 +303,18 @@ export async function fetchAllTransactions(addresses: {
 /**
  * Get cached transactions
  */
-export function getC*
-
+export function getCachedTransactions(): Transaction[] | null {
+  try {
+    const cached = localStorage.getItem('cached_transactions');
+    if (!cached) return null;
+
+    const { transactions, timestamp } = JSON.parse(cached);
+    const age = Date.now() - timestamp;
+
+    if (age > 60000) return null;
+
+    return transactions;
+  } catch {
+    return null;
+  }
+}
