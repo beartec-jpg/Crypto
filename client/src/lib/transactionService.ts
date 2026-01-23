@@ -27,13 +27,14 @@ export async function fetchEthereumTransactions(
 ): Promise<Transaction[]> {
   try {
     const apiUrl = useMainnet
-      ? 'https://api.etherscan.io/api'
-      : 'https://api-sepolia.etherscan.io/api';
+      ? 'https://api.etherscan.io/v2/api'
+      : 'https://api-sepolia.etherscan.io/v2/api';
     
     console.log(`🔍 Fetching ETH transactions from ${useMainnet ? 'MAINNET' : 'SEPOLIA'} for:`, address);
     
     const response = await axios.get(apiUrl, {
       params: {
+        chainid: useMainnet ? 1 : 11155111,
         module: 'account',
         action: 'txlist',
         address,
@@ -142,13 +143,14 @@ export async function fetchBSCTransactions(
 ): Promise<Transaction[]> {
   try {
     const apiUrl = useMainnet
-      ? 'https://api.bscscan.com/api'
-      : 'https://api-testnet.bscscan.com/api';
+      ? 'https://api.bscscan.com/v2/api'
+      : 'https://api-testnet.bscscan.com/v2/api';
     
     console.log(`🔍 Fetching BNB transactions from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
     
     const response = await axios.get(apiUrl, {
       params: {
+        chainid: useMainnet ? 56 : 97,
         module: 'account',
         action: 'txlist',
         address,
