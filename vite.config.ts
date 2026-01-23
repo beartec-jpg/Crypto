@@ -30,7 +30,23 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'client/src'),
       '@shared': path.resolve(__dirname, 'shared'),
       '@assets': path.resolve(__dirname, 'attached_assets'),
+      buffer: 'buffer/', // ✅ ADD THIS
     },
+  },
+
+  // ✅ ADD THIS SECTION
+  define: {
+    global: 'globalThis',
+  },
+
+  // ✅ ADD THIS SECTION
+  optimizeDeps: {
+    include: ['buffer'],
+    esbuildOptions: {
+      define: {
+        global: 'globalThis'
+      }
+    }
   },
 
   build: {
