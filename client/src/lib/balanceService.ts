@@ -2,6 +2,7 @@
 // Multi-chain balance fetching service with mainnet/testnet support
 
 import axios from 'axios';
+import { xrplService } from './xrpService';
 
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
 
@@ -155,39 +156,23 @@ export async function fetchBSCBalance(address: string, useMainnet = false): Prom
 }
 
 /**
- * Fetch XRP balance via XRPL public node
+ * Fetch XRP balance using official xrpl.js library (production-ready)
  */
 export async function fetchXRPBalance(address: string, useMainnet = true): Promise<string> {
   try {
-    const rpcUrl = useMainnet 
-      ? 'https://s1.ripple.com:51234/'
-      : 'https://s.altnet.rippletest.net:51234/';
-    
-    console.log(`🔍 Fetching XRP balance from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
-    
-    const response = await axios.post(rpcUrl, {
-      method: 'account_info',
-      params: [{
-        account: address,
-        ledger_index: 'validated',
-      }],
-    }, {
-      timeout: 10000,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    console.log('📦 XRP API Response:', response.data);
-
-    if (response.data.result?.account_data?.Balance) {
-      const balanceDrops = parseInt(response.data.result.account_data.Balance);
-      const balanceXRP = balanceDrops / 1000000;
-      console.log('✅ XRP Balance:', balanceXRP, 'XRP');
-      return balanceXRP.toFixed(6);
+    // Validate address first
+    if (!xrplService.isValidAddress(address)) {
+      console.error('❌ Invalid XRP address format:', address);
+      return '0';
     }
     
-    console.warn('⚠️ XRP account not found or no balance');
+    const result = await xrplService.getBalance(address, useMainnet);
+    
+    if (result) {
+      return parseFloat(result.balance).toFixed(6);
+    }
+    
+    console.warn('⚠️ XRP account not found or not activated');
     return '0';
   } catch (error: any) {
     console.error('❌ Failed to fetch XRP balance:', error.message);
@@ -278,18 +263,8 @@ export async function fetchBlockNumber(chain: Chain, useMainnet = false): Promis
       }
 
       case 'xrp': {
-        const rpcUrl = useMainnet
-          ? 'https://s1.ripple.com:51234/'
-          : 'https://s.altnet.rippletest.net:51234/';
-        
-        const response = await axios.post(rpcUrl, {
-          method: 'ledger',
-          params: [{
-            ledger_index: 'validated',
-          }],
-        }, { timeout: 5000 });
-        
-        return response.data.result?.ledger_index || null;
+        const ledgerIndex = await xrplService.getLedgerInfo(useMainnet);
+        return ledgerIndex;
       }
 
       case 'solana': {
