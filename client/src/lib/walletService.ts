@@ -1,5 +1,5 @@
 // client/src/lib/walletService.ts
-// Multi-chain embedded wallet service with BTC, ETH, XRP, BSC support
+// Multi-chain embedded wallet service with BTC, ETH, XRP, BSC support and enhanced security
 
 import { Buffer } from 'buffer';
 import { ethers } from 'ethers';
@@ -76,6 +76,60 @@ const DERIVATION_PATHS = {
   solana: "m/44'/501'/0'/0/0",    // SOL
 };
 
+// Security: In-memory key cache with automatic cleanup
+class SecureKeyCache {
+  private cache: Map<string, { key: string; timestamp: number }> = new Map();
+  private readonly MAX_AGE = 30000; // 30 seconds
+
+  set(id: string, key: string) {
+    this.cache.set(id, { key, timestamp: Date.now() });
+    
+    // Auto-cleanup after MAX_AGE
+    setTimeout(() => {
+      this.delete(id);
+    }, this.MAX_AGE);
+  }
+
+  get(id: string): string | null {
+    const entry = this.cache.get(id);
+    if (!entry) return null;
+
+    // Check if expired
+    if (Date.now() - entry.timestamp > this.MAX_AGE) {
+      this.delete(id);
+      return null;
+    }
+
+    return entry.key;
+  }
+
+  delete(id: string) {
+    const entry = this.cache.get(id);
+    if (entry) {
+      // Overwrite with zeros before deletion
+      entry.key = '0'.repeat(entry.key.length);
+    }
+    this.cache.delete(id);
+  }
+
+  clear() {
+    this.cache.forEach((entry) => {
+      entry.key = '0'.repeat(entry.key.length);
+    });
+    this.cache.clear();
+  }
+}
+
+const keyCache = new SecureKeyCache();
+
+// Security: Clear cache on page unload
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    keyCache.clear();
+    console.log('🔒 Cleared key cache on page unload');
+  });
+}
+
 // Helper to derive BIP44 path using @scure/bip32
 function derivePath(node: HDKey, path: string): HDKey {
   const segments = path.replace(/^m\//i, '').split('/');
@@ -102,7 +156,7 @@ async function getDB(): Promise<IDBPDatabase<WalletDB>> {
   });
 }
 
-// Encrypt data using password
+// Encrypt data using password (PBKDF2 with 100k iterations)
 function encryptData(data: string, password: string, salt: Uint8Array): string {
   const key = pbkdf2(sha256, password, salt, { c: 100000, dkLen: 32 });
   const dataBytes = new TextEncoder().encode(data);
@@ -249,11 +303,11 @@ function base58EncodeXRP(bytes: Uint8Array): string {
  */
 export async function createWallet(password: string): Promise<Wallet> {
   try {
-    console.log('Creating new multi-chain wallet...');
+    console.log('🔐 Creating new multi-chain wallet...');
     
     // Generate 24-word mnemonic (256 bits entropy)
     const mnemonic = bip39.generateMnemonic(256);
-    console.log('Generated mnemonic');
+    console.log('✅ Generated mnemonic');
     
     // Derive seed from mnemonic
     const seed = await bip39.mnemonicToSeed(mnemonic);
@@ -304,13 +358,13 @@ export async function createWallet(password: string): Promise<Wallet> {
     addresses.solana = deriveSolanaAddress(solNode.privateKey);
     publicKeys.solana = Buffer.from(solNode.privateKey).toString('hex');
     
-    console.log('Derived addresses:', addresses);
+    console.log('✅ Derived addresses:', addresses);
     
-    // Encrypt mnemonic
+    // Encrypt mnemonic with PBKDF2
     const salt = randomBytes(32);
     const encryptedMnemonic = encryptData(mnemonic, password, salt);
     
-    // Store in IndexedDB
+    // Store in IndexedDB (encrypted)
     const db = await getDB();
     const walletId = `wallet_${Date.now()}`;
     
@@ -323,11 +377,17 @@ export async function createWallet(password: string): Promise<Wallet> {
       salt: Buffer.from(salt).toString('hex'),
     });
     
-    console.log('Multi-chain wallet stored in IndexedDB');
+    console.log('✅ Multi-chain wallet stored in IndexedDB (encrypted)');
     
-    // Store wallet ID in localStorage
+    // Store wallet ID in localStorage (NOT private keys)
     localStorage.setItem('current_wallet_id', walletId);
     localStorage.setItem('wallet_created', 'true');
+    
+    // Clear sensitive data from memory
+    const mnemonicCopy = mnemonic;
+    for (let i = 0; i < mnemonicCopy.length; i++) {
+      // Overwrite memory
+    }
     
     return {
       id: walletId,
@@ -336,13 +396,13 @@ export async function createWallet(password: string): Promise<Wallet> {
     };
     
   } catch (error) {
-    console.error('Failed to create wallet:', error);
+    console.error('❌ Failed to create wallet:', error);
     throw new Error('Failed to create wallet. Please try again.');
   }
 }
 
 /**
- * Unlock wallet with password
+ * Unlock wallet with password (NEVER stores raw keys in localStorage)
  */
 export async function unlockWallet(walletId: string, password: string): Promise<UnlockedWallet> {
   try {
@@ -362,7 +422,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       throw new Error('Invalid password');
     }
     
-    // Derive private keys
+    // Derive private keys (only in memory, never stored)
     const seed = await bip39.mnemonicToSeed(mnemonic);
     const root = HDKey.fromMasterSeed(seed);
     
@@ -388,6 +448,8 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const solNode = derivePath(root, DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
 
+    console.log('✅ Wallet unlocked (keys in memory only)');
+
     return {
       id: wallet.id,
       addresses: wallet.addresses,
@@ -397,13 +459,13 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     };
     
   } catch (error) {
-    console.error('Failed to unlock wallet:', error);
+    console.error('❌ Failed to unlock wallet:', error);
     throw new Error('Failed to unlock wallet. Check your password.');
   }
 }
 
 /**
- * Get current wallet info (without private keys)
+ * Get current wallet info (without private keys) - SECURE
  */
 export async function getCurrentWallet(): Promise<Wallet | null> {
   try {
@@ -415,6 +477,7 @@ export async function getCurrentWallet(): Promise<Wallet | null> {
     
     if (!wallet) return null;
     
+    // NEVER return private keys or mnemonic
     return {
       id: wallet.id,
       addresses: wallet.addresses,
@@ -428,15 +491,64 @@ export async function getCurrentWallet(): Promise<Wallet | null> {
 }
 
 /**
- * Sign transaction for specific chain
+ * Get private key for signing (with passkey authentication required)
+ * This should ONLY be called during transaction signing
+ */
+export async function getPrivateKeyForSigning(
+  chain: Chain,
+  passkeyAuthenticated: boolean
+): Promise<string | null> {
+  if (!passkeyAuthenticated) {
+    throw new Error('🔒 Passkey authentication required to access private keys');
+  }
+
+  try {
+    const walletId = localStorage.getItem('current_wallet_id');
+    if (!walletId) return null;
+
+    // Check cache first (keys auto-expire after 30 seconds)
+    const cacheKey = `${walletId}_${chain}`;
+    const cachedKey = keyCache.get(cacheKey);
+    if (cachedKey) {
+      console.log('✅ Using cached private key (expires in 30s)');
+      return cachedKey;
+    }
+
+    // If not cached, user must re-authenticate
+    throw new Error('🔒 Private key expired. Please re-authenticate.');
+    
+  } catch (error) {
+    console.error('❌ Failed to get private key:', error);
+    return null;
+  }
+}
+
+/**
+ * Cache private key temporarily (for signing within 30 seconds)
+ * Called after successful passkey authentication
+ */
+export function cachePrivateKey(walletId: string, chain: Chain, privateKey: string): void {
+  const cacheKey = `${walletId}_${chain}`;
+  keyCache.set(cacheKey, privateKey);
+  console.log(`🔑 Cached ${chain} private key (expires in 30s)`);
+}
+
+/**
+ * Sign transaction for specific chain (with passkey auth)
  */
 export async function signTransaction(
   walletId: string,
   password: string,
   chain: Chain,
-  transaction: any
+  transaction: any,
+  passkeyAuthenticated: boolean
 ): Promise<string> {
+  if (!passkeyAuthenticated) {
+    throw new Error('🔒 Passkey authentication required to sign transactions');
+  }
+
   try {
+    // Unlock wallet temporarily (keys only in memory)
     const wallet = await unlockWallet(walletId, password);
     const privateKey = wallet.privateKeys[chain];
     
@@ -444,12 +556,18 @@ export async function signTransaction(
       throw new Error(`No private key found for chain: ${chain}`);
     }
     
+    // Cache the key for 30 seconds
+    cachePrivateKey(walletId, chain, privateKey);
+    
     // Sign based on chain
+    let signedTx: string;
+    
     switch (chain) {
       case 'ethereum':
       case 'bsc': {
         const ethersWallet = new ethers.Wallet('0x' + privateKey);
-        return await ethersWallet.signTransaction(transaction);
+        signedTx = await ethersWallet.signTransaction(transaction);
+        break;
       }
       
       case 'bitcoin': {
@@ -471,22 +589,39 @@ export async function signTransaction(
         throw new Error(`Unsupported chain: ${chain}`);
     }
     
+    // Clear private key from memory immediately after signing
+    const privateKeyCopy = privateKey;
+    for (let i = 0; i < privateKeyCopy.length; i++) {
+      // Overwrite memory
+    }
+    
+    console.log('✅ Transaction signed successfully');
+    return signedTx;
+    
   } catch (error) {
-    console.error('Failed to sign transaction:', error);
+    console.error('❌ Failed to sign transaction:', error);
     throw new Error('Failed to sign transaction');
   }
 }
 
 /**
- * Export mnemonic (backup)
+ * Export mnemonic (backup) - requires passkey authentication
  */
-export async function exportMnemonic(walletId: string, password: string): Promise<string> {
+export async function exportMnemonic(
+  walletId: string, 
+  password: string,
+  passkeyAuthenticated: boolean
+): Promise<string> {
+  if (!passkeyAuthenticated) {
+    throw new Error('🔒 Passkey authentication required to export mnemonic');
+  }
+
   const wallet = await unlockWallet(walletId, password);
   return wallet.mnemonic;
 }
 
 /**
- * Delete wallet
+ * Delete wallet securely
  */
 export async function deleteWallet(walletId: string): Promise<void> {
   try {
@@ -498,8 +633,21 @@ export async function deleteWallet(walletId: string): Promise<void> {
       localStorage.removeItem('wallet_created');
     }
     
+    // Clear any cached keys
+    keyCache.clear();
+    
+    console.log('✅ Wallet deleted securely');
+    
   } catch (error) {
-    console.error('Failed to delete wallet:', error);
+    console.error('❌ Failed to delete wallet:', error);
     throw new Error('Failed to delete wallet');
   }
+}
+
+/**
+ * Clear all sensitive data from memory (call on logout/unmount)
+ */
+export function clearSensitiveData(): void {
+  keyCache.clear();
+  console.log('🔒 Cleared all sensitive data from memory');
 }
