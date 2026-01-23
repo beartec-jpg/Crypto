@@ -1,5 +1,5 @@
 // client/src/lib/transactionService.ts
-// Multi-chain transaction history fetching
+// Multi-chain transaction history fetching with mainnet/testnet support
 
 import axios from 'axios';
 import type { Chain } from './balanceService';
@@ -40,7 +40,7 @@ export async function fetchEthereumTransactions(
         startblock: 0,
         endblock: 99999999,
         page: 1,
-        offset: 20, // Get last 20 transactions
+        offset: 20,
         sort: 'desc',
       },
     });
@@ -283,7 +283,7 @@ export async function fetchSolanaTransactions(
             jsonrpc: '2.0',
             id: 1,
             method: 'getTransaction',
-            params: [sig.signature, { encoding: 'json' }],
+            params: [sig.signature, { encoding: 'json', maxSupportedTransactionVersion: 0 }],
           });
 
           const tx = detailResponse.data.result;
