@@ -200,7 +200,7 @@ export default function WalletDashboard({
 
       try {
         console.log(`🔍 Fetching transactions for ${selectedChain}: ${currentAddress}`);
-        const txs = await fetchChainTransactions(selectedChain, currentAddress);
+        const txs = await fetchChainTransactions(selectedChain, currentAddress, useMainnet);
         console.log(`✅ Loaded ${txs.length} real transactions`);
         setTransactions(txs);
       } catch (error) {
