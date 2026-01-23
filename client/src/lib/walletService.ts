@@ -9,11 +9,9 @@ import { pbkdf2 } from '@noble/hashes/pbkdf2';
 import { randomBytes } from '@noble/hashes/utils';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import * as bip39 from 'bip39';
-import { BIP32Factory } from 'bip32';
-import * as ecc from 'tiny-secp256k1';
+import { HDKey } from '@scure/bip32';
 
-const bip32 = BIP32Factory(ecc);
-
+// No need for bip32 factory anymore
 // Supported chains
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
 
@@ -244,7 +242,7 @@ export async function createWallet(password: string): Promise<Wallet> {
     
     // Derive seed from mnemonic
     const seed = await bip39.mnemonicToSeed(mnemonic);
-    const root = bip32.fromSeed(seed);
+    const root = HDKey.fromMasterSeed(seed);
     
     // Derive keys for each chain
     const addresses: Wallet['addresses'] = {
@@ -329,6 +327,7 @@ export async function createWallet(password: string): Promise<Wallet> {
 }
 
 /**
+/**
  * Unlock wallet with password
  */
 export async function unlockWallet(walletId: string, password: string): Promise<UnlockedWallet> {
@@ -351,7 +350,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     
     // Derive private keys
     const seed = await bip39.mnemonicToSeed(mnemonic);
-    const root = bip32.fromSeed(seed);
+    const root = HDKey.fromMasterSeed(seed);  // ✅ CHANGED THIS LINE
     
     const privateKeys: UnlockedWallet['privateKeys'] = {
       ethereum: '',
@@ -361,18 +360,18 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       solana: '',
     };
     
-    const ethNode = root.derivePath(DERIVATION_PATHS.ethereum);
+    const ethNode = root.derive(DERIVATION_PATHS.ethereum);
     privateKeys.ethereum = ethNode.privateKey ? Buffer.from(ethNode.privateKey).toString('hex') : '';
     
-    const btcNode = root.derivePath(DERIVATION_PATHS.bitcoin);
+    const btcNode = root.derive(DERIVATION_PATHS.bitcoin);
     privateKeys.bitcoin = btcNode.privateKey ? Buffer.from(btcNode.privateKey).toString('hex') : '';
     
     privateKeys.bsc = privateKeys.ethereum; // Same as ETH
     
-    const xrpNode = root.derivePath(DERIVATION_PATHS.xrp);
+    const xrpNode = root.derive(DERIVATION_PATHS.xrp);
     privateKeys.xrp = xrpNode.privateKey ? Buffer.from(xrpNode.privateKey).toString('hex') : '';
     
-    const solNode = root.derivePath(DERIVATION_PATHS.solana);
+    const solNode = root.derive(DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
     
     return {
