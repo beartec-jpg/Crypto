@@ -227,5 +227,84 @@ export default function SendForm({
             <Shield className="w-4 h-4" />
             <span className="font-medium">Quantum-Secure Signing</span>
           </div>
-          <p*
-
+          <p className="text-sm text-gray-400">
+            Your transaction will be signed using hybrid post-quantum cryptography
+            (ML-DSA + ECDSA) for maximum security against future quantum attacks.
+          </p>
+        </div>
+
+        {/* Signature Status */}
+        {signatureStatus !== 'idle' && (
+          <div className={`p-4 rounded-xl border ${
+            signatureStatus === 'signing' ? 'bg-blue-900/20 border-blue-700/30' :
+            signatureStatus === 'signed' ? 'bg-emerald-900/20 border-emerald-700/30' :
+            'bg-red-900/20 border-red-700/30'
+          }`}>
+            <div className="flex items-center gap-2">
+              {signatureStatus === 'signing' && (
+                <>
+                  <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                  <span className="text-blue-400">Generating hybrid signature...</span>
+                </>
+              )}
+              {signatureStatus === 'signed' && (
+                <>
+                  <Check className="w-4 h-4 text-emerald-400" />
+                  <span className="text-emerald-400">Hybrid signature verified</span>
+                </>
+              )}
+              {signatureStatus === 'error' && (
+                <span className="text-red-400">Signature failed</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/30 text-red-400">
+            {error}
+          </div>
+        )}
+
+        {/* Success Display */}
+        {isSuccess && txHash && (
+          <div className="p-4 rounded-xl bg-emerald-900/20 border border-emerald-700/30">
+            <p className="text-emerald-400 font-medium mb-2">Transaction Sent!</p>
+            <a
+              href={`${chainConfig.explorer}${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-cyan-400 hover:underline font-mono break-all"
+            >
+              View on Explorer →
+            </a>
+          </div>
+        )}
+
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={!canSend || isSending || isQuantumSigning}
+          className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+        >
+          {isSending || isQuantumSigning ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>{isQuantumSigning ? 'Signing...' : 'Sending...'}</span>
+            </>
+          ) : (
+            <span>Send {chainConfig.symbol}</span>
+          )}
+        </button>
+
+        {/* Implementation Notice for non-ETH chains */}
+        {selectedChain !== 'ethereum' && selectedChain !== 'bsc' && (
+          <div className="p-3 rounded-lg bg-amber-900/20 border border-amber-700/30 text-sm text-amber-400">
+            ⚠️ {chainConfig.symbol} transactions require additional chain-specific libraries and are not yet fully implemented.
+          </div>
+        )}
+      </form>
+    </div>
+  );
+}
