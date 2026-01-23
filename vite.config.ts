@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { visualizer } from 'rollup-plugin-visualizer'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -10,7 +11,12 @@ const __dirname = path.dirname(__filename)
 export default defineConfig({
   plugins: [
     react(),
-    // Bundle analysis visualization
+    nodePolyfills({
+      include: ['buffer'],
+      globals: {
+        Buffer: true,
+      },
+    }),
     visualizer({
       filename: './client/dist/stats.html',
       open: false,
@@ -19,10 +25,7 @@ export default defineConfig({
     }),
   ],
 
-  // This tells Vite where your React app lives
   root: 'client',
-
-  // Important for Vercel – makes sure assets load correctly
   base: '/',
 
   resolve: {
@@ -30,44 +33,22 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'client/src'),
       '@shared': path.resolve(__dirname, 'shared'),
       '@assets': path.resolve(__dirname, 'attached_assets'),
-      buffer: 'buffer/', // ✅ ADD THIS
     },
   },
 
-  // ✅ ADD THIS SECTION
-  define: {
-    global: 'globalThis',
-  },
-
-  // ✅ ADD THIS SECTION
-  optimizeDeps: {
-    include: ['buffer'],
-    esbuildOptions: {
-      define: {
-        global: 'globalThis'
-      }
-    }
-  },
-
   build: {
-    outDir: '../dist',   // ← Critical: goes one level UP from client/ → root/dist
+    outDir: '../dist',
     emptyOutDir: true,
     sourcemap: false,
     minify: 'esbuild',
     target: 'es2020',
-    // Asset inline threshold - inline assets < 4KB as base64
     assetsInlineLimit: 4096,
     rollupOptions: {
       output: {
-        // Manual chunk splitting for better caching
         manualChunks: {
-          // React core
           'react-vendor': ['react', 'react-dom', 'react/jsx-runtime'],
-          // Router
           'router': ['wouter'],
-          // Web3/Wagmi
           'web3-vendor': ['wagmi', 'viem'],
-          // UI libraries
           'ui-vendor': [
             '@radix-ui/react-dialog',
             '@radix-ui/react-popover',
@@ -78,14 +59,10 @@ export default defineConfig({
             '@radix-ui/react-tooltip',
             '@radix-ui/react-dropdown-menu',
           ],
-          // D3 - separate chunk loaded only when needed
           'd3-vendor': ['d3'],
-          // Query & Form handling
           'query-vendor': ['@tanstack/react-query', 'react-hook-form'],
-          // Icons
           'icons': ['lucide-react'],
         },
-        // Clean chunk file names for better caching
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',
         assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
@@ -95,6 +72,6 @@ export default defineConfig({
 
   server: {
     port: 3000,
-    host: true, // allows access from local network if needed
+    host: true,
   },
 })
