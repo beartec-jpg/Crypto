@@ -360,23 +360,25 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       xrp: '',
       solana: '',
     };
+
     
-    const ethNode = root.derive(DERIVATION_PATHS.ethereum);
+    
+    const ethNode = root.derivePath(DERIVATION_PATHS.ethereum);
     privateKeys.ethereum = ethNode.privateKey ? Buffer.from(ethNode.privateKey).toString('hex') : '';
-    
-    const btcNode = root.derive(DERIVATION_PATHS.bitcoin);
+
+    const btcNode = root.derivePath(DERIVATION_PATHS.bitcoin);
     privateKeys.bitcoin = btcNode.privateKey ? Buffer.from(btcNode.privateKey).toString('hex') : '';
-    
+
     privateKeys.bsc = privateKeys.ethereum; // Same as ETH
-    
-    const xrpNode = root.derive(DERIVATION_PATHS.xrp);
+
+    const xrpNode = root.derivePath(DERIVATION_PATHS.xrp);
     privateKeys.xrp = xrpNode.privateKey ? Buffer.from(xrpNode.privateKey).toString('hex') : '';
-    
-    const solNode = root.derive(DERIVATION_PATHS.solana);
+
+    const solNode = root.derivePath(DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
-    
+
     return {
-      id: wallet.id,
+    id: wallet.id,
       addresses: wallet.addresses,
       mnemonic,
       privateKeys,
