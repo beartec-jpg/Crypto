@@ -41,11 +41,11 @@ export async function fetchPrices(): Promise<CoinGeckoPrices> {
     console.error('Failed to fetch prices:', error);
     // Return fallback prices
     return {
-      ethereum: { usd: 2000, usd_24h_change: 0 },
-      bitcoin: { usd: 40000, usd_24h_change: 0 },
-      binancecoin: { usd: 300, usd_24h_change: 0 },
-      ripple: { usd: 0.5, usd_24h_change: 0 },
-      solana: { usd: 100, usd_24h_change: 0 },
+      ethereum: { usd: 2925, usd_24h_change: -0.6 },
+      bitcoin: { usd: 94000, usd_24h_change: 1.2 },
+      binancecoin: { usd: 648, usd_24h_change: 0.8 },
+      ripple: { usd: 3.12, usd_24h_change: 2.1 },
+      solana: { usd: 244, usd_24h_change: -1.4 },
     };
   }
 }
@@ -55,9 +55,9 @@ export async function fetchPrices(): Promise<CoinGeckoPrices> {
  */
 export async function fetchEthereumBalance(address: string, useMainnet = false): Promise<string> {
   try {
-     const apiUrl = useMainnet
-      ? 'https://api.etherscan.io/v2/api'      // V2 Mainnet
-      : 'https://api-sepolia.etherscan.io/v2/api'; // V2 Sepolia Testnet
+    const apiUrl = useMainnet
+      ? 'https://api.etherscan.io/api'
+      : 'https://api-sepolia.etherscan.io/api';
     
     console.log(`🔍 Fetching ETH balance from ${useMainnet ? 'MAINNET' : 'SEPOLIA TESTNET'} for:`, address);
     
@@ -68,11 +68,12 @@ export async function fetchEthereumBalance(address: string, useMainnet = false):
         address,
         tag: 'latest',
       },
+      timeout: 10000,
     });
 
     console.log('📦 ETH API Response:', response.data);
 
-    if (response.data.status === '1') {
+    if (response.data.status === '1' && response.data.result) {
       const balanceWei = response.data.result;
       const balanceEth = parseFloat(balanceWei) / 1e18;
       console.log('✅ ETH Balance:', balanceEth, 'ETH');
@@ -81,8 +82,8 @@ export async function fetchEthereumBalance(address: string, useMainnet = false):
     
     console.warn('⚠️ ETH account not found or no balance');
     return '0';
-  } catch (error) {
-    console.error('❌ Failed to fetch Ethereum balance:', error);
+  } catch (error: any) {
+    console.error('❌ Failed to fetch Ethereum balance:', error.message);
     return '0';
   }
 }
@@ -93,12 +94,14 @@ export async function fetchEthereumBalance(address: string, useMainnet = false):
 export async function fetchBitcoinBalance(address: string, useMainnet = true): Promise<string> {
   try {
     const apiUrl = useMainnet
-      ? `https://blockstream.info/api/address/${address}`           // Mainnet (default)
-      : `https://blockstream.info/testnet/api/address/${address}`;  // Testnet
+      ? `https://blockstream.info/api/address/${address}`
+      : `https://blockstream.info/testnet/api/address/${address}`;
     
     console.log(`🔍 Fetching BTC balance from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
     
-    const response = await axios.get(apiUrl);
+    const response = await axios.get(apiUrl, {
+      timeout: 10000,
+    });
     
     console.log('📦 BTC API Response:', response.data);
 
@@ -107,8 +110,8 @@ export async function fetchBitcoinBalance(address: string, useMainnet = true): P
     const balanceBTC = balanceSats / 100000000;
     console.log('✅ BTC Balance:', balanceBTC, 'BTC');
     return balanceBTC.toFixed(8);
-  } catch (error) {
-    console.error('❌ Failed to fetch Bitcoin balance:', error);
+  } catch (error: any) {
+    console.error('❌ Failed to fetch Bitcoin balance:', error.message);
     return '0';
   }
 }
@@ -118,9 +121,9 @@ export async function fetchBitcoinBalance(address: string, useMainnet = true): P
  */
 export async function fetchBSCBalance(address: string, useMainnet = false): Promise<string> {
   try {
-   const apiUrl = useMainnet
-      ? 'https://api.bscscan.com/v2/api'        // V2 Mainnet
-      : 'https://api-testnet.bscscan.com/v2/api'; // V2 Testnet
+    const apiUrl = useMainnet
+      ? 'https://api.bscscan.com/api'
+      : 'https://api-testnet.bscscan.com/api';
     
     console.log(`🔍 Fetching BNB balance from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
     
@@ -131,11 +134,12 @@ export async function fetchBSCBalance(address: string, useMainnet = false): Prom
         address,
         tag: 'latest',
       },
+      timeout: 10000,
     });
 
     console.log('📦 BNB API Response:', response.data);
 
-    if (response.data.status === '1') {
+    if (response.data.status === '1' && response.data.result) {
       const balanceWei = response.data.result;
       const balanceBNB = parseFloat(balanceWei) / 1e18;
       console.log('✅ BNB Balance:', balanceBNB, 'BNB');
@@ -144,8 +148,8 @@ export async function fetchBSCBalance(address: string, useMainnet = false): Prom
     
     console.warn('⚠️ BNB account not found or no balance');
     return '0';
-  } catch (error) {
-    console.error('❌ Failed to fetch BSC balance:', error);
+  } catch (error: any) {
+    console.error('❌ Failed to fetch BSC balance:', error.message);
     return '0';
   }
 }
@@ -156,8 +160,8 @@ export async function fetchBSCBalance(address: string, useMainnet = false): Prom
 export async function fetchXRPBalance(address: string, useMainnet = true): Promise<string> {
   try {
     const rpcUrl = useMainnet 
-      ? 'https://s1.ripple.com:51234/'           // Mainnet (default)
-      : 'https://s.altnet.rippletest.net:51234/'; // Testnet
+      ? 'https://s1.ripple.com:51234/'
+      : 'https://s.altnet.rippletest.net:51234/';
     
     console.log(`🔍 Fetching XRP balance from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
     
@@ -167,6 +171,11 @@ export async function fetchXRPBalance(address: string, useMainnet = true): Promi
         account: address,
         ledger_index: 'validated',
       }],
+    }, {
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
 
     console.log('📦 XRP API Response:', response.data);
@@ -180,8 +189,8 @@ export async function fetchXRPBalance(address: string, useMainnet = true): Promi
     
     console.warn('⚠️ XRP account not found or no balance');
     return '0';
-  } catch (error) {
-    console.error('❌ Failed to fetch XRP balance:', error);
+  } catch (error: any) {
+    console.error('❌ Failed to fetch XRP balance:', error.message);
     return '0';
   }
 }
@@ -192,8 +201,8 @@ export async function fetchXRPBalance(address: string, useMainnet = true): Promi
 export async function fetchSolanaBalance(address: string, useMainnet = false): Promise<string> {
   try {
     const rpcUrl = useMainnet
-      ? 'https://api.mainnet-beta.solana.com' // Mainnet
-      : 'https://api.devnet.solana.com';      // Devnet (default)
+      ? 'https://api.mainnet-beta.solana.com'
+      : 'https://api.devnet.solana.com';
     
     console.log(`🔍 Fetching SOL balance from ${useMainnet ? 'MAINNET' : 'DEVNET'} for:`, address);
     
@@ -202,6 +211,8 @@ export async function fetchSolanaBalance(address: string, useMainnet = false): P
       id: 1,
       method: 'getBalance',
       params: [address],
+    }, {
+      timeout: 10000,
     });
 
     console.log('📦 SOL API Response:', response.data);
@@ -215,8 +226,8 @@ export async function fetchSolanaBalance(address: string, useMainnet = false): P
     
     console.warn('⚠️ SOL account not found or no balance');
     return '0';
-  } catch (error) {
-    console.error('❌ Failed to fetch Solana balance:', error);
+  } catch (error: any) {
+    console.error('❌ Failed to fetch Solana balance:', error.message);
     return '0';
   }
 }
@@ -237,7 +248,7 @@ export async function fetchBlockNumber(chain: Chain, useMainnet = false): Promis
           id: 1,
           method: 'eth_blockNumber',
           params: [],
-        });
+        }, { timeout: 5000 });
         
         return parseInt(response.data.result, 16);
       }
@@ -247,7 +258,7 @@ export async function fetchBlockNumber(chain: Chain, useMainnet = false): Promis
           ? 'https://blockstream.info/api/blocks/tip/height'
           : 'https://blockstream.info/testnet/api/blocks/tip/height';
         
-        const response = await axios.get(apiUrl);
+        const response = await axios.get(apiUrl, { timeout: 5000 });
         return response.data;
       }
 
@@ -261,7 +272,7 @@ export async function fetchBlockNumber(chain: Chain, useMainnet = false): Promis
           id: 1,
           method: 'eth_blockNumber',
           params: [],
-        });
+        }, { timeout: 5000 });
         
         return parseInt(response.data.result, 16);
       }
@@ -276,7 +287,7 @@ export async function fetchBlockNumber(chain: Chain, useMainnet = false): Promis
           params: [{
             ledger_index: 'validated',
           }],
-        });
+        }, { timeout: 5000 });
         
         return response.data.result?.ledger_index || null;
       }
@@ -291,7 +302,7 @@ export async function fetchBlockNumber(chain: Chain, useMainnet = false): Promis
           id: 1,
           method: 'getSlot',
           params: [],
-        });
+        }, { timeout: 5000 });
         
         return response.data.result;
       }
@@ -299,8 +310,8 @@ export async function fetchBlockNumber(chain: Chain, useMainnet = false): Promis
       default:
         return null;
     }
-  } catch (error) {
-    console.error(`Failed to fetch block number for ${chain}:`, error);
+  } catch (error: any) {
+    console.error(`Failed to fetch block number for ${chain}:`, error.message);
     return null;
   }
 }
