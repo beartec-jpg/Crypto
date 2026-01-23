@@ -22,6 +22,7 @@ export default function WalletPage() {
   const [isPasskeyAuthenticated, setIsPasskeyAuthenticated] = useState(false);
   const [selectedChain, setSelectedChain] = useState<Chain>('ethereum');
   const [sovereignWallet, setSovereignWallet] = useState<any>(null);
+  const [useMainnet, setUseMainnet] = useState(false); // Default to testnet
 
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
@@ -109,11 +110,11 @@ export default function WalletPage() {
               onChange={(e) => setSelectedChain(e.target.value as Chain)}
               className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="ethereum">Ethereum (Sepolia)</option>
-              <option value="bitcoin">Bitcoin (Mainnet)</option>
+              <option value="ethereum">Ethereum</option>
+              <option value="bitcoin">Bitcoin</option>
               <option value="bsc">BSC (Binance Smart Chain)</option>
               <option value="xrp">XRP (Ripple)</option>
-              <option value="solana">Solana (Devnet)</option>
+              <option value="solana">Solana</option>
             </select>
           ) : (
             <select
@@ -121,10 +122,26 @@ export default function WalletPage() {
               onChange={(e) => setSelectedChain(e.target.value as Chain)}
               className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="ethereum">Ethereum (Sepolia)</option>
-              <option value="solana">Solana (Devnet)</option>
+              <option value="ethereum">Ethereum</option>
+              <option value="solana">Solana</option>
             </select>
           )}
+
+          {/* Mainnet/Testnet Toggle */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800">
+            <span className="text-sm text-gray-400">
+              {useMainnet ? '🟢 Mainnet' : '🟡 Testnet'}
+            </span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useMainnet}
+                onChange={(e) => setUseMainnet(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
 
           {/* Passkey Auth Status */}
           {isPasskeyAuthenticated || sovereignWallet ? (
@@ -142,6 +159,14 @@ export default function WalletPage() {
               <Lock className="w-4 h-4" />
               <span>Authenticate</span>
             </button>
+          )}
+
+          {/* Mainnet Warning */}
+          {useMainnet && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900/30 border border-red-700/50">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <span className="text-sm text-red-400">Real Money - Be Careful!</span>
+            </div>
           )}
         </div>
 
@@ -221,7 +246,9 @@ export default function WalletPage() {
                   <p className="font-mono text-sm">
                     {activeAddress?.slice(0, 10)}...{activeAddress?.slice(-4)}
                   </p>
-                  <p className="text-xs text-gray-500 capitalize">{selectedChain}</p>
+                  <p className="text-xs text-gray-500 capitalize">
+                    {selectedChain} • {useMainnet ? 'Mainnet' : 'Testnet'}
+                  </p>
                 </div>
               </div>
               <button
@@ -267,6 +294,7 @@ export default function WalletPage() {
                   hideBalances={hideBalances}
                   selectedChain={selectedChain as 'ethereum' | 'solana'}
                   sovereignWallet={sovereignWallet}
+                  useMainnet={useMainnet}
                 />
               )}
               {activeTab === 'send' && (
