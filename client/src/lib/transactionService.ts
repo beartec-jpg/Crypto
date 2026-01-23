@@ -27,14 +27,13 @@ export async function fetchEthereumTransactions(
 ): Promise<Transaction[]> {
   try {
     const apiUrl = useMainnet
-      ? 'https://api.etherscan.io/v2/api'
-      : 'https://api-sepolia.etherscan.io/v2/api';
+      ? 'https://api.etherscan.io/api'
+      : 'https://api-sepolia.etherscan.io/api';
     
     console.log(`🔍 Fetching ETH transactions from ${useMainnet ? 'MAINNET' : 'SEPOLIA'} for:`, address);
     
     const response = await axios.get(apiUrl, {
       params: {
-        chainid: useMainnet ? 1 : 11155111,
         module: 'account',
         action: 'txlist',
         address,
@@ -43,6 +42,7 @@ export async function fetchEthereumTransactions(
         page: 1,
         offset: 20,
         sort: 'desc',
+        apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '', // ← Add this line
       },
     });
 
@@ -69,8 +69,8 @@ export async function fetchEthereumTransactions(
 
     console.log(`✅ Found ${txs.length} ETH transactions`);
     return txs;
-  } catch (error) {
-    console.error('❌ Failed to fetch Ethereum transactions:', error);
+  } catch (error: any) {
+    console.error('❌ Failed to fetch Ethereum transactions:', error.message);
     return [];
   }
 }
