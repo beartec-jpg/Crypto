@@ -78,13 +78,14 @@ const DERIVATION_PATHS = {
 
 // Helper to derive BIP44 path using @scure/bip32
 function derivePath(node: HDKey, path: string): HDKey {
-  const segments = path.split('/').slice(1); // Remove 'm'
+  const segments = path.replace(/^m\//i, '').split('/');
   let derived = node;
   
   for (const segment of segments) {
+    if (!segment) continue;
     const hardened = segment.endsWith("'");
-    const index = parseInt(segment.replace("'", ''));
-    derived = derived.derive(hardened ? index + 0x80000000 : index);
+    const index = parseInt(segment.replace("'", ''), 10);
+    derived = derived.deriveChild(hardened ? index + 0x80000000 : index);
   }
   
   return derived;
