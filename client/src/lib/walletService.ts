@@ -1,6 +1,7 @@
 // client/src/lib/walletService.ts
 // Multi-chain embedded wallet service with BTC, ETH, XRP, BSC support
 
+import { Buffer } from 'buffer';
 import { ethers } from 'ethers';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
