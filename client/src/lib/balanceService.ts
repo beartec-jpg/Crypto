@@ -51,7 +51,7 @@ export async function fetchPrices(): Promise<CoinGeckoPrices> {
 }
 
 /**
- * Fetch Ethereum balance via Etherscan API
+ * Fetch Ethereum balance via Etherscan API (with API key)
  */
 export async function fetchEthereumBalance(address: string, useMainnet = false): Promise<string> {
   try {
@@ -67,7 +67,7 @@ export async function fetchEthereumBalance(address: string, useMainnet = false):
         action: 'balance',
         address,
         tag: 'latest',
-        apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '', // ← Add this
+        apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '',
       },
       timeout: 10000,
     });
@@ -118,31 +118,30 @@ export async function fetchBitcoinBalance(address: string, useMainnet = true): P
 }
 
 /**
- * Fetch BSC balance via BSCScan API
+ * Fetch BSC balance via RPC (no API key needed)
  */
 export async function fetchBSCBalance(address: string, useMainnet = false): Promise<string> {
   try {
-    const apiUrl = useMainnet
-      ? 'https://api.bscscan.com/api'
-      : 'https://api-testnet.bscscan.com/api';
+    const rpcUrl = useMainnet
+      ? 'https://bsc-dataseed.binance.org/'
+      : 'https://data-seed-prebsc-1-s1.binance.org:8545/';
     
     console.log(`🔍 Fetching BNB balance from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
     
-    const response = await axios.get(apiUrl, {
-      params: {
-        module: 'account',
-        action: 'balance',
-        address,
-        tag: 'latest',
-      },
+    const response = await axios.post(rpcUrl, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'eth_getBalance',
+      params: [address, 'latest'],
+    }, {
       timeout: 10000,
     });
 
-    console.log('📦 BNB API Response:', response.data);
+    console.log('📦 BNB RPC Response:', response.data);
 
-    if (response.data.status === '1' && response.data.result) {
-      const balanceWei = response.data.result;
-      const balanceBNB = parseFloat(balanceWei) / 1e18;
+    if (response.data.result) {
+      const balanceWei = parseInt(response.data.result, 16);
+      const balanceBNB = balanceWei / 1e18;
       console.log('✅ BNB Balance:', balanceBNB, 'BNB');
       return balanceBNB.toFixed(6);
     }
