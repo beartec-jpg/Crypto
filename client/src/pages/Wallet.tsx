@@ -9,6 +9,7 @@ import ReceiveSection from '../components/Wallet/ReceiveSection';
 import SendForm from '../components/Wallet/SendForm';
 import PasskeyAuthModal from '../components/Wallet/PasskeyAuthModal';
 import { getCurrentWallet } from '@/lib/walletService';
+import { securityManager } from '@/lib/securityService';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle } from 'lucide-react';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 
@@ -23,11 +24,39 @@ export default function WalletPage() {
   const [selectedChain, setSelectedChain] = useState<Chain>('ethereum');
   const [sovereignWallet, setSovereignWallet] = useState<any>(null);
   const [useMainnet, setUseMainnet] = useState(false); // Default to testnet
+  const [autoLockTime, setAutoLockTime] = useState(600); // seconds
 
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
+
+  // Setup security manager and auto-lock
+  useEffect(() => {
+    const handleLock = (locked: boolean) => {
+      if (locked) {
+        setIsPasskeyAuthenticated(false);
+        setSovereignWallet(null);
+        console.log('🔒 Wallet auto-locked due to inactivity');
+      }
+    };
+
+    securityManager.addLockListener(handleLock);
+
+    // Update auto-lock countdown every second
+    const interval = setInterval(() => {
+      setAutoLockTime(securityManager.getTimeUntilLock());
+    }, 1000);
+
+    // Cleanup on unmount
+    return () => {
+      securityManager.removeLockListener(handleLock);
+      clearInterval(interval);
+      
+      // Clear sensitive data on unmount
+      securityManager.lockWallet();
+    };
+  }, []);
 
   // Check for sovereign wallet on mount and when passkey auth changes
   useEffect(() => {
@@ -48,6 +77,7 @@ export default function WalletPage() {
     setIsPasskeyAuthenticated(true);
     sessionStorage.setItem('wallet_unlocked', 'true');
     setShowPasskeyModal(false);
+    securityManager.unlockWallet(); // Unlock security manager
     // Refresh wallet data
     getCurrentWallet().then(setSovereignWallet);
   };
@@ -56,6 +86,18 @@ export default function WalletPage() {
     const connector = connectors.find(c => c.id === connectorId);
     if (connector) {
       connect({ connector });
+    }
+  };
+
+  const handleDisconnect = () => {
+    if (isConnected) {
+      disconnect();
+    } else {
+      // For sovereign wallet, lock it securely
+      securityManager.lockWallet();
+      sessionStorage.removeItem('wallet_unlocked');
+      setSovereignWallet(null);
+      setIsPasskeyAuthenticated(false);
     }
   };
 
@@ -161,6 +203,16 @@ export default function WalletPage() {
             </button>
           )}
 
+          {/* Auto-Lock Indicator */}
+          {(isPasskeyAuthenticated || sovereignWallet) && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800 text-xs">
+              <Lock className="w-3 h-3 text-gray-400" />
+              <span className="text-gray-400">
+                Auto-lock: {Math.floor(autoLockTime / 60)}:{(autoLockTime % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+          )}
+
           {/* Mainnet Warning */}
           {useMainnet && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900/30 border border-red-700/50">
@@ -252,16 +304,7 @@ export default function WalletPage() {
                 </div>
               </div>
               <button
-                onClick={() => {
-                  if (isConnected) {
-                    disconnect();
-                  } else {
-                    // For sovereign wallet, just clear session
-                    sessionStorage.removeItem('wallet_unlocked');
-                    setSovereignWallet(null);
-                    setIsPasskeyAuthenticated(false);
-                  }
-                }}
+                onClick={handleDisconnect}
                 className="px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors"
               >
                 Disconnect
@@ -292,7 +335,7 @@ export default function WalletPage() {
                   address={activeAddress}
                   balance={balance}
                   hideBalances={hideBalances}
-                  selectedChain={selectedChain as 'ethereum' | 'solana'}
+                  selectedChain={selectedChain}
                   sovereignWallet={sovereignWallet}
                   useMainnet={useMainnet}
                 />
@@ -301,7 +344,7 @@ export default function WalletPage() {
                 <SendForm
                   isPasskeyAuthenticated={isPasskeyAuthenticated}
                   onRequestPasskey={() => setShowPasskeyModal(true)}
-                  selectedChain={selectedChain as 'ethereum' | 'solana'}
+                  selectedChain={selectedChain}
                 />
               )}
               {activeTab === 'receive' && (
@@ -383,6 +426,16 @@ function SettingsSection({ sovereignWallet }: { sovereignWallet: any }) {
             <div>
               <p className="font-medium">Post-Quantum Signatures</p>
               <p className="text-sm text-gray-400">Hybrid ML-DSA + ECDSA enabled</p>
+            </div>
+            <div className="w-2 h-2 rounded-full bg-emerald-400" />
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Auto-Lock</p>
+              <p className="text-sm text-gray-400">Wallet locks after 10 minutes of inactivity</p>
             </div>
             <div className="w-2 h-2 rounded-full bg-emerald-400" />
           </div>
