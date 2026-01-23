@@ -1,308 +1,184 @@
-// client/src/lib/balanceService.ts
-// Multi-chain balance fetching service
+// client/src/components/Wallet/WalletDashboard.tsx
+// Dashboard showing balances, recent transactions, and quick actions
 
-import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import axios from 'axios';
+import { useState, useEffect } from 'react';
+import { useBalance, useBlockNumber } from 'wagmi';
+import { formatEther } from 'viem';
+import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, Clock, Loader2 } from 'lucide-react';
+import { 
+  fetchAllBalances, 
+  fetchChainBalance, 
+  fetchPrices,
+  getCachedBalances,
+  type ChainBalance,
+  type Chain 
+} from '@/lib/balanceService';
 
-export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
-
-export interface ChainBalance {
+interface Transaction {
+  hash: string;
+  type: 'send' | 'receive';
+  amount: string;
+  token: string;
+  to: string;
+  from: string;
+  timestamp: Date;
+  status: 'pending' | 'confirmed' | 'failed';
   chain: Chain;
-  balance: string;
-  symbol: string;
-  usdPrice?: number;
-  usdValue?: number;
-  isLoading: boolean;
-  error?: string;
+  category?: string;
 }
 
-// CoinGecko API for prices
-const COINGECKO_API = 'https://api.coingecko.com/api/v3/simple/price';
-
-const COINGECKO_IDS: Record<Chain, string> = {
-  ethereum: 'ethereum',
-  bitcoin: 'bitcoin',
-  bsc: 'binancecoin',
-  xrp: 'ripple',
-  solana: 'solana',
-};
-
-/**
- * Fetch prices for all chains from CoinGecko
- */
-export async function fetchPrices(): Promise<Record<Chain, number>> {
-  try {
-    const ids = Object.values(COINGECKO_IDS).join(',');
-    const response = await axios.get(COINGECKO_API, {
-      params: {
-        ids,
-        vs_currencies: 'usd',
-      },
-    });
-
-    return {
-      ethereum: response.data.ethereum?.usd || 0,
-      bitcoin: response.data.bitcoin?.usd || 0,
-      bsc: response.data.binancecoin?.usd || 0,
-      xrp: response.data.ripple?.usd || 0,
-      solana: response.data.solana?.usd || 0,
-    };
-  } catch (error) {
-    console.error('Failed to fetch prices:', error);
-    return {
-      ethereum: 0,
-      bitcoin: 0,
-      bsc: 0,
-      xrp: 0,
-      solana: 0,
-    };
-  }
+interface WalletDashboardProps {
+  address: `0x${string}` | undefined;
+  balance: ReturnType<typeof useBalance>['data'];
+  hideBalances: boolean;
+  selectedChain: Chain;
+  sovereignWallet?: any;
 }
 
-/**
- * Fetch Bitcoin balance via Blockstream API (mainnet)
- */
-export async function fetchBitcoinBalance(address: string): Promise<string> {
-  try {
-    const response = await axios.get(
-      `https://blockstream.info/api/address/${address}`
-    );
-    
-    const balanceSats = response.data.chain_stats.funded_txo_sum - 
-                        response.data.chain_stats.spent_txo_sum;
-    const balanceBTC = balanceSats / 100000000; // Convert satoshis to BTC
-    
-    return balanceBTC.toFixed(8);
-  } catch (error) {
-    console.error('Bitcoin balance fetch failed:', error);
-    return '0';
-  }
-}
+export default function WalletDashboard({
+  address,
+  balance,
+  hideBalances,
+  selectedChain,
+  sovereignWallet,
+}: WalletDashboardProps) {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [chainBalances, setChainBalances] = useState<ChainBalance[]>([]);
+  const [currentBalance, setCurrentBalance] = useState<ChainBalance | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-/**
- * Fetch XRP balance via public XRPL node
- */
-export async function fetchXRPBalance(address: string): Promise<string> {
-  try {
-    const response = await axios.post('https://s1.ripple.com:51234/', {
-      method: 'account_info',
-      params: [
-        {
-          account: address,
-          ledger_index: 'validated',
-        },
-      ],
-    });
+  const { data: blockNumber } = useBlockNumber({ watch: true });
 
-    if (response.data.result?.account_data?.Balance) {
-      const balanceDrops = parseInt(response.data.result.account_data.Balance);
-      const balanceXRP = balanceDrops / 1000000; // Convert drops to XRP
-      return balanceXRP.toFixed(6);
+  // Get chain config for display
+  const getChainConfig = (chain: Chain) => {
+    switch (chain) {
+      case 'ethereum':
+        return { name: 'Ethereum Sepolia', symbol: 'ETH', color: 'text-blue-400' };
+      case 'bitcoin':
+        return { name: 'Bitcoin Mainnet', symbol: 'BTC', color: 'text-orange-400' };
+      case 'bsc':
+        return { name: 'BSC Testnet', symbol: 'BNB', color: 'text-yellow-400' };
+      case 'xrp':
+        return { name: 'XRP Ledger', symbol: 'XRP', color: 'text-gray-400' };
+      case 'solana':
+        return { name: 'Solana Devnet', symbol: 'SOL', color: 'text-purple-400' };
     }
-    
-    return '0';
-  } catch (error) {
-    // Account might not be activated (requires 10 XRP reserve)
-    console.error('XRP balance fetch failed:', error);
-    return '0';
-  }
-}
+  };
 
-/**
- * Fetch Solana balance via @solana/web3.js (devnet)
- */
-export async function fetchSolanaBalance(address: string): Promise<string> {
-  try {
-    // Use devnet for testing (change to mainnet-beta for production)
-    const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
-    const publicKey = new PublicKey(address);
-    const balance = await connection.getBalance(publicKey);
-    
-    return (balance / LAMPORTS_PER_SOL).toFixed(6);
-  } catch (error) {
-    console.error('Solana balance fetch failed:', error);
-    return '0';
-  }
-}
+  const chainConfig = getChainConfig(selectedChain);
 
-/**
- * Fetch Ethereum balance (uses Wagmi hook instead, but here for completeness)
- */
-export async function fetchEthereumBalance(address: string): Promise<string> {
-  try {
-    // Use public Sepolia RPC
-    const response = await axios.post(
-      'https://rpc.sepolia.org',
-      {
-        jsonrpc: '2.0',
-        method: 'eth_getBalance',
-        params: [address, 'latest'],
-        id: 1,
+  // Fetch all balances for sovereign wallet
+  useEffect(() => {
+    const loadBalances = async () => {
+      if (!sovereignWallet) return;
+
+      setIsLoading(true);
+      try {
+        // Try cache first
+        const cached = getCachedBalances();
+        if (cached) {
+          setChainBalances(cached);
+          const current = cached.find(b => b.chain === selectedChain);
+          setCurrentBalance(current || null);
+        }
+
+        // Fetch fresh data
+        const balances = await fetchAllBalances(sovereignWallet.addresses);
+        setChainBalances(balances);
+        
+        const current = balances.find(b => b.chain === selectedChain);
+        setCurrentBalance(current || null);
+      } catch (error) {
+        console.error('Failed to load balances:', error);
+      } finally {
+        setIsLoading(false);
       }
-    );
+    };
 
-    if (response.data.result) {
-      const balanceWei = BigInt(response.data.result);
-      const balanceEth = Number(balanceWei) / 1e18;
-      return balanceEth.toFixed(6);
-    }
+    loadBalances();
+  }, [sovereignWallet, selectedChain]);
+
+  // Refresh balances
+  const handleRefresh = async () => {
+    if (!sovereignWallet) return;
     
-    return '0';
-  } catch (error) {
-    console.error('Ethereum balance fetch failed:', error);
-    return '0';
-  }
-}
+    setIsRefreshing(true);
+    try {
+      const balances = await fetchAllBalances(sovereignWallet.addresses);
+      setChainBalances(balances);
+      
+      const current = balances.find(b => b.chain === selectedChain);
+      setCurrentBalance(current || null);
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
-/**
- * Fetch BSC balance (similar to Ethereum)
- */
-export async function fetchBSCBalance(address: string): Promise<string> {
-  try {
-    // Use BSC testnet RPC
-    const response = await axios.post(
-      'https://data-seed-prebsc-1-s1.binance.org:8545',
-      {
-        jsonrpc: '2.0',
-        method: 'eth_getBalance',
-        params: [address, 'latest'],
-        id: 1,
+  // Fetch transactions (mock for now - integrate with block explorers later)
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      if (!address && !sovereignWallet) return;
+
+      try {
+        // Mock transactions filtered by chain
+        const mockTxs: Transaction[] = [
+          {
+            hash: '0x1234...5678',
+            type: 'receive',
+            amount: '0.5',
+            token: 'ETH',
+            to: address || sovereignWallet?.addresses.ethereum || '',
+            from: '0xabcd...efgh',
+            timestamp: new Date(Date.now() - 3600000),
+            status: 'confirmed',
+            chain: 'ethereum',
+          },
+          {
+            hash: '0x8765...4321',
+            type: 'send',
+            amount: '0.1',
+            token: 'ETH',
+            to: '0x9876...5432',
+            from: address || sovereignWallet?.addresses.ethereum || '',
+            timestamp: new Date(Date.now() - 7200000),
+            status: 'confirmed',
+            chain: 'ethereum',
+          },
+        ];
+
+        // Filter by selected chain
+        const filtered = mockTxs.filter(tx => tx.chain === selectedChain);
+        setTransactions(filtered);
+      } catch (error) {
+        console.error('Failed to fetch transactions:', error);
       }
-    );
+    };
 
-    if (response.data.result) {
-      const balanceWei = BigInt(response.data.result);
-      const balanceBNB = Number(balanceWei) / 1e18;
-      return balanceBNB.toFixed(6);
-    }
-    
-    return '0';
-  } catch (error) {
-    console.error('BSC balance fetch failed:', error);
-    return '0';
-  }
-}
+    fetchTransactions();
+  }, [address, sovereignWallet, blockNumber, selectedChain]);
 
-/**
- * Fetch balance for specific chain
- */
-export async function fetchChainBalance(
-  chain: Chain,
-  address: string
-): Promise<string> {
-  switch (chain) {
-    case 'ethereum':
-      return fetchEthereumBalance(address);
-    case 'bitcoin':
-      return fetchBitcoinBalance(address);
-    case 'bsc':
-      return fetchBSCBalance(address);
-    case 'xrp':
-      return fetchXRPBalance(address);
-    case 'solana':
-      return fetchSolanaBalance(address);
-    default:
-      return '0';
-  }
-}
+  // Format balance for display
+  const formatBalance = (bal: string | undefined) => {
+    if (!bal) return '0.000000';
+    const num = parseFloat(bal);
+    return num.toFixed(6);
+  };
 
-/**
- * Fetch all balances for multi-chain wallet
- */
-export async function fetchAllBalances(addresses: {
-  ethereum: string;
-  bitcoin: string;
-  bsc: string;
-  xrp: string;
-  solana: string;
-}): Promise<ChainBalance[]> {
-  try {
-    // Fetch prices first
-    const prices = await fetchPrices();
+  // Get display balance
+  const displayBalance = currentBalance?.balance || 
+                        (balance ? formatEther(balance.value) : '0');
 
-    // Fetch all balances in parallel
-    const [ethBalance, btcBalance, bscBalance, xrpBalance, solBalance] = 
-      await Promise.all([
-        fetchEthereumBalance(addresses.ethereum),
-        fetchBitcoinBalance(addresses.bitcoin),
-        fetchBSCBalance(addresses.bsc),
-        fetchXRPBalance(addresses.xrp),
-        fetchSolanaBalance(addresses.solana),
-      ]);
-
-    // Calculate USD values
-    const balances: ChainBalance[] = [
-      {
-        chain: 'ethereum',
-        balance: ethBalance,
-        symbol: 'ETH',
-        usdPrice: prices.ethereum,
-        usdValue: parseFloat(ethBalance) * prices.ethereum,
-        isLoading: false,
-      },
-      {
-        chain: 'bitcoin',
-        balance: btcBalance,
-        symbol: 'BTC',
-        usdPrice: prices.bitcoin,
-        usdValue: parseFloat(btcBalance) * prices.bitcoin,
-        isLoading: false,
-      },
-      {
-        chain: 'bsc',
-        balance: bscBalance,
-        symbol: 'BNB',
-        usdPrice: prices.bsc,
-        usdValue: parseFloat(bscBalance) * prices.bsc,
-        isLoading: false,
-      },
-      {
-        chain: 'xrp',
-        balance: xrpBalance,
-        symbol: 'XRP',
-        usdPrice: prices.xrp,
-        usdValue: parseFloat(xrpBalance) * prices.xrp,
-        isLoading: false,
-      },
-      {
-        chain: 'solana',
-        balance: solBalance,
-        symbol: 'SOL',
-        usdPrice: prices.solana,
-        usdValue: parseFloat(solBalance) * prices.solana,
-        isLoading: false,
-      },
-    ];
-
-    // Cache balances
-    localStorage.setItem('cached_balances', JSON.stringify({
-      balances,
-      timestamp: Date.now(),
-    }));
-
-    return balances;
-  } catch (error) {
-    console.error('Failed to fetch all balances:', error);
-    throw error;
-  }
-}
-
-/**
- * Get cached balances (for offline/fast loading)
- */
-export function getCachedBalances(): ChainBalance[] | null {
-  try {
-    const cached = localStorage.getItem('cached_balances');
-    if (!cached) return null;
-
-    const { balances, timestamp } = JSON.parse(cached);
-    const age = Date.now() - timestamp;
-
-    // Cache expires after 30 seconds
-    if (age > 30000) return null;
-
-    return balances;
-  } catch {
-    return null;
-  }
-}
+  return (
+    <div className="space-y-6">
+      {/* Balance Card */}
+      <div className="bg-gradient-to-br from-emerald-900/30 to-cyan-900/30 rounded-2xl p-6 border border-emerald-700/30">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm text-gray-400">Total Balance</h3>
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing || isLoading}
+            className="p*
+
