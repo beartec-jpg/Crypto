@@ -12,7 +12,6 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import * as bip39 from 'bip39';
 import { HDKey } from '@scure/bip32';
 
-// No need for bip32 factory anymore
 // Supported chains
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
 
@@ -76,6 +75,20 @@ const DERIVATION_PATHS = {
   xrp: "m/44'/144'/0'/0/0",       // XRP
   solana: "m/44'/501'/0'/0/0",    // SOL
 };
+
+// Helper to derive BIP44 path using @scure/bip32
+function derivePath(node: HDKey, path: string): HDKey {
+  const segments = path.split('/').slice(1); // Remove 'm'
+  let derived = node;
+  
+  for (const segment of segments) {
+    const hardened = segment.endsWith("'");
+    const index = parseInt(segment.replace("'", ''));
+    derived = derived.derive(hardened ? index + 0x80000000 : index);
+  }
+  
+  return derived;
+}
 
 // Initialize IndexedDB
 async function getDB(): Promise<IDBPDatabase<WalletDB>> {
@@ -263,13 +276,13 @@ export async function createWallet(password: string): Promise<Wallet> {
     };
     
     // Ethereum
-    const ethNode = root.derivePath(DERIVATION_PATHS.ethereum);
+    const ethNode = derivePath(root, DERIVATION_PATHS.ethereum);
     if (!ethNode.privateKey) throw new Error('Failed to derive ETH key');
     addresses.ethereum = deriveEthereumAddress(ethNode.privateKey);
     publicKeys.ethereum = Buffer.from(secp256k1.getPublicKey(ethNode.privateKey, false)).toString('hex');
     
     // Bitcoin
-    const btcNode = root.derivePath(DERIVATION_PATHS.bitcoin);
+    const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
     if (!btcNode.privateKey) throw new Error('Failed to derive BTC key');
     addresses.bitcoin = deriveBitcoinAddress(btcNode.privateKey);
     publicKeys.bitcoin = Buffer.from(secp256k1.getPublicKey(btcNode.privateKey, true)).toString('hex');
@@ -279,13 +292,13 @@ export async function createWallet(password: string): Promise<Wallet> {
     publicKeys.bsc = publicKeys.ethereum;
     
     // XRP
-    const xrpNode = root.derivePath(DERIVATION_PATHS.xrp);
+    const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
     if (!xrpNode.privateKey) throw new Error('Failed to derive XRP key');
     addresses.xrp = deriveXRPAddress(xrpNode.privateKey);
     publicKeys.xrp = Buffer.from(secp256k1.getPublicKey(xrpNode.privateKey, true)).toString('hex');
     
     // Solana
-    const solNode = root.derivePath(DERIVATION_PATHS.solana);
+    const solNode = derivePath(root, DERIVATION_PATHS.solana);
     if (!solNode.privateKey) throw new Error('Failed to derive SOL key');
     addresses.solana = deriveSolanaAddress(solNode.privateKey);
     publicKeys.solana = Buffer.from(solNode.privateKey).toString('hex');
@@ -328,7 +341,6 @@ export async function createWallet(password: string): Promise<Wallet> {
 }
 
 /**
-/**
  * Unlock wallet with password
  */
 export async function unlockWallet(walletId: string, password: string): Promise<UnlockedWallet> {
@@ -351,7 +363,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     
     // Derive private keys
     const seed = await bip39.mnemonicToSeed(mnemonic);
-    const root = HDKey.fromMasterSeed(seed);  // ✅ CHANGED THIS LINE
+    const root = HDKey.fromMasterSeed(seed);
     
     const privateKeys: UnlockedWallet['privateKeys'] = {
       ethereum: '',
@@ -360,25 +372,23 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       xrp: '',
       solana: '',
     };
-
     
-    
-    const ethNode = root.derivePath(DERIVATION_PATHS.ethereum);
+    const ethNode = derivePath(root, DERIVATION_PATHS.ethereum);
     privateKeys.ethereum = ethNode.privateKey ? Buffer.from(ethNode.privateKey).toString('hex') : '';
 
-    const btcNode = root.derivePath(DERIVATION_PATHS.bitcoin);
+    const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
     privateKeys.bitcoin = btcNode.privateKey ? Buffer.from(btcNode.privateKey).toString('hex') : '';
 
     privateKeys.bsc = privateKeys.ethereum; // Same as ETH
 
-    const xrpNode = root.derivePath(DERIVATION_PATHS.xrp);
+    const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
     privateKeys.xrp = xrpNode.privateKey ? Buffer.from(xrpNode.privateKey).toString('hex') : '';
 
-    const solNode = root.derivePath(DERIVATION_PATHS.solana);
+    const solNode = derivePath(root, DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
 
     return {
-    id: wallet.id,
+      id: wallet.id,
       addresses: wallet.addresses,
       mnemonic,
       privateKeys,
