@@ -14,6 +14,7 @@ setupPerformanceMonitoring();
 setupErrorTracking();
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+const WALLETCONNECT_PROJECT_ID = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
 
 const isDevelopment = 
   window.location.hostname.includes('replit') || 
@@ -26,17 +27,38 @@ if (!isDevelopment && !PUBLISHABLE_KEY) {
   throw new Error('Missing Clerk Publishable Key - add VITE_CLERK_PUBLISHABLE_KEY to secrets')
 }
 
+// Warn if WalletConnect project ID is missing (but don't crash)
+if (!WALLETCONNECT_PROJECT_ID) {
+  console.warn('⚠️ WalletConnect Project ID not configured. WalletConnect will not work properly. Add VITE_WALLETCONNECT_PROJECT_ID to your environment variables.');
+}
+
 // Wagmi Configuration
 const queryClient = new QueryClient();
 
+// Build connectors array based on available configuration
+const connectors = [
+  metaMask(),
+];
+
+// Only add WalletConnect if we have a valid project ID
+if (WALLETCONNECT_PROJECT_ID && WALLETCONNECT_PROJECT_ID !== 'demo-project-id') {
+  connectors.push(
+    walletConnect({ 
+      projectId: WALLETCONNECT_PROJECT_ID,
+      metadata: {
+        name: 'BearTec Sovereign Wallet',
+        description: 'Post-quantum secure, non-custodial wallet',
+        url: window.location.origin,
+        icons: [`${window.location.origin}/favicon.ico`]
+      },
+      showQrModal: true,
+    })
+  );
+}
+
 const wagmiConfig = createConfig({
   chains: [sepolia],
-  connectors: [
-    metaMask(),
-    walletConnect({ 
-      projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'demo-project-id' 
-    }),
-  ],
+  connectors,
   transports: {
     [sepolia.id]: http(import.meta.env.VITE_SEPOLIA_RPC_URL || 'https://rpc.sepolia.org'),
   },
