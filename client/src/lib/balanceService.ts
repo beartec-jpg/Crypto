@@ -1,5 +1,5 @@
 // client/src/lib/balanceService.ts
-// Multi-chain balance fetching service
+// Multi-chain balance fetching service with mainnet/testnet support
 
 import axios from 'axios';
 
@@ -49,31 +49,38 @@ export async function fetchPrices(): Promise<CoinGeckoPrices> {
 }
 
 /**
- * Fetch Ethereum balance via Etherscan API (Sepolia)
+ * Fetch Ethereum balance via Etherscan API
  */
-export async function fetchEthereumBalance(address: string): Promise<string> {
+export async function fetchEthereumBalance(address: string, useMainnet = false): Promise<string> {
   try {
-    const response = await axios.get(
-      `https://api-sepolia.etherscan.io/api`,
-      {
-        params: {
-          module: 'account',
-          action: 'balance',
-          address,
-          tag: 'latest',
-        },
-      }
-    );
+    const apiUrl = useMainnet
+      ? 'https://api.etherscan.io/api'      // Mainnet
+      : 'https://api-sepolia.etherscan.io/api'; // Sepolia Testnet (default)
+    
+    console.log(`🔍 Fetching ETH balance from ${useMainnet ? 'MAINNET' : 'SEPOLIA TESTNET'} for:`, address);
+    
+    const response = await axios.get(apiUrl, {
+      params: {
+        module: 'account',
+        action: 'balance',
+        address,
+        tag: 'latest',
+      },
+    });
+
+    console.log('📦 ETH API Response:', response.data);
 
     if (response.data.status === '1') {
-      // Convert Wei to ETH
       const balanceWei = response.data.result;
       const balanceEth = parseFloat(balanceWei) / 1e18;
+      console.log('✅ ETH Balance:', balanceEth, 'ETH');
       return balanceEth.toFixed(6);
     }
+    
+    console.warn('⚠️ ETH account not found or no balance');
     return '0';
   } catch (error) {
-    console.error('Failed to fetch Ethereum balance:', error);
+    console.error('❌ Failed to fetch Ethereum balance:', error);
     return '0';
   }
 }
@@ -81,48 +88,62 @@ export async function fetchEthereumBalance(address: string): Promise<string> {
 /**
  * Fetch Bitcoin balance via Blockstream API
  */
-export async function fetchBitcoinBalance(address: string): Promise<string> {
+export async function fetchBitcoinBalance(address: string, useMainnet = true): Promise<string> {
   try {
-    const response = await axios.get(
-      `https://blockstream.info/api/address/${address}`
-    );
+    const apiUrl = useMainnet
+      ? `https://blockstream.info/api/address/${address}`           // Mainnet (default)
+      : `https://blockstream.info/testnet/api/address/${address}`;  // Testnet
+    
+    console.log(`🔍 Fetching BTC balance from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
+    
+    const response = await axios.get(apiUrl);
+    
+    console.log('📦 BTC API Response:', response.data);
 
-    // Balance is in satoshis, convert to BTC
     const balanceSats = response.data.chain_stats.funded_txo_sum - 
                         response.data.chain_stats.spent_txo_sum;
     const balanceBTC = balanceSats / 100000000;
+    console.log('✅ BTC Balance:', balanceBTC, 'BTC');
     return balanceBTC.toFixed(8);
   } catch (error) {
-    console.error('Failed to fetch Bitcoin balance:', error);
+    console.error('❌ Failed to fetch Bitcoin balance:', error);
     return '0';
   }
 }
 
 /**
- * Fetch BSC balance via BSCScan API (Testnet)
+ * Fetch BSC balance via BSCScan API
  */
-export async function fetchBSCBalance(address: string): Promise<string> {
+export async function fetchBSCBalance(address: string, useMainnet = false): Promise<string> {
   try {
-    const response = await axios.get(
-      `https://api-testnet.bscscan.com/api`,
-      {
-        params: {
-          module: 'account',
-          action: 'balance',
-          address,
-          tag: 'latest',
-        },
-      }
-    );
+    const apiUrl = useMainnet
+      ? 'https://api.bscscan.com/api'        // Mainnet
+      : 'https://api-testnet.bscscan.com/api'; // Testnet (default)
+    
+    console.log(`🔍 Fetching BNB balance from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
+    
+    const response = await axios.get(apiUrl, {
+      params: {
+        module: 'account',
+        action: 'balance',
+        address,
+        tag: 'latest',
+      },
+    });
+
+    console.log('📦 BNB API Response:', response.data);
 
     if (response.data.status === '1') {
       const balanceWei = response.data.result;
       const balanceBNB = parseFloat(balanceWei) / 1e18;
+      console.log('✅ BNB Balance:', balanceBNB, 'BNB');
       return balanceBNB.toFixed(6);
     }
+    
+    console.warn('⚠️ BNB account not found or no balance');
     return '0';
   } catch (error) {
-    console.error('Failed to fetch BSC balance:', error);
+    console.error('❌ Failed to fetch BSC balance:', error);
     return '0';
   }
 }
@@ -164,29 +185,36 @@ export async function fetchXRPBalance(address: string, useMainnet = true): Promi
 }
 
 /**
- * Fetch Solana balance via RPC (Devnet)
+ * Fetch Solana balance via RPC
  */
-export async function fetchSolanaBalance(address: string): Promise<string> {
+export async function fetchSolanaBalance(address: string, useMainnet = false): Promise<string> {
   try {
-    const response = await axios.post(
-      'https://api.devnet.solana.com',
-      {
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'getBalance',
-        params: [address],
-      }
-    );
+    const rpcUrl = useMainnet
+      ? 'https://api.mainnet-beta.solana.com' // Mainnet
+      : 'https://api.devnet.solana.com';      // Devnet (default)
+    
+    console.log(`🔍 Fetching SOL balance from ${useMainnet ? 'MAINNET' : 'DEVNET'} for:`, address);
+    
+    const response = await axios.post(rpcUrl, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getBalance',
+      params: [address],
+    });
+
+    console.log('📦 SOL API Response:', response.data);
 
     if (response.data.result?.value !== undefined) {
-      // Balance is in lamports, convert to SOL (1 SOL = 1,000,000,000 lamports)
       const balanceLamports = response.data.result.value;
       const balanceSOL = balanceLamports / 1000000000;
+      console.log('✅ SOL Balance:', balanceSOL, 'SOL');
       return balanceSOL.toFixed(6);
     }
+    
+    console.warn('⚠️ SOL account not found or no balance');
     return '0';
   } catch (error) {
-    console.error('Failed to fetch Solana balance:', error);
+    console.error('❌ Failed to fetch Solana balance:', error);
     return '0';
   }
 }
@@ -196,25 +224,26 @@ export async function fetchSolanaBalance(address: string): Promise<string> {
  */
 export async function fetchChainBalance(
   chain: Chain,
-  address: string
+  address: string,
+  useMainnet = false
 ): Promise<ChainBalance> {
   let balance = '0';
 
   switch (chain) {
     case 'ethereum':
-      balance = await fetchEthereumBalance(address);
+      balance = await fetchEthereumBalance(address, useMainnet);
       break;
     case 'bitcoin':
-      balance = await fetchBitcoinBalance(address);
+      balance = await fetchBitcoinBalance(address, useMainnet);
       break;
     case 'bsc':
-      balance = await fetchBSCBalance(address);
+      balance = await fetchBSCBalance(address, useMainnet);
       break;
     case 'xrp':
-      balance = await fetchXRPBalance(address);
+      balance = await fetchXRPBalance(address, useMainnet);
       break;
     case 'solana':
-      balance = await fetchSolanaBalance(address);
+      balance = await fetchSolanaBalance(address, useMainnet);
       break;
   }
 
@@ -224,24 +253,29 @@ export async function fetchChainBalance(
 /**
  * Fetch balances for all chains
  */
-export async function fetchAllBalances(addresses: {
-  ethereum: string;
-  bitcoin: string;
-  bsc: string;
-  xrp: string;
-  solana: string;
-}): Promise<ChainBalance[]> {
+export async function fetchAllBalances(
+  addresses: {
+    ethereum: string;
+    bitcoin: string;
+    bsc: string;
+    xrp: string;
+    solana: string;
+  },
+  useMainnet = false
+): Promise<ChainBalance[]> {
   try {
+    console.log(`🌐 Fetching all balances from ${useMainnet ? 'MAINNET' : 'TESTNET'}`);
+    
     // Fetch prices first
     const prices = await fetchPrices();
 
     // Fetch all balances in parallel
     const [ethBalance, btcBalance, bscBalance, xrpBalance, solBalance] = await Promise.all([
-      fetchEthereumBalance(addresses.ethereum),
-      fetchBitcoinBalance(addresses.bitcoin),
-      fetchBSCBalance(addresses.bsc),
-      fetchXRPBalance(addresses.xrp),
-      fetchSolanaBalance(addresses.solana),
+      fetchEthereumBalance(addresses.ethereum, useMainnet),
+      fetchBitcoinBalance(addresses.bitcoin, useMainnet),
+      fetchBSCBalance(addresses.bsc, useMainnet),
+      fetchXRPBalance(addresses.xrp, useMainnet),
+      fetchSolanaBalance(addresses.solana, useMainnet),
     ]);
 
     // Calculate USD values
@@ -282,11 +316,13 @@ export async function fetchAllBalances(addresses: {
     localStorage.setItem('cached_balances', JSON.stringify({
       balances,
       timestamp: Date.now(),
+      network: useMainnet ? 'mainnet' : 'testnet',
     }));
 
+    console.log('✅ All balances fetched successfully');
     return balances;
   } catch (error) {
-    console.error('Failed to fetch all balances:', error);
+    console.error('❌ Failed to fetch all balances:', error);
     return [];
   }
 }
