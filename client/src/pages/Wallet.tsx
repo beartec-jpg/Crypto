@@ -8,35 +8,47 @@ import WalletDashboard from '../components/Wallet/WalletDashboard';
 import ReceiveSection from '../components/Wallet/ReceiveSection';
 import SendForm from '../components/Wallet/SendForm';
 import PasskeyAuthModal from '../components/Wallet/PasskeyAuthModal';
+import { getCurrentWallet } from '@/lib/walletService';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle } from 'lucide-react';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 
 type WalletTab = 'dashboard' | 'send' | 'receive' | 'settings';
+type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
 
 export default function WalletPage() {
   const [activeTab, setActiveTab] = useState<WalletTab>('dashboard');
   const [hideBalances, setHideBalances] = useState(true);
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const [isPasskeyAuthenticated, setIsPasskeyAuthenticated] = useState(false);
-  const [selectedChain, setSelectedChain] = useState<'ethereum' | 'solana'>('ethereum');
+  const [selectedChain, setSelectedChain] = useState<Chain>('ethereum');
+  const [sovereignWallet, setSovereignWallet] = useState<any>(null);
 
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
 
-  // Check for existing passkey session on mount
+  // Check for sovereign wallet on mount and when passkey auth changes
   useEffect(() => {
-    const passkeySession = sessionStorage.getItem('passkey_authenticated');
-    if (passkeySession === 'true') {
-      setIsPasskeyAuthenticated(true);
-    }
-  }, []);
+    const checkWallet = async () => {
+      const wallet = await getCurrentWallet();
+      setSovereignWallet(wallet);
+      
+      // Also check passkey session
+      const passkeySession = sessionStorage.getItem('wallet_unlocked');
+      if (passkeySession === 'true' || wallet) {
+        setIsPasskeyAuthenticated(true);
+      }
+    };
+    checkWallet();
+  }, [isPasskeyAuthenticated]);
 
   const handlePasskeySuccess = () => {
     setIsPasskeyAuthenticated(true);
-    sessionStorage.setItem('passkey_authenticated', 'true');
+    sessionStorage.setItem('wallet_unlocked', 'true');
     setShowPasskeyModal(false);
+    // Refresh wallet data
+    getCurrentWallet().then(setSovereignWallet);
   };
 
   const handleConnect = (connectorId: string) => {
@@ -45,6 +57,12 @@ export default function WalletPage() {
       connect({ connector });
     }
   };
+
+  // Determine if any wallet is connected
+  const isWalletConnected = isConnected || sovereignWallet !== null;
+  
+  // Get the active address (external wallet or sovereign wallet)
+  const activeAddress = address || (sovereignWallet?.addresses[selectedChain] as `0x${string}` | undefined);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -84,21 +102,37 @@ export default function WalletPage() {
             )}
           </button>
 
-          {/* Chain Selector */}
-          <select
-            value={selectedChain}
-            onChange={(e) => setSelectedChain(e.target.value as 'ethereum' | 'solana')}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="ethereum">Ethereum (Sepolia)</option>
-            <option value="solana">Solana (Devnet)</option>
-          </select>
+          {/* Chain Selector - Show all chains if sovereign wallet */}
+          {sovereignWallet ? (
+            <select
+              value={selectedChain}
+              onChange={(e) => setSelectedChain(e.target.value as Chain)}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="ethereum">Ethereum (Sepolia)</option>
+              <option value="bitcoin">Bitcoin (Mainnet)</option>
+              <option value="bsc">BSC (Binance Smart Chain)</option>
+              <option value="xrp">XRP (Ripple)</option>
+              <option value="solana">Solana (Devnet)</option>
+            </select>
+          ) : (
+            <select
+              value={selectedChain}
+              onChange={(e) => setSelectedChain(e.target.value as Chain)}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="ethereum">Ethereum (Sepolia)</option>
+              <option value="solana">Solana (Devnet)</option>
+            </select>
+          )}
 
           {/* Passkey Auth Status */}
-          {isPasskeyAuthenticated ? (
+          {isPasskeyAuthenticated || sovereignWallet ? (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-900/30 border border-emerald-700/50">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-sm text-emerald-400">Passkey Active</span>
+              <span className="text-sm text-emerald-400">
+                {sovereignWallet ? 'Sovereign Wallet' : 'Passkey Active'}
+              </span>
             </div>
           ) : (
             <button
@@ -112,7 +146,7 @@ export default function WalletPage() {
         </div>
 
         {/* Connection Status */}
-        {!isConnected ? (
+        {!isWalletConnected ? (
           <div className="bg-gray-800 rounded-2xl p-8 mb-8">
             <div className="text-center mb-6">
               <WalletIcon className="w-16 h-16 mx-auto text-gray-500 mb-4" />
@@ -181,14 +215,26 @@ export default function WalletPage() {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400" />
                 <div>
-                  <p className="text-sm text-gray-400">Connected</p>
-                  <p className="font-mono text-sm">
-                    {address?.slice(0, 6)}...{address?.slice(-4)}
+                  <p className="text-sm text-gray-400">
+                    {sovereignWallet ? 'Sovereign Wallet' : 'Connected'}
                   </p>
+                  <p className="font-mono text-sm">
+                    {activeAddress?.slice(0, 10)}...{activeAddress?.slice(-4)}
+                  </p>
+                  <p className="text-xs text-gray-500 capitalize">{selectedChain}</p>
                 </div>
               </div>
               <button
-                onClick={() => disconnect()}
+                onClick={() => {
+                  if (isConnected) {
+                    disconnect();
+                  } else {
+                    // For sovereign wallet, just clear session
+                    sessionStorage.removeItem('wallet_unlocked');
+                    setSovereignWallet(null);
+                    setIsPasskeyAuthenticated(false);
+                  }
+                }}
                 className="px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors"
               >
                 Disconnect
@@ -216,24 +262,25 @@ export default function WalletPage() {
             <div className="bg-gray-800 rounded-2xl p-6">
               {activeTab === 'dashboard' && (
                 <WalletDashboard
-                  address={address}
+                  address={activeAddress}
                   balance={balance}
                   hideBalances={hideBalances}
-                  selectedChain={selectedChain}
+                  selectedChain={selectedChain as 'ethereum' | 'solana'}
+                  sovereignWallet={sovereignWallet}
                 />
               )}
               {activeTab === 'send' && (
                 <SendForm
                   isPasskeyAuthenticated={isPasskeyAuthenticated}
                   onRequestPasskey={() => setShowPasskeyModal(true)}
-                  selectedChain={selectedChain}
+                  selectedChain={selectedChain as 'ethereum' | 'solana'}
                 />
               )}
               {activeTab === 'receive' && (
-                <ReceiveSection address={address} />
+                <ReceiveSection address={activeAddress} />
               )}
               {activeTab === 'settings' && (
-                <SettingsSection />
+                <SettingsSection sovereignWallet={sovereignWallet} />
               )}
             </div>
           </>
@@ -252,13 +299,42 @@ export default function WalletPage() {
 }
 
 // Settings Section Component (inline for simplicity)
-function SettingsSection() {
+function SettingsSection({ sovereignWallet }: { sovereignWallet: any }) {
   const [showMnemonicWarning, setShowMnemonicWarning] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold">Wallet Settings</h2>
+
+      {/* Wallet Info */}
+      {sovereignWallet && (
+        <div className="p-4 rounded-xl bg-emerald-900/20 border border-emerald-700/30">
+          <h3 className="font-medium text-emerald-400 mb-3">Multi-Chain Addresses</h3>
+          <div className="space-y-2 text-sm font-mono">
+            <div>
+              <span className="text-gray-400">ETH:</span>
+              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.ethereum}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">BTC:</span>
+              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.bitcoin}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">BSC:</span>
+              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.bsc}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">XRP:</span>
+              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.xrp}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">SOL:</span>
+              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.solana}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Security Settings */}
       <div className="space-y-4">
@@ -286,50 +362,52 @@ function SettingsSection() {
       </div>
 
       {/* Advanced (Mnemonic Export) */}
-      <div className="pt-6 border-t border-gray-700">
-        <h3 className="text-lg font-medium text-gray-300 mb-4">Advanced</h3>
-        
-        <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/50">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-medium text-red-400">Recovery Phrase Export</p>
-              <p className="text-sm text-gray-400 mt-1">
-                Export a BIP-39 mnemonic for backup purposes only. Never share this with anyone.
-                Your passkey remains the primary authentication method.
-              </p>
-              
-              {!showMnemonicWarning ? (
-                <button
-                  onClick={() => setShowMnemonicWarning(true)}
-                  className="mt-4 px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors text-sm"
-                >
-                  Show Recovery Options
-                </button>
-              ) : (
-                <div className="mt-4 space-y-4">
-                  <div className="p-3 rounded-lg bg-red-900/30 text-sm text-red-300">
-                    ⚠️ Warning: Anyone with your recovery phrase can access your funds.
-                    Store it securely offline. Never enter it on websites or share with support.
-                  </div>
+      {sovereignWallet && (
+        <div className="pt-6 border-t border-gray-700">
+          <h3 className="text-lg font-medium text-gray-300 mb-4">Advanced</h3>
+          
+          <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/50">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium text-red-400">Recovery Phrase Export</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Export your BIP-39 mnemonic for backup purposes only. Never share this with anyone.
+                  Your passkey remains the primary authentication method.
+                </p>
+                
+                {!showMnemonicWarning ? (
                   <button
-                    onClick={() => setShowMnemonic(!showMnemonic)}
-                    className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors text-sm"
+                    onClick={() => setShowMnemonicWarning(true)}
+                    className="mt-4 px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors text-sm"
                   >
-                    {showMnemonic ? 'Hide' : 'Reveal'} Recovery Phrase
+                    Show Recovery Options
                   </button>
-                  {showMnemonic && (
-                    <div className="p-4 rounded-lg bg-gray-900 font-mono text-sm break-all">
-                      {/* In production, this would be derived from the actual key */}
-                      abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    <div className="p-3 rounded-lg bg-red-900/30 text-sm text-red-300">
+                      ⚠️ Warning: Anyone with your recovery phrase can access your funds.
+                      Store it securely offline. Never enter it on websites or share with support.
                     </div>
-                  )}
-                </div>
-              )}
+                    <button
+                      onClick={() => setShowMnemonic(!showMnemonic)}
+                      className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors text-sm"
+                    >
+                      {showMnemonic ? 'Hide' : 'Reveal'} Recovery Phrase
+                    </button>
+                    {showMnemonic && (
+                      <div className="p-4 rounded-lg bg-gray-900 font-mono text-sm break-all">
+                        {/* TODO: Actually decrypt and show real mnemonic with password prompt */}
+                        [Requires password authentication to view]
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
