@@ -55,9 +55,9 @@ export async function fetchPrices(): Promise<CoinGeckoPrices> {
  */
 export async function fetchEthereumBalance(address: string, useMainnet = false): Promise<string> {
   try {
-    const apiUrl = useMainnet
-      ? 'https://api.etherscan.io/api'      // Mainnet
-      : 'https://api-sepolia.etherscan.io/api'; // Sepolia Testnet (default)
+     const apiUrl = useMainnet
+      ? 'https://api.etherscan.io/v2/api'      // V2 Mainnet
+      : 'https://api-sepolia.etherscan.io/v2/api'; // V2 Sepolia Testnet
     
     console.log(`🔍 Fetching ETH balance from ${useMainnet ? 'MAINNET' : 'SEPOLIA TESTNET'} for:`, address);
     
@@ -118,9 +118,9 @@ export async function fetchBitcoinBalance(address: string, useMainnet = true): P
  */
 export async function fetchBSCBalance(address: string, useMainnet = false): Promise<string> {
   try {
-    const apiUrl = useMainnet
-      ? 'https://api.bscscan.com/api'        // Mainnet
-      : 'https://api-testnet.bscscan.com/api'; // Testnet (default)
+   const apiUrl = useMainnet
+      ? 'https://api.bscscan.com/v2/api'        // V2 Mainnet
+      : 'https://api-testnet.bscscan.com/v2/api'; // V2 Testnet
     
     console.log(`🔍 Fetching BNB balance from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
     
