@@ -7,15 +7,12 @@ import { formatEther } from 'viem';
 import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, Clock, Loader2 } from 'lucide-react';
 import { 
   fetchAllBalances, 
-  fetchChainBalance, 
-  fetchPrices,
   getCachedBalances,
   type ChainBalance,
   type Chain 
 } from '@/lib/balanceService';
 import { 
   fetchChainTransactions, 
-  getCachedTransactions,
   type Transaction 
 } from '@/lib/transactionService';
 
@@ -42,9 +39,8 @@ export default function WalletDashboard({
 
   const { data: blockNumber } = useBlockNumber({ watch: true });
 
-    // ✅ CLEANUP USEEFFECT GOES HERE - RIGHT AFTER STATE
+  // Clean up old mock cache on mount
   useEffect(() => {
-    // Remove old cache keys
     const keysToRemove = Object.keys(localStorage).filter(key => 
       key.startsWith('txs_') && !key.includes('cached')
     );
@@ -53,7 +49,7 @@ export default function WalletDashboard({
       console.log('🧹 Removing old cache:', key);
       localStorage.removeItem(key);
     });
-  }, []); // Only run once on mount
+  }, []);
 
   // Debug logging
   useEffect(() => {
@@ -86,26 +82,27 @@ export default function WalletDashboard({
   // Fetch all balances for sovereign wallet
   useEffect(() => {
     const loadBalances = async () => {
-      if (!sovereignWallet) return;
+      if (!sovereignWallet?.addresses) {
+        console.log('⚠️ No sovereign wallet addresses');
+        setChainBalances([]);
+        setCurrentBalance(null);
+        return;
+      }
 
       setIsLoading(true);
       try {
-        // Try cache first
-        const cached = getCachedBalances();
-        if (cached) {
-          setChainBalances(cached);
-          const current = cached.find(b => b.chain === selectedChain);
-          setCurrentBalance(current || null);
-        }
-
-        // Fetch fresh data
+        console.log('🔄 Fetching balances...');
         const balances = await fetchAllBalances(sovereignWallet.addresses);
+        console.log('✅ Balances loaded:', balances);
+        
         setChainBalances(balances);
         
         const current = balances.find(b => b.chain === selectedChain);
         setCurrentBalance(current || null);
       } catch (error) {
-        console.error('Failed to load balances:', error);
+        console.error('❌ Failed to load balances:', error);
+        setChainBalances([]);
+        setCurrentBalance(null);
       } finally {
         setIsLoading(false);
       }
@@ -116,7 +113,7 @@ export default function WalletDashboard({
 
   // Refresh balances
   const handleRefresh = async () => {
-    if (!sovereignWallet) return;
+    if (!sovereignWallet?.addresses) return;
     
     setIsRefreshing(true);
     try {
@@ -132,16 +129,15 @@ export default function WalletDashboard({
     }
   };
 
- // Fetch real transactions
-useEffect(() => {
-  const loadTransactions = async () => {
-    if (!sovereignWallet) {
-      setTransactions([]); // Empty if no wallet
-      console.log('⚠️ No sovereign wallet - transactions cleared');
-      return;
-    }
+  // Fetch real transactions - NO MOCK DATA
+  useEffect(() => {
+    const loadTransactions = async () => {
+      if (!sovereignWallet?.addresses) {
+        console.log('⚠️ No sovereign wallet - transactions cleared');
+        setTransactions([]);
+        return;
+      }
 
-    try {
       const currentAddress = sovereignWallet.addresses[selectedChain];
       if (!currentAddress) {
         console.log('⚠️ No address for chain:', selectedChain);
@@ -149,16 +145,17 @@ useEffect(() => {
         return;
       }
 
-      console.log(`🔍 Fetching transactions for ${selectedChain}: ${currentAddress}`);
-      const txs = await fetchChainTransactions(selectedChain, currentAddress);
-      console.log(`✅ Loaded ${txs.length} real transactions`);
-      setTransactions(txs);
-    } catch (error) {
-      console.error('❌ Transaction fetch failed:', error);
-      setTransactions([]); // EMPTY on error, no mock data
-    }
-  };
-  
+      try {
+        console.log(`🔍 Fetching transactions for ${selectedChain}: ${currentAddress}`);
+        const txs = await fetchChainTransactions(selectedChain, currentAddress);
+        console.log(`✅ Loaded ${txs.length} real transactions`);
+        setTransactions(txs);
+      } catch (error) {
+        console.error('❌ Transaction fetch failed:', error);
+        setTransactions([]);
+      }
+    };
+    
     loadTransactions();
   }, [sovereignWallet, selectedChain, blockNumber]);
 
@@ -169,8 +166,8 @@ useEffect(() => {
     return num.toFixed(6);
   };
 
-  // Get display balance - ONLY from real API data
-const displayBalance = currentBalance?.balance || '0';
+  // Get display balance - ONLY real data
+  const displayBalance = currentBalance?.balance || '0';
 
   return (
     <div className="space-y-6">
@@ -236,7 +233,7 @@ const displayBalance = currentBalance?.balance || '0';
         </div>
       </div>
 
-      {/* All Chain Balances (if sovereign wallet) */}
+      {/* All Chain Balances */}
       {sovereignWallet && chainBalances.length > 0 && (
         <div className="bg-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-medium mb-3 text-gray-300">All Chain Balances</h3>
@@ -326,5 +323,7 @@ const displayBalance = currentBalance?.balance || '0';
         )}
       </div>
     </div>
+  );
+}
   );
 }
