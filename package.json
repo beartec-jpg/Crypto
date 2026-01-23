@@ -22,6 +22,7 @@
     "@clerk/backend": "^2.25.1",
     "@solana/web3.js": "^1.87.6",
     "axios": "^1.6.0",
+    "xrpl": "^3.0.0",
     "@clerk/clerk-react": "^5.58.0",
     "@clerk/express": "^1.7.55",
     "@google-cloud/storage": "^7.14.0",
