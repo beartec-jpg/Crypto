@@ -22,6 +22,7 @@ interface WalletDashboardProps {
   hideBalances: boolean;
   selectedChain: Chain;
   sovereignWallet?: any;
+  useMainnet?: boolean; // ← ADD THIS
 }
 
 export default function WalletDashboard({
@@ -30,6 +31,7 @@ export default function WalletDashboard({
   hideBalances,
   selectedChain,
   sovereignWallet,
+  useMainnet = false, // ← ADD THIS with default
 }: WalletDashboardProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -58,8 +60,9 @@ export default function WalletDashboard({
       sovereignWallet: sovereignWallet ? 'EXISTS' : 'NULL',
       hasAddresses: !!sovereignWallet?.addresses,
       currentAddress: sovereignWallet?.addresses?.[selectedChain],
+      useMainnet, // ← ADD THIS
     });
-  }, [sovereignWallet, selectedChain]);
+  }, [sovereignWallet, selectedChain, useMainnet]);
 
   // Get chain config for display
   const getChainConfig = (chain: Chain) => {
@@ -92,7 +95,7 @@ export default function WalletDashboard({
       setIsLoading(true);
       try {
         console.log('🔄 Fetching balances...');
-        const balances = await fetchAllBalances(sovereignWallet.addresses);
+        const balances = await fetchAllBalances(sovereignWallet.addresses, useMainnet); // ← PASS useMainnet
         console.log('✅ Balances loaded:', balances);
         
         setChainBalances(balances);
@@ -109,7 +112,7 @@ export default function WalletDashboard({
     };
 
     loadBalances();
-  }, [sovereignWallet, selectedChain]);
+  }, [sovereignWallet, selectedChain, useMainnet]); // ← ADD useMainnet to dependencies
 
   // Refresh balances
   const handleRefresh = async () => {
@@ -117,7 +120,7 @@ export default function WalletDashboard({
     
     setIsRefreshing(true);
     try {
-      const balances = await fetchAllBalances(sovereignWallet.addresses);
+      const balances = await fetchAllBalances(sovereignWallet.addresses, useMainnet); // ← PASS useMainnet
       setChainBalances(balances);
       
       const current = balances.find(b => b.chain === selectedChain);
