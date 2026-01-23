@@ -42,6 +42,29 @@ export default function WalletDashboard({
 
   const { data: blockNumber } = useBlockNumber({ watch: true });
 
+    // ✅ CLEANUP USEEFFECT GOES HERE - RIGHT AFTER STATE
+  useEffect(() => {
+    // Remove old cache keys
+    const keysToRemove = Object.keys(localStorage).filter(key => 
+      key.startsWith('txs_') && !key.includes('cached')
+    );
+    
+    keysToRemove.forEach(key => {
+      console.log('🧹 Removing old cache:', key);
+      localStorage.removeItem(key);
+    });
+  }, []); // Only run once on mount
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🔍 Dashboard State:', {
+      selectedChain,
+      sovereignWallet: sovereignWallet ? 'EXISTS' : 'NULL',
+      hasAddresses: !!sovereignWallet?.addresses,
+      currentAddress: sovereignWallet?.addresses?.[selectedChain],
+    });
+  }, [sovereignWallet, selectedChain]);
+
   // Get chain config for display
   const getChainConfig = (chain: Chain) => {
     switch (chain) {
@@ -109,28 +132,33 @@ export default function WalletDashboard({
     }
   };
 
-  // Fetch real transactions
-  useEffect(() => {
-    const loadTransactions = async () => {
-      if (!sovereignWallet) return;
+ // Fetch real transactions
+useEffect(() => {
+  const loadTransactions = async () => {
+    if (!sovereignWallet) {
+      setTransactions([]); // Empty if no wallet
+      console.log('⚠️ No sovereign wallet - transactions cleared');
+      return;
+    }
 
-      try {
-        // Try cache first
-        const cached = getCachedTransactions();
-        if (cached) {
-          const filtered = cached.filter(tx => tx.chain === selectedChain);
-          setTransactions(filtered);
-        }
-
-        // Fetch fresh data for current chain
-        const currentAddress = sovereignWallet.addresses[selectedChain];
-        const txs = await fetchChainTransactions(selectedChain, currentAddress);
-        setTransactions(txs);
-      } catch (error) {
-        console.error('Failed to load transactions:', error);
+    try {
+      const currentAddress = sovereignWallet.addresses[selectedChain];
+      if (!currentAddress) {
+        console.log('⚠️ No address for chain:', selectedChain);
+        setTransactions([]);
+        return;
       }
-    };
 
+      console.log(`🔍 Fetching transactions for ${selectedChain}: ${currentAddress}`);
+      const txs = await fetchChainTransactions(selectedChain, currentAddress);
+      console.log(`✅ Loaded ${txs.length} real transactions`);
+      setTransactions(txs);
+    } catch (error) {
+      console.error('❌ Transaction fetch failed:', error);
+      setTransactions([]); // EMPTY on error, no mock data
+    }
+  };
+  
     loadTransactions();
   }, [sovereignWallet, selectedChain, blockNumber]);
 
@@ -141,9 +169,8 @@ export default function WalletDashboard({
     return num.toFixed(6);
   };
 
-  // Get display balance
-  const displayBalance = currentBalance?.balance || 
-                        (balance ? formatEther(balance.value) : '0');
+  // Get display balance - ONLY from real API data
+const displayBalance = currentBalance?.balance || '0';
 
   return (
     <div className="space-y-6">
