@@ -67,6 +67,7 @@ export async function fetchEthereumBalance(address: string, useMainnet = false):
         action: 'balance',
         address,
         tag: 'latest',
+        apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '', // ← Add this
       },
       timeout: 10000,
     });
