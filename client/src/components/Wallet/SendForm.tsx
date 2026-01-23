@@ -10,7 +10,7 @@ import { hybridSign, generateHybridKeys } from '../../lib/crypto';
 interface SendFormProps {
   isPasskeyAuthenticated: boolean;
   onRequestPasskey: () => void;
-  selectedChain: 'ethereum' | 'solana';
+  selectedChain: 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
 }
 
 export default function SendForm({
@@ -27,8 +27,47 @@ export default function SendForm({
   const { address } = useAccount();
   const { sendTransaction, isPending: isSending, isSuccess, data: txHash } = useSendTransaction();
 
-  // Validate inputs
-  const isValidRecipient = recipient && isAddress(recipient);
+  // Get chain-specific config
+  const getChainConfig = () => {
+    switch (selectedChain) {
+      case 'ethereum':
+        return { symbol: 'ETH', placeholder: '0x...', explorer: 'https://sepolia.etherscan.io/tx/' };
+      case 'bitcoin':
+        return { symbol: 'BTC', placeholder: 'bc1... or 1...', explorer: 'https://blockstream.info/tx/' };
+      case 'bsc':
+        return { symbol: 'BNB', placeholder: '0x...', explorer: 'https://testnet.bscscan.com/tx/' };
+      case 'xrp':
+        return { symbol: 'XRP', placeholder: 'r...', explorer: 'https://testnet.xrpl.org/transactions/' };
+      case 'solana':
+        return { symbol: 'SOL', placeholder: 'Solana address...', explorer: 'https://explorer.solana.com/tx/' };
+      default:
+        return { symbol: 'ETH', placeholder: '0x...', explorer: 'https://sepolia.etherscan.io/tx/' };
+    }
+  };
+
+  const chainConfig = getChainConfig();
+
+  // Validate inputs based on chain
+  const validateAddress = (addr: string): boolean => {
+    switch (selectedChain) {
+      case 'ethereum':
+      case 'bsc':
+        return isAddress(addr);
+      case 'bitcoin':
+        // Basic Bitcoin address validation
+        return /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(addr);
+      case 'xrp':
+        // Basic XRP address validation
+        return /^r[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(addr);
+      case 'solana':
+        // Basic Solana address validation (base58, ~44 chars)
+        return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr);
+      default:
+        return false;
+    }
+  };
+
+  const isValidRecipient = recipient && validateAddress(recipient);
   const isValidAmount = amount && parseFloat(amount) > 0;
   const canSend = isValidRecipient && isValidAmount && isPasskeyAuthenticated;
 
@@ -46,6 +85,12 @@ export default function SendForm({
       return;
     }
 
+    // Only Ethereum and BSC are fully implemented with Wagmi
+    if (selectedChain !== 'ethereum' && selectedChain !== 'bsc') {
+      setError(`${chainConfig.symbol} transactions coming soon. Implementation requires chain-specific libraries.`);
+      return;
+    }
+
     try {
       setIsQuantumSigning(true);
       setSignatureStatus('signing');
@@ -55,16 +100,13 @@ export default function SendForm({
         to: recipient as `0x${string}`,
         value: parseEther(amount),
         from: address,
-        chainId: 11155111, // Sepolia
+        chainId: selectedChain === 'ethereum' ? 11155111 : 97, // Sepolia or BSC Testnet
       };
 
       // Generate hybrid signature (ML-DSA + ECDSA)
-      // In production, this would use the passkey-derived private key
       const messageToSign = JSON.stringify(txData);
       
       // Perform hybrid post-quantum signing
-      // Note: The actual signing with the user's key happens via wagmi/viem
-      // The hybrid signature is for additional quantum-resistant verification
       const hybridSignature = await hybridSign(
         new TextEncoder().encode(messageToSign)
       );
@@ -77,7 +119,7 @@ export default function SendForm({
         hash: `pending_${Date.now()}`,
         type: 'send' as const,
         amount,
-        token: 'ETH',
+        token: chainConfig.symbol,
         to: recipient,
         from: address || '',
         timestamp: new Date(),
@@ -105,23 +147,20 @@ export default function SendForm({
     }
   };
 
-  // Solana send (placeholder)
-  const handleSolanaSend = async () => {
-    // TODO: Implement Solana transfer using @solana/web3.js
-    // const connection = new Connection(clusterApiUrl('devnet'));
-    // const transaction = new Transaction().add(
-    //   SystemProgram.transfer({
-    //     fromPubkey: senderPublicKey,
-    //     toPubkey: new PublicKey(recipient),
-    //     lamports: parseFloat(amount) * LAMPORTS_PER_SOL,
-    //   })
-    // );
-    setError('Solana transactions coming soon');
-  };
-
   return (
     <div className="max-w-lg mx-auto">
       <h2 className="text-2xl font-semibold mb-6">Send Funds</h2>
+
+      {/* Chain Notice */}
+      <div className="mb-6 p-4 rounded-xl bg-blue-900/20 border border-blue-700/30">
+        <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">
+          <Shield className="w-4 h-4" />
+          <span className="font-medium">Selected Network: {selectedChain.toUpperCase()}</span>
+        </div>
+        <p className="text-sm text-gray-400">
+          Make sure the recipient address is on the {selectedChain} network.
+        </p>
+      </div>
 
       {!isPasskeyAuthenticated && (
         <div className="mb-6 p-4 rounded-xl bg-amber-900/20 border border-amber-700/30">
@@ -143,7 +182,7 @@ export default function SendForm({
         </div>
       )}
 
-      <form onSubmit={selectedChain === 'ethereum' ? handleSend : (e) => { e.preventDefault(); handleSolanaSend(); }} className="space-y-6">
+      <form onSubmit={handleSend} className="space-y-6">
         {/* Recipient Address */}
         <div className="space-y-2">
           <label className="text-sm text-gray-400">Recipient Address</label>
@@ -151,7 +190,7 @@ export default function SendForm({
             type="text"
             value={recipient}
             onChange={(e) => setRecipient(e.target.value)}
-            placeholder={selectedChain === 'ethereum' ? '0x...' : 'Solana address...'}
+            placeholder={chainConfig.placeholder}
             className={`w-full px-4 py-3 rounded-xl bg-gray-900 border ${
               recipient && !isValidRecipient
                 ? 'border-red-500 focus:ring-red-500'
@@ -159,7 +198,7 @@ export default function SendForm({
             } focus:outline-none focus:ring-2 font-mono text-sm`}
           />
           {recipient && !isValidRecipient && (
-            <p className="text-sm text-red-400">Invalid address format</p>
+            <p className="text-sm text-red-400">Invalid {selectedChain} address format</p>
           )}
         </div>
 
@@ -176,8 +215,8 @@ export default function SendForm({
               min="0"
               className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 pr-16"
             />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-              {selectedChain === 'ethereum' ? 'ETH' : 'SOL'}
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">
+              {chainConfig.symbol}
             </span>
           </div>
         </div>
@@ -188,77 +227,5 @@ export default function SendForm({
             <Shield className="w-4 h-4" />
             <span className="font-medium">Quantum-Secure Signing</span>
           </div>
-          <p className="text-sm text-gray-400">
-            Your transaction will be signed using hybrid post-quantum cryptography
-            (ML-DSA + ECDSA) for maximum security against future quantum attacks.
-          </p>
-        </div>
-
-        {/* Signature Status */}
-        {signatureStatus !== 'idle' && (
-          <div className={`p-4 rounded-xl border ${
-            signatureStatus === 'signing' ? 'bg-blue-900/20 border-blue-700/30' :
-            signatureStatus === 'signed' ? 'bg-emerald-900/20 border-emerald-700/30' :
-            'bg-red-900/20 border-red-700/30'
-          }`}>
-            <div className="flex items-center gap-2">
-              {signatureStatus === 'signing' && (
-                <>
-                  <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-                  <span className="text-blue-400">Generating hybrid signature...</span>
-                </>
-              )}
-              {signatureStatus === 'signed' && (
-                <>
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span className="text-emerald-400">Hybrid signature verified</span>
-                </>
-              )}
-              {signatureStatus === 'error' && (
-                <span className="text-red-400">Signature failed</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Error Display */}
-        {error && (
-          <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/30 text-red-400">
-            {error}
-          </div>
-        )}
-
-        {/* Success Display */}
-        {isSuccess && txHash && (
-          <div className="p-4 rounded-xl bg-emerald-900/20 border border-emerald-700/30">
-            <p className="text-emerald-400 font-medium mb-2">Transaction Sent!</p>
-            <a
-              href={`https://sepolia.etherscan.io/tx/${txHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm text-cyan-400 hover:underline font-mono break-all"
-            >
-              View on Etherscan →
-            </a>
-          </div>
-        )}
-
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={!canSend || isSending || isQuantumSigning}
-          className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
-        >
-          {isSending || isQuantumSigning ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span>{isQuantumSigning ? 'Signing...' : 'Sending...'}</span>
-            </>
-          ) : (
-            <span>Send {selectedChain === 'ethereum' ? 'ETH' : 'SOL'}</span>
-          )}
-        </button>
-      </form>
-    </div>
-  );
-              }
+          <p*
+
