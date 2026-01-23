@@ -2,12 +2,11 @@
 // Dashboard showing balances, recent transactions, and quick actions
 
 import { useState, useEffect } from 'react';
-import { useBalance, useBlockNumber } from 'wagmi';
-import { formatEther } from 'viem';
-import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, Clock, Loader2 } from 'lucide-react';
+import { useBalance } from 'wagmi';
+import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, TrendingDown, Clock, Loader2 } from 'lucide-react';
 import { 
   fetchAllBalances, 
-  getCachedBalances,
+  fetchBlockNumber,
   type ChainBalance,
   type Chain 
 } from '@/lib/balanceService';
@@ -22,7 +21,7 @@ interface WalletDashboardProps {
   hideBalances: boolean;
   selectedChain: Chain;
   sovereignWallet?: any;
-  useMainnet?: boolean; // ← ADD THIS
+  useMainnet?: boolean;
 }
 
 export default function WalletDashboard({
@@ -31,15 +30,15 @@ export default function WalletDashboard({
   hideBalances,
   selectedChain,
   sovereignWallet,
-  useMainnet = false, // ← ADD THIS with default
+  useMainnet = false,
 }: WalletDashboardProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [chainBalances, setChainBalances] = useState<ChainBalance[]>([]);
   const [currentBalance, setCurrentBalance] = useState<ChainBalance | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const { data: blockNumber } = useBlockNumber({ watch: true });
+  const [blockNumber, setBlockNumber] = useState<number | null>(null);
+  const [priceChange24h, setPriceChange24h] = useState<number>(0);
 
   // Clean up old mock cache on mount
   useEffect(() => {
@@ -60,23 +59,70 @@ export default function WalletDashboard({
       sovereignWallet: sovereignWallet ? 'EXISTS' : 'NULL',
       hasAddresses: !!sovereignWallet?.addresses,
       currentAddress: sovereignWallet?.addresses?.[selectedChain],
-      useMainnet, // ← ADD THIS
+      useMainnet,
     });
   }, [sovereignWallet, selectedChain, useMainnet]);
+
+  // Fetch block number
+  useEffect(() => {
+    const fetchBlock = async () => {
+      if (!sovereignWallet) return;
+      
+      try {
+        const block = await fetchBlockNumber(selectedChain, useMainnet);
+        setBlockNumber(block);
+      } catch (error) {
+        console.error('Failed to fetch block number:', error);
+      }
+    };
+    
+    fetchBlock();
+    
+    // Update every 30 seconds
+    const interval = setInterval(fetchBlock, 30000);
+    return () => clearInterval(interval);
+  }, [sovereignWallet, selectedChain, useMainnet]);
+
+  // Update price change when balance changes
+  useEffect(() => {
+    if (currentBalance?.priceChange24h !== undefined) {
+      setPriceChange24h(currentBalance.priceChange24h);
+    }
+  }, [currentBalance]);
 
   // Get chain config for display
   const getChainConfig = (chain: Chain) => {
     switch (chain) {
       case 'ethereum':
-        return { name: 'Ethereum Sepolia', symbol: 'ETH', color: 'text-blue-400' };
+        return { 
+          name: useMainnet ? 'Ethereum Mainnet' : 'Ethereum Sepolia', 
+          symbol: 'ETH', 
+          color: 'text-blue-400' 
+        };
       case 'bitcoin':
-        return { name: 'Bitcoin Mainnet', symbol: 'BTC', color: 'text-orange-400' };
+        return { 
+          name: useMainnet ? 'Bitcoin Mainnet' : 'Bitcoin Testnet', 
+          symbol: 'BTC', 
+          color: 'text-orange-400' 
+        };
       case 'bsc':
-        return { name: 'BSC Testnet', symbol: 'BNB', color: 'text-yellow-400' };
+        return { 
+          name: useMainnet ? 'BSC Mainnet' : 'BSC Testnet', 
+          symbol: 'BNB', 
+          color: 'text-yellow-400' 
+        };
       case 'xrp':
-        return { name: 'XRP Ledger', symbol: 'XRP', color: 'text-gray-400' };
+        return { 
+          name: useMainnet ? 'XRP Mainnet' : 'XRP Testnet', 
+          symbol: 'XRP', 
+          color: 'text-gray-400' 
+        };
       case 'solana':
-        return { name: 'Solana Devnet', symbol: 'SOL', color: 'text-purple-400' };
+        return { 
+          name: useMainnet ? 'Solana Mainnet' : 'Solana Devnet', 
+          symbol: 'SOL', 
+          color: 'text-purple-400' 
+        };
     }
   };
 
@@ -95,7 +141,7 @@ export default function WalletDashboard({
       setIsLoading(true);
       try {
         console.log('🔄 Fetching balances...');
-        const balances = await fetchAllBalances(sovereignWallet.addresses, useMainnet); // ← PASS useMainnet
+        const balances = await fetchAllBalances(sovereignWallet.addresses, useMainnet);
         console.log('✅ Balances loaded:', balances);
         
         setChainBalances(balances);
@@ -112,7 +158,7 @@ export default function WalletDashboard({
     };
 
     loadBalances();
-  }, [sovereignWallet, selectedChain, useMainnet]); // ← ADD useMainnet to dependencies
+  }, [sovereignWallet, selectedChain, useMainnet]);
 
   // Refresh balances
   const handleRefresh = async () => {
@@ -120,11 +166,15 @@ export default function WalletDashboard({
     
     setIsRefreshing(true);
     try {
-      const balances = await fetchAllBalances(sovereignWallet.addresses, useMainnet); // ← PASS useMainnet
+      const balances = await fetchAllBalances(sovereignWallet.addresses, useMainnet);
       setChainBalances(balances);
       
       const current = balances.find(b => b.chain === selectedChain);
       setCurrentBalance(current || null);
+      
+      // Also refresh block number
+      const block = await fetchBlockNumber(selectedChain, useMainnet);
+      setBlockNumber(block);
     } catch (error) {
       console.error('Refresh failed:', error);
     } finally {
@@ -206,10 +256,18 @@ export default function WalletDashboard({
             <span className="text-gray-400">
               ≈ ${currentBalance.usdValue.toFixed(2)} USD
             </span>
-            <div className="flex items-center gap-1 text-emerald-400">
-              <TrendingUp className="w-4 h-4" />
-              <span>+2.5% (24h)</span>
-            </div>
+            {priceChange24h !== 0 && (
+              <div className={`flex items-center gap-1 ${priceChange24h > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {priceChange24h > 0 ? (
+                  <TrendingUp className="w-4 h-4" />
+                ) : (
+                  <TrendingDown className="w-4 h-4" />
+                )}
+                <span>
+                  {priceChange24h > 0 ? '+' : ''}{priceChange24h.toFixed(2)}% (24h)
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -228,7 +286,9 @@ export default function WalletDashboard({
         </div>
         <div className="bg-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Block</p>
-          <p className="font-medium text-sm">{blockNumber?.toString() || '—'}</p>
+          <p className="font-medium text-sm">
+            {blockNumber ? blockNumber.toLocaleString() : '—'}
+          </p>
         </div>
         <div className="bg-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Security</p>
