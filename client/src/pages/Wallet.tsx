@@ -9,6 +9,7 @@ import ReceiveSection from '../components/Wallet/ReceiveSection';
 import SendForm from '../components/Wallet/SendForm';
 import PasskeyAuthModal from '../components/Wallet/PasskeyAuthModal';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle } from 'lucide-react';
+import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 
 type WalletTab = 'dashboard' | 'send' | 'receive' | 'settings';
 
@@ -62,12 +63,11 @@ export default function WalletPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-              BearTec Sovereign Wallet
-            </h1>
-            <p className="text-gray-400 mt-2">
-              Post-quantum secure, multi-chain, non-custodial
-            </p>
+            <img 
+              src={bearTecLogoNew} 
+              alt="BearTec Logo" 
+              className="h-[140px] w-auto object-contain"
+            />
           </div>
 
           <div className="flex items-center gap-4">
