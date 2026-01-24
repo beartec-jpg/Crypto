@@ -1,5 +1,5 @@
 // client/src/lib/walletService.ts
-// Multi-chain embedded wallet service with BTC, ETH, XRP, BSC support and enhanced security
+// Multi-chain embedded wallet service with multi-user support and enhanced security
 
 import { Buffer } from 'buffer';
 import { ethers } from 'ethers';
@@ -20,6 +20,7 @@ interface WalletDB extends DBSchema {
     key: string;
     value: {
       id: string;
+      userId: string; // Clerk user ID
       encryptedMnemonic: string;
       addresses: {
         ethereum: string;
@@ -71,7 +72,7 @@ interface WalletCreationResult extends Wallet {
 }
 
 const DB_NAME = 'beartec_wallet';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented for schema update
 
 // BIP44 Derivation Paths
 const DERIVATION_PATHS = {
@@ -136,6 +137,11 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// Helper: Get user-specific localStorage key
+function getUserStorageKey(userId: string, key: string): string {
+  return `${key}_${userId}`;
+}
+
 // Helper to derive BIP44 path using @scure/bip32
 function derivePath(node: HDKey, path: string): HDKey {
   const segments = path.replace(/^m\//i, '').split('/');
@@ -154,9 +160,18 @@ function derivePath(node: HDKey, path: string): HDKey {
 // Initialize IndexedDB
 async function getDB(): Promise<IDBPDatabase<WalletDB>> {
   return openDB<WalletDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion, newVersion) {
+      // Create wallets store if it doesn't exist
       if (!db.objectStoreNames.contains('wallets')) {
-        db.createObjectStore('wallets', { keyPath: 'id' });
+        const store = db.createObjectStore('wallets', { keyPath: 'id' });
+        store.createIndex('userId', 'userId', { unique: false });
+      } else if (oldVersion < 2) {
+        // Migration: Add userId index for existing stores
+        const tx = db.transaction('wallets', 'readwrite');
+        const store = tx.objectStore('wallets');
+        if (!store.indexNames.contains('userId')) {
+          store.createIndex('userId', 'userId', { unique: false });
+        }
       }
     },
   });
@@ -202,22 +217,15 @@ function deriveEthereumAddress(privateKeyBytes: Uint8Array): string {
  * Derive Bitcoin address from private key (P2PKH)
  */
 function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
-  // Get compressed public key
   const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
-  
-  // SHA256 then RIPEMD160
   const sha256Hash = sha256(publicKeyBytes);
   const ripemd160Hash = ripemd160(sha256Hash);
   
-  // Add version byte (0x00 for mainnet)
   const versionedHash = new Uint8Array(21);
   versionedHash[0] = 0x00;
   versionedHash.set(ripemd160Hash, 1);
   
-  // Double SHA256 for checksum
   const checksum = sha256(sha256(versionedHash)).slice(0, 4);
-  
-  // Combine and encode to Base58
   const addressBytes = new Uint8Array(25);
   addressBytes.set(versionedHash);
   addressBytes.set(checksum, 21);
@@ -230,20 +238,14 @@ function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
  */
 function deriveXRPAddress(privateKeyBytes: Uint8Array): string {
   const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
-  
-  // SHA256 then RIPEMD160
   const sha256Hash = sha256(publicKeyBytes);
   const ripemd160Hash = ripemd160(sha256Hash);
   
-  // Add version byte (0x00 for XRP)
   const versionedHash = new Uint8Array(21);
   versionedHash[0] = 0x00;
   versionedHash.set(ripemd160Hash, 1);
   
-  // Double SHA256 for checksum
   const checksum = sha256(sha256(versionedHash)).slice(0, 4);
-  
-  // Combine and encode to Base58 (XRP uses custom alphabet)
   const addressBytes = new Uint8Array(25);
   addressBytes.set(versionedHash);
   addressBytes.set(checksum, 21);
@@ -252,11 +254,9 @@ function deriveXRPAddress(privateKeyBytes: Uint8Array): string {
 }
 
 /**
- * Derive Solana address from private key (ed25519)
+ * Derive Solana address from private key
  */
 function deriveSolanaAddress(seed: Uint8Array): string {
-  // Solana uses ed25519, not secp256k1
-  // For now, return a placeholder (we'll need @solana/web3.js for proper implementation)
   const hash = sha256(seed);
   return base58Encode(hash);
 }
@@ -275,7 +275,6 @@ function base58Encode(bytes: Uint8Array): string {
     num = num / 58n;
   }
   
-  // Add leading zeros
   for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
     encoded = '1' + encoded;
   }
@@ -284,7 +283,7 @@ function base58Encode(bytes: Uint8Array): string {
 }
 
 /**
- * Base58 encoding with XRP alphabet (rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz)
+ * Base58 encoding with XRP alphabet
  */
 function base58EncodeXRP(bytes: Uint8Array): string {
   const ALPHABET = 'rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz';
@@ -362,12 +361,17 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
 }
 
 /**
- * Create a new multi-chain wallet from BIP39 mnemonic
- * Returns the mnemonic so user can back it up!
+ * Create a new multi-chain wallet (with user isolation)
  */
-export async function createWallet(password: string): Promise<WalletCreationResult> {
+export async function createWallet(password: string, userId: string): Promise<WalletCreationResult> {
   try {
-    console.log('🔐 Creating new multi-chain wallet...');
+    console.log(`🔐 Creating new multi-chain wallet for user: ${userId}`);
+    
+    // Check if user already has a wallet
+    const existing = await getCurrentWallet(userId);
+    if (existing) {
+      throw new Error('You already have a wallet. Use import to restore a different wallet.');
+    }
     
     // Generate 24-word mnemonic (256 bits entropy)
     const mnemonic = bip39.generateMnemonic(256);
@@ -382,48 +386,49 @@ export async function createWallet(password: string): Promise<WalletCreationResu
     const salt = randomBytes(32);
     const encryptedMnemonic = encryptData(mnemonic, password, salt);
     
-    // Store in IndexedDB
+    // Store in IndexedDB with userId
     const db = await getDB();
-    const walletId = `wallet_${Date.now()}`;
+    const walletId = `wallet_${userId}_${Date.now()}`;
     
     await db.put('wallets', {
       id: walletId,
+      userId, // Associate with Clerk user
       encryptedMnemonic,
       addresses,
       publicKeys,
       createdAt: new Date().toISOString(),
       salt: Buffer.from(salt).toString('hex'),
-      mnemonicBackedUp: false, // Track if user has backed up
+      mnemonicBackedUp: false,
     });
     
     console.log('✅ Multi-chain wallet stored in IndexedDB (encrypted)');
     
-    // Store wallet ID in localStorage
-    localStorage.setItem('current_wallet_id', walletId);
-    localStorage.setItem('wallet_created', 'true');
+    // Store wallet ID in user-specific localStorage
+    localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), walletId);
+    localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
     
     return {
       id: walletId,
       addresses,
       createdAt: new Date().toISOString(),
-      mnemonic, // Return mnemonic so UI can show it for backup!
+      mnemonic,
       mnemonicBackedUp: false,
     };
     
   } catch (error) {
     console.error('❌ Failed to create wallet:', error);
-    throw new Error('Failed to create wallet. Please try again.');
+    throw error;
   }
 }
 
 /**
- * Import wallet from mnemonic phrase
+ * Import wallet from mnemonic phrase (with user isolation)
  */
-export async function importWallet(mnemonic: string, password: string): Promise<Wallet> {
+export async function importWallet(mnemonic: string, password: string, userId: string): Promise<Wallet> {
   try {
-    console.log('🔐 Importing wallet from mnemonic...');
+    console.log(`🔐 Importing wallet for user: ${userId}`);
     
-    // Clean up mnemonic (trim whitespace, normalize spaces)
+    // Clean up mnemonic
     const cleanMnemonic = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
     
     // Validate mnemonic
@@ -437,8 +442,13 @@ export async function importWallet(mnemonic: string, password: string): Promise<
       throw new Error(`Invalid word count: ${wordCount}. Must be 12 or 24 words.`);
     }
     
-    // Derive addresses
+    // Check if user already has a wallet with these addresses
     const { addresses, publicKeys } = await deriveAddressesFromMnemonic(cleanMnemonic);
+    
+    const existing = await getCurrentWallet(userId);
+    if (existing && existing.addresses.ethereum === addresses.ethereum) {
+      throw new Error('This wallet is already imported for your account.');
+    }
     
     console.log('✅ Derived addresses:', addresses);
     
@@ -446,12 +456,19 @@ export async function importWallet(mnemonic: string, password: string): Promise<
     const salt = randomBytes(32);
     const encryptedMnemonic = encryptData(cleanMnemonic, password, salt);
     
-    // Store in IndexedDB
+    // Delete old wallet if exists (user is replacing)
+    if (existing) {
+      console.log('🔄 Replacing existing wallet...');
+      await deleteWallet(existing.id, userId);
+    }
+    
+    // Store in IndexedDB with userId
     const db = await getDB();
-    const walletId = `wallet_${Date.now()}`;
+    const walletId = `wallet_${userId}_${Date.now()}`;
     
     await db.put('wallets', {
       id: walletId,
+      userId, // Associate with Clerk user
       encryptedMnemonic,
       addresses,
       publicKeys,
@@ -462,9 +479,9 @@ export async function importWallet(mnemonic: string, password: string): Promise<
     
     console.log('✅ Wallet imported and stored');
     
-    // Store wallet ID in localStorage
-    localStorage.setItem('current_wallet_id', walletId);
-    localStorage.setItem('wallet_created', 'true');
+    // Store wallet ID in user-specific localStorage
+    localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), walletId);
+    localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
     
     return {
       id: walletId,
@@ -475,7 +492,7 @@ export async function importWallet(mnemonic: string, password: string): Promise<
     
   } catch (error: any) {
     console.error('❌ Failed to import wallet:', error);
-    throw new Error(error.message || 'Failed to import wallet. Check your recovery phrase.');
+    throw error;
   }
 }
 
@@ -487,7 +504,6 @@ export function validateMnemonic(mnemonic: string): { valid: boolean; error?: st
     const cleanMnemonic = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
     const words = cleanMnemonic.split(' ');
     
-    // Check word count
     if (words.length !== 12 && words.length !== 24) {
       return { 
         valid: false, 
@@ -495,7 +511,6 @@ export function validateMnemonic(mnemonic: string): { valid: boolean; error?: st
       };
     }
     
-    // Validate with bip39
     if (!bip39.validateMnemonic(cleanMnemonic)) {
       return { 
         valid: false, 
@@ -528,7 +543,7 @@ export async function markMnemonicBackedUp(walletId: string): Promise<void> {
 }
 
 /**
- * Unlock wallet with password (NEVER stores raw keys in localStorage)
+ * Unlock wallet with password
  */
 export async function unlockWallet(walletId: string, password: string): Promise<UnlockedWallet> {
   try {
@@ -548,7 +563,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       throw new Error('Invalid password');
     }
     
-    // Derive private keys (only in memory, never stored)
+    // Derive private keys (only in memory)
     const seed = await bip39.mnemonicToSeed(mnemonic);
     const root = HDKey.fromMasterSeed(seed);
     
@@ -566,7 +581,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
     privateKeys.bitcoin = btcNode.privateKey ? Buffer.from(btcNode.privateKey).toString('hex') : '';
 
-    privateKeys.bsc = privateKeys.ethereum; // Same as ETH
+    privateKeys.bsc = privateKeys.ethereum;
 
     const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
     privateKeys.xrp = xrpNode.privateKey ? Buffer.from(xrpNode.privateKey).toString('hex') : '';
@@ -592,11 +607,11 @@ export async function unlockWallet(walletId: string, password: string): Promise<
 }
 
 /**
- * Get current wallet info (without private keys) - SECURE
+ * Get current wallet info for user (without private keys)
  */
-export async function getCurrentWallet(): Promise<Wallet | null> {
+export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
   try {
-    const walletId = localStorage.getItem('current_wallet_id');
+    const walletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
     if (!walletId) return null;
     
     const db = await getDB();
@@ -604,7 +619,13 @@ export async function getCurrentWallet(): Promise<Wallet | null> {
     
     if (!wallet) return null;
     
-    // NEVER return private keys or mnemonic
+    // Verify wallet belongs to this user
+    if (wallet.userId !== userId) {
+      console.warn('⚠️ Wallet userId mismatch, clearing invalid reference');
+      localStorage.removeItem(getUserStorageKey(userId, 'wallet_id'));
+      return null;
+    }
+    
     return {
       id: wallet.id,
       addresses: wallet.addresses,
@@ -620,21 +641,20 @@ export async function getCurrentWallet(): Promise<Wallet | null> {
 
 /**
  * Get private key for signing (with passkey authentication required)
- * This should ONLY be called during transaction signing
  */
 export async function getPrivateKeyForSigning(
   chain: Chain,
-  passkeyAuthenticated: boolean
+  passkeyAuthenticated: boolean,
+  userId: string
 ): Promise<string | null> {
   if (!passkeyAuthenticated) {
     throw new Error('🔒 Passkey authentication required to access private keys');
   }
 
   try {
-    const walletId = localStorage.getItem('current_wallet_id');
+    const walletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
     if (!walletId) return null;
 
-    // Check cache first (keys auto-expire after 30 seconds)
     const cacheKey = `${walletId}_${chain}`;
     const cachedKey = keyCache.get(cacheKey);
     if (cachedKey) {
@@ -642,7 +662,6 @@ export async function getPrivateKeyForSigning(
       return cachedKey;
     }
 
-    // If not cached, user must re-authenticate
     throw new Error('🔒 Private key expired. Please re-authenticate.');
     
   } catch (error) {
@@ -652,8 +671,7 @@ export async function getPrivateKeyForSigning(
 }
 
 /**
- * Cache private key temporarily (for signing within 30 seconds)
- * Called after successful passkey authentication
+ * Cache private key temporarily
  */
 export function cachePrivateKey(walletId: string, chain: Chain, privateKey: string): void {
   const cacheKey = `${walletId}_${chain}`;
@@ -662,7 +680,7 @@ export function cachePrivateKey(walletId: string, chain: Chain, privateKey: stri
 }
 
 /**
- * Sign transaction for specific chain (with passkey auth)
+ * Sign transaction for specific chain
  */
 export async function signTransaction(
   walletId: string,
@@ -676,7 +694,6 @@ export async function signTransaction(
   }
 
   try {
-    // Unlock wallet temporarily (keys only in memory)
     const wallet = await unlockWallet(walletId, password);
     const privateKey = wallet.privateKeys[chain];
     
@@ -684,10 +701,8 @@ export async function signTransaction(
       throw new Error(`No private key found for chain: ${chain}`);
     }
     
-    // Cache the key for 30 seconds
     cachePrivateKey(walletId, chain, privateKey);
     
-    // Sign based on chain
     let signedTx: string;
     
     switch (chain) {
@@ -698,20 +713,14 @@ export async function signTransaction(
         break;
       }
       
-      case 'bitcoin': {
-        // Bitcoin transaction signing (would need bitcoinjs-lib)
+      case 'bitcoin':
         throw new Error('Bitcoin signing not yet implemented');
-      }
       
-      case 'xrp': {
-        // XRP transaction signing (would need xrpl library)
+      case 'xrp':
         throw new Error('XRP signing not yet implemented');
-      }
       
-      case 'solana': {
-        // Solana transaction signing (would need @solana/web3.js)
+      case 'solana':
         throw new Error('Solana signing not yet implemented');
-      }
       
       default:
         throw new Error(`Unsupported chain: ${chain}`);
@@ -743,31 +752,38 @@ export async function exportMnemonic(
 }
 
 /**
- * Delete wallet securely
+ * Delete wallet securely (for specific user)
  */
-export async function deleteWallet(walletId: string): Promise<void> {
+export async function deleteWallet(walletId: string, userId: string): Promise<void> {
   try {
     const db = await getDB();
-    await db.delete('wallets', walletId);
+    const wallet = await db.get('wallets', walletId);
     
-    if (localStorage.getItem('current_wallet_id') === walletId) {
-      localStorage.removeItem('current_wallet_id');
-      localStorage.removeItem('wallet_created');
+    // Verify wallet belongs to this user
+    if (wallet && wallet.userId !== userId) {
+      throw new Error('Unauthorized: Cannot delete another user\'s wallet');
     }
     
-    // Clear any cached keys
+    await db.delete('wallets', walletId);
+    
+    const storedWalletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
+    if (storedWalletId === walletId) {
+      localStorage.removeItem(getUserStorageKey(userId, 'wallet_id'));
+      localStorage.removeItem(getUserStorageKey(userId, 'wallet_created'));
+    }
+    
     keyCache.clear();
     
     console.log('✅ Wallet deleted securely');
     
   } catch (error) {
     console.error('❌ Failed to delete wallet:', error);
-    throw new Error('Failed to delete wallet');
+    throw error;
   }
 }
 
 /**
- * Clear all sensitive data from memory (call on logout/unmount)
+ * Clear all sensitive data from memory
  */
 export function clearSensitiveData(): void {
   keyCache.clear();
@@ -775,17 +791,55 @@ export function clearSensitiveData(): void {
 }
 
 /**
- * Check if wallet exists
+ * Check if user has existing wallet
  */
-export async function hasExistingWallet(): Promise<boolean> {
+export async function hasExistingWallet(userId: string): Promise<boolean> {
   try {
-    const walletId = localStorage.getItem('current_wallet_id');
+    const walletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
     if (!walletId) return false;
     
     const db = await getDB();
     const wallet = await db.get('wallets', walletId);
-    return wallet !== undefined;
+    
+    // Verify wallet exists and belongs to this user
+    return wallet !== undefined && wallet.userId === userId;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Migrate old wallet to new user-scoped format (run once on login)
+ */
+export async function migrateWalletToUser(userId: string): Promise<void> {
+  try {
+    // Check if there's an old wallet without userId
+    const oldWalletId = localStorage.getItem('current_wallet_id');
+    if (!oldWalletId) return;
+    
+    // Check if user already has a new wallet
+    const newWalletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
+    if (newWalletId) return;
+    
+    const db = await getDB();
+    const oldWallet = await db.get('wallets', oldWalletId);
+    
+    if (oldWallet && !oldWallet.userId) {
+      // Migrate: add userId to old wallet
+      oldWallet.userId = userId;
+      await db.put('wallets', oldWallet);
+      
+      // Update localStorage
+      localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), oldWalletId);
+      localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
+      
+      // Remove old keys
+      localStorage.removeItem('current_wallet_id');
+      localStorage.removeItem('wallet_created');
+      
+      console.log('✅ Migrated wallet to user-scoped storage');
+    }
+  } catch (error) {
+    console.error('Failed to migrate wallet:', error);
   }
 }
