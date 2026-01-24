@@ -1,9 +1,6 @@
 // client/src/lib/securityService.ts
 // Wallet security management - auto-lock, key protection, session management, 3-tier security
 
-import { getCurrentWallet } from './walletService';
-import { authenticateWithPasskey, isPasskeyAuthenticated } from './passkeyService';
-
 // Security tier types
 export type SecurityTier = 'standard' | 'enhanced' | 'maximum';
 export type SecurityAction = 'openWallet' | 'viewBalance' | 'receive' | 'send' | 'viewSeed' | 'exportKeys';
@@ -12,8 +9,8 @@ export type AuthMethod = 'pin' | 'password' | 'passkey';
 // Security settings interface
 export interface SecuritySettings {
   tier: SecurityTier;
-  pinHash?: string;        // SHA-256 hash of PIN (Tier 3 only)
-  pinSalt?: string;        // Random salt for PIN
+  pinHash?: string;        // PBKDF2-SHA256 derived hash of PIN (100k iterations, Tier 3 only)
+  pinSalt?: string;        // Random salt used for PIN PBKDF2 derivation
   failedPinAttempts: number;
   pinLockoutUntil?: number; // Timestamp
   autoLockMinutes: number;  // 0 = disabled, 5/15/30 minutes
@@ -241,31 +238,53 @@ export function useWalletSecurity() {
 // 3-Tier Security System Functions
 // ============================================================================
 
-const SECURITY_SETTINGS_KEY = 'wallet_security_settings';
+/**
+ * Get user-specific security settings key
+ */
+function getSecuritySettingsKey(userId: string): string {
+  return `wallet_security_settings_${userId}`;
+}
 
 /**
  * Get current security settings (defaults to Tier 1 for existing wallets)
  */
-export function getSecuritySettings(): SecuritySettings {
-  const stored = localStorage.getItem(SECURITY_SETTINGS_KEY);
+export function getSecuritySettings(userId: string): SecuritySettings {
+  const key = getSecuritySettingsKey(userId);
+  const stored = localStorage.getItem(key);
   
+  const defaultSettings: SecuritySettings = {
+    tier: 'standard',
+    failedPinAttempts: 0,
+    autoLockMinutes: 0, // 0 = use system default (10 min)
+  };
+
   if (!stored) {
-    // DEFAULT: Tier 1 (Standard) for existing wallets - NO LOCKOUT!
-    return {
-      tier: 'standard',
-      failedPinAttempts: 0,
-      autoLockMinutes: 0, // 0 = use system default (10 min)
-    };
+    return defaultSettings;
   }
-  
-  return JSON.parse(stored);
+
+  try {
+    const parsed = JSON.parse(stored);
+    
+    // Basic validation
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new Error('Invalid format');
+    }
+    
+    // Merge with defaults for migration
+    return { ...defaultSettings, ...parsed };
+  } catch {
+    // Corrupted data - reset to defaults
+    localStorage.removeItem(key);
+    return defaultSettings;
+  }
 }
 
 /**
  * Save security settings
  */
-export function saveSecuritySettings(settings: SecuritySettings): void {
-  localStorage.setItem(SECURITY_SETTINGS_KEY, JSON.stringify(settings));
+export function saveSecuritySettings(userId: string, settings: SecuritySettings): void {
+  const key = getSecuritySettingsKey(userId);
+  localStorage.setItem(key, JSON.stringify(settings));
 }
 
 /**
@@ -314,8 +333,8 @@ export function generateSalt(): string {
 /**
  * Verify PIN with rate limiting
  */
-export async function verifyPin(enteredPin: string): Promise<boolean> {
-  const settings = getSecuritySettings();
+export async function verifyPin(userId: string, enteredPin: string): Promise<boolean> {
+  const settings = getSecuritySettings(userId);
   
   // Check if PIN is set
   if (!settings.pinHash || !settings.pinSalt) {
@@ -335,7 +354,7 @@ export async function verifyPin(enteredPin: string): Promise<boolean> {
     // Reset on success
     settings.failedPinAttempts = 0;
     settings.pinLockoutUntil = undefined;
-    saveSecuritySettings(settings);
+    saveSecuritySettings(userId, settings);
     return true;
   } else {
     // Failed attempt
@@ -343,7 +362,7 @@ export async function verifyPin(enteredPin: string): Promise<boolean> {
     if (settings.failedPinAttempts >= 5) {
       settings.pinLockoutUntil = Date.now() + (15 * 60 * 1000); // 15 min lockout
     }
-    saveSecuritySettings(settings);
+    saveSecuritySettings(userId, settings);
     
     const remaining = 5 - settings.failedPinAttempts;
     if (remaining > 0) {
@@ -357,12 +376,12 @@ export async function verifyPin(enteredPin: string): Promise<boolean> {
 /**
  * Set up PIN for Maximum security tier
  */
-export async function setupPin(pin: string): Promise<void> {
+export async function setupPin(userId: string, pin: string): Promise<void> {
   if (pin.length !== 6 || !/^\d+$/.test(pin)) {
     throw new Error('PIN must be exactly 6 digits');
   }
   
-  const settings = getSecuritySettings();
+  const settings = getSecuritySettings(userId);
   const salt = generateSalt();
   const hash = await hashPin(pin, salt);
   
@@ -371,62 +390,65 @@ export async function setupPin(pin: string): Promise<void> {
   settings.failedPinAttempts = 0;
   settings.pinLockoutUntil = undefined;
   
-  saveSecuritySettings(settings);
+  saveSecuritySettings(userId, settings);
 }
 
 /**
  * Remove PIN (when downgrading from Tier 3)
  */
-export function removePin(): void {
-  const settings = getSecuritySettings();
+export function removePin(userId: string): void {
+  const settings = getSecuritySettings(userId);
   delete settings.pinHash;
   delete settings.pinSalt;
   settings.failedPinAttempts = 0;
   settings.pinLockoutUntil = undefined;
-  saveSecuritySettings(settings);
+  saveSecuritySettings(userId, settings);
 }
 
 /**
  * Change security tier
  */
-export function changeSecurityTier(newTier: SecurityTier): void {
-  const settings = getSecuritySettings();
+export function changeSecurityTier(userId: string, newTier: SecurityTier): void {
+  const settings = getSecuritySettings(userId);
   settings.tier = newTier;
   
-  // If downgrading from maximum, remove PIN
-  if (newTier !== 'maximum' && settings.pinHash) {
-    removePin();
+  // If downgrading from maximum, remove PIN data
+  if (newTier !== 'maximum') {
+    delete settings.pinHash;
+    delete settings.pinSalt;
+    settings.failedPinAttempts = 0;
+    settings.pinLockoutUntil = undefined;
   }
   
-  saveSecuritySettings(settings);
+  saveSecuritySettings(userId, settings);
 }
 
 /**
  * Emergency reset to Standard tier (requires password verification separately)
  */
-export function emergencySecurityReset(): void {
+export function emergencySecurityReset(userId: string): void {
   const resetSettings: SecuritySettings = {
     tier: 'standard',
     failedPinAttempts: 0,
     autoLockMinutes: 0,
   };
-  saveSecuritySettings(resetSettings);
+  saveSecuritySettings(userId, resetSettings);
   console.log('🔓 Security reset to Standard tier');
 }
 
 /**
  * Check if PIN is currently locked out
  */
-export function isPinLockedOut(): boolean {
-  const settings = getSecuritySettings();
+export function isPinLockedOut(userId: string): boolean {
+  const settings = getSecuritySettings(userId);
   return !!(settings.pinLockoutUntil && Date.now() < settings.pinLockoutUntil);
 }
 
 /**
  * Get remaining lockout time in minutes
  */
-export function getPinLockoutMinutes(): number {
-  const settings = getSecuritySettings();
+export function getPinLockoutMinutes(userId: string): number {
+  const settings = getSecuritySettings(userId);
   if (!settings.pinLockoutUntil || Date.now() >= settings.pinLockoutUntil) {
     return 0;
   }
@@ -440,15 +462,15 @@ export function getPinLockoutMinutes(): number {
  * Note: This function should be called with appropriate UI handlers for each auth method
  * The actual prompting should be done by the caller (UI components)
  */
-export function getSecurityRequirements(action: SecurityAction): AuthMethod[] {
-  const settings = getSecuritySettings();
+export function getSecurityRequirements(userId: string, action: SecurityAction): AuthMethod[] {
+  const settings = getSecuritySettings(userId);
   return SECURITY_REQUIREMENTS[settings.tier][action];
 }
 
 /**
  * Check if an action requires any authentication
  */
-export function requiresAuthentication(action: SecurityAction): boolean {
-  const requirements = getSecurityRequirements(action);
+export function requiresAuthentication(userId: string, action: SecurityAction): boolean {
+  const requirements = getSecurityRequirements(userId, action);
   return requirements.length > 0;
 }
