@@ -87,7 +87,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
       // Register passkey
       if (webAuthnSupported) {
         try {
-          await registerPasskey('wallet_user');
+          await registerPasskey(userId);
         } catch (passkeyError) {
           console.warn('Passkey registration failed, continuing with password-only:', passkeyError);
         }
@@ -124,7 +124,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
       // Register passkey
       if (webAuthnSupported) {
         try {
-          await registerPasskey('wallet_user');
+          await registerPasskey(userId);
         } catch (passkeyError) {
           console.warn('Passkey registration failed, continuing with password-only:', passkeyError);
         }
