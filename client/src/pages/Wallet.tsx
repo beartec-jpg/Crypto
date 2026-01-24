@@ -121,12 +121,14 @@ export default function WalletPage() {
     };
     
     checkWalletAndSecurity();
-  }, [userId]); // Remove isPasskeyAuthenticated from deps to prevent loops
+  }, [userId]);
 
   const handlePinSuccess = () => {
     setShowPinModal(false);
     
     // After PIN, check if passkey is also required
+    if (!userId) return;
+    
     const requirements = getSecurityRequirements(userId, 'openWallet');
     if (requirements.includes('passkey')) {
       setAuthStep('passkey');
@@ -282,6 +284,8 @@ export default function WalletPage() {
                 </p>
                 <button
                   onClick={() => {
+                    if (!userId) return;
+                    
                     const requirements = getSecurityRequirements(userId, 'openWallet');
                     if (requirements.includes('pin')) {
                       setAuthStep('pin');
