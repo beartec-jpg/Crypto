@@ -172,7 +172,12 @@ export async function fetchSolanaBalance(address: string): Promise<string> {
   try {
     console.log('🔍 Fetching SOL balance from MAINNET for:', address);
     
-const response = await axios.post('https://api.mainnet.solana.com', {
+const HELIUS_KEY = import.meta.env.VITE_HELIUS_API_KEY || '';
+const rpcUrl = HELIUS_KEY 
+  ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
+  : 'https://rpc.ankr.com/solana';
+
+const response = await axios.post(rpcUrl, {
       jsonrpc: '2.0',
       id: 1,
       method: 'getBalance',
