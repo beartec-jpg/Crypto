@@ -223,7 +223,12 @@ export async function fetchSolanaTransactions(address: string): Promise<Transact
   try {
     console.log('🔍 Fetching SOL transactions from MAINNET for:', address);
     
-    const response = await axios.post('https://api.mainnet-beta.solana.com', {
+    const HELIUS_KEY = import.meta.env.VITE_HELIUS_API_KEY || '';
+    const rpcUrl = HELIUS_KEY 
+      ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
+      : 'https://rpc.ankr.com/solana';
+    
+    const response = await axios.post(rpcUrl, {  // ← YOU NEED THIS LINE!
       jsonrpc: '2.0',
       id: 1,
       method: 'getSignaturesForAddress',
@@ -251,7 +256,6 @@ export async function fetchSolanaTransactions(address: string): Promise<Transact
       blockNumber: tx.slot,
     }));
 
-    console.log(`✅ Found ${txs.length} SOL transactions`);
     return txs;
   } catch (error: any) {
     console.error('❌ Failed to fetch Solana transactions:', error.message);
