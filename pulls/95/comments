@@ -1,0 +1,115 @@
+## 🔴 Changes Required Before Merge
+
+Good progress on the 3-tier security system! However, there are several critical security issues and bugs that need to be fixed before this can be merged.
+
+---
+
+### 🔴 CRITICAL Security Issues (Must Fix)
+
+#### 1. Emergency Reset Has No Password Verification
+**File:** `client/src/components/Wallet/SecuritySettings.tsx` (lines 210-214)
+
+The UI text says "This requires your wallet password" but `handleEmergencyReset()` performs the reset without any password verification. This is a security vulnerability - anyone with access to the device can reset security to Standard tier.
+
+**Fix:** Add a password input field and verify the password against the wallet before calling `emergencySecurityReset()`. You'll need to:
+- Render an input for `resetPassword` (the state already exists but is unused)
+- Call a password verification function before performing the reset
+- Show an error if password is incorrect
+
+#### 2. Security Settings Not Scoped by User
+**File:** `client/src/lib/securityService.ts` (line 244-245)
+
+`SECURITY_SETTINGS_KEY` is a global localStorage key (`'wallet_security_settings'`). The rest of the wallet uses user-scoped keys like `${key}_${userId}`. This means security settings (including PIN hash!) can bleed between different users on the same browser.
+
+**Fix:** Scope the key by userId:
+```typescript
+function getSecuritySettingsKey(userId: string): string {
+  return `wallet_security_settings_${userId}`;
+}
+```
+Then update all functions (`getSecuritySettings`, `saveSecuritySettings`, etc.) to accept a `userId` parameter.
+
+#### 3. PIN Removal Race Condition
+**File:** `client/src/lib/securityService.ts` (lines 397-401)
+
+In `changeSecurityTier()`, you call `removePin()` which loads its own copy of settings, modifies it, and saves it. But then you immediately call `saveSecuritySettings(settings)` with the ORIGINAL settings object that still contains `pinHash` and `pinSalt`. This overwrites the removal and re-introduces the PIN.
+
+**Fix:** Either:
+- Option A: Delete `pinHash` and `pinSalt` directly on the `settings` object before saving:
+```typescript
+if (newTier !== 'maximum' && settings.pinHash) {
+  delete settings.pinHash;
+  delete settings.pinSalt;
+  settings.failedPinAttempts = 0;
+  settings.pinLockoutUntil = undefined;
+}
+settings.tier = newTier;
+saveSecuritySettings(settings);
+```
+- Option B: Don't save after calling `removePin()` (let removePin handle it)
+
+---
+
+### 🟡 Important Issues (Should Fix)
+
+#### 4. Hardcoded Passkey Username
+**File:** `client/src/components/Wallet/SecuritySettings.tsx` (lines 111 and 157)
+
+`registerPasskey('wallet_user')` uses a hardcoded string instead of the actual `userId` prop. This could cause passkey collisions between users.
+
+**Fix:** Change to `registerPasskey(userId)` in both locations.
+
+#### 5. Unsafe JSON.parse Without Error Handling
+**File:** `client/src/lib/securityService.ts` (line 261)
+
+`getSecuritySettings()` directly calls `JSON.parse(stored)` without try/catch. If localStorage is corrupted or contains an older schema, this will throw and crash the wallet UI.
+
+**Fix:** Wrap in try/catch and fall back to defaults:
+```typescript
+try {
+  return JSON.parse(stored);
+} catch {
+  localStorage.removeItem(SECURITY_SETTINGS_KEY);
+  return defaultSettings;
+}
+```
+
+#### 6. Comment Does Not Match Implementation
+**File:** `client/src/lib/securityService.ts` (lines 15-16)
+
+The comment says "SHA-256 hash of PIN" but the actual implementation uses PBKDF2-SHA256 with 100k iterations. Update the comment to reflect the actual (better!) implementation.
+
+---
+
+### 🟢 Code Quality (Nice to Fix)
+
+#### 7. Unused Variables and Imports
+Remove the following unused code:
+- `client/src/components/Wallet/SecuritySettings.tsx`:
+  - `resetPassword` state (line 35) - or use it for #1 above
+  - `SECURITY_REQUIREMENTS` import (line 12)
+  - `PinEntryModal` import (line 15)
+  - `color` variable (line 222)
+- `client/src/components/Wallet/SendForm.tsx`:
+  - `pendingAction` state (line 35) - set but never read
+- `client/src/lib/securityService.ts`:
+  - `authenticateWithPasskey`, `isPasskeyAuthenticated` imports (line 5)
+
+#### 8. autoLockMinutes Not Wired Up
+The `autoLockMinutes` setting exists but `SecurityManager` always uses `DEFAULT_CONFIG.autoLockTimeout`. Either wire it up or remove the setting to avoid confusion.
+
+---
+
+### ✅ Summary Checklist
+
+- [ ] Add password verification to emergency reset
+- [ ] Scope security settings by userId  
+- [ ] Fix PIN removal race condition in changeSecurityTier()
+- [ ] Use userId for passkey registration instead of 'wallet_user'
+- [ ] Add try/catch around JSON.parse in getSecuritySettings()
+- [ ] Update pinHash comment to say PBKDF2
+- [ ] Remove unused imports and variables
+
+Please address items 1-3 (critical) before this can be merged. Items 4-6 are strongly recommended. Items 7-8 are nice-to-have cleanup.
+
+Thanks! 🚀
