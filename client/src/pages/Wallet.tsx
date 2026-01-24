@@ -8,6 +8,7 @@ import WalletDashboard from '../components/Wallet/WalletDashboard';
 import ReceiveSection from '../components/Wallet/ReceiveSection';
 import SendForm from '../components/Wallet/SendForm';
 import PasskeyAuthModal from '../components/Wallet/PasskeyAuthModal';
+import SecuritySettings from '../components/Wallet/SecuritySettings';
 import { getCurrentWallet, migrateWalletToUser } from '@/lib/walletService';
 import { securityManager } from '@/lib/securityService';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle } from 'lucide-react';
@@ -352,136 +353,169 @@ export default function WalletPage() {
 function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; userId: string }) {
   const [showMnemonicWarning, setShowMnemonicWarning] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'security'>('general');
 
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold">Wallet Settings</h2>
 
-      {/* User Info */}
-      <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
-        <h3 className="font-medium text-gray-300 mb-2">Account</h3>
-        <p className="text-sm text-gray-400">User ID: {userId}</p>
-        {sovereignWallet && (
-          <p className="text-sm text-gray-400 mt-1">
-            Wallet Created: {new Date(sovereignWallet.createdAt).toLocaleDateString()}
-          </p>
-        )}
+      {/* Settings Tabs */}
+      <div className="flex gap-2 border-b border-gray-700 pb-2">
+        <button
+          onClick={() => setActiveSettingsTab('general')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeSettingsTab === 'general'
+              ? 'bg-emerald-600 text-white'
+              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+          }`}
+        >
+          General
+        </button>
+        <button
+          onClick={() => setActiveSettingsTab('security')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeSettingsTab === 'security'
+              ? 'bg-emerald-600 text-white'
+              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+          }`}
+        >
+          Security
+        </button>
       </div>
 
-      {/* Wallet Info */}
-      {sovereignWallet && (
-        <div className="p-4 rounded-xl bg-emerald-900/20 border border-emerald-700/30">
-          <h3 className="font-medium text-emerald-400 mb-3">Multi-Chain Addresses (Mainnet)</h3>
-          <div className="space-y-2 text-sm font-mono">
-            <div>
-              <span className="text-gray-400">ETH:</span>
-              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.ethereum}</span>
-            </div>
-            <div>
-              <span className="text-gray-400">BTC:</span>
-              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.bitcoin}</span>
-            </div>
-            <div>
-              <span className="text-gray-400">BSC:</span>
-              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.bsc}</span>
-            </div>
-            <div>
-              <span className="text-gray-400">XRP:</span>
-              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.xrp}</span>
-            </div>
-            <div>
-              <span className="text-gray-400">SOL:</span>
-              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.solana}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Security Settings */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium text-gray-300">Security</h3>
-        
-        <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Passkey Authentication</p>
-              <p className="text-sm text-gray-400">Use biometrics or PIN for signing</p>
-            </div>
-            <div className="w-2 h-2 rounded-full bg-emerald-400" />
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Auto-Lock</p>
-              <p className="text-sm text-gray-400">Wallet locks after 10 minutes of inactivity</p>
-            </div>
-            <div className="w-2 h-2 rounded-full bg-emerald-400" />
-          </div>
-        </div>
-
-        {sovereignWallet?.mnemonicBackedUp !== undefined && (
+      {activeSettingsTab === 'general' && (
+        <>
+          {/* User Info */}
           <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Recovery Phrase Backup</p>
-                <p className="text-sm text-gray-400">
-                  {sovereignWallet.mnemonicBackedUp ? 'Backed up ✓' : 'Not backed up yet'}
-                </p>
-              </div>
-              <div className={`w-2 h-2 rounded-full ${sovereignWallet.mnemonicBackedUp ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-            </div>
+            <h3 className="font-medium text-gray-300 mb-2">Account</h3>
+            <p className="text-sm text-gray-400">User ID: {userId}</p>
+            {sovereignWallet && (
+              <p className="text-sm text-gray-400 mt-1">
+                Wallet Created: {new Date(sovereignWallet.createdAt).toLocaleDateString()}
+              </p>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Advanced (Mnemonic Export) */}
-      {sovereignWallet && (
-        <div className="pt-6 border-t border-gray-700">
-          <h3 className="text-lg font-medium text-gray-300 mb-4">Advanced</h3>
-          
-          <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/50">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-medium text-red-400">Recovery Phrase Export</p>
-                <p className="text-sm text-gray-400 mt-1">
-                  Export your BIP-39 mnemonic for backup purposes only. Never share this with anyone.
-                </p>
-                
-                {!showMnemonicWarning ? (
-                  <button
-                    onClick={() => setShowMnemonicWarning(true)}
-                    className="mt-4 px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors text-sm"
-                  >
-                    Show Recovery Options
-                  </button>
-                ) : (
-                  <div className="mt-4 space-y-4">
-                    <div className="p-3 rounded-lg bg-red-900/30 text-sm text-red-300">
-                      ⚠️ Warning: Anyone with your recovery phrase can access your funds.
-                      Store it securely offline. Never enter it on websites or share with support.
-                    </div>
-                    <button
-                      onClick={() => setShowMnemonic(!showMnemonic)}
-                      className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors text-sm"
-                    >
-                      {showMnemonic ? 'Hide' : 'Reveal'} Recovery Phrase
-                    </button>
-                    {showMnemonic && (
-                      <div className="p-4 rounded-lg bg-gray-900 font-mono text-sm">
-                        <p className="text-gray-400 italic">
-                          [Requires password authentication to view - Feature coming soon]
-                        </p>
+          {/* Wallet Info */}
+          {sovereignWallet && (
+            <div className="p-4 rounded-xl bg-emerald-900/20 border border-emerald-700/30">
+              <h3 className="font-medium text-emerald-400 mb-3">Multi-Chain Addresses (Mainnet)</h3>
+              <div className="space-y-2 text-sm font-mono">
+                <div>
+                  <span className="text-gray-400">ETH:</span>
+                  <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.ethereum}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">BTC:</span>
+                  <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.bitcoin}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">BSC:</span>
+                  <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.bsc}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">XRP:</span>
+                  <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.xrp}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">SOL:</span>
+                  <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.solana}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Security Info */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-gray-300">Security Status</h3>
+            
+            <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Passkey Authentication</p>
+                  <p className="text-sm text-gray-400">Use biometrics or PIN for signing</p>
+                </div>
+                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Auto-Lock</p>
+                  <p className="text-sm text-gray-400">Wallet locks after 10 minutes of inactivity</p>
+                </div>
+                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+              </div>
+            </div>
+
+            {sovereignWallet?.mnemonicBackedUp !== undefined && (
+              <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Recovery Phrase Backup</p>
+                    <p className="text-sm text-gray-400">
+                      {sovereignWallet.mnemonicBackedUp ? 'Backed up ✓' : 'Not backed up yet'}
+                    </p>
+                  </div>
+                  <div className={`w-2 h-2 rounded-full ${sovereignWallet.mnemonicBackedUp ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Advanced (Mnemonic Export) */}
+          {sovereignWallet && (
+            <div className="pt-6 border-t border-gray-700">
+              <h3 className="text-lg font-medium text-gray-300 mb-4">Advanced</h3>
+              
+              <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/50">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-medium text-red-400">Recovery Phrase Export</p>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Export your BIP-39 mnemonic for backup purposes only. Never share this with anyone.
+                    </p>
+                    
+                    {!showMnemonicWarning ? (
+                      <button
+                        onClick={() => setShowMnemonicWarning(true)}
+                        className="mt-4 px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors text-sm"
+                      >
+                        Show Recovery Options
+                      </button>
+                    ) : (
+                      <div className="mt-4 space-y-4">
+                        <div className="p-3 rounded-lg bg-red-900/30 text-sm text-red-300">
+                          ⚠️ Warning: Anyone with your recovery phrase can access your funds.
+                          Store it securely offline. Never enter it on websites or share with support.
+                        </div>
+                        <button
+                          onClick={() => setShowMnemonic(!showMnemonic)}
+                          className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors text-sm"
+                        >
+                          {showMnemonic ? 'Hide' : 'Reveal'} Recovery Phrase
+                        </button>
+                        {showMnemonic && (
+                          <div className="p-4 rounded-lg bg-gray-900 font-mono text-sm">
+                            <p className="text-gray-400 italic">
+                              [Requires password authentication to view - Feature coming soon]
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          )}
+        </>
+      )}
+
+      {activeSettingsTab === 'security' && (
+        <SecuritySettings userId={userId} />
       )}
     </div>
   );

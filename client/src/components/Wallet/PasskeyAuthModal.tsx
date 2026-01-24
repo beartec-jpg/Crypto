@@ -50,13 +50,13 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
     
     // Check if passkey already registered (returning user)
     const checkExisting = async () => {
-      const hasWallet = await hasExistingWallet();
+      const hasWallet = await hasExistingWallet(userId);
       if (hasWallet && isPasskeyRegistered()) {
         setMode('authenticate');
       }
     };
     checkExisting();
-  }, []);
+  }, [userId]);
 
   const validatePassword = (): boolean => {
     if (password.length < 8) {
