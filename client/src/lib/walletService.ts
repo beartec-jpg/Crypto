@@ -786,9 +786,6 @@ export async function isBackupVerified(walletId: string): Promise<boolean> {
     console.error('Failed to check backup status:', error);
     return false;
   }
-  } catch (error) {
-    console.error('Failed to mark mnemonic as backed up:', error);
-  }
 }
 
 /**
