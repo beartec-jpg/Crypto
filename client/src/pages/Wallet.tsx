@@ -4,11 +4,12 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect, useBalance } from 'wagmi';
 import { metaMask, walletConnect } from 'wagmi/connectors';
+import { useUser } from '@clerk/clerk-react';
 import WalletDashboard from '../components/Wallet/WalletDashboard';
 import ReceiveSection from '../components/Wallet/ReceiveSection';
 import SendForm from '../components/Wallet/SendForm';
 import PasskeyAuthModal from '../components/Wallet/PasskeyAuthModal';
-import { getCurrentWallet } from '@/lib/walletService';
+import { getCurrentWallet, migrateWalletToUser } from '@/lib/walletService';
 import { securityManager } from '@/lib/securityService';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle } from 'lucide-react';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
@@ -17,6 +18,9 @@ type WalletTab = 'dashboard' | 'send' | 'receive' | 'settings';
 type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
 
 export default function WalletPage() {
+  const { user } = useUser();
+  const userId = user?.id || '';
+  
   const [activeTab, setActiveTab] = useState<WalletTab>('dashboard');
   const [hideBalances, setHideBalances] = useState(true);
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
@@ -30,6 +34,13 @@ export default function WalletPage() {
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
+
+  // Migrate old wallet on mount
+  useEffect(() => {
+    if (userId) {
+      migrateWalletToUser(userId);
+    }
+  }, [userId]);
 
   // Setup security manager and auto-lock
   useEffect(() => {
@@ -61,7 +72,9 @@ export default function WalletPage() {
   // Check for sovereign wallet on mount and when passkey auth changes
   useEffect(() => {
     const checkWallet = async () => {
-      const wallet = await getCurrentWallet();
+      if (!userId) return;
+      
+      const wallet = await getCurrentWallet(userId);
       setSovereignWallet(wallet);
       
       // Also check passkey session
@@ -71,7 +84,7 @@ export default function WalletPage() {
       }
     };
     checkWallet();
-  }, [isPasskeyAuthenticated]);
+  }, [isPasskeyAuthenticated, userId]);
 
   const handlePasskeySuccess = () => {
     setIsPasskeyAuthenticated(true);
@@ -79,7 +92,9 @@ export default function WalletPage() {
     setShowPasskeyModal(false);
     securityManager.unlockWallet(); // Unlock security manager
     // Refresh wallet data
-    getCurrentWallet().then(setSovereignWallet);
+    if (userId) {
+      getCurrentWallet(userId).then(setSovereignWallet);
+    }
   };
 
   const handleConnect = (connectorId: string) => {
@@ -263,11 +278,18 @@ export default function WalletPage() {
 
               <button
                 onClick={() => setShowPasskeyModal(true)}
-                className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 transition-colors"
+                disabled={!userId}
+                className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Lock className="w-6 h-6" />
                 <span className="font-medium">Create Sovereign Wallet with Passkey</span>
               </button>
+              
+              {!userId && (
+                <p className="text-center text-sm text-red-400">
+                  Please sign in to create a sovereign wallet
+                </p>
+              )}
             </div>
 
             {/* Security Notice */}
@@ -351,7 +373,7 @@ export default function WalletPage() {
                 <ReceiveSection address={activeAddress} />
               )}
               {activeTab === 'settings' && (
-                <SettingsSection sovereignWallet={sovereignWallet} />
+                <SettingsSection sovereignWallet={sovereignWallet} userId={userId} />
               )}
             </div>
           </>
@@ -359,24 +381,36 @@ export default function WalletPage() {
       </div>
 
       {/* Passkey Auth Modal */}
-      {showPasskeyModal && (
+      {showPasskeyModal && userId && (
         <PasskeyAuthModal
           onClose={() => setShowPasskeyModal(false)}
           onSuccess={handlePasskeySuccess}
+          userId={userId}
         />
       )}
     </div>
   );
 }
 
-// Settings Section Component (inline for simplicity)
-function SettingsSection({ sovereignWallet }: { sovereignWallet: any }) {
+// Settings Section Component
+function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; userId: string }) {
   const [showMnemonicWarning, setShowMnemonicWarning] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold">Wallet Settings</h2>
+
+      {/* User Info */}
+      <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
+        <h3 className="font-medium text-gray-300 mb-2">Account</h3>
+        <p className="text-sm text-gray-400">User ID: {userId}</p>
+        {sovereignWallet && (
+          <p className="text-sm text-gray-400 mt-1">
+            Wallet Created: {new Date(sovereignWallet.createdAt).toLocaleDateString()}
+          </p>
+        )}
+      </div>
 
       {/* Wallet Info */}
       {sovereignWallet && (
@@ -385,23 +419,23 @@ function SettingsSection({ sovereignWallet }: { sovereignWallet: any }) {
           <div className="space-y-2 text-sm font-mono">
             <div>
               <span className="text-gray-400">ETH:</span>
-              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.ethereum}</span>
+              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.ethereum}</span>
             </div>
             <div>
               <span className="text-gray-400">BTC:</span>
-              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.bitcoin}</span>
+              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.bitcoin}</span>
             </div>
             <div>
               <span className="text-gray-400">BSC:</span>
-              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.bsc}</span>
+              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.bsc}</span>
             </div>
             <div>
               <span className="text-gray-400">XRP:</span>
-              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.xrp}</span>
+              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.xrp}</span>
             </div>
             <div>
               <span className="text-gray-400">SOL:</span>
-              <span className="ml-2 text-gray-300">{sovereignWallet.addresses.solana}</span>
+              <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.solana}</span>
             </div>
           </div>
         </div>
@@ -440,6 +474,20 @@ function SettingsSection({ sovereignWallet }: { sovereignWallet: any }) {
             <div className="w-2 h-2 rounded-full bg-emerald-400" />
           </div>
         </div>
+
+        {sovereignWallet?.mnemonicBackedUp !== undefined && (
+          <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Recovery Phrase Backup</p>
+                <p className="text-sm text-gray-400">
+                  {sovereignWallet.mnemonicBackedUp ? 'Backed up ✓' : 'Not backed up yet'}
+                </p>
+              </div>
+              <div className={`w-2 h-2 rounded-full ${sovereignWallet.mnemonicBackedUp ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Advanced (Mnemonic Export) */}
@@ -477,9 +525,10 @@ function SettingsSection({ sovereignWallet }: { sovereignWallet: any }) {
                       {showMnemonic ? 'Hide' : 'Reveal'} Recovery Phrase
                     </button>
                     {showMnemonic && (
-                      <div className="p-4 rounded-lg bg-gray-900 font-mono text-sm break-all">
-                        {/* TODO: Actually decrypt and show real mnemonic with password prompt */}
-                        [Requires password authentication to view]
+                      <div className="p-4 rounded-lg bg-gray-900 font-mono text-sm">
+                        <p className="text-gray-400 italic">
+                          [Requires password authentication to view - Feature coming soon]
+                        </p>
                       </div>
                     )}
                   </div>
