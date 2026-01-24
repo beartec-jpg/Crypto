@@ -3,8 +3,15 @@
 
 import { useState } from 'react';
 import { Send, AlertCircle } from 'lucide-react';
-import { securityManager } from '@/lib/securityService';
+import { 
+  securityManager, 
+  getSecurityRequirements,
+  getSecuritySettings,
+  type SecurityAction 
+} from '@/lib/securityService';
+import { authenticateWithPasskey } from '@/lib/passkeyService';
 import TransactionPreviewModal from './TransactionPreviewModal';
+import PinEntryModal from './PinEntryModal';
 import type { Chain } from '@/lib/balanceService';
 
 interface SendFormProps {
@@ -21,13 +28,15 @@ export default function SendForm({
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001');
+  const [pendingAction, setPendingAction] = useState<'send' | null>(null);
 
   // Check if wallet is locked
   const isLocked = securityManager.isWalletLocked();
 
-  const handleSendClick = () => {
+  const handleSendClick = async () => {
     setError(null);
 
     // Validation
@@ -48,8 +57,56 @@ export default function SendForm({
       return;
     }
 
+    // Get security requirements for send action
+    const requirements = getSecurityRequirements('send');
+
+    // Check if PIN is required
+    if (requirements.includes('pin')) {
+      setPendingAction('send');
+      setShowPinModal(true);
+      return;
+    }
+
+    // Check if passkey is required
+    if (requirements.includes('passkey')) {
+      if (!isPasskeyAuthenticated) {
+        setError('Passkey authentication required');
+        onRequestPasskey();
+        return;
+      }
+    }
+
     // Show transaction preview modal
     setShowPreview(true);
+  };
+
+  const handlePinSuccess = async () => {
+    setShowPinModal(false);
+
+    // After PIN success, check for passkey requirement
+    const requirements = getSecurityRequirements('send');
+    
+    if (requirements.includes('passkey')) {
+      try {
+        await authenticateWithPasskey();
+        // Show transaction preview after all auth
+        setShowPreview(true);
+      } catch (err: any) {
+        setError(err.message || 'Passkey authentication failed');
+        onRequestPasskey();
+      }
+    } else {
+      // No passkey needed, proceed to preview
+      setShowPreview(true);
+    }
+
+    setPendingAction(null);
+  };
+
+  const handlePinCancel = () => {
+    setShowPinModal(false);
+    setPendingAction(null);
+    setError('PIN authentication cancelled');
   };
 
   const handleConfirmTransaction = async () => {
@@ -116,10 +173,26 @@ export default function SendForm({
     }
   };
 
+  // Get current security tier for display
+  const currentSettings = getSecuritySettings();
+  const securityRequirements = getSecurityRequirements('send');
+
   return (
     <>
       <div className="space-y-6">
-        <h2 className="text-2xl font-semibold">Send {getChainSymbol(selectedChain)}</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold">Send {getChainSymbol(selectedChain)}</h2>
+          
+          {/* Security Tier Indicator */}
+          {securityRequirements.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-700/50 text-xs">
+              <span className="text-gray-400">Security:</span>
+              <span className="font-medium text-emerald-400 capitalize">
+                {currentSettings.tier}
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Security Notice */}
         {isLocked && (
@@ -209,6 +282,16 @@ export default function SendForm({
           Review Transaction
         </button>
       </div>
+
+      {/* PIN Entry Modal */}
+      {showPinModal && (
+        <PinEntryModal
+          onClose={handlePinCancel}
+          onSuccess={handlePinSuccess}
+          title="Enter PIN to Send"
+          description="Verify your PIN to authorize this transaction"
+        />
+      )}
 
       {/* Transaction Preview Modal */}
       {showPreview && (
