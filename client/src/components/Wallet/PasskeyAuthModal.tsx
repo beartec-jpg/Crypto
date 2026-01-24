@@ -20,11 +20,12 @@ import {
 interface PasskeyAuthModalProps {
   onClose: () => void;
   onSuccess: () => void;
+  userId: string; // Add this
 }
 
 type ModalMode = 'choose' | 'create' | 'import' | 'backup' | 'authenticate';
 
-export default function PasskeyAuthModal({ onClose, onSuccess }: PasskeyAuthModalProps) {
+export default function PasskeyAuthModal({ onClose, onSuccess, userId }: PasskeyAuthModalProps) {
   const [mode, setMode] = useState<ModalMode>('choose');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -76,8 +77,8 @@ export default function PasskeyAuthModal({ onClose, onSuccess }: PasskeyAuthModa
     setError(null);
     
     try {
-      // Create wallet and get mnemonic
-      const wallet = await createWallet(password);
+      // Pass userId to createWallet
+      const wallet = await createWallet(password, userId);
       
       // Store for backup step
       setGeneratedMnemonic(wallet.mnemonic);
@@ -117,8 +118,8 @@ export default function PasskeyAuthModal({ onClose, onSuccess }: PasskeyAuthModa
     setMnemonicError(null);
     
     try {
-      // Import wallet
-      await importWallet(mnemonicInput, password);
+      // Pass userId to importWallet
+      await importWallet(mnemonicInput, password, userId);
       
       // Register passkey
       if (webAuthnSupported) {
