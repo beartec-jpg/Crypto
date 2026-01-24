@@ -1,8 +1,6 @@
 // client/src/lib/securityService.ts
 // Wallet security management - auto-lock, key protection, session management, 3-tier security
 
-import { getCurrentWallet } from './walletService';
-
 // Security tier types
 export type SecurityTier = 'standard' | 'enhanced' | 'maximum';
 export type SecurityAction = 'openWallet' | 'viewBalance' | 'receive' | 'send' | 'viewSeed' | 'exportKeys';
