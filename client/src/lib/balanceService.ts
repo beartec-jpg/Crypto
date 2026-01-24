@@ -52,18 +52,20 @@ export async function fetchPrices(): Promise<CoinGeckoPrices> {
 }
 
 /**
- * Fetch Ethereum balance via Etherscan API (with API key)
+ * Fetch Ethereum balance via Etherscan API v2 (with API key)
  */
 export async function fetchEthereumBalance(address: string, useMainnet = false): Promise<string> {
   try {
+    // Updated to v2 API endpoints
     const apiUrl = useMainnet
-      ? 'https://api.etherscan.io/api'
-      : 'https://api-sepolia.etherscan.io/api';
+      ? 'https://api.etherscan.io/v2/api'
+      : 'https://api-sepolia.etherscan.io/v2/api';
     
     console.log(`🔍 Fetching ETH balance from ${useMainnet ? 'MAINNET' : 'SEPOLIA TESTNET'} for:`, address);
     
     const response = await axios.get(apiUrl, {
       params: {
+        chainid: useMainnet ? 1 : 11155111, // Mainnet = 1, Sepolia = 11155111
         module: 'account',
         action: 'balance',
         address,
