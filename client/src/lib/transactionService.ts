@@ -1,5 +1,5 @@
 // client/src/lib/transactionService.ts
-// Multi-chain transaction fetching service
+// Multi-chain transaction fetching service - MAINNET ONLY
 
 import axios from 'axios';
 import { xrplService } from './xrpService';
@@ -24,21 +24,13 @@ export interface Transaction {
 /**
  * Fetch Ethereum transactions via Etherscan API v2
  */
-export async function fetchEthereumTransactions(
-  address: string, 
-  useMainnet = false
-): Promise<Transaction[]> {
+export async function fetchEthereumTransactions(address: string): Promise<Transaction[]> {
   try {
-    // Updated to v2 API endpoints
-    const apiUrl = useMainnet
-      ? 'https://api.etherscan.io/v2/api'
-      : 'https://api-sepolia.etherscan.io/v2/api';
+    console.log('🔍 Fetching ETH transactions from MAINNET for:', address);
     
-    console.log(`🔍 Fetching ETH transactions from ${useMainnet ? 'MAINNET' : 'SEPOLIA'} for:`, address);
-    
-    const response = await axios.get(apiUrl, {
+    const response = await axios.get('https://api.etherscan.io/v2/api', {
       params: {
-        chainid: useMainnet ? 1 : 11155111, // Mainnet = 1, Sepolia = 11155111
+        chainid: 1,
         module: 'account',
         action: 'txlist',
         address,
@@ -50,8 +42,6 @@ export async function fetchEthereumTransactions(
         apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '',
       },
     });
-
-    console.log('📦 Etherscan API Response:', response.data);
 
     if (response.data.status !== '1') {
       console.warn('⚠️ Etherscan API error:', response.data.message);
@@ -83,30 +73,20 @@ export async function fetchEthereumTransactions(
 /**
  * Fetch Bitcoin transactions via Blockstream API
  */
-export async function fetchBitcoinTransactions(
-  address: string,
-  useMainnet = true
-): Promise<Transaction[]> {
+export async function fetchBitcoinTransactions(address: string): Promise<Transaction[]> {
   try {
-    const apiUrl = useMainnet
-      ? `https://blockstream.info/api/address/${address}/txs`
-      : `https://blockstream.info/testnet/api/address/${address}/txs`;
+    console.log('🔍 Fetching BTC transactions from MAINNET for:', address);
     
-    console.log(`🔍 Fetching BTC transactions from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
-    
-    const response = await axios.get(apiUrl, {
-      timeout: 10000,
-    });
-    
-    console.log('📦 BTC API Response:', response.data);
+    const response = await axios.get(
+      `https://blockstream.info/api/address/${address}/txs`,
+      { timeout: 10000 }
+    );
 
     const txs: Transaction[] = response.data.slice(0, 20).map((tx: any) => {
-      // Determine if this is a send or receive
       const isReceive = tx.vout.some((out: any) => 
         out.scriptpubkey_address === address
       );
       
-      // Calculate amount (sum of relevant outputs)
       let amount = 0;
       if (isReceive) {
         tx.vout.forEach((out: any) => {
@@ -146,20 +126,13 @@ export async function fetchBitcoinTransactions(
 }
 
 /**
- * Fetch BSC transactions via BscScan API (similar to Etherscan)
+ * Fetch BSC transactions via BscScan API
  */
-export async function fetchBSCTransactions(
-  address: string,
-  useMainnet = false
-): Promise<Transaction[]> {
+export async function fetchBSCTransactions(address: string): Promise<Transaction[]> {
   try {
-    const apiUrl = useMainnet
-      ? 'https://api.bscscan.com/api'
-      : 'https://api-testnet.bscscan.com/api';
+    console.log('🔍 Fetching BNB transactions from MAINNET for:', address);
     
-    console.log(`🔍 Fetching BNB transactions from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
-    
-    const response = await axios.get(apiUrl, {
+    const response = await axios.get('https://api.bscscan.com/api', {
       params: {
         module: 'account',
         action: 'txlist',
@@ -172,8 +145,6 @@ export async function fetchBSCTransactions(
         apikey: import.meta.env.VITE_BSCSCAN_API_KEY || '',
       },
     });
-
-    console.log('📦 BscScan API Response:', response.data);
 
     if (response.data.status !== '1') {
       console.warn('⚠️ BscScan API error:', response.data.message);
@@ -205,12 +176,9 @@ export async function fetchBSCTransactions(
 /**
  * Fetch XRP transactions using official xrpl.js library
  */
-export async function fetchXRPTransactions(
-  address: string,
-  useMainnet = true
-): Promise<Transaction[]> {
+export async function fetchXRPTransactions(address: string): Promise<Transaction[]> {
   try {
-    const txs = await xrplService.getTransactions(address, useMainnet, 20);
+    const txs = await xrplService.getTransactions(address, true, 20); // Always mainnet
     
     const transactions: Transaction[] = txs.map((item: any) => {
       const tx = item.tx;
@@ -251,18 +219,11 @@ export async function fetchXRPTransactions(
 /**
  * Fetch Solana transactions via RPC
  */
-export async function fetchSolanaTransactions(
-  address: string,
-  useMainnet = false
-): Promise<Transaction[]> {
+export async function fetchSolanaTransactions(address: string): Promise<Transaction[]> {
   try {
-    const rpcUrl = useMainnet
-      ? 'https://api.mainnet-beta.solana.com'
-      : 'https://api.devnet.solana.com';
+    console.log('🔍 Fetching SOL transactions from MAINNET for:', address);
     
-    console.log(`🔍 Fetching SOL transactions from ${useMainnet ? 'MAINNET' : 'DEVNET'} for:`, address);
-    
-    const response = await axios.post(rpcUrl, {
+    const response = await axios.post('https://api.mainnet-beta.solana.com', {
       jsonrpc: '2.0',
       id: 1,
       method: 'getSignaturesForAddress',
@@ -303,23 +264,22 @@ export async function fetchSolanaTransactions(
  */
 export async function fetchChainTransactions(
   chain: Chain,
-  address: string,
-  useMainnet = false
+  address: string
 ): Promise<Transaction[]> {
-  console.log(`📡 Fetching ${chain} transactions for ${address} (${useMainnet ? 'mainnet' : 'testnet'})`);
+  console.log(`📡 Fetching ${chain} transactions for ${address} (mainnet)`);
   
   try {
     switch (chain) {
       case 'ethereum':
-        return await fetchEthereumTransactions(address, useMainnet);
+        return await fetchEthereumTransactions(address);
       case 'bitcoin':
-        return await fetchBitcoinTransactions(address, useMainnet);
+        return await fetchBitcoinTransactions(address);
       case 'bsc':
-        return await fetchBSCTransactions(address, useMainnet);
+        return await fetchBSCTransactions(address);
       case 'xrp':
-        return await fetchXRPTransactions(address, useMainnet);
+        return await fetchXRPTransactions(address);
       case 'solana':
-        return await fetchSolanaTransactions(address, useMainnet);
+        return await fetchSolanaTransactions(address);
       default:
         return [];
     }
