@@ -8,9 +8,10 @@ import WalletDashboard from '../components/Wallet/WalletDashboard';
 import ReceiveSection from '../components/Wallet/ReceiveSection';
 import SendForm from '../components/Wallet/SendForm';
 import PasskeyAuthModal from '../components/Wallet/PasskeyAuthModal';
+import PinEntryModal from '../components/Wallet/PinEntryModal';
 import SecuritySettings from '../components/Wallet/SecuritySettings';
 import { getCurrentWallet, migrateWalletToUser } from '@/lib/walletService';
-import { securityManager } from '@/lib/securityService';
+import { securityManager, getSecurityRequirements } from '@/lib/securityService';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle } from 'lucide-react';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 
@@ -28,6 +29,12 @@ export default function WalletPage() {
   const [selectedChain, setSelectedChain] = useState<Chain>('ethereum');
   const [sovereignWallet, setSovereignWallet] = useState<any>(null);
   const [autoLockTime, setAutoLockTime] = useState(600);
+  
+  // New state variables for security tier enforcement
+  const [isWalletUnlocked, setIsWalletUnlocked] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pendingWallet, setPendingWallet] = useState<any>(null);
+  const [authStep, setAuthStep] = useState<'none' | 'pin' | 'passkey' | 'complete'>('none');
 
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
@@ -46,7 +53,9 @@ export default function WalletPage() {
     const handleLock = (locked: boolean) => {
       if (locked) {
         setIsPasskeyAuthenticated(false);
+        setIsWalletUnlocked(false);
         setSovereignWallet(null);
+        setPendingWallet(null);
         console.log('🔒 Wallet auto-locked due to inactivity');
       }
     };
@@ -64,30 +73,91 @@ export default function WalletPage() {
     };
   }, []);
 
-  // Check for sovereign wallet on mount
+  // Check wallet and enforce security tier on mount
   useEffect(() => {
-    const checkWallet = async () => {
+    const checkWalletAndSecurity = async () => {
       if (!userId) return;
       
+      // First, check if wallet exists
       const wallet = await getCurrentWallet(userId);
-      setSovereignWallet(wallet);
+      if (!wallet) {
+        setSovereignWallet(null);
+        setIsWalletUnlocked(false);
+        return;
+      }
       
-      const passkeySession = sessionStorage.getItem('wallet_unlocked');
-      if (passkeySession === 'true' || wallet) {
+      // Get security requirements for opening wallet
+      const requirements = getSecurityRequirements(userId, 'openWallet');
+      
+      // Tier 1: No auth needed to view wallet
+      if (requirements.length === 0) {
+        setSovereignWallet(wallet);
+        setIsWalletUnlocked(true);
         setIsPasskeyAuthenticated(true);
+        return;
+      }
+      
+      // Tier 2 or 3: Check if already authenticated this session
+      const sessionUnlocked = sessionStorage.getItem('wallet_unlocked') === 'true';
+      if (sessionUnlocked && !securityManager.isWalletLocked()) {
+        setSovereignWallet(wallet);
+        setIsWalletUnlocked(true);
+        setIsPasskeyAuthenticated(true);
+        return;
+      }
+      
+      // Need to authenticate - store wallet reference, show auth modal
+      setPendingWallet(wallet);
+      
+      if (requirements.includes('pin')) {
+        // Tier 3: PIN first, then passkey
+        setAuthStep('pin');
+        setShowPinModal(true);
+      } else if (requirements.includes('passkey')) {
+        // Tier 2: Passkey only
+        setAuthStep('passkey');
+        setShowPasskeyModal(true);
       }
     };
-    checkWallet();
-  }, [isPasskeyAuthenticated, userId]);
+    
+    checkWalletAndSecurity();
+  }, [userId]); // Remove isPasskeyAuthenticated from deps to prevent loops
+
+  const handlePinSuccess = () => {
+    setShowPinModal(false);
+    
+    // After PIN, check if passkey is also required
+    const requirements = getSecurityRequirements(userId, 'openWallet');
+    if (requirements.includes('passkey')) {
+      setAuthStep('passkey');
+      setShowPasskeyModal(true);
+    } else {
+      // PIN only was required, complete auth
+      completeWalletUnlock();
+    }
+  };
+
+  const handlePinCancel = () => {
+    setShowPinModal(false);
+    setAuthStep('none');
+    setPendingWallet(null);
+  };
+
+  const completeWalletUnlock = () => {
+    if (pendingWallet) {
+      setSovereignWallet(pendingWallet);
+      setPendingWallet(null);
+    }
+    setIsWalletUnlocked(true);
+    setIsPasskeyAuthenticated(true);
+    setAuthStep('complete');
+    sessionStorage.setItem('wallet_unlocked', 'true');
+    securityManager.unlockWallet();
+  };
 
   const handlePasskeySuccess = () => {
-    setIsPasskeyAuthenticated(true);
-    sessionStorage.setItem('wallet_unlocked', 'true');
     setShowPasskeyModal(false);
-    securityManager.unlockWallet();
-    if (userId) {
-      getCurrentWallet(userId).then(setSovereignWallet);
-    }
+    completeWalletUnlock();
   };
 
   const handleConnect = (connectorId: string) => {
@@ -105,10 +175,12 @@ export default function WalletPage() {
       sessionStorage.removeItem('wallet_unlocked');
       setSovereignWallet(null);
       setIsPasskeyAuthenticated(false);
+      setIsWalletUnlocked(false);
+      setPendingWallet(null);
     }
   };
 
-  const isWalletConnected = isConnected || sovereignWallet !== null;
+  const isWalletConnected = isConnected || (sovereignWallet !== null && isWalletUnlocked);
   const activeAddress = address || (sovereignWallet?.addresses[selectedChain] as `0x${string}` | undefined);
 
   return (
@@ -199,14 +271,41 @@ export default function WalletPage() {
 
         {/* Connection Status */}
         {!isWalletConnected ? (
-          <div className="bg-gray-800 rounded-2xl p-8 mb-8">
-            <div className="text-center mb-6">
-              <WalletIcon className="w-16 h-16 mx-auto text-gray-500 mb-4" />
-              <h2 className="text-2xl font-semibold mb-2">Connect Your Wallet</h2>
-              <p className="text-gray-400">
-                Connect an external wallet or create a new sovereign wallet with passkey authentication
-              </p>
-            </div>
+          <div>
+            {/* Show locked state for Tier 2/3 when not unlocked */}
+            {pendingWallet && !isWalletUnlocked ? (
+              <div className="bg-gray-800 rounded-2xl p-8 mb-8 text-center">
+                <Lock className="w-16 h-16 mx-auto text-amber-400 mb-4" />
+                <h2 className="text-2xl font-semibold mb-2">Wallet Locked</h2>
+                <p className="text-gray-400 mb-6">
+                  Your security settings require authentication to access the wallet.
+                </p>
+                <button
+                  onClick={() => {
+                    const requirements = getSecurityRequirements(userId, 'openWallet');
+                    if (requirements.includes('pin')) {
+                      setAuthStep('pin');
+                      setShowPinModal(true);
+                    } else {
+                      setAuthStep('passkey');
+                      setShowPasskeyModal(true);
+                    }
+                  }}
+                  className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition-colors inline-flex items-center gap-2"
+                >
+                  <Lock className="w-5 h-5" />
+                  Unlock Wallet
+                </button>
+              </div>
+            ) : (
+              <div className="bg-gray-800 rounded-2xl p-8 mb-8">
+                <div className="text-center mb-6">
+                  <WalletIcon className="w-16 h-16 mx-auto text-gray-500 mb-4" />
+                  <h2 className="text-2xl font-semibold mb-2">Connect Your Wallet</h2>
+                  <p className="text-gray-400">
+                    Connect an external wallet or create a new sovereign wallet with passkey authentication
+                  </p>
+                </div>
 
             <div className="flex flex-col gap-4 max-w-md mx-auto">
               <button
@@ -264,6 +363,7 @@ export default function WalletPage() {
                 </div>
               </div>
             </div>
+            )}
           </div>
         ) : (
           <>
@@ -337,6 +437,17 @@ export default function WalletPage() {
           </>
         )}
       </div>
+
+      {/* PIN Entry Modal for Tier 3 */}
+      {showPinModal && userId && (
+        <PinEntryModal
+          userId={userId}
+          onClose={handlePinCancel}
+          onSuccess={handlePinSuccess}
+          title="Enter PIN to Unlock Wallet"
+          description="Your security settings require PIN verification"
+        />
+      )}
 
       {/* Passkey Auth Modal */}
       {showPasskeyModal && userId && (
