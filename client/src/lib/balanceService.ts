@@ -172,12 +172,15 @@ export async function fetchSolanaBalance(address: string): Promise<string> {
   try {
     console.log('🔍 Fetching SOL balance from MAINNET for:', address);
     
-    const response = await axios.post('https://api.mainnet-beta.solana.com', {
+const response = await axios.post('https://api.mainnet.solana.com', {
       jsonrpc: '2.0',
       id: 1,
       method: 'getBalance',
       params: [address],
-    }, { timeout: 10000 });
+    }, { 
+      timeout: 10000,
+      headers: { 'Content-Type': 'application/json' }
+    });
 
     console.log('📦 SOL API Response:', response.data);
 
@@ -190,6 +193,11 @@ export async function fetchSolanaBalance(address: string): Promise<string> {
     
     return '0';
   } catch (error: any) {
+    // Gracefully handle rate limits
+    if (error.response?.status === 403) {
+      console.warn('⚠️ Solana RPC rate limited, returning 0');
+      return '0';
+    }
     console.error('❌ Failed to fetch Solana balance:', error.message);
     return '0';
   }
