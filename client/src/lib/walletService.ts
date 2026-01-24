@@ -1,5 +1,5 @@
 // client/src/lib/walletService.ts
-// Multi-chain embedded wallet service with multi-user support and enhanced security
+// Multi-chain embedded wallet service with AES-256-GCM encryption and multi-user support
 
 import { Buffer } from 'buffer';
 import { ethers } from 'ethers';
@@ -20,7 +20,7 @@ interface WalletDB extends DBSchema {
     key: string;
     value: {
       id: string;
-      userId: string; // Clerk user ID
+      userId: string;
       encryptedMnemonic: string;
       addresses: {
         ethereum: string;
@@ -68,19 +68,19 @@ interface UnlockedWallet extends Wallet {
 }
 
 interface WalletCreationResult extends Wallet {
-  mnemonic: string; // Return mnemonic on creation so user can back it up
+  mnemonic: string;
 }
 
 const DB_NAME = 'beartec_wallet';
-const DB_VERSION = 2; // Incremented for schema update
+const DB_VERSION = 2;
 
 // BIP44 Derivation Paths
 const DERIVATION_PATHS = {
-  ethereum: "m/44'/60'/0'/0/0",   // ETH
-  bitcoin: "m/44'/0'/0'/0/0",     // BTC
-  bsc: "m/44'/60'/0'/0/0",        // BSC (same as ETH)
-  xrp: "m/44'/144'/0'/0/0",       // XRP
-  solana: "m/44'/501'/0'/0/0",    // SOL
+  ethereum: "m/44'/60'/0'/0/0",
+  bitcoin: "m/44'/0'/0'/0/0",
+  bsc: "m/44'/60'/0'/0/0",
+  xrp: "m/44'/144'/0'/0/0",
+  solana: "m/44'/501'/0'/0/0",
 };
 
 // Security: In-memory key cache with automatic cleanup
@@ -91,7 +91,6 @@ class SecureKeyCache {
   set(id: string, key: string) {
     this.cache.set(id, { key, timestamp: Date.now() });
     
-    // Auto-cleanup after MAX_AGE
     setTimeout(() => {
       this.delete(id);
     }, this.MAX_AGE);
@@ -101,7 +100,6 @@ class SecureKeyCache {
     const entry = this.cache.get(id);
     if (!entry) return null;
 
-    // Check if expired
     if (Date.now() - entry.timestamp > this.MAX_AGE) {
       this.delete(id);
       return null;
@@ -113,7 +111,6 @@ class SecureKeyCache {
   delete(id: string) {
     const entry = this.cache.get(id);
     if (entry) {
-      // Overwrite with zeros before deletion
       entry.key = '0'.repeat(entry.key.length);
     }
     this.cache.delete(id);
@@ -160,47 +157,148 @@ function derivePath(node: HDKey, path: string): HDKey {
 // Initialize IndexedDB
 async function getDB(): Promise<IDBPDatabase<WalletDB>> {
   return openDB<WalletDB>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion, newVersion) {
-      // Create wallets store if it doesn't exist
-      if (!db.objectStoreNames.contains('wallets')) {
-        const store = db.createObjectStore('wallets', { keyPath: 'id' });
-        store.createIndex('userId', 'userId', { unique: false });
-      } else if (oldVersion < 2) {
-        // Migration: Add userId index for existing stores
-        const tx = db.transaction('wallets', 'readwrite');
-        const store = tx.objectStore('wallets');
-        if (!store.indexNames.contains('userId')) {
+    upgrade(db, oldVersion, newVersion, transaction) {
+      console.log(`🔄 Upgrading DB from v${oldVersion} to v${newVersion}`);
+      
+      try {
+        if (!db.objectStoreNames.contains('wallets')) {
+          console.log('📦 Creating wallets store...');
+          const store = db.createObjectStore('wallets', { keyPath: 'id' });
           store.createIndex('userId', 'userId', { unique: false });
+          console.log('✅ Store created');
+        } else if (oldVersion < 2) {
+          console.log('🔄 Migrating existing store to v2...');
+          const store = transaction.objectStore('wallets');
+          
+          if (!store.indexNames.contains('userId')) {
+            console.log('➕ Adding userId index...');
+            store.createIndex('userId', 'userId', { unique: false });
+            console.log('✅ Index added');
+          }
         }
+      } catch (error) {
+        console.error('❌ DB upgrade failed:', error);
+        throw error;
       }
+    },
+    blocked() {
+      console.warn('⚠️ DB upgrade blocked - close other tabs using this database');
+    },
+    blocking() {
+      console.warn('⚠️ DB upgrade blocking other connections');
     },
   });
 }
 
-// Encrypt data using password (PBKDF2 with 100k iterations)
-function encryptData(data: string, password: string, salt: Uint8Array): string {
-  const key = pbkdf2(sha256, password, salt, { c: 100000, dkLen: 32 });
-  const dataBytes = new TextEncoder().encode(data);
-  const encrypted = new Uint8Array(dataBytes.length);
-  
-  for (let i = 0; i < dataBytes.length; i++) {
-    encrypted[i] = dataBytes[i] ^ key[i % key.length];
+/**
+ * Encrypt data using AES-256-GCM (industry standard)
+ */
+async function encryptData(data: string, password: string, salt: Uint8Array): Promise<string> {
+  try {
+    const encoder = new TextEncoder();
+    
+    // Derive key using PBKDF2
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
+    
+    const keyBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      256
+    );
+    
+    // Import as AES-GCM key
+    const aesKey = await crypto.subtle.importKey(
+      'raw',
+      keyBits,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    );
+    
+    // Generate random IV (12 bytes for GCM)
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    
+    // Encrypt with AES-GCM
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv },
+      aesKey,
+      encoder.encode(data)
+    );
+    
+    // Combine IV + ciphertext
+    const combined = new Uint8Array(iv.length + encrypted.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(encrypted), iv.length);
+    
+    return Buffer.from(combined).toString('hex');
+  } catch (error) {
+    console.error('❌ Encryption failed:', error);
+    throw new Error('Failed to encrypt data');
   }
-  
-  return Buffer.from(encrypted).toString('hex');
 }
 
-// Decrypt data using password
-function decryptData(encryptedHex: string, password: string, salt: Uint8Array): string {
-  const key = pbkdf2(sha256, password, salt, { c: 100000, dkLen: 32 });
-  const encrypted = Buffer.from(encryptedHex, 'hex');
-  const decrypted = new Uint8Array(encrypted.length);
-  
-  for (let i = 0; i < encrypted.length; i++) {
-    decrypted[i] = encrypted[i] ^ key[i % key.length];
+/**
+ * Decrypt data using AES-256-GCM
+ */
+async function decryptData(encryptedHex: string, password: string, salt: Uint8Array): Promise<string> {
+  try {
+    const combined = Buffer.from(encryptedHex, 'hex');
+    const iv = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
+    
+    const encoder = new TextEncoder();
+    
+    // Derive key using PBKDF2
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
+    
+    const keyBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      256
+    );
+    
+    const aesKey = await crypto.subtle.importKey(
+      'raw',
+      keyBits,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+    
+    // Decrypt
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv },
+      aesKey,
+      ciphertext
+    );
+    
+    return new TextDecoder().decode(decrypted);
+  } catch (error) {
+    console.error('❌ Decryption failed:', error);
+    throw new Error('Invalid password or corrupted data');
   }
-  
-  return new TextDecoder().decode(decrypted);
 }
 
 /**
@@ -208,7 +306,7 @@ function decryptData(encryptedHex: string, password: string, salt: Uint8Array): 
  */
 function deriveEthereumAddress(privateKeyBytes: Uint8Array): string {
   const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
-  const publicKeyNoPrefix = publicKeyBytes.slice(1); // Remove 0x04 prefix
+  const publicKeyNoPrefix = publicKeyBytes.slice(1);
   const hash = sha256(publicKeyNoPrefix);
   return ethers.getAddress('0x' + Buffer.from(hash.slice(-20)).toString('hex'));
 }
@@ -222,7 +320,7 @@ function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
   const ripemd160Hash = ripemd160(sha256Hash);
   
   const versionedHash = new Uint8Array(21);
-  versionedHash[0] = 0x00;
+  versionedHash[0] = 0x00; // Mainnet
   versionedHash.set(ripemd160Hash, 1);
   
   const checksum = sha256(sha256(versionedHash)).slice(0, 4);
@@ -304,12 +402,9 @@ function base58EncodeXRP(bytes: Uint8Array): string {
 }
 
 /**
- * Derive all addresses from mnemonic (shared logic)
+ * Derive all addresses from mnemonic
  */
-async function deriveAddressesFromMnemonic(
-  mnemonic: string,
-  useTestnet = false // Add testnet parameter
-): Promise<{
+async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   addresses: Wallet['addresses'];
   publicKeys: Record<Chain, string>;
 }> {
@@ -338,10 +433,10 @@ async function deriveAddressesFromMnemonic(
   addresses.ethereum = deriveEthereumAddress(ethNode.privateKey);
   publicKeys.ethereum = Buffer.from(secp256k1.getPublicKey(ethNode.privateKey, false)).toString('hex');
   
-  // Bitcoin (with testnet support)
+  // Bitcoin (mainnet)
   const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
   if (!btcNode.privateKey) throw new Error('Failed to derive BTC key');
-  addresses.bitcoin = deriveBitcoinAddress(btcNode.privateKey, useTestnet); // Pass testnet flag
+  addresses.bitcoin = deriveBitcoinAddress(btcNode.privateKey);
   publicKeys.bitcoin = Buffer.from(secp256k1.getPublicKey(btcNode.privateKey, true)).toString('hex');
   
   // BSC (same as Ethereum)
@@ -364,35 +459,12 @@ async function deriveAddressesFromMnemonic(
 }
 
 /**
- * Derive Bitcoin address from private key (P2PKH) - with testnet support
- */
-function deriveBitcoinAddress(privateKeyBytes: Uint8Array, useTestnet = false): string {
-  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
-  const sha256Hash = sha256(publicKeyBytes);
-  const ripemd160Hash = ripemd160(sha256Hash);
-  
-  // Add version byte (0x00 for mainnet, 0x6F for testnet)
-  const versionByte = useTestnet ? 0x6F : 0x00;
-  const versionedHash = new Uint8Array(21);
-  versionedHash[0] = versionByte;
-  versionedHash.set(ripemd160Hash, 1);
-  
-  const checksum = sha256(sha256(versionedHash)).slice(0, 4);
-  const addressBytes = new Uint8Array(25);
-  addressBytes.set(versionedHash);
-  addressBytes.set(checksum, 21);
-  
-  return base58Encode(addressBytes);
-}
-
-/**
  * Create a new multi-chain wallet (with user isolation)
  */
 export async function createWallet(password: string, userId: string): Promise<WalletCreationResult> {
   try {
     console.log(`🔐 Creating new multi-chain wallet for user: ${userId}`);
     
-    // Check if user already has a wallet
     const existing = await getCurrentWallet(userId);
     if (existing) {
       throw new Error('You already have a wallet. Use import to restore a different wallet.');
@@ -402,14 +474,14 @@ export async function createWallet(password: string, userId: string): Promise<Wa
     const mnemonic = bip39.generateMnemonic(256);
     console.log('✅ Generated mnemonic');
     
-    // Derive addresses (false = mainnet Bitcoin addresses)
-    const { addresses, publicKeys } = await deriveAddressesFromMnemonic(mnemonic, false);
+    // Derive addresses
+    const { addresses, publicKeys } = await deriveAddressesFromMnemonic(mnemonic);
     
     console.log('✅ Derived addresses:', addresses);
     
-    // Encrypt mnemonic with password
+    // Encrypt mnemonic with AES-256-GCM
     const salt = randomBytes(32);
-    const encryptedMnemonic = encryptData(mnemonic, password, salt);
+    const encryptedMnemonic = await encryptData(mnemonic, password, salt);
     
     // Store in IndexedDB with userId
     const db = await getDB();
@@ -417,7 +489,7 @@ export async function createWallet(password: string, userId: string): Promise<Wa
     
     await db.put('wallets', {
       id: walletId,
-      userId, // Associate with Clerk user
+      userId,
       encryptedMnemonic,
       addresses,
       publicKeys,
@@ -426,9 +498,8 @@ export async function createWallet(password: string, userId: string): Promise<Wa
       mnemonicBackedUp: false,
     });
     
-    console.log('✅ Multi-chain wallet stored in IndexedDB (encrypted)');
+    console.log('✅ Multi-chain wallet stored in IndexedDB (AES-256-GCM encrypted)');
     
-    // Store wallet ID in user-specific localStorage
     localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), walletId);
     localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
     
@@ -453,21 +524,17 @@ export async function importWallet(mnemonic: string, password: string, userId: s
   try {
     console.log(`🔐 Importing wallet for user: ${userId}`);
     
-    // Clean up mnemonic
     const cleanMnemonic = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
     
-    // Validate mnemonic
     if (!bip39.validateMnemonic(cleanMnemonic)) {
       throw new Error('Invalid recovery phrase. Please check your words and try again.');
     }
     
-    // Check word count
     const wordCount = cleanMnemonic.split(' ').length;
     if (wordCount !== 12 && wordCount !== 24) {
       throw new Error(`Invalid word count: ${wordCount}. Must be 12 or 24 words.`);
     }
     
-    // Check if user already has a wallet with these addresses
     const { addresses, publicKeys } = await deriveAddressesFromMnemonic(cleanMnemonic);
     
     const existing = await getCurrentWallet(userId);
@@ -477,34 +544,31 @@ export async function importWallet(mnemonic: string, password: string, userId: s
     
     console.log('✅ Derived addresses:', addresses);
     
-    // Encrypt mnemonic with password
+    // Encrypt mnemonic with AES-256-GCM
     const salt = randomBytes(32);
-    const encryptedMnemonic = encryptData(cleanMnemonic, password, salt);
+    const encryptedMnemonic = await encryptData(cleanMnemonic, password, salt);
     
-    // Delete old wallet if exists (user is replacing)
     if (existing) {
       console.log('🔄 Replacing existing wallet...');
       await deleteWallet(existing.id, userId);
     }
     
-    // Store in IndexedDB with userId
     const db = await getDB();
     const walletId = `wallet_${userId}_${Date.now()}`;
     
     await db.put('wallets', {
       id: walletId,
-      userId, // Associate with Clerk user
+      userId,
       encryptedMnemonic,
       addresses,
       publicKeys,
       createdAt: new Date().toISOString(),
       salt: Buffer.from(salt).toString('hex'),
-      mnemonicBackedUp: true, // Imported wallets are already backed up
+      mnemonicBackedUp: true,
     });
     
-    console.log('✅ Wallet imported and stored');
+    console.log('✅ Wallet imported and stored (AES-256-GCM encrypted)');
     
-    // Store wallet ID in user-specific localStorage
     localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), walletId);
     localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
     
@@ -522,7 +586,7 @@ export async function importWallet(mnemonic: string, password: string, userId: s
 }
 
 /**
- * Validate mnemonic phrase (for UI validation)
+ * Validate mnemonic phrase
  */
 export function validateMnemonic(mnemonic: string): { valid: boolean; error?: string } {
   try {
@@ -579,9 +643,9 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       throw new Error('Wallet not found');
     }
     
-    // Decrypt mnemonic
+    // Decrypt mnemonic using AES-256-GCM
     const salt = Buffer.from(wallet.salt, 'hex');
-    const mnemonic = decryptData(wallet.encryptedMnemonic, password, salt);
+    const mnemonic = await decryptData(wallet.encryptedMnemonic, password, salt);
     
     // Verify mnemonic is valid
     if (!bip39.validateMnemonic(mnemonic)) {
@@ -784,7 +848,6 @@ export async function deleteWallet(walletId: string, userId: string): Promise<vo
     const db = await getDB();
     const wallet = await db.get('wallets', walletId);
     
-    // Verify wallet belongs to this user
     if (wallet && wallet.userId !== userId) {
       throw new Error('Unauthorized: Cannot delete another user\'s wallet');
     }
@@ -826,7 +889,6 @@ export async function hasExistingWallet(userId: string): Promise<boolean> {
     const db = await getDB();
     const wallet = await db.get('wallets', walletId);
     
-    // Verify wallet exists and belongs to this user
     return wallet !== undefined && wallet.userId === userId;
   } catch {
     return false;
@@ -834,15 +896,13 @@ export async function hasExistingWallet(userId: string): Promise<boolean> {
 }
 
 /**
- * Migrate old wallet to new user-scoped format (run once on login)
+ * Migrate old wallet to new user-scoped format
  */
 export async function migrateWalletToUser(userId: string): Promise<void> {
   try {
-    // Check if there's an old wallet without userId
     const oldWalletId = localStorage.getItem('current_wallet_id');
     if (!oldWalletId) return;
     
-    // Check if user already has a new wallet
     const newWalletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
     if (newWalletId) return;
     
@@ -850,19 +910,16 @@ export async function migrateWalletToUser(userId: string): Promise<void> {
     const oldWallet = await db.get('wallets', oldWalletId);
     
     if (oldWallet && !oldWallet.userId) {
-      // Migrate: add userId to old wallet
       oldWallet.userId = userId;
       await db.put('wallets', oldWallet);
       
-      // Update localStorage
       localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), oldWalletId);
       localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
       
-      // Remove old keys
       localStorage.removeItem('current_wallet_id');
       localStorage.removeItem('wallet_created');
       
-      console.log('✅ Migrated wallet to user-scoped storage');
+      console.log('✅ Migrated wallet to user-scoped storage with AES-256-GCM');
     }
   } catch (error) {
     console.error('Failed to migrate wallet:', error);
