@@ -412,7 +412,7 @@ export function changeSecurityTier(userId: string, newTier: SecurityTier): void 
   const settings = getSecuritySettings(userId);
   settings.tier = newTier;
   
-  // If downgrading from maximum, remove PIN on THIS object
+  // If downgrading from maximum, remove PIN data
   if (newTier !== 'maximum') {
     delete settings.pinHash;
     delete settings.pinSalt;
