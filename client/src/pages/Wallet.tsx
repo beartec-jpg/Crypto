@@ -1,9 +1,8 @@
 // client/src/pages/Wallet.tsx
-// Main Wallet Page - Sovereign Wallet with WebAuthn passkeys and post-quantum security
+// Main Wallet Page - Sovereign Wallet with WebAuthn passkeys
 
 import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect, useBalance } from 'wagmi';
-import { metaMask, walletConnect } from 'wagmi/connectors';
 import { useUser } from '@clerk/clerk-react';
 import WalletDashboard from '../components/Wallet/WalletDashboard';
 import ReceiveSection from '../components/Wallet/ReceiveSection';
@@ -27,8 +26,7 @@ export default function WalletPage() {
   const [isPasskeyAuthenticated, setIsPasskeyAuthenticated] = useState(false);
   const [selectedChain, setSelectedChain] = useState<Chain>('ethereum');
   const [sovereignWallet, setSovereignWallet] = useState<any>(null);
-  const [useMainnet, setUseMainnet] = useState(false); // Default to testnet
-  const [autoLockTime, setAutoLockTime] = useState(600); // seconds
+  const [autoLockTime, setAutoLockTime] = useState(600);
 
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
@@ -54,22 +52,18 @@ export default function WalletPage() {
 
     securityManager.addLockListener(handleLock);
 
-    // Update auto-lock countdown every second
     const interval = setInterval(() => {
       setAutoLockTime(securityManager.getTimeUntilLock());
     }, 1000);
 
-    // Cleanup on unmount
     return () => {
       securityManager.removeLockListener(handleLock);
       clearInterval(interval);
-      
-      // Clear sensitive data on unmount
       securityManager.lockWallet();
     };
   }, []);
 
-  // Check for sovereign wallet on mount and when passkey auth changes
+  // Check for sovereign wallet on mount
   useEffect(() => {
     const checkWallet = async () => {
       if (!userId) return;
@@ -77,7 +71,6 @@ export default function WalletPage() {
       const wallet = await getCurrentWallet(userId);
       setSovereignWallet(wallet);
       
-      // Also check passkey session
       const passkeySession = sessionStorage.getItem('wallet_unlocked');
       if (passkeySession === 'true' || wallet) {
         setIsPasskeyAuthenticated(true);
@@ -90,8 +83,7 @@ export default function WalletPage() {
     setIsPasskeyAuthenticated(true);
     sessionStorage.setItem('wallet_unlocked', 'true');
     setShowPasskeyModal(false);
-    securityManager.unlockWallet(); // Unlock security manager
-    // Refresh wallet data
+    securityManager.unlockWallet();
     if (userId) {
       getCurrentWallet(userId).then(setSovereignWallet);
     }
@@ -108,7 +100,6 @@ export default function WalletPage() {
     if (isConnected) {
       disconnect();
     } else {
-      // For sovereign wallet, lock it securely
       securityManager.lockWallet();
       sessionStorage.removeItem('wallet_unlocked');
       setSovereignWallet(null);
@@ -116,10 +107,7 @@ export default function WalletPage() {
     }
   };
 
-  // Determine if any wallet is connected
   const isWalletConnected = isConnected || sovereignWallet !== null;
-  
-  // Get the active address (external wallet or sovereign wallet)
   const activeAddress = address || (sovereignWallet?.addresses[selectedChain] as `0x${string}` | undefined);
 
   return (
@@ -129,14 +117,14 @@ export default function WalletPage() {
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-center gap-2 text-sm">
           <Shield className="w-4 h-4 text-emerald-400" />
           <span className="text-emerald-300">
-            Non-custodial • Quantum-secure • Your keys never leave your device
+            Non-custodial • End-to-end encrypted • Your keys never leave your device
           </span>
           <Lock className="w-4 h-4 text-emerald-400" />
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* BearTec Logo - Top Center (matching other pages) */}
+        {/* BearTec Logo */}
         <div className="flex justify-center mb-8">
           <img 
             src={bearTecLogoNew} 
@@ -160,44 +148,23 @@ export default function WalletPage() {
             )}
           </button>
 
-          {/* Chain Selector - Show all chains if sovereign wallet */}
-          {sovereignWallet ? (
-            <select
-              value={selectedChain}
-              onChange={(e) => setSelectedChain(e.target.value as Chain)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="ethereum">Ethereum</option>
-              <option value="bitcoin">Bitcoin</option>
-              <option value="bsc">BSC (Binance Smart Chain)</option>
-              <option value="xrp">XRP (Ripple)</option>
-              <option value="solana">Solana</option>
-            </select>
-          ) : (
-            <select
-              value={selectedChain}
-              onChange={(e) => setSelectedChain(e.target.value as Chain)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="ethereum">Ethereum</option>
-              <option value="solana">Solana</option>
-            </select>
-          )}
+          {/* Chain Selector */}
+          <select
+            value={selectedChain}
+            onChange={(e) => setSelectedChain(e.target.value as Chain)}
+            className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="ethereum">Ethereum</option>
+            <option value="bitcoin">Bitcoin</option>
+            <option value="bsc">BSC (BNB)</option>
+            <option value="xrp">XRP (Ripple)</option>
+            <option value="solana">Solana</option>
+          </select>
 
-          {/* Mainnet/Testnet Toggle */}
+          {/* Network Indicator */}
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800">
-            <span className="text-sm text-gray-400">
-              {useMainnet ? '🟢 Mainnet' : '🟡 Testnet'}
-            </span>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useMainnet}
-                onChange={(e) => setUseMainnet(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-            </label>
+            <div className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span className="text-sm text-gray-300">Mainnet</span>
           </div>
 
           {/* Passkey Auth Status */}
@@ -227,14 +194,6 @@ export default function WalletPage() {
               </span>
             </div>
           )}
-
-          {/* Mainnet Warning */}
-          {useMainnet && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900/30 border border-red-700/50">
-              <AlertTriangle className="w-4 h-4 text-red-400" />
-              <span className="text-sm text-red-400">Real Money - Be Careful!</span>
-            </div>
-          )}
         </div>
 
         {/* Connection Status */}
@@ -254,7 +213,6 @@ export default function WalletPage() {
                 disabled={isPending}
                 className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                <img src="/metamask-icon.svg" alt="MetaMask" className="w-6 h-6" onError={(e) => e.currentTarget.style.display = 'none'} />
                 <span className="font-medium">MetaMask</span>
               </button>
 
@@ -263,7 +221,6 @@ export default function WalletPage() {
                 disabled={isPending}
                 className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                <img src="/walletconnect-icon.svg" alt="WalletConnect" className="w-6 h-6" onError={(e) => e.currentTarget.style.display = 'none'} />
                 <span className="font-medium">WalletConnect</span>
               </button>
 
@@ -300,8 +257,8 @@ export default function WalletPage() {
                   <p className="font-medium text-amber-400 mb-1">Security Notice</p>
                   <p>
                     Your private keys are generated and stored securely on your device using WebAuthn passkeys.
-                    We never have access to your keys or funds. All signing happens client-side with hybrid
-                    post-quantum cryptography (ML-DSA + ECDSA) for future-proof security.
+                    We never have access to your keys or funds. All signing happens client-side with
+                    industry-standard encryption.
                   </p>
                 </div>
               </div>
@@ -321,7 +278,7 @@ export default function WalletPage() {
                     {activeAddress?.slice(0, 10)}...{activeAddress?.slice(-4)}
                   </p>
                   <p className="text-xs text-gray-500 capitalize">
-                    {selectedChain} • {useMainnet ? 'Mainnet' : 'Testnet'}
+                    {selectedChain} • Mainnet
                   </p>
                 </div>
               </div>
@@ -359,7 +316,6 @@ export default function WalletPage() {
                   hideBalances={hideBalances}
                   selectedChain={selectedChain}
                   sovereignWallet={sovereignWallet}
-                  useMainnet={useMainnet}
                 />
               )}
               {activeTab === 'send' && (
@@ -415,7 +371,7 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
       {/* Wallet Info */}
       {sovereignWallet && (
         <div className="p-4 rounded-xl bg-emerald-900/20 border border-emerald-700/30">
-          <h3 className="font-medium text-emerald-400 mb-3">Multi-Chain Addresses</h3>
+          <h3 className="font-medium text-emerald-400 mb-3">Multi-Chain Addresses (Mainnet)</h3>
           <div className="space-y-2 text-sm font-mono">
             <div>
               <span className="text-gray-400">ETH:</span>
@@ -458,16 +414,6 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
         <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-medium">Post-Quantum Signatures</p>
-              <p className="text-sm text-gray-400">Hybrid ML-DSA + ECDSA enabled</p>
-            </div>
-            <div className="w-2 h-2 rounded-full bg-emerald-400" />
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
               <p className="font-medium">Auto-Lock</p>
               <p className="text-sm text-gray-400">Wallet locks after 10 minutes of inactivity</p>
             </div>
@@ -502,7 +448,6 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
                 <p className="font-medium text-red-400">Recovery Phrase Export</p>
                 <p className="text-sm text-gray-400 mt-1">
                   Export your BIP-39 mnemonic for backup purposes only. Never share this with anyone.
-                  Your passkey remains the primary authentication method.
                 </p>
                 
                 {!showMnemonicWarning ? (
