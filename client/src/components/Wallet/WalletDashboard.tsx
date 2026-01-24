@@ -23,7 +23,6 @@ interface WalletDashboardProps {
   hideBalances: boolean;
   selectedChain: Chain;
   sovereignWallet?: any;
-  useMainnet?: boolean;
 }
 
 export default function WalletDashboard({
@@ -32,7 +31,6 @@ export default function WalletDashboard({
   hideBalances,
   selectedChain,
   sovereignWallet,
-  useMainnet = false,
 }: WalletDashboardProps) {
   const { user } = useUser();
   const userId = user?.id || '';
@@ -44,30 +42,6 @@ export default function WalletDashboard({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [blockNumber, setBlockNumber] = useState<number | null>(null);
   const [priceChange24h, setPriceChange24h] = useState<number>(0);
-  const [walletData, setWalletData] = useState<any>(null);
-
-  // Load wallet data on mount
-  useEffect(() => {
-    const loadWallet = async () => {
-      if (userId) {
-        const wallet = await getCurrentWallet(userId);
-        setWalletData(wallet);
-      }
-    };
-    loadWallet();
-  }, [userId]);
-
-  // Clean up old mock cache on mount
-  useEffect(() => {
-    const keysToRemove = Object.keys(localStorage).filter(key => 
-      key.startsWith('txs_') && !key.includes('cached')
-    );
-    
-    keysToRemove.forEach(key => {
-      console.log('🧹 Removing old cache:', key);
-      localStorage.removeItem(key);
-    });
-  }, []);
 
   // Debug logging
   useEffect(() => {
@@ -76,10 +50,9 @@ export default function WalletDashboard({
       sovereignWallet: sovereignWallet ? 'EXISTS' : 'NULL',
       hasAddresses: !!sovereignWallet?.addresses,
       currentAddress: sovereignWallet?.addresses?.[selectedChain],
-      useMainnet,
       userId,
     });
-  }, [sovereignWallet, selectedChain, useMainnet, userId]);
+  }, [sovereignWallet, selectedChain, userId]);
 
   // Fetch block number
   useEffect(() => {
@@ -87,7 +60,7 @@ export default function WalletDashboard({
       if (!sovereignWallet) return;
       
       try {
-        const block = await fetchBlockNumber(selectedChain, useMainnet);
+        const block = await fetchBlockNumber(selectedChain);
         setBlockNumber(block);
       } catch (error) {
         console.error('Failed to fetch block number:', error);
@@ -95,11 +68,9 @@ export default function WalletDashboard({
     };
     
     fetchBlock();
-    
-    // Update every 30 seconds
     const interval = setInterval(fetchBlock, 30000);
     return () => clearInterval(interval);
-  }, [sovereignWallet, selectedChain, useMainnet]);
+  }, [sovereignWallet, selectedChain]);
 
   // Update price change when balance changes
   useEffect(() => {
@@ -112,35 +83,15 @@ export default function WalletDashboard({
   const getChainConfig = (chain: Chain) => {
     switch (chain) {
       case 'ethereum':
-        return { 
-          name: useMainnet ? 'Ethereum Mainnet' : 'Ethereum Sepolia', 
-          symbol: 'ETH', 
-          color: 'text-blue-400' 
-        };
+        return { name: 'Ethereum', symbol: 'ETH', color: 'text-blue-400' };
       case 'bitcoin':
-        return { 
-          name: useMainnet ? 'Bitcoin Mainnet' : 'Bitcoin Testnet', 
-          symbol: 'BTC', 
-          color: 'text-orange-400' 
-        };
+        return { name: 'Bitcoin', symbol: 'BTC', color: 'text-orange-400' };
       case 'bsc':
-        return { 
-          name: useMainnet ? 'BSC Mainnet' : 'BSC Testnet', 
-          symbol: 'BNB', 
-          color: 'text-yellow-400' 
-        };
+        return { name: 'BSC', symbol: 'BNB', color: 'text-yellow-400' };
       case 'xrp':
-        return { 
-          name: useMainnet ? 'XRP Mainnet' : 'XRP Testnet', 
-          symbol: 'XRP', 
-          color: 'text-gray-400' 
-        };
+        return { name: 'XRP Ledger', symbol: 'XRP', color: 'text-gray-400' };
       case 'solana':
-        return { 
-          name: useMainnet ? 'Solana Mainnet' : 'Solana Devnet', 
-          symbol: 'SOL', 
-          color: 'text-purple-400' 
-        };
+        return { name: 'Solana', symbol: 'SOL', color: 'text-purple-400' };
     }
   };
 
@@ -158,12 +109,11 @@ export default function WalletDashboard({
 
       setIsLoading(true);
       try {
-        console.log('🔄 Fetching balances...');
-        const balances = await fetchAllBalances(sovereignWallet.addresses, useMainnet);
+        console.log('🔄 Fetching mainnet balances...');
+        const balances = await fetchAllBalances(sovereignWallet.addresses);
         console.log('✅ Balances loaded:', balances);
         
         setChainBalances(balances);
-        
         const current = balances.find(b => b.chain === selectedChain);
         setCurrentBalance(current || null);
       } catch (error) {
@@ -176,7 +126,7 @@ export default function WalletDashboard({
     };
 
     loadBalances();
-  }, [sovereignWallet, selectedChain, useMainnet]);
+  }, [sovereignWallet, selectedChain]);
 
   // Refresh balances
   const handleRefresh = async () => {
@@ -184,14 +134,13 @@ export default function WalletDashboard({
     
     setIsRefreshing(true);
     try {
-      const balances = await fetchAllBalances(sovereignWallet.addresses, useMainnet);
+      const balances = await fetchAllBalances(sovereignWallet.addresses);
       setChainBalances(balances);
       
       const current = balances.find(b => b.chain === selectedChain);
       setCurrentBalance(current || null);
       
-      // Also refresh block number
-      const block = await fetchBlockNumber(selectedChain, useMainnet);
+      const block = await fetchBlockNumber(selectedChain);
       setBlockNumber(block);
     } catch (error) {
       console.error('Refresh failed:', error);
@@ -200,26 +149,24 @@ export default function WalletDashboard({
     }
   };
 
-  // Fetch real transactions - NO MOCK DATA
+  // Fetch transactions
   useEffect(() => {
     const loadTransactions = async () => {
       if (!sovereignWallet?.addresses) {
-        console.log('⚠️ No sovereign wallet - transactions cleared');
         setTransactions([]);
         return;
       }
 
       const currentAddress = sovereignWallet.addresses[selectedChain];
       if (!currentAddress) {
-        console.log('⚠️ No address for chain:', selectedChain);
         setTransactions([]);
         return;
       }
 
       try {
         console.log(`🔍 Fetching transactions for ${selectedChain}: ${currentAddress}`);
-        const txs = await fetchChainTransactions(selectedChain, currentAddress, useMainnet);
-        console.log(`✅ Loaded ${txs.length} real transactions`);
+        const txs = await fetchChainTransactions(selectedChain, currentAddress);
+        console.log(`✅ Loaded ${txs.length} transactions`);
         setTransactions(txs);
       } catch (error) {
         console.error('❌ Transaction fetch failed:', error);
@@ -228,7 +175,7 @@ export default function WalletDashboard({
     };
     
     loadTransactions();
-  }, [sovereignWallet, selectedChain, blockNumber, useMainnet]);
+  }, [sovereignWallet, selectedChain, blockNumber]);
 
   // Format balance for display
   const formatBalance = (bal: string | undefined) => {
@@ -236,9 +183,6 @@ export default function WalletDashboard({
     const num = parseFloat(bal);
     return num.toFixed(6);
   };
-
-  // Get display balance - ONLY real data
-  const displayBalance = currentBalance?.balance || '0';
 
   // Format transaction time
   const formatTime = (date: Date) => {
@@ -250,6 +194,8 @@ export default function WalletDashboard({
     if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
     return date.toLocaleDateString();
   };
+
+  const displayBalance = currentBalance?.balance || '0';
 
   return (
     <div className="space-y-6">
@@ -320,8 +266,8 @@ export default function WalletDashboard({
           </p>
         </div>
         <div className="bg-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-400 mb-1">Security</p>
-          <p className="font-medium text-sm text-emerald-400">Quantum-Ready</p>
+          <p className="text-xs text-gray-400 mb-1">Status</p>
+          <p className="font-medium text-sm text-emerald-400">Mainnet</p>
         </div>
       </div>
 
