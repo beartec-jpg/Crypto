@@ -402,8 +402,8 @@ export async function createWallet(password: string, userId: string): Promise<Wa
     const mnemonic = bip39.generateMnemonic(256);
     console.log('✅ Generated mnemonic');
     
-    // Derive addresses
-    const { addresses, publicKeys } = await deriveAddressesFromMnemonic(mnemonic);
+    // Derive addresses (false = mainnet Bitcoin addresses)
+    const { addresses, publicKeys } = await deriveAddressesFromMnemonic(mnemonic, false);
     
     console.log('✅ Derived addresses:', addresses);
     
