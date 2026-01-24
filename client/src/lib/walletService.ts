@@ -306,7 +306,10 @@ function base58EncodeXRP(bytes: Uint8Array): string {
 /**
  * Derive all addresses from mnemonic (shared logic)
  */
-async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
+async function deriveAddressesFromMnemonic(
+  mnemonic: string,
+  useTestnet = false // Add testnet parameter
+): Promise<{
   addresses: Wallet['addresses'];
   publicKeys: Record<Chain, string>;
 }> {
@@ -335,10 +338,10 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   addresses.ethereum = deriveEthereumAddress(ethNode.privateKey);
   publicKeys.ethereum = Buffer.from(secp256k1.getPublicKey(ethNode.privateKey, false)).toString('hex');
   
-  // Bitcoin
+  // Bitcoin (with testnet support)
   const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
   if (!btcNode.privateKey) throw new Error('Failed to derive BTC key');
-  addresses.bitcoin = deriveBitcoinAddress(btcNode.privateKey);
+  addresses.bitcoin = deriveBitcoinAddress(btcNode.privateKey, useTestnet); // Pass testnet flag
   publicKeys.bitcoin = Buffer.from(secp256k1.getPublicKey(btcNode.privateKey, true)).toString('hex');
   
   // BSC (same as Ethereum)
@@ -358,6 +361,28 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   publicKeys.solana = Buffer.from(solNode.privateKey).toString('hex');
   
   return { addresses, publicKeys };
+}
+
+/**
+ * Derive Bitcoin address from private key (P2PKH) - with testnet support
+ */
+function deriveBitcoinAddress(privateKeyBytes: Uint8Array, useTestnet = false): string {
+  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
+  const sha256Hash = sha256(publicKeyBytes);
+  const ripemd160Hash = ripemd160(sha256Hash);
+  
+  // Add version byte (0x00 for mainnet, 0x6F for testnet)
+  const versionByte = useTestnet ? 0x6F : 0x00;
+  const versionedHash = new Uint8Array(21);
+  versionedHash[0] = versionByte;
+  versionedHash.set(ripemd160Hash, 1);
+  
+  const checksum = sha256(sha256(versionedHash)).slice(0, 4);
+  const addressBytes = new Uint8Array(25);
+  addressBytes.set(versionedHash);
+  addressBytes.set(checksum, 21);
+  
+  return base58Encode(addressBytes);
 }
 
 /**
