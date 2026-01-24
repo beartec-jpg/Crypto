@@ -30,6 +30,8 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
   const [success, setSuccess] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showDowngradeConfirm, setShowDowngradeConfirm] = useState(false);
+  const [pendingDowngradeTier, setPendingDowngradeTier] = useState<SecurityTier | null>(null);
   const [resetPassword, setResetPassword] = useState('');
 
   useEffect(() => {
@@ -177,32 +179,42 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
   };
 
   const handleDowngrade = async (targetTier: SecurityTier) => {
-    if (window.confirm(`Downgrade security to ${targetTier.toUpperCase()}? This will remove additional protections.`)) {
-      setIsProcessing(true);
-      try {
-        changeSecurityTier(targetTier);
-        setCurrentTier(targetTier);
-        setSuccess(`✅ Security level changed to ${targetTier}`);
-        onSecurityChange?.();
-      } catch (err: any) {
-        setError(err.message || 'Failed to change security tier');
-      } finally {
-        setIsProcessing(false);
-      }
+    // Show confirmation UI instead of window.confirm
+    setPendingDowngradeTier(targetTier);
+    setShowDowngradeConfirm(true);
+  };
+
+  const confirmDowngrade = async () => {
+    if (!pendingDowngradeTier) return;
+    
+    setIsProcessing(true);
+    try {
+      changeSecurityTier(pendingDowngradeTier);
+      setCurrentTier(pendingDowngradeTier);
+      setSuccess(`✅ Security level changed to ${pendingDowngradeTier}`);
+      onSecurityChange?.();
+    } catch (err: any) {
+      setError(err.message || 'Failed to change security tier');
+    } finally {
+      setIsProcessing(false);
+      setShowDowngradeConfirm(false);
+      setPendingDowngradeTier(null);
     }
   };
 
+  const cancelDowngrade = () => {
+    setShowDowngradeConfirm(false);
+    setPendingDowngradeTier(null);
+  };
+
   const handleEmergencyReset = async () => {
-    // In a real implementation, we would verify the password first
-    // For now, we'll just show a warning
-    if (window.confirm('Emergency reset will restore your security to Standard tier and remove PIN protection. Continue?')) {
-      emergencySecurityReset();
-      setCurrentTier('standard');
-      setShowResetConfirm(false);
-      setResetPassword('');
-      setSuccess('✅ Security reset to Standard tier');
-      onSecurityChange?.();
-    }
+    // Emergency reset confirmed - no window.confirm needed as we have UI confirmation
+    emergencySecurityReset();
+    setCurrentTier('standard');
+    setShowResetConfirm(false);
+    setResetPassword('');
+    setSuccess('✅ Security reset to Standard tier');
+    onSecurityChange?.();
   };
 
   const renderTierCard = (tier: SecurityTier) => {
@@ -216,14 +228,23 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
       (tier === 'standard' && currentTier !== 'standard') ||
       (tier === 'enhanced' && currentTier === 'maximum');
 
+    const getActiveClasses = () => {
+      if (!isActive) return 'bg-gray-900/50 border-gray-700';
+      
+      switch (tier) {
+        case 'standard':
+          return 'bg-emerald-900/30 border-emerald-500';
+        case 'enhanced':
+          return 'bg-amber-900/30 border-amber-500';
+        case 'maximum':
+          return 'bg-red-900/30 border-red-500';
+      }
+    };
+
     return (
       <div
         key={tier}
-        className={`p-6 rounded-xl border-2 transition-all ${
-          isActive
-            ? `bg-${color}-900/30 border-${color}-500`
-            : 'bg-gray-900/50 border-gray-700'
-        }`}
+        className={`p-6 rounded-xl border-2 transition-all ${getActiveClasses()}`}
       >
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -257,7 +278,13 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
                 : handleUpgradeToMaximum()
             }
             disabled={isProcessing}
-            className={`w-full px-4 py-2 rounded-lg bg-${color}-600 hover:bg-${color}-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2`}
+            className={
+              tier === 'enhanced'
+                ? 'w-full px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2'
+                : tier === 'maximum'
+                ? 'w-full px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2'
+                : 'w-full px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2'
+            }
           >
             Upgrade to {desc.title}
             <ChevronRight className="w-4 h-4" />
@@ -486,6 +513,48 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
                   ) : (
                     'Activate Maximum Security'
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Downgrade Confirmation Modal */}
+      {showDowngradeConfirm && pendingDowngradeTier && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-full bg-amber-600 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Confirm Security Downgrade</h2>
+                <p className="text-sm text-gray-400">This will reduce your protection level</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-amber-900/20 border border-amber-700/50">
+                <p className="text-sm text-amber-300">
+                  <strong>Warning:</strong> Downgrading to {pendingDowngradeTier.toUpperCase()} will remove additional security protections.
+                  {currentTier === 'maximum' && ' Your PIN will be removed.'}
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelDowngrade}
+                  className="flex-1 px-4 py-3 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDowngrade}
+                  disabled={isProcessing}
+                  className="flex-1 px-4 py-3 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isProcessing ? 'Processing...' : 'Confirm Downgrade'}
                 </button>
               </div>
             </div>

@@ -269,13 +269,36 @@ export function saveSecuritySettings(settings: SecuritySettings): void {
 }
 
 /**
- * Hash PIN securely with salt
+ * Hash PIN securely with salt using PBKDF2
+ * Uses 100,000 iterations for strong protection against brute force
  */
 export async function hashPin(pin: string, salt: string): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(pin + salt);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const pinData = encoder.encode(pin);
+  const saltData = encoder.encode(salt);
+  
+  // Import key material
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    pinData,
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+  
+  // Derive key using PBKDF2 with 100,000 iterations
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltData,
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    keyMaterial,
+    256 // 256 bits = 32 bytes
+  );
+  
+  const hashArray = Array.from(new Uint8Array(derivedBits));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
