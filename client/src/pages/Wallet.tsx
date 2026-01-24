@@ -321,6 +321,7 @@ export default function WalletPage() {
               )}
               {activeTab === 'send' && (
                 <SendForm
+                  userId={userId}
                   isPasskeyAuthenticated={isPasskeyAuthenticated}
                   onRequestPasskey={() => setShowPasskeyModal(true)}
                   selectedChain={selectedChain}

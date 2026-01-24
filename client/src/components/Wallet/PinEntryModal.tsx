@@ -6,6 +6,7 @@ import { Lock, X, AlertTriangle, Delete } from 'lucide-react';
 import { verifyPin, isPinLockedOut, getPinLockoutMinutes } from '@/lib/securityService';
 
 interface PinEntryModalProps {
+  userId: string;
   onClose: () => void;
   onSuccess: () => void;
   onForgotPin?: () => void;
@@ -14,6 +15,7 @@ interface PinEntryModalProps {
 }
 
 export default function PinEntryModal({
+  userId,
   onClose,
   onSuccess,
   onForgotPin,
@@ -29,10 +31,10 @@ export default function PinEntryModal({
   // Check lockout status on mount and update every second
   useEffect(() => {
     const checkLockout = () => {
-      const lockedOut = isPinLockedOut();
+      const lockedOut = isPinLockedOut(userId);
       setIsLockedOut(lockedOut);
       if (lockedOut) {
-        setLockoutMinutes(getPinLockoutMinutes());
+        setLockoutMinutes(getPinLockoutMinutes(userId));
       }
     };
 
@@ -40,7 +42,7 @@ export default function PinEntryModal({
     const interval = setInterval(checkLockout, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [userId]);
 
   const handleNumberClick = (num: string) => {
     if (pin.length < 6) {
@@ -75,7 +77,7 @@ export default function PinEntryModal({
     setError(null);
 
     try {
-      const valid = await verifyPin(pinToVerify);
+      const valid = await verifyPin(userId, pinToVerify);
       if (valid) {
         onSuccess();
       }
@@ -86,7 +88,7 @@ export default function PinEntryModal({
       // Check if now locked out
       if (err.message.includes('Too many failed attempts')) {
         setIsLockedOut(true);
-        setLockoutMinutes(getPinLockoutMinutes());
+        setLockoutMinutes(getPinLockoutMinutes(userId));
       }
     } finally {
       setIsVerifying(false);

@@ -9,10 +9,9 @@ import {
   setupPin,
   emergencySecurityReset,
   type SecurityTier,
-  SECURITY_REQUIREMENTS,
 } from '@/lib/securityService';
 import { registerPasskey, isPasskeyRegistered } from '@/lib/passkeyService';
-import PinEntryModal from './PinEntryModal';
+import { unlockWallet } from '@/lib/walletService';
 
 interface SecuritySettingsProps {
   userId: string;
@@ -35,9 +34,9 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
   const [resetPassword, setResetPassword] = useState('');
 
   useEffect(() => {
-    const settings = getSecuritySettings();
+    const settings = getSecuritySettings(userId);
     setCurrentTier(settings.tier);
-  }, []);
+  }, [userId]);
 
   const getTierColor = (tier: SecurityTier) => {
     switch (tier) {
@@ -108,10 +107,10 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
       // Check if passkey is registered
       if (!isPasskeyRegistered()) {
         // Register passkey first
-        await registerPasskey('wallet_user');
+        await registerPasskey(userId);
       }
 
-      changeSecurityTier('enhanced');
+      changeSecurityTier(userId, 'enhanced');
       setCurrentTier('enhanced');
       setSuccess('✅ Upgraded to Enhanced security');
       onSecurityChange?.();
@@ -154,14 +153,14 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
     try {
       // Check if passkey is registered
       if (!isPasskeyRegistered()) {
-        await registerPasskey('wallet_user');
+        await registerPasskey(userId);
       }
 
       // Setup PIN
-      await setupPin(pinInput);
+      await setupPin(userId, pinInput);
 
       // Change tier
-      changeSecurityTier('maximum');
+      changeSecurityTier(userId, 'maximum');
       setCurrentTier('maximum');
 
       // Clear PIN inputs
@@ -189,7 +188,7 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
     
     setIsProcessing(true);
     try {
-      changeSecurityTier(pendingDowngradeTier);
+      changeSecurityTier(userId, pendingDowngradeTier);
       setCurrentTier(pendingDowngradeTier);
       setSuccess(`✅ Security level changed to ${pendingDowngradeTier}`);
       onSecurityChange?.();
@@ -208,18 +207,34 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
   };
 
   const handleEmergencyReset = async () => {
-    // Emergency reset confirmed - no window.confirm needed as we have UI confirmation
-    emergencySecurityReset();
-    setCurrentTier('standard');
-    setShowResetConfirm(false);
-    setResetPassword('');
-    setSuccess('✅ Security reset to Standard tier');
-    onSecurityChange?.();
+    if (!resetPassword) {
+      setError('Password is required');
+      return;
+    }
+
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      // Verify password before allowing reset
+      await unlockWallet(userId, resetPassword);
+      
+      // Password is correct, proceed with reset
+      emergencySecurityReset(userId);
+      setCurrentTier('standard');
+      setShowResetConfirm(false);
+      setResetPassword('');
+      setSuccess('✅ Security reset to Standard tier');
+      onSecurityChange?.();
+    } catch (err: any) {
+      setError(err.message || 'Failed to verify password');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const renderTierCard = (tier: SecurityTier) => {
     const desc = getTierDescription(tier);
-    const color = getTierColor(tier);
     const isActive = currentTier === tier;
     const canUpgrade = 
       (tier === 'enhanced' && currentTier === 'standard') ||
@@ -367,18 +382,38 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
               <p className="text-sm text-red-300 font-medium">
                 Warning: This will reset all security settings and remove PIN protection.
               </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Enter Wallet Password
+                </label>
+                <input
+                  type="password"
+                  value={resetPassword}
+                  onChange={(e) => {
+                    setResetPassword(e.target.value);
+                    setError(null);
+                  }}
+                  placeholder="Enter your wallet password"
+                  className="w-full px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none"
+                />
+              </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setShowResetConfirm(false)}
+                  onClick={() => {
+                    setShowResetConfirm(false);
+                    setResetPassword('');
+                    setError(null);
+                  }}
                   className="flex-1 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleEmergencyReset}
-                  className="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 transition-colors text-sm"
+                  disabled={!resetPassword || isProcessing}
+                  className="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                 >
-                  Confirm Reset
+                  {isProcessing ? 'Verifying...' : 'Confirm Reset'}
                 </button>
               </div>
             </div>

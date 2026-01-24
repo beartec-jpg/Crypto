@@ -15,12 +15,14 @@ import PinEntryModal from './PinEntryModal';
 import type { Chain } from '@/lib/balanceService';
 
 interface SendFormProps {
+  userId: string;
   isPasskeyAuthenticated: boolean;
   onRequestPasskey: () => void;
   selectedChain: Chain;
 }
 
 export default function SendForm({
+  userId,
   isPasskeyAuthenticated,
   onRequestPasskey,
   selectedChain,
@@ -31,7 +33,6 @@ export default function SendForm({
   const [showPinModal, setShowPinModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001');
-  const [pendingAction, setPendingAction] = useState<'send' | null>(null);
 
   // Check if wallet is locked
   const isLocked = securityManager.isWalletLocked();
@@ -58,11 +59,10 @@ export default function SendForm({
     }
 
     // Get security requirements for send action
-    const requirements = getSecurityRequirements('send');
+    const requirements = getSecurityRequirements(userId, 'send');
 
     // Check if PIN is required
     if (requirements.includes('pin')) {
-      setPendingAction('send');
       setShowPinModal(true);
       return;
     }
@@ -84,7 +84,7 @@ export default function SendForm({
     setShowPinModal(false);
 
     // After PIN success, check for passkey requirement
-    const requirements = getSecurityRequirements('send');
+    const requirements = getSecurityRequirements(userId, 'send');
     
     if (requirements.includes('passkey')) {
       try {
@@ -99,13 +99,10 @@ export default function SendForm({
       // No passkey needed, proceed to preview
       setShowPreview(true);
     }
-
-    setPendingAction(null);
   };
 
   const handlePinCancel = () => {
     setShowPinModal(false);
-    setPendingAction(null);
     setError('PIN authentication cancelled');
   };
 
@@ -174,8 +171,8 @@ export default function SendForm({
   };
 
   // Get current security tier for display
-  const currentSettings = getSecuritySettings();
-  const securityRequirements = getSecurityRequirements('send');
+  const currentSettings = getSecuritySettings(userId);
+  const securityRequirements = getSecurityRequirements(userId, 'send');
 
   return (
     <>
@@ -286,6 +283,7 @@ export default function SendForm({
       {/* PIN Entry Modal */}
       {showPinModal && (
         <PinEntryModal
+          userId={userId}
           onClose={handlePinCancel}
           onSuccess={handlePinSuccess}
           title="Enter PIN to Send"
