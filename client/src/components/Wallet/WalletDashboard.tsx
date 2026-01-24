@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useBalance } from 'wagmi';
+import { useUser } from '@clerk/clerk-react';
 import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, TrendingDown, Clock, Loader2 } from 'lucide-react';
 import { 
   fetchAllBalances, 
@@ -14,6 +15,7 @@ import {
   fetchChainTransactions, 
   type Transaction 
 } from '@/lib/transactionService';
+import { getCurrentWallet } from '@/lib/walletService';
 
 interface WalletDashboardProps {
   address: `0x${string}` | undefined;
@@ -32,6 +34,9 @@ export default function WalletDashboard({
   sovereignWallet,
   useMainnet = false,
 }: WalletDashboardProps) {
+  const { user } = useUser();
+  const userId = user?.id || '';
+  
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [chainBalances, setChainBalances] = useState<ChainBalance[]>([]);
@@ -39,6 +44,18 @@ export default function WalletDashboard({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [blockNumber, setBlockNumber] = useState<number | null>(null);
   const [priceChange24h, setPriceChange24h] = useState<number>(0);
+  const [walletData, setWalletData] = useState<any>(null);
+
+  // Load wallet data on mount
+  useEffect(() => {
+    const loadWallet = async () => {
+      if (userId) {
+        const wallet = await getCurrentWallet(userId);
+        setWalletData(wallet);
+      }
+    };
+    loadWallet();
+  }, [userId]);
 
   // Clean up old mock cache on mount
   useEffect(() => {
@@ -60,8 +77,9 @@ export default function WalletDashboard({
       hasAddresses: !!sovereignWallet?.addresses,
       currentAddress: sovereignWallet?.addresses?.[selectedChain],
       useMainnet,
+      userId,
     });
-  }, [sovereignWallet, selectedChain, useMainnet]);
+  }, [sovereignWallet, selectedChain, useMainnet, userId]);
 
   // Fetch block number
   useEffect(() => {
@@ -210,7 +228,7 @@ export default function WalletDashboard({
     };
     
     loadTransactions();
-  }, [sovereignWallet, selectedChain, blockNumber]);
+  }, [sovereignWallet, selectedChain, blockNumber, useMainnet]);
 
   // Format balance for display
   const formatBalance = (bal: string | undefined) => {
@@ -221,6 +239,17 @@ export default function WalletDashboard({
 
   // Get display balance - ONLY real data
   const displayBalance = currentBalance?.balance || '0';
+
+  // Format transaction time
+  const formatTime = (date: Date) => {
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    return date.toLocaleDateString();
+  };
 
   return (
     <div className="space-y-6">
@@ -333,7 +362,9 @@ export default function WalletDashboard({
       <div className="bg-gray-800 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-medium">Recent Transactions</h3>
-          <button className="text-sm text-cyan-400 hover:underline">View All</button>
+          {transactions.length > 0 && (
+            <button className="text-sm text-cyan-400 hover:underline">View All</button>
+          )}
         </div>
 
         {transactions.length === 0 ? (
@@ -344,7 +375,7 @@ export default function WalletDashboard({
           </div>
         ) : (
           <div className="space-y-3">
-            {transactions.map((tx) => (
+            {transactions.slice(0, 5).map((tx) => (
               <div
                 key={tx.hash}
                 className="flex items-center justify-between p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 transition-colors"
@@ -367,8 +398,8 @@ export default function WalletDashboard({
                     <p className="font-medium">
                       {tx.type === 'receive' ? 'Received' : 'Sent'} {tx.amount} {tx.token}
                     </p>
-                    <p className="text-sm text-gray-400 truncate max-w-[200px]">
-                      {tx.type === 'receive' ? 'From' : 'To'}: {tx.type === 'receive' ? tx.from : tx.to}
+                    <p className="text-sm text-gray-400 font-mono truncate max-w-[200px]">
+                      {tx.type === 'receive' ? 'From' : 'To'}: {(tx.type === 'receive' ? tx.from : tx.to).slice(0, 10)}...
                     </p>
                   </div>
                 </div>
@@ -377,8 +408,14 @@ export default function WalletDashboard({
                     {tx.type === 'receive' ? '+' : '-'}{hideBalances ? '••••' : tx.amount} {tx.token}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {tx.timestamp.toLocaleTimeString()}
+                    {formatTime(tx.timestamp)}
                   </p>
+                  {tx.status === 'pending' && (
+                    <span className="text-xs text-amber-400">Pending</span>
+                  )}
+                  {tx.status === 'failed' && (
+                    <span className="text-xs text-red-400">Failed</span>
+                  )}
                 </div>
               </div>
             ))}
