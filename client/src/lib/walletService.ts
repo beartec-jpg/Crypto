@@ -661,7 +661,22 @@ export function validatePassword(password: string): PasswordValidation {
   }
   
   // Check for common weak passwords (exact match only)
-  const commonPasswords = ['password123!', 'Password123!', 'Admin123456!', 'Welcome123!'];
+  // Note: This is a basic list - consider integrating with a more comprehensive
+  // dictionary like "Have I Been Pwned" API for production use
+  const commonPasswords = [
+    'password123!',
+    'Password123!',
+    'Admin123456!',
+    'Welcome123!',
+    'Qwerty123456!',
+    'Letmein123!',
+    '1234567890Ab!',
+    'Password1234!',
+    'Abc123456789!',
+    'P@ssw0rd123',
+    'Welcome@123',
+    'Admin@123456'
+  ];
   const lowerPassword = password.toLowerCase();
   if (commonPasswords.some(common => lowerPassword === common.toLowerCase())) {
     errors.push('Password is too common. Please choose a more unique password');
@@ -681,7 +696,7 @@ interface UnlockAttempt {
 
 const unlockAttempts = new Map<string, UnlockAttempt>();
 const MAX_UNLOCK_ATTEMPTS = 5;
-const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
+const LOCKOUT_TIME_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
 
 /**
  * Check if wallet is locked out due to too many failed attempts
@@ -692,8 +707,8 @@ function checkUnlockLockout(walletId: string): void {
   if (attempts && attempts.count >= MAX_UNLOCK_ATTEMPTS) {
     const timeSinceLast = Date.now() - attempts.lastAttempt;
     
-    if (timeSinceLast < LOCKOUT_TIME) {
-      const remainingMinutes = Math.ceil((LOCKOUT_TIME - timeSinceLast) / 60000);
+    if (timeSinceLast < LOCKOUT_TIME_MS) {
+      const remainingMinutes = Math.ceil((LOCKOUT_TIME_MS - timeSinceLast) / 60000);
       throw new Error(`Too many unlock attempts. Try again in ${remainingMinutes} minutes.`);
     }
     
@@ -1018,10 +1033,17 @@ export async function signTransaction(
           
           // Additional validation: verify sender address matches wallet
           const expectedAddress = wallet.addresses[chain].toLowerCase();
-          const txFrom = transaction.from?.toLowerCase();
           
-          if (txFrom && txFrom !== expectedAddress) {
-            throw new Error('Transaction from address does not match wallet address');
+          // For Ethereum transactions, the 'from' field should be present and match
+          if (!transaction.from) {
+            // If from is not provided in the transaction, this is acceptable
+            // as ethers will use the wallet's address by default
+            console.warn('Transaction from field not provided, will use wallet address');
+          } else {
+            const txFrom = transaction.from.toLowerCase();
+            if (txFrom !== expectedAddress) {
+              throw new Error('Transaction from address does not match wallet address');
+            }
           }
         } catch (verifyError) {
           console.error('Signature verification error:', verifyError);
