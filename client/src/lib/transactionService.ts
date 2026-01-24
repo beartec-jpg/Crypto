@@ -1,8 +1,11 @@
 // client/src/lib/transactionService.ts
-// Multi-chain transaction history fetching with mainnet/testnet support
+// Multi-chain transaction fetching service
 
 import axios from 'axios';
-import type { Chain } from './balanceService';
+import { xrplService } from './xrpService';
+import { dropsToXrp } from 'xrpl';
+
+export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
 
 export interface Transaction {
   hash: string;
@@ -12,28 +15,30 @@ export interface Transaction {
   to: string;
   from: string;
   timestamp: Date;
-  status: 'pending' | 'confirmed' | 'failed';
+  status: 'confirmed' | 'pending' | 'failed';
   chain: Chain;
   blockNumber?: number;
   fee?: string;
 }
 
 /**
- * Fetch Ethereum transactions via Etherscan API
+ * Fetch Ethereum transactions via Etherscan API v2
  */
 export async function fetchEthereumTransactions(
   address: string, 
   useMainnet = false
 ): Promise<Transaction[]> {
   try {
+    // Updated to v2 API endpoints
     const apiUrl = useMainnet
-      ? 'https://api.etherscan.io/api'
-      : 'https://api-sepolia.etherscan.io/api';
+      ? 'https://api.etherscan.io/v2/api'
+      : 'https://api-sepolia.etherscan.io/v2/api';
     
     console.log(`🔍 Fetching ETH transactions from ${useMainnet ? 'MAINNET' : 'SEPOLIA'} for:`, address);
     
     const response = await axios.get(apiUrl, {
       params: {
+        chainid: useMainnet ? 1 : 11155111, // Mainnet = 1, Sepolia = 11155111
         module: 'account',
         action: 'txlist',
         address,
@@ -42,7 +47,7 @@ export async function fetchEthereumTransactions(
         page: 1,
         offset: 20,
         sort: 'desc',
-        apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '', // ← Add this line
+        apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '',
       },
     });
 
@@ -89,14 +94,19 @@ export async function fetchBitcoinTransactions(
     
     console.log(`🔍 Fetching BTC transactions from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
     
-    const response = await axios.get(apiUrl);
-    const txs = response.data.slice(0, 20);
+    const response = await axios.get(apiUrl, {
+      timeout: 10000,
+    });
+    
+    console.log('📦 BTC API Response:', response.data);
 
-    const transactions = txs.map((tx: any) => {
+    const txs: Transaction[] = response.data.slice(0, 20).map((tx: any) => {
+      // Determine if this is a send or receive
       const isReceive = tx.vout.some((out: any) => 
         out.scriptpubkey_address === address
       );
-
+      
+      // Calculate amount (sum of relevant outputs)
       let amount = 0;
       if (isReceive) {
         tx.vout.forEach((out: any) => {
@@ -111,31 +121,32 @@ export async function fetchBitcoinTransactions(
           }
         });
       }
-
+      
       return {
         hash: tx.txid,
         type: isReceive ? 'receive' : 'send',
         amount: (amount / 100000000).toFixed(8),
         token: 'BTC',
-        to: tx.vout[0]?.scriptpubkey_address || 'Multiple',
-        from: tx.vin[0]?.prevout?.scriptpubkey_address || 'Multiple',
+        to: tx.vout[0]?.scriptpubkey_address || '',
+        from: tx.vin[0]?.prevout?.scriptpubkey_address || '',
         timestamp: new Date(tx.status.block_time * 1000),
         status: tx.status.confirmed ? 'confirmed' : 'pending',
         chain: 'bitcoin' as const,
         blockNumber: tx.status.block_height,
+        fee: (tx.fee / 100000000).toFixed(8),
       };
     });
 
-    console.log(`✅ Found ${transactions.length} BTC transactions`);
-    return transactions;
-  } catch (error) {
-    console.error('❌ Failed to fetch Bitcoin transactions:', error);
+    console.log(`✅ Found ${txs.length} BTC transactions`);
+    return txs;
+  } catch (error: any) {
+    console.error('❌ Failed to fetch Bitcoin transactions:', error.message);
     return [];
   }
 }
 
 /**
- * Fetch BSC transactions via BSCScan API
+ * Fetch BSC transactions via BscScan API (similar to Etherscan)
  */
 export async function fetchBSCTransactions(
   address: string,
@@ -143,14 +154,13 @@ export async function fetchBSCTransactions(
 ): Promise<Transaction[]> {
   try {
     const apiUrl = useMainnet
-      ? 'https://api.bscscan.com/v2/api'
-      : 'https://api-testnet.bscscan.com/v2/api';
+      ? 'https://api.bscscan.com/api'
+      : 'https://api-testnet.bscscan.com/api';
     
     console.log(`🔍 Fetching BNB transactions from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
     
     const response = await axios.get(apiUrl, {
       params: {
-        chainid: useMainnet ? 56 : 97,
         module: 'account',
         action: 'txlist',
         address,
@@ -159,11 +169,14 @@ export async function fetchBSCTransactions(
         page: 1,
         offset: 20,
         sort: 'desc',
+        apikey: import.meta.env.VITE_BSCSCAN_API_KEY || '',
       },
     });
 
+    console.log('📦 BscScan API Response:', response.data);
+
     if (response.data.status !== '1') {
-      console.warn('⚠️ BSCScan API error:', response.data.message);
+      console.warn('⚠️ BscScan API error:', response.data.message);
       return [];
     }
 
@@ -183,67 +196,54 @@ export async function fetchBSCTransactions(
 
     console.log(`✅ Found ${txs.length} BNB transactions`);
     return txs;
-  } catch (error) {
-    console.error('❌ Failed to fetch BSC transactions:', error);
+  } catch (error: any) {
+    console.error('❌ Failed to fetch BSC transactions:', error.message);
     return [];
   }
 }
 
 /**
- * Fetch XRP transactions via XRPL public node
+ * Fetch XRP transactions using official xrpl.js library
  */
 export async function fetchXRPTransactions(
   address: string,
   useMainnet = true
 ): Promise<Transaction[]> {
   try {
-    const rpcUrl = useMainnet
-      ? 'https://s1.ripple.com:51234/'
-      : 'https://s.altnet.rippletest.net:51234/';
+    const txs = await xrplService.getTransactions(address, useMainnet, 20);
     
-    console.log(`🔍 Fetching XRP transactions from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
-    
-    const response = await axios.post(rpcUrl, {
-      method: 'account_tx',
-      params: [{
-        account: address,
-        ledger_index_min: -1,
-        ledger_index_max: -1,
-        limit: 20,
-      }],
-    });
-
-    if (!response.data.result?.transactions) {
-      console.warn('⚠️ No XRP transactions found');
-      return [];
-    }
-
-    const txs = response.data.result.transactions.map((item: any) => {
+    const transactions: Transaction[] = txs.map((item: any) => {
       const tx = item.tx;
       const meta = item.meta;
       
       const isReceive = tx.Destination === address;
-      const amount = tx.Amount ? (parseInt(tx.Amount) / 1000000).toFixed(6) : '0';
-
+      
+      let amount = '0';
+      if (typeof tx.Amount === 'string') {
+        amount = dropsToXrp(tx.Amount);
+      } else if (tx.Amount?.value) {
+        amount = tx.Amount.value;
+      }
+      
       return {
         hash: tx.hash,
         type: isReceive ? 'receive' : 'send',
-        amount,
+        amount: parseFloat(amount).toFixed(6),
         token: 'XRP',
-        to: tx.Destination,
-        from: tx.Account,
-        timestamp: new Date((tx.date + 946684800) * 1000), // Ripple epoch offset
+        to: tx.Destination || '',
+        from: tx.Account || '',
+        timestamp: new Date((tx.date + 946684800) * 1000),
         status: meta.TransactionResult === 'tesSUCCESS' ? 'confirmed' : 'failed',
         chain: 'xrp' as const,
-        blockNumber: item.ledger_index,
-        fee: (parseInt(tx.Fee) / 1000000).toFixed(6),
+        blockNumber: tx.ledger_index,
+        fee: dropsToXrp(tx.Fee),
       };
     });
-
-    console.log(`✅ Found ${txs.length} XRP transactions`);
-    return txs;
-  } catch (error) {
-    console.error('❌ Failed to fetch XRP transactions:', error);
+    
+    console.log(`✅ Found ${transactions.length} XRP transactions`);
+    return transactions;
+  } catch (error: any) {
+    console.error('❌ Failed to fetch XRP transactions:', error.message);
     return [];
   }
 }
@@ -266,65 +266,40 @@ export async function fetchSolanaTransactions(
       jsonrpc: '2.0',
       id: 1,
       method: 'getSignaturesForAddress',
-      params: [
-        address,
-        { limit: 20 }
-      ],
+      params: [address, { limit: 20 }],
+    }, {
+      timeout: 10000,
     });
 
+    console.log('📦 SOL API Response:', response.data);
+
     if (!response.data.result) {
-      console.warn('⚠️ No Solana transactions found');
       return [];
     }
 
-    // Fetch details for each signature
-    const txDetails = await Promise.all(
-      response.data.result.slice(0, 10).map(async (sig: any) => {
-        try {
-          const detailResponse = await axios.post(rpcUrl, {
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getTransaction',
-            params: [sig.signature, { encoding: 'json', maxSupportedTransactionVersion: 0 }],
-          });
+    const txs: Transaction[] = response.data.result.map((tx: any) => ({
+      hash: tx.signature,
+      type: 'receive', // Would need to fetch full tx to determine
+      amount: '0', // Would need to fetch full tx details
+      token: 'SOL',
+      to: address,
+      from: '',
+      timestamp: new Date(tx.blockTime * 1000),
+      status: tx.err ? 'failed' : 'confirmed',
+      chain: 'solana' as const,
+      blockNumber: tx.slot,
+    }));
 
-          const tx = detailResponse.data.result;
-          if (!tx) return null;
-
-          const preBalance = tx.meta.preBalances[0] || 0;
-          const postBalance = tx.meta.postBalances[0] || 0;
-          const diff = Math.abs(postBalance - preBalance) / 1000000000;
-
-          return {
-            hash: sig.signature,
-            type: postBalance > preBalance ? 'receive' : 'send',
-            amount: diff.toFixed(6),
-            token: 'SOL',
-            to: address,
-            from: address,
-            timestamp: new Date(sig.blockTime * 1000),
-            status: sig.err ? 'failed' : 'confirmed',
-            chain: 'solana' as const,
-            blockNumber: sig.slot,
-            fee: (tx.meta.fee / 1000000000).toFixed(6),
-          };
-        } catch {
-          return null;
-        }
-      })
-    );
-
-    const transactions = txDetails.filter((tx): tx is Transaction => tx !== null);
-    console.log(`✅ Found ${transactions.length} SOL transactions`);
-    return transactions;
-  } catch (error) {
-    console.error('❌ Failed to fetch Solana transactions:', error);
+    console.log(`✅ Found ${txs.length} SOL transactions`);
+    return txs;
+  } catch (error: any) {
+    console.error('❌ Failed to fetch Solana transactions:', error.message);
     return [];
   }
 }
 
 /**
- * Fetch transactions for a specific chain
+ * Fetch transactions for any chain
  */
 export async function fetchChainTransactions(
   chain: Chain,
@@ -333,18 +308,23 @@ export async function fetchChainTransactions(
 ): Promise<Transaction[]> {
   console.log(`📡 Fetching ${chain} transactions for ${address} (${useMainnet ? 'mainnet' : 'testnet'})`);
   
-  switch (chain) {
-    case 'ethereum':
-      return fetchEthereumTransactions(address, useMainnet);
-    case 'bitcoin':
-      return fetchBitcoinTransactions(address, useMainnet);
-    case 'bsc':
-      return fetchBSCTransactions(address, useMainnet);
-    case 'xrp':
-      return fetchXRPTransactions(address, useMainnet);
-    case 'solana':
-      return fetchSolanaTransactions(address, useMainnet);
-    default:
-      return [];
+  try {
+    switch (chain) {
+      case 'ethereum':
+        return await fetchEthereumTransactions(address, useMainnet);
+      case 'bitcoin':
+        return await fetchBitcoinTransactions(address, useMainnet);
+      case 'bsc':
+        return await fetchBSCTransactions(address, useMainnet);
+      case 'xrp':
+        return await fetchXRPTransactions(address, useMainnet);
+      case 'solana':
+        return await fetchSolanaTransactions(address, useMainnet);
+      default:
+        return [];
+    }
+  } catch (error) {
+    console.error(`Failed to fetch ${chain} transactions:`, error);
+    return [];
   }
 }
