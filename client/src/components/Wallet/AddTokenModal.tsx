@@ -278,5 +278,193 @@ export default function AddTokenModal({
                   {/* ERC-20/BEP-20/SPL: Contract/Mint Address */}
                   <div>
                     <label className="text-sm text-gray-400 mb-2 block">
-                      {chain === 'sol*
-
+                      {chain === 'solana' ? 'Mint Address' : 'Contract Address'}
+                    </label>
+                    <input
+                      type="text"
+                      value={tokenAddress}
+                      onChange={(e) => setTokenAddress(e.target.value.trim())}
+                      placeholder={config.placeholder}
+                      className="w-full px-4 py-2 bg-gray-700 rounded-lg text-white font-mono text-sm"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Paste the token's {chain === 'solana' ? 'mint' : 'contract'} address from a block explorer
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Warning */}
+              <div className="bg-yellow-500/10 border border-yellow-500 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-yellow-200">
+                    <p className="font-semibold mb-1">Verify Before Adding</p>
+                    <p>
+                      Only add tokens from trusted sources. Scam tokens can appear legitimate but be worthless.
+                      Always verify the {chain === 'xrp' ? 'issuer address' : 'contract address'} on an official block explorer.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleVerify}
+                disabled={
+                  isVerifying ||
+                  (chain === 'xrp' ? (!currencyCode || !issuerAddress) : !tokenAddress)
+                }
+                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isVerifying ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-5 h-5" />
+                    Verify Token
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Verify Step */}
+          {step === 'verify' && verifiedToken && (
+            <div className="space-y-4">
+              <div className="bg-green-500/10 border border-green-500 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-6 h-6 text-green-500 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-green-400 mb-2">Token Verified</p>
+                    
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Symbol:</span>
+                        <span className="font-semibold">{verifiedToken.symbol}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Name:</span>
+                        <span className="font-semibold">{verifiedToken.name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Standard:</span>
+                        <span className="font-semibold">{verifiedToken.standard}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Decimals:</span>
+                        <span className="font-semibold">{verifiedToken.decimals}</span>
+                      </div>
+                      {verifiedToken.contractAddress && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-400">Contract:</span>
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-xs">
+                              {verifiedToken.contractAddress.slice(0, 6)}...
+                              {verifiedToken.contractAddress.slice(-4)}
+                            </span>
+                            <ExternalLink className="w-3 h-3 text-blue-400" />
+                          </div>
+                        </div>
+                      )}
+                      {verifiedToken.issuer && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-400">Issuer:</span>
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-xs">
+                              {verifiedToken.issuer.slice(0, 6)}...
+                              {verifiedToken.issuer.slice(-4)}
+                            </span>
+                            <ExternalLink className="w-3 h-3 text-blue-400" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep('input')}
+                  className="flex-1 px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleAdd}
+                  className="flex-1 px-4 py-2 bg-green-600 rounded-lg hover:bg-green-500 font-medium"
+                >
+                  Add Token
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Adding Step */}
+          {step === 'adding' && (
+            <div className="py-8 text-center">
+              <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-blue-500" />
+              <p className="text-lg font-semibold">
+                {chain === 'xrp' ? 'Setting Trustline...' : 'Adding Token...'}
+              </p>
+              <p className="text-sm text-gray-400 mt-2">
+                {chain === 'xrp' ? 'This will lock 2 XRP as reserve' : 'Please wait...'}
+              </p>
+            </div>
+          )}
+
+          {/* Success Step */}
+          {step === 'success' && (
+            <div className="py-8 text-center">
+              <CheckCircle className="w-12 h-12 mx-auto mb-4 text-green-500" />
+              <p className="text-lg font-semibold text-green-400">Token Added!</p>
+              <p className="text-sm text-gray-400 mt-2">Closing...</p>
+            </div>
+          )}
+
+          {/* Error Step */}
+          {step === 'error' && (
+            <div className="space-y-4">
+              <div className="bg-red-500/10 border border-red-500 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-red-400">Error</p>
+                    <p className="text-sm text-red-300 mt-1">{error}</p>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setStep('input')}
+                className="w-full px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* XRPL Trustline Warning Modal */}
+      {showTrustlineWarning && verifiedToken && reserveInfo && chain === 'xrp' && (
+        <TrustlineWarningModal
+          token={{
+            issuer: verifiedToken.issuer!,
+            currency: verifiedToken.currencyCode!,
+            name: verifiedToken.name,
+          }}
+          reserveInfo={reserveInfo}
+          issuerFlags={issuerFlags}
+          onConfirm={handleTrustlineConfirm}
+          onCancel={() => {
+            setShowTrustlineWarning(false);
+            setStep('verify');
+          }}
+        />
+      )}
+    </>
+  );
+}
