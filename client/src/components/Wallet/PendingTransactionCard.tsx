@@ -87,11 +87,7 @@ export default function PendingTransactionCard({ transaction }: PendingTransacti
           </div>
           <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
             <div 
-              className={`h-full transition-all duration-500 ${
-                transaction.status === 'confirmed' ? 'bg-emerald-500' :
-                transaction.status === 'failed' ? 'bg-red-500' :
-                'bg-cyan-500'
-              }`}
+              className="h-full transition-all duration-500 bg-cyan-500"
               style={{ width: `${Math.max(5, progressPercentage)}%` }}
             />
           </div>
