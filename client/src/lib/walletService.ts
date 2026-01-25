@@ -314,6 +314,18 @@ function deriveEthereumAddress(privateKeyBytes: Uint8Array): string {
 }
 
 /**
+ * LEGACY: Derive Ethereum address using OLD BROKEN SHA-256 method
+ * This is ONLY used for recovery of funds from incorrectly derived addresses
+ * DO NOT USE for new addresses - use deriveEthereumAddress() instead
+ */
+function deriveEthereumAddressLegacySHA256(privateKeyBytes: Uint8Array): string {
+  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
+  const publicKeyNoPrefix = publicKeyBytes.slice(1);
+  const hash = sha256(publicKeyNoPrefix); // Old broken method
+  return ethers.getAddress('0x' + Buffer.from(hash.slice(-20)).toString('hex'));
+}
+
+/**
  * Derive Bitcoin address from private key (P2PKH)
  */
 function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
@@ -926,6 +938,55 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     console.error('❌ Failed to unlock wallet:', error);
     recordFailedUnlockAttempt(walletId);
     throw new Error('Failed to unlock wallet. Check your password.');
+  }
+}
+
+/**
+ * Get legacy (SHA-256) address and private key for recovery
+ * Returns both the old wrong address and its private key
+ */
+export async function getLegacyAddressForRecovery(
+  walletId: string,
+  password: string
+): Promise<{
+  legacyAddress: string;
+  legacyPrivateKey: string;
+  currentAddress: string;
+} | null> {
+  try {
+    console.log('🔧 Deriving legacy address for recovery...');
+    
+    // Unlock wallet to get mnemonic
+    const wallet = await unlockWallet(walletId, password);
+    
+    // Derive using old broken method
+    const seed = await bip39.mnemonicToSeed(wallet.mnemonic);
+    const root = HDKey.fromMasterSeed(seed);
+    const ethNode = derivePath(root, DERIVATION_PATHS.ethereum);
+    
+    if (!ethNode.privateKey) {
+      throw new Error('Failed to derive private key');
+    }
+    
+    // Derive address using OLD SHA-256 method
+    const legacyAddress = deriveEthereumAddressLegacySHA256(ethNode.privateKey);
+    const legacyPrivateKey = Buffer.from(ethNode.privateKey).toString('hex');
+    
+    // Current correct address
+    const currentAddress = wallet.addresses.ethereum;
+    
+    console.log('🔍 Legacy address:', legacyAddress);
+    console.log('🔍 Current address:', currentAddress);
+    
+    return {
+      legacyAddress,
+      legacyPrivateKey,
+      currentAddress,
+    };
+    
+  } catch (error) {
+    console.error('❌ Failed to derive legacy address:', error);
+    return null;
   }
 }
 

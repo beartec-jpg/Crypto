@@ -10,6 +10,7 @@ import SendForm from '../components/Wallet/SendForm';
 import PasskeyAuthModal from '../components/Wallet/PasskeyAuthModal';
 import PinEntryModal from '../components/Wallet/PinEntryModal';
 import SecuritySettings from '../components/Wallet/SecuritySettings';
+import RecoveryTool from '../components/Wallet/RecoveryTool';
 import { getCurrentWallet, migrateWalletToUser } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements } from '@/lib/securityService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
@@ -478,6 +479,7 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
   const [showMnemonicWarning, setShowMnemonicWarning] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'security'>('general');
+  const [showRecoveryTool, setShowRecoveryTool] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -588,6 +590,28 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
             )}
           </div>
 
+          {/* ETH/BSC Recovery Tool */}
+          {sovereignWallet && (
+            <div className="p-4 rounded-xl bg-yellow-900/20 border border-yellow-700/50">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-yellow-400">ETH/BSC Recovery</h3>
+                  <p className="text-sm text-gray-400 mt-1">
+                    If your wallet was created before the Keccak-256 fix, you may have ETH or BSC funds on an old address that needs to be recovered. 
+                    (ETH and BSC use the same address)
+                  </p>
+                  <button
+                    onClick={() => setShowRecoveryTool(true)}
+                    className="mt-3 px-4 py-2 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-sm transition-colors"
+                  >
+                    Open Recovery Tool
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Advanced (Mnemonic Export) */}
           {sovereignWallet && (
             <div className="pt-6 border-t border-gray-700">
@@ -640,6 +664,19 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
 
       {activeSettingsTab === 'security' && (
         <SecuritySettings userId={userId} />
+      )}
+
+      {/* Recovery Tool Modal */}
+      {showRecoveryTool && sovereignWallet && (
+        <RecoveryTool
+          walletId={sovereignWallet.id}
+          onClose={() => setShowRecoveryTool(false)}
+          onSuccess={() => {
+            setShowRecoveryTool(false);
+            // Trigger balance refresh
+            window.location.reload();
+          }}
+        />
       )}
     </div>
   );
