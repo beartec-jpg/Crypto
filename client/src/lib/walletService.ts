@@ -440,13 +440,13 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   const derivedEthAddress = ethWallet.address;
   
   console.log('🔑 ETH Key Derivation:');
-  console.log('  - Derived address (ethers):', derivedEthAddress);
-  console.log('  - Derived address (custom):', addresses.ethereum);
+  console.log('  - Derived address (ethers):', derivedEthAddress.slice(0, 10) + '...' + derivedEthAddress.slice(-4));
+  console.log('  - Derived address (custom):', addresses.ethereum.slice(0, 10) + '...' + addresses.ethereum.slice(-4));
   
   if (derivedEthAddress.toLowerCase() !== addresses.ethereum.toLowerCase()) {
     console.error('❌ ETH ADDRESS DERIVATION MISMATCH!');
-    console.error('  Ethers derived:', derivedEthAddress);
-    console.error('  Custom derived:', addresses.ethereum);
+    console.error('  Ethers derived:', derivedEthAddress.slice(0, 10) + '...' + derivedEthAddress.slice(-4));
+    console.error('  Custom derived:', addresses.ethereum.slice(0, 10) + '...' + addresses.ethereum.slice(-4));
     throw new Error('ETH address derivation mismatch between ethers and custom implementation');
   }
   console.log('✅ ETH derivation verified');
@@ -1042,15 +1042,14 @@ export async function signTransaction(
         const expectedAddress = wallet.addresses[chain];
         
         console.log('🔐 Signing transaction:');
-        console.log('  - Expected address (from wallet):', expectedAddress);
-        console.log('  - Actual signer address (from private key):', signerAddress);
-        console.log('  - Private key prefix:', privateKey.substring(0, 8) + '...');
+        console.log('  - Expected address (from wallet):', expectedAddress.slice(0, 10) + '...' + expectedAddress.slice(-4));
+        console.log('  - Actual signer address (from private key):', signerAddress.slice(0, 10) + '...' + signerAddress.slice(-4));
         
         if (signerAddress.toLowerCase() !== expectedAddress.toLowerCase()) {
           console.error('❌ ADDRESS MISMATCH DETECTED!');
           console.error('  The private key produces a different address than expected.');
-          console.error('  Expected:', expectedAddress);
-          console.error('  Got:', signerAddress);
+          console.error('  Expected:', expectedAddress.slice(0, 10) + '...' + expectedAddress.slice(-4));
+          console.error('  Got:', signerAddress.slice(0, 10) + '...' + signerAddress.slice(-4));
           throw new Error(
             `Signing address mismatch! Expected ${expectedAddress.slice(0, 10)}... but got ${signerAddress.slice(0, 10)}... ` +
             `This indicates a wallet derivation issue. Please re-import your wallet.`
@@ -1071,7 +1070,7 @@ export async function signTransaction(
           
           // === NEW: Recover and verify signer from signed transaction ===
           if (parsedTx.from) {
-            console.log('✅ Recovered signer from tx:', parsedTx.from);
+            console.log('✅ Recovered signer from tx:', parsedTx.from.slice(0, 10) + '...' + parsedTx.from.slice(-4));
             if (parsedTx.from.toLowerCase() !== expectedAddress.toLowerCase()) {
               console.error('❌ RECOVERED SIGNER MISMATCH!');
               throw new Error('Recovered signer does not match wallet address');
