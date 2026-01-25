@@ -69,6 +69,9 @@ export async function runSecurityScan(): Promise<SecurityScanResult> {
 function checkDevToolsOpen(): SecurityWarning | null {
   try {
     // Method 1: Debugger timing detection
+    // NOTE: The debugger statement will pause execution if DevTools is open with breakpoints enabled.
+    // This is intentional for security detection, though it may briefly disrupt user experience.
+    // Users with DevTools open are warned that sensitive data could be inspected.
     const start = performance.now();
     debugger; // This line pauses if DevTools is open with breakpoints
     const end = performance.now();
@@ -150,6 +153,8 @@ function checkConsoleTampering(): SecurityWarning | null {
 function checkPrototypePollution(): SecurityWarning | null {
   try {
     // Check Array prototype for unexpected properties
+    // NOTE: This list of expected methods may need updates as JavaScript evolves.
+    // Based on ECMAScript 2023 specification. False positives may occur with polyfills.
     const arrayProtoKeys = Object.keys(Array.prototype);
     const suspiciousArrayKeys = arrayProtoKeys.filter(key => 
       !['length', 'constructor', 'concat', 'copyWithin', 'fill', 'find', 
@@ -280,6 +285,8 @@ function checkScriptInjection(): SecurityWarning | null {
 
       if (suspiciousInlinePatterns.some(p => inlineContent.includes(p))) {
         // Be careful not to flag our own code
+        // NOTE: This uses simple string matching as a heuristic. Not foolproof but provides basic protection.
+        // More robust solutions would require script integrity hashing or CSP nonces.
         if (!inlineContent.includes('beartec') && !inlineContent.includes('walletService')) {
           suspiciousScripts.push('Inline script with suspicious patterns');
         }

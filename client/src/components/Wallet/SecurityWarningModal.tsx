@@ -46,6 +46,20 @@ export default function SecurityWarningModal({
     }
   };
 
+  const formatWarningType = (type: string): string => {
+    // Convert security check type to user-friendly display name
+    const typeMap: Record<string, string> = {
+      'devtools': 'DevTools Detection',
+      'console_tampering': 'Console Tampering',
+      'prototype_pollution': 'Prototype Pollution',
+      'event_hijacking': 'Event Hijacking',
+      'script_injection': 'Script Injection',
+      'mutation_observer': 'Mutation Observer',
+      'crypto_tampering': 'Crypto Tampering',
+    };
+    return typeMap[type] || type.replace(/_/g, ' ');
+  };
+
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
@@ -129,7 +143,7 @@ export default function SecurityWarningModal({
                       <p className="text-sm opacity-80 mt-1">{warning.details}</p>
                     )}
                     <span className="text-xs uppercase mt-2 inline-block opacity-60">
-                      {warning.severity} severity • {warning.type.replace('_', ' ')}
+                      {warning.severity} severity • {formatWarningType(warning.type)}
                     </span>
                   </div>
                 </div>
@@ -147,7 +161,7 @@ export default function SecurityWarningModal({
                       <p className="text-sm opacity-80 mt-1">{warning.details}</p>
                     )}
                     <span className="text-xs uppercase mt-2 inline-block opacity-60">
-                      {warning.severity} severity • {warning.type.replace('_', ' ')}
+                      {warning.severity} severity • {formatWarningType(warning.type)}
                     </span>
                   </div>
                 </div>
