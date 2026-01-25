@@ -94,7 +94,7 @@ function rotateRpc(chain: Chain): void {
 }
 
 /**
- * Get current gas prices for chain with buffer and minimum enforcement
+ * Get current gas prices for chain using real network prices with buffer
  */
 async function getGasPrices(chain: Chain): Promise<{
   gasPrice?: bigint;
@@ -108,36 +108,46 @@ async function getGasPrices(chain: Chain): Promise<{
       const provider = getProvider(chain);
       const feeData = await provider.getFeeData();
       
-      // Process fee data (existing logic)
       if (chain === 'ethereum') {
-        let maxFeePerGas = feeData.maxFeePerGas || MIN_GAS_PRICES.ethereum.maxFeePerGas;
-        let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas;
+        // Use REAL network prices, not hardcoded minimums
+        let maxFeePerGas = feeData.maxFeePerGas;
+        let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
         
-        // Apply buffer
+        // If RPC returns null, use fallback
+        if (!maxFeePerGas) {
+          console.warn('⚠️ RPC returned null maxFeePerGas, using fallback');
+          maxFeePerGas = FALLBACK_GAS_PRICES.ethereum.maxFeePerGas;
+        }
+        if (!maxPriorityFeePerGas) {
+          console.warn('⚠️ RPC returned null maxPriorityFeePerGas, using fallback');
+          maxPriorityFeePerGas = FALLBACK_GAS_PRICES.ethereum.maxPriorityFeePerGas;
+        }
+        
+        // Apply 50% buffer for guaranteed fast inclusion
         maxFeePerGas = (maxFeePerGas * GAS_PRICE_BUFFER) / 100n;
         maxPriorityFeePerGas = (maxPriorityFeePerGas * GAS_PRICE_BUFFER) / 100n;
         
-        // Enforce minimums
-        if (maxFeePerGas < MIN_GAS_PRICES.ethereum.maxFeePerGas) {
-          maxFeePerGas = MIN_GAS_PRICES.ethereum.maxFeePerGas;
-        }
-        if (maxPriorityFeePerGas < MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas) {
-          maxPriorityFeePerGas = MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas;
+        // Ensure priority fee is not zero (some nodes require non-zero tip)
+        if (maxPriorityFeePerGas < MIN_PRIORITY_FEE) {
+          maxPriorityFeePerGas = MIN_PRIORITY_FEE;
         }
         
-        console.log(`✅ Gas prices fetched from RPC ${attempt + 1}`);
+        console.log(`✅ ETH Gas: maxFee=${ethers.formatUnits(maxFeePerGas, 'gwei')} Gwei, priority=${ethers.formatUnits(maxPriorityFeePerGas, 'gwei')} Gwei`);
         return { maxFeePerGas, maxPriorityFeePerGas };
       }
       
-      // BSC legacy
-      let gasPrice = feeData.gasPrice || MIN_GAS_PRICES.bsc.gasPrice;
-      gasPrice = (gasPrice * GAS_PRICE_BUFFER) / 100n;
+      // BSC - legacy gas price
+      let gasPrice = feeData.gasPrice;
       
-      if (gasPrice < MIN_GAS_PRICES.bsc.gasPrice) {
-        gasPrice = MIN_GAS_PRICES.bsc.gasPrice;
+      if (!gasPrice) {
+        console.warn('⚠️ RPC returned null gasPrice, using fallback');
+        gasPrice = FALLBACK_GAS_PRICES.bsc.gasPrice;
       }
       
-      console.log(`✅ Gas prices fetched from RPC ${attempt + 1}`);
+      // Apply 50% buffer
+      gasPrice = (gasPrice * GAS_PRICE_BUFFER) / 100n;
+      
+      console.log(`✅ BSC Gas: ${ethers.formatUnits(gasPrice, 'gwei')} Gwei`);
       return { gasPrice };
       
     } catch (error) {
@@ -146,7 +156,7 @@ async function getGasPrices(chain: Chain): Promise<{
       
       if (attempt === maxRetries - 1) {
         console.error('❌ All RPC endpoints failed');
-        throw new Error('Unable to estimate fees. Please check your connection and try again.');
+        throw new Error('Unable to fetch gas prices. Please check your connection and try again.');
       }
       
       // Brief delay before retry
@@ -154,7 +164,7 @@ async function getGasPrices(chain: Chain): Promise<{
     }
   }
   
-  throw new Error('Unable to estimate fees. Please check your connection and try again.');
+  throw new Error('Unable to fetch gas prices. Please check your connection and try again.');
 }
 
 /**
@@ -181,16 +191,19 @@ async function getTokenPrice(chain: Chain): Promise<number> {
 
 // Gas estimation buffer
 const GAS_LIMIT_BUFFER = 120n; // 20% buffer on gas limit
-const GAS_PRICE_BUFFER = 125n; // 25% buffer on gas price
+const GAS_PRICE_BUFFER = 150n; // 50% buffer on gas price
 
-// Minimum gas prices (safety net)
-const MIN_GAS_PRICES = {
+// Minimum priority fee (some nodes require non-zero tip)
+const MIN_PRIORITY_FEE = ethers.parseUnits('0.001', 'gwei');
+
+// Absolute minimum fallbacks (only used if RPC returns null/zero)
+const FALLBACK_GAS_PRICES = {
   ethereum: {
-    maxFeePerGas: ethers.parseUnits('5', 'gwei'),      // Min 5 Gwei
-    maxPriorityFeePerGas: ethers.parseUnits('1', 'gwei'), // Min 1 Gwei
+    maxFeePerGas: ethers.parseUnits('0.5', 'gwei'),      // Reasonable fallback
+    maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
   },
   bsc: {
-    gasPrice: ethers.parseUnits('3', 'gwei'), // Min 3 Gwei
+    gasPrice: ethers.parseUnits('1', 'gwei'),
   },
 };
 
