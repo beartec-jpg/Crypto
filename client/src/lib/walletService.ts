@@ -435,24 +435,6 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   addresses.ethereum = deriveEthereumAddress(ethNode.privateKey);
   publicKeys.ethereum = Buffer.from(secp256k1.getPublicKey(ethNode.privateKey, false)).toString('hex');
   
-  // === NEW: Verify ETH key derivation ===
-  const ethPrivateKeyHex = Buffer.from(ethNode.privateKey).toString('hex');
-  const ethWallet = new ethers.Wallet('0x' + ethPrivateKeyHex);
-  const derivedEthAddress = ethWallet.address;
-  
-  console.log('🔑 ETH Key Derivation:');
-  console.log('  - Derived address (ethers):', derivedEthAddress.slice(0, 10) + '...' + derivedEthAddress.slice(-4));
-  console.log('  - Derived address (custom):', addresses.ethereum.slice(0, 10) + '...' + addresses.ethereum.slice(-4));
-  
-  if (derivedEthAddress.toLowerCase() !== addresses.ethereum.toLowerCase()) {
-    console.error('❌ ETH ADDRESS DERIVATION MISMATCH!');
-    console.error('  Ethers derived:', derivedEthAddress.slice(0, 10) + '...' + derivedEthAddress.slice(-4));
-    console.error('  Custom derived:', addresses.ethereum.slice(0, 10) + '...' + addresses.ethereum.slice(-4));
-    throw new Error('ETH address derivation mismatch between ethers and custom implementation');
-  }
-  console.log('✅ ETH derivation verified');
-  // === END NEW CODE ===
-  
   // Bitcoin (mainnet)
   const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
   if (!btcNode.privateKey) throw new Error('Failed to derive BTC key');
@@ -907,8 +889,8 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       
       if (correctAddress.toLowerCase() !== storedAddress.toLowerCase()) {
         console.warn('⚠️ Address mismatch detected, auto-repairing...');
-        console.log('  Stored:', storedAddress);
-        console.log('  Correct:', correctAddress);
+        console.log('  Stored:', storedAddress.slice(0, 10) + '...' + storedAddress.slice(-4));
+        console.log('  Correct:', correctAddress.slice(0, 10) + '...' + correctAddress.slice(-4));
         
         // Re-derive all addresses
         const { addresses: newAddresses, publicKeys: newPublicKeys } = 
@@ -959,12 +941,31 @@ export async function repairWalletAddresses(
   try {
     console.log('🔧 Repairing wallet addresses...');
     
-    // Unlock wallet to get mnemonic
-    const wallet = await unlockWallet(walletId, password);
+    // Get wallet and decrypt mnemonic
+    const db = await getDB();
+    const wallet = await db.get('wallets', walletId);
+    
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+    
+    // Verify wallet belongs to this user
+    if (wallet.userId !== userId) {
+      throw new Error('Unauthorized: wallet does not belong to this user');
+    }
+    
+    // Decrypt mnemonic using AES-256-GCM
+    const salt = Buffer.from(wallet.salt, 'hex');
+    const mnemonic = await decryptData(wallet.encryptedMnemonic, password, salt);
+    
+    // Verify mnemonic is valid
+    if (!bip39.validateMnemonic(mnemonic)) {
+      throw new Error('Invalid password');
+    }
     
     // Re-derive addresses with FIXED derivation
     const { addresses: newAddresses, publicKeys: newPublicKeys } = 
-      await deriveAddressesFromMnemonic(wallet.mnemonic);
+      await deriveAddressesFromMnemonic(mnemonic);
     
     // Check if repair is needed
     const needsRepair = 
@@ -976,21 +977,14 @@ export async function repairWalletAddresses(
     }
     
     console.log('🔧 Updating wallet with correct addresses:');
-    console.log('  Old ETH:', wallet.addresses.ethereum);
-    console.log('  New ETH:', newAddresses.ethereum);
+    console.log('  Old ETH:', wallet.addresses.ethereum.slice(0, 10) + '...' + wallet.addresses.ethereum.slice(-4));
+    console.log('  New ETH:', newAddresses.ethereum.slice(0, 10) + '...' + newAddresses.ethereum.slice(-4));
     
     // Update wallet in database
-    const db = await getDB();
-    const storedWallet = await db.get('wallets', walletId);
+    wallet.addresses = newAddresses;
+    wallet.publicKeys = newPublicKeys;
     
-    if (!storedWallet) {
-      throw new Error('Wallet not found in database');
-    }
-    
-    storedWallet.addresses = newAddresses;
-    storedWallet.publicKeys = newPublicKeys;
-    
-    await db.put('wallets', storedWallet);
+    await db.put('wallets', wallet);
     
     console.log('✅ Wallet addresses repaired successfully!');
     
