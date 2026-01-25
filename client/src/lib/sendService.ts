@@ -128,9 +128,8 @@ async function getGasPrices(chain: Chain): Promise<{
         maxPriorityFeePerGas = (maxPriorityFeePerGas * GAS_PRICE_BUFFER) / 100n;
         
         // Ensure priority fee is not zero (some nodes require non-zero tip)
-        const minPriority = ethers.parseUnits('0.001', 'gwei'); // 0.001 Gwei minimum
-        if (maxPriorityFeePerGas < minPriority) {
-          maxPriorityFeePerGas = minPriority;
+        if (maxPriorityFeePerGas < MIN_PRIORITY_FEE) {
+          maxPriorityFeePerGas = MIN_PRIORITY_FEE;
         }
         
         console.log(`✅ ETH Gas: maxFee=${ethers.formatUnits(maxFeePerGas, 'gwei')} Gwei, priority=${ethers.formatUnits(maxPriorityFeePerGas, 'gwei')} Gwei`);
@@ -194,10 +193,13 @@ async function getTokenPrice(chain: Chain): Promise<number> {
 const GAS_LIMIT_BUFFER = 120n; // 20% buffer on gas limit
 const GAS_PRICE_BUFFER = 150n; // 50% buffer on gas price
 
+// Minimum priority fee (some nodes require non-zero tip)
+const MIN_PRIORITY_FEE = ethers.parseUnits('0.001', 'gwei');
+
 // Absolute minimum fallbacks (only used if RPC returns null/zero)
 const FALLBACK_GAS_PRICES = {
   ethereum: {
-    maxFeePerGas: ethers.parseUnits('0.5', 'gwei'),      // Reasonable 2026 fallback
+    maxFeePerGas: ethers.parseUnits('0.5', 'gwei'),      // Reasonable fallback
     maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
   },
   bsc: {
