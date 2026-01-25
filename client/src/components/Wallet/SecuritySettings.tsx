@@ -2,7 +2,7 @@
 // Security tier management UI - Tier 1/2/3 selection and PIN setup
 
 import { useState, useEffect } from 'react';
-import { Shield, Lock, AlertTriangle, Check, ChevronRight } from 'lucide-react';
+import { Shield, Lock, AlertTriangle, Check, ChevronRight, Search } from 'lucide-react';
 import {
   getSecuritySettings,
   changeSecurityTier,
@@ -12,6 +12,8 @@ import {
 } from '@/lib/securityService';
 import { registerPasskey, isPasskeyRegistered } from '@/lib/passkeyService';
 import { unlockWallet } from '@/lib/walletService';
+import { runSecurityScan, getSecurityLevel, type SecurityScanResult } from '@/lib/securityScanner';
+import SecurityWarningModal from './SecurityWarningModal';
 
 interface SecuritySettingsProps {
   userId: string;
@@ -32,6 +34,9 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
   const [showDowngradeConfirm, setShowDowngradeConfirm] = useState(false);
   const [pendingDowngradeTier, setPendingDowngradeTier] = useState<SecurityTier | null>(null);
   const [resetPassword, setResetPassword] = useState('');
+  const [scanResult, setScanResult] = useState<SecurityScanResult | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [showScanModal, setShowScanModal] = useState(false);
 
   useEffect(() => {
     const settings = getSecuritySettings(userId);
@@ -233,6 +238,32 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
     }
   };
 
+  const handleRunScan = async () => {
+    setIsScanning(true);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      const result = await runSecurityScan();
+      setScanResult(result);
+      
+      // Show modal with scan results
+      if (!result.safe || result.warnings.length > 0) {
+        setShowScanModal(true);
+      } else {
+        setSuccess('✅ Security scan passed - no threats detected');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to run security scan');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleScanModalClose = () => {
+    setShowScanModal(false);
+  };
+
   const renderTierCard = (tier: SecurityTier) => {
     const desc = getTierDescription(tier);
     const isActive = currentTier === tier;
@@ -360,6 +391,74 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
         {renderTierCard('standard')}
         {renderTierCard('enhanced')}
         {renderTierCard('maximum')}
+      </div>
+
+      {/* Security Environment Scan */}
+      <div className="pt-6 border-t border-gray-700">
+        <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+          <Search className="w-5 h-5" />
+          Security Environment Scan
+        </h3>
+        <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
+          <p className="text-sm text-gray-400 mb-4">
+            Run a comprehensive security scan to detect potential threats like malicious browser 
+            extensions, DevTools monitoring, or compromised cryptographic APIs.
+          </p>
+          
+          <button
+            onClick={handleRunScan}
+            disabled={isScanning}
+            className="w-full px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          >
+            {isScanning ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Scanning Environment...
+              </>
+            ) : (
+              <>
+                <Search className="w-5 h-5" />
+                Run Security Scan
+              </>
+            )}
+          </button>
+
+          {scanResult && !showScanModal && (
+            <div className={`mt-4 p-3 rounded-lg border ${
+              scanResult.safe && scanResult.warnings.length === 0
+                ? 'bg-emerald-900/20 border-emerald-700/50'
+                : scanResult.blockers.length > 0
+                ? 'bg-red-900/20 border-red-700/50'
+                : 'bg-amber-900/20 border-amber-700/50'
+            }`}>
+              <p className={`text-sm font-medium ${
+                scanResult.safe && scanResult.warnings.length === 0
+                  ? 'text-emerald-400'
+                  : scanResult.blockers.length > 0
+                  ? 'text-red-400'
+                  : 'text-amber-400'
+              }`}>
+                {scanResult.safe && scanResult.warnings.length === 0 && (
+                  <>✅ Environment Secure - No threats detected</>
+                )}
+                {scanResult.blockers.length > 0 && (
+                  <>🚫 Critical Issues - {scanResult.blockers.length} blocker(s) found</>
+                )}
+                {scanResult.warnings.length > 0 && scanResult.blockers.length === 0 && (
+                  <>⚠️ Warnings - {scanResult.warnings.length} potential issue(s) found</>
+                )}
+              </p>
+              {(scanResult.blockers.length > 0 || scanResult.warnings.length > 0) && (
+                <button
+                  onClick={() => setShowScanModal(true)}
+                  className="mt-2 text-xs text-gray-400 hover:text-gray-300 underline"
+                >
+                  View Details
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Emergency Reset */}
@@ -595,6 +694,17 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Security Scan Modal */}
+      {showScanModal && scanResult && (
+        <SecurityWarningModal
+          result={scanResult}
+          onProceed={handleScanModalClose}
+          onCancel={handleScanModalClose}
+          action="use this wallet"
+          allowProceedWithWarnings={true}
+        />
       )}
     </div>
   );
