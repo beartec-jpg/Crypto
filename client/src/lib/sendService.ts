@@ -40,14 +40,26 @@ export interface TransactionStatus {
 // Primary and backup RPC endpoints
 const RPC_ENDPOINTS = {
   ethereum: [
-    'https://rpc.ankr.com/eth',        // More reliable, put first
-    'https://ethereum.publicnode.com',
-    'https://eth.llamarpc.com',        // Was first, now backup
+    // Primary - most reliable free endpoints
+    'https://eth.drpc.org',
+    'https://rpc.ankr.com/eth',
+    'https://ethereum-rpc.publicnode.com',
+    'https://1rpc.io/eth',
+    'https://eth.meowrpc.com',
+    // Backup
+    'https://eth.llamarpc.com',
+    'https://cloudflare-eth.com',
   ],
   bsc: [
+    // Primary
     'https://bsc-dataseed.binance.org',
+    'https://bsc-dataseed1.binance.org',
+    'https://bsc-dataseed2.binance.org',
+    'https://bsc.drpc.org',
+    'https://bsc-rpc.publicnode.com',
+    // Backup
     'https://bsc-dataseed1.defibit.io',
-    'https://bsc.publicnode.com',
+    'https://bsc.meowrpc.com',
   ],
 };
 
@@ -65,6 +77,10 @@ let currentRpcIndex: Record<Chain, number> = {
   xrp: 0,
 };
 
+// Cache providers to avoid creating too many connections
+const providerCache: Map<string, { provider: ethers.JsonRpcProvider; timestamp: number }> = new Map();
+const PROVIDER_CACHE_TTL = 30000; // 30 seconds
+
 // Required confirmations
 const REQUIRED_CONFIRMATIONS = {
   ethereum: 6,
@@ -72,15 +88,37 @@ const REQUIRED_CONFIRMATIONS = {
 };
 
 /**
- * Get provider for chain with automatic failover
+ * Get provider for chain with caching and automatic refresh
  */
 function getProvider(chain: Chain): ethers.JsonRpcProvider {
   if (chain === 'xrp') {
     throw new Error('XRP does not use JSON-RPC provider');
   }
+  
   const endpoints = RPC_ENDPOINTS[chain];
   const index = currentRpcIndex[chain];
-  return new ethers.JsonRpcProvider(endpoints[index]);
+  const endpoint = endpoints[index];
+  const cacheKey = `${chain}-${index}`;
+  
+  const cached = providerCache.get(cacheKey);
+  const now = Date.now();
+  
+  // Return cached provider if still fresh
+  if (cached && (now - cached.timestamp) < PROVIDER_CACHE_TTL) {
+    return cached.provider;
+  }
+  
+  // Create new provider
+  const provider = new ethers.JsonRpcProvider(endpoint, undefined, {
+    staticNetwork: chain === 'ethereum' ? ethers.Network.from(1) : ethers.Network.from(56),
+    batchMaxCount: 1, // Disable batching for more reliable individual requests
+  });
+  
+  // Cache it
+  providerCache.set(cacheKey, { provider, timestamp: now });
+  
+  console.log(`🔌 Created provider for ${chain}: ${endpoint}`);
+  return provider;
 }
 
 /**
@@ -88,9 +126,64 @@ function getProvider(chain: Chain): ethers.JsonRpcProvider {
  */
 function rotateRpc(chain: Chain): void {
   if (chain === 'xrp') return;
+  
   const endpoints = RPC_ENDPOINTS[chain];
+  const oldIndex = currentRpcIndex[chain];
   currentRpcIndex[chain] = (currentRpcIndex[chain] + 1) % endpoints.length;
-  console.log(`Rotated to RPC: ${endpoints[currentRpcIndex[chain]]}`);
+  
+  // Clear the cache for the old provider
+  providerCache.delete(`${chain}-${oldIndex}`);
+  
+  console.log(`🔄 Rotated RPC for ${chain}: ${endpoints[oldIndex]} → ${endpoints[currentRpcIndex[chain]]}`);
+}
+
+/**
+ * Clear provider cache for a chain (useful after rotation)
+ */
+function clearProviderCache(chain: Chain): void {
+  const endpoints = RPC_ENDPOINTS[chain];
+  for (let i = 0; i < endpoints.length; i++) {
+    providerCache.delete(`${chain}-${i}`);
+  }
+}
+
+/**
+ * Check if an RPC endpoint is healthy by fetching the latest block
+ */
+async function checkRpcHealth(chain: Chain): Promise<boolean> {
+  try {
+    const provider = getProvider(chain);
+    const blockNumber = await Promise.race([
+      provider.getBlockNumber(),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('RPC timeout')), 5000)
+      )
+    ]);
+    console.log(`✅ RPC healthy for ${chain}, block: ${blockNumber}`);
+    return true;
+  } catch (error) {
+    console.warn(`⚠️ RPC unhealthy for ${chain}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Find a healthy RPC endpoint for the chain
+ */
+async function findHealthyRpc(chain: Chain): Promise<void> {
+  const endpoints = RPC_ENDPOINTS[chain];
+  
+  for (let i = 0; i < endpoints.length; i++) {
+    currentRpcIndex[chain] = i;
+    console.log(`🔍 Testing RPC ${i + 1}/${endpoints.length}: ${endpoints[i]}`);
+    
+    if (await checkRpcHealth(chain)) {
+      console.log(`✅ Using RPC: ${endpoints[i]}`);
+      return;
+    }
+  }
+  
+  throw new Error(`No healthy RPC endpoints available for ${chain}. Please check your internet connection.`);
 }
 
 /**
@@ -228,6 +321,9 @@ export async function estimateGas(
   console.log(`  - From: ${from}`);
   console.log(`  - To: ${to}`);
   console.log(`  - Value: ${value} ${chain === 'ethereum' ? 'ETH' : 'BNB'}`);
+  
+  // Find healthy RPC first
+  await findHealthyRpc(chain);
   
   const maxRetries = RPC_ENDPOINTS[chain]?.length || 1;
   
@@ -399,11 +495,20 @@ export async function broadcastTransaction(
   chain: Chain,
   signedTx: string
 ): Promise<TransactionBroadcastResult> {
+  // First, find a healthy RPC
+  console.log(`🔍 Finding healthy RPC for ${chain}...`);
+  await findHealthyRpc(chain);
+  
   const maxRetries = RPC_ENDPOINTS[chain]?.length || 1;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const provider = getProvider(chain);
+      
+      // Verify we can reach the network before broadcasting
+      const blockNumber = await provider.getBlockNumber();
+      console.log(`📡 Broadcasting on ${chain} (block ${blockNumber})...`);
+      
       const txResponse = await provider.broadcastTransaction(signedTx);
       
       console.log(`📡 Transaction broadcast: ${txResponse.hash}`);
