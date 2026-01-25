@@ -1,7 +1,7 @@
 // client/src/components/Wallet/SendForm.tsx
 // Secure send form with transaction preview and passkey confirmation
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Send, AlertCircle } from 'lucide-react';
 import { 
   securityManager, 
@@ -20,11 +20,25 @@ import {
   SUPPORTED_SEND_CHAINS,
 } from '@/lib/sendService';
 import { signTransaction } from '@/lib/walletService';
+import { getPrice, formatUsd } from '@/lib/priceService';
+import { fetchChainBalance } from '@/lib/balanceService';
+import { 
+  getXrpAccountInfo,
+  checkDestinationExists,
+  buildXrpTransaction,
+  signXrpTransaction,
+  broadcastXrpTransaction,
+  estimateXrpFee,
+} from '@/lib/xrpSendService';
 import TransactionPreviewModal from './TransactionPreviewModal';
 import PinEntryModal from './PinEntryModal';
 import SecurityWarningModal from './SecurityWarningModal';
 import PasswordModal from './PasswordModal';
 import TransactionSuccessModal from './TransactionSuccessModal';
+import BalanceDisplay from './BalanceDisplay';
+import DestinationTagInput from './DestinationTagInput';
+import MemoInput from './MemoInput';
+import NewAccountWarningModal from './NewAccountWarningModal';
 import type { Chain } from '@/lib/balanceService';
 import type { usePendingTransactions } from '@/hooks/usePendingTransactions';
 
@@ -47,18 +61,25 @@ export default function SendForm({
 }: SendFormProps) {
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
+  const [destinationTag, setDestinationTag] = useState('');
+  const [memo, setMemo] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showNewAccountWarning, setShowNewAccountWarning] = useState(false);
   const [securityScanResult, setSecurityScanResult] = useState<SecurityScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001');
   const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [transactionStep, setTransactionStep] = useState<'estimating' | 'signing' | 'broadcasting' | null>(null);
+  const [transactionStep, setTransactionStep] = useState<'estimating' | 'signing' | 'broadcasting' | 'verifying' | null>(null);
+  const [balance, setBalance] = useState<string>('0');
+  const [balanceUsd, setBalanceUsd] = useState<number>(0);
+  const [xrpReserved, setXrpReserved] = useState<string>('0');
+  const [xrpAvailable, setXrpAvailable] = useState<string>('0');
   const [successData, setSuccessData] = useState<{
     hash: string;
     amount: string;
@@ -70,6 +91,64 @@ export default function SendForm({
 
   // Check if wallet is locked
   const isLocked = securityManager.isWalletLocked();
+
+  // Fetch balance on mount and when chain changes
+  useEffect(() => {
+    async function fetchBalance() {
+      if (sovereignWallet?.addresses?.[selectedChain]) {
+        try {
+          const chainBalance = await fetchChainBalance(
+            selectedChain,
+            sovereignWallet.addresses[selectedChain]
+          );
+          setBalance(chainBalance.balance);
+          
+          // Get price and calculate USD value
+          const price = await getPrice(selectedChain);
+          setBalanceUsd(parseFloat(chainBalance.balance) * price);
+          
+          // For XRP, fetch reserve info
+          if (selectedChain === 'xrp') {
+            try {
+              const accountInfo = await getXrpAccountInfo(
+                sovereignWallet.addresses[selectedChain]
+              );
+              setXrpReserved(accountInfo.reserves.total.toString());
+              setXrpAvailable(accountInfo.available);
+              
+              // Also fetch estimated fee
+              const fee = await estimateXrpFee();
+              setEstimatedFee(fee);
+            } catch (err) {
+              console.warn('Failed to fetch XRP account info:', err);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch balance:', err);
+        }
+      }
+    }
+    fetchBalance();
+  }, [selectedChain, sovereignWallet]);
+
+  const handleMaxClick = () => {
+    // Calculate max sendable (balance - estimated fee - small buffer)
+    let maxAmount: number;
+    
+    if (selectedChain === 'xrp') {
+      // For XRP, use available balance minus fee
+      maxAmount = parseFloat(xrpAvailable) - parseFloat(estimatedFee) - 0.0001;
+    } else {
+      // For ETH/BSC, use balance minus fee
+      maxAmount = parseFloat(balance) - parseFloat(estimatedFee) - 0.0001;
+    }
+    
+    if (maxAmount > 0) {
+      setAmount(maxAmount.toFixed(6));
+    } else {
+      setError('Insufficient balance for transaction');
+    }
+  };
 
   const handleSendClick = async () => {
     setError(null);
@@ -83,6 +162,24 @@ export default function SendForm({
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter a valid amount');
       return;
+    }
+    
+    // For XRP, check if destination exists and show warning if needed
+    if (selectedChain === 'xrp') {
+      try {
+        const exists = await checkDestinationExists(recipient);
+        if (!exists && parseFloat(amount) < 10) {
+          setError('New XRP addresses require a minimum of 10 XRP to activate');
+          return;
+        }
+        if (!exists) {
+          setShowNewAccountWarning(true);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to check destination:', err);
+        // Continue anyway
+      }
     }
 
     // Check if wallet is locked
@@ -174,6 +271,39 @@ export default function SendForm({
     setShowPinModal(false);
     setError('PIN authentication cancelled');
   };
+  
+  const handleNewAccountProceed = () => {
+    setShowNewAccountWarning(false);
+    // Continue with the transaction
+    proceedToAuth();
+  };
+  
+  const handleNewAccountCancel = () => {
+    setShowNewAccountWarning(false);
+  };
+  
+  const proceedToAuth = () => {
+    // Get security requirements for send action
+    const requirements = getSecurityRequirements(userId, 'send');
+
+    // Check if PIN is required
+    if (requirements.includes('pin')) {
+      setShowPinModal(true);
+      return;
+    }
+
+    // Check if passkey is required
+    if (requirements.includes('passkey')) {
+      if (!isPasskeyAuthenticated) {
+        setError('Passkey authentication required');
+        onRequestPasskey();
+        return;
+      }
+    }
+
+    // Show transaction preview modal
+    setShowPreview(true);
+  };
 
   const handleConfirmTransaction = async () => {
     // Show password modal for signing
@@ -186,9 +316,69 @@ export default function SendForm({
     setIsProcessing(true);
     
     try {
-      // Only proceed if we support ETH or BSC
+      const fromAddress = sovereignWallet?.addresses?.[selectedChain];
+      if (!fromAddress) {
+        throw new Error('Wallet address not found. Please try again.');
+      }
+      
+      // Handle XRP separately
+      if (selectedChain === 'xrp') {
+        setTransactionStep('estimating');
+        const fee = await estimateXrpFee();
+        setEstimatedFee(fee);
+        
+        const price = await getPrice('xrp');
+        setEstimatedFeeUsd(parseFloat(fee) * price);
+        
+        // Build XRP transaction
+        setTransactionStep('signing');
+        const destinationTagNum = destinationTag ? parseInt(destinationTag) : undefined;
+        const tx = await buildXrpTransaction(fromAddress, recipient, amount, destinationTagNum);
+        
+        // Get wallet ID and private key (seed for XRP)
+        const walletId = localStorage.getItem(`wallet_id_${userId}`);
+        if (!walletId) {
+          throw new Error('Wallet ID not found. Please try again.');
+        }
+        
+        // For XRP, we need to get the seed from wallet service
+        // This is a simplified version - in production, you'd need proper key derivation
+        const { unlockWallet } = await import('@/lib/walletService');
+        const wallet = await unlockWallet(walletId, password);
+        const xrpSeed = wallet.privateKeys.xrp;
+        
+        const signedTx = signXrpTransaction(tx, xrpSeed);
+        
+        // Broadcast
+        setTransactionStep('broadcasting');
+        const result = await broadcastXrpTransaction(signedTx);
+        
+        // Success
+        setShowPasswordModal(false);
+        setSuccessData({
+          hash: result.hash,
+          amount,
+          to: recipient,
+          fee,
+          feeUsd: parseFloat(fee) * price,
+          explorerUrl: result.explorerUrl,
+        });
+        setShowSuccessModal(true);
+        
+        // Clear form
+        setRecipient('');
+        setAmount('');
+        setDestinationTag('');
+        setError(null);
+        
+        setIsProcessing(false);
+        setTransactionStep(null);
+        return;
+      }
+
+      // ETH/BSC flow (existing logic)
       if (!SUPPORTED_SEND_CHAINS.includes(selectedChain as any)) {
-        throw new Error(`Sending ${selectedChain} is not yet supported. Only ETH and BNB are currently supported.`);
+        throw new Error(`Sending ${selectedChain} is not yet supported. Only ETH, BNB, and XRP are currently supported.`);
       }
 
       const fromAddress = sovereignWallet?.addresses?.[selectedChain];
@@ -236,9 +426,12 @@ export default function SendForm({
         isPasskeyAuthenticated
       );
       
-      // Step 6: Broadcast
+      // Step 6: Broadcast and verify
       setTransactionStep('broadcasting');
       const result = await broadcastTransaction(selectedChain, signedTx);
+      
+      // Verification step is now included in broadcastTransaction
+      console.log('Transaction verified and broadcast successfully');
       
       // Step 7: Add to pending transactions
       if (onAddPendingTransaction) {
@@ -370,6 +563,15 @@ export default function SendForm({
           </div>
         )}
 
+        {/* Balance Display */}
+        <BalanceDisplay
+          chain={selectedChain}
+          balance={balance}
+          balanceUsd={balanceUsd}
+          reserved={selectedChain === 'xrp' ? xrpReserved : undefined}
+          available={selectedChain === 'xrp' ? xrpAvailable : undefined}
+        />
+
         {/* Recipient Address */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -391,9 +593,17 @@ export default function SendForm({
 
         {/* Amount */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Amount
-          </label>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-gray-300">
+              Amount
+            </label>
+            <button
+              onClick={handleMaxClick}
+              className="px-2 py-1 text-xs bg-emerald-600/20 text-emerald-400 rounded hover:bg-emerald-600/30 transition-colors font-medium"
+            >
+              MAX
+            </button>
+          </div>
           <div className="relative">
             <input
               type="number"
@@ -408,7 +618,28 @@ export default function SendForm({
               {getChainSymbol(selectedChain)}
             </span>
           </div>
+          {amount && parseFloat(amount) > 0 && (
+            <p className="mt-1 text-sm text-gray-400">
+              ≈ ${(parseFloat(amount) * (balanceUsd / parseFloat(balance || '1'))).toFixed(2)}
+            </p>
+          )}
         </div>
+
+        {/* XRP Destination Tag */}
+        {selectedChain === 'xrp' && (
+          <DestinationTagInput
+            value={destinationTag}
+            onChange={setDestinationTag}
+          />
+        )}
+
+        {/* BSC Memo */}
+        {selectedChain === 'bsc' && (
+          <MemoInput
+            value={memo}
+            onChange={setMemo}
+          />
+        )}
 
         {/* Estimated Fee */}
         <div className="bg-gray-900/50 rounded-xl p-4">
@@ -416,12 +647,22 @@ export default function SendForm({
             <span className="text-gray-400">Estimated Network Fee</span>
             <span className="text-gray-300">
               {estimatedFee} {getChainSymbol(selectedChain)}
+              {estimatedFeeUsd > 0 && (
+                <span className="text-gray-500 ml-1">
+                  ≈ {formatUsd(estimatedFeeUsd)}
+                </span>
+              )}
             </span>
           </div>
           <div className="flex justify-between font-medium">
             <span className="text-gray-300">Total</span>
             <span className="text-emerald-400">
               {amount ? (parseFloat(amount) + parseFloat(estimatedFee)).toFixed(6) : '0.000000'} {getChainSymbol(selectedChain)}
+              {amount && balanceUsd > 0 && (
+                <span className="text-gray-500 ml-1 font-normal">
+                  ≈ {formatUsd((parseFloat(amount) + parseFloat(estimatedFee)) * (balanceUsd / parseFloat(balance || '1')))}
+                </span>
+              )}
             </span>
           </div>
         </div>
@@ -452,6 +693,15 @@ export default function SendForm({
           onSuccess={handlePinSuccess}
           title="Enter PIN to Send"
           description="Verify your PIN to authorize this transaction"
+        />
+      )}
+
+      {/* New Account Warning Modal */}
+      {showNewAccountWarning && (
+        <NewAccountWarningModal
+          destinationAddress={recipient}
+          onConfirm={handleNewAccountProceed}
+          onCancel={handleNewAccountCancel}
         />
       )}
 
@@ -502,7 +752,8 @@ export default function SendForm({
             <h3 className="text-xl font-semibold mb-2">
               {transactionStep === 'estimating' && 'Estimating Fees...'}
               {transactionStep === 'signing' && 'Signing Transaction...'}
-              {transactionStep === 'broadcasting' && 'Broadcasting...'}
+              {transactionStep === 'broadcasting' && 'Broadcasting & Verifying...'}
+              {transactionStep === 'verifying' && 'Verifying...'}
             </h3>
             <p className="text-gray-400">Please wait</p>
           </div>
