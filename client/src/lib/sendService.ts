@@ -196,9 +196,10 @@ async function findHealthyRpc(chain: Chain): Promise<void> {
   }
   
   const endpoints = RPC_ENDPOINTS[chain];
+  const originalIndex = currentRpcIndex[chain];
   
   for (let i = 0; i < endpoints.length; i++) {
-    const originalIndex = currentRpcIndex[chain];
+    let healthCheckSucceeded = false;
     
     try {
       // Update to test index
@@ -210,16 +211,16 @@ async function findHealthyRpc(chain: Chain): Promise<void> {
       
       if (await checkRpcHealth(chain)) {
         console.log(`✅ Using RPC: ${endpoints[i]}`);
+        healthCheckSucceeded = true;
         return; // Success - keep the new index
       }
-      
-      // Restore original index after failed test
-      currentRpcIndex[chain] = originalIndex;
     } catch (error) {
-      // Restore original index in case of exception
-      currentRpcIndex[chain] = originalIndex;
       console.warn(`⚠️ Error testing RPC ${i + 1}:`, error);
-      // Continue to next RPC
+    } finally {
+      // Restore original index if health check failed
+      if (!healthCheckSucceeded) {
+        currentRpcIndex[chain] = originalIndex;
+      }
     }
   }
   
