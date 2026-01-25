@@ -860,7 +860,7 @@ function PasswordsContent() {
           <li className="flex items-start gap-2">
             <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
-              <strong>Include numbers and symbols</strong> - !@#$%^&*()_+-={}[]|;:,.<>?
+              <strong>Include numbers and symbols</strong> {`- !@#$%^&*()_+-={}[]|;:,.<>?`}
             </div>
           </li>
           <li className="flex items-start gap-2">
