@@ -11,9 +11,10 @@ export default defineConfig({
   plugins: [
     react(),
     nodePolyfills({
-      include: ['buffer'],
+      include: ['buffer', 'crypto', 'stream', 'util'],
       globals: {
         Buffer: true,
+        process: true,
       },
     }),
   ],
@@ -41,7 +42,22 @@ export default defineConfig({
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react/jsx-runtime'],
           'router': ['wouter'],
-          'web3-vendor': ['wagmi', 'viem'],
+          'crypto-vendor': [
+            '@noble/curves',
+            '@noble/hashes',
+            '@noble/post-quantum',
+            'bip39',
+            'bitcoinjs-lib',
+            'tiny-secp256k1',
+          ],
+          'web3-vendor': [
+            'wagmi',
+            'viem',
+            'ethers',
+            '@solana/web3.js',
+            '@solana/spl-token',
+            'xrpl',
+          ],
           'ui-vendor': [
             '@radix-ui/react-dialog',
             '@radix-ui/react-popover',
@@ -51,10 +67,15 @@ export default defineConfig({
             '@radix-ui/react-toast',
             '@radix-ui/react-tooltip',
             '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-scroll-area',
+            '@radix-ui/react-separator',
+            '@radix-ui/react-slider',
+            '@radix-ui/react-slot',
           ],
           'd3-vendor': ['d3'],
           'query-vendor': ['@tanstack/react-query', 'react-hook-form'],
-          'icons': ['lucide-react'],
+          'icons': ['lucide-react', 'react-icons'],
+          'clerk': ['@clerk/clerk-react'],
         },
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',
@@ -66,5 +87,13 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
+  },
+
+  optimizeDeps: {
+    include: [
+      '@noble/curves',
+      '@noble/hashes',
+      'buffer',
+    ],
   },
 })
