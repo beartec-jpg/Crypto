@@ -304,12 +304,13 @@ async function decryptData(encryptedHex: string, password: string, salt: Uint8Ar
 
 /**
  * Derive Ethereum/BSC address from private key
+ * Uses ethers.js to ensure correct Keccak-256 hashing
  */
 function deriveEthereumAddress(privateKeyBytes: Uint8Array): string {
-  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
-  const publicKeyNoPrefix = publicKeyBytes.slice(1);
-  const hash = sha256(publicKeyNoPrefix);
-  return ethers.getAddress('0x' + Buffer.from(hash.slice(-20)).toString('hex'));
+  // Use ethers.js which correctly implements Keccak-256 hashing
+  const privateKeyHex = Buffer.from(privateKeyBytes).toString('hex');
+  const wallet = new ethers.Wallet('0x' + privateKeyHex);
+  return wallet.address;
 }
 
 /**
@@ -433,24 +434,6 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   if (!ethNode.privateKey) throw new Error('Failed to derive ETH key');
   addresses.ethereum = deriveEthereumAddress(ethNode.privateKey);
   publicKeys.ethereum = Buffer.from(secp256k1.getPublicKey(ethNode.privateKey, false)).toString('hex');
-  
-  // === NEW: Verify ETH key derivation ===
-  const ethPrivateKeyHex = Buffer.from(ethNode.privateKey).toString('hex');
-  const ethWallet = new ethers.Wallet('0x' + ethPrivateKeyHex);
-  const derivedEthAddress = ethWallet.address;
-  
-  console.log('🔑 ETH Key Derivation:');
-  console.log('  - Derived address (ethers):', derivedEthAddress.slice(0, 10) + '...' + derivedEthAddress.slice(-4));
-  console.log('  - Derived address (custom):', addresses.ethereum.slice(0, 10) + '...' + addresses.ethereum.slice(-4));
-  
-  if (derivedEthAddress.toLowerCase() !== addresses.ethereum.toLowerCase()) {
-    console.error('❌ ETH ADDRESS DERIVATION MISMATCH!');
-    console.error('  Ethers derived:', derivedEthAddress.slice(0, 10) + '...' + derivedEthAddress.slice(-4));
-    console.error('  Custom derived:', addresses.ethereum.slice(0, 10) + '...' + addresses.ethereum.slice(-4));
-    throw new Error('ETH address derivation mismatch between ethers and custom implementation');
-  }
-  console.log('✅ ETH derivation verified');
-  // === END NEW CODE ===
   
   // Bitcoin (mainnet)
   const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
@@ -899,6 +882,30 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const solNode = derivePath(root, DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
 
+    // === AUTO-REPAIR: Detect and fix address mismatch ===
+    if (ethNode.privateKey) {
+      const correctAddress = deriveEthereumAddress(ethNode.privateKey);
+      const storedAddress = wallet.addresses.ethereum;
+      
+      if (correctAddress.toLowerCase() !== storedAddress.toLowerCase()) {
+        console.warn('⚠️ Address mismatch detected, auto-repairing...');
+        console.log('  Stored:', storedAddress.slice(0, 10) + '...' + storedAddress.slice(-4));
+        console.log('  Correct:', correctAddress.slice(0, 10) + '...' + correctAddress.slice(-4));
+        
+        // Re-derive all addresses
+        const { addresses: newAddresses, publicKeys: newPublicKeys } = 
+          await deriveAddressesFromMnemonic(mnemonic);
+        
+        // Update in database
+        wallet.addresses = newAddresses;
+        wallet.publicKeys = newPublicKeys;
+        await db.put('wallets', wallet);
+        
+        console.log('✅ Wallet addresses auto-repaired!');
+      }
+    }
+    // === END AUTO-REPAIR ===
+
     // Security: Wallet unlocked, keys in memory (5s cache timeout)
 
     return {
@@ -919,6 +926,71 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     console.error('❌ Failed to unlock wallet:', error);
     recordFailedUnlockAttempt(walletId);
     throw new Error('Failed to unlock wallet. Check your password.');
+  }
+}
+
+/**
+ * Repair wallet with incorrect ETH address derivation
+ * This fixes wallets created with the SHA-256 bug
+ */
+export async function repairWalletAddresses(
+  walletId: string,
+  password: string,
+  userId: string
+): Promise<void> {
+  try {
+    console.log('🔧 Repairing wallet addresses...');
+    
+    // Get wallet and decrypt mnemonic
+    const db = await getDB();
+    const wallet = await db.get('wallets', walletId);
+    
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+    
+    // Verify wallet belongs to this user
+    if (wallet.userId !== userId) {
+      throw new Error('Unauthorized: wallet does not belong to this user');
+    }
+    
+    // Decrypt mnemonic using AES-256-GCM
+    const salt = Buffer.from(wallet.salt, 'hex');
+    const mnemonic = await decryptData(wallet.encryptedMnemonic, password, salt);
+    
+    // Verify mnemonic is valid
+    if (!bip39.validateMnemonic(mnemonic)) {
+      throw new Error('Invalid password');
+    }
+    
+    // Re-derive addresses with FIXED derivation
+    const { addresses: newAddresses, publicKeys: newPublicKeys } = 
+      await deriveAddressesFromMnemonic(mnemonic);
+    
+    // Check if repair is needed
+    const needsRepair = 
+      wallet.addresses.ethereum.toLowerCase() !== newAddresses.ethereum.toLowerCase();
+    
+    if (!needsRepair) {
+      console.log('✅ Wallet addresses are already correct');
+      return;
+    }
+    
+    console.log('🔧 Updating wallet with correct addresses:');
+    console.log('  Old ETH:', wallet.addresses.ethereum.slice(0, 10) + '...' + wallet.addresses.ethereum.slice(-4));
+    console.log('  New ETH:', newAddresses.ethereum.slice(0, 10) + '...' + newAddresses.ethereum.slice(-4));
+    
+    // Update wallet in database
+    wallet.addresses = newAddresses;
+    wallet.publicKeys = newPublicKeys;
+    
+    await db.put('wallets', wallet);
+    
+    console.log('✅ Wallet addresses repaired successfully!');
+    
+  } catch (error) {
+    console.error('❌ Failed to repair wallet:', error);
+    throw error;
   }
 }
 
