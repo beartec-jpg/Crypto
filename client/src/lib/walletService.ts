@@ -1008,8 +1008,8 @@ export async function signTransaction(
       throw new Error(`No private key found for chain: ${chain}`);
     }
     
-    // Step 4: Cache key temporarily (5 seconds)
-    cachePrivateKey(walletId, chain, privateKey);
+    // SECURITY: Zero key cache - private key cleared immediately after signing
+    // No caching to minimize exposure window for memory dump attacks
     
     let signedTx: string;
     
