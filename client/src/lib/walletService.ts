@@ -1018,7 +1018,11 @@ export async function signTransaction(
       case 'ethereum':
       case 'bsc': {
         const ethersWallet = new ethers.Wallet('0x' + privateKey);
-        signedTx = await ethersWallet.signTransaction(transaction);
+        
+        // Safeguard: Remove 'from' field to prevent checksum mismatch
+        // ethers.js will automatically use the wallet's address when signing
+        const { from, ...txWithoutFrom } = transaction;
+        signedTx = await ethersWallet.signTransaction(txWithoutFrom);
         
         // Step 6: Verify signature by recovering signer address
         try {

@@ -233,7 +233,7 @@ export async function buildTransaction(
   const valueInWei = ethers.parseEther(amount);
   
   const tx: ethers.TransactionRequest = {
-    from,
+    // Remove 'from' - ethers will use the signing wallet's address
     to,
     value: valueInWei,
     nonce,
