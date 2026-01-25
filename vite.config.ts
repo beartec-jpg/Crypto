@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { visualizer } from 'rollup-plugin-visualizer'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -16,12 +15,6 @@ export default defineConfig({
       globals: {
         Buffer: true,
       },
-    }),
-    visualizer({
-      filename: './client/dist/stats.html',
-      open: false,
-      gzipSize: true,
-      brotliSize: true,
     }),
   ],
 
