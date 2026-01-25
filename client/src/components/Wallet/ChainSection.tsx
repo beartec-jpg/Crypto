@@ -1,0 +1,214 @@
+// client/src/components/Wallet/ChainSection.tsx
+// Expandable chain section showing native balance + tokens
+
+import { useState } from 'react';
+import { ChevronDown, ChevronRight, Plus, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import type { Token } from '@/lib/tokenService';
+import type { Chain } from '@/lib/balanceService';
+
+interface ChainSectionProps {
+  chain: Chain;
+  nativeBalance: string;
+  nativeUsdValue?: number;
+  nativePriceChange24h?: number;
+  tokens: Token[];
+  isExpanded: boolean;
+  hideBalances: boolean;
+  onToggleExpand: () => void;
+  onAddToken: () => void;
+  onSelectToken: (token: Token) => void;
+  onRemoveToken: (tokenId: string) => void;
+}
+
+const CHAIN_CONFIG = {
+  ethereum: {
+    name: 'Ethereum',
+    symbol: 'ETH',
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30',
+    explorer: 'https://etherscan.io',
+    supportsTokens: true,
+  },
+  bitcoin: {
+    name: 'Bitcoin',
+    symbol: 'BTC',
+    color: 'text-orange-400',
+    bgColor: 'bg-orange-500/10',
+    borderColor: 'border-orange-500/30',
+    explorer: 'https://blockstream.info',
+    supportsTokens: false,
+  },
+  bsc: {
+    name: 'BNB Smart Chain',
+    symbol: 'BNB',
+    color: 'text-yellow-400',
+    bgColor: 'bg-yellow-500/10',
+    borderColor: 'border-yellow-500/30',
+    explorer: 'https://bscscan.com',
+    supportsTokens: true,
+  },
+  xrp: {
+    name: 'XRP Ledger',
+    symbol: 'XRP',
+    color: 'text-gray-300',
+    bgColor: 'bg-gray-500/10',
+    borderColor: 'border-gray-500/30',
+    explorer: 'https://xrpscan.com',
+    supportsTokens: true,
+  },
+  solana: {
+    name: 'Solana',
+    symbol: 'SOL',
+    color: 'text-purple-400',
+    bgColor: 'bg-purple-500/10',
+    borderColor: 'border-purple-500/30',
+    explorer: 'https://solscan.io',
+    supportsTokens: true,
+  },
+};
+
+export default function ChainSection({
+  chain,
+  nativeBalance,
+  nativeUsdValue,
+  nativePriceChange24h,
+  tokens,
+  isExpanded,
+  hideBalances,
+  onToggleExpand,
+  onAddToken,
+  onSelectToken,
+  onRemoveToken,
+}: ChainSectionProps) {
+  const config = CHAIN_CONFIG[chain];
+  const [hoveredToken, setHoveredToken] = useState<string | null>(null);
+
+  // Calculate total value (native + all tokens)
+  const totalUsdValue = (nativeUsdValue || 0) + tokens.reduce((sum, t) => sum + (t.usdValue || 0), 0);
+
+  // Format balance display
+  const formatBalance = (balance: string, decimals: number = 6) => {
+    const num = parseFloat(balance);
+    if (num === 0) return '0';
+    if (num < 0.000001) return '< 0.000001';
+    return num.toFixed(decimals);
+  };
+
+  // Format USD value
+  const formatUsd = (value: number) => {
+    if (value === 0) return '$0.00';
+    if (value < 0.01) return '< $0.01';
+    return `$${value.toFixed(2)}`;
+  };
+
+  return (
+    <div className={`rounded-lg border ${config.borderColor} ${config.bgColor} overflow-hidden`}>
+      {/* Chain Header - Native Balance */}
+      <div
+        className="p-4 cursor-pointer hover:bg-white/5 transition-colors"
+        onClick={onToggleExpand}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Expand/Collapse Icon */}
+            {config.supportsTokens && tokens.length > 0 && (
+              <div className="text-gray-400">
+                {isExpanded ? (
+                  <ChevronDown className="w-5 h-5" />
+                ) : (
+                  <ChevronRight className="w-5 h-5" />
+                )}
+              </div>
+            )}
+
+            {/* Chain Name & Symbol */}
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className={`font-semibold ${config.color}`}>
+                  {config.name}
+                </h3>
+                {tokens.length > 0 && (
+                  <span className="text-xs text-gray-500 bg-gray-700 px-2 py-0.5 rounded-full">
+                    +{tokens.length} token{tokens.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400">{config.symbol}</p>
+            </div>
+          </div>
+
+          {/* Native Balance */}
+          <div className="text-right">
+            <div className="flex items-center gap-2 justify-end">
+              <p className="font-mono font-semibold">
+                {hideBalances ? '••••••' : formatBalance(nativeBalance)}
+              </p>
+              <span className="text-gray-400 text-sm">{config.symbol}</span>
+            </div>
+            {nativeUsdValue !== undefined && (
+              <div className="flex items-center gap-2 justify-end">
+                <p className="text-sm text-gray-400">
+                  {hideBalances ? '••••' : formatUsd(nativeUsdValue)}
+                </p>
+                {nativePriceChange24h !== undefined && (
+                  <span
+                    className={`text-xs ${
+                      nativePriceChange24h >= 0 ? 'text-green-400' : 'text-red-400'
+                    }`}
+                  >
+                    {nativePriceChange24h >= 0 ? '+' : ''}
+                    {nativePriceChange24h.toFixed(2)}%
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Total Portfolio Value for this chain */}
+        {totalUsdValue > 0 && tokens.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-gray-700">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">Total Value:</span>
+              <span className="font-semibold text-gray-200">
+                {hideBalances ? '••••••' : formatUsd(totalUsdValue)}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Token List - Expanded */}
+      {isExpanded && config.supportsTokens && (
+        <div className="border-t border-gray-700 bg-gray-900/30">
+          {/* Token Items */}
+          {tokens.length > 0 && (
+            <div className="divide-y divide-gray-700/50">
+              {tokens.map((token) => (
+                <div
+                  key={token.id}
+                  className="p-3 hover:bg-white/5 transition-colors cursor-pointer relative"
+                  onClick={() => onSelectToken(token)}
+                  onMouseEnter={() => setHoveredToken(token.id)}
+                  onMouseLeave={() => setHoveredToken(null)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {/* Token Icon/Logo */}
+                      {token.logoUrl ? (
+                        <img
+                          src={token.logoUrl}
+                          alt={token.symbol}
+                          className="w-8 h-8 rounded-full"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
+                          <span className="text-xs font-semibold text-gray-400">
+                            {token.symbol.slice(0, 3).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+
+                      {*
+
