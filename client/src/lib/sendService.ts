@@ -162,9 +162,10 @@ function clearProviderCache(chain: Chain): void {
  * Check if an RPC endpoint is healthy by fetching the latest block
  */
 async function checkRpcHealth(chain: Chain): Promise<boolean> {
+  let timeoutId: NodeJS.Timeout | null = null;
+  
   try {
     const provider = getProvider(chain);
-    let timeoutId: NodeJS.Timeout | null = null;
     
     const blockNumber = await Promise.race([
       provider.getBlockNumber(),
@@ -173,16 +174,16 @@ async function checkRpcHealth(chain: Chain): Promise<boolean> {
       })
     ]);
     
-    // Clean up timeout if the request completed successfully
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    
     console.log(`✅ RPC healthy for ${chain}, block: ${blockNumber}`);
     return true;
   } catch (error) {
     console.warn(`⚠️ RPC unhealthy for ${chain}:`, error);
     return false;
+  } finally {
+    // Always clean up timeout to prevent memory leaks
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -197,24 +198,26 @@ async function findHealthyRpc(chain: Chain): Promise<void> {
   const endpoints = RPC_ENDPOINTS[chain];
   
   for (let i = 0; i < endpoints.length; i++) {
+    const originalIndex = currentRpcIndex[chain];
+    
     try {
-      // Use local variable for testing, only update global state when healthy RPC found
-      const testIndex = i;
-      const originalIndex = currentRpcIndex[chain];
-      currentRpcIndex[chain] = testIndex;
+      // Update to test index
+      currentRpcIndex[chain] = i;
       
       // Clear cache for this endpoint to ensure fresh health check
-      providerCache.delete(`${chain}-${testIndex}`);
-      console.log(`🔍 Testing RPC ${i + 1}/${endpoints.length}: ${endpoints[testIndex]}`);
+      providerCache.delete(`${chain}-${i}`);
+      console.log(`🔍 Testing RPC ${i + 1}/${endpoints.length}: ${endpoints[i]}`);
       
       if (await checkRpcHealth(chain)) {
-        console.log(`✅ Using RPC: ${endpoints[testIndex]}`);
+        console.log(`✅ Using RPC: ${endpoints[i]}`);
         return; // Success - keep the new index
       }
       
       // Restore original index after failed test
       currentRpcIndex[chain] = originalIndex;
     } catch (error) {
+      // Restore original index in case of exception
+      currentRpcIndex[chain] = originalIndex;
       console.warn(`⚠️ Error testing RPC ${i + 1}:`, error);
       // Continue to next RPC
     }
