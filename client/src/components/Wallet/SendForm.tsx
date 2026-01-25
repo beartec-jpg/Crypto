@@ -11,16 +11,30 @@ import {
 } from '@/lib/securityService';
 import { authenticateWithPasskey } from '@/lib/passkeyService';
 import { runSecurityScan, quickSecurityCheck, type SecurityScanResult } from '@/lib/securityScanner';
+import { 
+  estimateGas, 
+  checkSufficientBalance, 
+  buildTransaction, 
+  broadcastTransaction,
+  getChainSymbol as getSendChainSymbol,
+  SUPPORTED_SEND_CHAINS,
+} from '@/lib/sendService';
+import { signTransaction } from '@/lib/walletService';
 import TransactionPreviewModal from './TransactionPreviewModal';
 import PinEntryModal from './PinEntryModal';
 import SecurityWarningModal from './SecurityWarningModal';
+import PasswordModal from './PasswordModal';
+import TransactionSuccessModal from './TransactionSuccessModal';
 import type { Chain } from '@/lib/balanceService';
+import type { usePendingTransactions } from '@/hooks/usePendingTransactions';
 
 interface SendFormProps {
   userId: string;
   isPasskeyAuthenticated: boolean;
   onRequestPasskey: () => void;
   selectedChain: Chain;
+  onAddPendingTransaction?: (tx: Parameters<ReturnType<typeof usePendingTransactions>['addPendingTransaction']>[0]) => void;
+  sovereignWallet?: any;
 }
 
 export default function SendForm({
@@ -28,15 +42,31 @@ export default function SendForm({
   isPasskeyAuthenticated,
   onRequestPasskey,
   selectedChain,
+  onAddPendingTransaction,
+  sovereignWallet,
 }: SendFormProps) {
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [securityScanResult, setSecurityScanResult] = useState<SecurityScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001');
+  const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<number>(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [transactionStep, setTransactionStep] = useState<'estimating' | 'signing' | 'broadcasting' | null>(null);
+  const [successData, setSuccessData] = useState<{
+    hash: string;
+    amount: string;
+    to: string;
+    fee: string;
+    feeUsd: number;
+    explorerUrl: string;
+  } | null>(null);
 
   // Check if wallet is locked
   const isLocked = securityManager.isWalletLocked();
@@ -146,29 +176,124 @@ export default function SendForm({
   };
 
   const handleConfirmTransaction = async () => {
+    // Show password modal for signing
+    setShowPreview(false);
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordSubmit = async (password: string) => {
+    setPasswordError(null);
+    setIsProcessing(true);
+    
     try {
-      console.log('🚀 Sending transaction:', {
-        to: recipient,
-        amount,
-        chain: selectedChain,
-      });
+      // Only proceed if we support ETH or BSC
+      if (!SUPPORTED_SEND_CHAINS.includes(selectedChain as any)) {
+        throw new Error(`Sending ${selectedChain} is not yet supported. Only ETH and BNB are currently supported.`);
+      }
 
-      // TODO: Implement actual transaction sending
-      // This will be chain-specific (ETH, BTC, etc.)
+      const fromAddress = sovereignWallet?.addresses?.[selectedChain];
+      if (!fromAddress) {
+        throw new Error('Wallet address not found. Please try again.');
+      }
+
+      // Step 2: Estimate gas
+      setTransactionStep('estimating');
+      const gasEstimate = await estimateGas(selectedChain, fromAddress, recipient, amount);
+      setEstimatedFee(gasEstimate.estimatedFee);
+      setEstimatedFeeUsd(gasEstimate.estimatedFeeUsd);
       
-      // Simulate transaction
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Step 3: Check balance BEFORE signing (CRITICAL)
+      const balanceCheck = await checkSufficientBalance(
+        selectedChain,
+        fromAddress,
+        amount,
+        gasEstimate.estimatedFee
+      );
+      
+      if (!balanceCheck.sufficient) {
+        // DO NOT SIGN - Return friendly error
+        const symbol = getSendChainSymbol(selectedChain);
+        throw new Error(
+          `Insufficient balance. You need ${balanceCheck.required} ${symbol} but only have ${balanceCheck.balance} ${symbol}.`
+        );
+      }
+      
+      // Step 4: Build transaction
+      setTransactionStep('signing');
+      const tx = await buildTransaction(selectedChain, fromAddress, recipient, amount, gasEstimate);
+      
+      // Step 5: Sign transaction
+      const walletId = localStorage.getItem(`wallet_id_${userId}`);
+      if (!walletId) {
+        throw new Error('Wallet ID not found. Please try again.');
+      }
 
+      const signedTx = await signTransaction(
+        walletId,
+        password,
+        selectedChain,
+        tx,
+        isPasskeyAuthenticated
+      );
+      
+      // Step 6: Broadcast
+      setTransactionStep('broadcasting');
+      const result = await broadcastTransaction(selectedChain, signedTx);
+      
+      // Step 7: Add to pending transactions
+      if (onAddPendingTransaction) {
+        onAddPendingTransaction({
+          hash: result.hash,
+          chain: selectedChain,
+          from: fromAddress,
+          to: recipient,
+          amount,
+          token: getSendChainSymbol(selectedChain),
+          status: 'pending',
+          confirmations: 0,
+          requiredConfirmations: selectedChain === 'ethereum' ? 6 : 15,
+          timestamp: Date.now(),
+          explorerUrl: result.explorerUrl,
+        });
+      }
+      
+      // Step 8: Show success modal
+      setShowPasswordModal(false);
+      setSuccessData({
+        hash: result.hash,
+        amount,
+        to: recipient,
+        fee: gasEstimate.estimatedFee,
+        feeUsd: gasEstimate.estimatedFeeUsd,
+        explorerUrl: result.explorerUrl,
+      });
+      setShowSuccessModal(true);
+      
       // Clear form
       setRecipient('');
       setAmount('');
-      setShowPreview(false);
       setError(null);
-
-      alert('Transaction sent successfully!');
+      
     } catch (err: any) {
-      throw new Error(err.message || 'Failed to send transaction');
+      console.error('Transaction error:', err);
+      setPasswordError(err.message || 'Failed to send transaction');
+      // Form data is preserved - user can retry
+    } finally {
+      setIsProcessing(false);
+      setTransactionStep(null);
     }
+  };
+
+  const handlePasswordCancel = () => {
+    setShowPasswordModal(false);
+    setPasswordError(null);
+    setIsProcessing(false);
+    setTransactionStep(null);
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccessModal(false);
+    setSuccessData(null);
   };
 
   const getChainSymbol = (chain: Chain): string => {
@@ -354,6 +479,47 @@ export default function SendForm({
           }}
           onConfirm={handleConfirmTransaction}
           onCancel={() => setShowPreview(false)}
+        />
+      )}
+
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <PasswordModal
+          onSubmit={handlePasswordSubmit}
+          onCancel={handlePasswordCancel}
+          title="Enter Password to Sign"
+          description="Enter your wallet password to sign this transaction"
+          isLoading={isProcessing}
+          error={passwordError}
+        />
+      )}
+
+      {/* Transaction Step Indicator */}
+      {transactionStep && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl p-8 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <h3 className="text-xl font-semibold mb-2">
+              {transactionStep === 'estimating' && 'Estimating Fees...'}
+              {transactionStep === 'signing' && 'Signing Transaction...'}
+              {transactionStep === 'broadcasting' && 'Broadcasting...'}
+            </h3>
+            <p className="text-gray-400">Please wait</p>
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && successData && (
+        <TransactionSuccessModal
+          amount={successData.amount}
+          token={getChainSymbol(selectedChain)}
+          to={successData.to}
+          fee={successData.fee}
+          feeUsd={successData.feeUsd}
+          hash={successData.hash}
+          explorerUrl={successData.explorerUrl}
+          onClose={handleSuccessClose}
         />
       )}
     </>

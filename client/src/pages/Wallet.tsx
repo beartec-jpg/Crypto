@@ -12,6 +12,7 @@ import PinEntryModal from '../components/Wallet/PinEntryModal';
 import SecuritySettings from '../components/Wallet/SecuritySettings';
 import { getCurrentWallet, migrateWalletToUser } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements } from '@/lib/securityService';
+import { usePendingTransactions } from '@/hooks/usePendingTransactions';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle } from 'lucide-react';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 
@@ -35,6 +36,9 @@ export default function WalletPage() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingWallet, setPendingWallet] = useState<any>(null);
   const [authStep, setAuthStep] = useState<'none' | 'pin' | 'passkey' | 'complete'>('none');
+
+  // Pending transactions hook
+  const { transactions: pendingTransactions, addPendingTransaction } = usePendingTransactions();
 
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
@@ -422,6 +426,7 @@ export default function WalletPage() {
                   hideBalances={hideBalances}
                   selectedChain={selectedChain}
                   sovereignWallet={sovereignWallet}
+                  pendingTransactions={pendingTransactions}
                 />
               )}
               {activeTab === 'send' && (
@@ -430,6 +435,8 @@ export default function WalletPage() {
                   isPasskeyAuthenticated={isPasskeyAuthenticated}
                   onRequestPasskey={() => setShowPasskeyModal(true)}
                   selectedChain={selectedChain}
+                  onAddPendingTransaction={addPendingTransaction}
+                  sovereignWallet={sovereignWallet}
                 />
               )}
               {activeTab === 'receive' && (

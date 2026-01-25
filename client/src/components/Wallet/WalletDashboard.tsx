@@ -16,6 +16,8 @@ import {
   type Transaction 
 } from '@/lib/transactionService';
 import { getCurrentWallet } from '@/lib/walletService';
+import PendingTransactionCard from './PendingTransactionCard';
+import type { PendingTransaction } from '@/hooks/usePendingTransactions';
 
 interface WalletDashboardProps {
   address: `0x${string}` | undefined;
@@ -23,6 +25,7 @@ interface WalletDashboardProps {
   hideBalances: boolean;
   selectedChain: Chain;
   sovereignWallet?: any;
+  pendingTransactions?: PendingTransaction[];
 }
 
 export default function WalletDashboard({
@@ -31,6 +34,7 @@ export default function WalletDashboard({
   hideBalances,
   selectedChain,
   sovereignWallet,
+  pendingTransactions = [],
 }: WalletDashboardProps) {
   const { user } = useUser();
   const userId = user?.id || '';
@@ -308,19 +312,35 @@ export default function WalletDashboard({
       <div className="bg-gray-800 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-medium">Recent Transactions</h3>
-          {transactions.length > 0 && (
+          {(transactions.length > 0 || pendingTransactions.length > 0) && (
             <button className="text-sm text-cyan-400 hover:underline">View All</button>
           )}
         </div>
 
-        {transactions.length === 0 ? (
+        {/* Pending Transactions */}
+        {pendingTransactions.length > 0 && (
+          <div className="space-y-3 mb-6">
+            <h4 className="text-sm font-medium text-gray-400">Pending</h4>
+            {pendingTransactions
+              .filter(tx => tx.chain === selectedChain)
+              .map((tx) => (
+                <PendingTransactionCard key={tx.id} transaction={tx} />
+              ))}
+          </div>
+        )}
+
+        {/* Confirmed Transactions */}
+        {transactions.length === 0 && pendingTransactions.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
             <p>No transactions yet on {chainConfig.name}</p>
             <p className="text-sm mt-1">Your transaction history will appear here</p>
           </div>
-        ) : (
+        ) : transactions.length > 0 ? (
           <div className="space-y-3">
+            {pendingTransactions.length > 0 && (
+              <h4 className="text-sm font-medium text-gray-400 mt-4">Confirmed</h4>
+            )}
             {transactions.slice(0, 5).map((tx) => (
               <div
                 key={tx.hash}
@@ -366,7 +386,7 @@ export default function WalletDashboard({
               </div>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
