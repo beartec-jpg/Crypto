@@ -217,7 +217,8 @@ export default function SendForm({
           setPasskeyAuthenticatedThisSession(true);
           setShowPasswordModal(true); // Finally show password modal
         })
-        .catch(() => {
+        .catch((error) => {
+          console.error('Passkey authentication error:', error);
           setError('Passkey authentication failed. Please try again.');
         });
     } else {
@@ -262,6 +263,7 @@ export default function SendForm({
         await authenticateWithPasskey();
         setPasskeyAuthenticatedThisSession(true);
       } catch (err) {
+        console.error('Passkey authentication error:', err);
         setError('Passkey authentication failed. Please try again.');
         return;
       }
