@@ -87,6 +87,9 @@ let currentRpcIndex: Record<Chain, number> = {
 const providerCache: Map<string, { provider: ethers.JsonRpcProvider; timestamp: number }> = new Map();
 const PROVIDER_CACHE_TTL = 30000; // 30 seconds
 
+// RPC health check timeout
+const RPC_HEALTH_CHECK_TIMEOUT = 5000; // 5 seconds
+
 // Required confirmations
 const REQUIRED_CONFIRMATIONS = {
   ethereum: 6,
@@ -116,7 +119,7 @@ function getProvider(chain: Chain): ethers.JsonRpcProvider {
   
   // Create new provider
   const provider = new ethers.JsonRpcProvider(endpoint, undefined, {
-    staticNetwork: chain === 'ethereum' ? ethers.Network.from(CHAIN_IDS.ethereum) : ethers.Network.from(CHAIN_IDS.bsc),
+    staticNetwork: ethers.Network.from(CHAIN_IDS[chain]),
     batchMaxCount: 1, // Disable batching for more reliable individual requests
   });
   
@@ -147,6 +150,8 @@ function rotateRpc(chain: Chain): void {
  * Clear provider cache for a chain (useful after rotation)
  */
 function clearProviderCache(chain: Chain): void {
+  if (chain === 'xrp') return;
+  
   const endpoints = RPC_ENDPOINTS[chain];
   for (let i = 0; i < endpoints.length; i++) {
     providerCache.delete(`${chain}-${i}`);
@@ -162,7 +167,7 @@ async function checkRpcHealth(chain: Chain): Promise<boolean> {
     const blockNumber = await Promise.race([
       provider.getBlockNumber(),
       new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('RPC timeout')), 5000)
+        setTimeout(() => reject(new Error('RPC timeout')), RPC_HEALTH_CHECK_TIMEOUT)
       )
     ]);
     console.log(`✅ RPC healthy for ${chain}, block: ${blockNumber}`);
@@ -177,11 +182,17 @@ async function checkRpcHealth(chain: Chain): Promise<boolean> {
  * Find a healthy RPC endpoint for the chain
  */
 async function findHealthyRpc(chain: Chain): Promise<void> {
+  if (chain === 'xrp') {
+    throw new Error('XRP does not use JSON-RPC provider');
+  }
+  
   const endpoints = RPC_ENDPOINTS[chain];
   const originalIndex = currentRpcIndex[chain];
   
   for (let i = 0; i < endpoints.length; i++) {
     currentRpcIndex[chain] = i;
+    // Clear cache for this endpoint to ensure fresh health check
+    providerCache.delete(`${chain}-${i}`);
     console.log(`🔍 Testing RPC ${i + 1}/${endpoints.length}: ${endpoints[i]}`);
     
     if (await checkRpcHealth(chain)) {
@@ -473,7 +484,7 @@ export async function buildTransaction(
     value: valueInWei,
     nonce,
     gasLimit: gasEstimate.gasLimit,
-    chainId: chain === 'ethereum' ? CHAIN_IDS.ethereum : CHAIN_IDS.bsc,
+    chainId: CHAIN_IDS[chain],
   };
   
   // Use EIP-1559 if available, otherwise legacy
