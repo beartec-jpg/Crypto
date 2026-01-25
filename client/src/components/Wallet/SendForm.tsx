@@ -42,6 +42,10 @@ import NewAccountWarningModal from './NewAccountWarningModal';
 import type { Chain } from '@/lib/balanceService';
 import type { usePendingTransactions } from '@/hooks/usePendingTransactions';
 
+// Constants
+const TRANSACTION_BUFFER = 0.0001; // Small buffer for fee estimation
+const XRP_ACTIVATION_AMOUNT = 10; // Minimum XRP required to activate new account
+
 interface SendFormProps {
   userId: string;
   isPasskeyAuthenticated: boolean;
@@ -88,10 +92,6 @@ export default function SendForm({
     feeUsd: number;
     explorerUrl: string;
   } | null>(null);
-
-  // Constants
-  const TRANSACTION_BUFFER = 0.0001; // Small buffer for fee estimation
-  const XRP_ACTIVATION_AMOUNT = 10; // Minimum XRP required to activate new account
 
   // Check if wallet is locked
   const isLocked = securityManager.isWalletLocked();
@@ -345,16 +345,27 @@ export default function SendForm({
           throw new Error('Wallet ID not found. Please try again.');
         }
         
+        // SECURITY NOTE: XRP Key Derivation
         // For XRP, we need to get the seed from wallet service
-        // NOTE: In production, this should use proper key derivation with BIP44
-        // The XRP seed/private key should be derived from the mnemonic using:
-        // - BIP39 for mnemonic to seed
-        // - BIP32/BIP44 for deriving XRP key at path m/44'/144'/0'/0/0
-        // - Proper encoding to XRP seed format (secp256k1)
-        // Current implementation is simplified and may need security hardening
+        // CURRENT IMPLEMENTATION: Uses existing wallet service's XRP private key
+        // PRODUCTION REQUIREMENTS:
+        // 1. Implement proper BIP44 key derivation (m/44'/144'/0'/0/0)
+        // 2. Use BIP39 for mnemonic to seed conversion
+        // 3. Use BIP32 for hierarchical deterministic key derivation
+        // 4. Ensure proper encoding to XRP seed format (secp256k1)
+        // 5. Add runtime security checks and validation
+        // 6. Consider hardware wallet integration for production
+        // 
+        // The current implementation relies on the wallet service which should
+        // already be doing proper key derivation. Verify walletService.ts
+        // implementation before deploying to production.
         const { unlockWallet } = await import('@/lib/walletService');
         const wallet = await unlockWallet(walletId, password);
         const xrpSeed = wallet.privateKeys.xrp;
+        
+        if (!xrpSeed) {
+          throw new Error('XRP private key not found in wallet');
+        }
         
         const signedTx = signXrpTransaction(tx, xrpSeed);
         

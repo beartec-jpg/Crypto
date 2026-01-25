@@ -223,7 +223,7 @@ export async function estimateXrpFee(): Promise<string> {
     return xrpl.dropsToXrp(feeDrops);
   } catch (error) {
     console.warn('Failed to fetch XRP fee, using default:', error);
-    return '0.00001'; // Default 10 drops
+    return xrpl.dropsToXrp(DEFAULT_FEE_DROPS); // Default 0.000012 XRP
   } finally {
     await client.disconnect();
   }

@@ -85,6 +85,8 @@ function getProvider(chain: Chain): ethers.JsonRpcProvider {
 
 /**
  * Rotate to next RPC endpoint for chain
+ * TODO: Implement automatic fallback logic in getProvider() or other functions
+ * to call this when an RPC request fails. Currently defined but not automatically used.
  */
 function rotateRpc(chain: Chain): void {
   if (chain === 'xrp') return;
