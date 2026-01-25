@@ -539,7 +539,7 @@ export default function SendForm({
             placeholder={`Enter ${selectedChain} address`}
             className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:outline-none font-mono text-sm"
           />
-          {recipient && !validateAddress(recipient) && (
+          {recipient && !validateAddress(recipient, selectedChain) && (
             <p className="mt-2 text-sm text-red-400">
               Invalid {selectedChain} address format
             </p>
@@ -632,7 +632,7 @@ export default function SendForm({
         {/* Send Button */}
         <button
           onClick={handleSendClick}
-          disabled={!recipient || !amount || !validateAddress(recipient)}
+          disabled={!recipient || !amount || !validateAddress(recipient, selectedChain)}
           className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
         >
           <Send className="w-5 h-5" />
