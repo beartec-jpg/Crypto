@@ -282,8 +282,8 @@ export async function estimateGas(
         estimatedFeeUsd,
       };
     } catch (error: any) {
-      console.error(`⚠️ Gas estimation attempt ${attempt + 1} failed:`, error);
-      console.error('Error details:', {
+      console.warn(`⚠️ Gas estimation attempt ${attempt + 1} failed:`, error);
+      console.warn('Error details:', {
         message: error.message,
         code: error.code,
         reason: error.reason,
@@ -451,7 +451,7 @@ export async function broadcastTransaction(
         console.log('  - Max Fee Per Gas:', parsedTx.maxFeePerGas ? ethers.formatUnits(parsedTx.maxFeePerGas, 'gwei') + ' Gwei' : 'N/A');
         console.log('  - Max Priority Fee:', parsedTx.maxPriorityFeePerGas ? ethers.formatUnits(parsedTx.maxPriorityFeePerGas, 'gwei') + ' Gwei' : 'N/A');
         console.log('  - Gas Price:', parsedTx.gasPrice ? ethers.formatUnits(parsedTx.gasPrice, 'gwei') + ' Gwei' : 'N/A');
-        console.log('  - Value:', ethers.formatEther(parsedTx.value), 'ETH');
+        console.log('  - Value:', ethers.formatEther(parsedTx.value), getChainSymbol(chain));
         console.log('  - To:', parsedTx.to);
         console.log('  - Type:', parsedTx.type);
       } catch (parseError) {
