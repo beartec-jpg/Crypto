@@ -117,9 +117,9 @@ function getProvider(chain: Chain): ethers.JsonRpcProvider {
     return cached.provider;
   }
   
-  // Create new provider
+  // Create new provider with static network to prevent "failed to detect network" errors
   const provider = new ethers.JsonRpcProvider(endpoint, undefined, {
-    staticNetwork: ethers.Network.from(CHAIN_IDS[chain]),
+    staticNetwork: ethers.Network.from(CHAIN_IDS[chain]), // Prevents network detection issues
     batchMaxCount: 1, // Disable batching for more reliable individual requests
   });
   
@@ -164,12 +164,20 @@ function clearProviderCache(chain: Chain): void {
 async function checkRpcHealth(chain: Chain): Promise<boolean> {
   try {
     const provider = getProvider(chain);
+    let timeoutId: NodeJS.Timeout | null = null;
+    
     const blockNumber = await Promise.race([
       provider.getBlockNumber(),
-      new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('RPC timeout')), RPC_HEALTH_CHECK_TIMEOUT)
-      )
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('RPC timeout')), RPC_HEALTH_CHECK_TIMEOUT);
+      })
     ]);
+    
+    // Clean up timeout if the request completed successfully
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    
     console.log(`✅ RPC healthy for ${chain}, block: ${blockNumber}`);
     return true;
   } catch (error) {
@@ -187,22 +195,31 @@ async function findHealthyRpc(chain: Chain): Promise<void> {
   }
   
   const endpoints = RPC_ENDPOINTS[chain];
-  const originalIndex = currentRpcIndex[chain];
   
   for (let i = 0; i < endpoints.length; i++) {
-    currentRpcIndex[chain] = i;
-    // Clear cache for this endpoint to ensure fresh health check
-    providerCache.delete(`${chain}-${i}`);
-    console.log(`🔍 Testing RPC ${i + 1}/${endpoints.length}: ${endpoints[i]}`);
-    
-    if (await checkRpcHealth(chain)) {
-      console.log(`✅ Using RPC: ${endpoints[i]}`);
-      return;
+    try {
+      // Use local variable for testing, only update global state when healthy RPC found
+      const testIndex = i;
+      const originalIndex = currentRpcIndex[chain];
+      currentRpcIndex[chain] = testIndex;
+      
+      // Clear cache for this endpoint to ensure fresh health check
+      providerCache.delete(`${chain}-${testIndex}`);
+      console.log(`🔍 Testing RPC ${i + 1}/${endpoints.length}: ${endpoints[testIndex]}`);
+      
+      if (await checkRpcHealth(chain)) {
+        console.log(`✅ Using RPC: ${endpoints[testIndex]}`);
+        return; // Success - keep the new index
+      }
+      
+      // Restore original index after failed test
+      currentRpcIndex[chain] = originalIndex;
+    } catch (error) {
+      console.warn(`⚠️ Error testing RPC ${i + 1}:`, error);
+      // Continue to next RPC
     }
   }
   
-  // Restore original index if all RPCs failed
-  currentRpcIndex[chain] = originalIndex;
   throw new Error(`No healthy RPC endpoints available for ${chain}. Please check your internet connection.`);
 }
 
