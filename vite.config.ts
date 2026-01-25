@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { visualizer } from 'rollup-plugin-visualizer'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import wasm from 'vite-plugin-wasm'
 
@@ -18,6 +19,12 @@ export default defineConfig({
         Buffer: true,
         process: true,
       },
+    }),
+    visualizer({
+      filename: './client/dist/stats.html',
+      open: false,
+      gzipSize: true,
+      brotliSize: true,
     }),
   ],
 
@@ -51,6 +58,7 @@ export default defineConfig({
             'bip39',
             'bitcoinjs-lib',
             'tiny-secp256k1',
+            '@scure/bip32',
           ],
           'web3-vendor': [
             'wagmi',
@@ -75,9 +83,15 @@ export default defineConfig({
             '@radix-ui/react-slot',
           ],
           'd3-vendor': ['d3'],
+          'charts-vendor': ['lightweight-charts', 'recharts'],
           'query-vendor': ['@tanstack/react-query', 'react-hook-form'],
           'icons': ['lucide-react', 'react-icons'],
           'clerk': ['@clerk/clerk-react'],
+          'wallet-vendor': [
+            '@simplewebauthn/browser',
+            'qrcode.react',
+            'idb',
+          ],
         },
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',
@@ -96,6 +110,9 @@ export default defineConfig({
       '@noble/curves',
       '@noble/hashes',
       'buffer',
+      'bitcoinjs-lib',
+      '@solana/web3.js',
+      'xrpl',
     ],
     exclude: ['tiny-secp256k1'],
   },
