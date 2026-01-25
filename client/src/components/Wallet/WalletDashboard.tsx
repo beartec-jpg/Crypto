@@ -47,17 +47,6 @@ export default function WalletDashboard({
   const [blockNumber, setBlockNumber] = useState<number | null>(null);
   const [priceChange24h, setPriceChange24h] = useState<number>(0);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('🔍 Dashboard State:', {
-      selectedChain,
-      sovereignWallet: sovereignWallet ? 'EXISTS' : 'NULL',
-      hasAddresses: !!sovereignWallet?.addresses,
-      currentAddress: sovereignWallet?.addresses?.[selectedChain],
-      userId,
-    });
-  }, [sovereignWallet, selectedChain, userId]);
-
   // Fetch block number
   useEffect(() => {
     const fetchBlock = async () => {
@@ -105,7 +94,6 @@ export default function WalletDashboard({
   useEffect(() => {
     const loadBalances = async () => {
       if (!sovereignWallet?.addresses) {
-        console.log('⚠️ No sovereign wallet addresses');
         setChainBalances([]);
         setCurrentBalance(null);
         return;
@@ -113,15 +101,13 @@ export default function WalletDashboard({
 
       setIsLoading(true);
       try {
-        console.log('🔄 Fetching mainnet balances...');
         const balances = await fetchAllBalances(sovereignWallet.addresses);
-        console.log('✅ Balances loaded:', balances);
         
         setChainBalances(balances);
         const current = balances.find(b => b.chain === selectedChain);
         setCurrentBalance(current || null);
       } catch (error) {
-        console.error('❌ Failed to load balances:', error);
+        console.error('Failed to load balances:', error);
         setChainBalances([]);
         setCurrentBalance(null);
       } finally {
@@ -168,12 +154,10 @@ export default function WalletDashboard({
       }
 
       try {
-        console.log(`🔍 Fetching transactions for ${selectedChain}: ${currentAddress}`);
         const txs = await fetchChainTransactions(selectedChain, currentAddress);
-        console.log(`✅ Loaded ${txs.length} transactions`);
         setTransactions(txs);
       } catch (error) {
-        console.error('❌ Transaction fetch failed:', error);
+        console.error('Transaction fetch failed:', error);
         setTransactions([]);
       }
     };

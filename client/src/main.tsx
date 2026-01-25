@@ -8,10 +8,12 @@ import App from './App.tsx'
 import './index.css'
 import { setupPerformanceMonitoring } from '@/lib/monitoring'
 import { setupErrorTracking } from '@/lib/errorTracking'
+import { setupGlobalErrorHandler } from '@/lib/errorHandler'
 
 // Initialize monitoring
 setupPerformanceMonitoring();
 setupErrorTracking();
+setupGlobalErrorHandler();
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 const WALLETCONNECT_PROJECT_ID = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID

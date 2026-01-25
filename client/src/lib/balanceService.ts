@@ -55,8 +55,6 @@ export async function fetchPrices(): Promise<CoinGeckoPrices> {
  */
 export async function fetchEthereumBalance(address: string): Promise<string> {
   try {
-    console.log('🔍 Fetching ETH balance from MAINNET for:', address);
-    
     const response = await axios.get('https://api.etherscan.io/v2/api', {
       params: {
         chainid: 1,
@@ -69,19 +67,15 @@ export async function fetchEthereumBalance(address: string): Promise<string> {
       timeout: 10000,
     });
 
-    console.log('📦 ETH API Response:', response.data);
-
     if (response.data.status === '1' && response.data.result) {
       const balanceWei = response.data.result;
       const balanceEth = parseFloat(balanceWei) / 1e18;
-      console.log('✅ ETH Balance:', balanceEth, 'ETH');
       return balanceEth.toFixed(6);
     }
     
-    console.warn('⚠️ ETH account not found or no balance');
     return '0';
   } catch (error: any) {
-    console.error('❌ Failed to fetch Ethereum balance:', error.message);
+    console.error('Failed to fetch Ethereum balance:', error.message);
     return '0';
   }
 }
@@ -91,22 +85,17 @@ export async function fetchEthereumBalance(address: string): Promise<string> {
  */
 export async function fetchBitcoinBalance(address: string): Promise<string> {
   try {
-    console.log('🔍 Fetching BTC balance from MAINNET for:', address);
-    
     const response = await axios.get(
       `https://blockstream.info/api/address/${address}`,
       { timeout: 10000 }
     );
-    
-    console.log('📦 BTC API Response:', response.data);
 
     const balanceSats = response.data.chain_stats.funded_txo_sum - 
                         response.data.chain_stats.spent_txo_sum;
     const balanceBTC = balanceSats / 100000000;
-    console.log('✅ BTC Balance:', balanceBTC, 'BTC');
     return balanceBTC.toFixed(8);
   } catch (error: any) {
-    console.error('❌ Failed to fetch Bitcoin balance:', error.message);
+    console.error('Failed to fetch Bitcoin balance:', error.message);
     return '0';
   }
 }
@@ -116,8 +105,6 @@ export async function fetchBitcoinBalance(address: string): Promise<string> {
  */
 export async function fetchBSCBalance(address: string): Promise<string> {
   try {
-    console.log('🔍 Fetching BNB balance from MAINNET for:', address);
-    
     const response = await axios.post('https://bsc-dataseed.binance.org/', {
       jsonrpc: '2.0',
       id: 1,
@@ -125,18 +112,15 @@ export async function fetchBSCBalance(address: string): Promise<string> {
       params: [address, 'latest'],
     }, { timeout: 10000 });
 
-    console.log('📦 BNB RPC Response:', response.data);
-
     if (response.data.result) {
       const balanceWei = parseInt(response.data.result, 16);
       const balanceBNB = balanceWei / 1e18;
-      console.log('✅ BNB Balance:', balanceBNB, 'BNB');
       return balanceBNB.toFixed(6);
     }
     
     return '0';
   } catch (error: any) {
-    console.error('❌ Failed to fetch BSC balance:', error.message);
+    console.error('Failed to fetch BSC balance:', error.message);
     return '0';
   }
 }
@@ -147,7 +131,7 @@ export async function fetchBSCBalance(address: string): Promise<string> {
 export async function fetchXRPBalance(address: string): Promise<string> {
   try {
     if (!xrplService.isValidAddress(address)) {
-      console.error('❌ Invalid XRP address format:', address);
+      console.error('Invalid XRP address format:', address);
       return '0';
     }
     
@@ -157,10 +141,9 @@ export async function fetchXRPBalance(address: string): Promise<string> {
       return parseFloat(result.balance).toFixed(6);
     }
     
-    console.warn('⚠️ XRP account not found or not activated');
     return '0';
   } catch (error: any) {
-    console.error('❌ Failed to fetch XRP balance:', error.message);
+    console.error('Failed to fetch XRP balance:', error.message);
     return '0';
   }
 }
@@ -170,8 +153,6 @@ export async function fetchXRPBalance(address: string): Promise<string> {
  */
 export async function fetchSolanaBalance(address: string): Promise<string> {
   try {
-    console.log('🔍 Fetching SOL balance from MAINNET for:', address);
-    
 const HELIUS_KEY = import.meta.env.VITE_HELIUS_API_KEY || '';
 const rpcUrl = HELIUS_KEY 
   ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
@@ -187,12 +168,9 @@ const response = await axios.post(rpcUrl, {
       headers: { 'Content-Type': 'application/json' }
     });
 
-    console.log('📦 SOL API Response:', response.data);
-
     if (response.data.result?.value !== undefined) {
       const balanceLamports = response.data.result.value;
       const balanceSOL = balanceLamports / 1000000000;
-      console.log('✅ SOL Balance:', balanceSOL, 'SOL');
       return balanceSOL.toFixed(6);
     }
     
@@ -200,10 +178,9 @@ const response = await axios.post(rpcUrl, {
   } catch (error: any) {
     // Gracefully handle rate limits
     if (error.response?.status === 403) {
-      console.warn('⚠️ Solana RPC rate limited, returning 0');
       return '0';
     }
-    console.error('❌ Failed to fetch Solana balance:', error.message);
+    console.error('Failed to fetch Solana balance:', error.message);
     return '0';
   }
 }
@@ -304,8 +281,6 @@ export async function fetchAllBalances(addresses: {
   solana: string;
 }): Promise<ChainBalance[]> {
   try {
-    console.log('🌐 Fetching all MAINNET balances');
-    
     const prices = await fetchPrices();
 
     const [ethBalance, btcBalance, bscBalance, xrpBalance, solBalance] = await Promise.all([
@@ -359,7 +334,6 @@ export async function fetchAllBalances(addresses: {
       timestamp: Date.now(),
     }));
 
-    console.log('✅ All mainnet balances fetched successfully');
     return balances;
   } catch (error) {
     console.error('❌ Failed to fetch all balances:', error);

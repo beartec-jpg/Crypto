@@ -51,10 +51,9 @@ class XRPLService {
     
     try {
       await this.connectionPromise;
-      console.log(`✅ Connected to XRP ${useMainnet ? 'MAINNET' : 'TESTNET'}`);
       return this.client;
     } catch (error) {
-      console.error('❌ Failed to connect to XRPL:', error);
+      console.error('Failed to connect to XRPL:', error);
       throw error;
     } finally {
       this.isConnecting = false;
@@ -70,8 +69,6 @@ class XRPLService {
     
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        console.log(`🔍 Fetching XRP balance (attempt ${attempt}/${retries}) from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
-        
         const client = await this.getClient(useMainnet);
         
         const response = await client.request({
@@ -84,8 +81,6 @@ class XRPLService {
           const accountData = response.result.account_data;
           const balanceDrops = accountData.Balance;
           const balanceXRP = dropsToXrp(balanceDrops);
-          
-          console.log('✅ XRP Balance:', balanceXRP, 'XRP');
           
           return {
             balance: balanceXRP,
@@ -101,11 +96,8 @@ class XRPLService {
         
         // Account not found is not a retry-able error
         if (error.data?.error === 'actNotFound') {
-          console.warn('⚠️ XRP account not found (never activated)');
           return null;
         }
-        
-        console.warn(`❌ Attempt ${attempt} failed:`, error.message);
         
         // Wait before retry (exponential backoff)
         if (attempt < retries) {
@@ -120,7 +112,7 @@ class XRPLService {
       }
     }
     
-    console.error('❌ Failed to fetch XRP balance after all retries:', lastError?.message);
+    console.error('Failed to fetch XRP balance after all retries:', lastError?.message);
     throw lastError || new Error('Failed to fetch XRP balance');
   }
   
@@ -129,8 +121,6 @@ class XRPLService {
    */
   async getTransactions(address: string, useMainnet = true, limit = 20): Promise<any[]> {
     try {
-      console.log(`🔍 Fetching XRP transactions from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
-      
       const client = await this.getClient(useMainnet);
       
       const response = await client.request({
@@ -142,18 +132,16 @@ class XRPLService {
       });
       
       if (response.result?.transactions) {
-        console.log(`✅ Found ${response.result.transactions.length} XRP transactions`);
         return response.result.transactions;
       }
       
       return [];
     } catch (error: any) {
       if (error.data?.error === 'actNotFound') {
-        console.warn('⚠️ XRP account not found');
         return [];
       }
       
-      console.error('❌ Failed to fetch XRP transactions:', error.message);
+      console.error('Failed to fetch XRP transactions:', error.message);
       return [];
     }
   }
@@ -189,7 +177,7 @@ class XRPLService {
       
       return response.result?.ledger_index || null;
     } catch (error: any) {
-      console.error('❌ Failed to fetch XRP ledger info:', error.message);
+      console.error('Failed to fetch XRP ledger info:', error.message);
       return null;
     }
   }
@@ -200,7 +188,6 @@ class XRPLService {
   async disconnect(): Promise<void> {
     if (this.client && this.client.isConnected()) {
       await this.client.disconnect();
-      console.log('🔌 Disconnected from XRPL');
     }
     this.client = null;
   }

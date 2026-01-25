@@ -108,3 +108,26 @@ export class ErrorHandler {
     return JSON.stringify(this.logs, null, 2);
   }
 }
+
+/**
+ * Setup global error handler for WebSocket connection errors
+ */
+const SUPPRESSED_ERRORS = [
+  'Connection interrupted while trying to subscribe',
+  'WebSocket connection failed',
+  'Failed to execute \'send\' on \'WebSocket\'',
+];
+
+export function setupGlobalErrorHandler() {
+  window.addEventListener('unhandledrejection', (event) => {
+    const errorMessage = event.reason?.message || String(event.reason);
+    
+    if (SUPPRESSED_ERRORS.some(msg => errorMessage.includes(msg))) {
+      console.debug('🔇 Suppressed harmless WebSocket error:', errorMessage);
+      event.preventDefault();
+      return;
+    }
+    
+    console.error('Unhandled rejection:', event.reason);
+  });
+}
