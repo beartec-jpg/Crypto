@@ -1,30 +1,34 @@
-// client/src/pages/Wallet.tsx
-// Main Wallet Page - Sovereign Wallet with WebAuthn passkeys
+// client/src/pages/Wallet.tsx - PART 1
+// Main Wallet Page - Integrated with Token System
 
 import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect, useBalance } from 'wagmi';
 import { useUser } from '@clerk/clerk-react';
 import WalletDashboard from '../components/Wallet/WalletDashboard';
-import ReceiveSection from '../components/Wallet/ReceiveSection';
-import SendForm from '../components/Wallet/SendForm';
+import ReceiveModal from '../components/Wallet/ReceiveModal';
+import SendForm, { type SendTransactionData } from '../components/Wallet/SendForm';
+import BitcoinSendModal from '../components/Wallet/BitcoinSendModal';
+import SolanaSendModal from '../components/Wallet/SolanaSendModal';
 import PasskeyAuthModal from '../components/Wallet/PasskeyAuthModal';
 import PinEntryModal from '../components/Wallet/PinEntryModal';
 import SecuritySettings from '../components/Wallet/SecuritySettings';
-import RecoveryTool from '../components/Wallet/RecoveryTool';
+import SecurityEducationCenter from '../components/Security/SecurityEducationCenter';
 import { getCurrentWallet, migrateWalletToUser } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements } from '@/lib/securityService';
+import { getWalletTokens, type Token } from '@/lib/tokenService';
+import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
-import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon } from 'lucide-react';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
+import type { Chain } from '@/lib/balanceService';
 
-type WalletTab = 'dashboard' | 'send' | 'receive' | 'settings';
-type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
+type WalletMode = 'dashboard' | 'send' | 'receive' | 'settings' | 'security';
 
 export default function WalletPage() {
   const { user } = useUser();
   const userId = user?.id || '';
   
-  const [activeTab, setActiveTab] = useState<WalletTab>('dashboard');
+  const [mode, setMode] = useState<WalletMode>('dashboard');
   const [hideBalances, setHideBalances] = useState(true);
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const [isPasskeyAuthenticated, setIsPasskeyAuthenticated] = useState(false);
@@ -32,7 +36,16 @@ export default function WalletPage() {
   const [sovereignWallet, setSovereignWallet] = useState<any>(null);
   const [autoLockTime, setAutoLockTime] = useState(600);
   
-  // New state variables for security tier enforcement
+  // Token state
+  const [tokens, setTokens] = useState<Token[]>([]);
+  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
+  
+  // Modal state
+  const [showBitcoinSend, setShowBitcoinSend] = useState(false);
+  const [showSolanaSend, setShowSolanaSend] = useState(false);
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
+  
+  // Security tier enforcement
   const [isWalletUnlocked, setIsWalletUnlocked] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingWallet, setPendingWallet] = useState<any>(null);
@@ -83,7 +96,6 @@ export default function WalletPage() {
     const checkWalletAndSecurity = async () => {
       if (!userId) return;
       
-      // First, check if wallet exists
       const wallet = await getCurrentWallet(userId);
       if (!wallet) {
         setSovereignWallet(null);
@@ -91,10 +103,12 @@ export default function WalletPage() {
         return;
       }
       
-      // Get security requirements for opening wallet
+      // Load tokens
+      const walletTokens = await getWalletTokens(wallet.id);
+      setTokens(walletTokens);
+      
       const requirements = getSecurityRequirements(userId, 'openWallet');
       
-      // Tier 1: No auth needed to view wallet
       if (requirements.length === 0) {
         setSovereignWallet(wallet);
         setIsWalletUnlocked(true);
@@ -102,7 +116,6 @@ export default function WalletPage() {
         return;
       }
       
-      // Tier 2 or 3: Check if already authenticated this session
       const sessionUnlocked = sessionStorage.getItem('wallet_unlocked') === 'true';
       if (sessionUnlocked && !securityManager.isWalletLocked()) {
         setSovereignWallet(wallet);
@@ -111,15 +124,12 @@ export default function WalletPage() {
         return;
       }
       
-      // Need to authenticate - store wallet reference, show auth modal
       setPendingWallet(wallet);
       
       if (requirements.includes('pin')) {
-        // Tier 3: PIN first, then passkey
         setAuthStep('pin');
         setShowPinModal(true);
       } else if (requirements.includes('passkey')) {
-        // Tier 2: Passkey only
         setAuthStep('passkey');
         setShowPasskeyModal(true);
       }
@@ -131,7 +141,6 @@ export default function WalletPage() {
   const handlePinSuccess = () => {
     setShowPinModal(false);
     
-    // After PIN, check if passkey is also required
     if (!userId) return;
     
     const requirements = getSecurityRequirements(userId, 'openWallet');
@@ -139,7 +148,6 @@ export default function WalletPage() {
       setAuthStep('passkey');
       setShowPasskeyModal(true);
     } else {
-      // PIN only was required, complete auth
       completeWalletUnlock();
     }
   };
@@ -187,9 +195,145 @@ export default function WalletPage() {
     }
   };
 
+  // Handle token selection from dashboard
+  const handleTokenSelect = (token: Token) => {
+    setSelectedToken(token);
+    setSelectedChain(token.chain);
+
+    if (token.chain === 'bitcoin' && token.isNative) {
+      setShowBitcoinSend(true);
+    } else if (token.chain === 'solana') {
+      setShowSolanaSend(true);
+    } else {
+      setMode('send');
+    }
+  };
+
+  // Handle send transaction
+  const handleSend = async (data: SendTransactionData) => {
+    try {
+      if (data.chain === 'ethereum' || data.chain === 'bsc') {
+        const { signTransaction, broadcastTransaction } = await import('@/lib/walletService');
+        
+        const tx = {
+          to: data.toAddress,
+          value: data.token.isNative ? data.amount : undefined,
+          data: data.token.isNative ? undefined : '0x',
+        };
+
+        const password = prompt('Enter your wallet password:');
+        if (!password) throw new Error('Password required');
+
+        const signedTx = await signTransaction(
+          sovereignWallet!.id,
+          password,
+          data.chain,
+          tx,
+          false
+        );
+
+        const txHash = await broadcastTransaction(data.chain, signedTx);
+
+        addPendingTransaction({
+          hash: txHash,
+          chain: data.chain,
+          type: 'send',
+          amount: data.amount,
+          asset: data.token.symbol,
+          to: data.toAddress,
+          timestamp: Date.now(),
+          status: 'pending',
+        });
+
+        alert(`Transaction sent! Hash: ${txHash}`);
+        setMode('dashboard');
+      } else if (data.chain === 'xrp') {
+        const { sendXRP, sendXRPToken } = await import('@/lib/xrpService');
+        
+        const password = prompt('Enter your wallet password:');
+        if (!password) throw new Error('Password required');
+
+        const { unlockWallet } = await import('@/lib/walletService');
+        const unlockedWallet = await unlockWallet(sovereignWallet!.id, password);
+        const privateKey = unlockedWallet.privateKeys.xrp;
+
+        let txHash: string;
+
+        if (data.token.isNative) {
+          const result = await sendXRP(privateKey, data.toAddress, data.amount, data.memo);
+          txHash = result.hash;
+        } else {
+          const result = await sendXRPToken(
+            privateKey,
+            data.toAddress,
+            data.token.currencyCode!,
+            data.token.issuer!,
+            data.amount,
+            data.memo
+          );
+          txHash = result.hash;
+        }
+
+        addPendingTransaction({
+          hash: txHash,
+          chain: 'xrp',
+          type: 'send',
+          amount: data.amount,
+          asset: data.token.symbol,
+          to: data.toAddress,
+          timestamp: Date.now(),
+          status: 'pending',
+        });
+
+        alert(`Transaction sent! Hash: ${txHash}`);
+        setMode('dashboard');
+      }
+    } catch (error: any) {
+      console.error('Send failed:', error);
+      alert('Failed to send: ' + error.message);
+      throw error;
+    }
+  };
+
+  // Handle Bitcoin send success
+  const handleBitcoinSendSuccess = (txid: string) => {
+    addPendingTransaction({
+      hash: txid,
+      chain: 'bitcoin',
+      type: 'send',
+      amount: '0',
+      asset: 'BTC',
+      to: '',
+      timestamp: Date.now(),
+      status: 'pending',
+    });
+
+    setShowBitcoinSend(false);
+    setMode('dashboard');
+  };
+
+  // Handle Solana send success
+  const handleSolanaSendSuccess = (signature: string) => {
+    addPendingTransaction({
+      hash: signature,
+      chain: 'solana',
+      type: 'send',
+      amount: '0',
+      asset: selectedToken?.symbol || 'SOL',
+      to: '',
+      timestamp: Date.now(),
+      status: 'pending',
+    });
+
+    setShowSolanaSend(false);
+    setMode('dashboard');
+  };
+
   const isWalletConnected = isConnected || (sovereignWallet !== null && isWalletUnlocked);
   const activeAddress = address || (sovereignWallet?.addresses[selectedChain] as `0x${string}` | undefined);
 
+  // Chain selector
+  const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Security Banner */}
@@ -228,18 +372,20 @@ export default function WalletPage() {
             )}
           </button>
 
-          {/* Chain Selector */}
-          <select
-            value={selectedChain}
-            onChange={(e) => setSelectedChain(e.target.value as Chain)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="ethereum">Ethereum</option>
-            <option value="bitcoin">Bitcoin</option>
-            <option value="bsc">BSC (BNB)</option>
-            <option value="xrp">XRP (Ripple)</option>
-            <option value="solana">Solana</option>
-          </select>
+          {/* Chain Selector (only in send/receive modes) */}
+          {(mode === 'send' || mode === 'receive') && (
+            <select
+              value={selectedChain}
+              onChange={(e) => setSelectedChain(e.target.value as Chain)}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="ethereum">Ethereum</option>
+              <option value="bitcoin">Bitcoin</option>
+              <option value="bsc">BSC (BNB)</option>
+              <option value="xrp">XRP (Ripple)</option>
+              <option value="solana">Solana</option>
+            </select>
+          )}
 
           {/* Network Indicator */}
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800">
@@ -316,62 +462,62 @@ export default function WalletPage() {
                   </p>
                 </div>
 
-            <div className="flex flex-col gap-4 max-w-md mx-auto">
-              <button
-                onClick={() => handleConnect('metaMask')}
-                disabled={isPending}
-                className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <span className="font-medium">MetaMask</span>
-              </button>
+                <div className="flex flex-col gap-4 max-w-md mx-auto">
+                  <button
+                    onClick={() => handleConnect('metaMask')}
+                    disabled={isPending}
+                    className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span className="font-medium">MetaMask</span>
+                  </button>
 
-              <button
-                onClick={() => handleConnect('walletConnect')}
-                disabled={isPending}
-                className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <span className="font-medium">WalletConnect</span>
-              </button>
+                  <button
+                    onClick={() => handleConnect('walletConnect')}
+                    disabled={isPending}
+                    className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span className="font-medium">WalletConnect</span>
+                  </button>
 
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-700" />
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-700" />
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-4 bg-gray-800 text-gray-400">or</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setShowPasskeyModal(true)}
+                    disabled={!userId}
+                    className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Lock className="w-6 h-6" />
+                    <span className="font-medium">Create Sovereign Wallet with Passkey</span>
+                  </button>
+                  
+                  {!userId && (
+                    <p className="text-center text-sm text-red-400">
+                      Please sign in to create a sovereign wallet
+                    </p>
+                  )}
                 </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-gray-800 text-gray-400">or</span>
-                </div>
-              </div>
 
-              <button
-                onClick={() => setShowPasskeyModal(true)}
-                disabled={!userId}
-                className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Lock className="w-6 h-6" />
-                <span className="font-medium">Create Sovereign Wallet with Passkey</span>
-              </button>
-              
-              {!userId && (
-                <p className="text-center text-sm text-red-400">
-                  Please sign in to create a sovereign wallet
-                </p>
-              )}
-            </div>
-
-            {/* Security Notice */}
-            <div className="mt-8 p-4 rounded-xl bg-gray-900/50 border border-gray-700 max-w-2xl mx-auto">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-gray-400">
-                  <p className="font-medium text-amber-400 mb-1">Security Notice</p>
-                  <p>
-                    Your private keys are generated and stored securely on your device using WebAuthn passkeys.
-                    We never have access to your keys or funds. All signing happens client-side with
-                    industry-standard encryption.
-                  </p>
+                {/* Security Notice */}
+                <div className="mt-8 p-4 rounded-xl bg-gray-900/50 border border-gray-700 max-w-2xl mx-auto">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-gray-400">
+                      <p className="font-medium text-amber-400 mb-1">Security Notice</p>
+                      <p>
+                        Your private keys are generated and stored securely on your device using WebAuthn passkeys.
+                        We never have access to your keys or funds. All signing happens client-side with
+                        industry-standard encryption.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
               </div>
             )}
           </div>
@@ -401,26 +547,70 @@ export default function WalletPage() {
               </button>
             </div>
 
-            {/* Navigation Tabs */}
-            <div className="flex gap-2 mb-6 border-b border-gray-800 pb-4">
-              {(['dashboard', 'send', 'receive', 'settings'] as const).map((tab) => (
+            {/* Mode Navigation */}
+            {mode !== 'security' && (
+              <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-1 mb-6">
                 <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-6 py-3 rounded-lg font-medium transition-colors capitalize ${
-                    activeTab === tab
+                  onClick={() => setMode('dashboard')}
+                  className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                    mode === 'dashboard'
                       ? 'bg-emerald-600 text-white'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  {tab}
+                  <WalletIcon className="w-4 h-4" />
+                  Dashboard
                 </button>
-              ))}
-            </div>
+                <button
+                  onClick={() => setMode('send')}
+                  className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                    mode === 'send'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Send className="w-4 h-4" />
+                  Send
+                </button>
+                <button
+                  onClick={() => setShowReceiveModal(true)}
+                  className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                    showReceiveModal
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <QrCode className="w-4 h-4" />
+                  Receive
+                </button>
+                <button
+                  onClick={() => setMode('settings')}
+                  className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                    mode === 'settings'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <SettingsIcon className="w-4 h-4" />
+                  Settings
+                </button>
+                <button
+                  onClick={() => setMode('security')}
+                  className={`flex-1 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                    mode === 'security'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Shield className="w-4 h-4" />
+                  Security
+                </button>
+              </div>
+            )}
 
-            {/* Tab Content */}
-            <div className="bg-gray-800 rounded-2xl p-6">
-              {activeTab === 'dashboard' && (
+            {/* Main Content */}
+            <div>
+              {mode === 'dashboard' && (
                 <WalletDashboard
                   address={activeAddress}
                   balance={balance}
@@ -428,28 +618,61 @@ export default function WalletPage() {
                   selectedChain={selectedChain}
                   sovereignWallet={sovereignWallet}
                   pendingTransactions={pendingTransactions}
+                  onSelectToken={handleTokenSelect}
                 />
               )}
-              {activeTab === 'send' && (
+
+              {mode === 'send' && sovereignWallet && (
                 <SendForm
-                  userId={userId}
-                  isPasskeyAuthenticated={isPasskeyAuthenticated}
-                  onRequestPasskey={() => setShowPasskeyModal(true)}
-                  selectedChain={selectedChain}
-                  onAddPendingTransaction={addPendingTransaction}
-                  sovereignWallet={sovereignWallet}
+                  chain={selectedChain}
+                  walletId={sovereignWallet.id}
+                  walletAddresses={sovereignWallet.addresses}
+                  onSend={handleSend}
+                  defaultToken={selectedToken || undefined}
                 />
               )}
-              {activeTab === 'receive' && (
-                <ReceiveSection address={activeAddress} />
-              )}
-              {activeTab === 'settings' && (
+
+              {mode === 'settings' && (
                 <SettingsSection sovereignWallet={sovereignWallet} userId={userId} />
               )}
+
+              {mode === 'security' && <SecurityEducationCenter />}
             </div>
           </>
         )}
       </div>
+
+      {/* Receive Modal */}
+      {showReceiveModal && sovereignWallet && (
+        <ReceiveModal
+          addresses={sovereignWallet.addresses}
+          selectedChain={selectedChain}
+          onSelectChain={setSelectedChain}
+          onClose={() => setShowReceiveModal(false)}
+        />
+      )}
+
+      {/* Bitcoin Send Modal */}
+      {showBitcoinSend && sovereignWallet && (
+        <BitcoinSendModal
+          fromAddress={sovereignWallet.addresses.bitcoin}
+          privateKeyHex={''} // TODO: Get from unlocked wallet
+          availableBalance={0} // TODO: Get from balance service
+          onClose={() => setShowBitcoinSend(false)}
+          onSuccess={handleBitcoinSendSuccess}
+        />
+      )}
+
+      {/* Solana Send Modal */}
+      {showSolanaSend && sovereignWallet && selectedToken && (
+        <SolanaSendModal
+          fromAddress={sovereignWallet.addresses.solana}
+          privateKeyBase58={''} // TODO: Get from unlocked wallet
+          selectedToken={selectedToken}
+          onClose={() => setShowSolanaSend(false)}
+          onSuccess={handleSolanaSendSuccess}
+        />
+      )}
 
       {/* PIN Entry Modal for Tier 3 */}
       {showPinModal && userId && (
@@ -474,15 +697,14 @@ export default function WalletPage() {
   );
 }
 
-// Settings Section Component
+// Settings Section Component (kept from original)
 function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; userId: string }) {
   const [showMnemonicWarning, setShowMnemonicWarning] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'security'>('general');
-  const [showRecoveryTool, setShowRecoveryTool] = useState(false);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-gray-800 rounded-2xl p-6">
       <h2 className="text-2xl font-semibold">Wallet Settings</h2>
 
       {/* Settings Tabs */}
@@ -574,43 +796,7 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
               </div>
             </div>
-
-            {sovereignWallet?.mnemonicBackedUp !== undefined && (
-              <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Recovery Phrase Backup</p>
-                    <p className="text-sm text-gray-400">
-                      {sovereignWallet.mnemonicBackedUp ? 'Backed up ✓' : 'Not backed up yet'}
-                    </p>
-                  </div>
-                  <div className={`w-2 h-2 rounded-full ${sovereignWallet.mnemonicBackedUp ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                </div>
-              </div>
-            )}
           </div>
-
-          {/* ETH/BSC Recovery Tool */}
-          {sovereignWallet && (
-            <div className="p-4 rounded-xl bg-yellow-900/20 border border-yellow-700/50">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-400">ETH/BSC Recovery</h3>
-                  <p className="text-sm text-gray-400 mt-1">
-                    If your wallet was created before the Keccak-256 fix, you may have ETH or BSC funds on an old address that needs to be recovered. 
-                    (ETH and BSC use the same address)
-                  </p>
-                  <button
-                    onClick={() => setShowRecoveryTool(true)}
-                    className="mt-3 px-4 py-2 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-sm transition-colors"
-                  >
-                    Open Recovery Tool
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Advanced (Mnemonic Export) */}
           {sovereignWallet && (
@@ -665,19 +851,7 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
       {activeSettingsTab === 'security' && (
         <SecuritySettings userId={userId} />
       )}
-
-      {/* Recovery Tool Modal */}
-      {showRecoveryTool && sovereignWallet && (
-        <RecoveryTool
-          walletId={sovereignWallet.id}
-          onClose={() => setShowRecoveryTool(false)}
-          onSuccess={() => {
-            setShowRecoveryTool(false);
-            // Trigger balance refresh
-            window.location.reload();
-          }}
-        />
-      )}
     </div>
   );
 }
+  
