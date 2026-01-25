@@ -17,6 +17,7 @@ import {
   buildTransaction, 
   broadcastTransaction,
   getChainSymbol as getSendChainSymbol,
+  SUPPORTED_SEND_CHAINS,
 } from '@/lib/sendService';
 import { signTransaction } from '@/lib/walletService';
 import TransactionPreviewModal from './TransactionPreviewModal';
@@ -186,7 +187,7 @@ export default function SendForm({
     
     try {
       // Only proceed if we support ETH or BSC
-      if (selectedChain !== 'ethereum' && selectedChain !== 'bsc') {
+      if (!SUPPORTED_SEND_CHAINS.includes(selectedChain as any)) {
         throw new Error(`Sending ${selectedChain} is not yet supported. Only ETH and BNB are currently supported.`);
       }
 

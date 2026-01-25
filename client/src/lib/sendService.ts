@@ -6,6 +6,9 @@ import axios from 'axios';
 
 export type Chain = 'ethereum' | 'bsc';
 
+// Supported chains for sending
+export const SUPPORTED_SEND_CHAINS: Chain[] = ['ethereum', 'bsc'];
+
 export interface GasEstimate {
   gasLimit: bigint;
   gasPrice?: bigint;
@@ -117,6 +120,9 @@ async function getTokenPrice(chain: Chain): Promise<number> {
   }
 }
 
+// Gas estimation buffer
+const GAS_BUFFER_PERCENT = 120; // 20% buffer
+
 /**
  * Estimate gas for a transaction
  */
@@ -138,7 +144,7 @@ export async function estimateGas(
     });
     
     // Add 20% buffer to gas limit for safety
-    const gasLimitWithBuffer = (gasLimit * BigInt(120)) / BigInt(100);
+    const gasLimitWithBuffer = (gasLimit * BigInt(GAS_BUFFER_PERCENT)) / BigInt(100);
     
     // Get gas prices
     const gasPrices = await getGasPrices(chain);

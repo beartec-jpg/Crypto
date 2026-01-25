@@ -153,33 +153,37 @@ export function usePendingTransactions() {
 
       if (activeTransactions.length === 0) return;
 
-      for (const tx of activeTransactions) {
-        try {
-          const status = await getTransactionStatus(tx.chain, tx.hash);
+      // Poll all active transactions in parallel
+      const statusUpdates = await Promise.allSettled(
+        activeTransactions.map(tx => getTransactionStatus(tx.chain, tx.hash))
+      );
+
+      setTransactions(prev => 
+        prev.map(t => {
+          const index = activeTransactions.findIndex(atx => atx.id === t.id);
+          if (index === -1) return t;
+
+          const result = statusUpdates[index];
+          if (result.status === 'rejected') {
+            console.error(`Failed to poll transaction ${t.hash}:`, result.reason);
+            return t;
+          }
+
+          const status = result.value;
+          const newStatus: TransactionStatus = 
+            status.status === 'pending' ? 'pending' :
+            status.status === 'confirming' ? 'confirming' :
+            status.status === 'confirmed' ? 'confirmed' :
+            'failed';
           
-          setTransactions(prev => 
-            prev.map(t => {
-              if (t.id === tx.id) {
-                const newStatus: TransactionStatus = 
-                  status.status === 'pending' ? 'pending' :
-                  status.status === 'confirming' ? 'confirming' :
-                  status.status === 'confirmed' ? 'confirmed' :
-                  'failed';
-                
-                return {
-                  ...t,
-                  status: newStatus,
-                  confirmations: status.confirmations,
-                  steps: createSteps(newStatus, status.confirmations, status.requiredConfirmations),
-                };
-              }
-              return t;
-            })
-          );
-        } catch (error) {
-          console.error(`Failed to poll transaction ${tx.hash}:`, error);
-        }
-      }
+          return {
+            ...t,
+            status: newStatus,
+            confirmations: status.confirmations,
+            steps: createSteps(newStatus, status.confirmations, status.requiredConfirmations),
+          };
+        })
+      );
     };
 
     // Poll immediately and then at intervals

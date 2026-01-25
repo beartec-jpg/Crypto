@@ -49,7 +49,9 @@ export default function PendingTransactionCard({ transaction }: PendingTransacti
 
   const progressPercentage = transaction.status === 'confirmed' 
     ? 100 
-    : (transaction.confirmations / transaction.requiredConfirmations) * 100;
+    : transaction.requiredConfirmations > 0 
+      ? (transaction.confirmations / transaction.requiredConfirmations) * 100
+      : 0;
 
   return (
     <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors">
