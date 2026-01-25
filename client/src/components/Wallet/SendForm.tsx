@@ -401,11 +401,6 @@ export default function SendForm({
         throw new Error(`Chain not supported for EVM-based transactions: ${selectedChain}`);
       }
 
-      const fromAddress = sovereignWallet?.addresses?.[selectedChain];
-      if (!fromAddress) {
-        throw new Error('Wallet address not found. Please try again.');
-      }
-
       // Step 2: Estimate gas
       setTransactionStep('estimating');
       const gasEstimate = await estimateGas(selectedChain, fromAddress, recipient, amount);
