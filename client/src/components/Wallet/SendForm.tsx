@@ -378,7 +378,7 @@ export default function SendForm({
 
       // ETH/BSC flow (existing logic)
       if (!SUPPORTED_SEND_CHAINS.includes(selectedChain as any)) {
-        throw new Error(`Sending ${selectedChain} is not yet supported. Only ETH, BNB, and XRP are currently supported.`);
+        throw new Error(`Chain not supported for EVM-based transactions: ${selectedChain}`);
       }
 
       const fromAddress = sovereignWallet?.addresses?.[selectedChain];
