@@ -16,6 +16,7 @@ import {
   buildTransaction, 
   broadcastTransaction,
   getChainSymbol as getSendChainSymbol,
+  validateAddress,
   SUPPORTED_SEND_CHAINS,
 } from '@/lib/sendService';
 import { signTransaction } from '@/lib/walletService';
@@ -166,7 +167,7 @@ export default function SendForm({
     }
     
     // Validate address format
-    if (!validateAddress(recipient)) {
+    if (!validateAddress(recipient, selectedChain)) {
       setError(`Invalid ${selectedChain} address`);
       return;
     }
@@ -211,7 +212,7 @@ export default function SendForm({
     
     if (requirements.includes('passkey') && !isAlreadyAuthenticated) {
       // Chain to passkey auth
-      authenticateWithPasskey(userId)
+      authenticateWithPasskey()
         .then(() => {
           setPasskeyAuthenticatedThisSession(true);
           setShowPasswordModal(true); // Finally show password modal
@@ -258,7 +259,7 @@ export default function SendForm({
     // Step 2: Passkey (if required and not already authenticated)
     if (requirements.includes('passkey') && !isAlreadyAuthenticated) {
       try {
-        await authenticateWithPasskey(userId);
+        await authenticateWithPasskey();
         setPasskeyAuthenticatedThisSession(true);
       } catch (err) {
         setError('Passkey authentication failed. Please try again.');
@@ -470,29 +471,11 @@ export default function SendForm({
     return symbols[chain];
   };
 
-  const validateAddress = (address: string): boolean => {
-    // Basic validation - expand per chain
-    switch (selectedChain) {
-      case 'ethereum':
-      case 'bsc':
-        return /^0x[a-fA-F0-9]{40}$/.test(address);
-      case 'bitcoin':
-        return /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(address) ||
-               /^bc1[a-z0-9]{39,59}$/.test(address);
-      case 'xrp':
-        return /^r[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(address);
-      case 'solana':
-        return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
-      default:
-        return false;
-    }
-  };
-
   const handleRecipientChange = (value: string) => {
     setRecipient(value);
     
     // Clear error if address becomes valid
-    if (value && validateAddress(value)) {
+    if (value && validateAddress(value, selectedChain)) {
       setError(null);
     }
   };
