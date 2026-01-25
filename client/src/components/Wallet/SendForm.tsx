@@ -10,7 +10,6 @@ import {
   type SecurityAction 
 } from '@/lib/securityService';
 import { authenticateWithPasskey } from '@/lib/passkeyService';
-import { runSecurityScan, quickSecurityCheck, type SecurityScanResult } from '@/lib/securityScanner';
 import { 
   estimateGas, 
   checkSufficientBalance, 
@@ -32,7 +31,6 @@ import {
 } from '@/lib/xrpSendService';
 import TransactionPreviewModal from './TransactionPreviewModal';
 import PinEntryModal from './PinEntryModal';
-import SecurityWarningModal from './SecurityWarningModal';
 import PasswordModal from './PasswordModal';
 import TransactionSuccessModal from './TransactionSuccessModal';
 import BalanceDisplay from './BalanceDisplay';
@@ -69,11 +67,10 @@ export default function SendForm({
   const [memo, setMemo] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showNewAccountWarning, setShowNewAccountWarning] = useState(false);
-  const [securityScanResult, setSecurityScanResult] = useState<SecurityScanResult | null>(null);
+  const [passkeyAuthenticatedThisSession, setPasskeyAuthenticatedThisSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001');
@@ -157,7 +154,7 @@ export default function SendForm({
   const handleSendClick = async () => {
     setError(null);
 
-    // Validation
+    // Validation only - no auth
     if (!recipient) {
       setError('Please enter a recipient address');
       return;
@@ -168,7 +165,20 @@ export default function SendForm({
       return;
     }
     
-    // For XRP, check if destination exists and show warning if needed
+    // Validate address format
+    if (!validateAddress(recipient)) {
+      setError(`Invalid ${selectedChain} address`);
+      return;
+    }
+
+    // Check if wallet is locked (this is OK - just need to unlock first)
+    if (isLocked) {
+      setError('Wallet is locked. Please unlock first.');
+      onRequestPasskey();
+      return;
+    }
+    
+    // For XRP, check destination exists and show warning if needed
     if (selectedChain === 'xrp') {
       try {
         const exists = await checkDestinationExists(recipient);
@@ -186,89 +196,33 @@ export default function SendForm({
       }
     }
 
-    // Check if wallet is locked
-    if (isLocked) {
-      setError('Wallet is locked. Please unlock first.');
-      onRequestPasskey();
-      return;
-    }
-
-    // Get security requirements for send action
-    const requirements = getSecurityRequirements(userId, 'send');
-
-    // Check if PIN is required
-    if (requirements.includes('pin')) {
-      setShowPinModal(true);
-      return;
-    }
-
-    // Check if passkey is required
-    if (requirements.includes('passkey')) {
-      if (!isPasskeyAuthenticated) {
-        setError('Passkey authentication required');
-        onRequestPasskey();
-        return;
-      }
-    }
-
-    // Show transaction preview modal
+    // Show preview - NO auth prompts here
     setShowPreview(true);
   };
 
-  const handlePinSuccess = async () => {
+  const handlePinSuccess = () => {
     setShowPinModal(false);
-
-    // After PIN success, check for passkey requirement
+    
+    // After PIN, check if passkey is also required
     const requirements = getSecurityRequirements(userId, 'send');
     
-    if (requirements.includes('passkey')) {
-      try {
-        await authenticateWithPasskey();
-        // After all auth, run security scan before showing preview
-        await proceedWithSecurityCheck();
-      } catch (err: any) {
-        setError(err.message || 'Passkey authentication failed');
-        onRequestPasskey();
-      }
+    // Check both prop and local state for passkey authentication
+    const isAlreadyAuthenticated = isPasskeyAuthenticated || passkeyAuthenticatedThisSession;
+    
+    if (requirements.includes('passkey') && !isAlreadyAuthenticated) {
+      // Chain to passkey auth
+      authenticateWithPasskey(userId)
+        .then(() => {
+          setPasskeyAuthenticatedThisSession(true);
+          setShowPasswordModal(true); // Finally show password modal
+        })
+        .catch(() => {
+          setError('Passkey authentication failed. Please try again.');
+        });
     } else {
-      // No passkey needed, proceed with security check
-      await proceedWithSecurityCheck();
+      // No passkey needed, go directly to password
+      setShowPasswordModal(true);
     }
-  };
-
-  const proceedWithSecurityCheck = async () => {
-    // Get current security tier
-    const settings = getSecuritySettings(userId);
-
-    // For Tier 3 (maximum), run full security scan
-    if (settings.tier === 'maximum') {
-      const scanResult = await runSecurityScan();
-      setSecurityScanResult(scanResult);
-      
-      if (!scanResult.safe || scanResult.warnings.length > 0) {
-        setShowSecurityModal(true);
-        return;
-      }
-    } else {
-      // For other tiers, just do quick check
-      if (!quickSecurityCheck()) {
-        setError('Security check failed. Please try in a secure environment.');
-        return;
-      }
-    }
-
-    // If security check passed, show transaction preview
-    setShowPreview(true);
-  };
-
-  const handleSecurityProceed = () => {
-    setShowSecurityModal(false);
-    setShowPreview(true);
-  };
-
-  const handleSecurityCancel = () => {
-    setShowSecurityModal(false);
-    setSecurityScanResult(null);
   };
 
   const handlePinCancel = () => {
@@ -278,40 +232,41 @@ export default function SendForm({
   
   const handleNewAccountProceed = () => {
     setShowNewAccountWarning(false);
-    // Continue with the transaction
-    proceedToAuth();
+    // Continue with the transaction - show preview
+    setShowPreview(true);
   };
   
   const handleNewAccountCancel = () => {
     setShowNewAccountWarning(false);
   };
-  
-  const proceedToAuth = () => {
+
+  const handleConfirmTransaction = async () => {
+    setShowPreview(false);
+    
     // Get security requirements for send action
     const requirements = getSecurityRequirements(userId, 'send');
-
-    // Check if PIN is required
+    
+    // Step 1: PIN (if required for Maximum tier)
     if (requirements.includes('pin')) {
       setShowPinModal(true);
-      return;
+      return; // PIN success handler will continue the flow
     }
-
-    // Check if passkey is required
-    if (requirements.includes('passkey')) {
-      if (!isPasskeyAuthenticated) {
-        setError('Passkey authentication required');
-        onRequestPasskey();
+    
+    // Check both prop and local state for passkey authentication
+    const isAlreadyAuthenticated = isPasskeyAuthenticated || passkeyAuthenticatedThisSession;
+    
+    // Step 2: Passkey (if required and not already authenticated)
+    if (requirements.includes('passkey') && !isAlreadyAuthenticated) {
+      try {
+        await authenticateWithPasskey(userId);
+        setPasskeyAuthenticatedThisSession(true);
+      } catch (err) {
+        setError('Passkey authentication failed. Please try again.');
         return;
       }
     }
-
-    // Show transaction preview modal
-    setShowPreview(true);
-  };
-
-  const handleConfirmTransaction = async () => {
-    // Show password modal for signing
-    setShowPreview(false);
+    
+    // Step 3: Password modal (always required for signing)
     setShowPasswordModal(true);
   };
 
@@ -717,17 +672,6 @@ export default function SendForm({
           destinationAddress={recipient}
           onConfirm={handleNewAccountProceed}
           onCancel={handleNewAccountCancel}
-        />
-      )}
-
-      {/* Security Warning Modal */}
-      {showSecurityModal && securityScanResult && (
-        <SecurityWarningModal
-          result={securityScanResult}
-          onProceed={handleSecurityProceed}
-          onCancel={handleSecurityCancel}
-          action="sign this transaction"
-          allowProceedWithWarnings={true}
         />
       )}
 
