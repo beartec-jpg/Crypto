@@ -141,7 +141,7 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
       
       // Get balance with retry
       console.log('🔍 Fetching balance...');
-      const balance = await getBalanceWithRetry(provider, wallet.address);
+      const balance = await getBalanceWithRetry(provider, legacyAddress);
       const gasLimit = 21000n;
       const gasCost = gasLimit * maxFeePerGas;
       
