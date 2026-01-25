@@ -40,9 +40,9 @@ export interface TransactionStatus {
 // Primary and backup RPC endpoints
 const RPC_ENDPOINTS = {
   ethereum: [
-    'https://eth.llamarpc.com',
-    'https://rpc.ankr.com/eth',
+    'https://rpc.ankr.com/eth',        // More reliable, put first
     'https://ethereum.publicnode.com',
+    'https://eth.llamarpc.com',        // Was first, now backup
   ],
   bsc: [
     'https://bsc-dataseed.binance.org',
@@ -85,8 +85,6 @@ function getProvider(chain: Chain): ethers.JsonRpcProvider {
 
 /**
  * Rotate to next RPC endpoint for chain
- * TODO: Implement automatic fallback logic in getProvider() or other functions
- * to call this when an RPC request fails. Currently defined but not automatically used.
  */
 function rotateRpc(chain: Chain): void {
   if (chain === 'xrp') return;
@@ -103,44 +101,60 @@ async function getGasPrices(chain: Chain): Promise<{
   maxFeePerGas?: bigint;
   maxPriorityFeePerGas?: bigint;
 }> {
-  const provider = getProvider(chain);
+  const maxRetries = RPC_ENDPOINTS[chain]?.length || 1;
   
-  try {
-    const feeData = await provider.getFeeData();
-    
-    // Ethereum - EIP-1559
-    if (chain === 'ethereum') {
-      let maxFeePerGas = feeData.maxFeePerGas || MIN_GAS_PRICES.ethereum.maxFeePerGas;
-      let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const provider = getProvider(chain);
+      const feeData = await provider.getFeeData();
       
-      // Apply 25% buffer for faster inclusion
-      maxFeePerGas = (maxFeePerGas * GAS_PRICE_BUFFER) / 100n;
-      maxPriorityFeePerGas = (maxPriorityFeePerGas * GAS_PRICE_BUFFER) / 100n;
-      
-      // Enforce minimums
-      if (maxFeePerGas < MIN_GAS_PRICES.ethereum.maxFeePerGas) {
-        maxFeePerGas = MIN_GAS_PRICES.ethereum.maxFeePerGas;
+      // Process fee data (existing logic)
+      if (chain === 'ethereum') {
+        let maxFeePerGas = feeData.maxFeePerGas || MIN_GAS_PRICES.ethereum.maxFeePerGas;
+        let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas;
+        
+        // Apply buffer
+        maxFeePerGas = (maxFeePerGas * GAS_PRICE_BUFFER) / 100n;
+        maxPriorityFeePerGas = (maxPriorityFeePerGas * GAS_PRICE_BUFFER) / 100n;
+        
+        // Enforce minimums
+        if (maxFeePerGas < MIN_GAS_PRICES.ethereum.maxFeePerGas) {
+          maxFeePerGas = MIN_GAS_PRICES.ethereum.maxFeePerGas;
+        }
+        if (maxPriorityFeePerGas < MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas) {
+          maxPriorityFeePerGas = MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas;
+        }
+        
+        console.log(`✅ Gas prices fetched from RPC ${attempt + 1}`);
+        return { maxFeePerGas, maxPriorityFeePerGas };
       }
-      if (maxPriorityFeePerGas < MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas) {
-        maxPriorityFeePerGas = MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas;
+      
+      // BSC legacy
+      let gasPrice = feeData.gasPrice || MIN_GAS_PRICES.bsc.gasPrice;
+      gasPrice = (gasPrice * GAS_PRICE_BUFFER) / 100n;
+      
+      if (gasPrice < MIN_GAS_PRICES.bsc.gasPrice) {
+        gasPrice = MIN_GAS_PRICES.bsc.gasPrice;
       }
       
-      return { maxFeePerGas, maxPriorityFeePerGas };
+      console.log(`✅ Gas prices fetched from RPC ${attempt + 1}`);
+      return { gasPrice };
+      
+    } catch (error) {
+      console.warn(`⚠️ RPC attempt ${attempt + 1} failed:`, error);
+      rotateRpc(chain); // Try next RPC
+      
+      if (attempt === maxRetries - 1) {
+        console.error('❌ All RPC endpoints failed');
+        throw new Error('Unable to estimate fees. Please check your connection and try again.');
+      }
+      
+      // Brief delay before retry
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
-    
-    // BSC - legacy gas price
-    let gasPrice = feeData.gasPrice || MIN_GAS_PRICES.bsc.gasPrice;
-    gasPrice = (gasPrice * GAS_PRICE_BUFFER) / 100n;
-    
-    if (gasPrice < MIN_GAS_PRICES.bsc.gasPrice) {
-      gasPrice = MIN_GAS_PRICES.bsc.gasPrice;
-    }
-    
-    return { gasPrice };
-  } catch (error) {
-    console.error('Error fetching gas prices:', error);
-    throw new Error('Unable to estimate fees. Please check your connection and try again.');
   }
+  
+  throw new Error('Unable to estimate fees. Please check your connection and try again.');
 }
 
 /**
@@ -192,56 +206,73 @@ export async function estimateGas(
   to: string,
   value: string
 ): Promise<GasEstimate> {
-  try {
-    const provider = getProvider(chain);
-    const valueInWei = ethers.parseEther(value);
-    
-    // Estimate gas limit
-    const gasLimit = await provider.estimateGas({
-      from,
-      to,
-      value: valueInWei,
-    });
-    
-    // Add 20% buffer to gas limit for safety
-    const gasLimitWithBuffer = (gasLimit * GAS_LIMIT_BUFFER) / 100n;
-    
-    // Get gas prices
-    const gasPrices = await getGasPrices(chain);
-    
-    // Calculate estimated fee
-    let estimatedFeeWei: bigint;
-    if (gasPrices.maxFeePerGas) {
-      estimatedFeeWei = gasLimitWithBuffer * gasPrices.maxFeePerGas;
-    } else if (gasPrices.gasPrice) {
-      estimatedFeeWei = gasLimitWithBuffer * gasPrices.gasPrice;
-    } else {
-      throw new Error('Unable to calculate gas fee');
+  const maxRetries = RPC_ENDPOINTS[chain]?.length || 1;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const provider = getProvider(chain);
+      const valueInWei = ethers.parseEther(value);
+      
+      // Estimate gas limit
+      const gasLimit = await provider.estimateGas({
+        from,
+        to,
+        value: valueInWei,
+      });
+      
+      // Add 20% buffer to gas limit for safety
+      const gasLimitWithBuffer = (gasLimit * GAS_LIMIT_BUFFER) / 100n;
+      
+      // Get gas prices
+      const gasPrices = await getGasPrices(chain);
+      
+      // Calculate estimated fee
+      let estimatedFeeWei: bigint;
+      if (gasPrices.maxFeePerGas) {
+        estimatedFeeWei = gasLimitWithBuffer * gasPrices.maxFeePerGas;
+      } else if (gasPrices.gasPrice) {
+        estimatedFeeWei = gasLimitWithBuffer * gasPrices.gasPrice;
+      } else {
+        throw new Error('Unable to calculate gas fee');
+      }
+      
+      const estimatedFee = ethers.formatEther(estimatedFeeWei);
+      
+      // Get token price for USD estimate
+      const tokenPrice = await getTokenPrice(chain);
+      const estimatedFeeUsd = parseFloat(estimatedFee) * tokenPrice;
+      
+      console.log(`✅ Gas estimation successful from RPC ${attempt + 1}`);
+      
+      return {
+        gasLimit: gasLimitWithBuffer,
+        gasPrice: gasPrices.gasPrice,
+        maxFeePerGas: gasPrices.maxFeePerGas,
+        maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+        estimatedFee,
+        estimatedFeeUsd,
+      };
+    } catch (error: any) {
+      console.warn(`⚠️ Gas estimation attempt ${attempt + 1} failed:`, error);
+      
+      // Check for specific errors that shouldn't trigger retry
+      if (error.message?.includes('insufficient funds')) {
+        throw new Error('Insufficient balance for transaction amount');
+      }
+      
+      rotateRpc(chain); // Try next RPC
+      
+      if (attempt === maxRetries - 1) {
+        console.error('❌ All RPC endpoints failed for gas estimation');
+        throw new Error('Unable to estimate fees. Please check your connection and try again.');
+      }
+      
+      // Brief delay before retry
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
-    
-    const estimatedFee = ethers.formatEther(estimatedFeeWei);
-    
-    // Get token price for USD estimate
-    const tokenPrice = await getTokenPrice(chain);
-    const estimatedFeeUsd = parseFloat(estimatedFee) * tokenPrice;
-    
-    return {
-      gasLimit: gasLimitWithBuffer,
-      gasPrice: gasPrices.gasPrice,
-      maxFeePerGas: gasPrices.maxFeePerGas,
-      maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
-      estimatedFee,
-      estimatedFeeUsd,
-    };
-  } catch (error: any) {
-    console.error('Gas estimation error:', error);
-    
-    if (error.message?.includes('insufficient funds')) {
-      throw new Error('Insufficient balance for transaction amount');
-    }
-    
-    throw new Error('Unable to estimate fees. Please check your connection and try again.');
   }
+  
+  throw new Error('Unable to estimate fees. Please check your connection and try again.');
 }
 
 /**
@@ -321,52 +352,78 @@ export async function broadcastTransaction(
   chain: Chain,
   signedTx: string
 ): Promise<TransactionBroadcastResult> {
-  try {
-    const provider = getProvider(chain);
-    const txResponse = await provider.broadcastTransaction(signedTx);
-    
-    console.log(`📡 Transaction broadcast: ${txResponse.hash}`);
-    
-    // NEW: Verify transaction was accepted by the network
-    // Wait for propagation
-    await new Promise(resolve => setTimeout(resolve, TRANSACTION_VERIFICATION_DELAY));
-    
-    // Check if transaction exists in mempool or chain
-    const tx = await provider.getTransaction(txResponse.hash);
-    
-    if (!tx) {
-      // Transaction not found - it was rejected
-      throw new Error(
-        'Transaction was not accepted by the network. ' +
-        'This may be due to network congestion. Please try again.'
-      );
+  const maxRetries = RPC_ENDPOINTS[chain]?.length || 1;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const provider = getProvider(chain);
+      const txResponse = await provider.broadcastTransaction(signedTx);
+      
+      console.log(`📡 Transaction broadcast: ${txResponse.hash}`);
+      
+      // NEW: Verify transaction was accepted by the network
+      // Wait for propagation
+      await new Promise(resolve => setTimeout(resolve, TRANSACTION_VERIFICATION_DELAY));
+      
+      // Check if transaction exists in mempool or chain
+      const tx = await provider.getTransaction(txResponse.hash);
+      
+      if (!tx) {
+        // Transaction not found - it was rejected
+        throw new Error(
+          'Transaction was not accepted by the network. ' +
+          'This may be due to network congestion. Please try again.'
+        );
+      }
+      
+      console.log(`✅ Transaction verified on network: ${txResponse.hash}`);
+      
+      const explorerUrl = `${EXPLORER_URLS[chain]}/tx/${txResponse.hash}`;
+      
+      return {
+        hash: txResponse.hash,
+        explorerUrl,
+      };
+    } catch (error: any) {
+      console.warn(`⚠️ Broadcast attempt ${attempt + 1} failed:`, error);
+      
+      // Check for specific errors that shouldn't trigger retry
+      if (error.message?.includes('nonce')) {
+        throw new Error('Transaction rejected: Please try again.');
+      }
+      
+      if (error.message?.includes('gas') || error.message?.includes('underpriced')) {
+        throw new Error('Transaction rejected: Gas price too low. Please try again.');
+      }
+      
+      if (error.message?.includes('not accepted')) {
+        // Custom error - retry with next RPC
+        rotateRpc(chain);
+        
+        if (attempt === maxRetries - 1) {
+          console.error('❌ All RPC endpoints failed to accept transaction');
+          throw error; // Re-throw our custom error
+        }
+        
+        // Brief delay before retry
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
+      }
+      
+      // For other errors, rotate and retry
+      rotateRpc(chain);
+      
+      if (attempt === maxRetries - 1) {
+        console.error('❌ All RPC endpoints failed for broadcast');
+        throw new Error('Failed to broadcast transaction. Please try again.');
+      }
+      
+      // Brief delay before retry
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
-    
-    console.log(`✅ Transaction verified on network: ${txResponse.hash}`);
-    
-    const explorerUrl = `${EXPLORER_URLS[chain]}/tx/${txResponse.hash}`;
-    
-    return {
-      hash: txResponse.hash,
-      explorerUrl,
-    };
-  } catch (error: any) {
-    console.error('Broadcast error:', error);
-    
-    if (error.message?.includes('nonce')) {
-      throw new Error('Transaction rejected: Please try again.');
-    }
-    
-    if (error.message?.includes('gas') || error.message?.includes('underpriced')) {
-      throw new Error('Transaction rejected: Gas price too low. Please try again.');
-    }
-    
-    if (error.message?.includes('not accepted')) {
-      throw error; // Re-throw our custom error
-    }
-    
-    throw new Error('Failed to broadcast transaction. Please try again.');
   }
+  
+  throw new Error('Failed to broadcast transaction. Please try again.');
 }
 
 /**
