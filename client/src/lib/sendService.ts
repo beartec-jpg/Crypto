@@ -4,7 +4,7 @@
 import { ethers } from 'ethers';
 import axios from 'axios';
 
-export type Chain = 'ethereum' | 'bsc';
+export type Chain = 'ethereum' | 'bsc' | 'xrp';
 
 // Supported chains for sending
 export const SUPPORTED_SEND_CHAINS: Chain[] = ['ethereum', 'bsc'];
@@ -37,16 +37,32 @@ export interface TransactionStatus {
   blockNumber?: number;
 }
 
-// RPC endpoints
+// Primary and backup RPC endpoints
 const RPC_ENDPOINTS = {
-  ethereum: 'https://eth.llamarpc.com',
-  bsc: 'https://bsc-dataseed.binance.org',
+  ethereum: [
+    'https://eth.llamarpc.com',
+    'https://rpc.ankr.com/eth',
+    'https://ethereum.publicnode.com',
+  ],
+  bsc: [
+    'https://bsc-dataseed.binance.org',
+    'https://bsc-dataseed1.defibit.io',
+    'https://bsc.publicnode.com',
+  ],
 };
 
 // Block explorer URLs
 const EXPLORER_URLS = {
   ethereum: 'https://etherscan.io',
   bsc: 'https://bscscan.com',
+  xrp: 'https://livenet.xrpl.org',
+};
+
+// Current RPC index for rotation
+let currentRpcIndex: Record<Chain, number> = {
+  ethereum: 0,
+  bsc: 0,
+  xrp: 0,
 };
 
 // Required confirmations
@@ -56,14 +72,29 @@ const REQUIRED_CONFIRMATIONS = {
 };
 
 /**
- * Get provider for chain
+ * Get provider for chain with automatic failover
  */
 function getProvider(chain: Chain): ethers.JsonRpcProvider {
-  return new ethers.JsonRpcProvider(RPC_ENDPOINTS[chain]);
+  if (chain === 'xrp') {
+    throw new Error('XRP does not use JSON-RPC provider');
+  }
+  const endpoints = RPC_ENDPOINTS[chain];
+  const index = currentRpcIndex[chain];
+  return new ethers.JsonRpcProvider(endpoints[index]);
 }
 
 /**
- * Get current gas prices for chain
+ * Rotate to next RPC endpoint for chain
+ */
+function rotateRpc(chain: Chain): void {
+  if (chain === 'xrp') return;
+  const endpoints = RPC_ENDPOINTS[chain];
+  currentRpcIndex[chain] = (currentRpcIndex[chain] + 1) % endpoints.length;
+  console.log(`Rotated to RPC: ${endpoints[currentRpcIndex[chain]]}`);
+}
+
+/**
+ * Get current gas prices for chain with buffer and minimum enforcement
  */
 async function getGasPrices(chain: Chain): Promise<{
   gasPrice?: bigint;
@@ -73,25 +104,37 @@ async function getGasPrices(chain: Chain): Promise<{
   const provider = getProvider(chain);
   
   try {
-    // Try to get EIP-1559 fees first (Ethereum)
-    if (chain === 'ethereum') {
-      const feeData = await provider.getFeeData();
-      
-      if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
-        return {
-          maxFeePerGas: feeData.maxFeePerGas,
-          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
-        };
-      }
-    }
-    
-    // Fall back to legacy gas price (BSC and fallback for Ethereum)
     const feeData = await provider.getFeeData();
-    if (feeData.gasPrice) {
-      return { gasPrice: feeData.gasPrice };
+    
+    // Ethereum - EIP-1559
+    if (chain === 'ethereum') {
+      let maxFeePerGas = feeData.maxFeePerGas || MIN_GAS_PRICES.ethereum.maxFeePerGas;
+      let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas;
+      
+      // Apply 25% buffer for faster inclusion
+      maxFeePerGas = (maxFeePerGas * GAS_PRICE_BUFFER) / 100n;
+      maxPriorityFeePerGas = (maxPriorityFeePerGas * GAS_PRICE_BUFFER) / 100n;
+      
+      // Enforce minimums
+      if (maxFeePerGas < MIN_GAS_PRICES.ethereum.maxFeePerGas) {
+        maxFeePerGas = MIN_GAS_PRICES.ethereum.maxFeePerGas;
+      }
+      if (maxPriorityFeePerGas < MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas) {
+        maxPriorityFeePerGas = MIN_GAS_PRICES.ethereum.maxPriorityFeePerGas;
+      }
+      
+      return { maxFeePerGas, maxPriorityFeePerGas };
     }
     
-    throw new Error('Failed to fetch gas prices');
+    // BSC - legacy gas price
+    let gasPrice = feeData.gasPrice || MIN_GAS_PRICES.bsc.gasPrice;
+    gasPrice = (gasPrice * GAS_PRICE_BUFFER) / 100n;
+    
+    if (gasPrice < MIN_GAS_PRICES.bsc.gasPrice) {
+      gasPrice = MIN_GAS_PRICES.bsc.gasPrice;
+    }
+    
+    return { gasPrice };
   } catch (error) {
     console.error('Error fetching gas prices:', error);
     throw new Error('Unable to estimate fees. Please check your connection and try again.');
@@ -121,7 +164,19 @@ async function getTokenPrice(chain: Chain): Promise<number> {
 }
 
 // Gas estimation buffer
-const GAS_BUFFER_PERCENT = 120; // 20% buffer
+const GAS_LIMIT_BUFFER = 120n; // 20% buffer on gas limit
+const GAS_PRICE_BUFFER = 125n; // 25% buffer on gas price
+
+// Minimum gas prices (safety net)
+const MIN_GAS_PRICES = {
+  ethereum: {
+    maxFeePerGas: ethers.parseUnits('5', 'gwei'),      // Min 5 Gwei
+    maxPriorityFeePerGas: ethers.parseUnits('1', 'gwei'), // Min 1 Gwei
+  },
+  bsc: {
+    gasPrice: ethers.parseUnits('3', 'gwei'), // Min 3 Gwei
+  },
+};
 
 /**
  * Estimate gas for a transaction
@@ -144,7 +199,7 @@ export async function estimateGas(
     });
     
     // Add 20% buffer to gas limit for safety
-    const gasLimitWithBuffer = (gasLimit * BigInt(GAS_BUFFER_PERCENT)) / BigInt(100);
+    const gasLimitWithBuffer = (gasLimit * GAS_LIMIT_BUFFER) / 100n;
     
     // Get gas prices
     const gasPrices = await getGasPrices(chain);
@@ -255,7 +310,7 @@ export async function buildTransaction(
 }
 
 /**
- * Broadcast signed transaction to network
+ * Broadcast signed transaction to network with verification
  */
 export async function broadcastTransaction(
   chain: Chain,
@@ -265,9 +320,26 @@ export async function broadcastTransaction(
     const provider = getProvider(chain);
     const txResponse = await provider.broadcastTransaction(signedTx);
     
-    const explorerUrl = `${EXPLORER_URLS[chain]}/tx/${txResponse.hash}`;
+    console.log(`📡 Transaction broadcast: ${txResponse.hash}`);
     
-    console.log(`✅ Transaction broadcast: ${txResponse.hash}`);
+    // NEW: Verify transaction was accepted by the network
+    // Wait for propagation
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Check if transaction exists in mempool or chain
+    const tx = await provider.getTransaction(txResponse.hash);
+    
+    if (!tx) {
+      // Transaction not found - it was rejected
+      throw new Error(
+        'Transaction was not accepted by the network. ' +
+        'This may be due to network congestion. Please try again.'
+      );
+    }
+    
+    console.log(`✅ Transaction verified on network: ${txResponse.hash}`);
+    
+    const explorerUrl = `${EXPLORER_URLS[chain]}/tx/${txResponse.hash}`;
     
     return {
       hash: txResponse.hash,
@@ -277,11 +349,15 @@ export async function broadcastTransaction(
     console.error('Broadcast error:', error);
     
     if (error.message?.includes('nonce')) {
-      throw new Error('Transaction rejected: Nonce error. Please try again.');
+      throw new Error('Transaction rejected: Please try again.');
     }
     
-    if (error.message?.includes('gas')) {
-      throw new Error('Transaction rejected: Insufficient gas. Please try again.');
+    if (error.message?.includes('gas') || error.message?.includes('underpriced')) {
+      throw new Error('Transaction rejected: Gas price too low. Please try again.');
+    }
+    
+    if (error.message?.includes('not accepted')) {
+      throw error; // Re-throw our custom error
     }
     
     throw new Error('Failed to broadcast transaction. Please try again.');
@@ -362,6 +438,7 @@ export function getChainSymbol(chain: Chain): string {
   const symbols: Record<Chain, string> = {
     ethereum: 'ETH',
     bsc: 'BNB',
+    xrp: 'XRP',
   };
   return symbols[chain];
 }
@@ -370,6 +447,14 @@ export function getChainSymbol(chain: Chain): string {
  * Validate address for chain
  */
 export function validateAddress(address: string, chain: Chain): boolean {
-  // Both Ethereum and BSC use the same address format
-  return /^0x[a-fA-F0-9]{40}$/.test(address);
+  switch (chain) {
+    case 'ethereum':
+    case 'bsc':
+      // Both Ethereum and BSC use the same address format
+      return /^0x[a-fA-F0-9]{40}$/.test(address);
+    case 'xrp':
+      return /^r[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(address);
+    default:
+      return false;
+  }
 }
