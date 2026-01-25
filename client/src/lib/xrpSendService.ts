@@ -5,6 +5,8 @@ import * as xrpl from 'xrpl';
 
 const BASE_RESERVE = 10; // 10 XRP
 const OWNER_RESERVE = 2; // 2 XRP per object
+const XRP_MAINNET_URL = 'wss://xrplcluster.com';
+const DEFAULT_FEE_DROPS = '12'; // Default fee in drops (0.000012 XRP)
 
 export interface XRPAccountInfo {
   address: string;
@@ -28,7 +30,7 @@ export interface XRPTransactionBroadcastResult {
  * Get XRP account info with reserves calculation
  */
 export async function getXrpAccountInfo(address: string): Promise<XRPAccountInfo> {
-  const client = new xrpl.Client('wss://xrplcluster.com');
+  const client = new xrpl.Client(XRP_MAINNET_URL);
   
   try {
     await client.connect();
@@ -66,7 +68,7 @@ export async function getXrpAccountInfo(address: string): Promise<XRPAccountInfo
  * Check if destination XRP address exists
  */
 export async function checkDestinationExists(address: string): Promise<boolean> {
-  const client = new xrpl.Client('wss://xrplcluster.com');
+  const client = new xrpl.Client(XRP_MAINNET_URL);
   
   try {
     await client.connect();
@@ -113,7 +115,7 @@ export async function buildXrpTransaction(
   amount: string,
   destinationTag?: number
 ): Promise<xrpl.Payment> {
-  const client = new xrpl.Client('wss://xrplcluster.com');
+  const client = new xrpl.Client(XRP_MAINNET_URL);
   
   try {
     await client.connect();
@@ -171,7 +173,7 @@ export function signXrpTransaction(
 export async function broadcastXrpTransaction(
   signedTx: string
 ): Promise<XRPTransactionBroadcastResult> {
-  const client = new xrpl.Client('wss://xrplcluster.com');
+  const client = new xrpl.Client(XRP_MAINNET_URL);
   
   try {
     await client.connect();
@@ -205,7 +207,7 @@ export async function broadcastXrpTransaction(
  * Estimate XRP transaction fee
  */
 export async function estimateXrpFee(): Promise<string> {
-  const client = new xrpl.Client('wss://xrplcluster.com');
+  const client = new xrpl.Client(XRP_MAINNET_URL);
   
   try {
     await client.connect();
@@ -215,7 +217,7 @@ export async function estimateXrpFee(): Promise<string> {
     });
     
     // Get the median fee in drops
-    const feeDrops = feeResponse.result.drops?.median_fee || '12';
+    const feeDrops = feeResponse.result.drops?.median_fee || DEFAULT_FEE_DROPS;
     
     // Convert to XRP
     return xrpl.dropsToXrp(feeDrops);

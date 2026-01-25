@@ -89,6 +89,10 @@ export default function SendForm({
     explorerUrl: string;
   } | null>(null);
 
+  // Constants
+  const TRANSACTION_BUFFER = 0.0001; // Small buffer for fee estimation
+  const XRP_ACTIVATION_AMOUNT = 10; // Minimum XRP required to activate new account
+
   // Check if wallet is locked
   const isLocked = securityManager.isWalletLocked();
 
@@ -137,10 +141,10 @@ export default function SendForm({
     
     if (selectedChain === 'xrp') {
       // For XRP, use available balance minus fee
-      maxAmount = parseFloat(xrpAvailable) - parseFloat(estimatedFee) - 0.0001;
+      maxAmount = parseFloat(xrpAvailable) - parseFloat(estimatedFee) - TRANSACTION_BUFFER;
     } else {
       // For ETH/BSC, use balance minus fee
-      maxAmount = parseFloat(balance) - parseFloat(estimatedFee) - 0.0001;
+      maxAmount = parseFloat(balance) - parseFloat(estimatedFee) - TRANSACTION_BUFFER;
     }
     
     if (maxAmount > 0) {
@@ -168,8 +172,8 @@ export default function SendForm({
     if (selectedChain === 'xrp') {
       try {
         const exists = await checkDestinationExists(recipient);
-        if (!exists && parseFloat(amount) < 10) {
-          setError('New XRP addresses require a minimum of 10 XRP to activate');
+        if (!exists && parseFloat(amount) < XRP_ACTIVATION_AMOUNT) {
+          setError(`New XRP addresses require a minimum of ${XRP_ACTIVATION_AMOUNT} XRP to activate`);
           return;
         }
         if (!exists) {
@@ -342,7 +346,12 @@ export default function SendForm({
         }
         
         // For XRP, we need to get the seed from wallet service
-        // This is a simplified version - in production, you'd need proper key derivation
+        // NOTE: In production, this should use proper key derivation with BIP44
+        // The XRP seed/private key should be derived from the mnemonic using:
+        // - BIP39 for mnemonic to seed
+        // - BIP32/BIP44 for deriving XRP key at path m/44'/144'/0'/0/0
+        // - Proper encoding to XRP seed format (secp256k1)
+        // Current implementation is simplified and may need security hardening
         const { unlockWallet } = await import('@/lib/walletService');
         const wallet = await unlockWallet(walletId, password);
         const xrpSeed = wallet.privateKeys.xrp;

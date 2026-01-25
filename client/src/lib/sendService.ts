@@ -178,6 +178,9 @@ const MIN_GAS_PRICES = {
   },
 };
 
+// Transaction verification delay (wait for network propagation)
+const TRANSACTION_VERIFICATION_DELAY = 3000; // 3 seconds
+
 /**
  * Estimate gas for a transaction
  */
@@ -324,7 +327,7 @@ export async function broadcastTransaction(
     
     // NEW: Verify transaction was accepted by the network
     // Wait for propagation
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, TRANSACTION_VERIFICATION_DELAY));
     
     // Check if transaction exists in mempool or chain
     const tx = await provider.getTransaction(txResponse.hash);
