@@ -10,8 +10,10 @@ import {
   type SecurityAction 
 } from '@/lib/securityService';
 import { authenticateWithPasskey } from '@/lib/passkeyService';
+import { runSecurityScan, quickSecurityCheck, type SecurityScanResult } from '@/lib/securityScanner';
 import TransactionPreviewModal from './TransactionPreviewModal';
 import PinEntryModal from './PinEntryModal';
+import SecurityWarningModal from './SecurityWarningModal';
 import type { Chain } from '@/lib/balanceService';
 
 interface SendFormProps {
@@ -31,6 +33,8 @@ export default function SendForm({
   const [amount, setAmount] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [securityScanResult, setSecurityScanResult] = useState<SecurityScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001');
 
@@ -89,16 +93,51 @@ export default function SendForm({
     if (requirements.includes('passkey')) {
       try {
         await authenticateWithPasskey();
-        // Show transaction preview after all auth
-        setShowPreview(true);
+        // After all auth, run security scan before showing preview
+        await proceedWithSecurityCheck();
       } catch (err: any) {
         setError(err.message || 'Passkey authentication failed');
         onRequestPasskey();
       }
     } else {
-      // No passkey needed, proceed to preview
-      setShowPreview(true);
+      // No passkey needed, proceed with security check
+      await proceedWithSecurityCheck();
     }
+  };
+
+  const proceedWithSecurityCheck = async () => {
+    // Get current security tier
+    const settings = getSecuritySettings(userId);
+
+    // For Tier 3 (maximum), run full security scan
+    if (settings.tier === 'maximum') {
+      const scanResult = await runSecurityScan();
+      setSecurityScanResult(scanResult);
+      
+      if (!scanResult.safe || scanResult.warnings.length > 0) {
+        setShowSecurityModal(true);
+        return;
+      }
+    } else {
+      // For other tiers, just do quick check
+      if (!quickSecurityCheck()) {
+        setError('Security check failed. Please try in a secure environment.');
+        return;
+      }
+    }
+
+    // If security check passed, show transaction preview
+    setShowPreview(true);
+  };
+
+  const handleSecurityProceed = () => {
+    setShowSecurityModal(false);
+    setShowPreview(true);
+  };
+
+  const handleSecurityCancel = () => {
+    setShowSecurityModal(false);
+    setSecurityScanResult(null);
   };
 
   const handlePinCancel = () => {
@@ -288,6 +327,17 @@ export default function SendForm({
           onSuccess={handlePinSuccess}
           title="Enter PIN to Send"
           description="Verify your PIN to authorize this transaction"
+        />
+      )}
+
+      {/* Security Warning Modal */}
+      {showSecurityModal && securityScanResult && (
+        <SecurityWarningModal
+          result={securityScanResult}
+          onProceed={handleSecurityProceed}
+          onCancel={handleSecurityCancel}
+          action="sign this transaction"
+          allowProceedWithWarnings={true}
         />
       )}
 
