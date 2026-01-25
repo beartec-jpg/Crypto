@@ -210,5 +210,123 @@ export default function ChainSection({
                         </div>
                       )}
 
-                      {*
-
+                      {/* Token Name & Standard */}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-200">{token.symbol}</p>
+                          <span className="text-xs text-gray-500 bg-gray-700 px-1.5 py-0.5 rounded">
+                            {token.standard}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 truncate max-w-[200px]">
+                          {token.name}
+                        </p>
+                        {/* Contract/Issuer Info */}
+                        {token.contractAddress && (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <p className="text-xs text-gray-600 font-mono">
+                              {token.contractAddress.slice(0, 6)}...
+                              {token.contractAddress.slice(-4)}
+                            </p>
+                            <a
+                              href={`${config.explorer}/token/${token.contractAddress}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-gray-600 hover:text-blue-400"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        )}
+                        {token.issuer && (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <p className="text-xs text-gray-600 font-mono">
+                              Issuer: {token.issuer.slice(0, 6)}...{token.issuer.slice(-4)}
+                            </p>
+                            <a
+                              href={`${config.explorer}/account/${token.issuer}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-gray-600 hover:text-blue-400"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Token Balance */}
+                    <div className="text-right">
+                      <p className="font-mono text-sm">
+                        {hideBalances ? '••••••' : formatBalance(token.balance)}
+                      </p>
+                      {token.usdValue !== undefined && (
+                        <p className="text-xs text-gray-400">
+                          {hideBalances ? '••••' : formatUsd(token.usdValue)}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Remove Button (on hover) */}
+                    {hoveredToken === token.id && !token.isNative && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Remove ${token.symbol} from your token list?`)) {
+                            onRemoveToken(token.id);
+                          }
+                        }}
+                        className="absolute right-2 top-2 p-1 bg-red-500/20 hover:bg-red-500/30 rounded text-red-400 text-xs"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+
+                  {/* XRPL Trustline Info */}
+                  {token.standard === 'XRPL' && token.trustlineLimit && (
+                    <div className="mt-2 pt-2 border-t border-gray-700/50">
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>Trustline Limit:</span>
+                        <span className="font-mono">{token.trustlineLimit}</span>
+                      </div>
+                      {token.issuerFlags && (
+                        <div className="flex gap-2 mt-1">
+                          {token.issuerFlags.globalFreeze && (
+                            <span className="text-xs text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
+                              ⚠️ Global Freeze
+                            </span>
+                          )}
+                          {token.issuerFlags.requireAuth && (
+                            <span className="text-xs text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded">
+                              ⚠️ Require Auth
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add Token Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddToken();
+            }}
+            className="w-full p-3 flex items-center justify-center gap-2 text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="text-sm font-medium">Add Token</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
