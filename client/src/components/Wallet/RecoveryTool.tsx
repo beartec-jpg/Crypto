@@ -70,28 +70,62 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
       // Create wallet from legacy private key
       const wallet = new ethers.Wallet('0x' + legacyPrivateKey);
 
-      // Connect to provider
-      const provider = new ethers.JsonRpcProvider('https://eth.llamarpc.com');
+      // Connect to provider with timeout
+      const provider = new ethers.JsonRpcProvider('https://eth.llamarpc.com', undefined, {
+        staticNetwork: true,
+      });
       const walletWithProvider = wallet.connect(provider);
 
-      // Get current gas prices
+      // Get current gas prices with validation
       const feeData = await provider.getFeeData();
       
-      // Calculate max amount to send (balance - gas fees)
+      // Cap maxFeePerGas at 35 Gwei (reasonable maximum for recovery)
+      let maxFeePerGas = feeData.maxFeePerGas || ethers.parseUnits('25', 'gwei');
+      const maxAllowedGas = ethers.parseUnits('35', 'gwei');
+      if (maxFeePerGas > maxAllowedGas) {
+        console.log('⚠️ Gas price too high, capping at 35 Gwei');
+        maxFeePerGas = maxAllowedGas;
+      }
+      
+      // Cap priority fee at 2 Gwei
+      let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.parseUnits('1.5', 'gwei');
+      const maxAllowedPriority = ethers.parseUnits('2', 'gwei');
+      if (maxPriorityFeePerGas > maxAllowedPriority) {
+        maxPriorityFeePerGas = maxAllowedPriority;
+      }
+      
+      // Get balance and calculate amount
       const balance = await provider.getBalance(wallet.address);
       const gasLimit = 21000n;
-      const maxFeePerGas = feeData.maxFeePerGas || ethers.parseUnits('50', 'gwei');
-      const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.parseUnits('2', 'gwei');
-      
       const gasCost = gasLimit * maxFeePerGas;
+      
+      console.log('💰 Balance:', ethers.formatEther(balance), 'ETH');
+      console.log('⛽ Max Fee Per Gas:', ethers.formatUnits(maxFeePerGas, 'gwei'), 'Gwei');
+      console.log('⛽ Priority Fee:', ethers.formatUnits(maxPriorityFeePerGas, 'gwei'), 'Gwei');
+      console.log('⛽ Estimated gas cost:', ethers.formatEther(gasCost), 'ETH');
+
+      if (balance <= gasCost) {
+        const neededEth = ethers.formatEther(gasCost);
+        const hasEth = ethers.formatEther(balance);
+        throw new Error(
+          `Insufficient balance. Need at least ${neededEth} ETH for gas, but only have ${hasEth} ETH. ` +
+          `Current gas price: ${ethers.formatUnits(maxFeePerGas, 'gwei')} Gwei. ` +
+          `Try again when gas prices are lower (check etherscan.io/gastracker).`
+        );
+      }
+
       const amountToSend = balance - gasCost;
 
-      if (amountToSend <= 0n) {
-        throw new Error('Insufficient balance to cover gas fees');
+      if (amountToSend < ethers.parseEther('0.001')) {
+        throw new Error(
+          `After gas fees, only ${ethers.formatEther(amountToSend)} ETH would be transferred. ` +
+          `Wait for lower gas prices to transfer a meaningful amount.`
+        );
       }
 
       console.log('💸 Sending', ethers.formatEther(amountToSend), 'ETH');
-      console.log('⛽ Gas cost:', ethers.formatEther(gasCost), 'ETH');
+      console.log('💸 To:', currentAddress);
+      console.log('💸 From:', wallet.address);
 
       // Build and send transaction
       const tx = await walletWithProvider.sendTransaction({
@@ -103,10 +137,11 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
       });
 
       console.log('📡 Transaction sent:', tx.hash);
+      console.log('🔍 View on Etherscan: https://etherscan.io/tx/' + tx.hash);
       console.log('⏳ Waiting for confirmation...');
 
-      // Wait for confirmation
-      const receipt = await tx.wait();
+      // Wait for confirmation with timeout
+      const receipt = await tx.wait(1);
 
       console.log('✅ Transaction confirmed!', receipt?.hash);
 
@@ -122,7 +157,18 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
 
     } catch (err: any) {
       console.error('❌ Transfer failed:', err);
-      setError(err.message || 'Failed to transfer ETH');
+      
+      // If it's a gas issue, suggest waiting
+      if (err.message.includes('insufficient') || err.message.includes('gas')) {
+        setError(
+          `${err.message}\n\n` +
+          `💡 Tip: Ethereum gas prices fluctuate. Check current prices at etherscan.io/gastracker ` +
+          `and try again when gas is below 25 Gwei.`
+        );
+      } else {
+        setError(err.message || 'Failed to transfer ETH');
+      }
+      
       setStep('confirm');
     } finally {
       setIsLoading(false);
@@ -157,7 +203,7 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500 rounded-lg p-3 text-sm text-red-400">
+              <div className="bg-red-500/10 border border-red-500 rounded-lg p-3 text-sm text-red-400 whitespace-pre-wrap">
                 {error}
               </div>
             )}
@@ -211,7 +257,7 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500 rounded-lg p-3 text-sm text-red-400">
+              <div className="bg-red-500/10 border border-red-500 rounded-lg p-3 text-sm text-red-400 whitespace-pre-wrap">
                 {error}
               </div>
             )}
