@@ -115,8 +115,12 @@ async function getGasPrices(chain: Chain): Promise<{
         // This is the actual current fee, not a stale suggestion
         const block = await provider.getBlock('latest');
         
-        if (!block || !block.baseFeePerGas) {
-          throw new Error('Unable to get base fee from latest block');
+        if (!block) {
+          throw new Error('Unable to fetch latest block from network');
+        }
+        
+        if (!block.baseFeePerGas) {
+          throw new Error('Block does not contain base fee (EIP-1559 not supported)');
         }
         
         const baseFee = block.baseFeePerGas;
@@ -124,13 +128,13 @@ async function getGasPrices(chain: Chain): Promise<{
         // Step 2: Set priority fee (tip to validators)
         // Minimum 1 Gwei - validators ignore trivial tips like 0.001 Gwei
         // Even when network is quiet, validators prefer meaningful tips
-        const maxPriorityFeePerGas = ethers.parseUnits('1', 'gwei');
+        const maxPriorityFeePerGas = MIN_PRIORITY_FEE_ETH;
         
         // Step 3: Calculate maxFeePerGas
         // Formula: (baseFee × 2) + priorityFee
         // Why 2x? Base fee can increase up to 12.5% per block
         // 2x gives ~6 blocks of headroom for fee increases
-        const maxFeePerGas = (baseFee * 2n) + maxPriorityFeePerGas;
+        const maxFeePerGas = (baseFee * BASE_FEE_MULTIPLIER) + maxPriorityFeePerGas;
         
         console.log(`✅ ETH Gas (EIP-1559): baseFee=${ethers.formatUnits(baseFee, 'gwei')} Gwei, maxFee=${ethers.formatUnits(maxFeePerGas, 'gwei')} Gwei, priority=${ethers.formatUnits(maxPriorityFeePerGas, 'gwei')} Gwei`);
         
@@ -143,16 +147,15 @@ async function getGasPrices(chain: Chain): Promise<{
       
       if (!gasPrice) {
         // BSC fallback: 3 Gwei is reasonable for BSC
-        gasPrice = ethers.parseUnits('3', 'gwei');
+        gasPrice = FALLBACK_GAS_PRICE_BSC;
       } else {
         // Apply 50% buffer for BSC
         gasPrice = (gasPrice * GAS_PRICE_BUFFER) / 100n;
       }
       
       // BSC minimum: 1 Gwei
-      const minBscGas = ethers.parseUnits('1', 'gwei');
-      if (gasPrice < minBscGas) {
-        gasPrice = minBscGas;
+      if (gasPrice < MIN_GAS_PRICE_BSC) {
+        gasPrice = MIN_GAS_PRICE_BSC;
       }
       
       console.log(`✅ BSC Gas: ${ethers.formatUnits(gasPrice, 'gwei')} Gwei`);
@@ -201,12 +204,13 @@ const GAS_LIMIT_BUFFER = 120n; // 20% buffer on gas limit
 // Gas price buffer for BSC (legacy gas pricing)
 const GAS_PRICE_BUFFER = 150n; // 50% buffer on gas price
 
-// Absolute minimum fallback for BSC (only used if RPC returns null/zero)
-const FALLBACK_GAS_PRICES = {
-  bsc: {
-    gasPrice: ethers.parseUnits('3', 'gwei'),
-  },
-};
+// EIP-1559 gas calculation constants (MetaMask-style)
+const BASE_FEE_MULTIPLIER = 2n; // 2x base fee for volatility buffer (~6 blocks headroom)
+const MIN_PRIORITY_FEE_ETH = ethers.parseUnits('1', 'gwei'); // Minimum tip validators will accept
+
+// BSC minimum and fallback
+const MIN_GAS_PRICE_BSC = ethers.parseUnits('1', 'gwei');
+const FALLBACK_GAS_PRICE_BSC = ethers.parseUnits('3', 'gwei');
 
 // Transaction verification delay (wait for network propagation)
 const TRANSACTION_VERIFICATION_DELAY = 3000; // 3 seconds
