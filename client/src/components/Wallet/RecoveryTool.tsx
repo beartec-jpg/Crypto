@@ -10,6 +10,13 @@ interface RecoveryToolProps {
   onSuccess: () => void;
 }
 
+// RPC providers with fallbacks
+const RPC_PROVIDERS = [
+  'https://ethereum.publicnode.com',
+  'https://eth.drpc.org',
+  'https://eth.llamarpc.com',
+];
+
 export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryToolProps) {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -20,6 +27,45 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
   const [currentAddress, setCurrentAddress] = useState<string>('');
   const [legacyBalance, setLegacyBalance] = useState<string>('0');
   const [legacyPrivateKey, setLegacyPrivateKey] = useState<string>('');
+
+  // Get a working RPC provider with fallback
+  const getWorkingProvider = async (): Promise<ethers.JsonRpcProvider> => {
+    for (const rpc of RPC_PROVIDERS) {
+      try {
+        console.log(`🔍 Trying RPC: ${rpc}`);
+        const provider = new ethers.JsonRpcProvider(rpc, undefined, {
+          staticNetwork: true,
+          batchMaxCount: 1,
+        });
+        
+        // Test the provider with timeout
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout')), 5000)
+        );
+        await Promise.race([provider.getBlockNumber(), timeoutPromise]);
+        
+        console.log(`✅ Using RPC: ${rpc}`);
+        return provider;
+      } catch (err) {
+        console.log(`⚠️ RPC failed: ${rpc}`, err);
+      }
+    }
+    throw new Error('All RPC providers failed. Please try again in a moment.');
+  };
+
+  // Get balance with retry logic
+  const getBalanceWithRetry = async (provider: ethers.JsonRpcProvider, address: string, retries = 3): Promise<bigint> => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await provider.getBalance(address);
+      } catch (err) {
+        if (i === retries - 1) throw err;
+        console.log(`⚠️ Balance fetch retry ${i + 1}/${retries}...`);
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    throw new Error('Failed to fetch balance');
+  };
 
   const handleCheckLegacyAddress = async () => {
     if (!password) {
@@ -70,13 +116,12 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
       // Create wallet from legacy private key
       const wallet = new ethers.Wallet('0x' + legacyPrivateKey);
 
-      // Connect to provider with timeout
-      const provider = new ethers.JsonRpcProvider('https://eth.llamarpc.com', undefined, {
-        staticNetwork: true,
-      });
+      // Get a working provider with fallback
+      const provider = await getWorkingProvider();
       const walletWithProvider = wallet.connect(provider);
 
-      // Get current gas prices with validation
+      // Get current gas prices with validation and retry
+      console.log('🔍 Fetching gas prices...');
       const feeData = await provider.getFeeData();
       
       // Cap maxFeePerGas at 35 Gwei (reasonable maximum for recovery)
@@ -94,8 +139,9 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
         maxPriorityFeePerGas = maxAllowedPriority;
       }
       
-      // Get balance and calculate amount
-      const balance = await provider.getBalance(wallet.address);
+      // Get balance with retry
+      console.log('🔍 Fetching balance...');
+      const balance = await getBalanceWithRetry(provider, wallet.address);
       const gasLimit = 21000n;
       const gasCost = gasLimit * maxFeePerGas;
       
@@ -158,17 +204,16 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
     } catch (err: any) {
       console.error('❌ Transfer failed:', err);
       
-      // If it's a gas issue, suggest waiting
+      // Better error handling
+      let errorMessage = err.message || 'Failed to transfer ETH';
+      
       if (err.message.includes('insufficient') || err.message.includes('gas')) {
-        setError(
-          `${err.message}\n\n` +
-          `💡 Tip: Ethereum gas prices fluctuate. Check current prices at etherscan.io/gastracker ` +
-          `and try again when gas is below 25 Gwei.`
-        );
-      } else {
-        setError(err.message || 'Failed to transfer ETH');
+        errorMessage = `${err.message}\n\n💡 Tip: Ethereum gas prices fluctuate. Check current prices at etherscan.io/gastracker and try again when gas is below 25 Gwei.`;
+      } else if (err.message.includes('timeout') || err.message.includes('RPC')) {
+        errorMessage = `Network timeout. The Ethereum network may be congested. Please try again in a moment.`;
       }
       
+      setError(errorMessage);
       setStep('confirm');
     } finally {
       setIsLoading(false);
