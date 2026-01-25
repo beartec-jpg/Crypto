@@ -1,0 +1,282 @@
+// client/src/components/Wallet/AddTokenModal.tsx
+// Modal for adding custom tokens to wallet
+
+import { useState } from 'react';
+import { X, Search, AlertTriangle, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
+import type { Chain } from '@/lib/balanceService';
+import type { Token } from '@/lib/tokenService';
+import { fetchERC20TokenInfo, fetchXRPLIssuerInfo } from '@/lib/tokenService';
+import { calculateXRPReserve, type XRPReserveInfo } from '@/lib/xrpReserveService';
+import TrustlineWarningModal from './TrustlineWarningModal';
+
+interface AddTokenModalProps {
+  chain: Chain;
+  walletAddress: string;
+  onClose: () => void;
+  onAdd: (token: Partial<Token>) => void;
+  onSetTrustline?: (currency: string, issuer: string) => Promise<void>;
+}
+
+const CHAIN_LABELS = {
+  ethereum: { name: 'Ethereum', standard: 'ERC-20', placeholder: '0x... (contract address)' },
+  bsc: { name: 'BNB Smart Chain', standard: 'BEP-20', placeholder: '0x... (contract address)' },
+  xrp: { name: 'XRP Ledger', standard: 'XRPL Token', placeholder: 'Currency code (e.g., USD)' },
+  solana: { name: 'Solana', standard: 'SPL Token', placeholder: 'Mint address' },
+  bitcoin: { name: 'Bitcoin', standard: 'N/A', placeholder: 'Bitcoin does not support tokens' },
+};
+
+type AddStep = 'input' | 'verify' | 'trustline-warning' | 'adding' | 'success' | 'error';
+
+export default function AddTokenModal({
+  chain,
+  walletAddress,
+  onClose,
+  onAdd,
+  onSetTrustline,
+}: AddTokenModalProps) {
+  const config = CHAIN_LABELS[chain];
+  
+  // Step management
+  const [step, setStep] = useState<AddStep>('input');
+  
+  // Form inputs
+  const [tokenAddress, setTokenAddress] = useState('');
+  const [currencyCode, setCurrencyCode] = useState('');
+  const [issuerAddress, setIssuerAddress] = useState('');
+  
+  // Token verification
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifiedToken, setVerifiedToken] = useState<Partial<Token> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  
+  // XRPL specific
+  const [reserveInfo, setReserveInfo] = useState<XRPReserveInfo | null>(null);
+  const [issuerFlags, setIssuerFlags] = useState<any>(null);
+  const [showTrustlineWarning, setShowTrustlineWarning] = useState(false);
+
+  // Bitcoin doesn't support tokens
+  if (chain === 'bitcoin') {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-800 rounded-lg max-w-md w-full p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">Add Token</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          <div className="bg-yellow-500/10 border border-yellow-500 rounded-lg p-4">
+            <p className="text-yellow-400">
+              Bitcoin does not support tokens. Only native BTC can be held on the Bitcoin blockchain.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-full mt-4 px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Verify token info
+  const handleVerify = async () => {
+    setIsVerifying(true);
+    setError(null);
+    setVerifiedToken(null);
+
+    try {
+      if (chain === 'ethereum' || chain === 'bsc') {
+        // Validate Ethereum/BSC address
+        if (!/^0x[a-fA-F0-9]{40}$/.test(tokenAddress)) {
+          throw new Error('Invalid contract address format');
+        }
+
+        // Fetch ERC-20/BEP-20 token info
+        const tokenInfo = await fetchERC20TokenInfo(tokenAddress);
+        
+        const token: Partial<Token> = {
+          id: `${chain === 'ethereum' ? 'erc20' : 'bep20'}-${tokenAddress}`,
+          chain,
+          standard: chain === 'ethereum' ? 'ERC20' : 'BEP20',
+          contractAddress: tokenAddress,
+          symbol: tokenInfo.symbol || 'UNKNOWN',
+          name: tokenInfo.name || 'Unknown Token',
+          decimals: tokenInfo.decimals || 18,
+          balance: '0',
+          isVisible: true,
+          isNative: false,
+        };
+
+        setVerifiedToken(token);
+        setStep('verify');
+      } else if (chain === 'xrp') {
+        // Validate XRPL inputs
+        if (!currencyCode || currencyCode.length < 3 || currencyCode.length > 3) {
+          throw new Error('Currency code must be exactly 3 characters (e.g., USD)');
+        }
+        if (!/^r[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(issuerAddress)) {
+          throw new Error('Invalid XRP issuer address format');
+        }
+
+        // Fetch issuer info
+        const issuerInfo = await fetchXRPLIssuerInfo(issuerAddress);
+        if (!issuerInfo.exists) {
+          throw new Error('Issuer address does not exist on XRPL');
+        }
+
+        // Calculate reserve requirements
+        const reserve = await calculateXRPReserve(walletAddress);
+        
+        const token: Partial<Token> = {
+          id: `xrpl-${currencyCode}-${issuerAddress}`,
+          chain: 'xrp',
+          standard: 'XRPL',
+          currencyCode: currencyCode.toUpperCase(),
+          issuer: issuerAddress,
+          symbol: currencyCode.toUpperCase(),
+          name: `${currencyCode.toUpperCase()} (${issuerAddress.slice(0, 8)}...)`,
+          decimals: 6,
+          balance: '0',
+          isVisible: true,
+          isNative: false,
+          issuerFlags: issuerInfo.flags,
+        };
+
+        setVerifiedToken(token);
+        setReserveInfo(reserve);
+        setIssuerFlags(issuerInfo.flags);
+        
+        // Show trustline warning before adding
+        setShowTrustlineWarning(true);
+      } else if (chain === 'solana') {
+        // Validate Solana mint address
+        if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(tokenAddress)) {
+          throw new Error('Invalid Solana mint address format');
+        }
+
+        // TODO: Fetch SPL token metadata
+        const token: Partial<Token> = {
+          id: `spl-${tokenAddress}`,
+          chain: 'solana',
+          standard: 'SPL',
+          mintAddress: tokenAddress,
+          symbol: tokenAddress.slice(0, 8),
+          name: `Token ${tokenAddress.slice(0, 8)}...`,
+          decimals: 9,
+          balance: '0',
+          isVisible: true,
+          isNative: false,
+        };
+
+        setVerifiedToken(token);
+        setStep('verify');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to verify token');
+      setStep('error');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Add token to wallet
+  const handleAdd = async () => {
+    if (!verifiedToken) return;
+
+    setStep('adding');
+    try {
+      await onAdd(verifiedToken);
+      setStep('success');
+      setTimeout(() => onClose(), 2000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to add token');
+      setStep('error');
+    }
+  };
+
+  // Handle XRPL trustline confirmation
+  const handleTrustlineConfirm = async () => {
+    if (!verifiedToken || !onSetTrustline) return;
+
+    setShowTrustlineWarning(false);
+    setStep('adding');
+
+    try {
+      // Set trustline first
+      await onSetTrustline(verifiedToken.currencyCode!, verifiedToken.issuer!);
+      
+      // Then add token to wallet
+      await onAdd(verifiedToken);
+      
+      setStep('success');
+      setTimeout(() => onClose(), 2000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to set trustline');
+      setStep('error');
+    }
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-800 rounded-lg max-w-lg w-full p-6">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold">Add {config.standard} Token</h2>
+              <p className="text-sm text-gray-400">{config.name}</p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Input Step */}
+          {step === 'input' && (
+            <div className="space-y-4">
+              {chain === 'xrp' ? (
+                <>
+                  {/* XRPL: Currency Code + Issuer */}
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">
+                      Currency Code (3 characters)
+                    </label>
+                    <input
+                      type="text"
+                      value={currencyCode}
+                      onChange={(e) => setCurrencyCode(e.target.value.toUpperCase().slice(0, 3))}
+                      placeholder="USD"
+                      maxLength={3}
+                      className="w-full px-4 py-2 bg-gray-700 rounded-lg text-white font-mono uppercase"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Example: USD, EUR, BTC, etc.
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">
+                      Issuer Address
+                    </label>
+                    <input
+                      type="text"
+                      value={issuerAddress}
+                      onChange={(e) => setIssuerAddress(e.target.value.trim())}
+                      placeholder="rN7n7otQDd6FczFgLdlqtyMVrn3WnFHHL5"
+                      className="w-full px-4 py-2 bg-gray-700 rounded-lg text-white font-mono text-sm"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      The XRPL account address that issues this token
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* ERC-20/BEP-20/SPL: Contract/Mint Address */}
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">
+                      {chain === 'sol*
+
