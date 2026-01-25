@@ -3,12 +3,14 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import wasm from 'vite-plugin-wasm'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export default defineConfig({
   plugins: [
+    wasm(),
     react(),
     nodePolyfills({
       include: ['buffer', 'crypto', 'stream', 'util'],
@@ -94,5 +96,6 @@ export default defineConfig({
       '@noble/hashes',
       'buffer',
     ],
+    exclude: ['tiny-secp256k1'],
   },
 })
