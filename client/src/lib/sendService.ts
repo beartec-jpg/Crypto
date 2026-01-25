@@ -224,6 +224,11 @@ export async function estimateGas(
   to: string,
   value: string
 ): Promise<GasEstimate> {
+  console.log(`🔍 Estimating gas for ${chain}:`);
+  console.log(`  - From: ${from}`);
+  console.log(`  - To: ${to}`);
+  console.log(`  - Value: ${value} ${chain === 'ethereum' ? 'ETH' : 'BNB'}`);
+  
   const maxRetries = RPC_ENDPOINTS[chain]?.length || 1;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -261,6 +266,12 @@ export async function estimateGas(
       const estimatedFeeUsd = parseFloat(estimatedFee) * tokenPrice;
       
       console.log(`✅ Gas estimation successful from RPC ${attempt + 1}`);
+      console.log(`✅ Gas estimation result:`);
+      console.log(`  - Gas Limit: ${gasLimitWithBuffer.toString()}`);
+      console.log(`  - Max Fee Per Gas: ${gasPrices.maxFeePerGas ? ethers.formatUnits(gasPrices.maxFeePerGas, 'gwei') + ' Gwei' : 'N/A'}`);
+      console.log(`  - Priority Fee: ${gasPrices.maxPriorityFeePerGas ? ethers.formatUnits(gasPrices.maxPriorityFeePerGas, 'gwei') + ' Gwei' : 'N/A'}`);
+      console.log(`  - Gas Price: ${gasPrices.gasPrice ? ethers.formatUnits(gasPrices.gasPrice, 'gwei') + ' Gwei' : 'N/A'}`);
+      console.log(`  - Estimated Fee: ${estimatedFee} ${chain === 'ethereum' ? 'ETH' : 'BNB'} (~$${estimatedFeeUsd.toFixed(2)})`);
       
       return {
         gasLimit: gasLimitWithBuffer,
@@ -272,6 +283,11 @@ export async function estimateGas(
       };
     } catch (error: any) {
       console.warn(`⚠️ Gas estimation attempt ${attempt + 1} failed:`, error);
+      console.warn('Error details:', {
+        message: error.message,
+        code: error.code,
+        reason: error.reason,
+      });
       
       // Check for specific errors that shouldn't trigger retry
       if (error.message?.includes('insufficient funds')) {
@@ -337,9 +353,14 @@ export async function buildTransaction(
   amount: string,
   gasEstimate: GasEstimate
 ): Promise<ethers.TransactionRequest> {
+  console.log(`🔨 Building transaction for ${chain}:`);
+  
   const provider = getProvider(chain);
   const nonce = await provider.getTransactionCount(from, 'pending');
   const valueInWei = ethers.parseEther(amount);
+  
+  console.log(`  - Nonce: ${nonce}`);
+  console.log(`  - Value: ${amount} (${valueInWei.toString()} wei)`);
   
   const tx: ethers.TransactionRequest = {
     // Remove 'from' - ethers will use the signing wallet's address
@@ -355,10 +376,18 @@ export async function buildTransaction(
     tx.maxFeePerGas = gasEstimate.maxFeePerGas;
     tx.maxPriorityFeePerGas = gasEstimate.maxPriorityFeePerGas;
     tx.type = 2; // EIP-1559
+    console.log(`  - Type: 2 (EIP-1559)`);
+    console.log(`  - Max Fee: ${ethers.formatUnits(gasEstimate.maxFeePerGas, 'gwei')} Gwei`);
+    console.log(`  - Priority Fee: ${ethers.formatUnits(gasEstimate.maxPriorityFeePerGas, 'gwei')} Gwei`);
   } else if (gasEstimate.gasPrice) {
     tx.gasPrice = gasEstimate.gasPrice;
     tx.type = 0; // Legacy
+    console.log(`  - Type: 0 (Legacy)`);
+    console.log(`  - Gas Price: ${ethers.formatUnits(gasEstimate.gasPrice, 'gwei')} Gwei`);
   }
+  
+  console.log(`  - Gas Limit: ${gasEstimate.gasLimit.toString()}`);
+  console.log(`  - Chain ID: ${tx.chainId}`);
   
   return tx;
 }
@@ -403,40 +432,87 @@ export async function broadcastTransaction(
         explorerUrl,
       };
     } catch (error: any) {
-      console.warn(`⚠️ Broadcast attempt ${attempt + 1} failed:`, error);
+      // === DETAILED ERROR LOGGING ===
+      console.error(`❌ Broadcast attempt ${attempt + 1} failed:`);
+      console.error('Error type:', error.constructor.name);
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
+      console.error('Error reason:', error.reason);
+      console.error('Error data:', error.data);
+      console.error('Full error:', error);
       
-      // Check for specific errors that shouldn't trigger retry
-      if (error.message?.includes('nonce')) {
-        throw new Error('Transaction rejected: Please try again.');
+      // Log the transaction details for debugging
+      try {
+        const parsedTx = ethers.Transaction.from(signedTx);
+        console.log('Transaction details:');
+        console.log('  - Chain ID:', parsedTx.chainId);
+        console.log('  - Nonce:', parsedTx.nonce);
+        console.log('  - Gas Limit:', parsedTx.gasLimit?.toString());
+        console.log('  - Max Fee Per Gas:', parsedTx.maxFeePerGas ? ethers.formatUnits(parsedTx.maxFeePerGas, 'gwei') + ' Gwei' : 'N/A');
+        console.log('  - Max Priority Fee:', parsedTx.maxPriorityFeePerGas ? ethers.formatUnits(parsedTx.maxPriorityFeePerGas, 'gwei') + ' Gwei' : 'N/A');
+        console.log('  - Gas Price:', parsedTx.gasPrice ? ethers.formatUnits(parsedTx.gasPrice, 'gwei') + ' Gwei' : 'N/A');
+        console.log('  - Value:', ethers.formatEther(parsedTx.value), getChainSymbol(chain));
+        console.log('  - To:', parsedTx.to);
+        console.log('  - Type:', parsedTx.type);
+      } catch (parseError) {
+        console.error('Failed to parse transaction for logging:', parseError);
+      }
+      // === END DETAILED LOGGING ===
+      
+      // More specific error detection
+      const errorMsg = error.message?.toLowerCase() || '';
+      const errorCode = error.code;
+      
+      // Nonce errors - user should retry
+      if (errorMsg.includes('nonce') || errorCode === 'NONCE_EXPIRED') {
+        throw new Error('Transaction rejected: Nonce issue. Please try again.');
       }
       
-      if (error.message?.includes('gas') || error.message?.includes('underpriced')) {
+      // ONLY match actual underpriced errors, not general "gas" mentions
+      if (errorMsg.includes('underpriced') || 
+          errorMsg.includes('replacement transaction underpriced') ||
+          errorMsg.includes('transaction underpriced') ||
+          errorCode === 'REPLACEMENT_UNDERPRICED' ||
+          errorCode === 'TRANSACTION_REPLACED') {
         throw new Error('Transaction rejected: Gas price too low. Please try again.');
       }
       
+      // Insufficient funds - different from gas price issue
+      if (errorMsg.includes('insufficient funds') || 
+          errorCode === 'INSUFFICIENT_FUNDS') {
+        throw new Error('Insufficient funds for transaction and gas fees.');
+      }
+      
+      // Gas limit exceeded
+      if (errorMsg.includes('gas limit') || 
+          errorMsg.includes('exceeds block gas limit') ||
+          errorCode === 'UNPREDICTABLE_GAS_LIMIT') {
+        throw new Error('Transaction failed: Gas limit issue. Please try a smaller amount.');
+      }
+      
+      // Network rejected - show actual error for debugging
       if (error.message?.includes('not accepted')) {
-        // Custom error - retry with next RPC
         rotateRpc(chain);
         
         if (attempt === maxRetries - 1) {
           console.error('❌ All RPC endpoints failed to accept transaction');
-          throw error; // Re-throw our custom error
+          throw error;
         }
         
-        // Brief delay before retry
         await new Promise(resolve => setTimeout(resolve, 500));
         continue;
       }
       
-      // For other errors, rotate and retry
+      // For unknown errors, show the actual error message (truncated)
       rotateRpc(chain);
       
       if (attempt === maxRetries - 1) {
         console.error('❌ All RPC endpoints failed for broadcast');
-        throw new Error('Failed to broadcast transaction. Please try again.');
+        // Show actual error message for debugging, truncated if too long
+        const displayError = error.message?.substring(0, 200) || 'Unknown error';
+        throw new Error(`Transaction failed: ${displayError}`);
       }
       
-      // Brief delay before retry
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
