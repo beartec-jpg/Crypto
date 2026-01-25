@@ -70,6 +70,12 @@ const EXPLORER_URLS = {
   xrp: 'https://livenet.xrpl.org',
 };
 
+// Chain IDs for mainnet
+const CHAIN_IDS = {
+  ethereum: 1,
+  bsc: 56,
+};
+
 // Current RPC index for rotation
 let currentRpcIndex: Record<Chain, number> = {
   ethereum: 0,
@@ -110,7 +116,7 @@ function getProvider(chain: Chain): ethers.JsonRpcProvider {
   
   // Create new provider
   const provider = new ethers.JsonRpcProvider(endpoint, undefined, {
-    staticNetwork: chain === 'ethereum' ? ethers.Network.from(1) : ethers.Network.from(56),
+    staticNetwork: chain === 'ethereum' ? ethers.Network.from(CHAIN_IDS.ethereum) : ethers.Network.from(CHAIN_IDS.bsc),
     batchMaxCount: 1, // Disable batching for more reliable individual requests
   });
   
@@ -131,8 +137,8 @@ function rotateRpc(chain: Chain): void {
   const oldIndex = currentRpcIndex[chain];
   currentRpcIndex[chain] = (currentRpcIndex[chain] + 1) % endpoints.length;
   
-  // Clear the cache for the old provider
-  providerCache.delete(`${chain}-${oldIndex}`);
+  // Clear all cached providers for the chain to ensure consistency
+  clearProviderCache(chain);
   
   console.log(`🔄 Rotated RPC for ${chain}: ${endpoints[oldIndex]} → ${endpoints[currentRpcIndex[chain]]}`);
 }
@@ -172,6 +178,7 @@ async function checkRpcHealth(chain: Chain): Promise<boolean> {
  */
 async function findHealthyRpc(chain: Chain): Promise<void> {
   const endpoints = RPC_ENDPOINTS[chain];
+  const originalIndex = currentRpcIndex[chain];
   
   for (let i = 0; i < endpoints.length; i++) {
     currentRpcIndex[chain] = i;
@@ -183,6 +190,8 @@ async function findHealthyRpc(chain: Chain): Promise<void> {
     }
   }
   
+  // Restore original index if all RPCs failed
+  currentRpcIndex[chain] = originalIndex;
   throw new Error(`No healthy RPC endpoints available for ${chain}. Please check your internet connection.`);
 }
 
@@ -464,7 +473,7 @@ export async function buildTransaction(
     value: valueInWei,
     nonce,
     gasLimit: gasEstimate.gasLimit,
-    chainId: chain === 'ethereum' ? 1 : 56, // Mainnet chain IDs
+    chainId: chain === 'ethereum' ? CHAIN_IDS.ethereum : CHAIN_IDS.bsc,
   };
   
   // Use EIP-1559 if available, otherwise legacy
