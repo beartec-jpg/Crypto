@@ -434,6 +434,24 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   addresses.ethereum = deriveEthereumAddress(ethNode.privateKey);
   publicKeys.ethereum = Buffer.from(secp256k1.getPublicKey(ethNode.privateKey, false)).toString('hex');
   
+  // === NEW: Verify ETH key derivation ===
+  const ethPrivateKeyHex = Buffer.from(ethNode.privateKey).toString('hex');
+  const ethWallet = new ethers.Wallet('0x' + ethPrivateKeyHex);
+  const derivedEthAddress = ethWallet.address;
+  
+  console.log('🔑 ETH Key Derivation:');
+  console.log('  - Derived address (ethers):', derivedEthAddress);
+  console.log('  - Derived address (custom):', addresses.ethereum);
+  
+  if (derivedEthAddress.toLowerCase() !== addresses.ethereum.toLowerCase()) {
+    console.error('❌ ETH ADDRESS DERIVATION MISMATCH!');
+    console.error('  Ethers derived:', derivedEthAddress);
+    console.error('  Custom derived:', addresses.ethereum);
+    throw new Error('ETH address derivation mismatch between ethers and custom implementation');
+  }
+  console.log('✅ ETH derivation verified');
+  // === END NEW CODE ===
+  
   // Bitcoin (mainnet)
   const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
   if (!btcNode.privateKey) throw new Error('Failed to derive BTC key');
@@ -1019,6 +1037,29 @@ export async function signTransaction(
       case 'bsc': {
         const ethersWallet = new ethers.Wallet('0x' + privateKey);
         
+        // === NEW: Log and verify signer address ===
+        const signerAddress = ethersWallet.address;
+        const expectedAddress = wallet.addresses[chain];
+        
+        console.log('🔐 Signing transaction:');
+        console.log('  - Expected address (from wallet):', expectedAddress);
+        console.log('  - Actual signer address (from private key):', signerAddress);
+        console.log('  - Private key prefix:', privateKey.substring(0, 8) + '...');
+        
+        if (signerAddress.toLowerCase() !== expectedAddress.toLowerCase()) {
+          console.error('❌ ADDRESS MISMATCH DETECTED!');
+          console.error('  The private key produces a different address than expected.');
+          console.error('  Expected:', expectedAddress);
+          console.error('  Got:', signerAddress);
+          throw new Error(
+            `Signing address mismatch! Expected ${expectedAddress.slice(0, 10)}... but got ${signerAddress.slice(0, 10)}... ` +
+            `This indicates a wallet derivation issue. Please re-import your wallet.`
+          );
+        }
+        
+        console.log('✅ Signer address matches expected address');
+        // === END NEW CODE ===
+        
         // Safeguard: Remove 'from' field to prevent checksum mismatch
         // ethers.js will automatically use the wallet's address when signing
         const { from, ...txWithoutFrom } = transaction;
@@ -1028,6 +1069,16 @@ export async function signTransaction(
         try {
           const parsedTx = ethers.Transaction.from(signedTx);
           
+          // === NEW: Recover and verify signer from signed transaction ===
+          if (parsedTx.from) {
+            console.log('✅ Recovered signer from tx:', parsedTx.from);
+            if (parsedTx.from.toLowerCase() !== expectedAddress.toLowerCase()) {
+              console.error('❌ RECOVERED SIGNER MISMATCH!');
+              throw new Error('Recovered signer does not match wallet address');
+            }
+          }
+          // === END NEW CODE ===
+          
           // Security: Verify the transaction was properly signed
           // Note: Signature validation happens automatically when parsing
           // The wallet address should match what we expect
@@ -1036,7 +1087,7 @@ export async function signTransaction(
           }
           
           // Additional validation: verify sender address matches wallet
-          const expectedAddress = wallet.addresses[chain].toLowerCase();
+          const expectedAddressLower = wallet.addresses[chain].toLowerCase();
           
           // For Ethereum transactions, the 'from' field should be present and match
           if (!transaction.from) {
@@ -1045,7 +1096,7 @@ export async function signTransaction(
             console.warn('Transaction from field not provided, will use wallet address');
           } else {
             const txFrom = transaction.from.toLowerCase();
-            if (txFrom !== expectedAddress) {
+            if (txFrom !== expectedAddressLower) {
               throw new Error('Transaction from address does not match wallet address');
             }
           }
