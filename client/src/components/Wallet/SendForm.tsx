@@ -132,6 +132,17 @@ export default function SendForm({
         const chainTokens = walletTokens.filter(t => t.chain === selectedChain);
         setTokens(chainTokens);
         
+        // Check for pending token selection from URL params
+        const pendingTokenId = sessionStorage.getItem('pendingTokenSelection');
+        if (pendingTokenId) {
+          const tokenToSelect = chainTokens.find(t => t.id === pendingTokenId);
+          if (tokenToSelect) {
+            setSelectedToken(tokenToSelect);
+            sessionStorage.removeItem('pendingTokenSelection');
+            return;
+          }
+        }
+        
         // Auto-select native token
         const nativeToken = chainTokens.find(t => t.isNative);
         if (nativeToken) {

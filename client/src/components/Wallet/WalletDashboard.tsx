@@ -292,7 +292,9 @@ export default function WalletDashboard({
 
     if (!xrpPrivateKey) throw new Error('XRP private key not found');
 
-    const result = await setXRPLTrustline(xrpPrivateKey, currency, issuer);
+    // Pass the actual XRP address from the wallet
+    const xrpAddress = sovereignWallet.addresses.xrp;
+    const result = await setXRPLTrustline(xrpPrivateKey, xrpAddress, currency, issuer);
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to set trustline');

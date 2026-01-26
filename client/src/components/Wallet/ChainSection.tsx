@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import TokenActionModal from './TokenActionModal';
 import type { Token } from '@/lib/tokenService';
 import type { Chain } from '@/lib/balanceService';
 
@@ -83,6 +84,8 @@ export default function ChainSection({
 }: ChainSectionProps) {
   const config = CHAIN_CONFIG[chain];
   const [hoveredToken, setHoveredToken] = useState<string | null>(null);
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [selectedModalToken, setSelectedModalToken] = useState<Token | null>(null);
 
   // Calculate total value (native + all tokens)
   const totalUsdValue = (nativeUsdValue || 0) + tokens.reduce((sum, t) => sum + (t.usdValue || 0), 0);
@@ -100,6 +103,20 @@ export default function ChainSection({
     if (value === 0) return '$0.00';
     if (value < 0.01) return '< $0.01';
     return `$${value.toFixed(2)}`;
+  };
+
+  const handleTokenClick = (token: Token) => {
+    setSelectedModalToken(token);
+    setShowTokenModal(true);
+  };
+
+  const handleSendToken = (token: Token) => {
+    onSelectToken(token);
+  };
+
+  const handleSwapToken = (token: Token) => {
+    // TODO: Implement swap functionality
+    console.log('Swap token:', token);
   };
 
   return (
@@ -189,7 +206,7 @@ export default function ChainSection({
                 <div
                   key={token.id}
                   className="p-3 hover:bg-white/5 transition-colors cursor-pointer relative"
-                  onClick={() => onSelectToken(token)}
+                  onClick={() => handleTokenClick(token)}
                   onMouseEnter={() => setHoveredToken(token.id)}
                   onMouseLeave={() => setHoveredToken(null)}
                 >
@@ -338,6 +355,20 @@ export default function ChainSection({
             <span className="text-sm font-medium">Add Token</span>
           </button>
         </div>
+      )}
+
+      {/* Token Action Modal */}
+      {showTokenModal && selectedModalToken && (
+        <TokenActionModal
+          isOpen={showTokenModal}
+          onClose={() => {
+            setShowTokenModal(false);
+            setSelectedModalToken(null);
+          }}
+          token={selectedModalToken}
+          onSend={handleSendToken}
+          onSwap={handleSwapToken}
+        />
       )}
     </div>
   );

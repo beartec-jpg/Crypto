@@ -1,7 +1,9 @@
 // client/src/lib/xrpReserveService.ts
 // XRPL reserve calculation and trustline management
 
-import { Client, Wallet as XRPLWallet, dropsToXrp, xrpToDrops } from 'xrpl';
+import { Client, Wallet as XRPLWallet, dropsToXrp, xrpToDrops, encode } from 'xrpl';
+import { deriveKeypair, sign } from 'ripple-keypairs';
+import { secp256k1 } from '@noble/curves/secp256k1';
 import { xrplService } from './xrpService';
 
 export interface XRPReserveInfo {
@@ -73,40 +75,42 @@ export async function calculateXRPReserve(address: string): Promise<XRPReserveIn
 /**
  * Set a trustline for an XRPL token
  * Supports both XRP seed format (s...) and hex private keys
+ * FIXED: Now accepts userAddress parameter to use the correct wallet address
  */
 export async function setXRPLTrustline(
   privateKey: string,
+  userAddress: string,
   currency: string,
   issuer: string,
   limit: string = '999999999'
 ): Promise<{ success: boolean; txHash: string; error?: string }> {
   try {
-    let wallet: XRPLWallet;
-    
-    // Detect key format and create wallet accordingly
-    if (privateKey.startsWith('s')) {
-      // XRP seed format (starts with 's')
-      console.log('[XRP Trustline] Using seed format');
-      wallet = XRPLWallet.fromSeed(privateKey);
-    } else if (/^[0-9a-fA-F]{64}$/.test(privateKey)) {
-      // Hex private key (64 hex characters)
-      console.log('[XRP Trustline] Using hex format');
-      wallet = XRPLWallet.fromEntropy(Buffer.from(privateKey, 'hex'));
-    } else if (/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
-      // Hex private key with 0x prefix
-      console.log('[XRP Trustline] Using hex format with 0x prefix');
-      const hexWithoutPrefix = privateKey.slice(2);
-      wallet = XRPLWallet.fromEntropy(Buffer.from(hexWithoutPrefix, 'hex'));
-    } else {
-      throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-char hex.');
-    }
-    
     const client = await xrplService.getClient(true);
     
-    // Prepare TrustSet transaction
+    // Get the public key and private key in correct format
+    let publicKey: string;
+    let privateKeyHex: string;
+    
+    if (privateKey.startsWith('s')) {
+      // XRP seed format - derive keypair
+      console.log('[XRP Trustline] Using seed format');
+      const keypair = deriveKeypair(privateKey);
+      publicKey = keypair.publicKey;
+      privateKeyHex = keypair.privateKey;
+    } else {
+      // Hex format - need to derive public key from private key using secp256k1
+      privateKeyHex = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+      console.log('[XRP Trustline] Using hex format');
+      
+      // Use secp256k1 to get public key
+      const publicKeyBytes = secp256k1.getPublicKey(Buffer.from(privateKeyHex, 'hex'), true);
+      publicKey = Buffer.from(publicKeyBytes).toString('hex').toUpperCase();
+    }
+    
+    // Build the TrustSet transaction using the provided wallet address
     const trustSet = {
       TransactionType: 'TrustSet' as const,
-      Account: wallet.address,
+      Account: userAddress, // Use the provided wallet address
       LimitAmount: {
         currency,
         issuer,
@@ -114,9 +118,25 @@ export async function setXRPLTrustline(
       },
     };
     
+    // Prepare the transaction
     const prepared = await client.autofill(trustSet);
-    const signed = wallet.sign(prepared);
-    const result = await client.submitAndWait(signed.tx_blob);
+    
+    // Sign using ripple-keypairs sign function
+    const txBlob = encode(prepared);
+    const signature = sign(txBlob, privateKeyHex);
+    
+    // Combine the transaction with signature
+    const signedTx = {
+      ...prepared,
+      SigningPubKey: publicKey,
+      TxnSignature: signature,
+    };
+    
+    // Encode the signed transaction
+    const tx_blob = encode(signedTx);
+    
+    // Submit the transaction
+    const result = await client.submitAndWait(tx_blob);
     
     if (result.result.meta && typeof result.result.meta === 'object' && 'TransactionResult' in result.result.meta) {
       const transactionResult = (result.result.meta as any).TransactionResult;
@@ -149,34 +169,39 @@ export async function setXRPLTrustline(
 /**
  * Remove a trustline (balance must be 0)
  * Supports both XRP seed format (s...) and hex private keys
+ * FIXED: Now accepts userAddress parameter to use the correct wallet address
  */
 export async function removeXRPLTrustline(
   privateKey: string,
+  userAddress: string,
   currency: string,
   issuer: string
 ): Promise<{ success: boolean; txHash: string; error?: string }> {
   try {
-    let wallet: XRPLWallet;
-    
-    // Detect key format
-    if (privateKey.startsWith('s')) {
-      wallet = XRPLWallet.fromSeed(privateKey);
-    } else if (/^[0-9a-fA-F]{64}$/.test(privateKey)) {
-      wallet = XRPLWallet.fromEntropy(Buffer.from(privateKey, 'hex'));
-    } else if (/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
-      // Hex private key with 0x prefix
-      const hexWithoutPrefix = privateKey.slice(2);
-      wallet = XRPLWallet.fromEntropy(Buffer.from(hexWithoutPrefix, 'hex'));
-    } else {
-      throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-char hex.');
-    }
-    
     const client = await xrplService.getClient(true);
+    
+    // Get the public key and private key in correct format
+    let publicKey: string;
+    let privateKeyHex: string;
+    
+    if (privateKey.startsWith('s')) {
+      // XRP seed format - derive keypair
+      const keypair = deriveKeypair(privateKey);
+      publicKey = keypair.publicKey;
+      privateKeyHex = keypair.privateKey;
+    } else {
+      // Hex format - need to derive public key from private key using secp256k1
+      privateKeyHex = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+      
+      // Use secp256k1 to get public key
+      const publicKeyBytes = secp256k1.getPublicKey(Buffer.from(privateKeyHex, 'hex'), true);
+      publicKey = Buffer.from(publicKeyBytes).toString('hex').toUpperCase();
+    }
     
     // Set limit to 0 to remove trustline
     const trustSet = {
       TransactionType: 'TrustSet' as const,
-      Account: wallet.address,
+      Account: userAddress, // Use the provided wallet address
       LimitAmount: {
         currency,
         issuer,
@@ -185,8 +210,23 @@ export async function removeXRPLTrustline(
     };
     
     const prepared = await client.autofill(trustSet);
-    const signed = wallet.sign(prepared);
-    const result = await client.submitAndWait(signed.tx_blob);
+    
+    // Sign using ripple-keypairs sign function
+    const txBlob = encode(prepared);
+    const signature = sign(txBlob, privateKeyHex);
+    
+    // Combine the transaction with signature
+    const signedTx = {
+      ...prepared,
+      SigningPubKey: publicKey,
+      TxnSignature: signature,
+    };
+    
+    // Encode the signed transaction
+    const tx_blob = encode(signedTx);
+    
+    // Submit the transaction
+    const result = await client.submitAndWait(tx_blob);
     
     if (result.result.meta && typeof result.result.meta === 'object' && 'TransactionResult' in result.result.meta) {
       const transactionResult = (result.result.meta as any).TransactionResult;
