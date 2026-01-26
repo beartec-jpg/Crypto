@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useBalance } from 'wagmi';
 import { useUser } from '@clerk/clerk-react';
-import { ArrowUpRight, ArrowDownLeft, RefreshCw, Clock, Loader2 } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, RefreshCw, Clock, Loader2, Copy, Share2, ExternalLink, Check } from 'lucide-react';
 import { 
   fetchAllBalances, 
   fetchBlockNumber,
@@ -42,6 +42,15 @@ interface WalletDashboardProps {
   onRemovePendingTransaction?: (id: string) => void;
 }
 
+// Chain badge configuration
+const CHAIN_CONFIG: Record<Chain, { symbol: string; color: string; bgColor: string }> = {
+  ethereum: { symbol: 'ETH', color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
+  bitcoin: { symbol: 'BTC', color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
+  bsc: { symbol: 'BNB', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' },
+  xrp: { symbol: 'XRP', color: 'text-gray-300', bgColor: 'bg-gray-500/20' },
+  solana: { symbol: 'SOL', color: 'text-purple-400', bgColor: 'bg-purple-500/20' },
+};
+
 export default function WalletDashboard({
   address,
   balance,
@@ -55,7 +64,8 @@ export default function WalletDashboard({
   const { user } = useUser();
   const userId = user?.id || '';
   
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [copiedTxHash, setCopiedTxHash] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [chainBalances, setChainBalances] = useState<ChainBalance[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -191,31 +201,46 @@ export default function WalletDashboard({
     }
   };
 
-  // Fetch transactions
+  // Fetch transactions from ALL chains
   useEffect(() => {
     const loadTransactions = async () => {
       if (!sovereignWallet?.addresses) {
-        setTransactions([]);
-        return;
-      }
-
-      const currentAddress = sovereignWallet.addresses[selectedChain];
-      if (!currentAddress) {
-        setTransactions([]);
+        setAllTransactions([]);
         return;
       }
 
       try {
-        const txs = await fetchChainTransactions(selectedChain, currentAddress);
-        setTransactions(txs);
+        const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
+        
+        // Fetch from all chains in parallel
+        const transactionPromises = chains.map(async (chain) => {
+          const address = sovereignWallet.addresses[chain];
+          if (!address) return [];
+          
+          try {
+            return await fetchChainTransactions(chain, address);
+          } catch (error) {
+            console.error(`Failed to fetch ${chain} transactions:`, error);
+            return [];
+          }
+        });
+
+        const allChainTransactions = await Promise.all(transactionPromises);
+        
+        // Flatten and sort by timestamp (newest first)
+        const combinedTransactions = allChainTransactions
+          .flat()
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        
+        setAllTransactions(combinedTransactions);
       } catch (error) {
         console.error('Transaction fetch failed:', error);
-        setTransactions([]);
+        setAllTransactions([]);
       }
     };
     
     loadTransactions();
-  }, [sovereignWallet, selectedChain, blockNumber]);
+  }, [sovereignWallet, blockNumber]);
 
   // Toggle chain expansion
   const toggleChainExpansion = (chain: Chain) => {
@@ -299,6 +324,58 @@ export default function WalletDashboard({
   // Get chain balance
   const getChainBalance = (chain: Chain) => {
     return chainBalances.find(b => b.chain === chain);
+  };
+
+  // Helper function to get block explorer URL
+  const getExplorerUrl = (chain: Chain, hash: string): string => {
+    const explorers: Record<Chain, string> = {
+      ethereum: `https://etherscan.io/tx/${hash}`,
+      bitcoin: `https://mempool.space/tx/${hash}`,
+      bsc: `https://bscscan.com/tx/${hash}`,
+      xrp: `https://xrpscan.com/tx/${hash}`,
+      solana: `https://solscan.io/tx/${hash}`,
+    };
+    return explorers[chain];
+  };
+
+  // Handle copy transaction details
+  const handleCopyTransaction = async (tx: Transaction) => {
+    const details = `Transaction Details:
+Type: ${tx.type}
+Amount: ${tx.amount} ${tx.token || CHAIN_CONFIG[tx.chain].symbol}
+Chain: ${CHAIN_CONFIG[tx.chain].symbol}
+Hash: ${tx.hash}
+Date: ${new Date(tx.timestamp).toLocaleString()}
+From: ${tx.from}
+To: ${tx.to}`;
+
+    try {
+      await navigator.clipboard.writeText(details);
+      setCopiedTxHash(tx.hash);
+      setTimeout(() => setCopiedTxHash(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
+  // Handle share transaction
+  const handleShareTransaction = async (tx: Transaction) => {
+    const details = `${tx.type === 'send' ? 'Sent' : 'Received'} ${tx.amount} ${tx.token || CHAIN_CONFIG[tx.chain].symbol} on ${CHAIN_CONFIG[tx.chain].symbol}\nTx: ${getExplorerUrl(tx.chain, tx.hash)}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Transaction Details',
+          text: details,
+        });
+      } catch (error) {
+        // User cancelled or share failed, fallback to copy
+        await handleCopyTransaction(tx);
+      }
+    } else {
+      // Fallback to copy if share API not available
+      await handleCopyTransaction(tx);
+    }
   };
 
   return (
@@ -427,7 +504,7 @@ export default function WalletDashboard({
             )}
 
             {/* Confirmed Transactions */}
-            {transactions.length === 0 ? (
+            {allTransactions.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p>No recent transactions</p>
@@ -438,12 +515,12 @@ export default function WalletDashboard({
                 {pendingTransactions.length > 0 && (
                   <h4 className="text-sm font-medium text-gray-400 mt-4">Confirmed</h4>
                 )}
-                {transactions.slice(0, 5).map((tx) => (
+                {allTransactions.slice(0, 5).map((tx) => (
                   <div
                     key={tx.hash}
-                    className="flex items-center justify-between p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 transition-colors"
+                    className="group flex items-center justify-between p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 transition-colors"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div
                         className={`p-2 rounded-full ${
                           tx.type === 'send'
@@ -457,21 +534,67 @@ export default function WalletDashboard({
                           <ArrowDownLeft className="w-4 h-4" />
                         )}
                       </div>
-                      <div>
+                      
+                      {/* Chain Badge */}
+                      <div className={`px-2 py-1 rounded text-xs font-medium ${CHAIN_CONFIG[tx.chain].bgColor} ${CHAIN_CONFIG[tx.chain].color}`}>
+                        {CHAIN_CONFIG[tx.chain].symbol}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
                         <p className="font-medium capitalize">{tx.type}</p>
-                        <p className="text-sm text-gray-400">
+                        <p className="text-sm text-gray-400 truncate">
                           {new Date(tx.timestamp).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-mono font-medium">
-                        {tx.type === 'send' ? '-' : '+'}
-                        {tx.amount} {tx.asset}
-                      </p>
-                      {tx.status === 'confirmed' && (
-                        <p className="text-xs text-green-400">Confirmed</p>
-                      )}
+
+                    <div className="flex items-center gap-2">
+                      {/* Amount */}
+                      <div className="text-right mr-2">
+                        <p className="font-mono font-medium">
+                          {tx.type === 'send' ? '-' : '+'}
+                          {tx.amount} {tx.token || CHAIN_CONFIG[tx.chain].symbol}
+                        </p>
+                        {tx.status === 'confirmed' && (
+                          <p className="text-xs text-green-400">Confirmed</p>
+                        )}
+                      </div>
+
+                      {/* Action Buttons (visible on hover) */}
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Copy Button */}
+                        <button
+                          onClick={() => handleCopyTransaction(tx)}
+                          className="p-1.5 rounded hover:bg-gray-700 transition-colors"
+                          title="Copy transaction details"
+                        >
+                          {copiedTxHash === tx.hash ? (
+                            <Check className="w-4 h-4 text-green-400" />
+                          ) : (
+                            <Copy className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
+
+                        {/* Share Button */}
+                        <button
+                          onClick={() => handleShareTransaction(tx)}
+                          className="p-1.5 rounded hover:bg-gray-700 transition-colors"
+                          title="Share transaction"
+                        >
+                          <Share2 className="w-4 h-4 text-gray-400" />
+                        </button>
+
+                        {/* Explorer Link */}
+                        <a
+                          href={getExplorerUrl(tx.chain, tx.hash)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 rounded hover:bg-gray-700 transition-colors"
+                          title="View on block explorer"
+                        >
+                          <ExternalLink className="w-4 h-4 text-gray-400" />
+                        </a>
+                      </div>
                     </div>
                   </div>
                 ))}
