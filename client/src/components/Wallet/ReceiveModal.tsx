@@ -1,9 +1,9 @@
 // client/src/components/Wallet/ReceiveModal.tsx
-// QR code modal for receiving crypto
+// Full-page receive view with QR code and dropdown chain selector
 
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Check, X } from 'lucide-react';
+import { Copy, Check, X, ChevronDown, AlertTriangle, Download, Share2 } from 'lucide-react';
 import type { Chain } from '@/lib/balanceService';
 
 interface ReceiveModalProps {
@@ -19,13 +19,40 @@ interface ReceiveModalProps {
   onClose: () => void;
 }
 
-const CHAIN_CONFIG = {
-  ethereum: { name: 'Ethereum', symbol: 'ETH', color: 'text-blue-400' },
-  bitcoin: { name: 'Bitcoin', symbol: 'BTC', color: 'text-orange-400' },
-  bsc: { name: 'BNB Smart Chain', symbol: 'BNB', color: 'text-yellow-400' },
-  xrp: { name: 'XRP Ledger', symbol: 'XRP', color: 'text-gray-300' },
-  solana: { name: 'Solana', symbol: 'SOL', color: 'text-purple-400' },
+const CHAIN_CONFIG: Record<Chain, { name: string; symbol: string; color: string; warning: string }> = {
+  ethereum: { 
+    name: 'Ethereum', 
+    symbol: 'ETH', 
+    color: 'bg-blue-400',
+    warning: 'Only send ETH or ERC-20 tokens to this address.'
+  },
+  bitcoin: { 
+    name: 'Bitcoin', 
+    symbol: 'BTC', 
+    color: 'bg-orange-400',
+    warning: 'Only send BTC to this address. Sending other coins may result in permanent loss.'
+  },
+  bsc: { 
+    name: 'BNB Smart Chain', 
+    symbol: 'BNB', 
+    color: 'bg-yellow-400',
+    warning: 'Only send BNB or BEP-20 tokens to this address.'
+  },
+  xrp: { 
+    name: 'XRP Ledger', 
+    symbol: 'XRP', 
+    color: 'bg-gray-300',
+    warning: 'Only send XRP or XRPL tokens to this address.'
+  },
+  solana: { 
+    name: 'Solana', 
+    symbol: 'SOL', 
+    color: 'bg-purple-400',
+    warning: 'Only send SOL or SPL tokens to this address.'
+  },
 };
+
+const CHAINS: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
 
 export default function ReceiveModal({
   addresses,
@@ -34,89 +61,193 @@ export default function ReceiveModal({
   onClose,
 }: ReceiveModalProps) {
   const [copied, setCopied] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
   const config = CHAIN_CONFIG[selectedChain];
   const address = addresses[selectedChain];
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
   };
 
-  const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
+  const handleShare = async () => {
+    if (!navigator.share) return;
+    
+    try {
+      await navigator.share({
+        title: `My ${config.name} Address`,
+        text: address,
+      });
+    } catch (error) {
+      // User cancelled
+    }
+  };
+
+  const handleDownloadQR = () => {
+    const svg = document.getElementById('receive-qr');
+    if (!svg) return;
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx?.drawImage(img, 0, 0);
+      const pngFile = canvas.toDataURL('image/png');
+      
+      const downloadLink = document.createElement('a');
+      downloadLink.download = `${selectedChain}-wallet-qr.png`;
+      downloadLink.href = pngFile;
+      downloadLink.click();
+    };
+
+    img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+  };
+
+  const handleSelectChain = (chain: Chain) => {
+    onSelectChain(chain);
+    setIsDropdownOpen(false);
+  };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 max-w-md mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Receive Crypto</h2>
-        <button onClick={onClose} className="text-gray-400 hover:text-white">
-          <X className="w-6 h-6" />
+    <div className="fixed inset-0 bg-gray-900 z-50 overflow-y-auto">
+      {/* Header */}
+      <div className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-4 flex items-center justify-between">
+        <h1 className="text-xl font-bold">Receive Crypto</h1>
+        <button
+          onClick={onClose}
+          className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
+        >
+          <X className="w-6 h-6 text-gray-400" />
         </button>
       </div>
 
-      {/* Chain Selector */}
-      <div className="mb-6">
-        <label className="text-sm text-gray-400 mb-2 block">Select Network</label>
-        <div className="grid grid-cols-2 gap-2">
-          {chains.map((chain) => {
-            const chainConfig = CHAIN_CONFIG[chain];
-            return (
-              <button
-                key={chain}
-                onClick={() => onSelectChain(chain)}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  selectedChain === chain
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white'
-                }`}
-              >
-                {chainConfig.name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* QR Code */}
-      <div className="bg-white p-4 rounded-lg mb-4">
-        <QRCodeSVG
-          value={address}
-          size={256}
-          level="H"
-          className="w-full h-auto"
-        />
-      </div>
-
-      {/* Address */}
-      <div>
-        <label className="text-sm text-gray-400 mb-2 block">
-          Your {config.name} Address
-        </label>
-        <div className="flex items-center gap-2">
-          <div className="flex-1 px-4 py-2 bg-gray-700 rounded-lg font-mono text-sm break-all">
-            {address}
-          </div>
+      <div className="max-w-md mx-auto px-4 py-6 space-y-6">
+        {/* Chain Selector Dropdown */}
+        <div className="relative">
+          <label className="text-sm text-gray-400 mb-2 block">Select Network</label>
           <button
-            onClick={handleCopy}
-            className="p-2 bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors"
-            title="Copy address"
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl hover:border-gray-600 transition-colors"
           >
-            {copied ? (
-              <Check className="w-5 h-5 text-green-400" />
-            ) : (
-              <Copy className="w-5 h-5" />
-            )}
+            <div className="flex items-center gap-3">
+              <div className={`w-3 h-3 rounded-full ${config.color}`} />
+              <span className="font-medium">{config.name}</span>
+              <span className="text-gray-400">({config.symbol})</span>
+            </div>
+            <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
-        </div>
-      </div>
 
-      {/* Warning */}
-      <div className="mt-4 bg-yellow-500/10 border border-yellow-500 rounded-lg p-3">
-        <p className="text-sm text-yellow-200">
-          ⚠️ Only send <strong>{config.symbol}</strong> to this address. 
-          Sending other coins may result in permanent loss.
-        </p>
+          {/* Dropdown Menu */}
+          {isDropdownOpen && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-700 rounded-xl overflow-hidden shadow-xl z-10">
+              {CHAINS.map((chain) => {
+                const chainConfig = CHAIN_CONFIG[chain];
+                const isSelected = chain === selectedChain;
+                
+                return (
+                  <button
+                    key={chain}
+                    onClick={() => handleSelectChain(chain)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-700 transition-colors ${
+                      isSelected ? 'bg-gray-700' : ''
+                    }`}
+                  >
+                    <div className={`w-3 h-3 rounded-full ${chainConfig.color}`} />
+                    <span className={`font-medium ${isSelected ? 'text-emerald-400' : ''}`}>
+                      {chainConfig.name}
+                    </span>
+                    <span className="text-gray-400">({chainConfig.symbol})</span>
+                    {isSelected && (
+                      <Check className="w-4 h-4 text-emerald-400 ml-auto" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* QR Code */}
+        <div className="bg-white p-6 rounded-2xl flex items-center justify-center">
+          <QRCodeSVG
+            id="receive-qr"
+            value={address}
+            size={240}
+            level="H"
+            includeMargin
+            bgColor="#ffffff"
+            fgColor="#000000"
+          />
+        </div>
+
+        {/* Address Display */}
+        <div>
+          <label className="text-sm text-gray-400 mb-2 block">
+            Your {config.name} Address
+          </label>
+          <div className="flex items-stretch gap-2">
+            <div className="flex-1 bg-gray-800 rounded-xl p-4 font-mono text-sm break-all border border-gray-700">
+              {address}
+            </div>
+            <button
+              onClick={handleCopy}
+              className={`px-4 rounded-xl transition-colors flex items-center justify-center ${
+                copied
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+              title="Copy address"
+            >
+              {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleDownloadQR}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors"
+          >
+            <Download className="w-5 h-5" />
+            <span>Save QR</span>
+          </button>
+          {navigator.share && (
+            <button
+              onClick={handleShare}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors"
+            >
+              <Share2 className="w-5 h-5" />
+              <span>Share</span>
+            </button>
+          )}
+        </div>
+
+        {/* Warning */}
+        <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-200">
+            {config.warning} Sending other coins may result in permanent loss.
+          </p>
+        </div>
+
+        {/* Back Button */}
+        <button
+          onClick={onClose}
+          className="w-full py-4 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors font-medium"
+        >
+          Back to Wallet
+        </button>
       </div>
     </div>
   );
