@@ -4,6 +4,7 @@
 import axios from 'axios';
 import { Contract, JsonRpcProvider } from 'ethers';
 import { xrplService } from './xrpService';
+import { openDB, DBSchema, IDBPDatabase } from 'idb';
 
 // ERC-20 ABI (minimal - only what we need)
 const ERC20_ABI = [
@@ -42,20 +43,48 @@ export interface Token {
   };
 }
 
-const STORAGE_KEY_PREFIX = 'wallet_tokens_';
+// IndexedDB Schema for tokens
+interface TokenDB extends DBSchema {
+  tokens: {
+    key: string; // walletId
+    value: {
+      walletId: string;
+      tokens: Token[];
+      lastUpdated: string;
+    };
+  };
+}
+
+const TOKEN_DB_NAME = 'beartec_tokens';
+const TOKEN_DB_VERSION = 1;
+
+// Initialize Token IndexedDB
+async function getTokenDB(): Promise<IDBPDatabase<TokenDB>> {
+  return openDB<TokenDB>(TOKEN_DB_NAME, TOKEN_DB_VERSION, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains('tokens')) {
+        db.createObjectStore('tokens', { keyPath: 'walletId' });
+      }
+    },
+  });
+}
 
 /**
- * Get all tokens for a wallet
+ * Get all tokens for a wallet from IndexedDB
  */
 export async function getWalletTokens(walletId: string): Promise<Token[]> {
   try {
-    const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${walletId}`);
-    if (!stored) return [];
+    const db = await getTokenDB();
+    const record = await db.get('tokens', walletId);
     
-    const tokens = JSON.parse(stored);
-    return tokens.map((t: any) => ({
-      ...t,
-      addedAt: new Date(t.addedAt),
+    if (!record) {
+      return [];
+    }
+    
+    // Parse dates back from strings
+    return record.tokens.map(token => ({
+      ...token,
+      addedAt: new Date(token.addedAt),
     }));
   } catch (error) {
     console.error('Failed to load wallet tokens:', error);
@@ -64,11 +93,16 @@ export async function getWalletTokens(walletId: string): Promise<Token[]> {
 }
 
 /**
- * Save wallet tokens
+ * Save wallet tokens to IndexedDB
  */
 export async function saveWalletTokens(walletId: string, tokens: Token[]): Promise<void> {
   try {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}${walletId}`, JSON.stringify(tokens));
+    const db = await getTokenDB();
+    await db.put('tokens', {
+      walletId,
+      tokens,
+      lastUpdated: new Date().toISOString(),
+    });
   } catch (error) {
     console.error('Failed to save wallet tokens:', error);
     throw error;
@@ -117,6 +151,19 @@ export async function updateTokenBalance(
       token.usdValue = usdValue;
     }
     await saveWalletTokens(walletId, tokens);
+  }
+}
+
+/**
+ * Clear all tokens for a wallet (called when wallet is deleted)
+ */
+export async function clearWalletTokens(walletId: string): Promise<void> {
+  try {
+    const db = await getTokenDB();
+    await db.delete('tokens', walletId);
+    console.log(`✅ Cleared tokens for wallet: ${walletId}`);
+  } catch (error) {
+    console.error('Failed to clear wallet tokens:', error);
   }
 }
 
@@ -185,7 +232,6 @@ export async function fetchERC20TokenInfo(contractAddress: string, chain: 'ether
       lastError = error;
       
       // Add delay between retries to avoid rate limiting
-      // Using 500ms as a conservative delay to ensure reliability with BSC nodes
       if (i < endpoints.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
@@ -317,14 +363,13 @@ export async function fetchSPLTokenInfo(mintAddress: string): Promise<{
     console.warn('[SPL Token] RPC fallback failed:', rpcError);
   }
 
-  // Final fallback - throw error instead of returning garbage
+  // Final fallback - throw error
   console.error('[SPL Token] All metadata sources failed for:', mintAddress);
   throw new Error(
     `Failed to fetch token metadata for ${mintAddress}. ` +
     `Token may not exist or metadata services are unavailable.`
   );
 }
-
 /**
  * Fetch XRPL token/issuer info
  */
@@ -571,7 +616,6 @@ export async function fetchTokenPrice(token: Token): Promise<{
     } else if (token.standard === 'XRPL' && token.currencyCode && token.issuer) {
       // XRPL tokens - CoinGecko doesn't have comprehensive XRPL token support
       // This is intentionally returning undefined as there's no reliable price API for XRPL tokens
-      // Users can still add and track these tokens, but price data won't be available
       return {
         usdPrice: undefined,
         priceChange24h: undefined,
