@@ -1,7 +1,7 @@
 // client/src/components/Wallet/PortfolioSummary.tsx
 // Portfolio overview with total value, 24h change, mini chart, and top/bottom movers
 
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 import type { ChainBalance } from '@/lib/balanceService';
 import type { Token } from '@/lib/tokenService';
 
@@ -75,7 +75,7 @@ export default function PortfolioSummary({
   const portfolioChange24h = calculatePortfolioChange();
   const isPositive = portfolioChange24h >= 0;
 
-  // Find top and bottom movers
+  // Find top and bottom movers - collect all assets
   const allAssets = [
     ...chainBalances.map(chain => ({
       symbol: chain.chain.toUpperCase(),
@@ -93,9 +93,12 @@ export default function PortfolioSummary({
     })),
   ].filter(asset => asset.usdValue > 0);
 
+  // Sort by price change (highest to lowest)
   const sortedByChange = [...allAssets].sort((a, b) => b.priceChange24h - a.priceChange24h);
-  const topMover = sortedByChange[0];
-  const bottomMover = sortedByChange[sortedByChange.length - 1];
+  
+  // Always get top and bottom, even if they're both positive or both negative
+  const topMover = sortedByChange[0]; // Best performer (highest % change)
+  const bottomMover = sortedByChange[sortedByChange.length - 1]; // Worst performer (lowest % change)
 
   // Generate fake sparkline data based on current change (in real app, fetch historical data)
   const generateSparklineData = (change: number) => {
@@ -161,62 +164,64 @@ export default function PortfolioSummary({
         </div>
       </div>
 
-      {/* Top/Bottom Movers */}
-      {allAssets.length > 1 && (
+      {/* Top/Bottom Movers - ALWAYS SHOW IF MORE THAN 1 ASSET */}
+      {allAssets.length > 1 && topMover && bottomMover && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-gray-700">
-          {/* Top Mover - Show best performer even if negative */}
-          {topMover && (
-            <div className={`flex items-center justify-between p-3 rounded-xl ${
-              topMover.priceChange24h >= 0 
-                ? 'bg-emerald-500/10 border border-emerald-500/20' 
-                : 'bg-gray-700/30 border border-gray-600/20'
-            }`}>
-              <div className="flex items-center gap-2">
-                <TrendingUp className={`w-5 h-5 ${
-                  topMover.priceChange24h >= 0 ? 'text-emerald-400' : 'text-gray-400'
-                }`} />
-                <div>
-                  <p className="text-xs text-gray-400">
-                    {topMover.priceChange24h >= 0 ? 'Top Performer' : 'Best Performer'}
-                  </p>
-                  <p className={`font-semibold ${
-                    topMover.priceChange24h >= 0 ? 'text-emerald-400' : 'text-gray-300'
-                  }`}>
-                    {topMover.symbol}
-                  </p>
-                </div>
-              </div>
-              <span className={`font-mono font-medium ${
+          {/* Top Mover - ALWAYS SHOW (Best relative performer) */}
+          <div className={`flex items-center justify-between p-3 rounded-xl ${
+            topMover.priceChange24h >= 0 
+              ? 'bg-emerald-500/10 border border-emerald-500/20' 
+              : 'bg-gray-700/30 border border-gray-600/20'
+          }`}>
+            <div className="flex items-center gap-2">
+              <TrendingUp className={`w-5 h-5 ${
                 topMover.priceChange24h >= 0 ? 'text-emerald-400' : 'text-gray-400'
-              }`}>
-                {topMover.priceChange24h >= 0 ? '+' : ''}{topMover.priceChange24h.toFixed(2)}%
-              </span>
-            </div>
-          )}
-
-          {/* Bottom Mover */}
-          {bottomMover && bottomMover.priceChange24h < 0 && (
-            <div className="flex items-center justify-between p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="w-5 h-5 text-red-400" />
-                <div>
-                  <p className="text-xs text-gray-400">Lowest Performer</p>
-                  <p className="font-semibold text-red-400">{bottomMover.symbol}</p>
-                </div>
+              }`} />
+              <div>
+                <p className="text-xs text-gray-400">
+                  {topMover.priceChange24h >= 0 ? 'Top Performer' : 'Best Performer'}
+                </p>
+                <p className={`font-semibold ${
+                  topMover.priceChange24h >= 0 ? 'text-emerald-400' : 'text-gray-300'
+                }`}>
+                  {topMover.symbol}
+                </p>
               </div>
-              <span className="text-red-400 font-mono font-medium">
-                {bottomMover.priceChange24h.toFixed(2)}%
-              </span>
             </div>
-          )}
+            <span className={`font-mono font-medium ${
+              topMover.priceChange24h >= 0 ? 'text-emerald-400' : 'text-gray-400'
+            }`}>
+              {topMover.priceChange24h >= 0 ? '+' : ''}{topMover.priceChange24h.toFixed(2)}%
+            </span>
+          </div>
 
-          {/* Neutral state if no significant movers */}
-          {(!topMover || topMover.priceChange24h <= 0) && (!bottomMover || bottomMover.priceChange24h >= 0) && (
-            <div className="col-span-2 flex items-center justify-center p-3 rounded-xl bg-gray-700/30 border border-gray-600/30">
-              <Minus className="w-4 h-4 text-gray-500 mr-2" />
-              <span className="text-gray-500 text-sm">No significant movers today</span>
+          {/* Bottom Mover - ALWAYS SHOW (Worst relative performer) */}
+          <div className={`flex items-center justify-between p-3 rounded-xl ${
+            bottomMover.priceChange24h < 0
+              ? 'bg-red-500/10 border border-red-500/20'
+              : 'bg-gray-700/30 border border-gray-600/20'
+          }`}>
+            <div className="flex items-center gap-2">
+              <TrendingDown className={`w-5 h-5 ${
+                bottomMover.priceChange24h < 0 ? 'text-red-400' : 'text-gray-400'
+              }`} />
+              <div>
+                <p className="text-xs text-gray-400">
+                  {bottomMover.priceChange24h < 0 ? 'Lowest Performer' : 'Worst Performer'}
+                </p>
+                <p className={`font-semibold ${
+                  bottomMover.priceChange24h < 0 ? 'text-red-400' : 'text-gray-300'
+                }`}>
+                  {bottomMover.symbol}
+                </p>
+              </div>
             </div>
-          )}
+            <span className={`font-mono font-medium ${
+              bottomMover.priceChange24h < 0 ? 'text-red-400' : 'text-gray-400'
+            }`}>
+              {bottomMover.priceChange24h >= 0 ? '+' : ''}{bottomMover.priceChange24h.toFixed(2)}%
+            </span>
+          </div>
         </div>
       )}
     </div>
