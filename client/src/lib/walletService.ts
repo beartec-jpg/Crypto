@@ -12,6 +12,7 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import * as bip39 from 'bip39';
 import { HDKey } from '@scure/bip32';
 import { Keypair } from '@solana/web3.js';
+import { deriveKeypair, deriveAddress, generateSeed } from 'ripple-keypairs';
 
 // Supported chains
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
@@ -347,9 +348,37 @@ function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
 }
 
 /**
- * Derive XRP address from private key
+ * Derive XRP address from private key using STANDARD XRPL method
+ * FIXED: Now uses ripple-keypairs to match signing libraries
  */
 function deriveXRPAddress(privateKeyBytes: Uint8Array): string {
+  // XRP Ledger standard: Use first 16 bytes as entropy to generate the seed
+  // This follows the XRPL wallet specification where seeds are derived from
+  // 16 bytes (128 bits) of entropy. The BIP44-derived private key provides
+  // this entropy, ensuring deterministic address derivation while maintaining
+  // compatibility with standard XRPL signing libraries.
+  const entropy = privateKeyBytes.slice(0, 16);
+  
+  // Generate seed from entropy using standard ripple-keypairs
+  // The seed is encoded in base58 format (starts with 's') per XRPL spec
+  const seed = generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
+  
+  // Derive keypair from seed using standard XRPL method
+  // This ensures the derived keys match what signing libraries produce
+  const keypair = deriveKeypair(seed);
+  
+  // Derive address from public key using standard XRPL encoding
+  const address = deriveAddress(keypair.publicKey);
+  
+  return address;
+}
+
+/**
+ * LEGACY: Derive XRP address using OLD BROKEN custom method
+ * This is ONLY used for recovery of funds from incorrectly derived addresses
+ * DO NOT USE for new addresses - use deriveXRPAddress() instead
+ */
+function deriveXRPAddressLegacyCustom(privateKeyBytes: Uint8Array): string {
   const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
   const sha256Hash = sha256(publicKeyBytes);
   const ripemd160Hash = ripemd160(sha256Hash);
@@ -942,6 +971,19 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       }
     }
     
+    // Check XRP address
+    if (xrpNode.privateKey) {
+      const correctAddress = deriveXRPAddress(xrpNode.privateKey);
+      const storedAddress = wallet.addresses.xrp;
+      
+      if (correctAddress !== storedAddress) {
+        console.warn('⚠️ XRP address mismatch detected, auto-repairing...');
+        console.log('  Stored:', storedAddress.slice(0, 10) + '...' + storedAddress.slice(-4));
+        console.log('  Correct:', correctAddress.slice(0, 10) + '...' + correctAddress.slice(-4));
+        needsRepair = true;
+      }
+    }
+    
     if (needsRepair) {
       // Re-derive all addresses
       const { addresses: newAddresses, publicKeys: newPublicKeys } = 
@@ -1073,6 +1115,55 @@ export async function getLegacySolanaAddressForRecovery(
     
   } catch (error) {
     console.error('❌ Failed to derive legacy Solana address:', error);
+    return null;
+  }
+}
+
+/**
+ * Get legacy custom XRP address for recovery
+ * Returns both the old wrong address and its private key
+ */
+export async function getLegacyXRPAddressForRecovery(
+  walletId: string,
+  password: string
+): Promise<{
+  legacyAddress: string;
+  legacyPrivateKey: string;
+  currentAddress: string;
+} | null> {
+  try {
+    console.log('🔧 Deriving legacy XRP address for recovery...');
+    
+    // Unlock wallet to get mnemonic
+    const wallet = await unlockWallet(walletId, password);
+    
+    // Derive using old broken method
+    const seed = await bip39.mnemonicToSeed(wallet.mnemonic);
+    const root = HDKey.fromMasterSeed(seed);
+    const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
+    
+    if (!xrpNode.privateKey) {
+      throw new Error('Failed to derive XRP private key');
+    }
+    
+    // Derive address using OLD custom method
+    const legacyAddress = deriveXRPAddressLegacyCustom(xrpNode.privateKey);
+    const legacyPrivateKey = Buffer.from(xrpNode.privateKey).toString('hex');
+    
+    // Current correct address
+    const currentAddress = wallet.addresses.xrp;
+    
+    console.log('🔍 Legacy XRP address:', legacyAddress.slice(0, 10) + '...' + legacyAddress.slice(-4));
+    console.log('🔍 Current XRP address:', currentAddress.slice(0, 10) + '...' + currentAddress.slice(-4));
+    
+    return {
+      legacyAddress,
+      legacyPrivateKey,
+      currentAddress,
+    };
+    
+  } catch (error) {
+    console.error('❌ Failed to derive legacy XRP address:', error);
     return null;
   }
 }
