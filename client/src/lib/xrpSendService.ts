@@ -1,12 +1,20 @@
 // client/src/lib/xrpSendService.ts
 // XRP native send service with transaction building and signing
 
+import { Buffer } from 'buffer';
 import * as xrpl from 'xrpl';
+import { secp256k1 } from '@noble/curves/secp256k1';
+import { deriveKeypair, sign } from 'ripple-keypairs';
+import { encode } from 'ripple-binary-codec';
 
 const BASE_RESERVE = 10; // 10 XRP
 const OWNER_RESERVE = 2; // 2 XRP per object
 const XRP_MAINNET_URL = 'wss://xrplcluster.com';
 const DEFAULT_FEE_DROPS = '12'; // Default fee in drops (0.000012 XRP)
+
+// Regex patterns for XRP private key formats - exported for reuse
+export const HEX_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
+export const HEX_KEY_WITH_PREFIX_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 export interface XRPAccountInfo {
   address: string;
@@ -159,23 +167,36 @@ export function signXrpTransaction(
   tx: xrpl.Payment,
   privateKey: string
 ): string {
-  let wallet: xrpl.Wallet;
-  
-  // Detect key format and create wallet accordingly
+  // Detect key format and sign accordingly
   if (privateKey.startsWith('s')) {
     // XRP seed format (sXXXXXX...)
-    wallet = xrpl.Wallet.fromSeed(privateKey);
-  } else if (/^[0-9a-fA-F]{64}$/.test(privateKey)) {
-    // Hex private key format (64 hex characters)
-    wallet = xrpl.Wallet.fromSecret(privateKey);
+    const wallet = xrpl.Wallet.fromSeed(privateKey);
+    const signed = wallet.sign(tx);
+    return signed.tx_blob;
+  } else if (HEX_KEY_PATTERN.test(privateKey) || HEX_KEY_WITH_PREFIX_PATTERN.test(privateKey)) {
+    // Hex private key format (64 hex characters, with or without 0x prefix)
+    const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+    
+    // For hex keys, derive the public key using secp256k1
+    const publicKeyBytes = secp256k1.getPublicKey(Buffer.from(hexKey, 'hex'), true);
+    const publicKey = Buffer.from(publicKeyBytes).toString('hex').toUpperCase();
+    
+    // Encode transaction and sign with the hex private key
+    const txBlob = encode(tx);
+    const signature = sign(txBlob, hexKey);
+    
+    // Attach signature to transaction
+    const signedTx = {
+      ...tx,
+      SigningPubKey: publicKey,
+      TxnSignature: signature,
+    };
+    
+    // Encode the signed transaction
+    return encode(signedTx);
   } else {
     throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-character hex string.');
   }
-  
-  // Sign the transaction
-  const signed = wallet.sign(tx);
-  
-  return signed.tx_blob;
 }
 
 /**

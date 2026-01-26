@@ -1329,8 +1329,43 @@ export async function signTransaction(
       case 'bitcoin':
         throw new Error('Bitcoin signing not yet implemented');
       
-      case 'xrp':
-        throw new Error('XRP signing not yet implemented');
+      case 'xrp': {
+        // Import XRP key pattern constants to avoid duplication
+        const { HEX_KEY_PATTERN, HEX_KEY_WITH_PREFIX_PATTERN } = await import('./xrpSendService');
+        
+        // Detect key format and sign accordingly
+        if (privateKey.startsWith('s')) {
+          // XRP seed format - use xrpl.Wallet
+          const { Wallet: XRPLWallet } = await import('xrpl');
+          const xrpWallet = XRPLWallet.fromSeed(privateKey);
+          signedTx = xrpWallet.sign(transaction).tx_blob;
+        } else if (HEX_KEY_PATTERN.test(privateKey) || HEX_KEY_WITH_PREFIX_PATTERN.test(privateKey)) {
+          // Hex format - need to sign using ripple-keypairs
+          const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+          
+          // Derive public key using secp256k1
+          const publicKeyBytes = secp256k1.getPublicKey(Buffer.from(hexKey, 'hex'), true);
+          const publicKey = Buffer.from(publicKeyBytes).toString('hex').toUpperCase();
+          
+          // Use ripple-keypairs for signing
+          const { encode } = await import('ripple-binary-codec');
+          const { sign } = await import('ripple-keypairs');
+          
+          const txBlob = encode(transaction);
+          const signature = sign(txBlob, hexKey);
+          
+          // Attach signature to transaction and re-encode
+          const signedTransaction = {
+            ...transaction,
+            TxnSignature: signature,
+            SigningPubKey: publicKey,
+          };
+          signedTx = encode(signedTransaction);
+        } else {
+          throw new Error('Invalid XRP private key format. Expected seed (s...) or hex string.');
+        }
+        break;
+      }
       
       case 'solana':
         throw new Error('Solana signing not yet implemented');
