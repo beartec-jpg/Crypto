@@ -13,6 +13,7 @@ import * as bip39 from 'bip39';
 import { HDKey } from '@scure/bip32';
 import { Keypair } from '@solana/web3.js';
 import { deriveKeypair, deriveAddress, generateSeed } from 'ripple-keypairs';
+import { Wallet as XRPLWallet } from 'xrpl';
 
 // Supported chains
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
@@ -133,7 +134,6 @@ const keyCache = new SecureKeyCache();
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     keyCache.clear();
-    // Security: Don't log sensitive operations
   });
 }
 
@@ -316,18 +316,6 @@ function deriveEthereumAddress(privateKeyBytes: Uint8Array): string {
 }
 
 /**
- * LEGACY: Derive Ethereum address using OLD BROKEN SHA-256 method
- * This is ONLY used for recovery of funds from incorrectly derived addresses
- * DO NOT USE for new addresses - use deriveEthereumAddress() instead
- */
-function deriveEthereumAddressLegacySHA256(privateKeyBytes: Uint8Array): string {
-  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, false);
-  const publicKeyNoPrefix = publicKeyBytes.slice(1);
-  const hash = sha256(publicKeyNoPrefix); // Old broken method
-  return ethers.getAddress('0x' + Buffer.from(hash.slice(-20)).toString('hex'));
-}
-
-/**
  * Derive Bitcoin address from private key (P2PKH)
  */
 function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
@@ -348,77 +336,33 @@ function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
 }
 
 /**
- * Derive XRP address from private key using STANDARD XRPL method
- * FIXED: Now uses ripple-keypairs to match signing libraries
+ * Derive XRP address using STANDARD XRPL.js method ONLY
+ * NO custom derivation, NO legacy support
  */
 function deriveXRPAddress(privateKeyBytes: Uint8Array): string {
-  // XRP Ledger standard: Use first 16 bytes as entropy to generate the seed
-  // This follows the XRPL wallet specification where seeds are derived from
-  // 16 bytes (128 bits) of entropy. The BIP44-derived private key provides
-  // this entropy, ensuring deterministic address derivation while maintaining
-  // compatibility with standard XRPL signing libraries.
-  const entropy = privateKeyBytes.slice(0, 16);
+  // Use first 16 bytes as entropy for seed generation (XRPL standard)
+  const entropy = Buffer.from(privateKeyBytes.slice(0, 16));
   
-  // Generate seed from entropy using standard ripple-keypairs
-  // The seed is encoded in base58 format (starts with 's') per XRPL spec
+  // Generate seed using ripple-keypairs standard method
   const seed = generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
   
-  // Derive keypair from seed using standard XRPL method
-  // This ensures the derived keys match what signing libraries produce
-  const keypair = deriveKeypair(seed);
+  // Create wallet from seed using XRPL.js (standard library method)
+  const wallet = XRPLWallet.fromSeed(seed);
   
-  // Derive address from public key using standard XRPL encoding
-  const address = deriveAddress(keypair.publicKey);
-  
-  return address;
-}
-
-/**
- * LEGACY: Derive XRP address using OLD BROKEN custom method
- * This is ONLY used for recovery of funds from incorrectly derived addresses
- * DO NOT USE for new addresses - use deriveXRPAddress() instead
- */
-function deriveXRPAddressLegacyCustom(privateKeyBytes: Uint8Array): string {
-  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
-  const sha256Hash = sha256(publicKeyBytes);
-  const ripemd160Hash = ripemd160(sha256Hash);
-  
-  const versionedHash = new Uint8Array(21);
-  versionedHash[0] = 0x00;
-  versionedHash.set(ripemd160Hash, 1);
-  
-  const checksum = sha256(sha256(versionedHash)).slice(0, 4);
-  const addressBytes = new Uint8Array(25);
-  addressBytes.set(versionedHash);
-  addressBytes.set(checksum, 21);
-  
-  return base58EncodeXRP(addressBytes);
+  return wallet.address;
 }
 
 /**
  * Derive Solana address from private key
- * FIXED: Now uses proper Ed25519 keypair derivation instead of SHA256 hash
+ * Uses proper Ed25519 keypair derivation
  */
 function deriveSolanaAddress(privateKeyBytes: Uint8Array): string {
   // Solana uses Ed25519 - the private key IS the seed for the keypair
-  // We need to use the proper derivation from BIP44 path
-  // The Keypair.fromSeed expects a 32-byte seed
-  
   // Take first 32 bytes as the seed (BIP44 derived key is 32 bytes)
   const seed = privateKeyBytes.slice(0, 32);
   const keypair = Keypair.fromSeed(seed);
   
   return keypair.publicKey.toBase58();
-}
-
-/**
- * LEGACY: Derive Solana address using OLD BROKEN SHA-256 method
- * This is ONLY used for recovery of funds from incorrectly derived addresses
- * DO NOT USE for new addresses - use deriveSolanaAddress() instead
- */
-function deriveSolanaAddressLegacySHA256(seed: Uint8Array): string {
-  const hash = sha256(seed);
-  return base58Encode(hash);
 }
 
 /**
@@ -441,28 +385,6 @@ function base58Encode(bytes: Uint8Array): string {
   
   return encoded;
 }
-
-/**
- * Base58 encoding with XRP alphabet
- */
-function base58EncodeXRP(bytes: Uint8Array): string {
-  const ALPHABET = 'rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz';
-  let num = BigInt('0x' + Buffer.from(bytes).toString('hex'));
-  let encoded = '';
-  
-  while (num > 0n) {
-    const remainder = Number(num % 58n);
-    encoded = ALPHABET[remainder] + encoded;
-    num = num / 58n;
-  }
-  
-  for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
-    encoded = 'r' + encoded;
-  }
-  
-  return encoded;
-}
-
 /**
  * Derive all addresses from mnemonic
  */
@@ -540,7 +462,6 @@ export async function createWallet(password: string, userId: string): Promise<Wa
     
     // Generate 24-word mnemonic (256 bits entropy)
     const mnemonic = bip39.generateMnemonic(256);
-    // Security: Mnemonic generated securely
     
     // Derive addresses
     const { addresses, publicKeys } = await deriveAddressesFromMnemonic(mnemonic);
@@ -721,9 +642,7 @@ export function validatePassword(password: string): PasswordValidation {
     errors.push('Password must contain a special character (!@#$%^&*(),.?":{}|<>)');
   }
   
-  // Check for common weak passwords (exact match only)
-  // Note: This is a basic list - consider integrating with a more comprehensive
-  // dictionary like "Have I Been Pwned" API for production use
+  // Check for common weak passwords
   const commonPasswords = [
     'password123!',
     'Password123!',
@@ -757,7 +676,7 @@ interface UnlockAttempt {
 
 const unlockAttempts = new Map<string, UnlockAttempt>();
 const MAX_UNLOCK_ATTEMPTS = 5;
-const LOCKOUT_TIME_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
+const LOCKOUT_TIME_MS = 15 * 60 * 1000; // 15 minutes
 
 /**
  * Check if wallet is locked out due to too many failed attempts
@@ -813,7 +732,6 @@ export async function markMnemonicBackedUp(walletId: string): Promise<void> {
     if (wallet) {
       wallet.mnemonicBackedUp = true;
       await db.put('wallets', wallet);
-      // Security: Backup status updated
     }
   } catch (error) {
     console.error('Failed to mark mnemonic as backed up:', error);
@@ -822,8 +740,6 @@ export async function markMnemonicBackedUp(walletId: string): Promise<void> {
 
 /**
  * Verify mnemonic backup by asking user to confirm specific words
- * Security: Users must verify backup before sending transactions
- * Note: This bypasses rate limiting since it's not a security-sensitive unlock
  */
 export async function verifyMnemonicBackup(
   walletId: string,
@@ -831,7 +747,6 @@ export async function verifyMnemonicBackup(
   userEnteredWords: { index: number; word: string }[]
 ): Promise<boolean> {
   try {
-    // Directly decrypt mnemonic without triggering rate limiting
     const db = await getDB();
     const wallet = await db.get('wallets', walletId);
     
@@ -845,7 +760,6 @@ export async function verifyMnemonicBackup(
     try {
       mnemonic = await decryptData(wallet.encryptedMnemonic, password, salt);
     } catch (error) {
-      // Incorrect password
       return false;
     }
     
@@ -874,7 +788,7 @@ export async function verifyMnemonicBackup(
 }
 
 /**
- * Check if wallet backup is verified (required before sending transactions)
+ * Check if wallet backup is verified
  */
 export async function isBackupVerified(walletId: string): Promise<boolean> {
   try {
@@ -886,7 +800,6 @@ export async function isBackupVerified(walletId: string): Promise<boolean> {
     return false;
   }
 }
-
 /**
  * Unlock wallet with password (with rate limiting)
  */
@@ -942,63 +855,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const solNode = derivePath(root, DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
 
-    // === AUTO-REPAIR: Detect and fix address mismatch ===
-    let needsRepair = false;
-    
-    // Check Ethereum address
-    if (ethNode.privateKey) {
-      const correctAddress = deriveEthereumAddress(ethNode.privateKey);
-      const storedAddress = wallet.addresses.ethereum;
-      
-      if (correctAddress.toLowerCase() !== storedAddress.toLowerCase()) {
-        console.warn('⚠️ ETH address mismatch detected, auto-repairing...');
-        console.log('  Stored:', storedAddress.slice(0, 10) + '...' + storedAddress.slice(-4));
-        console.log('  Correct:', correctAddress.slice(0, 10) + '...' + correctAddress.slice(-4));
-        needsRepair = true;
-      }
-    }
-    
-    // Check Solana address
-    if (solNode.privateKey) {
-      const correctAddress = deriveSolanaAddress(solNode.privateKey);
-      const storedAddress = wallet.addresses.solana;
-      
-      if (correctAddress !== storedAddress) {
-        console.warn('⚠️ SOL address mismatch detected, auto-repairing...');
-        console.log('  Stored:', storedAddress.slice(0, 10) + '...' + storedAddress.slice(-4));
-        console.log('  Correct:', correctAddress.slice(0, 10) + '...' + correctAddress.slice(-4));
-        needsRepair = true;
-      }
-    }
-    
-    // Check XRP address
-    if (xrpNode.privateKey) {
-      const correctAddress = deriveXRPAddress(xrpNode.privateKey);
-      const storedAddress = wallet.addresses.xrp;
-      
-      if (correctAddress !== storedAddress) {
-        console.warn('⚠️ XRP address mismatch detected, auto-repairing...');
-        console.log('  Stored:', storedAddress.slice(0, 10) + '...' + storedAddress.slice(-4));
-        console.log('  Correct:', correctAddress.slice(0, 10) + '...' + correctAddress.slice(-4));
-        needsRepair = true;
-      }
-    }
-    
-    if (needsRepair) {
-      // Re-derive all addresses
-      const { addresses: newAddresses, publicKeys: newPublicKeys } = 
-        await deriveAddressesFromMnemonic(mnemonic);
-      
-      // Update in database
-      wallet.addresses = newAddresses;
-      wallet.publicKeys = newPublicKeys;
-      await db.put('wallets', wallet);
-      
-      console.log('✅ Wallet addresses auto-repaired!');
-    }
-    // === END AUTO-REPAIR ===
-
-    // Security: Wallet unlocked, keys in memory (5s cache timeout)
+    // No auto-repair - wallets must be created fresh with correct derivation
 
     return {
       id: wallet.id,
@@ -1018,218 +875,6 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     console.error('❌ Failed to unlock wallet:', error);
     recordFailedUnlockAttempt(walletId);
     throw new Error('Failed to unlock wallet. Check your password.');
-  }
-}
-
-/**
- * Get legacy (SHA-256) address and private key for recovery
- * Returns both the old wrong address and its private key
- */
-export async function getLegacyAddressForRecovery(
-  walletId: string,
-  password: string
-): Promise<{
-  legacyAddress: string;
-  legacyPrivateKey: string;
-  currentAddress: string;
-} | null> {
-  try {
-    console.log('🔧 Deriving legacy ETH address for recovery...');
-    
-    // Unlock wallet to get mnemonic
-    const wallet = await unlockWallet(walletId, password);
-    
-    // Derive using old broken method
-    const seed = await bip39.mnemonicToSeed(wallet.mnemonic);
-    const root = HDKey.fromMasterSeed(seed);
-    const ethNode = derivePath(root, DERIVATION_PATHS.ethereum);
-    
-    if (!ethNode.privateKey) {
-      throw new Error('Failed to derive private key');
-    }
-    
-    // Derive address using OLD SHA-256 method
-    const legacyAddress = deriveEthereumAddressLegacySHA256(ethNode.privateKey);
-    const legacyPrivateKey = Buffer.from(ethNode.privateKey).toString('hex');
-    
-    // Current correct address
-    const currentAddress = wallet.addresses.ethereum;
-    
-    console.log('🔍 Legacy address:', legacyAddress);
-    console.log('🔍 Current address:', currentAddress);
-    
-    return {
-      legacyAddress,
-      legacyPrivateKey,
-      currentAddress,
-    };
-    
-  } catch (error) {
-    console.error('❌ Failed to derive legacy address:', error);
-    return null;
-  }
-}
-
-/**
- * Get legacy (SHA-256) Solana address and private key for recovery
- * Returns both the old wrong address and its private key
- */
-export async function getLegacySolanaAddressForRecovery(
-  walletId: string,
-  password: string
-): Promise<{
-  legacyAddress: string;
-  legacyPrivateKey: string;
-  currentAddress: string;
-} | null> {
-  try {
-    console.log('🔧 Deriving legacy Solana address for recovery...');
-    
-    // Unlock wallet to get mnemonic
-    const wallet = await unlockWallet(walletId, password);
-    
-    // Derive using old broken method
-    const seed = await bip39.mnemonicToSeed(wallet.mnemonic);
-    const root = HDKey.fromMasterSeed(seed);
-    const solNode = derivePath(root, DERIVATION_PATHS.solana);
-    
-    if (!solNode.privateKey) {
-      throw new Error('Failed to derive Solana private key');
-    }
-    
-    // Derive address using OLD SHA-256 method
-    const legacyAddress = deriveSolanaAddressLegacySHA256(solNode.privateKey);
-    const legacyPrivateKey = Buffer.from(solNode.privateKey).toString('hex');
-    
-    // Current correct address
-    const currentAddress = wallet.addresses.solana;
-    
-    console.log('🔍 Legacy Solana address:', legacyAddress);
-    console.log('🔍 Current Solana address:', currentAddress);
-    
-    return {
-      legacyAddress,
-      legacyPrivateKey,
-      currentAddress,
-    };
-    
-  } catch (error) {
-    console.error('❌ Failed to derive legacy Solana address:', error);
-    return null;
-  }
-}
-
-/**
- * Get legacy custom XRP address for recovery
- * Returns both the old wrong address and its private key
- */
-export async function getLegacyXRPAddressForRecovery(
-  walletId: string,
-  password: string
-): Promise<{
-  legacyAddress: string;
-  legacyPrivateKey: string;
-  currentAddress: string;
-} | null> {
-  try {
-    console.log('🔧 Deriving legacy XRP address for recovery...');
-    
-    // Unlock wallet to get mnemonic
-    const wallet = await unlockWallet(walletId, password);
-    
-    // Derive using old broken method
-    const seed = await bip39.mnemonicToSeed(wallet.mnemonic);
-    const root = HDKey.fromMasterSeed(seed);
-    const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
-    
-    if (!xrpNode.privateKey) {
-      throw new Error('Failed to derive XRP private key');
-    }
-    
-    // Derive address using OLD custom method
-    const legacyAddress = deriveXRPAddressLegacyCustom(xrpNode.privateKey);
-    const legacyPrivateKey = Buffer.from(xrpNode.privateKey).toString('hex');
-    
-    // Current correct address
-    const currentAddress = wallet.addresses.xrp;
-    
-    console.log('🔍 Legacy XRP address:', legacyAddress.slice(0, 10) + '...' + legacyAddress.slice(-4));
-    console.log('🔍 Current XRP address:', currentAddress.slice(0, 10) + '...' + currentAddress.slice(-4));
-    
-    return {
-      legacyAddress,
-      legacyPrivateKey,
-      currentAddress,
-    };
-    
-  } catch (error) {
-    console.error('❌ Failed to derive legacy XRP address:', error);
-    return null;
-  }
-}
-
-/**
- * Repair wallet with incorrect ETH address derivation
- * This fixes wallets created with the SHA-256 bug
- */
-export async function repairWalletAddresses(
-  walletId: string,
-  password: string,
-  userId: string
-): Promise<void> {
-  try {
-    console.log('🔧 Repairing wallet addresses...');
-    
-    // Get wallet and decrypt mnemonic
-    const db = await getDB();
-    const wallet = await db.get('wallets', walletId);
-    
-    if (!wallet) {
-      throw new Error('Wallet not found');
-    }
-    
-    // Verify wallet belongs to this user
-    if (wallet.userId !== userId) {
-      throw new Error('Unauthorized: wallet does not belong to this user');
-    }
-    
-    // Decrypt mnemonic using AES-256-GCM
-    const salt = Buffer.from(wallet.salt, 'hex');
-    const mnemonic = await decryptData(wallet.encryptedMnemonic, password, salt);
-    
-    // Verify mnemonic is valid
-    if (!bip39.validateMnemonic(mnemonic)) {
-      throw new Error('Invalid password');
-    }
-    
-    // Re-derive addresses with FIXED derivation
-    const { addresses: newAddresses, publicKeys: newPublicKeys } = 
-      await deriveAddressesFromMnemonic(mnemonic);
-    
-    // Check if repair is needed
-    const needsRepair = 
-      wallet.addresses.ethereum.toLowerCase() !== newAddresses.ethereum.toLowerCase();
-    
-    if (!needsRepair) {
-      console.log('✅ Wallet addresses are already correct');
-      return;
-    }
-    
-    console.log('🔧 Updating wallet with correct addresses:');
-    console.log('  Old ETH:', wallet.addresses.ethereum.slice(0, 10) + '...' + wallet.addresses.ethereum.slice(-4));
-    console.log('  New ETH:', newAddresses.ethereum.slice(0, 10) + '...' + newAddresses.ethereum.slice(-4));
-    
-    // Update wallet in database
-    wallet.addresses = newAddresses;
-    wallet.publicKeys = newPublicKeys;
-    
-    await db.put('wallets', wallet);
-    
-    console.log('✅ Wallet addresses repaired successfully!');
-    
-  } catch (error) {
-    console.error('❌ Failed to repair wallet:', error);
-    throw error;
   }
 }
 
@@ -1285,7 +930,6 @@ export async function getPrivateKeyForSigning(
     const cacheKey = `${walletId}_${chain}`;
     const cachedKey = keyCache.get(cacheKey);
     if (cachedKey) {
-      // Security: Key cache active (expires in 5s)
       return cachedKey;
     }
 
@@ -1303,12 +947,10 @@ export async function getPrivateKeyForSigning(
 export function cachePrivateKey(walletId: string, chain: Chain, privateKey: string): void {
   const cacheKey = `${walletId}_${chain}`;
   keyCache.set(cacheKey, privateKey);
-  // Security: Key cached with 5-second expiration
 }
 
 /**
  * Sign transaction for specific chain with full security verification
- * Security: Implements comprehensive validation, backup verification, and immediate key clearing
  */
 export async function signTransaction(
   walletId: string,
@@ -1337,72 +979,49 @@ export async function signTransaction(
       throw new Error(`No private key found for chain: ${chain}`);
     }
     
-    // SECURITY: Zero key cache - private key cleared immediately after signing
-    // No caching to minimize exposure window for memory dump attacks
-    
     let signedTx: string;
     
-    // Step 5: Sign transaction based on chain
+    // Step 4: Sign transaction based on chain
     switch (chain) {
       case 'ethereum':
       case 'bsc': {
         const ethersWallet = new ethers.Wallet('0x' + privateKey);
         
-        // === NEW: Log and verify signer address ===
         const signerAddress = ethersWallet.address;
         const expectedAddress = wallet.addresses[chain];
         
         console.log('🔐 Signing transaction:');
-        console.log('  - Expected address (from wallet):', expectedAddress.slice(0, 10) + '...' + expectedAddress.slice(-4));
-        console.log('  - Actual signer address (from private key):', signerAddress.slice(0, 10) + '...' + signerAddress.slice(-4));
+        console.log('  - Expected address:', expectedAddress.slice(0, 10) + '...' + expectedAddress.slice(-4));
+        console.log('  - Actual signer:', signerAddress.slice(0, 10) + '...' + signerAddress.slice(-4));
         
         if (signerAddress.toLowerCase() !== expectedAddress.toLowerCase()) {
-          console.error('❌ ADDRESS MISMATCH DETECTED!');
-          console.error('  The private key produces a different address than expected.');
-          console.error('  Expected:', expectedAddress.slice(0, 10) + '...' + expectedAddress.slice(-4));
-          console.error('  Got:', signerAddress.slice(0, 10) + '...' + signerAddress.slice(-4));
           throw new Error(
-            `Signing address mismatch! Expected ${expectedAddress.slice(0, 10)}... but got ${signerAddress.slice(0, 10)}... ` +
-            `This indicates a wallet derivation issue. Please re-import your wallet.`
+            `Signing address mismatch! Expected ${expectedAddress.slice(0, 10)}... but got ${signerAddress.slice(0, 10)}...`
           );
         }
         
-        console.log('✅ Signer address matches expected address');
-        // === END NEW CODE ===
+        console.log('✅ Signer address matches');
         
-        // Safeguard: Remove 'from' field to prevent checksum mismatch
-        // ethers.js will automatically use the wallet's address when signing
         const { from, ...txWithoutFrom } = transaction;
         signedTx = await ethersWallet.signTransaction(txWithoutFrom);
         
-        // Step 6: Verify signature by recovering signer address
         try {
           const parsedTx = ethers.Transaction.from(signedTx);
           
-          // === NEW: Recover and verify signer from signed transaction ===
           if (parsedTx.from) {
-            console.log('✅ Recovered signer from tx:', parsedTx.from.slice(0, 10) + '...' + parsedTx.from.slice(-4));
+            console.log('✅ Recovered signer:', parsedTx.from.slice(0, 10) + '...' + parsedTx.from.slice(-4));
             if (parsedTx.from.toLowerCase() !== expectedAddress.toLowerCase()) {
-              console.error('❌ RECOVERED SIGNER MISMATCH!');
               throw new Error('Recovered signer does not match wallet address');
             }
           }
-          // === END NEW CODE ===
           
-          // Security: Verify the transaction was properly signed
-          // Note: Signature validation happens automatically when parsing
-          // The wallet address should match what we expect
           if (!parsedTx.signature) {
             throw new Error('Transaction signature missing');
           }
           
-          // Additional validation: verify sender address matches wallet
           const expectedAddressLower = wallet.addresses[chain].toLowerCase();
           
-          // For Ethereum transactions, the 'from' field should be present and match
           if (!transaction.from) {
-            // If from is not provided in the transaction, this is acceptable
-            // as ethers will use the wallet's address by default
             console.warn('Transaction from field not provided, will use wallet address');
           } else {
             const txFrom = transaction.from.toLowerCase();
@@ -1421,40 +1040,12 @@ export async function signTransaction(
         throw new Error('Bitcoin signing not yet implemented');
       
       case 'xrp': {
-        // Import XRP key pattern constants to avoid duplication
-        const { HEX_KEY_PATTERN, HEX_KEY_WITH_PREFIX_PATTERN } = await import('./xrpSendService');
+        // Use ONLY standard XRPL.js signing
+        const entropy = Buffer.from(Buffer.from(privateKey, 'hex').slice(0, 16));
+        const seed = generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
+        const xrpWallet = XRPLWallet.fromSeed(seed);
         
-        // Detect key format and sign accordingly
-        if (privateKey.startsWith('s')) {
-          // XRP seed format - use xrpl.Wallet
-          const { Wallet: XRPLWallet } = await import('xrpl');
-          const xrpWallet = XRPLWallet.fromSeed(privateKey);
-          signedTx = xrpWallet.sign(transaction).tx_blob;
-        } else if (HEX_KEY_PATTERN.test(privateKey) || HEX_KEY_WITH_PREFIX_PATTERN.test(privateKey)) {
-          // Hex format - need to sign using ripple-keypairs
-          const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
-          
-          // Derive public key using secp256k1
-          const publicKeyBytes = secp256k1.getPublicKey(Buffer.from(hexKey, 'hex'), true);
-          const publicKey = Buffer.from(publicKeyBytes).toString('hex').toUpperCase();
-          
-          // Use ripple-keypairs for signing
-          const { encode } = await import('ripple-binary-codec');
-          const { sign } = await import('ripple-keypairs');
-          
-          const txBlob = encode(transaction);
-          const signature = sign(txBlob, hexKey);
-          
-          // Attach signature to transaction and re-encode
-          const signedTransaction = {
-            ...transaction,
-            TxnSignature: signature,
-            SigningPubKey: publicKey,
-          };
-          signedTx = encode(signedTransaction);
-        } else {
-          throw new Error('Invalid XRP private key format. Expected seed (s...) or hex string.');
-        }
+        signedTx = xrpWallet.sign(transaction).tx_blob;
         break;
       }
       
@@ -1465,9 +1056,6 @@ export async function signTransaction(
         throw new Error(`Unsupported chain: ${chain}`);
     }
     
-    // Security: Transaction signed and verified
-    // Note: JavaScript cannot reliably clear strings from memory due to immutability
-    // The keyCache will auto-expire in 5 seconds
     return signedTx;
     
   } catch (error) {
@@ -1493,7 +1081,7 @@ export async function exportMnemonic(
 }
 
 /**
- * Delete wallet securely (for specific user)
+ * Delete wallet securely (for specific user) + clear all associated data
  */
 export async function deleteWallet(walletId: string, userId: string): Promise<void> {
   try {
@@ -1504,17 +1092,23 @@ export async function deleteWallet(walletId: string, userId: string): Promise<vo
       throw new Error('Unauthorized: Cannot delete another user\'s wallet');
     }
     
+    // Delete wallet from IndexedDB
     await db.delete('wallets', walletId);
     
+    // Clear localStorage references
     const storedWalletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
     if (storedWalletId === walletId) {
       localStorage.removeItem(getUserStorageKey(userId, 'wallet_id'));
       localStorage.removeItem(getUserStorageKey(userId, 'wallet_created'));
     }
     
+    // Clear added tokens from localStorage
+    localStorage.removeItem(`wallet_tokens_${walletId}`);
+    
+    // Clear sensitive data from memory
     keyCache.clear();
     
-    console.log('✅ Wallet deleted securely');
+    console.log('✅ Wallet and all associated data deleted securely');
     
   } catch (error) {
     console.error('❌ Failed to delete wallet:', error);
@@ -1571,9 +1165,55 @@ export async function migrateWalletToUser(userId: string): Promise<void> {
       localStorage.removeItem('current_wallet_id');
       localStorage.removeItem('wallet_created');
       
-      console.log('✅ Migrated wallet to user-scoped storage with AES-256-GCM');
+      console.log('✅ Migrated wallet to user-scoped storage');
     }
   } catch (error) {
     console.error('Failed to migrate wallet:', error);
+  }
+}
+/**
+ * Get XRP seed for wallet operations (used by xrpReserveService and xrpSendService)
+ */
+export async function getXRPSeed(walletId: string, password: string): Promise<string> {
+  try {
+    const wallet = await unlockWallet(walletId, password);
+    const xrpPrivateKey = wallet.privateKeys.xrp;
+    
+    if (!xrpPrivateKey) {
+      throw new Error('XRP private key not found');
+    }
+    
+    // Generate seed from private key using same method as deriveXRPAddress
+    const entropy = Buffer.from(Buffer.from(xrpPrivateKey, 'hex').slice(0, 16));
+    const seed = generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
+    
+    return seed;
+  } catch (error) {
+    console.error('Failed to get XRP seed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get Solana keypair for wallet operations
+ */
+export async function getSolanaKeypair(walletId: string, password: string): Promise<Keypair> {
+  try {
+    const wallet = await unlockWallet(walletId, password);
+    const solPrivateKey = wallet.privateKeys.solana;
+    
+    if (!solPrivateKey) {
+      throw new Error('Solana private key not found');
+    }
+    
+    // Create keypair from private key using same method as deriveSolanaAddress
+    const privateKeyBytes = Buffer.from(solPrivateKey, 'hex');
+    const seed = privateKeyBytes.slice(0, 32);
+    const keypair = Keypair.fromSeed(seed);
+    
+    return keypair;
+  } catch (error) {
+    console.error('Failed to get Solana keypair:', error);
+    throw error;
   }
 }
