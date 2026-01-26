@@ -12,7 +12,7 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import * as bip39 from 'bip39';
 import { HDKey } from '@scure/bip32';
 import { Keypair } from '@solana/web3.js';
-import { deriveKeypair, deriveAddress } from 'ripple-keypairs';
+import { deriveKeypair, deriveAddress, generateSeed } from 'ripple-keypairs';
 
 // Supported chains
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
@@ -352,12 +352,17 @@ function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
  * FIXED: Now uses ripple-keypairs to match signing libraries
  */
 function deriveXRPAddress(privateKeyBytes: Uint8Array): string {
-  // Convert to hex for ripple-keypairs
-  const privateKeyHex = Buffer.from(privateKeyBytes).toString('hex');
+  // XRP uses the first 16 bytes as entropy to generate the seed
+  // This follows the standard XRPL wallet derivation
+  const entropy = privateKeyBytes.slice(0, 16);
   
-  // Use ripple-keypairs library for STANDARD XRPL derivation
-  // This ensures the address matches what the signing code produces
-  const keypair = deriveKeypair(privateKeyHex);
+  // Generate seed from entropy using standard ripple-keypairs
+  const seed = generateSeed({ entropy: entropy, algorithm: 'ecdsa-secp256k1' });
+  
+  // Derive keypair from seed using standard XRPL method
+  const keypair = deriveKeypair(seed);
+  
+  // Derive address from public key
   const address = deriveAddress(keypair.publicKey);
   
   return address;
