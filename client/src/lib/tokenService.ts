@@ -434,3 +434,50 @@ async function detectXRPLTrustlines(address: string): Promise<Token[]> {
     return [];
   }
 }
+
+/**
+ * Ensure native tokens exist for all chains
+ */
+export async function ensureNativeTokens(walletId: string): Promise<Token[]> {
+  const tokens = await getWalletTokens(walletId);
+  
+  const NATIVE_TOKENS: Record<Chain, { symbol: string; name: string; decimals: number }> = {
+    ethereum: { symbol: 'ETH', name: 'Ethereum', decimals: 18 },
+    bitcoin: { symbol: 'BTC', name: 'Bitcoin', decimals: 8 },
+    bsc: { symbol: 'BNB', name: 'BNB', decimals: 18 },
+    xrp: { symbol: 'XRP', name: 'XRP', decimals: 6 },
+    solana: { symbol: 'SOL', name: 'Solana', decimals: 9 },
+  };
+
+  const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
+  let tokensAdded = false;
+
+  for (const chain of chains) {
+    const nativeExists = tokens.find(t => t.chain === chain && t.isNative);
+    
+    if (!nativeExists) {
+      const native = NATIVE_TOKENS[chain];
+      const nativeToken: Token = {
+        id: `native-${chain}`,
+        chain,
+        standard: chain === 'xrp' ? 'XRPL' : chain === 'solana' ? 'SPL' : 'ERC-20',
+        symbol: native.symbol,
+        name: native.name,
+        decimals: native.decimals,
+        balance: '0',
+        isVisible: true,
+        isNative: true,
+        addedAt: new Date(),
+      };
+      
+      tokens.push(nativeToken);
+      tokensAdded = true;
+    }
+  }
+
+  if (tokensAdded) {
+    await saveWalletTokens(walletId, tokens);
+  }
+  
+  return tokens;
+}

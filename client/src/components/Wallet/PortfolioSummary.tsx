@@ -164,18 +164,32 @@ export default function PortfolioSummary({
       {/* Top/Bottom Movers */}
       {allAssets.length > 1 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-gray-700">
-          {/* Top Mover */}
-          {topMover && topMover.priceChange24h > 0 && (
-            <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+          {/* Top Mover - Show best performer even if negative */}
+          {topMover && (
+            <div className={`flex items-center justify-between p-3 rounded-xl ${
+              topMover.priceChange24h >= 0 
+                ? 'bg-emerald-500/10 border border-emerald-500/20' 
+                : 'bg-gray-700/30 border border-gray-600/20'
+            }`}>
               <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-emerald-400" />
+                <TrendingUp className={`w-5 h-5 ${
+                  topMover.priceChange24h >= 0 ? 'text-emerald-400' : 'text-gray-400'
+                }`} />
                 <div>
-                  <p className="text-xs text-gray-400">Top Performer</p>
-                  <p className="font-semibold text-emerald-400">{topMover.symbol}</p>
+                  <p className="text-xs text-gray-400">
+                    {topMover.priceChange24h >= 0 ? 'Top Performer' : 'Best Performer'}
+                  </p>
+                  <p className={`font-semibold ${
+                    topMover.priceChange24h >= 0 ? 'text-emerald-400' : 'text-gray-300'
+                  }`}>
+                    {topMover.symbol}
+                  </p>
                 </div>
               </div>
-              <span className="text-emerald-400 font-mono font-medium">
-                +{topMover.priceChange24h.toFixed(2)}%
+              <span className={`font-mono font-medium ${
+                topMover.priceChange24h >= 0 ? 'text-emerald-400' : 'text-gray-400'
+              }`}>
+                {topMover.priceChange24h >= 0 ? '+' : ''}{topMover.priceChange24h.toFixed(2)}%
               </span>
             </div>
           )}

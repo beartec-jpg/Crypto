@@ -563,7 +563,9 @@ export default function WalletPage() {
                 <SettingsSection sovereignWallet={sovereignWallet} userId={userId} />
               )}
 
-              {mode === 'security' && <SecurityEducationCenter />}
+              {mode === 'security' && (
+                <SecurityEducationCenter onBack={() => setMode('dashboard')} />
+              )}
             </div>
           </>
         )}
