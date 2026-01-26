@@ -1,8 +1,9 @@
-// client/src/lib/tokenService.ts
+// lib/tokenService.ts
 // Multi-chain token management service
 
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import axios from 'axios';
+import { Contract, JsonRpcProvider } from 'ethers';
 import type { Chain } from './balanceService';
 import { xrplService } from './xrpService';
 
@@ -56,6 +57,14 @@ interface TokenDB extends DBSchema {
     indexes: { 'by-wallet': string };
   };
 }
+
+// ERC-20 ABI (minimal - just what we need)
+const ERC20_ABI = [
+  'function name() view returns (string)',
+  'function symbol() view returns (string)',
+  'function decimals() view returns (uint8)',
+  'function totalSupply() view returns (uint256)',
+];
 
 // IndexedDB for token storage
 let dbPromise: Promise<IDBPDatabase<TokenDB>> | null = null;
@@ -457,20 +466,38 @@ async function detectSPLTokens(address: string): Promise<Token[]> {
 }
 
 /**
- * Fetch ERC-20 token info from contract
+ * Fetch ERC-20 token info from blockchain
  */
-export async function fetchERC20TokenInfo(contractAddress: string): Promise<Partial<Token>> {
+export async function fetchERC20TokenInfo(contractAddress: string, chain: 'ethereum' | 'bsc' = 'ethereum'): Promise<{
+  name: string;
+  symbol: string;
+  decimals: number;
+}> {
   try {
-    // This would use ethers.js to call the contract
-    // For now, return placeholder
+    // RPC endpoints
+    const RPC_URLS = {
+      ethereum: 'https://eth.llamarpc.com',
+      bsc: 'https://bsc-dataseed.binance.org',
+    };
+
+    const provider = new JsonRpcProvider(RPC_URLS[chain]);
+    const contract = new Contract(contractAddress, ERC20_ABI, provider);
+
+    // Fetch token info in parallel
+    const [name, symbol, decimals] = await Promise.all([
+      contract.name().catch(() => 'Unknown Token'),
+      contract.symbol().catch(() => 'UNKNOWN'),
+      contract.decimals().catch(() => 18),
+    ]);
+
     return {
-      contractAddress,
-      symbol: 'TOKEN',
-      name: 'Token',
-      decimals: 18,
+      name: String(name),
+      symbol: String(symbol),
+      decimals: Number(decimals),
     };
   } catch (error) {
-    throw new Error('Failed to fetch token info');
+    console.error('Error fetching ERC-20 token info:', error);
+    throw new Error('Failed to fetch token information. Verify the contract address is valid.');
   }
 }
 
