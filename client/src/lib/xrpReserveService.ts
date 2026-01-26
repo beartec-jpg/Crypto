@@ -29,7 +29,10 @@ export async function calculateXRPReserve(address: string): Promise<XRPReserveIn
     });
     
     const accountData = accountInfo.result.account_data;
-    // Balance can be a string or number depending on XRPL version
+    // Note: XRPL library type definitions are inconsistent across versions.
+    // accountData.Balance can be typed as number or string depending on the version,
+    // but dropsToXrp() expects BigNumber.Value which includes both types.
+    // Using @ts-ignore here is intentional until the XRPL library stabilizes its types.
     // @ts-ignore - XRPL type definitions inconsistency
     const totalBalance = parseFloat(dropsToXrp(accountData.Balance));
     const ownerCount = accountData.OwnerCount || 0;

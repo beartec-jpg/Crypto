@@ -19,6 +19,8 @@ class XRPLService {
   
   /**
    * Get or create WebSocket client connection
+   * Made public to allow access from xrpReserveService and tokenService
+   * which need to interact directly with the XRPL client for trustlines and token queries
    */
   async getClient(useMainnet: boolean): Promise<Client> {
     const wsUrl = useMainnet ? this.mainnetUrl : this.testnetUrl;

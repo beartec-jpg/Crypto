@@ -545,9 +545,9 @@ export async function fetchTokenPrice(token: Token): Promise<{
           priceChange24h: data.usd_24h_change,
         };
       }
-    } else if (token.standard === 'SPL' && (token as any).mintAddress) {
+    } else if (token.standard === 'SPL' && token.mintAddress) {
       // Solana tokens
-      const mintAddress = (token as any).mintAddress;
+      const mintAddress = token.mintAddress;
       const response = await axios.get(
         `https://api.coingecko.com/api/v3/simple/token_price/solana`,
         {
