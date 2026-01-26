@@ -1,10 +1,10 @@
 // client/src/components/Wallet/WalletDashboard.tsx
-// Dashboard showing balances with expandable token sections
+// Dashboard showing balances with expandable token sections and portfolio summary
 
 import { useState, useEffect } from 'react';
 import { useBalance } from 'wagmi';
 import { useUser } from '@clerk/clerk-react';
-import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, TrendingDown, Clock, Loader2 } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, RefreshCw, Clock, Loader2 } from 'lucide-react';
 import { 
   fetchAllBalances, 
   fetchBlockNumber,
@@ -28,6 +28,7 @@ import { setXRPLTrustline, calculateXRPReserve } from '@/lib/xrpReserveService';
 import PendingTransactionCard from './PendingTransactionCard';
 import ChainSection from './ChainSection';
 import AddTokenModal from './AddTokenModal';
+import PortfolioSummary from './PortfolioSummary';
 import type { PendingTransaction } from '@/hooks/usePendingTransactions';
 
 interface WalletDashboardProps {
@@ -37,7 +38,8 @@ interface WalletDashboardProps {
   selectedChain: Chain;
   sovereignWallet?: any;
   pendingTransactions?: PendingTransaction[];
-  onSelectToken?: (token: Token) => void; // Callback when token is selected for sending
+  onSelectToken?: (token: Token) => void;
+  onRemovePendingTransaction?: (id: string) => void;
 }
 
 export default function WalletDashboard({
@@ -48,6 +50,7 @@ export default function WalletDashboard({
   sovereignWallet,
   pendingTransactions = [],
   onSelectToken,
+  onRemovePendingTransaction,
 }: WalletDashboardProps) {
   const { user } = useUser();
   const userId = user?.id || '';
@@ -55,10 +58,8 @@ export default function WalletDashboard({
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [chainBalances, setChainBalances] = useState<ChainBalance[]>([]);
-  const [currentBalance, setCurrentBalance] = useState<ChainBalance | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [blockNumber, setBlockNumber] = useState<number | null>(null);
-  const [priceChange24h, setPriceChange24h] = useState<number>(0);
 
   // Token management
   const [tokens, setTokens] = useState<Token[]>([]);
@@ -125,7 +126,6 @@ export default function WalletDashboard({
     const loadBalances = async () => {
       if (!sovereignWallet?.addresses) {
         setChainBalances([]);
-        setCurrentBalance(null);
         return;
       }
 
@@ -147,19 +147,11 @@ export default function WalletDashboard({
           }
         });
         
-        const current = balances.find(b => b.chain === selectedChain);
-        setCurrentBalance(current || null);
-        
-        if (current?.priceChange24h !== undefined) {
-          setPriceChange24h(current.priceChange24h);
-        }
-        
         const block = await fetchBlockNumber(selectedChain);
         setBlockNumber(block);
       } catch (error) {
         console.error('Balance fetch failed:', error);
         setChainBalances([]);
-        setCurrentBalance(null);
       } finally {
         setIsLoading(false);
       }
@@ -189,9 +181,6 @@ export default function WalletDashboard({
           );
         }
       });
-      
-      const current = balances.find(b => b.chain === selectedChain);
-      setCurrentBalance(current || null);
       
       const block = await fetchBlockNumber(selectedChain);
       setBlockNumber(block);
@@ -227,27 +216,6 @@ export default function WalletDashboard({
     
     loadTransactions();
   }, [sovereignWallet, selectedChain, blockNumber]);
-
-  // Format balance for display
-  const formatBalance = (bal: string | undefined) => {
-    if (!bal) return '0';
-    const num = parseFloat(bal);
-    if (num === 0) return '0';
-    if (num < 0.000001) return '< 0.000001';
-    return num.toFixed(6);
-  };
-
-  // Get chain config
-  const getChainConfig = (chain: Chain) => {
-    const configs = {
-      ethereum: { name: 'Ethereum', symbol: 'ETH', color: 'text-blue-400' },
-      bitcoin: { name: 'Bitcoin', symbol: 'BTC', color: 'text-orange-400' },
-      bsc: { name: 'BNB Smart Chain', symbol: 'BNB', color: 'text-yellow-400' },
-      xrp: { name: 'XRP Ledger', symbol: 'XRP', color: 'text-gray-300' },
-      solana: { name: 'Solana', symbol: 'SOL', color: 'text-purple-400' },
-    };
-    return configs[chain];
-  };
 
   // Toggle chain expansion
   const toggleChainExpansion = (chain: Chain) => {
@@ -333,8 +301,6 @@ export default function WalletDashboard({
     return chainBalances.find(b => b.chain === chain);
   };
 
-  const chainConfig = getChainConfig(selectedChain);
-
   return (
     <div className="space-y-6">
       {/* Header with Refresh */}
@@ -357,6 +323,13 @@ export default function WalletDashboard({
         </div>
       ) : (
         <>
+          {/* Portfolio Summary - NEW - Positioned above token table */}
+          <PortfolioSummary
+            chainBalances={chainBalances}
+            tokens={tokens}
+            hideBalances={hideBalances}
+          />
+
           {/* Chain Sections with Tokens */}
           <div className="space-y-3">
             {/* Ethereum */}
@@ -435,52 +408,6 @@ export default function WalletDashboard({
             />
           </div>
 
-          {/* Current Chain Summary */}
-          <div className="bg-gray-800 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">
-                Current Chain: <span className={chainConfig.color}>{chainConfig.name}</span>
-              </h3>
-              {blockNumber && (
-                <span className="text-xs text-gray-500">
-                  Block: {blockNumber.toLocaleString()}
-                </span>
-              )}
-            </div>
-
-            {/* Current Balance */}
-            <div className="mb-6">
-              <p className="text-sm text-gray-400 mb-1">Balance</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-3xl font-bold">
-                  {hideBalances ? '••••••' : formatBalance(currentBalance?.balance)}
-                </p>
-                <span className="text-xl text-gray-400">{chainConfig.symbol}</span>
-              </div>
-              {currentBalance?.usdValue !== undefined && (
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-lg text-gray-400">
-                    {hideBalances ? '••••••' : `$${currentBalance.usdValue.toFixed(2)}`}
-                  </p>
-                  {priceChange24h !== 0 && (
-                    <span
-                      className={`flex items-center text-sm ${
-                        priceChange24h >= 0 ? 'text-green-400' : 'text-red-400'
-                      }`}
-                    >
-                      {priceChange24h >= 0 ? (
-                        <TrendingUp className="w-4 h-4 mr-1" />
-                      ) : (
-                        <TrendingDown className="w-4 h-4 mr-1" />
-                      )}
-                      {Math.abs(priceChange24h).toFixed(2)}%
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
           {/* Recent Transactions */}
           <div className="bg-gray-800 rounded-lg p-6">
             <h3 className="text-lg font-semibold mb-4">Recent Transactions</h3>
@@ -490,7 +417,11 @@ export default function WalletDashboard({
               <div className="space-y-3 mb-4">
                 <h4 className="text-sm font-medium text-gray-400">Pending</h4>
                 {pendingTransactions.map((tx) => (
-                  <PendingTransactionCard key={tx.hash} transaction={tx} />
+                  <PendingTransactionCard 
+                    key={tx.hash} 
+                    transaction={tx}
+                    onRemove={onRemovePendingTransaction}
+                  />
                 ))}
               </div>
             )}
@@ -499,7 +430,7 @@ export default function WalletDashboard({
             {transactions.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p>No transactions yet on {chainConfig.name}</p>
+                <p>No recent transactions</p>
                 <p className="text-sm mt-1">Your transaction history will appear here</p>
               </div>
             ) : (
