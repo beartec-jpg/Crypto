@@ -12,7 +12,7 @@ import SolanaSendModal from '@/components/Wallet/SolanaSendModal';
 import PasskeyAuthModal from '@/components/Wallet/PasskeyAuthModal';
 import PinEntryModal from '@/components/Wallet/PinEntryModal';
 import SecuritySettings from '@/components/Wallet/SecuritySettings';
-import SecurityEducationCenter from '@/components/Wallet/SecurityEducationCenter';
+import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
 import { getCurrentWallet, migrateWalletToUser } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements } from '@/lib/securityService';
 import { getWalletTokens, type Token } from '@/lib/tokenService';
