@@ -44,7 +44,7 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     minify: 'esbuild',
-    target: 'es2020',
+    target: 'esnext',
     assetsInlineLimit: 4096,
     rollupOptions: {
       output: {
@@ -115,5 +115,8 @@ export default defineConfig({
       'xrpl',
     ],
     exclude: ['tiny-secp256k1'],
+    esbuildOptions: {
+      target: 'esnext',
+    },
   },
 })
