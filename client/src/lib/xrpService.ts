@@ -20,7 +20,7 @@ class XRPLService {
   /**
    * Get or create WebSocket client connection
    */
-  private async getClient(useMainnet: boolean): Promise<Client> {
+  async getClient(useMainnet: boolean): Promise<Client> {
     const wsUrl = useMainnet ? this.mainnetUrl : this.testnetUrl;
     
     // Return existing connected client if same network
@@ -82,8 +82,8 @@ class XRPLService {
         
         if (response.result?.account_data) {
           const accountData = response.result.account_data;
-          const balanceDrops = accountData.Balance;
-          const balanceXRP = dropsToXrp(balanceDrops);
+          const balanceDrops = String(accountData.Balance);
+          const balanceXRP = String(dropsToXrp(balanceDrops));
           
           console.log('✅ XRP Balance:', balanceXRP, 'XRP');
           

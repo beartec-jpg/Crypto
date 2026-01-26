@@ -5,10 +5,9 @@ import { useState } from 'react';
 import { X, Search, AlertTriangle, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
 import type { Chain } from '@/lib/balanceService';
 import type { Token } from '@/lib/tokenService';
-import { fetchERC20TokenInfo, fetchXRPLIssuerInfo } from '@/lib/tokenService';
+import { fetchERC20TokenInfo, fetchXRPLIssuerInfo, fetchSPLTokenInfo } from '@/lib/tokenService';
 import { calculateXRPReserve, type XRPReserveInfo } from '@/lib/xrpReserveService';
 import TrustlineWarningModal from './TrustlineWarningModal';
-import { fetchERC20TokenInfo, fetchXRPLIssuerInfo, fetchSPLTokenInfo } from '@/lib/tokenService';
 
 interface AddTokenModalProps {
   chain: Chain;

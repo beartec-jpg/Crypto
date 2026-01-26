@@ -21,6 +21,7 @@ export interface Token {
   chain: Chain;
   standard: TokenStandard;
   contractAddress?: string;
+  mintAddress?: string; // For SPL tokens
   symbol: string;
   name: string;
   decimals: number;
