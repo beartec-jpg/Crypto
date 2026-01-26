@@ -1,9 +1,11 @@
 // client/src/lib/xrpSendService.ts
 // XRP native send service with transaction building and signing
 
+import { Buffer } from 'buffer';
 import * as xrpl from 'xrpl';
 import { deriveKeypair, sign } from 'ripple-keypairs';
 import { encode } from 'ripple-binary-codec';
+import { secp256k1 } from '@noble/curves/secp256k1';
 
 const BASE_RESERVE = 10; // 10 XRP
 const OWNER_RESERVE = 2; // 2 XRP per object
@@ -171,18 +173,18 @@ export function signXrpTransaction(
     // Hex private key format (64 hex characters, with or without 0x prefix)
     const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
     
-    // For hex keys, use ripple-keypairs to derive keypair and sign manually
-    // Cannot use XRPLWallet.fromEntropy as it derives a different address
-    const keypair = deriveKeypair(hexKey);
+    // For hex keys, derive the public key using secp256k1
+    const publicKeyBytes = secp256k1.getPublicKey(Buffer.from(hexKey, 'hex'), true);
+    const publicKey = Buffer.from(publicKeyBytes).toString('hex').toUpperCase();
     
-    // Encode transaction and sign with the keypair
+    // Encode transaction and sign with the hex private key
     const txBlob = encode(tx);
-    const signature = sign(txBlob, keypair.privateKey);
+    const signature = sign(txBlob, hexKey);
     
     // Attach signature to transaction
     const signedTx = {
       ...tx,
-      SigningPubKey: keypair.publicKey,
+      SigningPubKey: publicKey,
       TxnSignature: signature,
     };
     

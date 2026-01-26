@@ -1340,19 +1340,22 @@ export async function signTransaction(
           // Hex format - need to sign using ripple-keypairs
           const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
           
+          // Derive public key using secp256k1
+          const publicKeyBytes = secp256k1.getPublicKey(Buffer.from(hexKey, 'hex'), true);
+          const publicKey = Buffer.from(publicKeyBytes).toString('hex').toUpperCase();
+          
           // Use ripple-keypairs for signing
           const { encode } = await import('ripple-binary-codec');
-          const { sign, deriveKeypair } = await import('ripple-keypairs');
+          const { sign } = await import('ripple-keypairs');
           
-          const keypair = deriveKeypair(hexKey);
           const txBlob = encode(transaction);
-          const signature = sign(txBlob, keypair.privateKey);
+          const signature = sign(txBlob, hexKey);
           
           // Attach signature to transaction and re-encode
           const signedTransaction = {
             ...transaction,
             TxnSignature: signature,
-            SigningPubKey: keypair.publicKey,
+            SigningPubKey: publicKey,
           };
           signedTx = encode(signedTransaction);
         } else {
