@@ -82,106 +82,108 @@ export default function AddTokenModal({
     );
   }
 
-  // Verify token info
-  const handleVerify = async () => {
-    setIsVerifying(true);
-    setError(null);
-    setVerifiedToken(null);
+// Verify token info
+const handleVerify = async () => {
+  setIsVerifying(true);
+  setError(null);
+  setVerifiedToken(null);
 
-    try {
-      if (chain === 'ethereum' || chain === 'bsc') {
-        // Validate Ethereum/BSC address
-        if (!/^0x[a-fA-F0-9]{40}$/.test(tokenAddress)) {
-          throw new Error('Invalid contract address format');
-        }
-
-        // Fetch ERC-20/BEP-20 token info
-        const tokenInfo = await fetchERC20TokenInfo(tokenAddress);
-        
-        const token: Partial<Token> = {
-          id: `${chain === 'ethereum' ? 'erc20' : 'bep20'}-${tokenAddress}`,
-          chain,
-          standard: chain === 'ethereum' ? 'ERC20' : 'BEP20',
-          contractAddress: tokenAddress,
-          symbol: tokenInfo.symbol || 'UNKNOWN',
-          name: tokenInfo.name || 'Unknown Token',
-          decimals: tokenInfo.decimals || 18,
-          balance: '0',
-          isVisible: true,
-          isNative: false,
-        };
-
-        setVerifiedToken(token);
-        setStep('verify');
-      } else if (chain === 'xrp') {
-        // Validate XRPL inputs
-        if (!currencyCode || currencyCode.length < 3 || currencyCode.length > 3) {
-          throw new Error('Currency code must be exactly 3 characters (e.g., USD)');
-        }
-        if (!/^r[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(issuerAddress)) {
-          throw new Error('Invalid XRP issuer address format');
-        }
-
-        // Fetch issuer info
-        const issuerInfo = await fetchXRPLIssuerInfo(issuerAddress);
-        if (!issuerInfo.exists) {
-          throw new Error('Issuer address does not exist on XRPL');
-        }
-
-        // Calculate reserve requirements
-        const reserve = await calculateXRPReserve(walletAddress);
-        
-        const token: Partial<Token> = {
-          id: `xrpl-${currencyCode}-${issuerAddress}`,
-          chain: 'xrp',
-          standard: 'XRPL',
-          currencyCode: currencyCode.toUpperCase(),
-          issuer: issuerAddress,
-          symbol: currencyCode.toUpperCase(),
-          name: `${currencyCode.toUpperCase()} (${issuerAddress.slice(0, 8)}...)`,
-          decimals: 6,
-          balance: '0',
-          isVisible: true,
-          isNative: false,
-          issuerFlags: issuerInfo.flags,
-        };
-
-        setVerifiedToken(token);
-        setReserveInfo(reserve);
-        setIssuerFlags(issuerInfo.flags);
-        
-        // Show trustline warning before adding
-        setShowTrustlineWarning(true);
-      } else if (chain === 'solana') {
-        // Validate Solana mint address
-        if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(tokenAddress)) {
-          throw new Error('Invalid Solana mint address format');
-        }
-
-        // TODO: Fetch SPL token metadata
-        const token: Partial<Token> = {
-          id: `spl-${tokenAddress}`,
-          chain: 'solana',
-          standard: 'SPL',
-          mintAddress: tokenAddress,
-          symbol: tokenAddress.slice(0, 8),
-          name: `Token ${tokenAddress.slice(0, 8)}...`,
-          decimals: 9,
-          balance: '0',
-          isVisible: true,
-          isNative: false,
-        };
-
-        setVerifiedToken(token);
-        setStep('verify');
+  try {
+    if (chain === 'ethereum' || chain === 'bsc') {
+      // Validate Ethereum/BSC address
+      if (!/^0x[a-fA-F0-9]{40}$/.test(tokenAddress)) {
+        throw new Error('Invalid contract address format');
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to verify token');
-      setStep('error');
-    } finally {
-      setIsVerifying(false);
+
+      // Fetch ERC-20/BEP-20 token info - ✅ NOW PASSES CHAIN PARAMETER
+      const tokenInfo = await fetchERC20TokenInfo(tokenAddress, chain);
+      
+      const token: Partial<Token> = {
+        id: `${chain === 'ethereum' ? 'erc20' : 'bep20'}-${tokenAddress}`,
+        chain,
+        standard: chain === 'ethereum' ? 'ERC20' : 'BEP20',
+        contractAddress: tokenAddress,
+        symbol: tokenInfo.symbol || 'UNKNOWN',
+        name: tokenInfo.name || 'Unknown Token',
+        decimals: tokenInfo.decimals || 18,
+        balance: '0',
+        isVisible: true,
+        isNative: false,
+      };
+
+      setVerifiedToken(token);
+      setStep('verify');
+    } else if (chain === 'xrp') {
+      // Validate XRPL inputs
+      if (!currencyCode || currencyCode.length < 3 || currencyCode.length > 3) {
+        throw new Error('Currency code must be exactly 3 characters (e.g., USD)');
+      }
+      if (!/^r[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(issuerAddress)) {
+        throw new Error('Invalid XRP issuer address format');
+      }
+
+      // Fetch issuer info
+      const issuerInfo = await fetchXRPLIssuerInfo(issuerAddress);
+      if (!issuerInfo.exists) {
+        throw new Error('Issuer address does not exist on XRPL');
+      }
+
+      // Calculate reserve requirements
+      const reserve = await calculateXRPReserve(walletAddress);
+      
+      const token: Partial<Token> = {
+        id: `xrpl-${currencyCode}-${issuerAddress}`,
+        chain: 'xrp',
+        standard: 'XRPL',
+        currencyCode: currencyCode.toUpperCase(),
+        issuer: issuerAddress,
+        symbol: currencyCode.toUpperCase(),
+        name: `${currencyCode.toUpperCase()} (${issuerAddress.slice(0, 8)}...)`,
+        decimals: 6,
+        balance: '0',
+        isVisible: true,
+        isNative: false,
+        issuerFlags: issuerInfo.flags,
+      };
+
+      setVerifiedToken(token);
+      setReserveInfo(reserve);
+      setIssuerFlags(issuerInfo.flags);
+      
+      // Show trustline warning before adding
+      setShowTrustlineWarning(true);
+    } else if (chain === 'solana') {
+      // Validate Solana mint address
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(tokenAddress)) {
+        throw new Error('Invalid Solana mint address format');
+      }
+
+      // ✅ NOW FETCHES REAL SPL TOKEN METADATA
+      const tokenInfo = await fetchSPLTokenInfo(tokenAddress);
+      
+      const token: Partial<Token> = {
+        id: `spl-${tokenAddress}`,
+        chain: 'solana',
+        standard: 'SPL',
+        mintAddress: tokenAddress,
+        symbol: tokenInfo.symbol || tokenAddress.slice(0, 8),
+        name: tokenInfo.name || `Token ${tokenAddress.slice(0, 8)}...`,
+        decimals: tokenInfo.decimals || 9,
+        balance: '0',
+        isVisible: true,
+        isNative: false,
+      };
+
+      setVerifiedToken(token);
+      setStep('verify');
     }
-  };
+  } catch (err: any) {
+    setError(err.message || 'Failed to verify token');
+    setStep('error');
+  } finally {
+    setIsVerifying(false);
+  }
+};
 
   // Add token to wallet
   const handleAdd = async () => {
