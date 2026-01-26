@@ -1,14 +1,15 @@
 // client/src/components/Wallet/PendingTransactionCard.tsx
-// Card showing pending transaction progress with steps
+// Card showing pending transaction progress with steps and remove button
 
-import { Send, CheckCircle2, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Send, CheckCircle2, Loader2, AlertCircle, ExternalLink, X } from 'lucide-react';
 import type { PendingTransaction } from '@/hooks/usePendingTransactions';
 
 interface PendingTransactionCardProps {
   transaction: PendingTransaction;
+  onRemove?: (id: string) => void;
 }
 
-export default function PendingTransactionCard({ transaction }: PendingTransactionCardProps) {
+export default function PendingTransactionCard({ transaction, onRemove }: PendingTransactionCardProps) {
   const formatTime = (timestamp: number) => {
     const now = Date.now();
     const diffInSeconds = Math.floor((now - timestamp) / 1000);
@@ -49,12 +50,30 @@ export default function PendingTransactionCard({ transaction }: PendingTransacti
 
   const progressPercentage = transaction.status === 'confirmed' 
     ? 100 
+    : transaction.status === 'failed'
+    ? 0
     : transaction.requiredConfirmations > 0 
-      ? (transaction.confirmations / transaction.requiredConfirmations) * 100
+      ? Math.min(100, (transaction.confirmations / transaction.requiredConfirmations) * 100)
       : 0;
 
+  // Check if transaction is stuck (pending for more than 1 hour) or failed
+  const isStuckOrFailed = 
+    transaction.status === 'failed' || 
+    (transaction.status === 'pending' && Date.now() - transaction.timestamp > 60 * 60 * 1000);
+
   return (
-    <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors">
+    <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors relative">
+      {/* Dismiss Button - shows for failed or stuck transactions */}
+      {onRemove && isStuckOrFailed && (
+        <button
+          onClick={() => onRemove(transaction.id)}
+          className="absolute top-2 right-2 p-1.5 rounded-full bg-gray-800 hover:bg-red-900/50 text-gray-400 hover:text-red-400 transition-colors"
+          title="Remove from list"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -77,7 +96,15 @@ export default function PendingTransactionCard({ transaction }: PendingTransacti
             </div>
           </div>
         </div>
-        <span className="text-xs text-gray-500">{formatTime(transaction.timestamp)}</span>
+        <div className="text-right">
+          <div className="text-sm text-gray-400">{formatTime(transaction.timestamp)}</div>
+          {transaction.status === 'failed' && (
+            <span className="text-xs text-red-400 font-medium">Failed</span>
+          )}
+          {isStuckOrFailed && transaction.status !== 'failed' && (
+            <span className="text-xs text-yellow-400 font-medium">Stuck</span>
+          )}
+        </div>
       </div>
 
       {/* Progress Bar */}
@@ -111,7 +138,6 @@ export default function PendingTransactionCard({ transaction }: PendingTransacti
       <div className="space-y-2 mb-4">
         {transaction.steps.map((step, index) => (
           <div key={index} className="flex items-center gap-3">
-            {/* Step Icon */}
             <div className="flex-shrink-0">
               {step.status === 'complete' && (
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -127,7 +153,6 @@ export default function PendingTransactionCard({ transaction }: PendingTransacti
               )}
             </div>
             
-            {/* Step Text */}
             <span className={`text-sm ${
               step.status === 'complete' ? 'text-emerald-400' :
               step.status === 'active' ? 'text-cyan-400' :
@@ -140,16 +165,28 @@ export default function PendingTransactionCard({ transaction }: PendingTransacti
         ))}
       </div>
 
-      {/* View Transaction Button */}
-      <a
-        href={transaction.explorerUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors text-sm font-medium"
-      >
-        View Transaction
-        <ExternalLink className="w-4 h-4" />
-      </a>
+      {/* Action Buttons */}
+      <div className="flex gap-2">
+        <a
+          href={transaction.explorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors text-sm font-medium"
+        >
+          View Transaction
+          <ExternalLink className="w-4 h-4" />
+        </a>
+        
+        {/* Remove Button - visible for failed or stuck (>1 hour) */}
+        {onRemove && isStuckOrFailed && (
+          <button
+            onClick={() => onRemove(transaction.id)}
+            className="px-4 py-2 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-red-400 hover:text-red-300 transition-colors text-sm font-medium"
+          >
+            Remove
+          </button>
+        )}
+      </div>
     </div>
   );
 }
