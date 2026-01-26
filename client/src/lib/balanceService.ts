@@ -3,6 +3,8 @@
 
 import axios from 'axios';
 import { xrplService } from './xrpService';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
 
@@ -402,10 +404,6 @@ export interface SPLTokenBalance {
 export async function fetchSPLTokenBalances(walletAddress: string): Promise<SPLTokenBalance[]> {
   try {
     console.log('🔍 Fetching SPL token balances for:', walletAddress);
-    
-    // Import Solana Web3.js
-    const { Connection, PublicKey } = await import('@solana/web3.js');
-    const { TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
     
     // Create connection to Solana mainnet
     const connection = new Connection('https://api.mainnet-beta.solana.com');

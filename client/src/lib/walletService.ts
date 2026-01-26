@@ -11,6 +11,7 @@ import { randomBytes } from '@noble/hashes/utils';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import * as bip39 from 'bip39';
 import { HDKey } from '@scure/bip32';
+import { Keypair } from '@solana/web3.js';
 
 // Supported chains
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
@@ -373,9 +374,6 @@ function deriveSolanaAddress(privateKeyBytes: Uint8Array): string {
   // Solana uses Ed25519 - the private key IS the seed for the keypair
   // We need to use the proper derivation from BIP44 path
   // The Keypair.fromSeed expects a 32-byte seed
-  
-  // Import Keypair from @solana/web3.js
-  const { Keypair } = require('@solana/web3.js');
   
   // Take first 32 bytes as the seed (BIP44 derived key is 32 bytes)
   const seed = privateKeyBytes.slice(0, 32);

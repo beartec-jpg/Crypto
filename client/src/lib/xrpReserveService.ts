@@ -107,10 +107,10 @@ export async function setXRPLTrustline(
       publicKey = Buffer.from(publicKeyBytes).toString('hex').toUpperCase();
     }
     
-    // Build the TrustSet transaction using the ACTUAL user address
+    // Build the TrustSet transaction using the provided wallet address
     const trustSet = {
       TransactionType: 'TrustSet' as const,
-      Account: userAddress, // USE THE PASSED ADDRESS, not derived
+      Account: userAddress, // Use the provided wallet address
       LimitAmount: {
         currency,
         issuer,
@@ -201,7 +201,7 @@ export async function removeXRPLTrustline(
     // Set limit to 0 to remove trustline
     const trustSet = {
       TransactionType: 'TrustSet' as const,
-      Account: userAddress, // USE THE PASSED ADDRESS, not derived
+      Account: userAddress, // Use the provided wallet address
       LimitAmount: {
         currency,
         issuer,
