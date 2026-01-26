@@ -1,565 +1,839 @@
-// client/src/components/Wallet/WalletDashboard.tsx
-// Dashboard showing balances with expandable token sections
+// client/src/components/Wallet/SendForm.tsx
+// Secure send form with native + token support, transaction preview and passkey confirmation
 
 import { useState, useEffect } from 'react';
-import { useBalance } from 'wagmi';
-import { useUser } from '@clerk/clerk-react';
-import { ArrowUpRight, ArrowDownLeft, RefreshCw, TrendingUp, TrendingDown, Clock, Loader2 } from 'lucide-react';
+import { Send, AlertCircle, ChevronDown } from 'lucide-react';
 import { 
-  fetchAllBalances, 
-  fetchBlockNumber,
-  type ChainBalance,
-  type Chain 
-} from '@/lib/balanceService';
+  securityManager, 
+  getSecurityRequirements,
+  getSecuritySettings,
+  type SecurityAction 
+} from '@/lib/securityService';
+import { authenticateWithPasskey } from '@/lib/passkeyService';
 import { 
-  fetchChainTransactions, 
-  type Transaction 
-} from '@/lib/transactionService';
-import { getCurrentWallet } from '@/lib/walletService';
-import {
-  getWalletTokens,
-  updateTokenBalance,
-  removeTokenFromWallet,
-  autoDetectTokens,
-  addTokenToWallet,
-  type Token,
-} from '@/lib/tokenService';
-import { setXRPLTrustline, calculateXRPReserve } from '@/lib/xrpReserveService';
-import PendingTransactionCard from './PendingTransactionCard';
-import ChainSection from './ChainSection';
-import AddTokenModal from './AddTokenModal';
-import type { PendingTransaction } from '@/hooks/usePendingTransactions';
+  estimateGas, 
+  checkSufficientBalance, 
+  buildTransaction, 
+  broadcastTransaction,
+  getChainSymbol as getSendChainSymbol,
+  validateAddress,
+  SUPPORTED_SEND_CHAINS,
+} from '@/lib/sendService';
+import { signTransaction } from '@/lib/walletService';
+import { getPrice, formatUsd } from '@/lib/priceService';
+import { fetchChainBalance } from '@/lib/balanceService';
+import { 
+  getXrpAccountInfo,
+  checkDestinationExists,
+  buildXrpTransaction,
+  signXrpTransaction,
+  broadcastXrpTransaction,
+  estimateXrpFee,
+} from '@/lib/xrpSendService';
+import { getWalletTokens, type Token } from '@/lib/tokenService';
+import TransactionPreviewModal from './TransactionPreviewModal';
+import PinEntryModal from './PinEntryModal';
+import PasswordModal from './PasswordModal';
+import TransactionSuccessModal from './TransactionSuccessModal';
+import BalanceDisplay from './BalanceDisplay';
+import DestinationTagInput from './DestinationTagInput';
+import MemoInput from './MemoInput';
+import NewAccountWarningModal from './NewAccountWarningModal';
+import type { Chain } from '@/lib/balanceService';
+import type { usePendingTransactions } from '@/hooks/usePendingTransactions';
 
-interface WalletDashboardProps {
-  address: `0x${string}` | undefined;
-  balance: ReturnType<typeof useBalance>['data'];
-  hideBalances: boolean;
+// Constants
+const TRANSACTION_BUFFER = 0.0001;
+const XRP_ACTIVATION_AMOUNT = 10;
+
+interface SendFormProps {
+  userId: string;
+  isPasskeyAuthenticated: boolean;
+  onRequestPasskey: () => void;
   selectedChain: Chain;
+  onAddPendingTransaction?: (tx: Parameters<ReturnType<typeof usePendingTransactions>['addPendingTransaction']>[0]) => void;
   sovereignWallet?: any;
-  pendingTransactions?: PendingTransaction[];
-  onSelectToken?: (token: Token) => void; // Callback when token is selected for sending
 }
 
-export default function WalletDashboard({
-  address,
-  balance,
-  hideBalances,
+export default function SendForm({
+  userId,
+  isPasskeyAuthenticated,
+  onRequestPasskey,
   selectedChain,
+  onAddPendingTransaction,
   sovereignWallet,
-  pendingTransactions = [],
-  onSelectToken,
-}: WalletDashboardProps) {
-  const { user } = useUser();
-  const userId = user?.id || '';
+}: SendFormProps) {
+  const [recipient, setRecipient] = useState('');
+  const [amount, setAmount] = useState('');
+  const [destinationTag, setDestinationTag] = useState('');
+  const [memo, setMemo] = useState('');
   
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [chainBalances, setChainBalances] = useState<ChainBalance[]>([]);
-  const [currentBalance, setCurrentBalance] = useState<ChainBalance | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [blockNumber, setBlockNumber] = useState<number | null>(null);
-  const [priceChange24h, setPriceChange24h] = useState<number>(0);
-
-  // Token management
+  // Token selection state
   const [tokens, setTokens] = useState<Token[]>([]);
-  const [expandedChains, setExpandedChains] = useState<Record<Chain, boolean>>({
-    ethereum: true,
-    bitcoin: false,
-    bsc: false,
-    xrp: false,
-    solana: false,
-  });
-  const [addTokenChain, setAddTokenChain] = useState<Chain | null>(null);
-  const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
+  const [showTokenDropdown, setShowTokenDropdown] = useState(false);
+  
+  const [showPreview, setShowPreview] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showNewAccountWarning, setShowNewAccountWarning] = useState(false);
+  const [passkeyAuthenticatedThisSession, setPasskeyAuthenticatedThisSession] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [estimatedFee, setEstimatedFee] = useState<string>('0.0001');
+  const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<number>(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [transactionStep, setTransactionStep] = useState<'estimating' | 'signing' | 'broadcasting' | 'verifying' | null>(null);
+  const [balance, setBalance] = useState<string>('0');
+  const [balanceUsd, setBalanceUsd] = useState<number>(0);
+  const [xrpReserved, setXrpReserved] = useState<string>('0');
+  const [xrpAvailable, setXrpAvailable] = useState<string>('0');
+  const [successData, setSuccessData] = useState<{
+    hash: string;
+    amount: string;
+    to: string;
+    fee: string;
+    feeUsd: number;
+    explorerUrl: string;
+  } | null>(null);
 
-  // Load tokens on mount
+  const isLocked = securityManager.isWalletLocked();
+
+  // Load tokens for selected chain
   useEffect(() => {
-    const loadTokens = async () => {
+    async function loadTokens() {
       if (!sovereignWallet?.id) return;
       
       try {
         const walletTokens = await getWalletTokens(sovereignWallet.id);
-        setTokens(walletTokens);
-      } catch (error) {
-        console.error('Failed to load tokens:', error);
-      }
-    };
-
-    loadTokens();
-  }, [sovereignWallet?.id]);
-
-  // Auto-detect tokens on first wallet load
-  useEffect(() => {
-    const autoDetect = async () => {
-      if (!sovereignWallet?.addresses || isAutoDetecting) return;
-      
-      // Check if we've already auto-detected (check if we have any non-native tokens)
-      const hasNonNativeTokens = tokens.some(t => !t.isNative);
-      if (hasNonNativeTokens) return;
-
-      setIsAutoDetecting(true);
-      try {
-        const detectedTokens = await autoDetectTokens(sovereignWallet.addresses);
+        const chainTokens = walletTokens.filter(t => t.chain === selectedChain);
+        setTokens(chainTokens);
         
-        if (detectedTokens.length > 0) {
-          // Merge with existing native tokens
-          const allTokens = [...tokens, ...detectedTokens];
-          setTokens(allTokens);
-          
-          // Save to storage
-          const { saveWalletTokens } = await import('@/lib/tokenService');
-          await saveWalletTokens(sovereignWallet.id, allTokens);
-        }
-      } catch (error) {
-        console.error('Auto-detect tokens failed:', error);
-      } finally {
-        setIsAutoDetecting(false);
-      }
-    };
-
-    autoDetect();
-  }, [sovereignWallet?.addresses, sovereignWallet?.id]);
-
-  // Load balances
-  useEffect(() => {
-    const loadBalances = async () => {
-      if (!sovereignWallet?.addresses) {
-        setChainBalances([]);
-        setCurrentBalance(null);
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        const balances = await fetchAllBalances(sovereignWallet.addresses);
-        setChainBalances(balances);
-        
-        // Update native token balances
-        balances.forEach(async (chainBal) => {
-          const nativeToken = tokens.find(t => t.chain === chainBal.chain && t.isNative);
-          if (nativeToken) {
-            await updateTokenBalance(
-              sovereignWallet.id,
-              nativeToken.id,
-              chainBal.balance,
-              chainBal.usdValue
-            );
-          }
-        });
-        
-        const current = balances.find(b => b.chain === selectedChain);
-        setCurrentBalance(current || null);
-        
-        if (current?.priceChange24h !== undefined) {
-          setPriceChange24h(current.priceChange24h);
-        }
-        
-        const block = await fetchBlockNumber(selectedChain);
-        setBlockNumber(block);
-      } catch (error) {
-        console.error('Balance fetch failed:', error);
-        setChainBalances([]);
-        setCurrentBalance(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadBalances();
-  }, [sovereignWallet, selectedChain]);
-
-  // Refresh balances
-  const handleRefresh = async () => {
-    if (!sovereignWallet?.addresses) return;
-    
-    setIsRefreshing(true);
-    try {
-      const balances = await fetchAllBalances(sovereignWallet.addresses);
-      setChainBalances(balances);
-      
-      // Update token balances
-      balances.forEach(async (chainBal) => {
-        const nativeToken = tokens.find(t => t.chain === chainBal.chain && t.isNative);
+        // Auto-select native token
+        const nativeToken = chainTokens.find(t => t.isNative);
         if (nativeToken) {
-          await updateTokenBalance(
-            sovereignWallet.id,
-            nativeToken.id,
-            chainBal.balance,
-            chainBal.usdValue
-          );
+          setSelectedToken(nativeToken);
         }
-      });
-      
-      const current = balances.find(b => b.chain === selectedChain);
-      setCurrentBalance(current || null);
-      
-      const block = await fetchBlockNumber(selectedChain);
-      setBlockNumber(block);
-    } catch (error) {
-      console.error('Refresh failed:', error);
-    } finally {
-      setIsRefreshing(false);
+      } catch (err) {
+        console.error('Failed to load tokens:', err);
+      }
     }
-  };
+    
+    loadTokens();
+  }, [sovereignWallet?.id, selectedChain]);
 
-  // Fetch transactions
+  // Fetch balance when token changes
   useEffect(() => {
-    const loadTransactions = async () => {
-      if (!sovereignWallet?.addresses) {
-        setTransactions([]);
-        return;
-      }
-
-      const currentAddress = sovereignWallet.addresses[selectedChain];
-      if (!currentAddress) {
-        setTransactions([]);
-        return;
-      }
-
-      try {
-        const txs = await fetchChainTransactions(selectedChain, currentAddress);
-        setTransactions(txs);
-      } catch (error) {
-        console.error('Transaction fetch failed:', error);
-        setTransactions([]);
-      }
-    };
-    
-    loadTransactions();
-  }, [sovereignWallet, selectedChain, blockNumber]);
-
-  // Format balance for display
-  const formatBalance = (bal: string | undefined) => {
-    if (!bal) return '0';
-    const num = parseFloat(bal);
-    if (num === 0) return '0';
-    if (num < 0.000001) return '< 0.000001';
-    return num.toFixed(6);
-  };
-
-  // Get chain config
-  const getChainConfig = (chain: Chain) => {
-    const configs = {
-      ethereum: { name: 'Ethereum', symbol: 'ETH', color: 'text-blue-400' },
-      bitcoin: { name: 'Bitcoin', symbol: 'BTC', color: 'text-orange-400' },
-      bsc: { name: 'BNB Smart Chain', symbol: 'BNB', color: 'text-yellow-400' },
-      xrp: { name: 'XRP Ledger', symbol: 'XRP', color: 'text-gray-300' },
-      solana: { name: 'Solana', symbol: 'SOL', color: 'text-purple-400' },
-    };
-    return configs[chain];
-  };
-
-  // Toggle chain expansion
-  const toggleChainExpansion = (chain: Chain) => {
-    setExpandedChains(prev => ({
-      ...prev,
-      [chain]: !prev[chain],
-    }));
-  };
-
-  // Handle add token
-  const handleAddToken = async (chain: Chain, tokenData: Partial<Token>) => {
-    try {
-      const newToken: Token = {
-        id: tokenData.id!,
-        chain: tokenData.chain!,
-        standard: tokenData.standard!,
-        symbol: tokenData.symbol!,
-        name: tokenData.name!,
-        decimals: tokenData.decimals!,
-        balance: '0',
-        isVisible: true,
-        isNative: false,
-        addedAt: new Date(),
-        ...tokenData,
-      };
-
-      await addTokenToWallet(sovereignWallet.id, newToken);
+    async function fetchBalance() {
+      if (!selectedToken || !sovereignWallet?.addresses?.[selectedChain]) return;
       
-      // Update local state
-      setTokens(prev => [...prev, newToken]);
-      setAddTokenChain(null);
-    } catch (error: any) {
-      console.error('Failed to add token:', error);
-      throw error;
+      try {
+        if (selectedToken.isNative) {
+          // Fetch native balance from chain
+          const chainBalance = await fetchChainBalance(
+            selectedChain,
+            sovereignWallet.addresses[selectedChain]
+          );
+          setBalance(chainBalance.balance);
+          
+          const price = await getPrice(selectedChain);
+          setBalanceUsd(parseFloat(chainBalance.balance) * price);
+          
+          // For XRP, fetch reserve info
+          if (selectedChain === 'xrp') {
+            try {
+              const accountInfo = await getXrpAccountInfo(
+                sovereignWallet.addresses[selectedChain]
+              );
+              setXrpReserved(accountInfo.reserves.total.toString());
+              setXrpAvailable(accountInfo.available);
+              
+              const fee = await estimateXrpFee();
+              setEstimatedFee(fee);
+            } catch (err) {
+              console.warn('Failed to fetch XRP account info:', err);
+            }
+          }
+        } else {
+          // Use token balance from stored data
+          setBalance(selectedToken.balance);
+          setBalanceUsd(selectedToken.usdValue || 0);
+        }
+      } catch (err) {
+        console.error('Failed to fetch balance:', err);
+      }
     }
-  };
-
-  // Handle XRPL trustline
-  const handleSetTrustline = async (currency: string, issuer: string) => {
-    if (!sovereignWallet?.id) throw new Error('No wallet found');
-
-    // Get private key (need to unlock wallet)
-    const { unlockWallet } = await import('@/lib/walletService');
-    const password = prompt('Enter your wallet password to set trustline:');
-    if (!password) throw new Error('Password required');
-
-    const unlockedWallet = await unlockWallet(sovereignWallet.id, password);
-    const xrpPrivateKey = unlockedWallet.privateKeys.xrp;
-
-    if (!xrpPrivateKey) throw new Error('XRP private key not found');
-
-    const result = await setXRPLTrustline(xrpPrivateKey, currency, issuer);
     
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to set trustline');
+    fetchBalance();
+  }, [selectedChain, selectedToken, sovereignWallet]);
+
+  const handleTokenSelect = (token: Token) => {
+    setSelectedToken(token);
+    setShowTokenDropdown(false);
+    setAmount(''); // Clear amount when switching tokens
+  };
+
+  const handleMaxClick = () => {
+    if (!selectedToken) return;
+    
+    let maxAmount: number;
+    
+    if (selectedToken.isNative) {
+      if (selectedChain === 'xrp') {
+        maxAmount = parseFloat(xrpAvailable) - parseFloat(estimatedFee) - TRANSACTION_BUFFER;
+      } else {
+        maxAmount = parseFloat(balance) - parseFloat(estimatedFee) - TRANSACTION_BUFFER;
+      }
+    } else {
+      // For tokens, can send full balance (fee paid in native currency)
+      maxAmount = parseFloat(balance);
+    }
+    
+    if (maxAmount > 0) {
+      setAmount(maxAmount.toFixed(selectedToken.decimals || 6));
+    } else {
+      setError('Insufficient balance for transaction');
     }
   };
 
-  // Handle remove token
-  const handleRemoveToken = async (tokenId: string) => {
+  const handleSendClick = async () => {
+    setError(null);
+
+    if (!selectedToken) {
+      setError('Please select a token');
+      return;
+    }
+
+    if (!recipient) {
+      setError('Please enter a recipient address');
+      return;
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      setError('Please enter a valid amount');
+      return;
+    }
+    
+    if (!validateAddress(recipient, selectedChain)) {
+      setError(`Invalid ${selectedChain} address`);
+      return;
+    }
+
+    // Check token balance
+    if (parseFloat(amount) > parseFloat(balance)) {
+      setError(`Insufficient ${selectedToken.symbol} balance`);
+      return;
+    }
+
+    if (isLocked) {
+      setError('Wallet is locked. Please unlock first.');
+      onRequestPasskey();
+      return;
+    }
+    
+    // For XRP, check destination exists
+    if (selectedChain === 'xrp' && selectedToken.isNative) {
+      try {
+        const exists = await checkDestinationExists(recipient);
+        if (!exists && parseFloat(amount) < XRP_ACTIVATION_AMOUNT) {
+          setError(`New XRP addresses require a minimum of ${XRP_ACTIVATION_AMOUNT} XRP to activate`);
+          return;
+        }
+        if (!exists) {
+          setShowNewAccountWarning(true);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to check destination:', err);
+      }
+    }
+
+    setShowPreview(true);
+  };
+
+  const handlePinSuccess = () => {
+    setShowPinModal(false);
+    
+    const requirements = getSecurityRequirements(userId, 'send');
+    const isAlreadyAuthenticated = isPasskeyAuthenticated || passkeyAuthenticatedThisSession;
+    
+    if (requirements.includes('passkey') && !isAlreadyAuthenticated) {
+      authenticateWithPasskey()
+        .then(() => {
+          setPasskeyAuthenticatedThisSession(true);
+          setShowPasswordModal(true);
+        })
+        .catch((error) => {
+          console.error('Passkey authentication error:', error);
+          setError('Passkey authentication failed. Please try again.');
+        });
+    } else {
+      setShowPasswordModal(true);
+    }
+  };
+
+  const handlePinCancel = () => {
+    setShowPinModal(false);
+    setError('PIN authentication cancelled');
+  };
+  
+  const handleNewAccountProceed = () => {
+    setShowNewAccountWarning(false);
+    setShowPreview(true);
+  };
+  
+  const handleNewAccountCancel = () => {
+    setShowNewAccountWarning(false);
+  };
+
+  const handleConfirmTransaction = async () => {
+    setShowPreview(false);
+    
+    const requirements = getSecurityRequirements(userId, 'send');
+    
+    if (requirements.includes('pin')) {
+      setShowPinModal(true);
+      return;
+    }
+    
+    const isAlreadyAuthenticated = isPasskeyAuthenticated || passkeyAuthenticatedThisSession;
+    
+    if (requirements.includes('passkey') && !isAlreadyAuthenticated) {
+      try {
+        await authenticateWithPasskey();
+        setPasskeyAuthenticatedThisSession(true);
+      } catch (err) {
+        console.error('Passkey authentication error:', err);
+        setError('Passkey authentication failed. Please try again.');
+        return;
+      }
+    }
+    
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordSubmit = async (password: string) => {
+    setPasswordError(null);
+    setIsProcessing(true);
+    
     try {
-      await removeTokenFromWallet(sovereignWallet.id, tokenId);
-      setTokens(prev => prev.filter(t => t.id !== tokenId));
-    } catch (error) {
-      console.error('Failed to remove token:', error);
+      if (!selectedToken) {
+        throw new Error('No token selected');
+      }
+
+      const fromAddress = sovereignWallet?.addresses?.[selectedChain];
+      if (!fromAddress) {
+        throw new Error('Wallet address not found. Please try again.');
+      }
+      
+      // Handle XRP
+      if (selectedChain === 'xrp' && selectedToken.isNative) {
+        setTransactionStep('estimating');
+        const fee = await estimateXrpFee();
+        setEstimatedFee(fee);
+        
+        const price = await getPrice('xrp');
+        setEstimatedFeeUsd(parseFloat(fee) * price);
+        
+        setTransactionStep('signing');
+        const destinationTagNum = destinationTag ? parseInt(destinationTag) : undefined;
+        const tx = await buildXrpTransaction(fromAddress, recipient, amount, destinationTagNum);
+        
+        const walletId = localStorage.getItem(`wallet_id_${userId}`);
+        if (!walletId) {
+          throw new Error('Wallet ID not found. Please try again.');
+        }
+        
+        const { unlockWallet } = await import('@/lib/walletService');
+        const wallet = await unlockWallet(walletId, password);
+        const xrpSeed = wallet.privateKeys.xrp;
+        
+        if (!xrpSeed) {
+          throw new Error('XRP private key not found in wallet');
+        }
+        
+        const signedTx = signXrpTransaction(tx, xrpSeed);
+        
+        setTransactionStep('broadcasting');
+        const result = await broadcastXrpTransaction(signedTx);
+        
+        setShowPasswordModal(false);
+        setSuccessData({
+          hash: result.hash,
+          amount,
+          to: recipient,
+          fee,
+          feeUsd: parseFloat(fee) * price,
+          explorerUrl: result.explorerUrl,
+        });
+        setShowSuccessModal(true);
+        
+        setRecipient('');
+        setAmount('');
+        setDestinationTag('');
+        setError(null);
+        
+        setIsProcessing(false);
+        setTransactionStep(null);
+        return;
+      }
+
+      // ETH/BSC flow
+      if (!SUPPORTED_SEND_CHAINS.includes(selectedChain as any)) {
+        throw new Error(`Chain not supported for EVM-based transactions: ${selectedChain}`);
+      }
+
+      setTransactionStep('estimating');
+      const gasEstimate = await estimateGas(selectedChain, fromAddress, recipient, amount);
+      setEstimatedFee(gasEstimate.estimatedFee);
+      setEstimatedFeeUsd(gasEstimate.estimatedFeeUsd);
+      
+      const balanceCheck = await checkSufficientBalance(
+        selectedChain,
+        fromAddress,
+        amount,
+        gasEstimate.estimatedFee
+      );
+      
+      if (!balanceCheck.sufficient) {
+        const symbol = getSendChainSymbol(selectedChain);
+        throw new Error(
+          `Insufficient balance. You need ${balanceCheck.required} ${symbol} but only have ${balanceCheck.balance} ${symbol}.`
+        );
+      }
+      
+      setTransactionStep('signing');
+            const tx = await buildTransaction(selectedChain, fromAddress, recipient, amount, gasEstimate);
+      
+      const walletId = localStorage.getItem(`wallet_id_${userId}`);
+      if (!walletId) {
+        throw new Error('Wallet ID not found. Please try again.');
+      }
+
+      const signedTx = await signTransaction(
+        walletId,
+        password,
+        selectedChain,
+        tx,
+        isPasskeyAuthenticated
+      );
+      
+      setTransactionStep('broadcasting');
+      const result = await broadcastTransaction(selectedChain, signedTx);
+      
+      console.log('Transaction verified and broadcast successfully');
+      
+      if (onAddPendingTransaction) {
+        onAddPendingTransaction({
+          hash: result.hash,
+          chain: selectedChain,
+          from: fromAddress,
+          to: recipient,
+          amount,
+          token: selectedToken.symbol,
+          status: 'pending',
+          confirmations: 0,
+          requiredConfirmations: selectedChain === 'ethereum' ? 6 : 15,
+          timestamp: Date.now(),
+          explorerUrl: result.explorerUrl,
+        });
+      }
+      
+      setShowPasswordModal(false);
+      setSuccessData({
+        hash: result.hash,
+        amount,
+        to: recipient,
+        fee: gasEstimate.estimatedFee,
+        feeUsd: gasEstimate.estimatedFeeUsd,
+        explorerUrl: result.explorerUrl,
+      });
+      setShowSuccessModal(true);
+      
+      setRecipient('');
+      setAmount('');
+      setError(null);
+      
+    } catch (err: any) {
+      console.error('Transaction error:', err);
+      setPasswordError(err.message || 'Failed to send transaction');
+    } finally {
+      setIsProcessing(false);
+      setTransactionStep(null);
     }
   };
 
-  // Handle token selection (for sending)
-  const handleSelectToken = (token: Token) => {
-    if (onSelectToken) {
-      onSelectToken(token);
+  const handlePasswordCancel = () => {
+    setShowPasswordModal(false);
+    setPasswordError(null);
+    setIsProcessing(false);
+    setTransactionStep(null);
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccessModal(false);
+    setSuccessData(null);
+  };
+
+  const getChainSymbol = (chain: Chain): string => {
+    const symbols: Record<Chain, string> = {
+      ethereum: 'ETH',
+      bitcoin: 'BTC',
+      bsc: 'BNB',
+      xrp: 'XRP',
+      solana: 'SOL',
+    };
+    return symbols[chain];
+  };
+
+  const handleRecipientChange = (value: string) => {
+    setRecipient(value);
+    
+    if (value && validateAddress(value, selectedChain)) {
+      setError(null);
     }
   };
 
-  // Get tokens for each chain
-  const getChainTokens = (chain: Chain) => {
-    return tokens.filter(t => t.chain === chain && !t.isNative && t.isVisible);
-  };
-
-  // Get chain balance
-  const getChainBalance = (chain: Chain) => {
-    return chainBalances.find(b => b.chain === chain);
-  };
-
-  const chainConfig = getChainConfig(selectedChain);
+  const currentSettings = getSecuritySettings(userId);
+  const securityRequirements = getSecurityRequirements(userId, 'send');
 
   return (
-    <div className="space-y-6">
-      {/* Header with Refresh */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Portfolio</h2>
+    <>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold">
+            Send {selectedToken ? selectedToken.symbol : getChainSymbol(selectedChain)}
+          </h2>
+          
+          {securityRequirements.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-700/50 text-xs">
+              <span className="text-gray-400">Security:</span>
+              <span className="font-medium text-emerald-400 capitalize">
+                {currentSettings.tier}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {isLocked && (
+          <div className="p-4 rounded-xl bg-amber-900/20 border border-amber-700/50">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-300">
+                <p className="font-medium mb-1">Wallet Locked</p>
+                <p className="text-amber-400/80">
+                  Your wallet is currently locked. You'll need to authenticate with your passkey before sending transactions.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Token Selector */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Select Token
+          </label>
+          <div className="relative">
+            <button
+              onClick={() => setShowTokenDropdown(!showTokenDropdown)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl hover:border-gray-600 transition-colors"
+            >
+              {selectedToken ? (
+                <div className="flex items-center gap-3">
+                  {selectedToken.logoUrl ? (
+                    <img 
+                      src={selectedToken.logoUrl} 
+                      alt={selectedToken.symbol} 
+                      className="w-6 h-6 rounded-full"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-xs font-semibold">
+                      {selectedToken.symbol.slice(0, 2)}
+                    </div>
+                  )}
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{selectedToken.symbol}</p>
+                      {selectedToken.isNative && (
+                        <span className="text-xs text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">
+                          Native
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400">{selectedToken.name}</p>
+                  </div>
+                </div>
+              ) : (
+                <span className="text-gray-400">Select a token</span>
+              )}
+              <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showTokenDropdown ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showTokenDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-700 rounded-xl overflow-hidden shadow-xl z-10 max-h-64 overflow-y-auto">
+                {tokens.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-gray-400 text-sm">
+                    No tokens found for this chain
+                  </div>
+                ) : (
+                  tokens.map((token) => (
+                    <button
+                      key={token.id}
+                      onClick={() => handleTokenSelect(token)}
+                      className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-700 transition-colors text-left ${
+                        selectedToken?.id === token.id ? 'bg-gray-700' : ''
+                      }`}
+                    >
+                      {token.logoUrl ? (
+                        <img 
+                          src={token.logoUrl} 
+                          alt={token.symbol} 
+                          className="w-6 h-6 rounded-full"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-xs font-semibold">
+                          {token.symbol.slice(0, 2)}
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{token.symbol}</p>
+                          {token.isNative && (
+                            <span className="text-xs text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">
+                              Native
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400">{token.name}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-mono">{parseFloat(token.balance).toFixed(4)}</p>
+                        {token.usdValue && token.usdValue > 0 && (
+                          <p className="text-xs text-gray-400">${token.usdValue.toFixed(2)}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Balance Display */}
+        {selectedToken && (
+          <BalanceDisplay
+            chain={selectedChain}
+            balance={balance}
+            balanceUsd={balanceUsd}
+            reserved={selectedChain === 'xrp' && selectedToken.isNative ? xrpReserved : undefined}
+            available={selectedChain === 'xrp' && selectedToken.isNative ? xrpAvailable : undefined}
+          />
+        )}
+
+        {/* Recipient Address */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Recipient Address
+          </label>
+          <input
+            type="text"
+            value={recipient}
+            onChange={(e) => handleRecipientChange(e.target.value)}
+            placeholder={`Enter ${selectedChain} address`}
+            className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:outline-none font-mono text-sm"
+          />
+          {recipient && !validateAddress(recipient, selectedChain) && (
+            <p className="mt-2 text-sm text-red-400">
+              Invalid {selectedChain} address format
+            </p>
+          )}
+        </div>
+
+        {/* Amount */}
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-gray-300">
+              Amount
+            </label>
+            <button
+              onClick={handleMaxClick}
+              className="px-2 py-1 text-xs bg-emerald-600/20 text-emerald-400 rounded hover:bg-emerald-600/30 transition-colors font-medium"
+            >
+              MAX
+            </button>
+          </div>
+          <div className="relative">
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              step="0.000001"
+              min="0"
+              className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:outline-none pr-20"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">
+              {selectedToken?.symbol || getChainSymbol(selectedChain)}
+            </span>
+          </div>
+          {amount && parseFloat(amount) > 0 && selectedToken && (
+            <p className="mt-1 text-sm text-gray-400">
+              ≈ ${(parseFloat(amount) * ((selectedToken.usdValue || 0) / parseFloat(selectedToken.balance || '1'))).toFixed(2)}
+            </p>
+          )}
+        </div>
+
+        {/* XRP Destination Tag */}
+        {selectedChain === 'xrp' && (
+          <DestinationTagInput
+            value={destinationTag}
+            onChange={setDestinationTag}
+          />
+        )}
+
+        {/* BSC Memo */}
+        {selectedChain === 'bsc' && (
+          <MemoInput
+            value={memo}
+            onChange={setMemo}
+          />
+        )}
+
+        {/* Estimated Fee */}
+        <div className="bg-gray-900/50 rounded-xl p-4">
+          <div className="flex justify-between text-sm mb-2">
+            <span className="text-gray-400">Estimated Network Fee</span>
+            <span className="text-gray-300">
+              {estimatedFee} {getChainSymbol(selectedChain)}
+              {estimatedFeeUsd > 0 && (
+                <span className="text-gray-500 ml-1">
+                  ≈ {formatUsd(estimatedFeeUsd)}
+                </span>
+              )}
+            </span>
+          </div>
+          {selectedToken?.isNative && (
+            <div className="flex justify-between font-medium">
+              <span className="text-gray-300">Total</span>
+              <span className="text-emerald-400">
+                {amount ? (parseFloat(amount) + parseFloat(estimatedFee)).toFixed(6) : '0.000000'} {getChainSymbol(selectedChain)}
+                {amount && balanceUsd > 0 && (
+                  <span className="text-gray-500 ml-1 font-normal">
+                    ≈ {formatUsd((parseFloat(amount) + parseFloat(estimatedFee)) * (balanceUsd / parseFloat(balance || '1')))}
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Send Button */}
         <button
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50"
+          onClick={handleSendClick}
+          disabled={!recipient || !amount || !validateAddress(recipient, selectedChain) || !selectedToken}
+          className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
         >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          <span className="text-sm">Refresh</span>
+          <Send className="w-5 h-5" />
+          Review Transaction
         </button>
       </div>
 
-      {/* Loading State */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-        </div>
-      ) : (
-        <>
-          {/* Chain Sections with Tokens */}
-          <div className="space-y-3">
-            {/* Ethereum */}
-            <ChainSection
-              chain="ethereum"
-              nativeBalance={getChainBalance('ethereum')?.balance || '0'}
-              nativeUsdValue={getChainBalance('ethereum')?.usdValue}
-              nativePriceChange24h={getChainBalance('ethereum')?.priceChange24h}
-              tokens={getChainTokens('ethereum')}
-              isExpanded={expandedChains.ethereum}
-              hideBalances={hideBalances}
-              onToggleExpand={() => toggleChainExpansion('ethereum')}
-              onAddToken={() => setAddTokenChain('ethereum')}
-              onSelectToken={handleSelectToken}
-              onRemoveToken={handleRemoveToken}
-            />
-
-            {/* BSC */}
-            <ChainSection
-              chain="bsc"
-              nativeBalance={getChainBalance('bsc')?.balance || '0'}
-              nativeUsdValue={getChainBalance('bsc')?.usdValue}
-              nativePriceChange24h={getChainBalance('bsc')?.priceChange24h}
-              tokens={getChainTokens('bsc')}
-              isExpanded={expandedChains.bsc}
-              hideBalances={hideBalances}
-              onToggleExpand={() => toggleChainExpansion('bsc')}
-              onAddToken={() => setAddTokenChain('bsc')}
-              onSelectToken={handleSelectToken}
-              onRemoveToken={handleRemoveToken}
-            />
-
-            {/* XRP */}
-            <ChainSection
-              chain="xrp"
-              nativeBalance={getChainBalance('xrp')?.balance || '0'}
-              nativeUsdValue={getChainBalance('xrp')?.usdValue}
-              nativePriceChange24h={getChainBalance('xrp')?.priceChange24h}
-              tokens={getChainTokens('xrp')}
-              isExpanded={expandedChains.xrp}
-              hideBalances={hideBalances}
-              onToggleExpand={() => toggleChainExpansion('xrp')}
-              onAddToken={() => setAddTokenChain('xrp')}
-              onSelectToken={handleSelectToken}
-              onRemoveToken={handleRemoveToken}
-            />
-
-            {/* Solana */}
-            <ChainSection
-              chain="solana"
-              nativeBalance={getChainBalance('solana')?.balance || '0'}
-              nativeUsdValue={getChainBalance('solana')?.usdValue}
-              nativePriceChange24h={getChainBalance('solana')?.priceChange24h}
-              tokens={getChainTokens('solana')}
-              isExpanded={expandedChains.solana}
-              hideBalances={hideBalances}
-              onToggleExpand={() => toggleChainExpansion('solana')}
-              onAddToken={() => setAddTokenChain('solana')}
-              onSelectToken={handleSelectToken}
-              onRemoveToken={handleRemoveToken}
-            />
-
-            {/* Bitcoin (no tokens) */}
-            <ChainSection
-              chain="bitcoin"
-              nativeBalance={getChainBalance('bitcoin')?.balance || '0'}
-              nativeUsdValue={getChainBalance('bitcoin')?.usdValue}
-              nativePriceChange24h={getChainBalance('bitcoin')?.priceChange24h}
-              tokens={[]}
-              isExpanded={false}
-              hideBalances={hideBalances}
-              onToggleExpand={() => {}}
-              onAddToken={() => {}}
-              onSelectToken={handleSelectToken}
-              onRemoveToken={handleRemoveToken}
-            />
-          </div>
-
-          {/* Current Chain Summary */}
-          <div className="bg-gray-800 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">
-                Current Chain: <span className={chainConfig.color}>{chainConfig.name}</span>
-              </h3>
-              {blockNumber && (
-                <span className="text-xs text-gray-500">
-                  Block: {blockNumber.toLocaleString()}
-                </span>
-              )}
-            </div>
-
-            {/* Current Balance */}
-            <div className="mb-6">
-              <p className="text-sm text-gray-400 mb-1">Balance</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-3xl font-bold">
-                  {hideBalances ? '••••••' : formatBalance(currentBalance?.balance)}
-                </p>
-                <span className="text-xl text-gray-400">{chainConfig.symbol}</span>
-              </div>
-              {currentBalance?.usdValue !== undefined && (
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-lg text-gray-400">
-                    {hideBalances ? '••••••' : `$${currentBalance.usdValue.toFixed(2)}`}
-                  </p>
-                  {priceChange24h !== 0 && (
-                    <span
-                      className={`flex items-center text-sm ${
-                        priceChange24h >= 0 ? 'text-green-400' : 'text-red-400'
-                      }`}
-                    >
-                      {priceChange24h >= 0 ? (
-                        <TrendingUp className="w-4 h-4 mr-1" />
-                      ) : (
-                        <TrendingDown className="w-4 h-4 mr-1" />
-                      )}
-                      {Math.abs(priceChange24h).toFixed(2)}%
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Recent Transactions */}
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Recent Transactions</h3>
-            
-            {/* Pending Transactions */}
-            {pendingTransactions.length > 0 && (
-              <div className="space-y-3 mb-4">
-                <h4 className="text-sm font-medium text-gray-400">Pending</h4>
-                {pendingTransactions.map((tx) => (
-                  <PendingTransactionCard key={tx.hash} transaction={tx} />
-                ))}
-              </div>
-            )}
-
-            {/* Confirmed Transactions */}
-            {transactions.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p>No transactions yet on {chainConfig.name}</p>
-                <p className="text-sm mt-1">Your transaction history will appear here</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {pendingTransactions.length > 0 && (
-                  <h4 className="text-sm font-medium text-gray-400 mt-4">Confirmed</h4>
-                )}
-                {transactions.slice(0, 5).map((tx) => (
-                  <div
-                    key={tx.hash}
-                    className="flex items-center justify-between p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`p-2 rounded-full ${
-                          tx.type === 'send'
-                            ? 'bg-red-500/20 text-red-400'
-                            : 'bg-green-500/20 text-green-400'
-                        }`}
-                      >
-                        {tx.type === 'send' ? (
-                          <ArrowUpRight className="w-4 h-4" />
-                        ) : (
-                          <ArrowDownLeft className="w-4 h-4" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium capitalize">{tx.type}</p>
-                        <p className="text-sm text-gray-400">
-                          {new Date(tx.timestamp).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-mono font-medium">
-                        {tx.type === 'send' ? '-' : '+'}
-                        {tx.amount} {tx.asset}
-                      </p>
-                      {tx.status === 'confirmed' && (
-                        <p className="text-xs text-green-400">Confirmed</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Add Token Modal */}
-      {addTokenChain && sovereignWallet && (
-        <AddTokenModal
-          chain={addTokenChain}
-          walletAddress={sovereignWallet.addresses[addTokenChain]}
-          onClose={() => setAddTokenChain(null)}
-          onAdd={(tokenData) => handleAddToken(addTokenChain, tokenData)}
-          onSetTrustline={addTokenChain === 'xrp' ? handleSetTrustline : undefined}
+      {/* PIN Entry Modal */}
+      {showPinModal && (
+        <PinEntryModal
+          userId={userId}
+          onClose={handlePinCancel}
+          onSuccess={handlePinSuccess}
+          title="Enter PIN to Send"
+          description="Verify your PIN to authorize this transaction"
         />
       )}
-    </div>
+
+      {/* New Account Warning Modal */}
+      {showNewAccountWarning && (
+        <NewAccountWarningModal
+          destinationAddress={recipient}
+          onConfirm={handleNewAccountProceed}
+          onCancel={handleNewAccountCancel}
+        />
+      )}
+
+      {/* Transaction Preview Modal */}
+      {showPreview && selectedToken && (
+        <TransactionPreviewModal
+          transaction={{
+            to: recipient,
+            amount,
+            token: selectedToken.symbol,
+            chain: selectedChain,
+            estimatedFee,
+            totalCost: selectedToken.isNative 
+              ? (parseFloat(amount) + parseFloat(estimatedFee)).toFixed(6)
+              : amount,
+          }}
+          onConfirm={handleConfirmTransaction}
+          onCancel={() => setShowPreview(false)}
+        />
+      )}
+
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <PasswordModal
+          onSubmit={handlePasswordSubmit}
+          onCancel={handlePasswordCancel}
+          title="Enter Password to Sign"
+          description="Enter your wallet password to sign this transaction"
+          isLoading={isProcessing}
+          error={passwordError}
+        />
+      )}
+
+      {/* Transaction Step Indicator */}
+      {transactionStep && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl p-8 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <h3 className="text-xl font-semibold mb-2">
+              {transactionStep === 'estimating' && 'Estimating Fees...'}
+              {transactionStep === 'signing' && 'Signing Transaction...'}
+              {transactionStep === 'broadcasting' && 'Broadcasting & Verifying...'}
+              {transactionStep === 'verifying' && 'Verifying...'}
+            </h3>
+            <p className="text-gray-400">Please wait</p>
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && successData && (
+        <TransactionSuccessModal
+          amount={successData.amount}
+          token={selectedToken?.symbol || getChainSymbol(selectedChain)}
+          to={successData.to}
+          fee={successData.fee}
+          feeUsd={successData.feeUsd}
+          hash={successData.hash}
+          explorerUrl={successData.explorerUrl}
+          onClose={handleSuccessClose}
+        />
+      )}
+    </>
   );
 }
+      
