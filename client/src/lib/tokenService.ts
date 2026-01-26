@@ -21,7 +21,7 @@ export interface Token {
   chain: Chain;
   standard: TokenStandard;
   contractAddress?: string;
-  mintAddress?: string; // For SPL tokens
+  mintAddress?: string; // For Solana SPL tokens (Solana's equivalent to ERC-20 contract address)
   symbol: string;
   name: string;
   decimals: number;
@@ -184,7 +184,8 @@ export async function fetchERC20TokenInfo(contractAddress: string, chain: 'ether
       console.warn(`[Token Verify] RPC ${rpcUrl} failed:`, error.message);
       lastError = error;
       
-      // Add delay between retries to avoid rate limiting (except for last attempt)
+      // Add delay between retries to avoid rate limiting
+      // Using 500ms as a conservative delay to ensure reliability with BSC nodes
       if (i < endpoints.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
@@ -568,9 +569,9 @@ export async function fetchTokenPrice(token: Token): Promise<{
         };
       }
     } else if (token.standard === 'XRPL' && token.currencyCode && token.issuer) {
-      // XRPL tokens - try to find by currency code
-      // Note: CoinGecko doesn't have great XRPL token support
-      // This is a best-effort attempt
+      // XRPL tokens - CoinGecko doesn't have comprehensive XRPL token support
+      // This is intentionally returning undefined as there's no reliable price API for XRPL tokens
+      // Users can still add and track these tokens, but price data won't be available
       return {
         usdPrice: undefined,
         priceChange24h: undefined,
