@@ -3,14 +3,18 @@
 
 import { Buffer } from 'buffer';
 import * as xrpl from 'xrpl';
+import { secp256k1 } from '@noble/curves/secp256k1';
 import { deriveKeypair, sign } from 'ripple-keypairs';
 import { encode } from 'ripple-binary-codec';
-import { secp256k1 } from '@noble/curves/secp256k1';
 
 const BASE_RESERVE = 10; // 10 XRP
 const OWNER_RESERVE = 2; // 2 XRP per object
 const XRP_MAINNET_URL = 'wss://xrplcluster.com';
 const DEFAULT_FEE_DROPS = '12'; // Default fee in drops (0.000012 XRP)
+
+// Regex patterns for XRP private key formats - exported for reuse
+export const HEX_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
+export const HEX_KEY_WITH_PREFIX_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 export interface XRPAccountInfo {
   address: string;
@@ -169,7 +173,7 @@ export function signXrpTransaction(
     const wallet = xrpl.Wallet.fromSeed(privateKey);
     const signed = wallet.sign(tx);
     return signed.tx_blob;
-  } else if (/^[0-9a-fA-F]{64}$/.test(privateKey) || /^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
+  } else if (HEX_KEY_PATTERN.test(privateKey) || HEX_KEY_WITH_PREFIX_PATTERN.test(privateKey)) {
     // Hex private key format (64 hex characters, with or without 0x prefix)
     const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
     

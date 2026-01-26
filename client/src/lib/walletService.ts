@@ -1330,13 +1330,16 @@ export async function signTransaction(
         throw new Error('Bitcoin signing not yet implemented');
       
       case 'xrp': {
+        // Import XRP key pattern constants to avoid duplication
+        const { HEX_KEY_PATTERN, HEX_KEY_WITH_PREFIX_PATTERN } = await import('./xrpSendService');
+        
         // Detect key format and sign accordingly
         if (privateKey.startsWith('s')) {
           // XRP seed format - use xrpl.Wallet
           const { Wallet: XRPLWallet } = await import('xrpl');
           const xrpWallet = XRPLWallet.fromSeed(privateKey);
           signedTx = xrpWallet.sign(transaction).tx_blob;
-        } else if (/^[0-9a-fA-F]{64}$/.test(privateKey) || /^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
+        } else if (HEX_KEY_PATTERN.test(privateKey) || HEX_KEY_WITH_PREFIX_PATTERN.test(privateKey)) {
           // Hex format - need to sign using ripple-keypairs
           const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
           
