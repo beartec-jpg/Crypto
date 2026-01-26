@@ -367,8 +367,29 @@ function deriveXRPAddress(privateKeyBytes: Uint8Array): string {
 
 /**
  * Derive Solana address from private key
+ * FIXED: Now uses proper Ed25519 keypair derivation instead of SHA256 hash
  */
-function deriveSolanaAddress(seed: Uint8Array): string {
+function deriveSolanaAddress(privateKeyBytes: Uint8Array): string {
+  // Solana uses Ed25519 - the private key IS the seed for the keypair
+  // We need to use the proper derivation from BIP44 path
+  // The Keypair.fromSeed expects a 32-byte seed
+  
+  // Import Keypair from @solana/web3.js
+  const { Keypair } = require('@solana/web3.js');
+  
+  // Take first 32 bytes as the seed (BIP44 derived key is 32 bytes)
+  const seed = privateKeyBytes.slice(0, 32);
+  const keypair = Keypair.fromSeed(seed);
+  
+  return keypair.publicKey.toBase58();
+}
+
+/**
+ * LEGACY: Derive Solana address using OLD BROKEN SHA-256 method
+ * This is ONLY used for recovery of funds from incorrectly derived addresses
+ * DO NOT USE for new addresses - use deriveSolanaAddress() instead
+ */
+function deriveSolanaAddressLegacySHA256(seed: Uint8Array): string {
   const hash = sha256(seed);
   return base58Encode(hash);
 }
@@ -895,26 +916,45 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
 
     // === AUTO-REPAIR: Detect and fix address mismatch ===
+    let needsRepair = false;
+    
+    // Check Ethereum address
     if (ethNode.privateKey) {
       const correctAddress = deriveEthereumAddress(ethNode.privateKey);
       const storedAddress = wallet.addresses.ethereum;
       
       if (correctAddress.toLowerCase() !== storedAddress.toLowerCase()) {
-        console.warn('⚠️ Address mismatch detected, auto-repairing...');
+        console.warn('⚠️ ETH address mismatch detected, auto-repairing...');
         console.log('  Stored:', storedAddress.slice(0, 10) + '...' + storedAddress.slice(-4));
         console.log('  Correct:', correctAddress.slice(0, 10) + '...' + correctAddress.slice(-4));
-        
-        // Re-derive all addresses
-        const { addresses: newAddresses, publicKeys: newPublicKeys } = 
-          await deriveAddressesFromMnemonic(mnemonic);
-        
-        // Update in database
-        wallet.addresses = newAddresses;
-        wallet.publicKeys = newPublicKeys;
-        await db.put('wallets', wallet);
-        
-        console.log('✅ Wallet addresses auto-repaired!');
+        needsRepair = true;
       }
+    }
+    
+    // Check Solana address
+    if (solNode.privateKey) {
+      const correctAddress = deriveSolanaAddress(solNode.privateKey);
+      const storedAddress = wallet.addresses.solana;
+      
+      if (correctAddress !== storedAddress) {
+        console.warn('⚠️ SOL address mismatch detected, auto-repairing...');
+        console.log('  Stored:', storedAddress.slice(0, 10) + '...' + storedAddress.slice(-4));
+        console.log('  Correct:', correctAddress.slice(0, 10) + '...' + correctAddress.slice(-4));
+        needsRepair = true;
+      }
+    }
+    
+    if (needsRepair) {
+      // Re-derive all addresses
+      const { addresses: newAddresses, publicKeys: newPublicKeys } = 
+        await deriveAddressesFromMnemonic(mnemonic);
+      
+      // Update in database
+      wallet.addresses = newAddresses;
+      wallet.publicKeys = newPublicKeys;
+      await db.put('wallets', wallet);
+      
+      console.log('✅ Wallet addresses auto-repaired!');
     }
     // === END AUTO-REPAIR ===
 
@@ -954,7 +994,7 @@ export async function getLegacyAddressForRecovery(
   currentAddress: string;
 } | null> {
   try {
-    console.log('🔧 Deriving legacy address for recovery...');
+    console.log('🔧 Deriving legacy ETH address for recovery...');
     
     // Unlock wallet to get mnemonic
     const wallet = await unlockWallet(walletId, password);
@@ -986,6 +1026,55 @@ export async function getLegacyAddressForRecovery(
     
   } catch (error) {
     console.error('❌ Failed to derive legacy address:', error);
+    return null;
+  }
+}
+
+/**
+ * Get legacy (SHA-256) Solana address and private key for recovery
+ * Returns both the old wrong address and its private key
+ */
+export async function getLegacySolanaAddressForRecovery(
+  walletId: string,
+  password: string
+): Promise<{
+  legacyAddress: string;
+  legacyPrivateKey: string;
+  currentAddress: string;
+} | null> {
+  try {
+    console.log('🔧 Deriving legacy Solana address for recovery...');
+    
+    // Unlock wallet to get mnemonic
+    const wallet = await unlockWallet(walletId, password);
+    
+    // Derive using old broken method
+    const seed = await bip39.mnemonicToSeed(wallet.mnemonic);
+    const root = HDKey.fromMasterSeed(seed);
+    const solNode = derivePath(root, DERIVATION_PATHS.solana);
+    
+    if (!solNode.privateKey) {
+      throw new Error('Failed to derive Solana private key');
+    }
+    
+    // Derive address using OLD SHA-256 method
+    const legacyAddress = deriveSolanaAddressLegacySHA256(solNode.privateKey);
+    const legacyPrivateKey = Buffer.from(solNode.privateKey).toString('hex');
+    
+    // Current correct address
+    const currentAddress = wallet.addresses.solana;
+    
+    console.log('🔍 Legacy Solana address:', legacyAddress);
+    console.log('🔍 Current Solana address:', currentAddress);
+    
+    return {
+      legacyAddress,
+      legacyPrivateKey,
+      currentAddress,
+    };
+    
+  } catch (error) {
+    console.error('❌ Failed to derive legacy Solana address:', error);
     return null;
   }
 }
