@@ -1,20 +1,11 @@
 // client/src/lib/xrpSendService.ts
-// XRP native send service with transaction building and signing
+// XRP native send service - STANDARD XRPL.js ONLY
 
-import { Buffer } from 'buffer';
 import * as xrpl from 'xrpl';
-import { secp256k1 } from '@noble/curves/secp256k1';
-import { deriveKeypair, sign } from 'ripple-keypairs';
-import { encode } from 'ripple-binary-codec';
 
 const BASE_RESERVE = 10; // 10 XRP
 const OWNER_RESERVE = 2; // 2 XRP per object
 const XRP_MAINNET_URL = 'wss://xrplcluster.com';
-const DEFAULT_FEE_DROPS = '12'; // Default fee in drops (0.000012 XRP)
-
-// Regex patterns for XRP private key formats - exported for reuse
-export const HEX_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
-export const HEX_KEY_WITH_PREFIX_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 export interface XRPAccountInfo {
   address: string;
@@ -160,43 +151,17 @@ export async function buildXrpTransaction(
 }
 
 /**
- * Sign XRP transaction
- * Handles both XRP seed format (s...) and hex private key format
+ * Sign XRP transaction using STANDARD XRPL.js ONLY
+ * Expects XRP seed format from walletService.getXRPSeed()
  */
 export function signXrpTransaction(
   tx: xrpl.Payment,
-  privateKey: string
+  seed: string
 ): string {
-  // Detect key format and sign accordingly
-  if (privateKey.startsWith('s')) {
-    // XRP seed format (sXXXXXX...)
-    const wallet = xrpl.Wallet.fromSeed(privateKey);
-    const signed = wallet.sign(tx);
-    return signed.tx_blob;
-  } else if (HEX_KEY_PATTERN.test(privateKey) || HEX_KEY_WITH_PREFIX_PATTERN.test(privateKey)) {
-    // Hex private key format (64 hex characters, with or without 0x prefix)
-    const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
-    
-    // For hex keys, derive the public key using secp256k1
-    const publicKeyBytes = secp256k1.getPublicKey(Buffer.from(hexKey, 'hex'), true);
-    const publicKey = Buffer.from(publicKeyBytes).toString('hex').toUpperCase();
-    
-    // Encode transaction and sign with the hex private key
-    const txBlob = encode(tx);
-    const signature = sign(txBlob, hexKey);
-    
-    // Attach signature to transaction
-    const signedTx = {
-      ...tx,
-      SigningPubKey: publicKey,
-      TxnSignature: signature,
-    };
-    
-    // Encode the signed transaction
-    return encode(signedTx);
-  } else {
-    throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-character hex string.');
-  }
+  // Use ONLY standard XRPL.js Wallet.fromSeed()
+  const wallet = xrpl.Wallet.fromSeed(seed);
+  const signed = wallet.sign(tx);
+  return signed.tx_blob;
 }
 
 /**
@@ -236,27 +201,44 @@ export async function broadcastXrpTransaction(
 }
 
 /**
- * Estimate XRP transaction fee
+ * Send XRP (convenience function combining build, sign, broadcast)
  */
-export async function estimateXrpFee(): Promise<string> {
-  const client = new xrpl.Client(XRP_MAINNET_URL);
-  
+export async function sendXrp(
+  walletId: string,
+  password: string,
+  to: string,
+  amount: string,
+  destinationTag?: number
+): Promise<XRPTransactionBroadcastResult> {
   try {
-    await client.connect();
+    // Get XRP seed from wallet service
+    const { getXRPSeed } = await import('./walletService');
+    const seed = await getXRPSeed(walletId, password);
     
-    const feeResponse = await client.request({
-      command: 'fee',
-    });
+    // Create wallet to get address
+    const wallet = xrpl.Wallet.fromSeed(seed);
+    const from = wallet.address;
     
-    // Get the median fee in drops
-    const feeDrops = feeResponse.result.drops?.median_fee || DEFAULT_FEE_DROPS;
+    console.log('📤 Sending XRP...');
+    console.log('  From:', from);
+    console.log('  To:', to);
+    console.log('  Amount:', amount, 'XRP');
     
-    // Convert to XRP
-    return xrpl.dropsToXrp(feeDrops);
-  } catch (error) {
-    console.warn('Failed to fetch XRP fee, using default:', error);
-    return xrpl.dropsToXrp(DEFAULT_FEE_DROPS); // Default 0.000012 XRP
-  } finally {
-    await client.disconnect();
+    // Build transaction
+    const tx = await buildXrpTransaction(from, to, amount, destinationTag);
+    console.log('  Transaction built');
+    
+    // Sign transaction
+    const signedTx = signXrpTransaction(tx, seed);
+    console.log('  Transaction signed');
+    
+    // Broadcast transaction
+    const result = await broadcastXrpTransaction(signedTx);
+    console.log('  Transaction broadcast:', result.hash);
+    
+    return result;
+  } catch (error: any) {
+    console.error('❌ Failed to send XRP:', error);
+    throw error;
   }
 }
