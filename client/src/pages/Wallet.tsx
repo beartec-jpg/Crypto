@@ -55,6 +55,32 @@ export default function WalletPage() {
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
 
+  // Handle URL parameters on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    const chain = params.get('chain');
+    const tokenId = params.get('token');
+
+    if (tab === 'send') {
+      setMode('send');
+    }
+
+    if (chain && ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'].includes(chain)) {
+      setSelectedChain(chain as Chain);
+    }
+
+    // Store tokenId for later use when tokens are loaded
+    if (tokenId) {
+      sessionStorage.setItem('pendingTokenSelection', tokenId);
+    }
+  }, []);
+
+  const { address, isConnected } = useAccount();
+  const { connect, connectors, isPending } = useConnect();
+  const { disconnect } = useDisconnect();
+  const { data: balance } = useBalance({ address });
+
   useEffect(() => {
     if (userId) {
       migrateWalletToUser(userId);
@@ -209,6 +235,13 @@ export default function WalletPage() {
   const handleTokenSelect = (token: Token) => {
     setSelectedToken(token);
     setSelectedChain(token.chain);
+
+    // Update URL with token info
+    const params = new URLSearchParams();
+    params.set('tab', 'send');
+    params.set('chain', token.chain);
+    params.set('token', token.id);
+    window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`);
 
     if (token.chain === 'bitcoin' && token.isNative) {
       setShowBitcoinSend(true);
