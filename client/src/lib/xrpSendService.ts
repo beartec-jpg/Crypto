@@ -2,6 +2,8 @@
 // XRP native send service with transaction building and signing
 
 import * as xrpl from 'xrpl';
+import { deriveKeypair, sign } from 'ripple-keypairs';
+import { encode } from 'ripple-binary-codec';
 
 const BASE_RESERVE = 10; // 10 XRP
 const OWNER_RESERVE = 2; // 2 XRP per object
@@ -159,23 +161,36 @@ export function signXrpTransaction(
   tx: xrpl.Payment,
   privateKey: string
 ): string {
-  let wallet: xrpl.Wallet;
-  
-  // Detect key format and create wallet accordingly
+  // Detect key format and sign accordingly
   if (privateKey.startsWith('s')) {
     // XRP seed format (sXXXXXX...)
-    wallet = xrpl.Wallet.fromSeed(privateKey);
-  } else if (/^[0-9a-fA-F]{64}$/.test(privateKey)) {
-    // Hex private key format (64 hex characters)
-    wallet = xrpl.Wallet.fromSecret(privateKey);
+    const wallet = xrpl.Wallet.fromSeed(privateKey);
+    const signed = wallet.sign(tx);
+    return signed.tx_blob;
+  } else if (/^[0-9a-fA-F]{64}$/.test(privateKey) || /^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
+    // Hex private key format (64 hex characters, with or without 0x prefix)
+    const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+    
+    // For hex keys, use ripple-keypairs to derive keypair and sign manually
+    // Cannot use XRPLWallet.fromEntropy as it derives a different address
+    const keypair = deriveKeypair(hexKey);
+    
+    // Encode transaction and sign with the keypair
+    const txBlob = encode(tx);
+    const signature = sign(txBlob, keypair.privateKey);
+    
+    // Attach signature to transaction
+    const signedTx = {
+      ...tx,
+      SigningPubKey: keypair.publicKey,
+      TxnSignature: signature,
+    };
+    
+    // Encode the signed transaction
+    return encode(signedTx);
   } else {
     throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-character hex string.');
   }
-  
-  // Sign the transaction
-  const signed = wallet.sign(tx);
-  
-  return signed.tx_blob;
 }
 
 /**

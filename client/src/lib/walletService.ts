@@ -1329,8 +1329,37 @@ export async function signTransaction(
       case 'bitcoin':
         throw new Error('Bitcoin signing not yet implemented');
       
-      case 'xrp':
-        throw new Error('XRP signing not yet implemented');
+      case 'xrp': {
+        // Detect key format and sign accordingly
+        if (privateKey.startsWith('s')) {
+          // XRP seed format - use xrpl.Wallet
+          const { Wallet: XRPLWallet } = await import('xrpl');
+          const xrpWallet = XRPLWallet.fromSeed(privateKey);
+          signedTx = xrpWallet.sign(transaction).tx_blob;
+        } else if (/^[0-9a-fA-F]{64}$/.test(privateKey) || /^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
+          // Hex format - need to sign using ripple-keypairs
+          const hexKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+          
+          // Use ripple-keypairs for signing
+          const { encode } = await import('ripple-binary-codec');
+          const { sign, deriveKeypair } = await import('ripple-keypairs');
+          
+          const keypair = deriveKeypair(hexKey);
+          const txBlob = encode(transaction);
+          const signature = sign(txBlob, keypair.privateKey);
+          
+          // Attach signature to transaction and re-encode
+          const signedTransaction = {
+            ...transaction,
+            TxnSignature: signature,
+            SigningPubKey: keypair.publicKey,
+          };
+          signedTx = encode(signedTransaction);
+        } else {
+          throw new Error('Invalid XRP private key format. Expected seed (s...) or hex string.');
+        }
+        break;
+      }
       
       case 'solana':
         throw new Error('Solana signing not yet implemented');
