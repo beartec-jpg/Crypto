@@ -1,5 +1,6 @@
 // client/src/components/Wallet/PendingTransactionCard.tsx
 // Card showing pending transaction progress with steps and remove button
+// Collapses to compact view when complete
 
 import { Send, CheckCircle2, Loader2, AlertCircle, ExternalLink, X } from 'lucide-react';
 import type { PendingTransaction } from '@/hooks/usePendingTransactions';
@@ -61,6 +62,52 @@ export default function PendingTransactionCard({ transaction, onRemove }: Pendin
     transaction.status === 'failed' || 
     (transaction.status === 'pending' && Date.now() - transaction.timestamp > 60 * 60 * 1000);
 
+  // Check if transaction is complete (should collapse to compact view)
+  const isComplete = transaction.status === 'confirmed';
+
+  // Render compact view for completed transactions
+  if (isComplete) {
+    return (
+      <div className="flex items-center justify-between p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 transition-colors border border-emerald-700/30">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="p-2 rounded-full bg-emerald-500/20">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <Send className="w-4 h-4 text-gray-400" />
+              <span className="font-medium text-sm">
+                Sent {transaction.amount} {transaction.token}
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 truncate">
+              To: {transaction.to.slice(0, 6)}...{transaction.to.slice(-4)}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="text-right mr-2">
+            <p className="text-xs text-emerald-400 font-medium">Confirmed</p>
+            <p className="text-xs text-gray-500">{formatTime(transaction.timestamp)}</p>
+          </div>
+          
+          <a
+            href={transaction.explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 rounded hover:bg-gray-800 transition-colors"
+            title="View on explorer"
+          >
+            <ExternalLink className="w-4 h-4 text-gray-400" />
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // Render expanded view for pending/confirming/failed transactions
   return (
     <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors relative">
       {/* Dismiss Button - shows for failed or stuck transactions */}
@@ -123,14 +170,10 @@ export default function PendingTransactionCard({ transaction, onRemove }: Pendin
         </div>
       )}
 
-      {/* Status Badge for Completed */}
-      {(transaction.status === 'confirmed' || transaction.status === 'failed') && (
-        <div className={`mb-4 px-3 py-2 rounded-lg text-center font-medium ${
-          transaction.status === 'confirmed' 
-            ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/50' 
-            : 'bg-red-900/30 text-red-400 border border-red-700/50'
-        }`}>
-          {transaction.status === 'confirmed' ? '✓ Transaction Confirmed' : '✗ Transaction Failed'}
+      {/* Status Badge for Failed */}
+      {transaction.status === 'failed' && (
+        <div className="mb-4 px-3 py-2 rounded-lg text-center font-medium bg-red-900/30 text-red-400 border border-red-700/50">
+          ✗ Transaction Failed
         </div>
       )}
 
