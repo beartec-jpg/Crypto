@@ -30,7 +30,7 @@ import {
   broadcastXrpTransaction,
   estimateXrpFee,
 } from '@/lib/xrpSendService';
-import { getWalletTokens, type Token } from '@/lib/tokenService';
+import { getWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
 import TransactionPreviewModal from './TransactionPreviewModal';
 import PinEntryModal from './PinEntryModal';
 import PasswordModal from './PasswordModal';
@@ -106,7 +106,7 @@ export default function SendForm({
       if (!sovereignWallet?.id) return;
       
       try {
-        const walletTokens = await getWalletTokens(sovereignWallet.id);
+        const walletTokens = await ensureNativeTokens(sovereignWallet.id);
         const chainTokens = walletTokens.filter(t => t.chain === selectedChain);
         setTokens(chainTokens);
         

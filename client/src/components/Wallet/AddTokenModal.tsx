@@ -101,7 +101,7 @@ const handleVerify = async () => {
       const token: Partial<Token> = {
         id: `${chain === 'ethereum' ? 'erc20' : 'bep20'}-${tokenAddress}`,
         chain,
-        standard: chain === 'ethereum' ? 'ERC20' : 'BEP20',
+        standard: chain === 'ethereum' ? 'ERC-20' : 'BEP-20',
         contractAddress: tokenAddress,
         symbol: tokenInfo.symbol || 'UNKNOWN',
         name: tokenInfo.name || 'Unknown Token',

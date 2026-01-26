@@ -23,6 +23,7 @@ import {
   FileText,
   BookOpen,
   ChevronRight,
+  ArrowLeft,
 } from 'lucide-react';
 
 type SecurityTopic = 
@@ -103,12 +104,28 @@ const SECURITY_ARTICLES: SecurityArticle[] = [
   },
 ];
 
-export default function SecurityEducationCenter() {
+interface SecurityEducationCenterProps {
+  onBack?: () => void;
+}
+
+export default function SecurityEducationCenter({ onBack }: SecurityEducationCenterProps) {
   const [selectedTopic, setSelectedTopic] = useState<SecurityTopic>('overview');
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="max-w-7xl mx-auto p-6">
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Back Button */}
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Back to Wallet
+        </button>
+      )}
+
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
@@ -180,6 +197,7 @@ export default function SecurityEducationCenter() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -472,14 +490,20 @@ function PhishingContent() {
         <ul className="space-y-2 text-sm text-gray-300">
           <li className="flex items-center gap-2">
             <ExternalLink className="w-4 h-4" />
-            <a href="https://www.phishing.org/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-              Phishing.org - Learn about phishing
+            <a href="https://www.ledger.com/academy/crypto-security-basics" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+              Ledger Academy - Crypto Security Basics
             </a>
           </li>
           <li className="flex items-center gap-2">
             <ExternalLink className="w-4 h-4" />
-            <a href="https://etherscan.io/address-checker" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-              Etherscan Address Checker - Verify Ethereum addresses
+            <a href="https://ethereum.org/en/security" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+              Ethereum.org - Security Best Practices
+            </a>
+          </li>
+          <li className="flex items-center gap-2">
+            <ExternalLink className="w-4 h-4" />
+            <a href="https://www.coinbase.com/learn/crypto-basics/how-to-keep-crypto-safe" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+              Coinbase - How to Keep Crypto Safe
             </a>
           </li>
         </ul>
