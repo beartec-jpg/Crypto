@@ -29,24 +29,24 @@ export const SECURITY_REQUIREMENTS: Record<SecurityTier, Record<SecurityAction, 
     openWallet: [],
     viewBalance: [],
     receive: [],
-    send: ['passkey'],
-    viewSeed: ['password', 'passkey'],
+    send: ['passkey'], // Passkey only
+    viewSeed: ['password', 'passkey'], // Password + Passkey
     exportKeys: ['password', 'passkey'],
   },
   enhanced: {
     openWallet: ['passkey'],
     viewBalance: [],
     receive: [],
-    send: ['passkey'],
-    viewSeed: ['password', 'passkey'],
+    send: ['password', 'passkey'], // Password + Passkey (Bug 21 fix)
+    viewSeed: ['password', 'passkey'], // Password + Passkey
     exportKeys: ['password', 'passkey'],
   },
   maximum: {
     openWallet: ['pin', 'passkey'],
     viewBalance: [],
     receive: [],
-    send: ['pin', 'passkey'],
-    viewSeed: ['pin', 'password', 'passkey'],
+    send: ['pin', 'password', 'passkey'], // PIN + Password + Passkey (Bug 21 fix)
+    viewSeed: ['pin', 'password', 'passkey'], // PIN + Password + Passkey
     exportKeys: ['pin', 'password', 'passkey'],
   },
 };

@@ -51,6 +51,7 @@ interface SendFormProps {
   isPasskeyAuthenticated: boolean;
   onRequestPasskey: () => void;
   selectedChain: Chain;
+  onChainChange?: (chain: Chain) => void;
   onAddPendingTransaction?: (tx: Parameters<ReturnType<typeof usePendingTransactions>['addPendingTransaction']>[0]) => void;
   sovereignWallet?: any;
 }
@@ -60,6 +61,7 @@ export default function SendForm({
   isPasskeyAuthenticated,
   onRequestPasskey,
   selectedChain,
+  onChainChange,
   onAddPendingTransaction,
   sovereignWallet,
 }: SendFormProps) {
@@ -99,6 +101,26 @@ export default function SendForm({
   } | null>(null);
 
   const isLocked = securityManager.isWalletLocked();
+
+  // Helper function to calculate and format USD value - Bug 15 fix
+  const calculateUsdDisplay = (amount: string, token: Token | null): string | null => {
+    if (!amount || !token) return null;
+    
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) return null;
+    
+    const tokenUsdValue = token.usdValue || 0;
+    const tokenBalance = parseFloat(token.balance || '1');
+    
+    // Calculate price per token to avoid division by zero
+    const pricePerToken = tokenBalance > 0 ? tokenUsdValue / tokenBalance : 0;
+    const totalUsd = amountNum * pricePerToken;
+    
+    // Only return if we have a valid USD value
+    if (isNaN(totalUsd) || totalUsd === 0) return null;
+    
+    return totalUsd.toFixed(2);
+  };
 
   // Load tokens for selected chain
   useEffect(() => {
@@ -530,6 +552,34 @@ export default function SendForm({
           </div>
         )}
 
+        {/* Chain Selector - Bug 19 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Select Chain
+          </label>
+          <select
+            value={selectedChain}
+            onChange={(e) => {
+              const newChain = e.target.value as Chain;
+              if (onChainChange) {
+                onChainChange(newChain);
+              }
+              // Reset token selection when chain changes
+              setSelectedToken(null);
+              setAmount('');
+              setRecipient('');
+              setError(null);
+            }}
+            className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:outline-none"
+          >
+            <option value="ethereum">Ethereum (ETH)</option>
+            <option value="bsc">BNB Smart Chain (BNB)</option>
+            <option value="xrp">XRP Ledger (XRP)</option>
+            <option value="bitcoin">Bitcoin (BTC)</option>
+            <option value="solana">Solana (SOL)</option>
+          </select>
+        </div>
+
         {/* Token Selector */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -685,11 +735,14 @@ export default function SendForm({
               {selectedToken?.symbol || getChainSymbol(selectedChain)}
             </span>
           </div>
-          {amount && parseFloat(amount) > 0 && selectedToken && (
-            <p className="mt-1 text-sm text-gray-400">
-              ≈ ${(parseFloat(amount) * ((selectedToken.usdValue || 0) / parseFloat(selectedToken.balance || '1'))).toFixed(2)}
-            </p>
-          )}
+          {(() => {
+            const usdValue = calculateUsdDisplay(amount, selectedToken);
+            return usdValue ? (
+              <p className="mt-1 text-sm text-gray-400">
+                ≈ ${usdValue}
+              </p>
+            ) : null;
+          })()}
         </div>
 
         {/* XRP Destination Tag */}

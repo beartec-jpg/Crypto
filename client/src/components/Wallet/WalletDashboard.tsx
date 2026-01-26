@@ -518,9 +518,9 @@ To: ${tx.to}`;
                 {allTransactions.slice(0, 5).map((tx) => (
                   <div
                     key={tx.hash}
-                    className="group flex items-center justify-between p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 transition-colors"
+                    className="group flex flex-col md:flex-row md:items-center md:justify-between p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 transition-colors"
                   >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="flex items-center gap-3 flex-1 min-w-0 mb-2 md:mb-0">
                       <div
                         className={`p-2 rounded-full ${
                           tx.type === 'send'
@@ -548,9 +548,9 @@ To: ${tx.to}`;
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-2 md:gap-2">
                       {/* Amount */}
-                      <div className="text-right mr-2">
+                      <div className="text-left md:text-right md:mr-2">
                         <p className="font-mono font-medium">
                           {tx.type === 'send' ? '-' : '+'}
                           {tx.amount} {tx.token || CHAIN_CONFIG[tx.chain].symbol}
@@ -560,8 +560,8 @@ To: ${tx.to}`;
                         )}
                       </div>
 
-                      {/* Action Buttons (visible on hover) */}
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* Action Buttons - Always visible on mobile, hover on desktop */}
+                      <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         {/* Copy Button */}
                         <button
                           onClick={() => handleCopyTransaction(tx)}

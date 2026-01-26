@@ -298,32 +298,10 @@ export default function WalletPage() {
             )}
           </button>
 
-          {/* Chain Selector (only in send/receive modes) */}
-          {(mode === 'send' || mode === 'receive') && (
-            <select
-              value={selectedChain}
-              onChange={(e) => setSelectedChain(e.target.value as Chain)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-2 sm:px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[120px] sm:max-w-none"
-            >
-              <option value="ethereum">ETH</option>
-              <option value="bitcoin">BTC</option>
-              <option value="bsc">BSC</option>
-              <option value="xrp">XRP</option>
-              <option value="solana">SOL</option>
-            </select>
-          )}
-
-          {/* Network Indicator */}
-          <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-lg bg-gray-800">
-            <div className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span className="text-sm text-gray-300 hidden sm:inline">Mainnet</span>
-          </div>
-
           {/* Passkey Auth Status */}
           {isPasskeyAuthenticated || sovereignWallet ? (
             <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-lg bg-emerald-900/30 border border-emerald-700/50">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-sm text-emerald-400 hidden sm:inline">
+              <span className="text-sm text-emerald-400">
                 {sovereignWallet ? 'Sovereign Wallet' : 'Passkey Active'}
               </span>
             </div>
@@ -350,6 +328,18 @@ export default function WalletPage() {
                 {Math.floor(autoLockTime / 60)}:{(autoLockTime % 60).toString().padStart(2, '0')}
               </span>
             </div>
+          )}
+
+          {/* Logout Button - Bug 17 */}
+          {(isPasskeyAuthenticated || sovereignWallet) && (
+            <button
+              onClick={handleDisconnect}
+              className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors"
+              title="Logout"
+            >
+              <Lock className="w-4 h-4" />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
           )}
         </div>
 
@@ -443,30 +433,6 @@ export default function WalletPage() {
           </div>
         ) : (
           <>
-            {/* Connected Wallet Info */}
-            <div className="flex items-center justify-between bg-gray-800 rounded-xl p-4 mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400" />
-                <div>
-                  <p className="text-sm text-gray-400">
-                    {sovereignWallet ? 'Sovereign Wallet' : 'Connected'}
-                  </p>
-                  <p className="font-mono text-sm">
-                    {activeAddress?.slice(0, 10)}...{activeAddress?.slice(-4)}
-                  </p>
-                  <p className="text-xs text-gray-500 capitalize">
-                    {selectedChain} • Mainnet
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleDisconnect}
-                className="px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors"
-              >
-                Disconnect
-              </button>
-            </div>
-
             {/* Mode Navigation - RESPONSIVE */}
             {mode !== 'security' && (
               <div className="flex items-center gap-1 sm:gap-2 bg-gray-800 rounded-lg p-1 mb-6 overflow-x-auto">
@@ -554,6 +520,7 @@ export default function WalletPage() {
                   isPasskeyAuthenticated={isPasskeyAuthenticated}
                   onRequestPasskey={() => setShowPasskeyModal(true)}
                   selectedChain={selectedChain}
+                  onChainChange={setSelectedChain}
                   onAddPendingTransaction={addPendingTransaction}
                   sovereignWallet={sovereignWallet}
                 />

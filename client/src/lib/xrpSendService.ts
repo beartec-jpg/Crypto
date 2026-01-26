@@ -153,13 +153,24 @@ export async function buildXrpTransaction(
 
 /**
  * Sign XRP transaction
+ * Handles both XRP seed format (s...) and hex private key format
  */
 export function signXrpTransaction(
   tx: xrpl.Payment,
   privateKey: string
 ): string {
-  // Create wallet from private key (seed)
-  const wallet = xrpl.Wallet.fromSeed(privateKey);
+  let wallet: xrpl.Wallet;
+  
+  // Detect key format and create wallet accordingly
+  if (privateKey.startsWith('s')) {
+    // XRP seed format (sXXXXXX...)
+    wallet = xrpl.Wallet.fromSeed(privateKey);
+  } else if (/^[0-9a-fA-F]{64}$/.test(privateKey)) {
+    // Hex private key format (64 hex characters)
+    wallet = xrpl.Wallet.fromSecret(privateKey);
+  } else {
+    throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-character hex string.');
+  }
   
   // Sign the transaction
   const signed = wallet.sign(tx);
