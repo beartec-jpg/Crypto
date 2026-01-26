@@ -1,4 +1,4 @@
-// lib/tokenService.ts
+// client/src/lib/tokenService.ts
 // Multi-chain token management service
 
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
@@ -498,6 +498,69 @@ export async function fetchERC20TokenInfo(contractAddress: string, chain: 'ether
   } catch (error) {
     console.error('Error fetching ERC-20 token info:', error);
     throw new Error('Failed to fetch token information. Verify the contract address is valid.');
+  }
+}
+
+/**
+ * Fetch SPL token metadata from Solana blockchain
+ */
+export async function fetchSPLTokenInfo(mintAddress: string): Promise<{
+  name: string;
+  symbol: string;
+  decimals: number;
+  logoUrl?: string;
+}> {
+  try {
+    const HELIUS_KEY = import.meta.env.VITE_HELIUS_API_KEY || '';
+    const rpcUrl = HELIUS_KEY 
+      ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
+      : 'https://rpc.ankr.com/solana';
+
+    // Get token metadata using Metaplex standard
+    const response = await axios.post(rpcUrl, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getAccountInfo',
+      params: [
+        mintAddress,
+        { encoding: 'jsonParsed' },
+      ],
+    }, { timeout: 10000 });
+
+    if (!response.data.result?.value) {
+      throw new Error('Token mint not found');
+    }
+
+    const mintData = response.data.result.value.data.parsed.info;
+
+    // Try to fetch metadata from Metaplex
+    try {
+      const metadataResponse = await axios.get(
+        `https://api.metaplex.solana.com/v1/metadata/${mintAddress}`,
+        { timeout: 5000 }
+      );
+
+      if (metadataResponse.data) {
+        return {
+          name: metadataResponse.data.name || 'Unknown Token',
+          symbol: metadataResponse.data.symbol || mintAddress.slice(0, 8),
+          decimals: mintData.decimals || 9,
+          logoUrl: metadataResponse.data.image,
+        };
+      }
+    } catch (metadataError) {
+      console.warn('Failed to fetch Metaplex metadata:', metadataError);
+    }
+
+    // Fallback to basic info
+    return {
+      name: `Token ${mintAddress.slice(0, 8)}...`,
+      symbol: mintAddress.slice(0, 8),
+      decimals: mintData.decimals || 9,
+    };
+  } catch (error) {
+    console.error('Error fetching SPL token info:', error);
+    throw new Error('Failed to fetch token information. Verify the mint address is valid.');
   }
 }
 
