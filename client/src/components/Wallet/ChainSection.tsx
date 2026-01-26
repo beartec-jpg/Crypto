@@ -264,9 +264,21 @@ export default function ChainSection({
                         {hideBalances ? '••••••' : formatBalance(token.balance)}
                       </p>
                       {token.usdValue !== undefined && (
-                        <p className="text-xs text-gray-400">
-                          {hideBalances ? '••••' : formatUsd(token.usdValue)}
-                        </p>
+                        <div className="flex items-center gap-2 justify-end">
+                          <p className="text-xs text-gray-400">
+                            {hideBalances ? '••••' : formatUsd(token.usdValue)}
+                          </p>
+                          {token.priceChange24h !== undefined && (
+                            <span
+                              className={`text-xs ${
+                                token.priceChange24h >= 0 ? 'text-green-400' : 'text-red-400'
+                              }`}
+                            >
+                              {token.priceChange24h >= 0 ? '+' : ''}
+                              {token.priceChange24h.toFixed(2)}%
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
 

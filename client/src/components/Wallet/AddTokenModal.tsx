@@ -21,7 +21,7 @@ interface AddTokenModalProps {
 const CHAIN_LABELS = {
   ethereum: { name: 'Ethereum', standard: 'ERC-20', placeholder: '0x... (contract address)' },
   bsc: { name: 'BNB Smart Chain', standard: 'BEP-20', placeholder: '0x... (contract address)' },
-  xrp: { name: 'XRP Ledger', standard: 'XRPL Token', placeholder: 'Currency code (e.g., USD)' },
+  xrp: { name: 'XRP Ledger', standard: 'XRPL', placeholder: 'Currency code (e.g., USD)' },
   solana: { name: 'Solana', standard: 'SPL Token', placeholder: 'Mint address' },
   bitcoin: { name: 'Bitcoin', standard: 'N/A', placeholder: 'Bitcoin does not support tokens' },
 };
