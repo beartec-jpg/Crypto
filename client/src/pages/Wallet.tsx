@@ -76,11 +76,6 @@ export default function WalletPage() {
     }
   }, []);
 
-  const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
-  const { disconnect } = useDisconnect();
-  const { data: balance } = useBalance({ address });
-
   useEffect(() => {
     if (userId) {
       migrateWalletToUser(userId);
