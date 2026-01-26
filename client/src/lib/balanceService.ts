@@ -385,3 +385,57 @@ export function getCachedBalances(): ChainBalance[] | null {
     return null;
   }
 }
+
+/**
+ * Token balance interface for SPL tokens
+ */
+export interface SPLTokenBalance {
+  mint: string;
+  balance: number;
+  decimals: number;
+  uiAmount: number;
+}
+
+/**
+ * Fetch SPL token balances for a Solana wallet address
+ */
+export async function fetchSPLTokenBalances(walletAddress: string): Promise<SPLTokenBalance[]> {
+  try {
+    console.log('🔍 Fetching SPL token balances for:', walletAddress);
+    
+    // Import Solana Web3.js
+    const { Connection, PublicKey } = await import('@solana/web3.js');
+    const { TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
+    
+    // Create connection to Solana mainnet
+    const connection = new Connection('https://api.mainnet-beta.solana.com');
+    const pubkey = new PublicKey(walletAddress);
+    
+    // Fetch all token accounts owned by this wallet
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubkey, {
+      programId: TOKEN_PROGRAM_ID,
+    });
+    
+    console.log(`📦 Found ${tokenAccounts.value.length} SPL token accounts`);
+    
+    // Parse token balances
+    const balances: SPLTokenBalance[] = tokenAccounts.value
+      .map(account => {
+        const data = account.account.data.parsed.info;
+        return {
+          mint: data.mint,
+          balance: parseInt(data.tokenAmount.amount),
+          decimals: data.tokenAmount.decimals,
+          uiAmount: data.tokenAmount.uiAmount || 0,
+        };
+      })
+      .filter(token => token.uiAmount > 0); // Only include tokens with non-zero balance
+    
+    console.log('✅ SPL token balances fetched:', balances.length);
+    return balances;
+    
+  } catch (error: any) {
+    console.error('❌ Failed to fetch SPL token balances:', error.message);
+    return [];
+  }
+}
