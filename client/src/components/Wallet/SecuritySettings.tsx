@@ -22,6 +22,12 @@ interface SecuritySettingsProps {
 
 type SetupMode = 'pin-setup' | 'pin-confirm' | 'emergency-reset' | null;
 
+type ScanCheck = {
+  id: string;
+  label: string;
+  status: 'pending' | 'checking' | 'complete';
+};
+
 export default function SecuritySettings({ userId, onSecurityChange }: SecuritySettingsProps) {
   const [currentTier, setCurrentTier] = useState<SecurityTier>('standard');
   const [setupMode, setSetupMode] = useState<SetupMode>(null);
@@ -37,6 +43,10 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
   const [scanResult, setScanResult] = useState<SecurityScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
+  
+  // Staged animation state for security scan
+  const [scanChecks, setScanChecks] = useState<ScanCheck[]>([]);
+  const [currentCheckIndex, setCurrentCheckIndex] = useState(-1);
 
   useEffect(() => {
     const settings = getSecuritySettings(userId);
@@ -73,7 +83,7 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
           subtitle: 'Default security for most users',
           features: [
             'Auto-login when authenticated',
-            'Passkey required to send transactions',
+            'Passkey only to send transactions',
             'Password + Passkey for seed phrase access',
             'Balanced security and convenience',
           ],
@@ -84,8 +94,8 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
           subtitle: 'Additional protection layer',
           features: [
             'Passkey required to open wallet',
-            'Auto-lock after inactivity',
-            'All standard security features',
+            'Password + Passkey to send transactions',
+            'Password + Passkey for seed phrase access',
             'Recommended for active traders',
           ],
         };
@@ -94,10 +104,10 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
           title: 'MAXIMUM',
           subtitle: 'Highest security for large holdings',
           features: [
-            'PIN + Passkey for all wallet actions',
+            'PIN + Passkey to open wallet',
+            'PIN + Password + Passkey to send transactions',
             'PIN + Password + Passkey for seed phrase',
             'Rate-limited PIN attempts (5 max)',
-            '15-minute lockout after failed attempts',
           ],
         };
     }
@@ -242,18 +252,62 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
     setIsScanning(true);
     setError(null);
     setSuccess(null);
+    setCurrentCheckIndex(-1);
+    
+    // Define the checks to show with staged animation
+    const checks: ScanCheck[] = [
+      { id: 'extensions', label: 'Checking browser extensions...', status: 'pending' },
+      { id: 'devtools', label: 'Checking DevTools...', status: 'pending' },
+      { id: 'crypto', label: 'Validating crypto APIs...', status: 'pending' },
+      { id: 'clipboard', label: 'Scanning clipboard access...', status: 'pending' },
+    ];
+    
+    setScanChecks(checks);
+    
+    // Animate through each check
+    for (let i = 0; i < checks.length; i++) {
+      setCurrentCheckIndex(i);
+      
+      // Update to checking status
+      setScanChecks(prev => prev.map((check, idx) => 
+        idx === i ? { ...check, status: 'checking' as const } : check
+      ));
+      
+      // Wait 1 second
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Update to complete status
+      setScanChecks(prev => prev.map((check, idx) => 
+        idx === i ? { ...check, status: 'complete' as const } : check
+      ));
+      
+      // Small delay before fade out (except for last item)
+      if (i < checks.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+    
+    // Wait a bit before showing final result
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     try {
+      // Run actual security scan
       const result = await runSecurityScan();
       setScanResult(result);
+      
+      // Reset animation state
+      setCurrentCheckIndex(-1);
+      setScanChecks([]);
       
       // Show modal with scan results
       if (!result.safe || result.warnings.length > 0) {
         setShowScanModal(true);
       } else {
-        setSuccess('✅ Security scan passed - no threats detected');
+        setSuccess('✅ No threats detected');
       }
     } catch (err: any) {
+      setCurrentCheckIndex(-1);
+      setScanChecks([]);
       setError(err.message || 'Failed to run security scan');
     } finally {
       setIsScanning(false);
@@ -422,6 +476,31 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
               </>
             )}
           </button>
+
+          {/* Staged Animation for Security Checks - Bug 20 */}
+          {isScanning && currentCheckIndex >= 0 && scanChecks.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {scanChecks.map((check, index) => {
+                // Only show current check
+                if (index !== currentCheckIndex) return null;
+                
+                return (
+                  <div
+                    key={check.id}
+                    className="p-3 rounded-lg bg-gray-800 border border-gray-700 flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300"
+                  >
+                    {check.status === 'checking' && (
+                      <div className="w-5 h-5 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin flex-shrink-0" />
+                    )}
+                    {check.status === 'complete' && (
+                      <Check className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                    )}
+                    <span className="text-sm text-gray-300">{check.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {scanResult && !showScanModal && (
             <div className={`mt-4 p-3 rounded-lg border ${
