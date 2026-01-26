@@ -352,17 +352,22 @@ function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
  * FIXED: Now uses ripple-keypairs to match signing libraries
  */
 function deriveXRPAddress(privateKeyBytes: Uint8Array): string {
-  // XRP uses the first 16 bytes as entropy to generate the seed
-  // This follows the standard XRPL wallet derivation
+  // XRP Ledger standard: Use first 16 bytes as entropy to generate the seed
+  // This follows the XRPL wallet specification where seeds are derived from
+  // 16 bytes (128 bits) of entropy. The BIP44-derived private key provides
+  // this entropy, ensuring deterministic address derivation while maintaining
+  // compatibility with standard XRPL signing libraries.
   const entropy = privateKeyBytes.slice(0, 16);
   
   // Generate seed from entropy using standard ripple-keypairs
-  const seed = generateSeed({ entropy: entropy, algorithm: 'ecdsa-secp256k1' });
+  // The seed is encoded in base58 format (starts with 's') per XRPL spec
+  const seed = generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
   
   // Derive keypair from seed using standard XRPL method
+  // This ensures the derived keys match what signing libraries produce
   const keypair = deriveKeypair(seed);
   
-  // Derive address from public key
+  // Derive address from public key using standard XRPL encoding
   const address = deriveAddress(keypair.publicKey);
   
   return address;
@@ -1148,8 +1153,8 @@ export async function getLegacyXRPAddressForRecovery(
     // Current correct address
     const currentAddress = wallet.addresses.xrp;
     
-    console.log('🔍 Legacy XRP address:', legacyAddress);
-    console.log('🔍 Current XRP address:', currentAddress);
+    console.log('🔍 Legacy XRP address:', legacyAddress.slice(0, 10) + '...' + legacyAddress.slice(-4));
+    console.log('🔍 Current XRP address:', currentAddress.slice(0, 10) + '...' + currentAddress.slice(-4));
     
     return {
       legacyAddress,
