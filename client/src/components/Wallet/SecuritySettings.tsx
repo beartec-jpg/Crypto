@@ -235,7 +235,7 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
       await unlockWallet(userId, resetPassword);
       
       // Password is correct, proceed with reset
-      emergencySecurityReset(userId);
+      await emergencySecurityReset(userId, resetPassword);
       setCurrentTier('standard');
       setShowResetConfirm(false);
       setResetPassword('');
@@ -269,7 +269,7 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
       setCurrentCheckIndex(i);
       
       // Update to checking status
-      setScanChecks(prev => prev.map((check, idx) => 
+      setScanChecks(prev => prev.map((check: ScanCheck, idx: number) => 
         idx === i ? { ...check, status: 'checking' as const } : check
       ));
       
@@ -277,7 +277,7 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Update to complete status
-      setScanChecks(prev => prev.map((check, idx) => 
+      setScanChecks(prev => prev.map((check: ScanCheck, idx: number) => 
         idx === i ? { ...check, status: 'complete' as const } : check
       ));
       
