@@ -5,14 +5,14 @@ import { Client, Wallet as XRPLWallet, dropsToXrp, xrpToDrops } from 'xrpl';
 import { xrplService } from './xrpService';
 
 export interface XRPReserveInfo {
-  baseReserve: number;        // 10 XRP (base account reserve)
-  ownerReserve: number;        // 2 XRP per object
-  currentObjects: number;      // Current trustlines + offers + escrows + etc
-  totalReserve: number;        // Total locked XRP
-  totalBalance: number;        // Total XRP in account
-  availableBalance: number;    // Balance - reserve (spendable)
-  canAddTrustline: boolean;    // Has 2+ XRP available
-  trustlineCount: number;      // Number of active trustlines
+  baseReserve: number;
+  ownerReserve: number;
+  currentObjects: number;
+  totalReserve: number;
+  totalBalance: number;
+  availableBalance: number;
+  canAddTrustline: boolean;
+  trustlineCount: number;
 }
 
 /**
@@ -32,7 +32,6 @@ export async function calculateXRPReserve(address: string): Promise<XRPReserveIn
     const totalBalance = parseFloat(dropsToXrp(accountData.Balance));
     const ownerCount = accountData.OwnerCount || 0;
     
-    // Get trustline count
     let trustlineCount = 0;
     try {
       const lines = await client.request({
@@ -45,8 +44,8 @@ export async function calculateXRPReserve(address: string): Promise<XRPReserveIn
       trustlineCount = 0;
     }
     
-    const baseReserve = 10;  // 10 XRP base
-    const ownerReserve = 2;   // 2 XRP per object
+    const baseReserve = 10;
+    const ownerReserve = 2;
     const totalReserve = baseReserve + (ownerCount * ownerReserve);
     const availableBalance = Math.max(0, totalBalance - totalReserve);
     
@@ -68,21 +67,35 @@ export async function calculateXRPReserve(address: string): Promise<XRPReserveIn
 
 /**
  * Set a trustline for an XRPL token
+ * Supports both XRP seed format (s...) and hex private keys
  */
 export async function setXRPLTrustline(
-  privateKeyHex: string,
+  privateKey: string,
   currency: string,
   issuer: string,
   limit: string = '999999999'
 ): Promise<{ success: boolean; txHash: string; error?: string }> {
   try {
-    // Convert hex private key to seed format
-    const wallet = XRPLWallet.fromSeed(privateKeyHex);
+    let wallet: XRPLWallet;
+    
+    // Detect key format and create wallet accordingly
+    if (privateKey.startsWith('s')) {
+      // XRP seed format (starts with 's')
+      console.log('[XRP Trustline] Using seed format');
+      wallet = XRPLWallet.fromSeed(privateKey);
+    } else if (/^[0-9a-fA-F]{64}$/.test(privateKey)) {
+      // Hex private key (64 hex characters)
+      console.log('[XRP Trustline] Using hex format');
+      wallet = XRPLWallet.fromEntropy(Buffer.from(privateKey, 'hex'));
+    } else {
+      throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-char hex.');
+    }
+    
     const client = await xrplService.getClient(true);
     
     // Prepare TrustSet transaction
     const trustSet = {
-      TransactionType: 'TrustSet',
+      TransactionType: 'TrustSet' as const,
       Account: wallet.address,
       LimitAmount: {
         currency,
@@ -91,13 +104,8 @@ export async function setXRPLTrustline(
       },
     };
     
-    // Auto-fill transaction (adds fee, sequence, etc)
     const prepared = await client.autofill(trustSet);
-    
-    // Sign transaction
     const signed = wallet.sign(prepared);
-    
-    // Submit and wait for validation
     const result = await client.submitAndWait(signed.tx_blob);
     
     if (result.result.meta && typeof result.result.meta === 'object' && 'TransactionResult' in result.result.meta) {
@@ -130,19 +138,30 @@ export async function setXRPLTrustline(
 
 /**
  * Remove a trustline (balance must be 0)
+ * Supports both XRP seed format (s...) and hex private keys
  */
 export async function removeXRPLTrustline(
-  privateKeyHex: string,
+  privateKey: string,
   currency: string,
   issuer: string
 ): Promise<{ success: boolean; txHash: string; error?: string }> {
   try {
-    const wallet = XRPLWallet.fromSeed(privateKeyHex);
+    let wallet: XRPLWallet;
+    
+    // Detect key format
+    if (privateKey.startsWith('s')) {
+      wallet = XRPLWallet.fromSeed(privateKey);
+    } else if (/^[0-9a-fA-F]{64}$/.test(privateKey)) {
+      wallet = XRPLWallet.fromEntropy(Buffer.from(privateKey, 'hex'));
+    } else {
+      throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-char hex.');
+    }
+    
     const client = await xrplService.getClient(true);
     
     // Set limit to 0 to remove trustline
     const trustSet = {
-      TransactionType: 'TrustSet',
+      TransactionType: 'TrustSet' as const,
       Account: wallet.address,
       LimitAmount: {
         currency,
