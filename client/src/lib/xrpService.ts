@@ -19,8 +19,10 @@ class XRPLService {
   
   /**
    * Get or create WebSocket client connection
+   * Made public to allow access from xrpReserveService and tokenService
+   * which need to interact directly with the XRPL client for trustlines and token queries
    */
-  private async getClient(useMainnet: boolean): Promise<Client> {
+  async getClient(useMainnet: boolean): Promise<Client> {
     const wsUrl = useMainnet ? this.mainnetUrl : this.testnetUrl;
     
     // Return existing connected client if same network
@@ -82,8 +84,8 @@ class XRPLService {
         
         if (response.result?.account_data) {
           const accountData = response.result.account_data;
-          const balanceDrops = accountData.Balance;
-          const balanceXRP = dropsToXrp(balanceDrops);
+          const balanceDrops = String(accountData.Balance);
+          const balanceXRP = String(dropsToXrp(balanceDrops));
           
           console.log('✅ XRP Balance:', balanceXRP, 'XRP');
           

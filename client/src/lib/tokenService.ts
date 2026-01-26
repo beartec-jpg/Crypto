@@ -21,6 +21,7 @@ export interface Token {
   chain: Chain;
   standard: TokenStandard;
   contractAddress?: string;
+  mintAddress?: string; // For Solana SPL tokens (Solana's equivalent to ERC-20 contract address)
   symbol: string;
   name: string;
   decimals: number;
@@ -135,9 +136,15 @@ export async function fetchERC20TokenInfo(contractAddress: string, chain: 'ether
       'https://ethereum.publicnode.com',
     ],
     bsc: [
-      'https://bsc-dataseed.binance.org',
+      'https://bsc-dataseed.binance.org/',
+      'https://bsc-dataseed1.binance.org/',
+      'https://bsc-dataseed2.binance.org/',
+      'https://bsc-dataseed3.binance.org/',
+      'https://bsc-dataseed4.binance.org/',
       'https://rpc.ankr.com/bsc',
-      'https://bsc.publicnode.com',
+      'https://bsc-rpc.publicnode.com',
+      'https://bsc.nodereal.io',
+      'https://binance.llamarpc.com',
     ],
   };
 
@@ -176,7 +183,12 @@ export async function fetchERC20TokenInfo(contractAddress: string, chain: 'ether
     } catch (error: any) {
       console.warn(`[Token Verify] RPC ${rpcUrl} failed:`, error.message);
       lastError = error;
-      // Continue to next RPC endpoint
+      
+      // Add delay between retries to avoid rate limiting
+      // Using 500ms as a conservative delay to ensure reliability with BSC nodes
+      if (i < endpoints.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
   }
 
@@ -480,4 +492,127 @@ export async function ensureNativeTokens(walletId: string): Promise<Token[]> {
   }
   
   return tokens;
+}
+
+/**
+ * Fetch token price and 24h change from CoinGecko
+ * Supports ERC-20, BEP-20, SPL, and XRPL tokens
+ */
+export async function fetchTokenPrice(token: Token): Promise<{
+  usdPrice?: number;
+  priceChange24h?: number;
+}> {
+  try {
+    // Handle different token standards
+    if (token.standard === 'ERC-20' && token.contractAddress) {
+      // Ethereum tokens
+      const response = await axios.get(
+        `https://api.coingecko.com/api/v3/simple/token_price/ethereum`,
+        {
+          params: {
+            contract_addresses: token.contractAddress,
+            vs_currencies: 'usd',
+            include_24hr_change: 'true',
+          },
+          timeout: 5000,
+        }
+      );
+      
+      const data = response.data[token.contractAddress.toLowerCase()];
+      if (data) {
+        return {
+          usdPrice: data.usd,
+          priceChange24h: data.usd_24h_change,
+        };
+      }
+    } else if (token.standard === 'BEP-20' && token.contractAddress) {
+      // BSC tokens
+      const response = await axios.get(
+        `https://api.coingecko.com/api/v3/simple/token_price/binance-smart-chain`,
+        {
+          params: {
+            contract_addresses: token.contractAddress,
+            vs_currencies: 'usd',
+            include_24hr_change: 'true',
+          },
+          timeout: 5000,
+        }
+      );
+      
+      const data = response.data[token.contractAddress.toLowerCase()];
+      if (data) {
+        return {
+          usdPrice: data.usd,
+          priceChange24h: data.usd_24h_change,
+        };
+      }
+    } else if (token.standard === 'SPL' && token.mintAddress) {
+      // Solana tokens
+      const mintAddress = token.mintAddress;
+      const response = await axios.get(
+        `https://api.coingecko.com/api/v3/simple/token_price/solana`,
+        {
+          params: {
+            contract_addresses: mintAddress,
+            vs_currencies: 'usd',
+            include_24hr_change: 'true',
+          },
+          timeout: 5000,
+        }
+      );
+      
+      const data = response.data[mintAddress.toLowerCase()];
+      if (data) {
+        return {
+          usdPrice: data.usd,
+          priceChange24h: data.usd_24h_change,
+        };
+      }
+    } else if (token.standard === 'XRPL' && token.currencyCode && token.issuer) {
+      // XRPL tokens - CoinGecko doesn't have comprehensive XRPL token support
+      // This is intentionally returning undefined as there's no reliable price API for XRPL tokens
+      // Users can still add and track these tokens, but price data won't be available
+      return {
+        usdPrice: undefined,
+        priceChange24h: undefined,
+      };
+    }
+    
+    return {
+      usdPrice: undefined,
+      priceChange24h: undefined,
+    };
+  } catch (error) {
+    console.warn(`Failed to fetch price for ${token.symbol}:`, error);
+    return {
+      usdPrice: undefined,
+      priceChange24h: undefined,
+    };
+  }
+}
+
+/**
+ * Update token prices for all tokens
+ */
+export async function updateTokenPrices(tokens: Token[]): Promise<Token[]> {
+  const updatedTokens = await Promise.all(
+    tokens.map(async (token) => {
+      // Skip native tokens - they get prices from native balance service
+      if (token.isNative) {
+        return token;
+      }
+      
+      const priceData = await fetchTokenPrice(token);
+      
+      return {
+        ...token,
+        usdValue: priceData.usdPrice && token.balance 
+          ? priceData.usdPrice * parseFloat(token.balance)
+          : token.usdValue,
+        priceChange24h: priceData.priceChange24h,
+      };
+    })
+  );
+  
+  return updatedTokens;
 }

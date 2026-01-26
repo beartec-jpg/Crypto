@@ -29,6 +29,11 @@ export async function calculateXRPReserve(address: string): Promise<XRPReserveIn
     });
     
     const accountData = accountInfo.result.account_data;
+    // Note: XRPL library type definitions are inconsistent across versions.
+    // accountData.Balance can be typed as number or string depending on the version,
+    // but dropsToXrp() expects BigNumber.Value which includes both types.
+    // Using @ts-ignore here is intentional until the XRPL library stabilizes its types.
+    // @ts-ignore - XRPL type definitions inconsistency
     const totalBalance = parseFloat(dropsToXrp(accountData.Balance));
     const ownerCount = accountData.OwnerCount || 0;
     
@@ -87,6 +92,11 @@ export async function setXRPLTrustline(
       // Hex private key (64 hex characters)
       console.log('[XRP Trustline] Using hex format');
       wallet = XRPLWallet.fromEntropy(Buffer.from(privateKey, 'hex'));
+    } else if (/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
+      // Hex private key with 0x prefix
+      console.log('[XRP Trustline] Using hex format with 0x prefix');
+      const hexWithoutPrefix = privateKey.slice(2);
+      wallet = XRPLWallet.fromEntropy(Buffer.from(hexWithoutPrefix, 'hex'));
     } else {
       throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-char hex.');
     }
@@ -153,6 +163,10 @@ export async function removeXRPLTrustline(
       wallet = XRPLWallet.fromSeed(privateKey);
     } else if (/^[0-9a-fA-F]{64}$/.test(privateKey)) {
       wallet = XRPLWallet.fromEntropy(Buffer.from(privateKey, 'hex'));
+    } else if (/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
+      // Hex private key with 0x prefix
+      const hexWithoutPrefix = privateKey.slice(2);
+      wallet = XRPLWallet.fromEntropy(Buffer.from(hexWithoutPrefix, 'hex'));
     } else {
       throw new Error('Invalid private key format. Expected XRP seed (s...) or 64-char hex.');
     }
