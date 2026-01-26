@@ -37,6 +37,14 @@ export interface UTXOSelection {
 const DUST_THRESHOLD = 546; // sats
 const BLOCKSTREAM_API = 'https://blockstream.info/api';
 
+// Bitcoin address validation patterns
+const BITCOIN_ADDRESS_PATTERNS = [
+  /^1[a-km-zA-HJ-NP-Z1-9]{25,34}$/,        // P2PKH (Legacy, starts with 1)
+  /^3[a-km-zA-HJ-NP-Z1-9]{25,34}$/,        // P2SH (Legacy, starts with 3)
+  /^bc1q[a-z0-9]{38,58}$/,                 // Native SegWit (Bech32, starts with bc1q)
+  /^bc1p[a-z0-9]{58}$/,                    // Taproot (Bech32m, starts with bc1p)
+];
+
 // Conversion utilities
 export function satsToBTC(sats: number): number {
   return sats / 100000000;
@@ -158,14 +166,7 @@ export function validateBitcoinAddress(address: string): boolean {
   } catch (error) {
     // Additional fallback check for common formats if library fails
     // This ensures compatibility even if library version varies
-    const validPatterns = [
-      /^1[a-km-zA-HJ-NP-Z1-9]{25,34}$/,        // P2PKH (Legacy, starts with 1)
-      /^3[a-km-zA-HJ-NP-Z1-9]{25,34}$/,        // P2SH (Legacy, starts with 3)
-      /^bc1q[a-z0-9]{38,58}$/,                 // Native SegWit (Bech32, starts with bc1q)
-      /^bc1p[a-z0-9]{58}$/,                    // Taproot (Bech32m, starts with bc1p)
-    ];
-    
-    return validPatterns.some(pattern => pattern.test(address));
+    return BITCOIN_ADDRESS_PATTERNS.some(pattern => pattern.test(address));
   }
 }
 

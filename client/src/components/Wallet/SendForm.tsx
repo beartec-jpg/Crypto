@@ -102,6 +102,26 @@ export default function SendForm({
 
   const isLocked = securityManager.isWalletLocked();
 
+  // Helper function to calculate and format USD value - Bug 15 fix
+  const calculateUsdDisplay = (amount: string, token: Token | null): string | null => {
+    if (!amount || !token) return null;
+    
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) return null;
+    
+    const tokenUsdValue = token.usdValue || 0;
+    const tokenBalance = parseFloat(token.balance || '1');
+    
+    // Calculate price per token to avoid division by zero
+    const pricePerToken = tokenBalance > 0 ? tokenUsdValue / tokenBalance : 0;
+    const totalUsd = amountNum * pricePerToken;
+    
+    // Only return if we have a valid USD value
+    if (isNaN(totalUsd) || totalUsd === 0) return null;
+    
+    return totalUsd.toFixed(2);
+  };
+
   // Load tokens for selected chain
   useEffect(() => {
     async function loadTokens() {
@@ -715,23 +735,13 @@ export default function SendForm({
               {selectedToken?.symbol || getChainSymbol(selectedChain)}
             </span>
           </div>
-          {amount && parseFloat(amount) > 0 && selectedToken && (() => {
-            const amountNum = parseFloat(amount);
-            const tokenUsdValue = selectedToken.usdValue || 0;
-            const tokenBalance = parseFloat(selectedToken.balance || '1');
-            
-            // Calculate price per token to avoid division by zero
-            const pricePerToken = tokenBalance > 0 ? tokenUsdValue / tokenBalance : 0;
-            const totalUsd = amountNum * pricePerToken;
-            
-            // Only show if we have a valid USD value
-            if (isNaN(totalUsd) || totalUsd === 0) return null;
-            
-            return (
+          {(() => {
+            const usdValue = calculateUsdDisplay(amount, selectedToken);
+            return usdValue ? (
               <p className="mt-1 text-sm text-gray-400">
-                ≈ ${totalUsd.toFixed(2)}
+                ≈ ${usdValue}
               </p>
-            );
+            ) : null;
           })()}
         </div>
 
