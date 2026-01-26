@@ -13,12 +13,15 @@ import PasskeyAuthModal from '@/components/Wallet/PasskeyAuthModal';
 import PinEntryModal from '@/components/Wallet/PinEntryModal';
 import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
-import { getCurrentWallet, migrateWalletToUser } from '@/lib/walletService';
+import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements } from '@/lib/securityService';
-import { getWalletTokens, type Token } from '@/lib/tokenService';
+import { getWalletTokens, clearWalletTokens, type Token } from '@/lib/tokenService';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import type { Chain } from '@/lib/balanceService';
 
@@ -27,6 +30,7 @@ type WalletMode = 'dashboard' | 'send' | 'receive' | 'settings' | 'security';
 export default function WalletPage() {
   const { user } = useUser();
   const userId = user?.id || '';
+  const { toast } = useToast();
   
   const [mode, setMode] = useState<WalletMode>('dashboard');
   const [hideBalances, setHideBalances] = useState(true);
@@ -47,6 +51,12 @@ export default function WalletPage() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingWallet, setPendingWallet] = useState<any>(null);
   const [authStep, setAuthStep] = useState<'none' | 'pin' | 'passkey' | 'complete'>('none');
+
+  // Delete wallet states
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const { transactions: pendingTransactions, addPendingTransaction, removeTransaction } = usePendingTransactions();
 
@@ -70,7 +80,6 @@ export default function WalletPage() {
       setSelectedChain(chain as Chain);
     }
 
-    // Store tokenId for later use when tokens are loaded
     if (tokenId) {
       sessionStorage.setItem('pendingTokenSelection', tokenId);
     }
@@ -188,11 +197,9 @@ export default function WalletPage() {
     completeWalletUnlock();
   };
 
-  // FIXED: Proper authentication flow for header button
   const handleAuthenticateClick = () => {
     if (!userId) return;
     
-    // Check security requirements properly
     const requirements = getSecurityRequirements(userId, 'openWallet');
     
     if (requirements.includes('pin')) {
@@ -202,7 +209,6 @@ export default function WalletPage() {
       setAuthStep('passkey');
       setShowPasskeyModal(true);
     } else {
-      // No requirements (Tier 1) - just unlock
       completeWalletUnlock();
     }
   };
@@ -231,7 +237,6 @@ export default function WalletPage() {
     setSelectedToken(token);
     setSelectedChain(token.chain);
 
-    // Update URL with token info
     const params = new URLSearchParams();
     params.set('tab', 'send');
     params.set('chain', token.chain);
@@ -245,11 +250,6 @@ export default function WalletPage() {
     } else {
       setMode('send');
     }
-  };
-
-  const handleSend = async (data: any) => {
-    // Send transaction logic
-    console.log('Sending transaction:', data);
   };
 
   const handleBitcoinSendSuccess = (txid: string) => {
@@ -284,11 +284,51 @@ export default function WalletPage() {
     setMode('dashboard');
   };
 
+  // Delete wallet handler
+  const handleDeleteWallet = async () => {
+    if (!sovereignWallet || !user?.id) return;
+    
+    setIsDeleting(true);
+    setDeleteError('');
+    
+    try {
+      // Verify password
+      const { unlockWallet } = await import('@/lib/walletService');
+      try {
+        await unlockWallet(sovereignWallet.id, deletePassword);
+      } catch (error) {
+        setDeleteError('Invalid password');
+        setIsDeleting(false);
+        return;
+      }
+      
+      // Delete wallet and tokens
+      await deleteWallet(sovereignWallet.id, user.id);
+      await clearWalletTokens(sovereignWallet.id);
+      
+      // Clear state
+      setSovereignWallet(null);
+      setIsPasskeyAuthenticated(false);
+      setIsWalletUnlocked(false);
+      setShowDeleteConfirm(false);
+      
+      toast({
+        title: "Wallet Deleted",
+        description: "Your wallet has been permanently deleted.",
+      });
+      
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (error: any) {
+      setDeleteError(error.message || 'Failed to delete wallet');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const isWalletConnected = isConnected || (sovereignWallet !== null && isWalletUnlocked);
   const activeAddress = address || (sovereignWallet?.addresses[selectedChain] as `0x${string}` | undefined);
 
-  const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
-    return (
+  return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Security Banner */}
       <div className="bg-gradient-to-r from-emerald-900/50 to-cyan-900/50 border-b border-emerald-700/30">
@@ -311,9 +351,8 @@ export default function WalletPage() {
           />
         </div>
 
-        {/* Controls Row - RESPONSIVE */}
+        {/* Controls Row */}
         <div className="flex items-center justify-center gap-2 sm:gap-4 flex-wrap mb-8 px-2">
-          {/* Privacy Toggle */}
           <button
             onClick={() => setHideBalances(!hideBalances)}
             className="flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
@@ -326,7 +365,6 @@ export default function WalletPage() {
             )}
           </button>
 
-          {/* Passkey Auth Status */}
           {isPasskeyAuthenticated || sovereignWallet ? (
             <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-lg bg-emerald-900/30 border border-emerald-700/50">
               <span className="text-sm text-emerald-400">
@@ -344,7 +382,6 @@ export default function WalletPage() {
             </button>
           )}
 
-          {/* Auto-Lock Indicator */}
           {(isPasskeyAuthenticated || sovereignWallet) && (
             <div 
               className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-lg bg-gray-800 text-xs"
@@ -358,7 +395,6 @@ export default function WalletPage() {
             </div>
           )}
 
-          {/* Logout Button - Bug 17 */}
           {(isPasskeyAuthenticated || sovereignWallet) && (
             <button
               onClick={handleDisconnect}
@@ -374,7 +410,6 @@ export default function WalletPage() {
         {/* Connection Status */}
         {!isWalletConnected ? (
           <div>
-            {/* Show locked state for Tier 2/3 when not unlocked */}
             {pendingWallet && !isWalletUnlocked ? (
               <div className="bg-gray-800 rounded-2xl p-8 mb-8 text-center">
                 <Lock className="w-16 h-16 mx-auto text-amber-400 mb-4" />
@@ -442,7 +477,6 @@ export default function WalletPage() {
                   )}
                 </div>
 
-                {/* Security Notice */}
                 <div className="mt-8 p-4 rounded-xl bg-gray-900/50 border border-gray-700 max-w-2xl mx-auto">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -461,7 +495,7 @@ export default function WalletPage() {
           </div>
         ) : (
           <>
-            {/* Mode Navigation - RESPONSIVE */}
+                        {/* Mode Navigation - RESPONSIVE */}
             {mode !== 'security' && (
               <div className="flex items-center gap-1 sm:gap-2 bg-gray-800 rounded-lg p-1 mb-6 overflow-x-auto">
                 <button
@@ -555,7 +589,11 @@ export default function WalletPage() {
               )}
 
               {mode === 'settings' && (
-                <SettingsSection sovereignWallet={sovereignWallet} userId={userId} />
+                <SettingsSection 
+                  sovereignWallet={sovereignWallet} 
+                  userId={userId}
+                  onDeleteWallet={() => setShowDeleteConfirm(true)}
+                />
               )}
 
               {mode === 'security' && (
@@ -598,7 +636,7 @@ export default function WalletPage() {
         />
       )}
 
-      {/* PIN Entry Modal for Tier 3 */}
+      {/* PIN Entry Modal */}
       {showPinModal && userId && (
         <PinEntryModal
           userId={userId}
@@ -617,12 +655,92 @@ export default function WalletPage() {
           userId={userId}
         />
       )}
+
+      {/* Delete Wallet Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="bg-gray-900 border border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-400">
+              <AlertTriangle className="w-5 h-5" />
+              Delete Wallet - Are You Sure?
+            </DialogTitle>
+            <DialogDescription className="text-gray-400">
+              This will permanently delete your wallet and all associated data.
+              You will need your recovery phrase to restore access to your funds.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
+              <p className="text-sm text-yellow-400 font-medium mb-2">
+                ⚠️ Warning: This action cannot be undone
+              </p>
+              <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
+                <li>Your wallet will be permanently deleted</li>
+                <li>All added tokens will be removed</li>
+                <li>You will need your recovery phrase to restore access</li>
+                <li>Make sure you have backed up your recovery phrase</li>
+              </ul>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Enter your password to confirm:
+              </label>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                disabled={isDeleting}
+              />
+            </div>
+            
+            {deleteError && (
+              <div className="text-sm text-red-400 bg-red-900/20 border border-red-500/30 rounded p-2">
+                {deleteError}
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                setDeletePassword('');
+                setDeleteError('');
+              }}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteWallet}
+              disabled={!deletePassword || isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Wallet'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 // Settings Section Component
-function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; userId: string }) {
+function SettingsSection({ 
+  sovereignWallet, 
+  userId,
+  onDeleteWallet 
+}: { 
+  sovereignWallet: any; 
+  userId: string;
+  onDeleteWallet: () => void;
+}) {
   const [showMnemonicWarning, setShowMnemonicWarning] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'security'>('general');
@@ -713,7 +831,6 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
               </div>
             </div>
 
-            {/* Auto-Lock Setting - UPDATED WITH CONTROLS */}
             <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-700">
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -723,7 +840,6 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
               </div>
               
-              {/* Timer Options */}
               <div className="flex flex-wrap gap-2 mt-3">
                 {[1, 2, 5, 10, 15].map((mins) => (
                   <button
@@ -791,6 +907,30 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
               </div>
             </div>
           )}
+
+          {/* Delete Wallet Section */}
+          {sovereignWallet && (
+            <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-6 mt-6">
+              <div className="flex items-start gap-4">
+                <AlertTriangle className="w-6 h-6 text-red-400 flex-shrink-0 mt-1" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-red-400 mb-2">
+                    Delete Wallet
+                  </h3>
+                  <p className="text-sm text-gray-400 mb-4">
+                    Permanently delete your wallet and all associated data. This action cannot be undone.
+                    Make sure you have backed up your recovery phrase.
+                  </p>
+                  <button
+                    onClick={onDeleteWallet}
+                    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition-colors"
+                  >
+                    Delete Wallet
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -800,4 +940,3 @@ function SettingsSection({ sovereignWallet, userId }: { sovereignWallet: any; us
     </div>
   );
 }
-  
