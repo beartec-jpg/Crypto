@@ -5,10 +5,12 @@ import { MenuDragHandle } from './MenuDragHandle';
 interface TrendlineMenuProps {
   position: { x: number; y: number };
   trendlineColor?: string;
+  opacity: number;
   onDelete: () => void;
   onToggleColorSubmenu: () => void;
   onToggleExtendSubmenu: () => void;
   onToggleLabelSubmenu: () => void;
+  onOpacityChange: (value: number) => void;
   onSaveAsFavorite: () => void;
   onDragStart: (e: React.MouseEvent | React.TouchEvent, position: { x: number; y: number }) => void;
   activeSubmenu: string | null;
@@ -17,10 +19,12 @@ interface TrendlineMenuProps {
 const TrendlineMenuComponent = ({ 
   position, 
   trendlineColor = 'currentColor',
+  opacity,
   onDelete, 
   onToggleColorSubmenu,
   onToggleExtendSubmenu,
   onToggleLabelSubmenu,
+  onOpacityChange,
   onSaveAsFavorite,
   onDragStart,
   activeSubmenu
@@ -89,6 +93,22 @@ const TrendlineMenuComponent = ({
             </svg>
           }
         />
+        
+        {/* Opacity Slider */}
+        <div className="px-2 py-2 border-t border-slate-600">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 whitespace-nowrap">Opacity:</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={Math.round(opacity * 100)}
+              onChange={(e) => onOpacityChange(parseInt(e.target.value) / 100)}
+              className="flex-1 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-500"
+            />
+            <span className="text-xs text-slate-300 w-10 text-right">{Math.round(opacity * 100)}%</span>
+          </div>
+        </div>
         
         {/* Save as Favorite */}
         <MenuButton
