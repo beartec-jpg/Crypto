@@ -18,6 +18,7 @@ interface DrawingPoint {
 
 interface DrawingStyle {
   color: string;
+  opacity?: number;
   lineWidth?: number;
   lineStyle?: 'solid' | 'dashed' | 'dotted';
   extendLeft?: boolean;
@@ -36,6 +37,30 @@ interface DrawingStyle {
 }
 
 type RequestUpdateCallback = () => void;
+
+// Helper function to apply opacity to hex colors
+function applyOpacity(color: string, opacity: number): string {
+  if (opacity >= 1) return color;
+  
+  if (color.startsWith('#')) {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  }
+  
+  // If already rgba, replace alpha value
+  if (color.startsWith('rgba')) {
+    return color.replace(/[\d.]+\)$/g, `${opacity})`);
+  }
+  
+  // If rgb, convert to rgba
+  if (color.startsWith('rgb(')) {
+    return color.replace('rgb(', 'rgba(').replace(')', `, ${opacity})`);
+  }
+  
+  return color;
+}
 
 class TrendLineRenderer implements IPrimitivePaneRenderer {
   private _point1: DrawingPoint;
@@ -112,8 +137,12 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
         }
       }
       
+      // Apply opacity to color
+      const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
+      const colorWithOpacity = applyOpacity(this._style.color, opacity);
+      
       ctx.beginPath();
-      ctx.strokeStyle = this._style.color;
+      ctx.strokeStyle = colorWithOpacity;
       ctx.lineWidth = this._style.lineWidth || 2;
       ctx.moveTo(drawX1, drawY1);
       ctx.lineTo(drawX2, drawY2);
@@ -260,8 +289,12 @@ class HorizontalLineRenderer implements IPrimitivePaneRenderer {
       const ctx = scope.context;
       const width = scope.mediaSize.width;
       
+      // Apply opacity to color
+      const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
+      const colorWithOpacity = applyOpacity(this._style.color, opacity);
+      
       ctx.beginPath();
-      ctx.strokeStyle = this._style.color;
+      ctx.strokeStyle = colorWithOpacity;
       ctx.lineWidth = this._style.lineWidth || 2;
       ctx.setLineDash([5, 5]);
       ctx.moveTo(0, y);
@@ -371,7 +404,6 @@ export class HorizontalLinePrimitive implements ISeriesPrimitive<Time> {
     this._requestUpdate?.();
   }
 }
-
 class RectangleRenderer implements IPrimitivePaneRenderer {
   private _point1: DrawingPoint;
   private _point2: DrawingPoint;
@@ -430,17 +462,21 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
       const width = rectRight - rectLeft;
       const height = Math.abs(y2 - y1);
 
+      // Apply opacity to fill
+      const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
       ctx.fillStyle = this._style.color.replace(')', ', 0.2)').replace('rgb', 'rgba').replace('hsl', 'hsla');
       if (this._style.color.startsWith('#')) {
         const hex = this._style.color;
         const r = parseInt(hex.slice(1, 3), 16);
         const g = parseInt(hex.slice(3, 5), 16);
         const b = parseInt(hex.slice(5, 7), 16);
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.2)`;
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.2 * opacity})`;
       }
       ctx.fillRect(rectLeft, top, width, height);
 
-      ctx.strokeStyle = this._style.color;
+      // Apply opacity to stroke
+      const colorWithOpacity = applyOpacity(this._style.color, opacity);
+      ctx.strokeStyle = colorWithOpacity;
       ctx.lineWidth = this._style.lineWidth || 2;
       ctx.strokeRect(rectLeft, top, width, height);
 
@@ -460,7 +496,7 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
         ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
         ctx.fillRect(bgX, labelY - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
         
-        ctx.fillStyle = this._style.color;
+        ctx.fillStyle = colorWithOpacity;
         ctx.textAlign = isRightLabel ? 'right' : 'left';
         ctx.fillText(labelText, labelX, labelY + 4);
         ctx.textAlign = 'left';
@@ -648,6 +684,7 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
 
       const hiddenLevels = this._style.hiddenLevels || [];
       const customValues = this._style.customValues || {};
+      const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
       
       FIB_LEVELS.forEach((level) => {
         // Skip hidden levels - round both to avoid float precision issues
@@ -664,7 +701,8 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
 
         // Check for per-level color from style, then fall back to default FIB_COLORS, then global color
         const levelColors = this._style.levelColors || {};
-        const color = levelColors[level] || FIB_COLORS[level] || this._style.color;
+        const baseColor = levelColors[level] || FIB_COLORS[level] || this._style.color;
+        const color = applyOpacity(baseColor, opacity);
         
         ctx.beginPath();
         ctx.strokeStyle = color;
@@ -842,7 +880,6 @@ const TREND_FIB_COLORS: Record<number, string> = {
   4.236: '#3f51b5',
   2.618: '#ff9800'
 };
-
 class TrendFibRenderer implements IPrimitivePaneRenderer {
   private _points: DrawingPoint[];
   private _style: DrawingStyle;
@@ -896,6 +933,7 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
 
       const hiddenLevels = this._style.hiddenLevels || [];
       const customValues = this._style.customValues || {};
+      const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
       
       TREND_FIB_LEVELS.forEach((level) => {
         // Skip hidden levels - round both to avoid float precision issues
@@ -909,7 +947,8 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
-        const color = TREND_FIB_COLORS[level] || this._style.color;
+        const baseColor = TREND_FIB_COLORS[level] || this._style.color;
+        const color = applyOpacity(baseColor, opacity);
         
         ctx.beginPath();
         ctx.strokeStyle = color;
