@@ -26,11 +26,8 @@ import bullVideo from '@assets/grok_video_2025-11-20-06-16-11_1763619952816.mp4'
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { incrementTickerClick } from '@/lib/tickerUtils';
-import { TickerSelector } from '@/components/TickerSelector';
 import { TickerSearch } from '@/components/TickerSearch';
 import { TickerTable } from '@/components/TickerTable';
-import { ChartPreview } from '@/components/ChartPreview';
-import { ChartFullscreen } from '@/components/ChartFullscreen';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import {
@@ -805,6 +802,11 @@ export default function CryptoIndicators() {
     updateDrawingMutationRef.current = updateDrawingMutation;
   }, [updateDrawingMutation]);
   
+  // Helper function to format ticker display (e.g., "BTCUSDT" -> "BTC/USDT")
+  const formatTickerDisplay = (ticker: string): string => {
+    return ticker.replace('USDT', '/USDT');
+  };
+  
   // Handler functions for watchlist component integration
   const handleAddTicker = useCallback((ticker: string) => {
     if (!watchlistTickers.includes(ticker)) {
@@ -812,12 +814,12 @@ export default function CryptoIndicators() {
       setSymbol(ticker);
       toast({
         title: 'Ticker added',
-        description: `${ticker.replace('USDT', '/USDT')} has been added to your watchlist`,
+        description: `${formatTickerDisplay(ticker)} has been added to your watchlist`,
       });
     } else {
       toast({
         title: 'Already in watchlist',
-        description: `${ticker.replace('USDT', '/USDT')} is already in your watchlist`,
+        description: `${formatTickerDisplay(ticker)} is already in your watchlist`,
         variant: 'destructive',
       });
     }
@@ -827,11 +829,14 @@ export default function CryptoIndicators() {
     const filtered = watchlistTickers.filter(t => t !== ticker);
     setWatchlistTickers(filtered);
     if (symbol === ticker && filtered.length > 0) {
-      setSymbol(filtered[0]);
+      // Select the next ticker in the list, or the previous one if we removed the last
+      const currentIndex = watchlistTickers.indexOf(ticker);
+      const nextIndex = currentIndex < filtered.length ? currentIndex : currentIndex - 1;
+      setSymbol(filtered[nextIndex]);
     }
     toast({
       title: 'Ticker removed',
-      description: `${ticker.replace('USDT', '/USDT')} has been removed from your watchlist`,
+      description: `${formatTickerDisplay(ticker)} has been removed from your watchlist`,
     });
   }, [watchlistTickers, symbol, toast]);
 
