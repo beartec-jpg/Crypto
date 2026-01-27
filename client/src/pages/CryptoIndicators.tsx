@@ -10552,7 +10552,7 @@ export default function CryptoIndicators() {
 
         {/* NEW: Search Bar for adding tickers */}
         <div className="flex justify-center mb-6">
-          <TickerSearch onAddTicker={handleAddTicker} />
+          <TickerSearch onAddTicker={handleAddTicker} existingTickers={selectedTickers} />
         </div>
 
         {/* NEW: Watchlist Table */}
