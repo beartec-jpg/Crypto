@@ -119,29 +119,18 @@ export async function buildXrpTransaction(
   try {
     await client.connect();
     
-    // Get account info for sequence number
-    const accountInfo = await getXrpAccountInfo(from);
-    
-    // Get current ledger for LastLedgerSequence
-    const ledger = await client.request({
-      command: 'ledger',
-      ledger_index: 'validated',
-    });
-    
     const payment: xrpl.Payment = {
       TransactionType: 'Payment',
       Account: from,
       Destination: to,
       Amount: xrpl.xrpToDrops(amount),
-      Sequence: accountInfo.sequence,
-      LastLedgerSequence: ledger.result.ledger_index + 75, // ~5 minutes
     };
     
     if (destinationTag !== undefined) {
       payment.DestinationTag = destinationTag;
     }
     
-    // Auto-fill transaction (adds Fee)
+    // Auto-fill fee, sequence, etc.
     const prepared = await client.autofill(payment);
     
     return prepared;
@@ -165,35 +154,30 @@ export function signXrpTransaction(
 }
 
 /**
- * Broadcast XRP transaction
+ * Broadcast signed XRP transaction
  */
 export async function broadcastXrpTransaction(
-  signedTx: string
+  signedTxBlob: string
 ): Promise<XRPTransactionBroadcastResult> {
   const client = new xrpl.Client(XRP_MAINNET_URL);
   
   try {
     await client.connect();
     
-    const result = await client.submitAndWait(signedTx);
+    const result = await client.submitAndWait(signedTxBlob);
     
-    if (result.result.meta && typeof result.result.meta === 'object' && 
-        'TransactionResult' in result.result.meta) {
-      const txResult = result.result.meta.TransactionResult;
-      
-      if (txResult !== 'tesSUCCESS') {
-        throw new Error(`Transaction failed: ${txResult}`);
+    if (result.result.meta && typeof result.result.meta === 'object') {
+      const meta = result.result.meta as any;
+      if (meta.TransactionResult !== 'tesSUCCESS') {
+        throw new Error(`Transaction failed: ${meta.TransactionResult}`);
       }
     }
     
     const hash = result.result.hash;
-    const explorerUrl = `https://livenet.xrpl.org/transactions/${hash}`;
-    
-    console.log(`✅ XRP transaction confirmed: ${hash}`);
     
     return {
       hash,
-      explorerUrl,
+      explorerUrl: `https://livenet.xrpl.org/transactions/${hash}`,
     };
   } finally {
     await client.disconnect();
@@ -201,44 +185,30 @@ export async function broadcastXrpTransaction(
 }
 
 /**
- * Send XRP (convenience function combining build, sign, broadcast)
+ * Estimate XRP transaction fee
+ * Returns the current network fee in XRP
  */
-export async function sendXrp(
-  walletId: string,
-  password: string,
-  to: string,
-  amount: string,
-  destinationTag?: number
-): Promise<XRPTransactionBroadcastResult> {
+export async function estimateXrpFee(): Promise<string> {
+  const client = new xrpl.Client(XRP_MAINNET_URL);
+  
   try {
-    // Get XRP seed from wallet service
-    const { getXRPSeed } = await import('./walletService');
-    const seed = await getXRPSeed(walletId, password);
+    await client.connect();
     
-    // Create wallet to get address
-    const wallet = xrpl.Wallet.fromSeed(seed);
-    const from = wallet.address;
+    // Get current fee from the network
+    const response = await client.request({
+      command: 'fee',
+    });
     
-    console.log('📤 Sending XRP...');
-    console.log('  From:', from);
-    console.log('  To:', to);
-    console.log('  Amount:', amount, 'XRP');
+    // Convert drops to XRP
+    const feeDrops = response.result.drops?.median_fee || response.result.drops?.minimum_fee || '12';
+    const feeXRP = xrpl.dropsToXrp(feeDrops);
     
-    // Build transaction
-    const tx = await buildXrpTransaction(from, to, amount, destinationTag);
-    console.log('  Transaction built');
-    
-    // Sign transaction
-    const signedTx = signXrpTransaction(tx, seed);
-    console.log('  Transaction signed');
-    
-    // Broadcast transaction
-    const result = await broadcastXrpTransaction(signedTx);
-    console.log('  Transaction broadcast:', result.hash);
-    
-    return result;
-  } catch (error: any) {
-    console.error('❌ Failed to send XRP:', error);
-    throw error;
+    return feeXRP;
+  } catch (error) {
+    console.error('Failed to estimate XRP fee:', error);
+    // Return default fee if estimation fails (0.00001 XRP = 10 drops)
+    return '0.00001';
+  } finally {
+    await client.disconnect();
   }
 }
