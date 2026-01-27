@@ -182,4 +182,6 @@ export function TickerTable({
           </tbody>
         </table>
       </div>
-      
+    </div>
+  );
+}
