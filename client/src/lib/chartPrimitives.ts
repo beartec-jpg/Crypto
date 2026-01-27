@@ -29,6 +29,10 @@ interface DrawingStyle {
   label?: string;
   autoColor?: boolean;
   hideLabels?: boolean;
+  levelColors?: Record<number, string>;
+  boundaryColors?: Record<string, string>;
+  fillOpacity?: number;
+  __openColorPicker?: string | null;
 }
 
 type RequestUpdateCallback = () => void;
@@ -658,7 +662,9 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
-        const color = FIB_COLORS[level] || this._style.color;
+        // Check for per-level color from style, then fall back to default FIB_COLORS, then global color
+        const levelColors = this._style.levelColors || {};
+        const color = levelColors[level] || FIB_COLORS[level] || this._style.color;
         
         ctx.beginPath();
         ctx.strokeStyle = color;
@@ -1126,8 +1132,9 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
       if (yTop === null || yBottom === null) return;
 
       const autoColor = this._style.autoColor ?? true;
-      const topColor = autoColor ? '#ef4444' : (this._style.color || '#3b82f6');
-      const bottomColor = autoColor ? '#22c55e' : (this._style.color || '#3b82f6');
+      const boundaryColors = this._style.boundaryColors || {};
+      const topColor = boundaryColors.top || (autoColor ? '#ef4444' : (this._style.color || '#3b82f6'));
+      const bottomColor = boundaryColors.bottom || (autoColor ? '#22c55e' : (this._style.color || '#3b82f6'));
 
       // Draw top horizontal line
       ctx.beginPath();
@@ -1176,8 +1183,9 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
         ctx.textAlign = 'left';
       }
 
-      // Draw internal level lines (25%, 50%, 75%) - white with 50% transparency
+      // Draw internal level lines (25%, 50%, 75%)
       const hiddenLevels = this._style.hiddenLevels || [];
+      const levelColors = this._style.levelColors || {};
       const priceDiff = topPrice - bottomPrice;
       
       CHANNEL_LEVELS.forEach((level) => {
@@ -1188,8 +1196,9 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
+        const levelColor = levelColors[level] || 'rgba(255, 255, 255, 0.5)';
         ctx.beginPath();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.strokeStyle = levelColor;
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
         ctx.moveTo(lineLeft, y);
@@ -1210,7 +1219,8 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
           ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
           ctx.fillRect(bgX, y - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
           
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          // Use same color as line for label
+          ctx.fillStyle = levelColor;
           ctx.textAlign = isRightLabel ? 'right' : 'left';
           ctx.fillText(labelText, labelX, y + 4);
           ctx.textAlign = 'left';
@@ -1218,7 +1228,8 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
       });
 
       // Fill channel area with subtle background
-      ctx.fillStyle = autoColor ? 'rgba(100, 100, 100, 0.1)' : 'rgba(59, 130, 246, 0.1)';
+      const fillOpacity = this._style.fillOpacity !== undefined ? this._style.fillOpacity : 0.1;
+      ctx.fillStyle = autoColor ? `rgba(100, 100, 100, ${fillOpacity})` : `rgba(59, 130, 246, ${fillOpacity})`;
       ctx.fillRect(lineLeft, yTop, lineRight - lineLeft, yBottom - yTop);
 
       // Draw selection handles
