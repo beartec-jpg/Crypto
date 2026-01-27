@@ -11592,9 +11592,11 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
                     </svg>
                   </button>
                 </div>
+              )}
+
                 
                 {/* Tool Picker Popup */}
-                {showToolPicker && (
+                {isFullscreen && showToolPicker && (
                   <div className="absolute top-14 left-2 z-30 bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl min-w-[180px]">
                     <div className="text-xs text-gray-400 mb-2 px-2">Select Drawing Tool</div>
                     {[
@@ -11625,9 +11627,6 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
                     ))}
                   </div>
                 )}
-                
-                </div>  {/* ← Close the flex container */}
-              )}  {/* ← Close the isFullscreen condition */}
                 
                 {/* Drawing Settings Panel (if any comes next) */}
                 {showDrawingSettings && selectedDrawingId && (
