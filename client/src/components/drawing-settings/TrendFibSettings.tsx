@@ -69,6 +69,35 @@ export function TrendFibSettings({ drawing, onUpdate }: TrendFibSettingsProps) {
         </div>
       </div>
 
+      {/* Label Position */}
+      <div>
+        <div className="text-xs text-slate-400 mb-2">Label Position</div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => onUpdate({ labelPosition: 'left' })}
+            className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
+              (drawing.style?.labelPosition || 'right') === 'left'
+                ? 'bg-cyan-600 text-white' 
+                : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+            }`}
+            type="button"
+          >
+            Left
+          </button>
+          <button
+            onClick={() => onUpdate({ labelPosition: 'right' })}
+            className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
+              (drawing.style?.labelPosition || 'right') === 'right'
+                ? 'bg-cyan-600 text-white' 
+                : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+            }`}
+            type="button"
+          >
+            Right
+          </button>
+        </div>
+      </div>
+
       {/* Global Opacity */}
       <OpacitySlider
         value={opacity}
