@@ -7282,7 +7282,7 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
         candleSeriesRef.current = null;
       }
     };
-  }, [candles.length, loading, symbol, interval]);
+}, [candles.length, loading, symbol, interval, isFullscreen]);
   
   // Attach gesture controller to chart when ready
   useEffect(() => {
