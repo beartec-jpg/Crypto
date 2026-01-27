@@ -27,18 +27,11 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
         />
       </div>
 
-      {/* Line Opacity */}
+      {/* Opacity */}
       <OpacitySlider
         value={opacity}
         onChange={(val) => onUpdate({ opacity: val })}
-        label="Line Opacity"
-      />
-
-      {/* Fill Opacity */}
-      <OpacitySlider
-        value={fillOpacity}
-        onChange={(val) => onUpdate({ fillOpacity: val })}
-        label="Fill Opacity"
+        label="Opacity"
       />
 
       {/* Line Width */}
@@ -46,6 +39,22 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
         value={lineWidth}
         onChange={(w) => onUpdate({ lineWidth: w })}
       />
+
+      {/* Fill Opacity */}
+      <div>
+        <div className="text-xs text-slate-400 mb-2">Fill Opacity</div>
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={Math.round(fillOpacity * 100)}
+            onChange={(e) => onUpdate({ fillOpacity: parseInt(e.target.value) / 100 })}
+            className="flex-1 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-500"
+          />
+          <span className="text-xs text-slate-300 w-10 text-right">{Math.round(fillOpacity * 100)}%</span>
+        </div>
+      </div>
 
       {/* Label Text */}
       <div>
@@ -109,6 +118,29 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
           </div>
         </div>
       )}
+
+      {/* Save as Default Button */}
+      <div className="pt-3 border-t border-slate-700">
+        <button
+          onClick={() => {
+            const defaults = {
+              color,
+              opacity,
+              lineWidth,
+              fillOpacity,
+            };
+            localStorage.setItem('rectangleDefaults', JSON.stringify(defaults));
+            // You can add a toast notification here if you have the toast hook
+          }}
+          className="w-full px-3 py-2 rounded text-xs bg-green-600 hover:bg-green-500 text-white flex items-center justify-center gap-2 transition-colors"
+          type="button"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Save as Default
+        </button>
+      </div>
     </div>
   );
 }
