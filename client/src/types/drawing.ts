@@ -27,7 +27,8 @@ export type TrendlineMode = 'magnet' | 'free' | null;
 export type FibLevel = { 
   ratio: number; 
   visible: boolean; 
-  showLabel: boolean 
+  showLabel: boolean;
+  color?: string;
 };
 
 export type FibLabelPosition = 
