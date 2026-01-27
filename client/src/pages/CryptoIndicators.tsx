@@ -55,6 +55,8 @@ import {
   FibRetracementPrimitive,
   ChannelPrimitive
 } from '@/lib/chartPrimitives';
+import { calculateEMA } from '@/utils/emaCalculations';
+import { touchesZone, inZone, aboveZone, belowZone, priceInZone } from '@/utils/zoneHelpers';
 
 interface CandleData {
   time: number;
@@ -96,11 +98,14 @@ const generateFutureWhitespace = (lastCandleTime: number, interval: string, coun
   return futureBars;
 };
 
+// Constant for future bar count - ensures consistent whitespace across all timeframes
+const FUTURE_BAR_COUNT = 300;
+
 // Get recommended future bar count based on timeframe
 // User wants "half a chart worth at full zoom out" - approximately 300 bars for all timeframes
 const getFutureBarCount = (interval: string): number => {
   // Use consistent large count for all timeframes to ensure half chart of future space
-  return 300;
+  return FUTURE_BAR_COUNT;
 };
 
 // Get table row limit based on timeframe - industry standard lookback periods
@@ -974,8 +979,6 @@ export default function CryptoIndicators() {
   const emaSlowPeriod = emaConfigs[1]?.period || 50;
   const [emaFastInput, setEmaFastInput] = useState('10');
   const [emaSlowInput, setEmaSlowInput] = useState('40');
-  const setEmaFastPeriod = (_: number) => {}; // Stub for legacy code
-  const setEmaSlowPeriod = (_: number) => {}; // Stub for legacy code
   
   // Oscillator indicators
   const rsiRef = useRef<HTMLDivElement>(null);
@@ -1048,8 +1051,6 @@ export default function CryptoIndicators() {
   const smaSlowPeriod = smaConfigs[1]?.period || 50;
   const [smaFastInput, setSmaFastInput] = useState('20');
   const [smaSlowInput, setSmaSlowInput] = useState('50');
-  const setSmaFastPeriod = (_: number) => {}; // Stub for legacy code
-  const setSmaSlowPeriod = (_: number) => {}; // Stub for legacy code
   const [showSupertrend, setShowSupertrend] = useState(false);
   const [supertrendPeriod, setSupertrendPeriod] = useState(10);
   const [supertrendPeriodInput, setSupertrendPeriodInput] = useState('10');
@@ -1718,20 +1719,6 @@ export default function CryptoIndicators() {
       setVwapThreshold(val);
     }
   }, [vwapThresholdInput]);
-
-  useEffect(() => {
-    const val = parseInt(emaFastInput);
-    if (!isNaN(val) && val >= 5 && val <= 200) {
-      setEmaFastPeriod(val);
-    }
-  }, [emaFastInput]);
-
-  useEffect(() => {
-    const val = parseInt(emaSlowInput);
-    if (!isNaN(val) && val >= 20 && val <= 500) {
-      setEmaSlowPeriod(val);
-    }
-  }, [emaSlowInput]);
 
   useEffect(() => {
     const val = parseInt(bbPeriodInput);
@@ -2671,13 +2658,11 @@ export default function CryptoIndicators() {
   }, []);
 
   const calculateMACD = useCallback((bars: CandleData[], fastPeriod: number = 12, slowPeriod: number = 26, signalPeriod: number = 9) => {
-    const ema = (data: number[], p: number) => data.reduce((acc, val, i) => 
-      i === 0 ? [val] : [...acc, val * (2/(p+1)) + acc[i-1] * (1 - 2/(p+1))], [] as number[]);
     const close = bars.map(b => b.close);
-    const emaFast = ema(close, fastPeriod);
-    const emaSlow = ema(close, slowPeriod);
+    const emaFast = calculateEMA(close, fastPeriod);
+    const emaSlow = calculateEMA(close, slowPeriod);
     const macdLine = close.map((_, i) => emaFast[i] - emaSlow[i]);
-    const signal = ema(macdLine, signalPeriod);
+    const signal = calculateEMA(macdLine, signalPeriod);
     const histogram = macdLine.map((v, i) => v - signal[i]);
     return { 
       macd: macdLine.map((v, i) => ({ time: bars[i].time, value: v })),
@@ -3603,7 +3588,7 @@ export default function CryptoIndicators() {
     // LONG: Price enters bullish FVG from above (retracement down into support)
     // SHORT: Price enters bearish FVG from below (retracement up into resistance)
     const relevantFVGs = fvgs.filter(fvg => {
-      const inZone = currentPrice >= fvg.lower && currentPrice <= fvg.upper;
+      const inZoneCheck = priceInZone(currentPrice, fvg.lower, fvg.upper);
       const validVolume = (fvg.volumeScore || 0) >= chochFVGVolumeThreshold;
       
       // OPTIONAL: Ensure FVG has minimum height (filter out tiny gaps)
@@ -3625,7 +3610,7 @@ export default function CryptoIndicators() {
       
       const correctEntry = (fvg.type === 'bullish' && enteringFromAbove) || (fvg.type === 'bearish' && enteringFromBelow);
       
-      return inZone && validVolume && significantSize && correctEntry;
+      return inZoneCheck && validVolume && significantSize && correctEntry;
     });
     
     if (relevantFVGs.length === 0) return null;
@@ -3768,14 +3753,11 @@ export default function CryptoIndicators() {
     const upperZone = vwapLevel + tolerance;
     const lowerZone = vwapLevel - tolerance;
     
-    // Helper: Check if candle touches threshold zone (wick or body)
-    const touchesZone = (c: CandleData) => c.high >= lowerZone && c.low <= upperZone;
-    
     let signal: { type: 'LONG' | 'SHORT', pattern: 'Bounce' | 'Cross' } | null = null;
     
     if (vwapEntryCandles === 'single') {
       // SINGLE CANDLE MODE: Current candle does everything (instant entry)
-      if (touchesZone(currentCandle)) {
+      if (touchesZone(currentCandle, lowerZone, upperZone)) {
         // BULLISH BOUNCE: touches zone + closes above VWAP line
         if (currentCandle.close > vwapLevel) {
           signal = { type: 'LONG', pattern: 'Bounce' };
@@ -3787,7 +3769,7 @@ export default function CryptoIndicators() {
       }
       
       // CROSS PATTERN: touches zone + closes OUTSIDE threshold opposite side
-      if (!signal && touchesZone(currentCandle)) {
+      if (!signal && touchesZone(currentCandle, lowerZone, upperZone)) {
         // BULLISH CROSS: closes above upper zone
         if (currentCandle.close > upperZone) {
           signal = { type: 'LONG', pattern: 'Cross' };
@@ -3799,7 +3781,7 @@ export default function CryptoIndicators() {
       }
     } else {
       // DOUBLE CANDLE MODE: Previous candle touches, current candle confirms
-      if (touchesZone(prevCandle)) {
+      if (touchesZone(prevCandle, lowerZone, upperZone)) {
         // BULLISH BOUNCE: prev touched zone, current confirms by closing above VWAP
         if (currentCandle.close > vwapLevel) {
           signal = { type: 'LONG', pattern: 'Bounce' };
@@ -3811,7 +3793,7 @@ export default function CryptoIndicators() {
       }
       
       // CROSS PATTERN: prev touched zone, current confirms by closing OUTSIDE zone
-      if (!signal && touchesZone(prevCandle)) {
+      if (!signal && touchesZone(prevCandle, lowerZone, upperZone)) {
         // BULLISH CROSS: confirms by closing above upper zone
         if (currentCandle.close > upperZone) {
           signal = { type: 'LONG', pattern: 'Cross' };
@@ -4062,24 +4044,20 @@ export default function CryptoIndicators() {
     const upperZone = emaLevel + tolerance;
     const lowerZone = emaLevel - tolerance;
     
-    const inZone = (c: CandleData) => c.high >= lowerZone && c.low <= upperZone;
-    const aboveZone = (c: CandleData) => c.low > upperZone;
-    const belowZone = (c: CandleData) => c.high < lowerZone;
-    
     let signal: { type: 'LONG' | 'SHORT', pattern: 'Bounce' | 'Cross' } | null = null;
     
-    if (emaEntryMode === 'bounce' && inZone(entryCandle)) {
-      if (belowZone(prevCandle) && confirmCandle.close > emaLevel) {
+    if (emaEntryMode === 'bounce' && inZone(entryCandle, lowerZone, upperZone)) {
+      if (belowZone(prevCandle, lowerZone) && confirmCandle.close > emaLevel) {
         signal = { type: 'LONG', pattern: 'Bounce' };
-      } else if (aboveZone(prevCandle) && confirmCandle.close < emaLevel) {
+      } else if (aboveZone(prevCandle, upperZone) && confirmCandle.close < emaLevel) {
         signal = { type: 'SHORT', pattern: 'Bounce' };
       }
     }
     
-    if (emaEntryMode === 'cross' && !signal && inZone(entryCandle)) {
-      if (belowZone(prevCandle) && confirmCandle.close > upperZone) {
+    if (emaEntryMode === 'cross' && !signal && inZone(entryCandle, lowerZone, upperZone)) {
+      if (belowZone(prevCandle, lowerZone) && confirmCandle.close > upperZone) {
         signal = { type: 'LONG', pattern: 'Cross' };
-      } else if (aboveZone(prevCandle) && confirmCandle.close < lowerZone) {
+      } else if (aboveZone(prevCandle, upperZone) && confirmCandle.close < lowerZone) {
         signal = { type: 'SHORT', pattern: 'Cross' };
       }
     }
@@ -6588,11 +6566,9 @@ export default function CryptoIndicators() {
       // EMAs
       if (defaults.showEMA !== undefined) setShowEMA(defaults.showEMA);
       if (defaults.emaFastPeriod !== undefined) {
-        setEmaFastPeriod(defaults.emaFastPeriod);
         setEmaFastInput(defaults.emaFastPeriod.toString());
       }
       if (defaults.emaSlowPeriod !== undefined) {
-        setEmaSlowPeriod(defaults.emaSlowPeriod);
         setEmaSlowInput(defaults.emaSlowPeriod.toString());
       }
       if (defaults.emaConfigs && Array.isArray(defaults.emaConfigs)) {
