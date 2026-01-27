@@ -10774,11 +10774,28 @@ export default function CryptoIndicators() {
             ) : (
               <div className={`relative ${isFullscreen ? 'h-full' : ''}`}>
                 <div 
-                  ref={chartContainerRef} 
-                  className={`w-full relative bg-[#0f172a] overflow-hidden ${isFullscreen ? 'h-full' : 'h-[600px]'}`}
-                  style={{ minHeight: isFullscreen ? '100%' : '600px', background: '#0f172a' }}
-                />
-                
+  ref={chartContainerRef} 
+  onClick={() => {
+    if (!isFullscreen) {
+      setIsFullscreen(true);
+      setTimeout(() => {
+        if (chartRef.current && chartContainerRef.current) {
+          chartRef.current.applyOptions({
+            width: chartContainerRef.current.clientWidth,
+            height: chartContainerRef.current.clientHeight
+          });
+        }
+      }, 100);
+    }
+  }}
+  className={`w-full relative bg-[#0f172a] overflow-hidden ${
+    isFullscreen 
+      ? 'h-full' 
+      : 'h-[600px] cursor-pointer hover:ring-2 hover:ring-cyan-500/50 transition-all'
+  }`}
+  style={{ minHeight: isFullscreen ? '100%' : '600px', background: '#0f172a' }}
+  title={!isFullscreen ? 'Click to expand fullscreen' : undefined}
+/>
                 {/* Custom Crosshair Time Tooltip for Future Whitespace Area */}
                 {crosshairInfo && crosshairInfo.time > 0 && (
                   <div 
