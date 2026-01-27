@@ -10847,7 +10847,6 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
             })}
           </div>
         )}
-                )}
                 
                 {/* SVG Overlay for Selection Hit Areas & Edit Mode */}
                 {/* Primitives handle visible rendering, SVG provides invisible hit areas for selection */}
