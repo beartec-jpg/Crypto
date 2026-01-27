@@ -5,6 +5,18 @@ import { Client, Wallet, TrustSet, xrpToDrops } from 'xrpl';
 import { xrplService } from './xrpService';
 
 /**
+ * XRP Reserve Information Interface
+ */
+export interface XRPReserveInfo {
+  totalBalance: number;
+  baseReserve: number;
+  ownerReserve: number;
+  currentReserve: number;
+  newReserve: number;
+  available: number;
+}
+
+/**
  * Set XRPL trustline using STANDARD XRPL.js methods ONLY
  * NO custom signing, NO hex key workarounds
  */
@@ -132,4 +144,28 @@ export async function removeXRPLTrustline(
   issuer: string
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   return setXRPLTrustline(walletId, password, currency, issuer, '0');
+}
+
+/**
+ * Calculate XRP reserve requirements for an address
+ */
+export async function calculateXRPReserve(address: string): Promise<XRPReserveInfo> {
+  try {
+    // Import from xrpSendService to avoid circular dependency
+    const { getXrpAccountInfo } = await import('./xrpSendService');
+    
+    const accountInfo = await getXrpAccountInfo(address);
+    
+    return {
+      totalBalance: parseFloat(accountInfo.balance),
+      baseReserve: accountInfo.reserves.base,
+      ownerReserve: accountInfo.reserves.owner,
+      currentReserve: accountInfo.reserves.total,
+      newReserve: accountInfo.reserves.total + 2, // Adding trustline adds 2 XRP to reserve
+      available: parseFloat(accountInfo.available),
+    };
+  } catch (error: any) {
+    console.error('Failed to calculate XRP reserve:', error);
+    throw new Error(`Failed to get XRP account info: ${error.message}`);
+  }
 }
