@@ -11378,11 +11378,12 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
                   )}
                 </svg>
                 
-                {/* Drawing Tools Overlay */}
-                <div className="absolute top-2 left-2 z-20 flex gap-1">
-                  {/* Pencil/Draw Button */}
-                  <button
-                    onClick={() => setShowToolPicker(prev => !prev)}
+                {/* Drawing Tools Overlay - Only show in fullscreen */}
+                {isFullscreen && (
+                  <div className="absolute top-2 left-2 z-20 flex gap-1">
+                    {/* Pencil/Draw Button */}
+                    <button
+                      onClick={() => setShowToolPicker(prev => !prev)}
                     className={`p-2 rounded-lg transition-all ${
                       drawingMode === 'draw' 
                         ? 'bg-blue-500 text-white' 
@@ -11625,7 +11626,10 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
                   </div>
                 )}
                 
-                {/* Drawing Settings Panel */}
+                </div>  {/* ← Close the flex container */}
+              )}  {/* ← Close the isFullscreen condition */}
+                
+                {/* Drawing Settings Panel (if any comes next) */}
                 {showDrawingSettings && selectedDrawingId && (
                 <DrawingSettingsPanel
                   drawing={drawings.find(d => d.id === selectedDrawingId) || null}
