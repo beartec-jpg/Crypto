@@ -10752,39 +10752,15 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
         </Card>
 
         {/* Main Chart */}
-        <Card 
-          className={`bg-slate-800 border-slate-700 transition-all duration-300 ${
-            isFullscreen 
-              ? 'fixed inset-0 z-50 rounded-none border-0' 
-              : ''
-          }`}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape' && isFullscreen) {
-              setIsFullscreen(false);
-              setTimeout(() => {
-                if (chartRef.current && chartContainerRef.current) {
-                  chartRef.current.applyOptions({
-                    width: chartContainerRef.current.clientWidth,
-                    height: chartContainerRef.current.clientHeight
-                  });
-                }
-              }, 100);
-            }
-          }}
-          tabIndex={isFullscreen ? 0 : -1}
-        >
-          <CardContent className={`p-4 bg-slate-800 ${isFullscreen ? 'h-full' : ''}`}>
-            {loading ? (
-              <div className={`${isFullscreen ? 'h-full' : 'h-[600px]'} flex items-center justify-center bg-slate-800`}>
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-              </div>
-            ) : (
-              <div className={`relative ${isFullscreen ? 'h-full' : ''}`}>
-                <div 
-  ref={chartContainerRef} 
-  onClick={() => {
-    if (!isFullscreen) {
-      setIsFullscreen(true);
+<Card 
+  className={`bg-slate-800 border-slate-700 transition-all duration-300 ${
+    isFullscreen 
+      ? 'fixed inset-0 z-50 rounded-none border-0' 
+      : ''
+  }`}
+  onKeyDown={(e) => {
+    if (e.key === 'Escape' && isFullscreen) {
+      setIsFullscreen(false);
       setTimeout(() => {
         if (chartRef.current && chartContainerRef.current) {
           chartRef.current.applyOptions({
@@ -10795,31 +10771,82 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
       }, 100);
     }
   }}
-  className={`w-full relative bg-[#0f172a] overflow-hidden ${
-    isFullscreen 
-      ? 'h-full' 
-      : 'h-[600px] cursor-pointer hover:ring-2 hover:ring-cyan-500/50 transition-all'
-  }`}
-  style={{ minHeight: isFullscreen ? '100%' : '600px', background: '#0f172a' }}
-  title={!isFullscreen ? 'Click to expand fullscreen' : undefined}
-/>
-                {/* Custom Crosshair Time Tooltip for Future Whitespace Area */}
-                {crosshairInfo && crosshairInfo.time > 0 && (
-                  <div 
-                    className="absolute pointer-events-none z-20 bg-slate-900/90 text-white text-xs px-2 py-1 rounded border border-slate-600"
-                    style={{ 
-                      left: Math.min(crosshairInfo.x, (chartContainerRef.current?.clientWidth || 800) - 120), 
-                      bottom: 10
-                    }}
-                  >
-                    {new Date(crosshairInfo.time * 1000).toLocaleString('en-GB', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </div>
+  tabIndex={isFullscreen ? 0 : -1}
+>
+  <CardContent className={`p-4 bg-slate-800 ${isFullscreen ? 'h-full' : ''}`}>
+    {loading ? (
+      <div className={`${isFullscreen ? 'h-full' : 'h-[600px]'} flex items-center justify-center bg-slate-800`}>
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    ) : (
+      <div className={`relative ${isFullscreen ? 'h-full' : ''}`}>
+        {/* Chart container with layered overlay structure */}
+        <div 
+          className={`relative w-full bg-[#0f172a] overflow-hidden ${
+            isFullscreen 
+              ? 'h-full' 
+              : 'h-[600px] group'
+          }`}
+          style={{ minHeight: isFullscreen ? '100%' : '600px', background: '#0f172a' }}
+        >
+          {/* Inner div for the chart canvas */}
+          <div 
+            ref={chartContainerRef}
+            className="absolute inset-0"
+          >
+            {/* Chart canvas renders here */}
+          </div>
+          
+          {/* Clickable overlay - positioned ABOVE the canvas */}
+          {!isFullscreen && (
+            <div
+              onClick={() => {
+                setIsFullscreen(true);
+                setTimeout(() => {
+                  if (chartRef.current && chartContainerRef.current) {
+                    chartRef.current.applyOptions({
+                      width: chartContainerRef.current.clientWidth,
+                      height: chartContainerRef.current.clientHeight
+                    });
+                  }
+                }, 100);
+              }}
+              className="absolute inset-0 z-10 cursor-pointer hover:ring-2 hover:ring-cyan-500/50 transition-all"
+              title="Click to expand fullscreen"
+            />
+          )}
+          
+          {/* Hover hint overlay - shows expand message on hover */}
+          {!isFullscreen && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/95 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+              <div className="text-center space-y-2">
+                <svg className="h-8 w-8 mx-auto text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                </svg>
+                <p className="text-sm text-cyan-400 font-medium">Click to expand fullscreen</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Custom Crosshair Time Tooltip for Future Whitespace Area */}
+        {crosshairInfo && crosshairInfo.time > 0 && (
+          <div 
+            className="absolute pointer-events-none z-20 bg-slate-900/90 text-white text-xs px-2 py-1 rounded border border-slate-600"
+            style={{ 
+              left: Math.min(crosshairInfo.x, (chartContainerRef.current?.clientWidth || 800) - 120), 
+              bottom: 10
+            }}
+          >
+            {new Date(crosshairInfo.time * 1000).toLocaleString('en-GB', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </div>
+        )}
                 )}
                 
                 {/* SVG Overlay for Selection Hit Areas & Edit Mode */}
