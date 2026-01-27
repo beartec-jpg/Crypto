@@ -29,6 +29,10 @@ interface DrawingStyle {
   label?: string;
   autoColor?: boolean;
   hideLabels?: boolean;
+  levelColors?: Record<number, string>;
+  boundaryColors?: Record<string, string>;
+  fillOpacity?: number;
+  __openColorPicker?: string | null;
 }
 
 type RequestUpdateCallback = () => void;
