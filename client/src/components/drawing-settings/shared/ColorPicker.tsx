@@ -15,19 +15,17 @@ export function ColorPicker({ color, onChange, className = '' }: ColorPickerProp
     <div className={`relative ${className}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-6 h-6 rounded border-2 border-slate-600 hover:border-slate-400 transition-colors"
+        className="w-8 h-8 rounded border-2 border-slate-600 hover:border-slate-400 transition-colors"
         style={{ backgroundColor: color }}
         type="button"
       />
       {isOpen && (
         <>
-          {/* Backdrop to close picker */}
           <div 
             className="fixed inset-0 z-40" 
             onClick={() => setIsOpen(false)}
           />
-          {/* Color Palette */}
-          <div className="absolute z-50 bg-slate-800 border border-slate-600 rounded p-2 grid grid-cols-3 gap-2 left-0 mt-1 shadow-lg">
+          <div className="absolute z-50 bg-slate-800 border border-slate-600 rounded-lg p-3 grid grid-cols-3 gap-2 left-0 mt-1 shadow-xl min-w-[120px]">
             {COLORS.map(c => (
               <button
                 key={c}
@@ -35,7 +33,7 @@ export function ColorPicker({ color, onChange, className = '' }: ColorPickerProp
                   onChange(c);
                   setIsOpen(false);
                 }}
-                className="w-6 h-6 rounded hover:scale-110 transition-transform"
+                className="w-8 h-8 rounded hover:scale-110 transition-transform border-2 border-slate-700 hover:border-slate-500"
                 style={{ backgroundColor: c }}
                 type="button"
               />
