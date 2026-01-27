@@ -56,6 +56,7 @@ import {
   ChannelPrimitive
 } from '@/lib/chartPrimitives';
 import { calculateEMA } from '@/utils/emaCalculations';
+import { touchesZone, inZone, aboveZone, belowZone, priceInZone } from '@/utils/zoneHelpers';
 
 interface CandleData {
   time: number;
@@ -3587,7 +3588,7 @@ export default function CryptoIndicators() {
     // LONG: Price enters bullish FVG from above (retracement down into support)
     // SHORT: Price enters bearish FVG from below (retracement up into resistance)
     const relevantFVGs = fvgs.filter(fvg => {
-      const inZone = currentPrice >= fvg.lower && currentPrice <= fvg.upper;
+      const inZoneCheck = priceInZone(currentPrice, fvg.lower, fvg.upper);
       const validVolume = (fvg.volumeScore || 0) >= chochFVGVolumeThreshold;
       
       // OPTIONAL: Ensure FVG has minimum height (filter out tiny gaps)
@@ -3609,7 +3610,7 @@ export default function CryptoIndicators() {
       
       const correctEntry = (fvg.type === 'bullish' && enteringFromAbove) || (fvg.type === 'bearish' && enteringFromBelow);
       
-      return inZone && validVolume && significantSize && correctEntry;
+      return inZoneCheck && validVolume && significantSize && correctEntry;
     });
     
     if (relevantFVGs.length === 0) return null;
@@ -3752,14 +3753,11 @@ export default function CryptoIndicators() {
     const upperZone = vwapLevel + tolerance;
     const lowerZone = vwapLevel - tolerance;
     
-    // Helper: Check if candle touches threshold zone (wick or body)
-    const touchesZone = (c: CandleData) => c.high >= lowerZone && c.low <= upperZone;
-    
     let signal: { type: 'LONG' | 'SHORT', pattern: 'Bounce' | 'Cross' } | null = null;
     
     if (vwapEntryCandles === 'single') {
       // SINGLE CANDLE MODE: Current candle does everything (instant entry)
-      if (touchesZone(currentCandle)) {
+      if (touchesZone(currentCandle, lowerZone, upperZone)) {
         // BULLISH BOUNCE: touches zone + closes above VWAP line
         if (currentCandle.close > vwapLevel) {
           signal = { type: 'LONG', pattern: 'Bounce' };
@@ -3771,7 +3769,7 @@ export default function CryptoIndicators() {
       }
       
       // CROSS PATTERN: touches zone + closes OUTSIDE threshold opposite side
-      if (!signal && touchesZone(currentCandle)) {
+      if (!signal && touchesZone(currentCandle, lowerZone, upperZone)) {
         // BULLISH CROSS: closes above upper zone
         if (currentCandle.close > upperZone) {
           signal = { type: 'LONG', pattern: 'Cross' };
@@ -3783,7 +3781,7 @@ export default function CryptoIndicators() {
       }
     } else {
       // DOUBLE CANDLE MODE: Previous candle touches, current candle confirms
-      if (touchesZone(prevCandle)) {
+      if (touchesZone(prevCandle, lowerZone, upperZone)) {
         // BULLISH BOUNCE: prev touched zone, current confirms by closing above VWAP
         if (currentCandle.close > vwapLevel) {
           signal = { type: 'LONG', pattern: 'Bounce' };
@@ -3795,7 +3793,7 @@ export default function CryptoIndicators() {
       }
       
       // CROSS PATTERN: prev touched zone, current confirms by closing OUTSIDE zone
-      if (!signal && touchesZone(prevCandle)) {
+      if (!signal && touchesZone(prevCandle, lowerZone, upperZone)) {
         // BULLISH CROSS: confirms by closing above upper zone
         if (currentCandle.close > upperZone) {
           signal = { type: 'LONG', pattern: 'Cross' };
@@ -4046,24 +4044,20 @@ export default function CryptoIndicators() {
     const upperZone = emaLevel + tolerance;
     const lowerZone = emaLevel - tolerance;
     
-    const inZone = (c: CandleData) => c.high >= lowerZone && c.low <= upperZone;
-    const aboveZone = (c: CandleData) => c.low > upperZone;
-    const belowZone = (c: CandleData) => c.high < lowerZone;
-    
     let signal: { type: 'LONG' | 'SHORT', pattern: 'Bounce' | 'Cross' } | null = null;
     
-    if (emaEntryMode === 'bounce' && inZone(entryCandle)) {
-      if (belowZone(prevCandle) && confirmCandle.close > emaLevel) {
+    if (emaEntryMode === 'bounce' && inZone(entryCandle, lowerZone, upperZone)) {
+      if (belowZone(prevCandle, lowerZone) && confirmCandle.close > emaLevel) {
         signal = { type: 'LONG', pattern: 'Bounce' };
-      } else if (aboveZone(prevCandle) && confirmCandle.close < emaLevel) {
+      } else if (aboveZone(prevCandle, upperZone) && confirmCandle.close < emaLevel) {
         signal = { type: 'SHORT', pattern: 'Bounce' };
       }
     }
     
-    if (emaEntryMode === 'cross' && !signal && inZone(entryCandle)) {
-      if (belowZone(prevCandle) && confirmCandle.close > upperZone) {
+    if (emaEntryMode === 'cross' && !signal && inZone(entryCandle, lowerZone, upperZone)) {
+      if (belowZone(prevCandle, lowerZone) && confirmCandle.close > upperZone) {
         signal = { type: 'LONG', pattern: 'Cross' };
-      } else if (aboveZone(prevCandle) && confirmCandle.close < lowerZone) {
+      } else if (aboveZone(prevCandle, upperZone) && confirmCandle.close < lowerZone) {
         signal = { type: 'SHORT', pattern: 'Cross' };
       }
     }
