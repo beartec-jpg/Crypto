@@ -60,19 +60,26 @@ export function ChartPreview({
           </div>
         </div>
 
-        {/* Chart container */}
-        <div
-          ref={chartContainerRef}
-          onClick={onExpand}
-          className="relative w-full h-[400px] border rounded-lg overflow-hidden cursor-pointer hover:border-primary/50 transition-colors group"
-        >
-          <div className="absolute inset-0 flex items-center justify-center bg-background/95 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        {/* Chart container - wrapper with relative positioning */}
+        <div className="relative w-full h-[400px] border rounded-lg overflow-hidden hover:border-primary/50 transition-colors group">
+          {/* Inner div for the chart */}
+          <div ref={chartContainerRef} className="absolute inset-0">
+            {/* The actual chart will be rendered here by lightweight-charts */}
+          </div>
+          
+          {/* Clickable overlay - positioned above the chart */}
+          <div
+            onClick={onExpand}
+            className="absolute inset-0 z-10 cursor-pointer"
+          />
+          
+          {/* Hover overlay with expand hint */}
+          <div className="absolute inset-0 flex items-center justify-center bg-background/95 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
             <div className="text-center space-y-2">
               <Maximize2 className="h-8 w-8 mx-auto text-primary" />
               <p className="text-sm text-muted-foreground">Click to expand fullscreen</p>
             </div>
           </div>
-          {/* The actual chart will be rendered here by lightweight-charts */}
         </div>
 
         <p className="text-xs text-center text-muted-foreground mt-2">
