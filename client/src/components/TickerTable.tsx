@@ -107,24 +107,24 @@ export function TickerTable({
           </Select>
         </div>
       </div>
-
+      
       {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border border-slate-700 rounded-lg overflow-hidden bg-slate-900">
         <table className="w-full">
-          <thead className="bg-muted/50">
+          <thead className="bg-slate-800">
             <tr>
-              <th className="px-4 py-2 text-left text-sm font-medium">Ticker</th>
-              <th className="px-4 py-2 text-right text-sm font-medium">Price</th>
-              <th className="px-4 py-2 text-right text-sm font-medium">% Chg</th>
-              <th className="px-4 py-2 text-center text-sm font-medium">EMA Bias</th>
-              <th className="px-4 py-2 text-center text-sm font-medium">Structure</th>
-              <th className="px-4 py-2 text-center text-sm font-medium w-16"></th>
+              <th className="px-4 py-2 text-left text-sm font-medium text-gray-300">Ticker</th>
+              <th className="px-4 py-2 text-right text-sm font-medium text-gray-300">Price</th>
+              <th className="px-4 py-2 text-right text-sm font-medium text-gray-300">% Chg</th>
+              <th className="px-4 py-2 text-center text-sm font-medium text-gray-300">EMA Bias</th>
+              <th className="px-4 py-2 text-center text-sm font-medium text-gray-300">Structure</th>
+              <th className="px-4 py-2 text-center text-sm font-medium text-gray-300 w-16"></th>
             </tr>
           </thead>
           <tbody>
             {tickers.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                   No tickers in watchlist. Use the search above to add some.
                 </td>
               </tr>
@@ -136,15 +136,15 @@ export function TickerTable({
                 return (
                   <tr
                     key={ticker}
-                    className={`border-t hover:bg-muted/30 cursor-pointer transition-colors ${
-                      isSelected ? 'bg-muted/50' : ''
+                    className={`border-t border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors ${
+                      isSelected ? 'bg-slate-800' : ''
                     }`}
                     onClick={() => onSelectTicker(ticker)}
                   >
-                    <td className="px-4 py-3 font-medium">
+                    <td className="px-4 py-3 font-medium text-white">
                       {ticker.replace('USDT', '/USDT')}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono">
+                    <td className="px-4 py-3 text-right font-mono text-gray-300">
                       ${data ? formatPrice(data.price) : '-'}
                     </td>
                     <td className="px-4 py-3 text-right font-mono">
@@ -170,7 +170,7 @@ export function TickerTable({
                           e.stopPropagation();
                           onRemoveTicker(ticker);
                         }}
-                        className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+                        className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-400"
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -182,6 +182,4 @@ export function TickerTable({
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
+      
