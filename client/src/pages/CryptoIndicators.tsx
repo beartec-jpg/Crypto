@@ -370,41 +370,6 @@ export default function CryptoIndicators() {
   // Stable user ID for storage keys - prevents re-loading on user object reference changes
   const userId = user?.id || 'anonymous';
 
-  // Handler functions for watchlist component integration
-  const handleAddTicker = useCallback((ticker: string) => {
-    if (!watchlistTickers.includes(ticker)) {
-      setWatchlistTickers([...watchlistTickers, ticker]);
-      setSymbol(ticker);
-      toast({
-        title: 'Ticker added',
-        description: `${ticker.replace('USDT', '/USDT')} has been added to your watchlist`,
-      });
-    } else {
-      toast({
-        title: 'Already in watchlist',
-        description: `${ticker.replace('USDT', '/USDT')} is already in your watchlist`,
-        variant: 'destructive',
-      });
-    }
-  }, [watchlistTickers, toast]);
-
-  const handleRemoveTicker = useCallback((ticker: string) => {
-    const filtered = watchlistTickers.filter(t => t !== ticker);
-    setWatchlistTickers(filtered);
-    if (symbol === ticker && filtered.length > 0) {
-      setSymbol(filtered[0]);
-    }
-    toast({
-      title: 'Ticker removed',
-      description: `${ticker.replace('USDT', '/USDT')} has been removed from your watchlist`,
-    });
-  }, [watchlistTickers, symbol, toast]);
-
-  const handleSelectTicker = useCallback((ticker: string) => {
-    incrementTickerClick(ticker);
-    setSymbol(ticker);
-  }, []);
-
   const { data: subscription } = useQuery<{tier: string, aiCreditsRemaining?: number}>({
     queryKey: ['/api/crypto/my-subscription'],
     enabled: isAuthenticated && !authLoading
@@ -839,6 +804,41 @@ export default function CryptoIndicators() {
   useEffect(() => {
     updateDrawingMutationRef.current = updateDrawingMutation;
   }, [updateDrawingMutation]);
+  
+  // Handler functions for watchlist component integration
+  const handleAddTicker = useCallback((ticker: string) => {
+    if (!watchlistTickers.includes(ticker)) {
+      setWatchlistTickers([...watchlistTickers, ticker]);
+      setSymbol(ticker);
+      toast({
+        title: 'Ticker added',
+        description: `${ticker.replace('USDT', '/USDT')} has been added to your watchlist`,
+      });
+    } else {
+      toast({
+        title: 'Already in watchlist',
+        description: `${ticker.replace('USDT', '/USDT')} is already in your watchlist`,
+        variant: 'destructive',
+      });
+    }
+  }, [watchlistTickers, toast]);
+
+  const handleRemoveTicker = useCallback((ticker: string) => {
+    const filtered = watchlistTickers.filter(t => t !== ticker);
+    setWatchlistTickers(filtered);
+    if (symbol === ticker && filtered.length > 0) {
+      setSymbol(filtered[0]);
+    }
+    toast({
+      title: 'Ticker removed',
+      description: `${ticker.replace('USDT', '/USDT')} has been removed from your watchlist`,
+    });
+  }, [watchlistTickers, symbol, toast]);
+
+  const handleSelectTicker = useCallback((ticker: string) => {
+    incrementTickerClick(ticker);
+    setSymbol(ticker);
+  }, []);
   
   // Determine color based on snap types for auto-color feature
   // For manual mode (magnet off), checks if line is above/below candles
