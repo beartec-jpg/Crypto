@@ -7130,7 +7130,7 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
       
       console.log('Creating chart - width:', containerWidth, 'candles:', candles.length);
       
-      const chart = createChart(container, {
+     const chart = createChart(container, {
         width: containerWidth,
         height: 600,
         layout: {
@@ -7156,6 +7156,12 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
           timeVisible: true,
           secondsVisible: false,
           borderVisible: true,
+        },
+        handleScroll: isFullscreen,  // ← Disable scroll when NOT fullscreen
+        handleScale: isFullscreen,   // ← Disable pinch-to-zoom when NOT fullscreen
+        kineticScroll: {
+          touch: isFullscreen,       // ← Disable touch scroll when NOT fullscreen
+          mouse: isFullscreen,       // ← Disable mouse scroll when NOT fullscreen
         },
       });
 
