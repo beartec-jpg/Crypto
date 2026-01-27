@@ -85,28 +85,29 @@ export function TickerTable({
     return <span className={color}>{sign}{change.toFixed(2)}%</span>;
   };
 
-  return (
-    <div className="w-full space-y-3">
-      {/* Header with timeframe selector */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">WATCHLIST</h3>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Timeframe:</span>
-          <Select value={timeframe} onValueChange={onTimeframeChange}>
-            <SelectTrigger className="w-24">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1m">1m</SelectItem>
-              <SelectItem value="5m">5m</SelectItem>
-              <SelectItem value="15m">15m</SelectItem>
-              <SelectItem value="1h">1H</SelectItem>
-              <SelectItem value="4h">4H</SelectItem>
-              <SelectItem value="1d">1D</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+  // Change line 92-110 to:
+return (
+  <div className="w-full space-y-3">
+    {/* Header with timeframe selector */}
+    <div className="flex items-center justify-between bg-slate-900 p-3 rounded-lg">
+      <h3 className="text-lg font-semibold text-white">WATCHLIST</h3>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-white">Timeframe:</span>
+        <Select value={timeframe} onValueChange={onTimeframeChange}>
+          <SelectTrigger className="w-24 bg-slate-800 text-white border-slate-700">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1m">1m</SelectItem>
+            <SelectItem value="5m">5m</SelectItem>
+            <SelectItem value="15m">15m</SelectItem>
+            <SelectItem value="1h">1H</SelectItem>
+            <SelectItem value="4h">4H</SelectItem>
+            <SelectItem value="1d">1D</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
+    </div>
 
       {/* Table */}
       <div className="border rounded-lg overflow-hidden">
