@@ -26,7 +26,8 @@ import bullVideo from '@assets/grok_video_2025-11-20-06-16-11_1763619952816.mp4'
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { incrementTickerClick } from '@/lib/tickerUtils';
-import { TickerSelector } from '@/components/TickerSelector';
+import { TickerSearch } from '@/components/TickerSearch';
+import { TickerTable } from '@/components/TickerTable';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import {
@@ -445,6 +446,13 @@ export default function CryptoIndicators() {
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   
+  // Watchlist management for new component integration
+  const [watchlistTickers, setWatchlistTickers] = useState<string[]>(() => {
+    const saved = localStorage.getItem('watchlistTickers');
+    return saved ? JSON.parse(saved) : ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'];
+  });
+  const [tableTimeframe, setTableTimeframe] = useState('1h');
+  
   // Native primitives for high-performance drawing rendering
   const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
@@ -484,6 +492,11 @@ export default function CryptoIndicators() {
   useEffect(() => {
     candlesRef.current = candles;
   }, [candles]);
+  
+  // Save watchlist to localStorage
+  useEffect(() => {
+    localStorage.setItem('watchlistTickers', JSON.stringify(watchlistTickers));
+  }, [watchlistTickers]);
   
   // Cooldown ref to prevent immediate placement after pickup (1 second delay)
   const pointPickupTimeRef = useRef<number>(0);
@@ -788,6 +801,49 @@ export default function CryptoIndicators() {
   useEffect(() => {
     updateDrawingMutationRef.current = updateDrawingMutation;
   }, [updateDrawingMutation]);
+  
+  // Helper function to format ticker display (e.g., "BTCUSDT" -> "BTC/USDT")
+  const formatTickerDisplay = (ticker: string): string => {
+    return ticker.replace('USDT', '/USDT');
+  };
+  
+  // Handler functions for watchlist component integration
+  const handleAddTicker = useCallback((ticker: string) => {
+    if (!watchlistTickers.includes(ticker)) {
+      setWatchlistTickers([...watchlistTickers, ticker]);
+      setSymbol(ticker);
+      toast({
+        title: 'Ticker added',
+        description: `${formatTickerDisplay(ticker)} has been added to your watchlist`,
+      });
+    } else {
+      toast({
+        title: 'Already in watchlist',
+        description: `${formatTickerDisplay(ticker)} is already in your watchlist`,
+        variant: 'destructive',
+      });
+    }
+  }, [watchlistTickers, toast]);
+
+  const handleRemoveTicker = useCallback((ticker: string) => {
+    const filtered = watchlistTickers.filter(t => t !== ticker);
+    setWatchlistTickers(filtered);
+    if (symbol === ticker && filtered.length > 0) {
+      // Select the next ticker in the list, or the previous one if we removed the last
+      const currentIndex = watchlistTickers.indexOf(ticker);
+      const nextIndex = currentIndex < filtered.length ? currentIndex : currentIndex - 1;
+      setSymbol(filtered[nextIndex]);
+    }
+    toast({
+      title: 'Ticker removed',
+      description: `${formatTickerDisplay(ticker)} has been removed from your watchlist`,
+    });
+  }, [watchlistTickers, symbol, toast]);
+
+  const handleSelectTicker = useCallback((ticker: string) => {
+    incrementTickerClick(ticker);
+    setSymbol(ticker);
+  }, []);
   
   // Determine color based on snap types for auto-color feature
   // For manual mode (magnet off), checks if line is above/below candles
@@ -10493,15 +10549,26 @@ export default function CryptoIndicators() {
         {/* Spacer to prevent content overlap with animation */}
         <div className="h-[260px]"></div>
 
-        {/* Ticker and Timeframe Selectors */}
+        {/* NEW: Search Bar for adding tickers */}
+        <div className="flex justify-center mb-6">
+          <TickerSearch onAddTicker={handleAddTicker} />
+        </div>
+
+        {/* NEW: Watchlist Table */}
+        <div className="mb-6">
+          <TickerTable
+            tickers={watchlistTickers}
+            onRemoveTicker={handleRemoveTicker}
+            onSelectTicker={handleSelectTicker}
+            selectedTicker={symbol}
+            timeframe={tableTimeframe}
+            onTimeframeChange={setTableTimeframe}
+          />
+        </div>
+
+        {/* Timeframe Selector and Action Buttons */}
         <div className="flex flex-col items-center gap-4">
-          {/* Ticker and Timeframe Selectors */}
           <div className="flex items-center gap-2 md:gap-4">
-            <TickerSelector 
-              value={symbol} 
-              onChange={(val) => { incrementTickerClick(val); setSymbol(val); }}
-              showSearch={true}
-            />
             <Select value={interval} onValueChange={setTimeframeInterval}>
               <SelectTrigger className="w-20 md:w-32 bg-slate-800 border-slate-600">
                 <SelectValue className="text-white font-bold" />
@@ -10537,42 +10604,6 @@ export default function CryptoIndicators() {
             </a>
           </div>
         </div>
-
-        {/* Market Status */}
-        <Card className="bg-slate-800 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white text-lg flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-              Market Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-gray-300">EMA Bias</Label>
-              <div className="flex items-center gap-2">
-                {bias === 'bullish' ? (
-                  <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-green-500 font-semibold">Bullish</span></>
-                ) : bias === 'bearish' ? (
-                  <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-red-500 font-semibold">Bearish</span></>
-                ) : (
-                  <span className="text-gray-500">-</span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center justify-between pt-2 border-t border-slate-700">
-              <Label className="text-gray-300">Structure</Label>
-              <div className="flex items-center gap-2">
-                {structureTrend === 'uptrend' ? (
-                  <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-green-500 font-semibold">Uptrend</span></>
-                ) : structureTrend === 'downtrend' ? (
-                  <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-red-500 font-semibold">Downtrend</span></>
-                ) : (
-                  <span className="text-gray-500">Ranging</span>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Replay Mode Controls */}
         <Card className="bg-slate-800 border-slate-700">
