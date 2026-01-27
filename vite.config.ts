@@ -4,12 +4,16 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { visualizer } from 'rollup-plugin-visualizer'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import wasm from 'vite-plugin-wasm'
+import topLevelAwait from 'vite-plugin-top-level-await'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export default defineConfig({
   plugins: [
+    wasm(),
+    topLevelAwait(),
     react(),
     nodePolyfills({
       include: ['buffer', 'crypto', 'stream', 'util'],
@@ -54,7 +58,6 @@ export default defineConfig({
             '@noble/hashes',
             'bip39',
             'bitcoinjs-lib',
-            'tiny-secp256k1',
             '@scure/bip32',
           ],
           'web3-vendor': [
