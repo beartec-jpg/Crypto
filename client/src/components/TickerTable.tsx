@@ -36,22 +36,53 @@ export function TickerTable({
   const [tickerData, setTickerData] = useState<Record<string, TickerData>>({});
   const { toast } = useToast();
 
-  // Mock data for now - in real implementation, this would fetch from Binance WebSocket/API
+  // Fetch real prices from Binance API
   useEffect(() => {
-    const mockData: Record<string, TickerData> = {};
-    const biasOptions: Array<'bullish' | 'bearish' | 'neutral'> = ['bullish', 'bearish', 'neutral'];
-    
-    tickers.forEach((ticker) => {
-      mockData[ticker] = {
-        symbol: ticker,
-        price: Math.random() * 100 + 1,
-        priceChange: (Math.random() - 0.5) * 10,
-        emaBias: biasOptions[Math.floor(Math.random() * 3)],
-        structureBias: biasOptions[Math.floor(Math.random() * 3)],
-      };
-    });
-    setTickerData(mockData);
-  }, [tickers, timeframe]);
+    if (tickers.length === 0) return;
+
+    const fetchPrices = async () => {
+      try {
+        // Fetch 24hr ticker data for all symbols
+        const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
+        const data = await response.json();
+
+        const newTickerData: Record<string, TickerData> = {};
+        const biasOptions: Array<'bullish' | 'bearish' | 'neutral'> = ['bullish', 'bearish', 'neutral'];
+
+        tickers.forEach((ticker) => {
+          const tickerInfo = data.find((t: any) => t.symbol === ticker);
+          
+          if (tickerInfo) {
+            newTickerData[ticker] = {
+              symbol: ticker,
+              price: parseFloat(tickerInfo.lastPrice),
+              priceChange: parseFloat(tickerInfo.priceChangePercent),
+              // TODO: Calculate real EMA and structure bias from candle data
+              emaBias: biasOptions[Math.floor(Math.random() * 3)],
+              structureBias: biasOptions[Math.floor(Math.random() * 3)],
+            };
+          }
+        });
+
+        setTickerData(newTickerData);
+      } catch (error) {
+        console.error('Failed to fetch ticker prices:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch real-time prices',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    // Fetch immediately
+    fetchPrices();
+
+    // Update prices every 5 seconds
+    const interval = setInterval(fetchPrices, 5000);
+
+    return () => clearInterval(interval);
+  }, [tickers, timeframe, toast]);
 
   const getBiasIcon = (bias: 'bullish' | 'bearish' | 'neutral') => {
     switch (bias) {
@@ -76,6 +107,7 @@ export function TickerTable({
   };
 
   const formatPrice = (price: number) => {
+    if (price === 0) return '-';
     return price < 1 ? price.toFixed(6) : price.toFixed(2);
   };
 
