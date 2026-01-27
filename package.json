@@ -126,7 +126,7 @@
     "wouter": "^2.8.0",
     "ws": "^8.18.3",
     "xrpl": "^3.0.0",
-    "zod": "^3.25.76",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.1.0",
@@ -148,6 +148,6 @@
     "vite-plugin-node-polyfills": "^0.22.0",
     "vite-plugin-top-level-await": "^1.4.4",
     "vite-plugin-wasm": "^3.3.0",
-    "vitest": "^2.0.0",
+    "vitest": "^2.0.0"
   }
 }
