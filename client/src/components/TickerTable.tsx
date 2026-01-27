@@ -39,13 +39,15 @@ export function TickerTable({
   // Mock data for now - in real implementation, this would fetch from Binance WebSocket/API
   useEffect(() => {
     const mockData: Record<string, TickerData> = {};
+    const biasOptions: Array<'bullish' | 'bearish' | 'neutral'> = ['bullish', 'bearish', 'neutral'];
+    
     tickers.forEach((ticker) => {
       mockData[ticker] = {
         symbol: ticker,
         price: Math.random() * 100 + 1,
         priceChange: (Math.random() - 0.5) * 10,
-        emaBias: ['bullish', 'bearish', 'neutral'][Math.floor(Math.random() * 3)] as any,
-        structureBias: ['bullish', 'bearish', 'neutral'][Math.floor(Math.random() * 3)] as any,
+        emaBias: biasOptions[Math.floor(Math.random() * 3)],
+        structureBias: biasOptions[Math.floor(Math.random() * 3)],
       };
     });
     setTickerData(mockData);

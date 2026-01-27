@@ -24,11 +24,14 @@ export function touchesZone(candle: CandleData, lowerZone: number, upperZone: nu
 }
 
 /**
- * Check if a candle is within a price zone
+ * Check if a candle is within a price zone (touches or overlaps)
+ * Note: This checks if ANY PART of the candle is within the zone (same as touchesZone).
+ * In the original code, both functions had identical logic for backwards compatibility
+ * with existing trading strategies.
  * @param candle The candle to check
  * @param lowerZone Lower bound of the zone
  * @param upperZone Upper bound of the zone
- * @returns true if candle is within the zone
+ * @returns true if candle overlaps with the zone
  */
 export function inZone(candle: CandleData, lowerZone: number, upperZone: number): boolean {
   return candle.high >= lowerZone && candle.low <= upperZone;
