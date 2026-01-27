@@ -55,6 +55,7 @@ import {
   FibRetracementPrimitive,
   ChannelPrimitive
 } from '@/lib/chartPrimitives';
+import { calculateEMA } from '@/utils/emaCalculations';
 
 interface CandleData {
   time: number;
@@ -96,11 +97,14 @@ const generateFutureWhitespace = (lastCandleTime: number, interval: string, coun
   return futureBars;
 };
 
+// Constant for future bar count - ensures consistent whitespace across all timeframes
+const FUTURE_BAR_COUNT = 300;
+
 // Get recommended future bar count based on timeframe
 // User wants "half a chart worth at full zoom out" - approximately 300 bars for all timeframes
 const getFutureBarCount = (interval: string): number => {
   // Use consistent large count for all timeframes to ensure half chart of future space
-  return 300;
+  return FUTURE_BAR_COUNT;
 };
 
 // Get table row limit based on timeframe - industry standard lookback periods
@@ -974,8 +978,6 @@ export default function CryptoIndicators() {
   const emaSlowPeriod = emaConfigs[1]?.period || 50;
   const [emaFastInput, setEmaFastInput] = useState('10');
   const [emaSlowInput, setEmaSlowInput] = useState('40');
-  const setEmaFastPeriod = (_: number) => {}; // Stub for legacy code
-  const setEmaSlowPeriod = (_: number) => {}; // Stub for legacy code
   
   // Oscillator indicators
   const rsiRef = useRef<HTMLDivElement>(null);
@@ -1048,8 +1050,6 @@ export default function CryptoIndicators() {
   const smaSlowPeriod = smaConfigs[1]?.period || 50;
   const [smaFastInput, setSmaFastInput] = useState('20');
   const [smaSlowInput, setSmaSlowInput] = useState('50');
-  const setSmaFastPeriod = (_: number) => {}; // Stub for legacy code
-  const setSmaSlowPeriod = (_: number) => {}; // Stub for legacy code
   const [showSupertrend, setShowSupertrend] = useState(false);
   const [supertrendPeriod, setSupertrendPeriod] = useState(10);
   const [supertrendPeriodInput, setSupertrendPeriodInput] = useState('10');
@@ -1718,20 +1718,6 @@ export default function CryptoIndicators() {
       setVwapThreshold(val);
     }
   }, [vwapThresholdInput]);
-
-  useEffect(() => {
-    const val = parseInt(emaFastInput);
-    if (!isNaN(val) && val >= 5 && val <= 200) {
-      setEmaFastPeriod(val);
-    }
-  }, [emaFastInput]);
-
-  useEffect(() => {
-    const val = parseInt(emaSlowInput);
-    if (!isNaN(val) && val >= 20 && val <= 500) {
-      setEmaSlowPeriod(val);
-    }
-  }, [emaSlowInput]);
 
   useEffect(() => {
     const val = parseInt(bbPeriodInput);
@@ -2671,13 +2657,11 @@ export default function CryptoIndicators() {
   }, []);
 
   const calculateMACD = useCallback((bars: CandleData[], fastPeriod: number = 12, slowPeriod: number = 26, signalPeriod: number = 9) => {
-    const ema = (data: number[], p: number) => data.reduce((acc, val, i) => 
-      i === 0 ? [val] : [...acc, val * (2/(p+1)) + acc[i-1] * (1 - 2/(p+1))], [] as number[]);
     const close = bars.map(b => b.close);
-    const emaFast = ema(close, fastPeriod);
-    const emaSlow = ema(close, slowPeriod);
+    const emaFast = calculateEMA(close, fastPeriod);
+    const emaSlow = calculateEMA(close, slowPeriod);
     const macdLine = close.map((_, i) => emaFast[i] - emaSlow[i]);
-    const signal = ema(macdLine, signalPeriod);
+    const signal = calculateEMA(macdLine, signalPeriod);
     const histogram = macdLine.map((v, i) => v - signal[i]);
     return { 
       macd: macdLine.map((v, i) => ({ time: bars[i].time, value: v })),
@@ -6588,11 +6572,9 @@ export default function CryptoIndicators() {
       // EMAs
       if (defaults.showEMA !== undefined) setShowEMA(defaults.showEMA);
       if (defaults.emaFastPeriod !== undefined) {
-        setEmaFastPeriod(defaults.emaFastPeriod);
         setEmaFastInput(defaults.emaFastPeriod.toString());
       }
       if (defaults.emaSlowPeriod !== undefined) {
-        setEmaSlowPeriod(defaults.emaSlowPeriod);
         setEmaSlowInput(defaults.emaSlowPeriod.toString());
       }
       if (defaults.emaConfigs && Array.isArray(defaults.emaConfigs)) {
