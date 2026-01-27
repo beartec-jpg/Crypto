@@ -4,14 +4,12 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { visualizer } from 'rollup-plugin-visualizer'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
-import wasm from 'vite-plugin-wasm'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export default defineConfig({
   plugins: [
-    wasm(),
     react(),
     nodePolyfills({
       include: ['buffer', 'crypto', 'stream', 'util'],
@@ -54,7 +52,6 @@ export default defineConfig({
           'crypto-vendor': [
             '@noble/curves',
             '@noble/hashes',
-            '@noble/post-quantum',
             'bip39',
             'bitcoinjs-lib',
             'tiny-secp256k1',
