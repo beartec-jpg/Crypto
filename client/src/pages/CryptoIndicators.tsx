@@ -447,12 +447,13 @@ export default function CryptoIndicators() {
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   
-  // Watchlist management for new component integration
-  const [watchlistTickers, setWatchlistTickers] = useState<string[]>(() => {
-    const saved = localStorage.getItem('watchlistTickers');
-    return saved ? JSON.parse(saved) : ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'];
-  });
-  const [tableTimeframe, setTableTimeframe] = useState('1h');
+// Watchlist management for new component integration
+const [watchlistTickers, setWatchlistTickers] = useState<string[]>(() => {
+  const saved = localStorage.getItem('watchlistTickers');
+  return saved ? JSON.parse(saved) : ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'];
+}); // ← This closing was missing!
+
+const [tableTimeframe, setTableTimeframe] = useState('1h');
   
   // Native primitives for high-performance drawing rendering
   const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
@@ -10552,7 +10553,7 @@ export default function CryptoIndicators() {
 
         {/* NEW: Search Bar for adding tickers */}
         <div className="flex justify-center mb-6">
-          <TickerSearch onAddTicker={handleAddTicker} existingTickers={selectedTickers} />
+          <TickerSearch onAddTicker={handleAddTicker} existingTickers={watchlistTickers} />
         </div>
 
         {/* NEW: Watchlist Table */}
