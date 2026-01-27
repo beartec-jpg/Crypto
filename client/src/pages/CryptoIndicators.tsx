@@ -11617,6 +11617,7 @@ export default function CryptoIndicators() {
                     ? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618]
                     : [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
                   const channelLevels = [0.25, 0.5, 0.75];
+                  const colors = ['#facc15', '#22c55e', '#ef4444', '#3b82f6', '#a855f7', '#f97316', '#06b6d4', '#ec4899', '#ffffff', '#94a3b8', '#64748b', '#475569'];
                   
                   // Helper for float comparison when checking hidden levels - use rounding for consistency
                   const roundLevel = (n: number) => Math.round(n * 10000) / 10000;
@@ -11661,8 +11662,13 @@ export default function CryptoIndicators() {
                               {channelLevels.map(level => {
                                 const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
                                 const customLabels = selectedDrawing.style?.customLabels || {};
+                                const levelColors = selectedDrawing.style?.levelColors || {};
+                                const openColorPicker = selectedDrawing.style?.__openColorPicker;
                                 const isVisible = !isLevelHidden(level, hiddenLevels);
                                 const customLabel = customLabels[level] || '';
+                                const levelColor = levelColors[level] || '#facc15';
+                                const pickerKey = `ch-level-${level}`;
+                                
                                 return (
                                   <div key={level} className="flex items-center gap-2 text-xs">
                                     <input 
@@ -11677,6 +11683,30 @@ export default function CryptoIndicators() {
                                       className="rounded border-slate-600 w-4 h-4"
                                     />
                                     <span className="text-gray-400 w-10">{(level * 100).toFixed(0)}%</span>
+                                    <div className="relative">
+                                      <button
+                                        onClick={() => {
+                                          updateDrawingSettings({ __openColorPicker: openColorPicker === pickerKey ? null : pickerKey });
+                                        }}
+                                        className="w-6 h-6 rounded border-2 border-slate-600 hover:border-slate-400"
+                                        style={{ backgroundColor: levelColor }}
+                                      />
+                                      {openColorPicker === pickerKey && (
+                                        <div className="absolute z-50 bg-slate-800 border border-slate-600 rounded p-2 grid grid-cols-4 gap-1 left-0 mt-1">
+                                          {colors.map(c => (
+                                            <button
+                                              key={c}
+                                              onClick={() => {
+                                                const newColors = { ...levelColors, [level]: c };
+                                                updateDrawingSettings({ levelColors: newColors, __openColorPicker: null });
+                                              }}
+                                              className="w-6 h-6 rounded hover:scale-110 transition-transform"
+                                              style={{ backgroundColor: c }}
+                                            />
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
                                     <input
                                       type="text"
                                       value={customLabel}
@@ -11697,32 +11727,54 @@ export default function CryptoIndicators() {
                           <div className="mb-3">
                             <div className="text-xs text-gray-300 mb-2">Boundary Labels</div>
                             <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="text-red-400 w-14">Top:</span>
-                                <input
-                                  type="text"
-                                  value={selectedDrawing.style?.customLabels?.['top'] || ''}
-                                  onChange={(e) => {
-                                    const customLabels = selectedDrawing.style?.customLabels || {};
-                                    updateDrawingSettings({ customLabels: { ...customLabels, top: e.target.value } });
-                                  }}
-                                  placeholder="Top label..."
-                                  className="flex-1 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-xs text-white placeholder-gray-500"
-                                />
-                              </div>
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="text-green-400 w-14">Bottom:</span>
-                                <input
-                                  type="text"
-                                  value={selectedDrawing.style?.customLabels?.['bottom'] || ''}
-                                  onChange={(e) => {
-                                    const customLabels = selectedDrawing.style?.customLabels || {};
-                                    updateDrawingSettings({ customLabels: { ...customLabels, bottom: e.target.value } });
-                                  }}
-                                  placeholder="Bottom label..."
-                                  className="flex-1 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-xs text-white placeholder-gray-500"
-                                />
-                              </div>
+                              {['top', 'bottom'].map(boundary => {
+                                const boundaryColors = selectedDrawing.style?.boundaryColors || {};
+                                const boundaryColor = boundaryColors[boundary] || (boundary === 'top' ? '#ef4444' : '#22c55e');
+                                const openColorPicker = selectedDrawing.style?.__openColorPicker;
+                                const pickerKey = `ch-boundary-${boundary}`;
+                                
+                                return (
+                                  <div key={boundary} className="flex items-center gap-2 text-xs">
+                                    <span className={`${boundary === 'top' ? 'text-red-400' : 'text-green-400'} w-14`}>
+                                      {boundary === 'top' ? 'Top:' : 'Bottom:'}
+                                    </span>
+                                    <div className="relative">
+                                      <button
+                                        onClick={() => {
+                                          updateDrawingSettings({ __openColorPicker: openColorPicker === pickerKey ? null : pickerKey });
+                                        }}
+                                        className="w-6 h-6 rounded border-2 border-slate-600 hover:border-slate-400"
+                                        style={{ backgroundColor: boundaryColor }}
+                                      />
+                                      {openColorPicker === pickerKey && (
+                                        <div className="absolute z-50 bg-slate-800 border border-slate-600 rounded p-2 grid grid-cols-4 gap-1 left-0 mt-1">
+                                          {colors.map(c => (
+                                            <button
+                                              key={c}
+                                              onClick={() => {
+                                                const newColors = { ...boundaryColors, [boundary]: c };
+                                                updateDrawingSettings({ boundaryColors: newColors, __openColorPicker: null });
+                                              }}
+                                              className="w-6 h-6 rounded hover:scale-110 transition-transform"
+                                              style={{ backgroundColor: c }}
+                                            />
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={selectedDrawing.style?.customLabels?.[boundary] || ''}
+                                      onChange={(e) => {
+                                        const customLabels = selectedDrawing.style?.customLabels || {};
+                                        updateDrawingSettings({ customLabels: { ...customLabels, [boundary]: e.target.value } });
+                                      }}
+                                      placeholder={`${boundary === 'top' ? 'Top' : 'Bottom'} label...`}
+                                      className="flex-1 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-xs text-white placeholder-gray-500"
+                                    />
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                           
@@ -11787,6 +11839,22 @@ export default function CryptoIndicators() {
                             >
                               {selectedDrawing.style?.hideLabels ? '👁️‍🗨️ Labels Hidden' : '👁️ Hide Labels'}
                             </button>
+                          </div>
+                          
+                          {/* Fill Opacity Slider */}
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-300 mb-2">Fill Opacity</div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                value={(selectedDrawing.style?.fillOpacity || 0.1) * 100}
+                                onChange={(e) => updateDrawingSettings({ fillOpacity: parseInt(e.target.value) / 100 })}
+                                className="flex-1 accent-blue-500"
+                              />
+                              <span className="text-xs text-slate-300 w-10">{Math.round((selectedDrawing.style?.fillOpacity || 0.1) * 100)}%</span>
+                            </div>
                           </div>
                           
                           {/* Save as Default Button */}
@@ -11892,8 +11960,13 @@ export default function CryptoIndicators() {
                                 {fibLevels.map(level => {
                                   const hiddenLevels = selectedDrawing.style?.hiddenLevels || [];
                                   const customLabels = selectedDrawing.style?.customLabels || {};
+                                  const levelColors = selectedDrawing.style?.levelColors || {};
+                                  const openColorPicker = selectedDrawing.style?.__openColorPicker;
                                   const isVisible = !isLevelHidden(level, hiddenLevels);
                                   const customLabel = customLabels[level] || '';
+                                  const levelColor = levelColors[level] || '#facc15';
+                                  const pickerKey = `fib-level-${level}`;
+                                  
                                   return (
                                     <div key={level} className="flex items-center gap-1 text-xs">
                                       <input 
@@ -11908,6 +11981,30 @@ export default function CryptoIndicators() {
                                         className="rounded border-slate-600 w-4 h-4"
                                       />
                                       <span className="text-gray-400 w-12">{(level * 100).toFixed(1)}%</span>
+                                      <div className="relative">
+                                        <button
+                                          onClick={() => {
+                                            updateDrawingSettings({ __openColorPicker: openColorPicker === pickerKey ? null : pickerKey });
+                                          }}
+                                          className="w-6 h-6 rounded border-2 border-slate-600 hover:border-slate-400"
+                                          style={{ backgroundColor: levelColor }}
+                                        />
+                                        {openColorPicker === pickerKey && (
+                                          <div className="absolute z-50 bg-slate-800 border border-slate-600 rounded p-2 grid grid-cols-4 gap-1 left-0 mt-1">
+                                            {colors.map(c => (
+                                              <button
+                                                key={c}
+                                                onClick={() => {
+                                                  const newColors = { ...levelColors, [level]: c };
+                                                  updateDrawingSettings({ levelColors: newColors, __openColorPicker: null });
+                                                }}
+                                                className="w-6 h-6 rounded hover:scale-110 transition-transform"
+                                                style={{ backgroundColor: c }}
+                                              />
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
                                       <input
                                         type="text"
                                         value={customLabel}
