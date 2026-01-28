@@ -446,6 +446,10 @@ export default function CryptoIndicators() {
   const [drawingsVisible, setDrawingsVisible] = useState(true); // Toggle to hide/show all drawings
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+
+  // Oscillator panel state for fullscreen mode
+const [showOscillatorPanel, setShowOscillatorPanel] = useState(false);
+const [showOscillatorPicker, setShowOscillatorPicker] = useState(false);
   
 // Watchlist management - synced to database
 const { data: watchlistData, refetch: refetchWatchlist } = useQuery({
@@ -11644,6 +11648,22 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
+                     {/* Oscillator Panel Toggle */}
+<button
+  onClick={() => setShowOscillatorPicker(!showOscillatorPicker)}
+  className={`p-2 rounded-lg transition-all ${
+    showOscillatorPanel 
+      ? 'bg-purple-500 text-white' 
+      : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+  }`}
+  title="Oscillator Panel"
+  data-testid="btn-oscillator-panel"
+>
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+  </svg>
+</button>
+
                 </div>
               )}
 
@@ -11725,6 +11745,53 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
                     ))}
                   </div>
                 )}
+
+        {/* Oscillator Picker Popup */}
+{isFullscreen && showOscillatorPicker && (
+  <div className="absolute top-14 left-2 z-30 bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl min-w-[180px]">
+    <div className="text-xs text-gray-400 mb-2 px-2">Select Oscillator</div>
+    {[
+      { id: 'rsi', name: 'RSI', enabled: showRSI, setter: setShowRSI },
+      { id: 'macd', name: 'MACD', enabled: showMACD, setter: setShowMACD },
+      { id: 'stoch', name: 'Stochastic', enabled: showStochRSI, setter: setShowStochRSI },
+      { id: 'cci', name: 'CCI', enabled: showCCI, setter: setShowCCI },
+      { id: 'williams', name: 'Williams %R', enabled: showWilliamsR, setter: setShowWilliamsR },
+    ].map(osc => (
+      <button
+        key={osc.id}
+        onClick={() => {
+          osc.setter(!osc.enabled);
+          if (!osc.enabled) {
+            setShowOscillatorPanel(true);
+          }
+          setShowOscillatorPicker(false);
+          toast({ 
+            title: `${osc.name} ${!osc.enabled ? 'Enabled' : 'Disabled'}`,
+            description: !osc.enabled ? 'Oscillator panel opened' : 'Oscillator disabled'
+          });
+        }}
+        className={`w-full flex items-center justify-between px-3 py-2 rounded hover:bg-slate-700 transition-all text-left ${
+          osc.enabled ? 'bg-blue-500/30 text-blue-300' : 'text-gray-300'
+        }`}
+      >
+        <span className="text-sm">{osc.name}</span>
+        {osc.enabled && <span className="text-green-400">✓</span>}
+      </button>
+    ))}
+    
+    {showOscillatorPanel && (
+      <button
+        onClick={() => {
+          setShowOscillatorPanel(false);
+          setShowOscillatorPicker(false);
+        }}
+        className="w-full mt-2 px-3 py-2 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm"
+      >
+        Hide Panel
+      </button>
+    )}
+  </div>
+)}
                 
                 {/* Drawing Settings Panel (if any comes next) */}
                 {showDrawingSettings && selectedDrawingId && (
