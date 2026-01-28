@@ -447,11 +447,35 @@ export default function CryptoIndicators() {
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   
-// Watchlist management for new component integration
-const [watchlistTickers, setWatchlistTickers] = useState<string[]>(() => {
-  const saved = localStorage.getItem('watchlistTickers');
-  return saved ? JSON.parse(saved) : ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'];
-}); // ← This closing was missing!
+// Watchlist management - synced to database
+const { data: watchlistData, refetch: refetchWatchlist } = useQuery({
+  queryKey: ['watchlist'],
+  queryFn: async () => {
+    const response = await authenticatedApiRequest('GET', '/api/crypto/watchlist');
+    return response.json();
+  },
+  staleTime: Infinity,
+});
+
+const [watchlistTickers, setWatchlistTickers] = useState<string[]>([]);
+
+// Sync watchlist from API to local state
+useEffect(() => {
+  if (watchlistData?.tickers) {
+    setWatchlistTickers(watchlistData.tickers);
+  }
+}, [watchlistData]);
+
+// Save watchlist mutation
+const saveWatchlistMutation = useMutation({
+  mutationFn: async (tickers: string[]) => {
+    const response = await authenticatedApiRequest('POST', '/api/crypto/watchlist', { tickers });
+    return response.json();
+  },
+  onSuccess: () => {
+    refetchWatchlist();
+  },
+});
 
 const [tableTimeframe, setTableTimeframe] = useState('1h');
   
@@ -494,11 +518,6 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
   useEffect(() => {
     candlesRef.current = candles;
   }, [candles]);
-  
-  // Save watchlist to localStorage
-  useEffect(() => {
-    localStorage.setItem('watchlistTickers', JSON.stringify(watchlistTickers));
-  }, [watchlistTickers]);
   
   // Cooldown ref to prevent immediate placement after pickup (1 second delay)
   const pointPickupTimeRef = useRef<number>(0);
@@ -811,36 +830,38 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
   
   // Handler functions for watchlist component integration
   const handleAddTicker = useCallback((ticker: string) => {
-    if (!watchlistTickers.includes(ticker)) {
-      setWatchlistTickers([...watchlistTickers, ticker]);
-      setSymbol(ticker);
-      toast({
-        title: 'Ticker added',
-        description: `${formatTickerDisplay(ticker)} has been added to your watchlist`,
-      });
-    } else {
-      toast({
-        title: 'Already in watchlist',
-        description: `${formatTickerDisplay(ticker)} is already in your watchlist`,
-        variant: 'destructive',
-      });
-    }
-  }, [watchlistTickers, toast]);
-
-  const handleRemoveTicker = useCallback((ticker: string) => {
-    const filtered = watchlistTickers.filter(t => t !== ticker);
-    setWatchlistTickers(filtered);
-    if (symbol === ticker && filtered.length > 0) {
-      // Select the next ticker in the list, or the previous one if we removed the last
-      const currentIndex = watchlistTickers.indexOf(ticker);
-      const nextIndex = currentIndex < filtered.length ? currentIndex : currentIndex - 1;
-      setSymbol(filtered[nextIndex]);
-    }
+  if (!watchlistTickers.includes(ticker)) {
+    const newTickers = [...watchlistTickers, ticker];
+    setWatchlistTickers(newTickers);
+    saveWatchlistMutation.mutate(newTickers);
+    setSymbol(ticker);
     toast({
-      title: 'Ticker removed',
-      description: `${formatTickerDisplay(ticker)} has been removed from your watchlist`,
+      title: 'Ticker added',
+      description: `${formatTickerDisplay(ticker)} has been added to your watchlist`,
     });
-  }, [watchlistTickers, symbol, toast]);
+  } else {
+    toast({
+      title: 'Already in watchlist',
+      description: `${formatTickerDisplay(ticker)} is already in your watchlist`,
+      variant: 'destructive',
+    });
+  }
+}, [watchlistTickers, toast, saveWatchlistMutation]);
+
+ const handleRemoveTicker = useCallback((ticker: string) => {
+  const filtered = watchlistTickers.filter(t => t !== ticker);
+  setWatchlistTickers(filtered);
+  saveWatchlistMutation.mutate(filtered);
+  if (symbol === ticker && filtered.length > 0) {
+    const currentIndex = watchlistTickers.indexOf(ticker);
+    const nextIndex = currentIndex < filtered.length ? currentIndex : currentIndex - 1;
+    setSymbol(filtered[nextIndex]);
+  }
+  toast({
+    title: 'Ticker removed',
+    description: `${formatTickerDisplay(ticker)} has been removed from your watchlist`,
+  });
+}, [watchlistTickers, symbol, toast, saveWatchlistMutation]);
 
   const handleSelectTicker = useCallback((ticker: string) => {
     incrementTickerClick(ticker);
