@@ -19,6 +19,7 @@ import WebSocket from "ws";
 import { storage } from "./storage";
 import { CalculationService } from "./services/calculationService";
 import { calculationRequestSchema, insertFeedbackSchema } from "@shared/schema";
+import { userWatchlists } from "@shared/schema";
 
 const execFileAsync = promisify(execFile);
 
@@ -6393,6 +6394,92 @@ Return ONLY valid JSON in this exact format:
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error deleting chart drawing:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+    // ============ User Watchlist API ============
+  
+  // Get user's watchlist
+  app.get("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      
+      const { db } = await import("./db");
+      const { userWatchlists } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      // Get or create watchlist
+      let [watchlist] = await db
+        .select()
+        .from(userWatchlists)
+        .where(eq(userWatchlists.userId, userId))
+        .limit(1);
+      
+      if (!watchlist) {
+        // Create default watchlist
+        [watchlist] = await db
+          .insert(userWatchlists)
+          .values({
+            userId,
+            tickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
+          })
+          .returning();
+      }
+      
+      res.json(watchlist);
+    } catch (error: any) {
+      console.error("Failed to get watchlist:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Save user's watchlist
+  app.post("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { tickers } = req.body;
+      
+      if (!Array.isArray(tickers)) {
+        return res.status(400).json({ error: "Tickers must be an array" });
+      }
+      
+      const { db } = await import("./db");
+      const { userWatchlists } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      // Check if watchlist exists
+      const [existing] = await db
+        .select()
+        .from(userWatchlists)
+        .where(eq(userWatchlists.userId, userId))
+        .limit(1);
+      
+      let watchlist;
+      if (existing) {
+        // Update existing
+        [watchlist] = await db
+          .update(userWatchlists)
+          .set({
+            tickers,
+            updatedAt: new Date(),
+          })
+          .where(eq(userWatchlists.userId, userId))
+          .returning();
+      } else {
+        // Create new
+        [watchlist] = await db
+          .insert(userWatchlists)
+          .values({
+            userId,
+            tickers,
+          })
+          .returning();
+      }
+      
+      res.json(watchlist);
+    } catch (error: any) {
+      console.error("Failed to save watchlist:", error);
       res.status(500).json({ error: error.message });
     }
   });
