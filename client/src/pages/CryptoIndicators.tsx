@@ -10816,9 +10816,14 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
         >
           {/* Inner div for the chart canvas */}
           <div 
-            ref={chartContainerRef}
-            className="absolute inset-0"
-          >
+  ref={chartContainerRef}
+  className="absolute inset-0"
+  style={{
+    height: isFullscreen && showOscillatorPanel 
+      ? 'calc(100vh - 250px)' // Leave room for oscillator panel
+      : '100%'
+  }}
+>          
             {/* Chart canvas renders here */}
           </div>
           
@@ -12981,147 +12986,215 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
           </CardContent>
         </Card>
 
-        {/* Oscillator Charts - Full Width */}
-        {(showRSI || showStochRSI || showMACD || showOBV || showWilliamsR || showMFI || showCCI || showADX) && (
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-              {showRSI && (() => {
-                const report = isPaidTier ? getIndicatorReport('RSI') : null;
-                return (
-                  <Card className="bg-slate-800 border-slate-700">
-                    <CardHeader className="pb-1">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-white text-sm">RSI ({rsiPeriod})</CardTitle>
-                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div ref={rsiRef} className="w-full" data-testid="chart-rsi" />
-                      <DivergenceMeter indicator="RSI" />
-                    </CardContent>
-                  </Card>
-                );
-              })()}
-              {showStochRSI && (() => {
-                const report = isPaidTier ? getIndicatorReport('StochRSI') : null;
-                return (
-                  <Card className="bg-slate-800 border-slate-700">
-                    <CardHeader className="pb-1">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-white text-sm">Stochastic RSI ({stochRSIPeriod})</CardTitle>
-                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div ref={stochRSIRef} className="w-full" data-testid="chart-stoch-rsi" />
-                      <DivergenceMeter indicator="StochRSI" />
-                    </CardContent>
-                  </Card>
-                );
-              })()}
-              {showMACD && (() => {
-                const report = isPaidTier ? getIndicatorReport('MACD') : null;
-                return (
-                  <Card className="bg-slate-800 border-slate-700">
-                    <CardHeader className="pb-1">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-white text-sm">MACD ({macdFast}, {macdSlow}, {macdSignal})</CardTitle>
-                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div ref={macdRef} className="w-full" data-testid="chart-macd" />
-                      <DivergenceMeter indicator="MACD" />
-                    </CardContent>
-                  </Card>
-                );
-              })()}
-              {showOBV && (() => {
-                const report = isPaidTier ? getIndicatorReport('OBV') : null;
-                return (
-                  <Card className="bg-slate-800 border-slate-700">
-                    <CardHeader className="pb-1">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
-                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div ref={obvRef} className="w-full" data-testid="chart-obv" />
-                      <DivergenceMeter indicator="OBV" />
-                    </CardContent>
-                  </Card>
-                );
-              })()}
-              {showWilliamsR && (() => {
-                const report = isPaidTier ? getIndicatorReport('WilliamsR') : null;
-                return (
-                  <Card className="bg-slate-800 border-slate-700">
-                    <CardHeader className="pb-1">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-white text-sm">Williams %R ({williamsRPeriod})</CardTitle>
-                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div ref={williamsRRef} className="w-full" data-testid="chart-williams-r" />
-                      <DivergenceMeter indicator="WilliamsR" />
-                    </CardContent>
-                  </Card>
-                );
-              })()}
-              {showMFI && (() => {
-                const report = isPaidTier ? getIndicatorReport('MFI') : null;
-                return (
-                  <Card className="bg-slate-800 border-slate-700">
-                    <CardHeader className="pb-1">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-white text-sm">Money Flow Index ({mfiPeriod})</CardTitle>
-                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div ref={mfiRef} className="w-full" data-testid="chart-mfi" />
-                      <DivergenceMeter indicator="MFI" />
-                    </CardContent>
-                  </Card>
-                );
-              })()}
-              {showCCI && (() => {
-                const report = isPaidTier ? getIndicatorReport('CCI') : null;
-                return (
-                  <Card className="bg-slate-800 border-slate-700">
-                    <CardHeader className="pb-1">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-white text-sm">CCI ({cciPeriod})</CardTitle>
-                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div ref={cciRef} className="w-full" data-testid="chart-cci" />
-                      <DivergenceMeter indicator="CCI" />
-                    </CardContent>
-                  </Card>
-                );
-              })()}
-              {showADX && (() => {
-                const report = isPaidTier ? getIndicatorReport('ADX') : null;
-                return (
-                  <Card className="bg-slate-800 border-slate-700">
-                    <CardHeader className="pb-1">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-white text-sm">ADX ({adxPeriod})</CardTitle>
-                        {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div ref={adxRef} className="w-full" data-testid="chart-adx" />
-                      <TrendStrengthMeter />
-                    </CardContent>
-                  </Card>
-                );
-              })()}
+{/* Oscillator Charts - Conditionally rendered based on mode */}
+{!isFullscreen && (showRSI || showStochRSI || showMACD || showOBV || showWilliamsR || showMFI || showCCI || showADX) && (
+  <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+    {showRSI && (() => {
+      const report = isPaidTier ? getIndicatorReport('RSI') : null;
+      return (
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white text-sm">RSI ({rsiPeriod})</CardTitle>
+              {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
             </div>
-        )}
+          </CardHeader>
+          <CardContent>
+            <div ref={rsiRef} className="w-full" data-testid="chart-rsi" />
+            <DivergenceMeter indicator="RSI" />
+          </CardContent>
+        </Card>
+      );
+    })()}
+    {showStochRSI && (() => {
+      const report = isPaidTier ? getIndicatorReport('StochRSI') : null;
+      return (
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white text-sm">Stochastic RSI ({stochRSIPeriod})</CardTitle>
+              {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div ref={stochRSIRef} className="w-full" data-testid="chart-stoch-rsi" />
+            <DivergenceMeter indicator="StochRSI" />
+          </CardContent>
+        </Card>
+      );
+    })()}
+    {showMACD && (() => {
+      const report = isPaidTier ? getIndicatorReport('MACD') : null;
+      return (
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white text-sm">MACD ({macdFast}, {macdSlow}, {macdSignal})</CardTitle>
+              {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div ref={macdRef} className="w-full" data-testid="chart-macd" />
+            <DivergenceMeter indicator="MACD" />
+          </CardContent>
+        </Card>
+      );
+    })()}
+    {showOBV && (() => {
+      const report = isPaidTier ? getIndicatorReport('OBV') : null;
+      return (
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
+              {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div ref={obvRef} className="w-full" data-testid="chart-obv" />
+            <DivergenceMeter indicator="OBV" />
+          </CardContent>
+        </Card>
+      );
+    })()}
+    {showWilliamsR && (() => {
+      const report = isPaidTier ? getIndicatorReport('WilliamsR') : null;
+      return (
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white text-sm">Williams %R ({williamsRPeriod})</CardTitle>
+              {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div ref={williamsRRef} className="w-full" data-testid="chart-williams-r" />
+            <DivergenceMeter indicator="WilliamsR" />
+          </CardContent>
+        </Card>
+      );
+    })()}
+    {showMFI && (() => {
+      const report = isPaidTier ? getIndicatorReport('MFI') : null;
+      return (
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white text-sm">Money Flow Index ({mfiPeriod})</CardTitle>
+              {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div ref={mfiRef} className="w-full" data-testid="chart-mfi" />
+            <DivergenceMeter indicator="MFI" />
+          </CardContent>
+        </Card>
+      );
+    })()}
+    {showCCI && (() => {
+      const report = isPaidTier ? getIndicatorReport('CCI') : null;
+      return (
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white text-sm">CCI ({cciPeriod})</CardTitle>
+              {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div ref={cciRef} className="w-full" data-testid="chart-cci" />
+            <DivergenceMeter indicator="CCI" />
+          </CardContent>
+        </Card>
+      );
+    })()}
+    {showADX && (() => {
+      const report = isPaidTier ? getIndicatorReport('ADX') : null;
+      return (
+        <Card className="bg-slate-800 border-slate-700">
+          <CardHeader className="pb-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white text-sm">ADX ({adxPeriod})</CardTitle>
+              {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div ref={adxRef} className="w-full" data-testid="chart-adx" />
+            <TrendStrengthMeter />
+          </CardContent>
+        </Card>
+      );
+    })()}
+  </div>
+)}
+
+{/* Oscillator Panel in Fullscreen Mode */}
+{isFullscreen && showOscillatorPanel && (
+  <div className="fixed bottom-0 left-0 right-0 h-[250px] bg-slate-900 border-t-2 border-slate-600 z-40 overflow-y-auto p-4">
+    <div className="flex items-center justify-between mb-2">
+      <h3 className="text-white font-semibold">Oscillators</h3>
+      <button
+        onClick={() => setShowOscillatorPanel(false)}
+        className="p-1 rounded hover:bg-slate-700 text-gray-400"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {showRSI && (
+        <div>
+          <div className="text-xs text-gray-400 mb-1">RSI ({rsiPeriod})</div>
+          <div ref={rsiRef} className="h-[150px] w-full bg-slate-800 rounded" />
+        </div>
+      )}
+      {showMACD && (
+        <div>
+          <div className="text-xs text-gray-400 mb-1">MACD</div>
+          <div ref={macdRef} className="h-[150px] w-full bg-slate-800 rounded" />
+        </div>
+      )}
+      {showStochRSI && (
+        <div>
+          <div className="text-xs text-gray-400 mb-1">Stochastic</div>
+          <div ref={stochRSIRef} className="h-[150px] w-full bg-slate-800 rounded" />
+        </div>
+      )}
+      {showCCI && (
+        <div>
+          <div className="text-xs text-gray-400 mb-1">CCI</div>
+          <div ref={cciRef} className="h-[150px] w-full bg-slate-800 rounded" />
+        </div>
+      )}
+      {showOBV && (
+        <div>
+          <div className="text-xs text-gray-400 mb-1">OBV</div>
+          <div ref={obvRef} className="h-[150px] w-full bg-slate-800 rounded" />
+        </div>
+      )}
+      {showWilliamsR && (
+        <div>
+          <div className="text-xs text-gray-400 mb-1">Williams %R</div>
+          <div ref={williamsRRef} className="h-[150px] w-full bg-slate-800 rounded" />
+        </div>
+      )}
+      {showMFI && (
+        <div>
+          <div className="text-xs text-gray-400 mb-1">MFI</div>
+          <div ref={mfiRef} className="h-[150px] w-full bg-slate-800 rounded" />
+        </div>
+      )}
+      {showADX && (
+        <div>
+          <div className="text-xs text-gray-400 mb-1">ADX</div>
+          <div ref={adxRef} className="h-[150px] w-full bg-slate-800 rounded" />
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
         {/* 2x2 Grid on Desktop: Grok Summary, Alerts, Footprint, Indicators */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
