@@ -831,6 +831,23 @@ export const insertChartDrawingSchema = z.object({
 export type InsertChartDrawing = z.infer<typeof insertChartDrawingSchema>;
 export type ChartDrawing = typeof chartDrawings.$inferSelect;
 
+// User watchlist table - stores tickers per user
+export const userWatchlists = pgTable("user_watchlists", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }),
+  tickers: text("tickers").array().notNull().default(sql`ARRAY[]::text[]`), // Array of ticker symbols
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserWatchlistSchema = z.object({
+  userId: z.string(),
+  tickers: z.array(z.string()).default([]),
+});
+
+export type InsertUserWatchlist = z.infer<typeof insertUserWatchlistSchema>;
+export type UserWatchlist = typeof userWatchlists.$inferSelect;
+
 // ========== ANALYTICS TABLES ==========
 // Track user events (clicks, feature usage, page views)
 export const analyticsEvents = pgTable("analytics_events", {
