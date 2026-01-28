@@ -522,7 +522,24 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
   useEffect(() => {
     candlesRef.current = candles;
   }, [candles]);
-  
+
+  // Resize chart when oscillator panel visibility changes in fullscreen
+useEffect(() => {
+  if (isFullscreen && chartRef.current && chartContainerRef.current) {
+    const resizeTimeout = setTimeout(() => {
+      if (chartRef.current && chartContainerRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight
+        });
+        chartRef.current.timeScale().fitContent();
+      }
+    }, 100);
+    
+    return () => clearTimeout(resizeTimeout);
+  }
+}, [showOscillatorPanel, isFullscreen]);
+    
   // Cooldown ref to prevent immediate placement after pickup (1 second delay)
   const pointPickupTimeRef = useRef<number>(0);
   const EDIT_PLACEMENT_COOLDOWN_MS = 1000;
