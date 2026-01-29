@@ -10861,6 +10861,7 @@ useEffect(() => {
       <div className={`relative ${isFullscreen ? 'h-full' : ''}`}>
         {/* Chart container with layered overlay structure */}
       <div 
+ <div 
   className={`relative w-full bg-[#0f172a] overflow-hidden ${
     isFullscreen 
       ? 'h-screen' 
@@ -10870,17 +10871,15 @@ useEffect(() => {
     minHeight: isFullscreen ? '100vh' : '600px', 
     background: '#0f172a' 
   }}
->}
-  style={{ background: '#0f172a' }}
 >
-          {/* Inner div for the chart canvas */}
-         <div 
-  ref={chartContainerRef}
-  className="absolute inset-0"
-  style={{ width: '100%', height: '100%' }}
->
-  {/* Chart canvas renders here */}
-</div>
+  {/* Inner div for the chart canvas */}
+  <div 
+    ref={chartContainerRef}
+    className="absolute inset-0"
+    style={{ width: '100%', height: '100%' }}
+  >
+    {/* Chart canvas renders here */}
+  </div>
           
           {/* Clickable overlay - positioned ABOVE the canvas */}
           {!isFullscreen && (
