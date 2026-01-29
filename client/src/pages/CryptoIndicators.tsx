@@ -13136,74 +13136,25 @@ useEffect(() => {
     })()}
   </div>
 )}
-
-{/* Oscillator Panel in Fullscreen Mode */}
-{isFullscreen && showOscillatorPanel && (
-  <div className="fixed bottom-0 left-0 right-0 h-[250px] bg-slate-900 border-t-2 border-slate-600 z-40 overflow-y-auto p-4">
-    <div className="flex items-center justify-between mb-2">
-      <h3 className="text-white font-semibold">Oscillators</h3>
-      <button
-        onClick={() => setShowOscillatorPanel(false)}
-        className="p-1 rounded hover:bg-slate-700 text-gray-400"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-    
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      {showRSI && (
-        <div>
-          <div className="text-xs text-gray-400 mb-1">RSI ({rsiPeriod})</div>
-          <div ref={rsiRef} className="h-[150px] w-full bg-slate-800 rounded" />
-        </div>
-      )}
-      {showMACD && (
-        <div>
-          <div className="text-xs text-gray-400 mb-1">MACD</div>
-          <div ref={macdRef} className="h-[150px] w-full bg-slate-800 rounded" />
-        </div>
-      )}
-      {showStochRSI && (
-        <div>
-          <div className="text-xs text-gray-400 mb-1">Stochastic</div>
-          <div ref={stochRSIRef} className="h-[150px] w-full bg-slate-800 rounded" />
-        </div>
-      )}
-      {showCCI && (
-        <div>
-          <div className="text-xs text-gray-400 mb-1">CCI</div>
-          <div ref={cciRef} className="h-[150px] w-full bg-slate-800 rounded" />
-        </div>
-      )}
-      {showOBV && (
-        <div>
-          <div className="text-xs text-gray-400 mb-1">OBV</div>
-          <div ref={obvRef} className="h-[150px] w-full bg-slate-800 rounded" />
-        </div>
-      )}
-      {showWilliamsR && (
-        <div>
-          <div className="text-xs text-gray-400 mb-1">Williams %R</div>
-          <div ref={williamsRRef} className="h-[150px] w-full bg-slate-800 rounded" />
-        </div>
-      )}
-      {showMFI && (
-        <div>
-          <div className="text-xs text-gray-400 mb-1">MFI</div>
-          <div ref={mfiRef} className="h-[150px] w-full bg-slate-800 rounded" />
-        </div>
-      )}
-      {showADX && (
-        <div>
-          <div className="text-xs text-gray-400 mb-1">ADX</div>
-          <div ref={adxRef} className="h-[150px] w-full bg-slate-800 rounded" />
-        </div>
-      )}
-    </div>
-  </div>
-)}
+                {/* Fullscreen Oscillator Panel Component */}
+      <FullscreenOscillatorPanel
+        isVisible={isFullscreen && showOscillatorPanel}
+        onClose={() => setShowOscillatorPanel(false)}
+        candles={candles}
+        mainChartRef={chartRef}
+        rsiPeriod={rsiPeriod}
+        macdFast={macdFast}
+        macdSlow={macdSlow}
+        macdSignal={macdSignal}
+        stochRSIPeriod={stochRSIPeriod}
+        cciPeriod={cciPeriod}
+        williamsRPeriod={williamsRPeriod}
+        calculateRSI={calculateRSI}
+        calculateMACD={calculateMACD}
+        calculateStochRSI={calculateStochRSI}
+        calculateCCI={calculateCCI}
+        calculateWilliamsR={calculateWilliamsR}
+      />
 
         {/* 2x2 Grid on Desktop: Grok Summary, Alerts, Footprint, Indicators */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
