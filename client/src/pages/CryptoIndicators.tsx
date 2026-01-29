@@ -539,6 +539,44 @@ useEffect(() => {
     return () => clearTimeout(resizeTimeout);
   }
 }, [showOscillatorPanel, isFullscreen]);
+
+    // Resize chart when oscillator panel visibility changes in fullscreen
+  useEffect(() => {
+    if (isFullscreen && chartRef.current && chartContainerRef.current) {
+      const resizeTimeout = setTimeout(() => {
+        if (chartRef.current && chartContainerRef.current) {
+          chartRef.current.applyOptions({
+            width: chartContainerRef.current.clientWidth,
+            height: chartContainerRef.current.clientHeight
+          });
+          chartRef.current.timeScale().fitContent();
+        }
+      }, 100);
+      
+      return () => clearTimeout(resizeTimeout);
+    }
+  }, [showOscillatorPanel, isFullscreen]);
+
+  // Force resize when entering/exiting fullscreen
+  useEffect(() => {
+    if (chartRef.current && chartContainerRef.current) {
+      const resizeTimeout = setTimeout(() => {
+        if (chartRef.current && chartContainerRef.current) {
+          const rect = chartContainerRef.current.getBoundingClientRect();
+          chartRef.current.applyOptions({
+            width: rect.width,
+            height: rect.height,
+          });
+          chartRef.current.timeScale().fitContent();
+        }
+      }, 200);
+      
+      return () => clearTimeout(resizeTimeout);
+    }
+  }, [isFullscreen]);
+    
+  // Cooldown ref to prevent immediate placement after pickup (1 second delay)
+  const pointPickupTimeRef = useRef<number>(0);
     
   // Cooldown ref to prevent immediate placement after pickup (1 second delay)
   const pointPickupTimeRef = useRef<number>(0);
@@ -1006,14 +1044,16 @@ useEffect(() => {
   
   // Fullscreen mode: resize chart and handle Escape key
   useEffect(() => {
-    const handleResize = () => {
-      if (chartRef.current && chartContainerRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight
-        });
-      }
-    };
+   const handleResize = () => {
+  if (chartContainerRef.current && chartRef.current) {
+    const rect = chartContainerRef.current.getBoundingClientRect();
+    chartRef.current.applyOptions({
+      width: rect.width,
+      height: rect.height,
+    });
+    chartRef.current.timeScale().fitContent();
+  }
+};
     
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) {
