@@ -1,0 +1,470 @@
+import { useEffect, useRef, useState } from 'react';
+import { createChart, IChartApi, ColorType, LineStyle } from 'lightweight-charts';
+import type { CandleData } from '@/pages/CryptoIndicators';
+
+interface FullscreenOscillatorPanelProps {
+  isVisible: boolean;
+  onClose: () => void;
+  candles: CandleData[];
+  mainChartRef: React.RefObject<IChartApi | null>;
+  // Oscillator settings
+  rsiPeriod: number;
+  macdFast: number;
+  macdSlow: number;
+  macdSignal: number;
+  stochRSIPeriod: number;
+  cciPeriod: number;
+  williamsRPeriod: number;
+  // Calculation functions passed from parent
+  calculateRSI: (candles: CandleData[], period: number) => any[];
+  calculateMACD: (candles: CandleData[], fast: number, slow: number, signal: number) => any;
+  calculateStochRSI: (candles: CandleData[], period: number) => any[];
+  calculateCCI: (candles: CandleData[], period: number) => any[];
+  calculateWilliamsR: (candles: CandleData[], period: number) => any[];
+}
+
+export function FullscreenOscillatorPanel({
+  isVisible,
+  onClose,
+  candles,
+  mainChartRef,
+  rsiPeriod,
+  macdFast,
+  macdSlow,
+  macdSignal,
+  stochRSIPeriod,
+  cciPeriod,
+  williamsRPeriod,
+  calculateRSI,
+  calculateMACD,
+  calculateStochRSI,
+  calculateCCI,
+  calculateWilliamsR,
+}: FullscreenOscillatorPanelProps) {
+  const [showPicker, setShowPicker] = useState(false);
+  
+  // Independent oscillator toggles
+  const [showRSI, setShowRSI] = useState(false);
+  const [showMACD, setShowMACD] = useState(false);
+  const [showStochRSI, setShowStochRSI] = useState(false);
+  const [showCCI, setShowCCI] = useState(false);
+  const [showWilliamsR, setShowWilliamsR] = useState(false);
+  
+  // Refs for oscillator charts
+  const rsiRef = useRef<HTMLDivElement>(null);
+  const macdRef = useRef<HTMLDivElement>(null);
+  const stochRSIRef = useRef<HTMLDivElement>(null);
+  const cciRef = useRef<HTMLDivElement>(null);
+  const williamsRRef = useRef<HTMLDivElement>(null);
+  
+  // Map to store chart instances
+  const chartsRef = useRef<Map<string, IChartApi>>(new Map());
+  
+  // Cleanup all charts on unmount
+  useEffect(() => {
+    return () => {
+      chartsRef.current.forEach(chart => chart.remove());
+      chartsRef.current.clear();
+    };
+  }, []);
+  
+  // Create RSI chart
+  useEffect(() => {
+    if (!showRSI || !rsiRef.current || candles.length === 0 || !isVisible) return;
+    
+    const chart = createChart(rsiRef.current, { 
+      width: rsiRef.current.clientWidth, 
+      height: 250, 
+      layout: {
+        background: { type: ColorType.Solid, color: '#1e293b' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#334155' },
+        horzLines: { color: '#334155' },
+      },
+      timeScale: {
+        borderColor: '#475569',
+        timeVisible: true,
+      },
+      rightPriceScale: {
+        borderColor: '#475569',
+      },
+    });
+    
+    chartsRef.current.set('RSI', chart);
+
+    const rsiData = calculateRSI(candles, rsiPeriod);
+    const line = chart.addLineSeries({ 
+      color: '#fbbf24',
+      lineWidth: 2,
+    });
+    line.setData(rsiData);
+
+    const upperBand = chart.addLineSeries({ 
+      color: '#64748b', 
+      lineWidth: 1, 
+      lineStyle: LineStyle.Dashed 
+    });
+    upperBand.setData(candles.map(c => ({ time: c.time, value: 70 })));
+
+    const lowerBand = chart.addLineSeries({ 
+      color: '#64748b', 
+      lineWidth: 1, 
+      lineStyle: LineStyle.Dashed 
+    });
+    lowerBand.setData(candles.map(c => ({ time: c.time, value: 30 })));
+
+    chart.timeScale().fitContent();
+
+    return () => {
+      chart.remove();
+      chartsRef.current.delete('RSI');
+    };
+  }, [showRSI, candles, rsiPeriod, isVisible, calculateRSI]);
+
+  // Create MACD chart
+  useEffect(() => {
+    if (!showMACD || !macdRef.current || candles.length === 0 || !isVisible) return;
+    
+    const chart = createChart(macdRef.current, { 
+      width: macdRef.current.clientWidth, 
+      height: 250, 
+      layout: {
+        background: { type: ColorType.Solid, color: '#1e293b' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#334155' },
+        horzLines: { color: '#334155' },
+      },
+      timeScale: {
+        borderColor: '#475569',
+        timeVisible: true,
+      },
+      rightPriceScale: {
+        borderColor: '#475569',
+      },
+    });
+    
+    chartsRef.current.set('MACD', chart);
+
+    const { macd, signal, histogram } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
+    
+    const macdLine = chart.addLineSeries({ color: '#3b82f6', lineWidth: 2 });
+    macdLine.setData(macd);
+
+    const signalLine = chart.addLineSeries({ color: '#ef4444', lineWidth: 2 });
+    signalLine.setData(signal);
+
+    const histSeries = chart.addHistogramSeries({
+      color: '#10b981',
+      priceFormat: { type: 'price', precision: 6, minMove: 0.000001 },
+    });
+    histSeries.setData(histogram.map(h => ({
+      ...h,
+      color: h.value >= 0 ? '#10b981' : '#ef4444'
+    })));
+
+    chart.timeScale().fitContent();
+
+    return () => {
+      chart.remove();
+      chartsRef.current.delete('MACD');
+    };
+  }, [showMACD, candles, macdFast, macdSlow, macdSignal, isVisible, calculateMACD]);
+
+  // Create StochRSI chart
+  useEffect(() => {
+    if (!showStochRSI || !stochRSIRef.current || candles.length === 0 || !isVisible) return;
+    
+    const chart = createChart(stochRSIRef.current, { 
+      width: stochRSIRef.current.clientWidth, 
+      height: 250, 
+      layout: {
+        background: { type: ColorType.Solid, color: '#1e293b' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#334155' },
+        horzLines: { color: '#334155' },
+      },
+      timeScale: {
+        borderColor: '#475569',
+        timeVisible: true,
+      },
+      rightPriceScale: {
+        borderColor: '#475569',
+      },
+    });
+    
+    chartsRef.current.set('StochRSI', chart);
+
+    const stochData = calculateStochRSI(candles, stochRSIPeriod);
+    const kLine = chart.addLineSeries({ color: '#3b82f6', lineWidth: 2 });
+    kLine.setData(stochData);
+
+    chart.timeScale().fitContent();
+
+    return () => {
+      chart.remove();
+      chartsRef.current.delete('StochRSI');
+    };
+  }, [showStochRSI, candles, stochRSIPeriod, isVisible, calculateStochRSI]);
+
+  // Create CCI chart
+  useEffect(() => {
+    if (!showCCI || !cciRef.current || candles.length === 0 || !isVisible) return;
+    
+    const chart = createChart(cciRef.current, { 
+      width: cciRef.current.clientWidth, 
+      height: 250, 
+      layout: {
+        background: { type: ColorType.Solid, color: '#1e293b' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#334155' },
+        horzLines: { color: '#334155' },
+      },
+      timeScale: {
+        borderColor: '#475569',
+        timeVisible: true,
+      },
+      rightPriceScale: {
+        borderColor: '#475569',
+      },
+    });
+    
+    chartsRef.current.set('CCI', chart);
+
+    const cciData = calculateCCI(candles, cciPeriod);
+    const line = chart.addLineSeries({ color: '#8b5cf6', lineWidth: 2 });
+    line.setData(cciData);
+
+    chart.timeScale().fitContent();
+
+    return () => {
+      chart.remove();
+      chartsRef.current.delete('CCI');
+    };
+  }, [showCCI, candles, cciPeriod, isVisible, calculateCCI]);
+
+  // Create Williams %R chart
+  useEffect(() => {
+    if (!showWilliamsR || !williamsRRef.current || candles.length === 0 || !isVisible) return;
+    
+    const chart = createChart(williamsRRef.current, { 
+      width: williamsRRef.current.clientWidth, 
+      height: 250, 
+      layout: {
+        background: { type: ColorType.Solid, color: '#1e293b' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#334155' },
+        horzLines: { color: '#334155' },
+      },
+      timeScale: {
+        borderColor: '#475569',
+        timeVisible: true,
+      },
+      rightPriceScale: {
+        borderColor: '#475569',
+      },
+    });
+    
+    chartsRef.current.set('WilliamsR', chart);
+
+    const williamsData = calculateWilliamsR(candles, williamsRPeriod);
+    const line = chart.addLineSeries({ color: '#ec4899', lineWidth: 2 });
+    line.setData(williamsData);
+
+    chart.timeScale().fitContent();
+
+    return () => {
+      chart.remove();
+      chartsRef.current.delete('WilliamsR');
+    };
+  }, [showWilliamsR, candles, williamsRPeriod, isVisible, calculateWilliamsR]);
+
+  // Sync time scale with main chart
+  useEffect(() => {
+    if (!isVisible || !mainChartRef.current) return;
+    
+    const mainChart = mainChartRef.current;
+    
+    const handleVisibleTimeRangeChange = () => {
+      const timeRange = mainChart.timeScale().getVisibleRange();
+      if (!timeRange) return;
+      
+      chartsRef.current.forEach(oscChart => {
+        try {
+          oscChart.timeScale().setVisibleRange(timeRange);
+        } catch (e) {
+          // Ignore errors if chart is being destroyed
+        }
+      });
+    };
+    
+    const unsubscribe = mainChart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
+    
+    return () => {
+      unsubscribe();
+    };
+  }, [isVisible, mainChartRef, showRSI, showMACD, showStochRSI, showCCI, showWilliamsR]);
+
+  if (!isVisible) return null;
+
+  const oscillators = [
+    { id: 'rsi', name: 'RSI', enabled: showRSI, setter: setShowRSI },
+    { id: 'macd', name: 'MACD', enabled: showMACD, setter: setShowMACD },
+    { id: 'stoch', name: 'Stochastic', enabled: showStochRSI, setter: setShowStochRSI },
+    { id: 'cci', name: 'CCI', enabled: showCCI, setter: setShowCCI },
+    { id: 'williams', name: 'Williams %R', enabled: showWilliamsR, setter: setShowWilliamsR },
+  ];
+
+  const hasAnyEnabled = showRSI || showMACD || showStochRSI || showCCI || showWilliamsR;
+
+  return (
+    <>
+      {/* Oscillator Picker Dropdown */}
+      {showPicker && (
+        <div className="fixed top-20 left-4 z-[60] bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl min-w-[180px]">
+          <div className="text-xs text-gray-400 mb-2 px-2">Select Oscillator</div>
+          {oscillators.map(osc => (
+            <button
+              key={osc.id}
+              onClick={() => {
+                osc.setter(!osc.enabled);
+                setShowPicker(false);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded hover:bg-slate-700 transition-all text-left ${
+                osc.enabled ? 'bg-blue-500/30 text-blue-300' : 'text-gray-300'
+              }`}
+            >
+              <span className="text-sm">{osc.name}</span>
+              {osc.enabled && <span className="text-green-400">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Floating Oscillator Panel */}
+      <div 
+        className="fixed bottom-4 right-4 w-[500px] max-w-[90vw] bg-slate-900 border-2 border-slate-600 rounded-lg shadow-2xl z-50 overflow-hidden"
+        style={{ maxHeight: '450px' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between bg-slate-800 px-3 py-2 border-b border-slate-600">
+          <h3 className="text-white font-semibold text-sm">Oscillators</h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowPicker(!showPicker)}
+              className="p-1 rounded hover:bg-slate-700 text-gray-400"
+              title="Add Oscillator"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+            <button
+              onClick={() => {
+                onClose();
+                setShowRSI(false);
+                setShowMACD(false);
+                setShowStochRSI(false);
+                setShowCCI(false);
+                setShowWilliamsR(false);
+                chartsRef.current.forEach(chart => chart.remove());
+                chartsRef.current.clear();
+              }}
+              className="p-1 rounded hover:bg-red-600/20 text-red-400"
+              title="Close Panel"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        {/* Content */}
+        <div className="p-3 overflow-y-auto" style={{ maxHeight: '390px' }}>
+          {!hasAnyEnabled && (
+            <div className="flex items-center justify-center h-[200px] text-gray-400 text-sm">
+              Click + to add an oscillator
+            </div>
+          )}
+          
+          {showRSI && (
+            <div className="bg-slate-800 rounded-lg p-2 mb-3">
+              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
+                <span>RSI ({rsiPeriod})</span>
+                <button
+                  onClick={() => {
+                    setShowRSI(false);
+                    const chart = chartsRef.current.get('RSI');
+                    if (chart) {
+                      chart.remove();
+                      chartsRef.current.delete('RSI');
+                    }
+                  }}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+              <div ref={rsiRef} className="w-full" />
+            </div>
+          )}
+          
+          {showMACD && (
+            <div className="bg-slate-800 rounded-lg p-2 mb-3">
+              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
+                <span>MACD</span>
+                <button
+                  onClick={() => {
+                    setShowMACD(false);
+                    const chart = chartsRef.current.get('MACD');
+                    if (chart) {
+                      chart.remove();
+                      chartsRef.current.delete('MACD');
+                    }
+                  }}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+              <div ref={macdRef} className="w-full" />
+            </div>
+          )}
+          
+          {showStochRSI && (
+            <div className="bg-slate-800 rounded-lg p-2 mb-3">
+              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
+                <span>Stochastic RSI</span>
+                <button
+                  onClick={() => {
+                    setShowStochRSI(false);
+                    const chart = chartsRef.current.get('StochRSI');
+                    if (chart) {
+                      chart.remove();
+                      chartsRef.current.delete('StochRSI');
+                    }
+                  }}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+              <div ref={stochRSIRef} className="w-full" />
+            </div>
+          )}
+          
+          {showCCI && (
+            <div className="bg-slate-800 rounded-lg p-2 mb-3">
+              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
+                <span>CCI ({cciPeriod})</span*
+
