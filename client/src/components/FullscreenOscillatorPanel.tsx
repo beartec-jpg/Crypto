@@ -487,5 +487,3 @@ export function FullscreenOscillatorPanel({
     </>
   );
 };
-
-export default FullscreenOscillatorPanel;
