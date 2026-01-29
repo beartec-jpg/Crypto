@@ -467,4 +467,25 @@ export function FullscreenOscillatorPanel({
             <div className="bg-slate-800 rounded-lg p-2 mb-3">
               <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
                 <span>CCI ({cciPeriod})</span*
-
+                                </div>
+                <div ref={cciChartRef} className="h-[180px] w-full" />
+              </div>
+            )}
+
+            {/* Williams %R */}
+            {showWilliamsR && (
+              <div className="bg-slate-800 rounded-lg p-2 mb-3">
+                <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
+                  <span>Williams %R ({williamsRPeriod})</span>
+                </div>
+                <div ref={williamsRChartRef} className="h-[180px] w-full" />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default FullscreenOscillatorPanel;
