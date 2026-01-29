@@ -7209,9 +7209,9 @@ useEffect(() => {
       
       console.log('Creating chart - width:', containerWidth, 'candles:', candles.length);
       
-     const chart = createChart(container, {
-        width: containerWidth,
-        height: 600,
+     const chart = createChart(chartContainerRef.current, {
+  width: chartContainerRef.current.clientWidth || 800,
+  height: chartContainerRef.current.clientHeight || 600,
         layout: {
           background: { type: ColorType.Solid, color: '#0f172a' },
           textColor: '#d1d5db',
@@ -10863,18 +10863,24 @@ useEffect(() => {
       <div 
   className={`relative w-full bg-[#0f172a] overflow-hidden ${
     isFullscreen 
-      ? 'fixed inset-0 z-50' 
+      ? 'h-screen' 
       : 'h-[600px] group'
   }`}
+  style={{ 
+    minHeight: isFullscreen ? '100vh' : '600px', 
+    background: '#0f172a' 
+  }}
+>}
   style={{ background: '#0f172a' }}
 >
           {/* Inner div for the chart canvas */}
          <div 
   ref={chartContainerRef}
   className="absolute inset-0"
+  style={{ width: '100%', height: '100%' }}
 >
-            {/* Chart canvas renders here */}
-          </div>
+  {/* Chart canvas renders here */}
+</div>
           
           {/* Clickable overlay - positioned ABOVE the canvas */}
           {!isFullscreen && (
