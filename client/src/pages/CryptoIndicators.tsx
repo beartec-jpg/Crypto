@@ -10823,13 +10823,13 @@ useEffect(() => {
     ) : (
       <div className={`relative ${isFullscreen ? 'h-full' : ''}`}>
         {/* Chart container with layered overlay structure */}
-       <div 
+      <div 
   className={`relative w-full bg-[#0f172a] overflow-hidden ${
     isFullscreen 
-      ? 'fixed inset-0' 
+      ? 'fixed inset-0 z-50' 
       : 'h-[600px] group'
   }`}
-  style={{ minHeight: isFullscreen ? '100vh' : '600px', background: '#0f172a' }}
+  style={{ background: '#0f172a' }}
 >
           {/* Inner div for the chart canvas */}
          <div 
