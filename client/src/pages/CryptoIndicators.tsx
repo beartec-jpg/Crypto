@@ -10823,17 +10823,16 @@ useEffect(() => {
     ) : (
       <div className={`relative ${isFullscreen ? 'h-full' : ''}`}>
         {/* Chart container with layered overlay structure */}
-        <div 
-          className={`relative w-full bg-[#0f172a] overflow-hidden ${
-            isFullscreen 
-              ? 'h-full' 
-              : 'h-[600px] group'
-          }`}
-          style={{ minHeight: isFullscreen ? '100%' : '600px', background: '#0f172a' }}
-        >
+       <div 
+  className={`relative w-full bg-[#0f172a] overflow-hidden ${
+    isFullscreen 
+      ? 'fixed inset-0' 
+      : 'h-[600px] group'
+  }`}
+  style={{ minHeight: isFullscreen ? '100vh' : '600px', background: '#0f172a' }}
+>
           {/* Inner div for the chart canvas */}
          <div 
- <div 
   ref={chartContainerRef}
   className="absolute inset-0"
 >
@@ -11668,7 +11667,10 @@ useEffect(() => {
                   </button>
                      {/* Oscillator Panel Toggle */}
 <button
-onClick={() => setShowOscillatorPanel(!showOscillatorPanel)}
+  onClick={() => {
+    console.log('Oscillator button clicked, current state:', showOscillatorPanel);
+    setShowOscillatorPanel(!showOscillatorPanel);
+  }}
   className={`p-2 rounded-lg transition-all ${
     showOscillatorPanel 
       ? 'bg-purple-500 text-white' 
