@@ -10859,8 +10859,7 @@ useEffect(() => {
       </div>
     ) : (
       <div className={`relative ${isFullscreen ? 'h-full' : ''}`}>
-        {/* Chart container with layered overlay structure */}
-      <div 
+        {/* Chart container with layered overlay structure */} 
  <div 
   className={`relative w-full bg-[#0f172a] overflow-hidden ${
     isFullscreen 
