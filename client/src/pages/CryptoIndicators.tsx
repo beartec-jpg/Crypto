@@ -10833,13 +10833,9 @@ useEffect(() => {
         >
           {/* Inner div for the chart canvas */}
          <div 
+ <div 
   ref={chartContainerRef}
-  className={isFullscreen ? "fixed inset-0" : "absolute inset-0"}
-  style={{
-    height: isFullscreen && showOscillatorPanel 
-      ? 'calc(100vh - 320px)' 
-      : '100%'
-  }}
+  className="absolute inset-0"
 >
             {/* Chart canvas renders here */}
           </div>
