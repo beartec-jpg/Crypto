@@ -31,6 +31,7 @@ import { TickerTable } from '@/components/TickerTable';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { DrawingSettingsPanel } from '@/components/drawing-settings';
+import { FullscreenOscillatorPanel } from '@/components/FullscreenOscillatorPanel';
 import {
   calculateSupertrend,
   calculateVWAPBands,
@@ -449,7 +450,6 @@ export default function CryptoIndicators() {
 
   // Oscillator panel state for fullscreen mode
 const [showOscillatorPanel, setShowOscillatorPanel] = useState(false);
-const [showOscillatorPicker, setShowOscillatorPicker] = useState(false);
   
 // Watchlist management - synced to database
 const { data: watchlistData, refetch: refetchWatchlist } = useQuery({
@@ -11672,7 +11672,7 @@ useEffect(() => {
                   </button>
                      {/* Oscillator Panel Toggle */}
 <button
-  onClick={() => setShowOscillatorPicker(!showOscillatorPicker)}
+onClick={() => setShowOscillatorPanel(!showOscillatorPanel)}
   className={`p-2 rounded-lg transition-all ${
     showOscillatorPanel 
       ? 'bg-purple-500 text-white' 
@@ -11767,53 +11767,6 @@ useEffect(() => {
                     ))}
                   </div>
                 )}
-
-        {/* Oscillator Picker Popup */}
-{isFullscreen && showOscillatorPicker && (
-  <div className="absolute top-14 left-2 z-30 bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl min-w-[180px]">
-    <div className="text-xs text-gray-400 mb-2 px-2">Select Oscillator</div>
-    {[
-      { id: 'rsi', name: 'RSI', enabled: showRSI, setter: setShowRSI },
-      { id: 'macd', name: 'MACD', enabled: showMACD, setter: setShowMACD },
-      { id: 'stoch', name: 'Stochastic', enabled: showStochRSI, setter: setShowStochRSI },
-      { id: 'cci', name: 'CCI', enabled: showCCI, setter: setShowCCI },
-      { id: 'williams', name: 'Williams %R', enabled: showWilliamsR, setter: setShowWilliamsR },
-    ].map(osc => (
-      <button
-        key={osc.id}
-        onClick={() => {
-          osc.setter(!osc.enabled);
-          if (!osc.enabled) {
-            setShowOscillatorPanel(true);
-          }
-          setShowOscillatorPicker(false);
-          toast({ 
-            title: `${osc.name} ${!osc.enabled ? 'Enabled' : 'Disabled'}`,
-            description: !osc.enabled ? 'Oscillator panel opened' : 'Oscillator disabled'
-          });
-        }}
-        className={`w-full flex items-center justify-between px-3 py-2 rounded hover:bg-slate-700 transition-all text-left ${
-          osc.enabled ? 'bg-blue-500/30 text-blue-300' : 'text-gray-300'
-        }`}
-      >
-        <span className="text-sm">{osc.name}</span>
-        {osc.enabled && <span className="text-green-400">✓</span>}
-      </button>
-    ))}
-    
-    {showOscillatorPanel && (
-      <button
-        onClick={() => {
-          setShowOscillatorPanel(false);
-          setShowOscillatorPicker(false);
-        }}
-        className="w-full mt-2 px-3 py-2 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm"
-      >
-        Hide Panel
-      </button>
-    )}
-  </div>
-)}
                 
                 {/* Drawing Settings Panel (if any comes next) */}
                 {showDrawingSettings && selectedDrawingId && (
