@@ -203,6 +203,224 @@ Two automated workflows:
 └── METRICS.md              # Metrics and benchmarks
 ```
 
+## CryptoIndicators Architecture
+
+### Overview
+
+The `CryptoIndicators.tsx` component (~13,875 lines) is being refactored from a monolithic structure into a modular, maintainable architecture. This massive component currently handles charting, technical indicators, Smart Money Concepts (SMC), drawing tools, trading features, AI insights, and more—all in a single file.
+
+**Benefits of Refactoring:**
+- **Maintainability**: Each file has a single, clear responsibility
+- **Testability**: Isolated functions and components are easier to test
+- **Reusability**: Components can be shared across pages
+- **Performance**: Better code splitting and lazy loading opportunities
+- **Collaboration**: Multiple developers can work on different sections without conflicts
+- **Scalability**: Easy to add new features without touching existing code
+
+### Planned File Structure
+
+This refactoring will split the monolithic component into the following modular structure:
+
+```
+client/src/
+├── pages/
+│   └── CryptoIndicators.tsx           # 🎯 Main orchestrator (200-300 lines max)
+├── components/
+│   ├── chart/                          # Chart rendering & controls
+│   │   ├── ChartContainer.tsx
+│   │   ├── CandlestickChart.tsx
+│   │   ├── ChartControls.tsx
+│   │   ├── TimeframeSelector.tsx
+│   │   ├── ChartOverlay.tsx
+│   │   └── ChartLegend.tsx
+│   ├── indicators/                     # Technical indicators
+│   │   ├── oscillators/
+│   │   │   ├── RSIPanel.tsx
+│   │   │   ├── MACDPanel.tsx
+│   │   │   ├── StochasticPanel.tsx
+│   │   │   ├── OBVPanel.tsx
+│   │   │   ├── MFIPanel.tsx
+│   │   │   ├── WilliamsRPanel.tsx
+│   │   │   ├── CCIPanel.tsx
+│   │   │   └── ADXPanel.tsx
+│   │   ├── trend/
+│   │   │   ├── MovingAverages.tsx
+│   │   │   ├── SupertrendOverlay.tsx
+│   │   │   ├── IchimokuCloud.tsx
+│   │   │   └── BollingerBands.tsx
+│   │   └── volume/
+│   │       ├── VolumeChart.tsx
+│   │       ├── CVDChart.tsx
+│   │       ├── CVDTable.tsx
+│   │       └── VWAPLines.tsx
+│   ├── smc/                            # Smart Money Concepts
+│   │   ├── FVGOverlay.tsx
+│   │   ├── OrderBlockOverlay.tsx
+│   │   ├── BOSCHoCHMarkers.tsx
+│   │   ├── SwingPivots.tsx
+│   │   ├── LiquidityLevels.tsx
+│   │   └── SMCControls.tsx
+│   ├── drawings/                       # Drawing tools
+│   │   ├── DrawingToolbar.tsx
+│   │   ├── TrendlineDrawing.tsx
+│   │   ├── HorizontalLineDrawing.tsx
+│   │   ├── RectangleDrawing.tsx
+│   │   ├── FibonacciRetracement.tsx
+│   │   ├── TrendBasedFib.tsx
+│   │   ├── ChannelDrawing.tsx
+│   │   ├── DrawingContextMenu.tsx
+│   │   └── DrawingStylePanel.tsx
+│   ├── trading/                        # Trading & backtesting
+│   │   ├── TradingPanel.tsx
+│   │   ├── BacktestPanel.tsx
+│   │   ├── BacktestResults.tsx
+│   │   ├── AutoBacktestPanel.tsx
+│   │   ├── BotConfiguration.tsx
+│   │   ├── PositionManager.tsx
+│   │   ├── TradeSignals.tsx
+│   │   └── AlertsPanel.tsx
+│   ├── watchlist/                      # Watchlist management
+│   │   ├── WatchlistPanel.tsx
+│   │   ├── TickerSearch.tsx          # ✅ Already exists
+│   │   ├── TickerTable.tsx           # ✅ Already exists
+│   │   └── TickerCard.tsx
+│   ├── ai/                             # AI/Grok features
+│   │   ├── GrokPanel.tsx
+│   │   ├── MarketReviewButton.tsx
+│   │   ├── GrokInsights.tsx
+│   │   └── AILoadingState.tsx
+│   └── settings/                       # Configuration
+│       ├── SettingsPanel.tsx
+│       ├── IndicatorSettings.tsx
+│       ├── ChartSettings.tsx
+│       ├── TradingSettings.tsx
+│       └── APISettings.tsx
+├── hooks/
+│   ├── chart/                          # Chart-specific hooks
+│   │   ├── useChartInstance.ts
+│   │   ├── useChartSeries.ts
+│   │   ├── useChartSync.ts
+│   │   └── useChartResize.ts
+│   ├── indicators/                     # Indicator hooks
+│   │   ├── useOscillators.ts
+│   │   ├── useTrendIndicators.ts
+│   │   └── useVolumeIndicators.ts
+│   ├── smc/                            # SMC detection hooks
+│   │   ├── useSMCDetection.ts
+│   │   └── useLiquidityAnalysis.ts
+│   ├── trading/                        # Trading logic hooks
+│   │   ├── useBacktest.ts
+│   │   ├── useTradingBot.ts
+│   │   └── useMarketAlerts.ts
+│   ├── drawings/                       # Drawing tool hooks
+│   │   ├── useDrawingTools.ts
+│   │   ├── useDrawingPersistence.ts
+│   │   └── useDrawingInteractions.ts
+│   └── data/                           # Data fetching hooks
+│       ├── useCryptoData.ts
+│       ├── useWebSocket.ts
+│       └── useWatchlist.ts
+├── lib/
+│   ├── indicators/                     # Calculation functions
+│   │   ├── momentum.ts               # RSI, Stochastic, MFI
+│   │   ├── trend.ts                  # MACD, ADX, CCI
+│   │   ├── volume.ts                 # OBV, CMF, Volume Profile
+│   │   └── volatility.ts             # ATR, Bollinger Bands
+│   ├── smc/                            # SMC detection algorithms
+│   │   ├── fvg.ts
+│   │   ├── orderblocks.ts
+│   │   ├── bosChoch.ts
+│   │   └── pivots.ts
+│   ├── chart/                          # Chart utilities
+│   │   ├── timeUtils.ts
+│   │   ├── priceUtils.ts
+│   │   └── colorUtils.ts
+│   └── trading/                        # Trading utilities
+│       ├── backtesting.ts
+│       ├── tpsl.ts
+│       └── signals.ts
+└── types/
+    ├── chart.types.ts                 # Chart-related types
+    ├── indicators.types.ts            # ✅ Already exists (extend)
+    ├── smc.types.ts                   # SMC types
+    ├── drawings.types.ts              # Drawing tool types
+    ├── trading.types.ts               # Trading types
+    └── api.types.ts                   # API request/response types
+```
+
+### Refactoring Strategy
+
+The refactoring will be executed in six carefully planned phases to minimize risk and maintain functionality:
+
+#### Phase 4A: Documentation (Current) ✅
+- ✅ Document the planned architecture
+- ✅ Create refactoring roadmap
+- ✅ Get team alignment on approach
+
+#### Phase 4B: Types & Utilities (Week 1)
+- Extract all TypeScript interfaces to `/types` folder
+- Extract utility functions to `/lib` folder
+- No UI changes, zero user impact
+- Maintain 70%+ test coverage
+
+#### Phase 4C: Core Hooks (Week 2)
+- Extract custom hooks for chart, indicators, SMC
+- Refactor business logic out of component
+- Maintain existing functionality
+- Add tests for extracted hooks
+
+#### Phase 4D: UI Components (Week 3-4)
+- Extract chart components
+- Extract indicator panels
+- Extract SMC overlays
+- Extract drawing tools
+- Test each extraction independently
+
+#### Phase 4E: Advanced Features (Week 5)
+- Extract trading/backtest panels
+- Extract AI/Grok components
+- Extract settings panels
+- Comprehensive integration testing
+
+#### Phase 4F: Main Page Cleanup (Week 6)
+- Refactor CryptoIndicators.tsx to orchestrate extracted components
+- Remove duplicated code
+- Final testing and optimization
+- Performance validation
+
+### Testing Strategy
+
+All refactoring work will maintain the platform's high quality standards:
+
+- **Coverage Target**: Maintain 70%+ test coverage across all new files
+- **Unit Tests**: Each extracted function and hook will have dedicated unit tests
+- **Component Tests**: UI components tested in isolation with React Testing Library
+- **Integration Tests**: Ensure components work together seamlessly
+- **Regression Prevention**: No breaking changes to existing functionality
+- **CI/CD Validation**: All tests must pass in GitHub Actions before merge
+
+### Migration Approach
+
+To ensure zero downtime and maintain stability:
+
+1. **Incremental Extraction**: One module at a time, never breaking existing code
+2. **Feature Flags**: Use feature flags for major changes if needed
+3. **Parallel Development**: Old code stays until new code is proven
+4. **Code Reviews**: Each phase requires thorough review before proceeding
+5. **Performance Monitoring**: Track bundle size and load times throughout
+6. **Rollback Plan**: Ability to revert any phase if issues arise
+
+### Expected Outcomes
+
+Upon completion of Phase 4, the CryptoIndicators page will:
+
+- **Reduce main file** from ~13,875 lines to ~250 lines (98% reduction)
+- **Improve load time** through better code splitting
+- **Enable parallel development** with clear module boundaries
+- **Simplify debugging** with isolated, testable units
+- **Accelerate feature development** with reusable components
+- **Maintain 70%+ test coverage** with comprehensive test suite
+
 ## Key Metrics
 
 ### Bundle Sizes
