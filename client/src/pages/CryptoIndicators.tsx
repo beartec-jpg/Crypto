@@ -865,7 +865,7 @@ useEffect(() => {
   const sessionVWAPAsiaRef = useRef<ISeriesApi<'Line'> | null>(null);
   const sessionVWAPLondonRef = useRef<ISeriesApi<'Line'> | null>(null);
   const sessionVWAPNYRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const orderBlocksRefs = useRef<Array<{ upper: ISeriesApi<'Line'>; lower: ISeriesApi<'Line'>; fill: ISeriesApi<'Histogram'> }>>([]);
+  // NOTE: orderBlocksRefs removed - now managed by OrderBlockOverlay component
   const premiumDiscountRefs = useRef<{ equilibrium: ISeriesApi<'Line'> | null; premium: ISeriesApi<'Line'> | null; discount: ISeriesApi<'Line'> | null }>({ equilibrium: null, premium: null, discount: null });
   const smaFastRef = useRef<ISeriesApi<'Line'> | null>(null);
   const smaSlowRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -1483,9 +1483,7 @@ useEffect(() => {
     lower?: ISeriesApi<'Line'>;
   }>({});
 
-  // FVG series refs
-  const fvgSeriesRefs = useRef<Array<{ upper: ISeriesApi<'Line'>; lower: ISeriesApi<'Line'>; fill: ISeriesApi<'Histogram'>; fvg: FVG }>>([]);
-
+  // NOTE: fvgSeriesRefs removed - now managed by FVGOverlay component
   // NOTE: bosSeriesRefs and chochSeriesRefs removed - now managed by BOSCHoCHMarkers component
   // NOTE: structureLabelsRef removed - label rendering removed in Phase 4G-3
   const swingPivotSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
