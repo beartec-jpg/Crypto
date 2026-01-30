@@ -1495,10 +1495,6 @@ useEffect(() => {
   const tradeMarkerRefs = useRef<Array<any>>([]);
   const structureLabelsRef = useRef<HTMLDivElement | null>(null);
 
-  // Order flow series
-  const orderFlowSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const cumDeltaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-
   // Sync EMA Trading input values to numeric state
   useEffect(() => {
     const val = parseInt(emaSinglePeriodInput);
