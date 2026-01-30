@@ -1,13 +1,21 @@
 import { useEffect, useRef } from 'react';
-import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, ISeriesApi } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
 
 interface ChartContainerProps {
   data: CandleData[];
   height: number;
-  onChartReady?: (chart: IChartApi) => void;
+  onChartReady?: (chart: IChartApi, candleSeries: ISeriesApi<"Candlestick">) => void;
   isFullscreen: boolean;
   loading?: boolean;
+  interval?: string;
+  onVisibleRangeChange?: (count: number) => void;
+  onCrosshairMove?: (param: any) => void;
+  futureWhitespace?: {
+    enabled: boolean;
+    getFutureBarCount: (interval: string) => number;
+    generateFutureWhitespace: (lastTime: any, interval: string, count: number) => any[];
+  };
 }
 
 export function ChartContainer({ 
@@ -15,10 +23,15 @@ export function ChartContainer({
   height, 
   onChartReady, 
   isFullscreen,
-  loading = false 
+  loading = false,
+  interval = '1h',
+  onVisibleRangeChange,
+  onCrosshairMove,
+  futureWhitespace
 }: ChartContainerProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
   useEffect(() => {
     if (data.length === 0 || loading) {
@@ -98,8 +111,19 @@ export function ChartContainer({
         },
       });
 
-      candleSeries.setData(data as any);
+      // Prepare chart data with optional future whitespace
+      let chartData = data;
+      if (futureWhitespace?.enabled && data.length > 0) {
+        const lastCandle = data[data.length - 1];
+        const futureCount = futureWhitespace.getFutureBarCount(interval);
+        const futureBars = futureWhitespace.generateFutureWhitespace(lastCandle.time, interval, futureCount);
+        chartData = [...data, ...futureBars];
+        console.log('Added', futureCount, 'future whitespace bars');
+      }
+
+      candleSeries.setData(chartData as any);
       chartRef.current = chart;
+      candleSeriesRef.current = candleSeries;
 
       // Fit content then add right-side bar spacing for future drawing area
       chart.timeScale().fitContent();
@@ -108,20 +132,56 @@ export function ChartContainer({
         rightOffset: 150, // Show ~half the chart as future whitespace
       });
       console.log('Chart created successfully');
+
+      // Subscribe to visible range changes to update candle count
+      if (onVisibleRangeChange) {
+        chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+          if (range) {
+            const count = Math.round(range.to - range.from) + 1;
+            onVisibleRangeChange(count);
+          }
+        });
+        
+        // Set initial visible candle count
+        const initialRange = chart.timeScale().getVisibleLogicalRange();
+        if (initialRange) {
+          onVisibleRangeChange(Math.round(initialRange.to - initialRange.from) + 1);
+        }
+      }
+
+      // Add crosshair move handler
+      if (onCrosshairMove) {
+        chart.subscribeCrosshairMove((param) => {
+          onCrosshairMove(param);
+        });
+      }
       
       if (onChartReady) {
-        onChartReady(chart);
+        onChartReady(chart, candleSeries);
       }
-    }, 0);
+    }, 100);
+
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
 
     return () => {
       clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
+        candleSeriesRef.current = null;
       }
     };
-  }, [data.length, loading, isFullscreen]);
+  }, [data.length, loading, isFullscreen, interval, onVisibleRangeChange, onCrosshairMove, futureWhitespace]);
 
   return (
     <div 
