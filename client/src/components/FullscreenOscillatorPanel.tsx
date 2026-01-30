@@ -351,11 +351,10 @@ export function FullscreenOscillatorPanel({
       )}
 
       {/* Floating Oscillator Panel */}
-      {isVisible && (
-        <div 
-          className="fixed bottom-4 right-4 w-[500px] max-w-[90vw] bg-slate-900 border-2 border-slate-600 rounded-lg shadow-2xl z-50 overflow-hidden"
-          style={{ maxHeight: '450px' }}
-        >
+      <div 
+        className="fixed bottom-4 right-4 w-[500px] max-w-[90vw] bg-slate-900 border-2 border-slate-600 rounded-lg shadow-2xl z-50 overflow-hidden"
+        style={{ maxHeight: '450px' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between bg-slate-800 px-3 py-2 border-b border-slate-600">
           <h3 className="text-white font-semibold text-sm">Oscillators</h3>
@@ -482,9 +481,8 @@ export function FullscreenOscillatorPanel({
               <div ref={williamsRRef} className="h-[180px] w-full" />
             </div>
           )}
-          </div>
         </div>
-      )}
+      </div>
     </>
   );
 };

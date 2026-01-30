@@ -2511,22 +2511,10 @@ useEffect(() => {
   }, []);
 
   const calculateStochRSI = useCallback((bars: CandleData[], period: number = 14) => {
-    // Calculate RSI values first
-    const rsiValues = calculateRSI(bars, period).map(r => r.value);
-    
-    // Apply Stochastic formula to RSI values
-    return bars.map((bar, i) => {
-      if (i < period) return { time: bar.time, value: 50 };
-      
-      const rsiSlice = rsiValues.slice(i - period + 1, i + 1);
-      const maxRSI = Math.max(...rsiSlice);
-      const minRSI = Math.min(...rsiSlice);
-      const range = maxRSI - minRSI;
-      
-      const stochRSI = range === 0 ? 50 : ((rsiValues[i] - minRSI) / range) * 100;
-      return { time: bar.time, value: stochRSI };
-    });
-  }, [calculateRSI]);
+    // Use the existing calculateStochasticRSI from indicators lib and return %K line
+    const stochData = calculateStochasticRSI(bars, period, period);
+    return stochData.map(d => ({ time: d.time, value: d.k }));
+  }, [calculateStochasticRSI]);
 
   const calculateOBV = useCallback((bars: CandleData[]) => {
     let obv = 0;
