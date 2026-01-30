@@ -1,24 +1,50 @@
-import { useEffect, useRef } from 'react';
-import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries } from 'lightweight-charts';
+import { useEffect, useRef, forwardRef, Ref, useCallback } from 'react';
+import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, ISeriesApi, MouseEventParams, Time } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
+
+interface FutureWhitespaceConfig {
+  enabled: boolean;
+  getFutureBarCount: (interval: string) => number;
+  generateFutureWhitespace: (lastTime: number, interval: string, count: number) => { time: number }[];
+}
 
 interface ChartContainerProps {
   data: CandleData[];
   height: number;
-  onChartReady?: (chart: IChartApi) => void;
+  onChartReady?: (chart: IChartApi, candleSeries: ISeriesApi<"Candlestick">) => void;
   isFullscreen: boolean;
   loading?: boolean;
+  interval?: string;
+  onVisibleRangeChange?: (count: number) => void;
+  onCrosshairMove?: (param: MouseEventParams) => void;
+  futureWhitespace?: FutureWhitespaceConfig;
 }
 
-export function ChartContainer({ 
-  data, 
-  height, 
-  onChartReady, 
+export const ChartContainer = forwardRef<HTMLDivElement, ChartContainerProps>(function ChartContainer({
+  data,
+  height,
+  onChartReady,
   isFullscreen,
-  loading = false 
-}: ChartContainerProps) {
+  loading = false,
+  interval = '1h',
+  onVisibleRangeChange,
+  onCrosshairMove,
+  futureWhitespace
+}, forwardedRef) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const internalRef = forwardedRef || chartContainerRef;
   const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+
+  // Resize handler defined outside useEffect to avoid recreating
+  const handleResize = useCallback(() => {
+    const container = typeof internalRef === 'function' ? null : internalRef.current;
+    if (container && chartRef.current) {
+      chartRef.current.applyOptions({
+        width: container.clientWidth,
+      });
+    }
+  }, [internalRef]);
 
   useEffect(() => {
     if (data.length === 0 || loading) {
@@ -34,7 +60,8 @@ export function ChartContainer({
     
     // Use setTimeout to ensure DOM is fully rendered
     const timer = setTimeout(() => {
-      if (!chartContainerRef.current) {
+      const container = typeof internalRef === 'function' ? null : internalRef.current;
+      if (!container) {
         console.log('Chart container ref not available');
         return;
       }
@@ -45,14 +72,13 @@ export function ChartContainer({
         return;
       }
       
-      const container = chartContainerRef.current;
       const containerWidth = container.clientWidth > 0 ? container.clientWidth : 800;
       
       console.log('Creating chart - width:', containerWidth, 'candles:', data.length);
       
-      const chart = createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth || 800,
-        height: chartContainerRef.current.clientHeight || 600,
+      const chart = createChart(container, {
+        width: container.clientWidth || 800,
+        height: container.clientHeight || 600,
         layout: {
           background: { type: ColorType.Solid, color: '#0f172a' },
           textColor: '#d1d5db',
@@ -98,8 +124,19 @@ export function ChartContainer({
         },
       });
 
-      candleSeries.setData(data as any);
+      // Prepare chart data with optional future whitespace
+      let chartData = data;
+      if (futureWhitespace?.enabled && data.length > 0) {
+        const lastCandle = data[data.length - 1];
+        const futureCount = futureWhitespace.getFutureBarCount(interval);
+        const futureBars = futureWhitespace.generateFutureWhitespace(lastCandle.time as number, interval, futureCount);
+        chartData = [...data, ...futureBars] as any;
+        console.log('Added', futureCount, 'future whitespace bars');
+      }
+
+      candleSeries.setData(chartData as any);
       chartRef.current = chart;
+      candleSeriesRef.current = candleSeries;
 
       // Fit content then add right-side bar spacing for future drawing area
       chart.timeScale().fitContent();
@@ -108,25 +145,53 @@ export function ChartContainer({
         rightOffset: 150, // Show ~half the chart as future whitespace
       });
       console.log('Chart created successfully');
+
+      // Subscribe to visible range changes to update candle count
+      if (onVisibleRangeChange) {
+        chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+          if (range) {
+            const count = Math.round(range.to - range.from) + 1;
+            onVisibleRangeChange(count);
+          }
+        });
+        
+        // Set initial visible candle count
+        const initialRange = chart.timeScale().getVisibleLogicalRange();
+        if (initialRange) {
+          onVisibleRangeChange(Math.round(initialRange.to - initialRange.from) + 1);
+        }
+      }
+
+      // Add crosshair move handler
+      if (onCrosshairMove) {
+        chart.subscribeCrosshairMove((param) => {
+          onCrosshairMove(param);
+        });
+      }
       
       if (onChartReady) {
-        onChartReady(chart);
+        onChartReady(chart, candleSeries);
       }
-    }, 0);
+    }, 100);
+
+    window.addEventListener('resize', handleResize);
 
     return () => {
       clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
+        candleSeriesRef.current = null;
       }
     };
-  }, [data.length, loading, isFullscreen]);
+  }, [data.length, loading, isFullscreen, interval, onVisibleRangeChange, onCrosshairMove, onChartReady, futureWhitespace?.enabled, handleResize]);
 
   return (
     <div 
-      ref={chartContainerRef} 
+      ref={internalRef as React.Ref<HTMLDivElement>}
       style={{ height: `${height}px`, width: '100%' }}
     />
   );
-}
+});
