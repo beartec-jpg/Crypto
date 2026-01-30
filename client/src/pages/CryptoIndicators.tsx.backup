@@ -6641,7 +6641,190 @@ useEffect(() => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
-// Chart initialization is now handled by ChartContainer component
+  // Initialize chart
+  useEffect(() => {
+    if (candles.length === 0 || loading) {
+      console.log('Chart init skipped - candles:', candles.length, 'loading:', loading);
+      return;
+    }
+    
+    // Prevent recreation if chart already exists
+    if (chartRef.current) {
+      console.log('Chart already exists, skipping recreation');
+      return;
+    }
+    
+    // Use setTimeout to ensure DOM is fully rendered
+    const timer = setTimeout(() => {
+      if (!chartContainerRef.current) {
+        console.log('Chart container ref not available');
+        return;
+      }
+      
+      // Double check chart doesn't exist
+      if (chartRef.current) {
+        console.log('Chart created during timeout, skipping');
+        return;
+      }
+      
+      const container = chartContainerRef.current;
+      const containerWidth = container.clientWidth > 0 ? container.clientWidth : 800;
+      
+      console.log('Creating chart - width:', containerWidth, 'candles:', candles.length);
+      
+     const chart = createChart(chartContainerRef.current, {
+  width: chartContainerRef.current.clientWidth || 800,
+  height: chartContainerRef.current.clientHeight || 600,
+        layout: {
+          background: { type: ColorType.Solid, color: '#0f172a' },
+          textColor: '#d1d5db',
+        },
+        grid: {
+          vertLines: { color: '#1e293b' },
+          horzLines: { color: '#1e293b' },
+        },
+        crosshair: {
+          mode: CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+          borderVisible: true,
+          scaleMargins: {
+            top: 0.1,
+            bottom: 0.1,
+          },
+          autoScale: true,
+        },
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: false,
+          borderVisible: true,
+        },
+        handleScroll: isFullscreen,  // ← Disable scroll when NOT fullscreen
+        handleScale: isFullscreen,   // ← Disable pinch-to-zoom when NOT fullscreen
+        kineticScroll: {
+          touch: isFullscreen,       // ← Disable touch scroll when NOT fullscreen
+          mouse: isFullscreen,       // ← Disable mouse scroll when NOT fullscreen
+        },
+      });
+
+      const candleSeries = chart.addSeries(CandlestickSeries, {
+        upColor: '#10b981',
+        downColor: '#ef4444',
+        borderVisible: false,
+        wickUpColor: '#10b981',
+        wickDownColor: '#ef4444',
+        priceFormat: {
+          type: 'price',
+          precision: 6,
+          minMove: 0.000001,
+        },
+      });
+
+      // Append future whitespace bars to allow drawing on future dates
+      const lastCandle = candles[candles.length - 1];
+      const futureCount = getFutureBarCount(interval);
+      const futureBars = lastCandle ? generateFutureWhitespace(lastCandle.time, interval, futureCount) : [];
+      const chartData = [...candles, ...futureBars];
+      
+      candleSeries.setData(chartData as any);
+      chartRef.current = chart;
+      candleSeriesRef.current = candleSeries;
+
+      // Fit content then add right-side bar spacing for future drawing area
+      chart.timeScale().fitContent();
+      // Add significant whitespace on the right to show future area (half chart at zoom out)
+      chart.timeScale().applyOptions({
+        rightOffset: 150, // Show ~half the chart as future whitespace
+      });
+      console.log('Chart created successfully with', futureCount, 'future bars');
+      setChartReady(true);
+      
+      // Subscribe to visible range changes to update candle count
+      chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range) {
+          const count = Math.round(range.to - range.from) + 1;
+          setVisibleCandleCount(count);
+        }
+      });
+      
+      // Set initial visible candle count
+      const initialRange = chart.timeScale().getVisibleLogicalRange();
+      if (initialRange) {
+        setVisibleCandleCount(Math.round(initialRange.to - initialRange.from) + 1);
+      }
+
+      // Add crosshair move handler to track time in future whitespace area (for UI display)
+      chart.subscribeCrosshairMove((param) => {
+        if (param.time && param.point) {
+          const time = param.time as number;
+          const price = candleSeries.coordinateToPrice(param.point.y);
+          
+          setCrosshairInfo({
+            time,
+            x: param.point.x,
+            y: param.point.y
+          });
+          
+          // Store crosshair position for UI display
+          lastCrosshairParamRef.current = {
+            time,
+            price: price !== null ? price : 0,
+            pointX: param.point.x,
+            logicalX: undefined
+          };
+        } else {
+          setCrosshairInfo(null);
+        }
+      });
+    }, 100);
+
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      
+      if (chartRef.current) {
+        setChartReady(false);
+        // Clear all series refs before removing chart
+        vwapSeriesRefs.current = {};
+        fvgSeriesRefs.current = [];
+        bosSeriesRefs.current = [];
+        chochSeriesRefs.current = [];
+        tradeMarkerRefs.current = [];
+        emaSeriesRefs.current = {};
+        smaSeriesRefs.current = {};
+        bbSeriesRefs.current = { upper: undefined, middle: undefined, lower: undefined };
+        supertrendSeriesRef.current = null;
+        parabolicSARRef.current = null;
+        orderBlocksRefs.current = [];
+        swingPivotSeriesRefs.current = [];
+        liquiditySweepSeriesRefs.current = [];
+        trendlineSeriesRefs.current = [];
+        sessionVWAPAsiaRef.current = null;
+        sessionVWAPLondonRef.current = null;
+        sessionVWAPNYRef.current = null;
+        vwapBandsUpperRef.current = null;
+        vwapBandsLowerRef.current = null;
+        orderFlowSeriesRef.current = null;
+        cumDeltaSeriesRef.current = null;
+        premiumDiscountRefs.current = { equilibrium: null, premium: null, discount: null };
+        seriesMarkersRef.current = null;
+        
+        chartRef.current.remove();
+        chartRef.current = null;
+        candleSeriesRef.current = null;
+      }
+    };
+}, [candles.length, loading, symbol, interval, isFullscreen]);
   
   // Attach gesture controller to chart when ready
   useEffect(() => {
