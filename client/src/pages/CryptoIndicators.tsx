@@ -168,6 +168,50 @@ export default function CryptoIndicators() {
   });
   const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
   
+  // Multi-exchange orderflow state (needed by chart data hook)
+  const [useMultiExchange, setUseMultiExchange] = useState(true);
+  
+  // Chart data hook - manages candle data and orderflow
+  const {
+    candles,
+    setCandles,
+    loading,
+    setLoading,
+    footprintData,
+    setFootprintData,
+    realDeltaData,
+    setRealDeltaData,
+    deltaHistory,
+    setDeltaHistory,
+    cumDelta,
+    setCumDelta,
+    fetchInitialData
+  } = useChartData({ symbol, interval, useMultiExchange });
+  
+  // Watchlist hook - manages watchlist state and persistence
+  const {
+    watchlistTickers,
+    setWatchlistTickers,
+    handleAddTicker: handleAddTickerBase,
+    handleRemoveTicker: handleRemoveTickerBase,
+    refetchWatchlist
+  } = useWatchlistState();
+  
+  // Wrap handlers to include symbol change logic
+  const handleAddTicker = useCallback((ticker: string) => {
+    handleAddTickerBase(ticker, setSymbol);
+  }, [handleAddTickerBase]);
+  
+  const handleRemoveTicker = useCallback((ticker: string) => {
+    handleRemoveTickerBase(ticker, symbol, setSymbol);
+  }, [handleRemoveTickerBase, symbol]);
+  
+  // Indicator hook - manages all indicator state
+  const indicators = useIndicatorState();
+  
+  // Local state for WebSocket delta tracking (not persisted)
+  const [currentDelta, setCurrentDelta] = useState(0);
+  
   // Track previous symbol to clear HTF caches on symbol change
   const prevSymbolRef = useRef(symbol);
   
@@ -1032,51 +1076,9 @@ useEffect(() => {
     'BB Middle Cross': 'bollinger',
   };
   
-  // Multi-exchange orderflow state (always enabled)
-  const [useMultiExchange, setUseMultiExchange] = useState(true);
+  // Multi-exchange orderflow additional state
   const [multiExchangeData, setMultiExchangeData] = useState<any>(null);
   const [multiExchangeLoading, setMultiExchangeLoading] = useState(false);
-  
-  // Chart data hook - manages candle data and orderflow
-  const {
-    candles,
-    setCandles,
-    loading,
-    setLoading,
-    footprintData,
-    setFootprintData,
-    realDeltaData,
-    setRealDeltaData,
-    deltaHistory,
-    setDeltaHistory,
-    cumDelta,
-    setCumDelta,
-    fetchInitialData
-  } = useChartData({ symbol, interval, useMultiExchange });
-  
-  // Watchlist hook - manages watchlist state and persistence
-  const {
-    watchlistTickers,
-    setWatchlistTickers,
-    handleAddTicker: handleAddTickerBase,
-    handleRemoveTicker: handleRemoveTickerBase,
-    refetchWatchlist
-  } = useWatchlistState();
-  
-  // Wrap handlers to include symbol change logic
-  const handleAddTicker = useCallback((ticker: string) => {
-    handleAddTickerBase(ticker, setSymbol);
-  }, [handleAddTickerBase]);
-  
-  const handleRemoveTicker = useCallback((ticker: string) => {
-    handleRemoveTickerBase(ticker, symbol, setSymbol);
-  }, [handleRemoveTickerBase, symbol]);
-  
-  // Indicator hook - manages all indicator state
-  const indicators = useIndicatorState();
-  
-  // Local state for WebSocket delta tracking (not persisted)
-  const [currentDelta, setCurrentDelta] = useState(0);
   
   // Refs to ensure auto-refresh always uses current values
   const symbolRef = useRef(symbol);
