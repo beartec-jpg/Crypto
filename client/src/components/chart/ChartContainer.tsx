@@ -1,6 +1,12 @@
-import { useEffect, useRef, forwardRef, Ref } from 'react';
-import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, ISeriesApi } from 'lightweight-charts';
+import { useEffect, useRef, forwardRef, Ref, useCallback } from 'react';
+import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, ISeriesApi, MouseEventParams, Time } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
+
+interface FutureWhitespaceConfig {
+  enabled: boolean;
+  getFutureBarCount: (interval: string) => number;
+  generateFutureWhitespace: (lastTime: number, interval: string, count: number) => { time: number }[];
+}
 
 interface ChartContainerProps {
   data: CandleData[];
@@ -10,16 +16,11 @@ interface ChartContainerProps {
   loading?: boolean;
   interval?: string;
   onVisibleRangeChange?: (count: number) => void;
-  onCrosshairMove?: (param: any) => void;
-  futureWhitespace?: {
-    enabled: boolean;
-    getFutureBarCount: (interval: string) => number;
-    generateFutureWhitespace: (lastTime: any, interval: string, count: number) => any[];
-  };
-  containerRef?: Ref<HTMLDivElement>;
+  onCrosshairMove?: (param: MouseEventParams) => void;
+  futureWhitespace?: FutureWhitespaceConfig;
 }
 
-export const ChartContainer = forwardRef<HTMLDivElement, Omit<ChartContainerProps, 'containerRef'>>(function ChartContainer({
+export const ChartContainer = forwardRef<HTMLDivElement, ChartContainerProps>(function ChartContainer({
   data,
   height,
   onChartReady,
@@ -34,6 +35,16 @@ export const ChartContainer = forwardRef<HTMLDivElement, Omit<ChartContainerProp
   const internalRef = forwardedRef || chartContainerRef;
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+
+  // Resize handler defined outside useEffect to avoid recreating
+  const handleResize = useCallback(() => {
+    const container = typeof internalRef === 'function' ? null : internalRef.current;
+    if (container && chartRef.current) {
+      chartRef.current.applyOptions({
+        width: container.clientWidth,
+      });
+    }
+  }, [internalRef]);
 
   useEffect(() => {
     if (data.length === 0 || loading) {
@@ -118,8 +129,8 @@ export const ChartContainer = forwardRef<HTMLDivElement, Omit<ChartContainerProp
       if (futureWhitespace?.enabled && data.length > 0) {
         const lastCandle = data[data.length - 1];
         const futureCount = futureWhitespace.getFutureBarCount(interval);
-        const futureBars = futureWhitespace.generateFutureWhitespace(lastCandle.time, interval, futureCount);
-        chartData = [...data, ...futureBars];
+        const futureBars = futureWhitespace.generateFutureWhitespace(lastCandle.time as number, interval, futureCount);
+        chartData = [...data, ...futureBars] as any;
         console.log('Added', futureCount, 'future whitespace bars');
       }
 
@@ -163,15 +174,6 @@ export const ChartContainer = forwardRef<HTMLDivElement, Omit<ChartContainerProp
       }
     }, 100);
 
-    const handleResize = () => {
-      const container = typeof internalRef === 'function' ? null : internalRef.current;
-      if (container && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: container.clientWidth,
-        });
-      }
-    };
-
     window.addEventListener('resize', handleResize);
 
     return () => {
@@ -184,11 +186,11 @@ export const ChartContainer = forwardRef<HTMLDivElement, Omit<ChartContainerProp
         candleSeriesRef.current = null;
       }
     };
-  }, [data.length, loading, isFullscreen, interval, onVisibleRangeChange, onCrosshairMove, futureWhitespace, internalRef]);
+  }, [data.length, loading, isFullscreen, interval, onVisibleRangeChange, onCrosshairMove, onChartReady, futureWhitespace?.enabled, handleResize]);
 
   return (
     <div 
-      ref={internalRef as any}
+      ref={internalRef as React.Ref<HTMLDivElement>}
       style={{ height: `${height}px`, width: '100%' }}
     />
   );

@@ -944,6 +944,45 @@ useEffect(() => {
     return 0;
   }, []);
   
+  // Chart callbacks for ChartContainer component
+  const handleVisibleRangeChange = useCallback((count: number) => {
+    setVisibleCandleCount(count);
+  }, []);
+
+  const handleCrosshairMove = useCallback((param: any) => {
+    if (param.time && param.point && candleSeriesRef.current) {
+      const time = param.time as number;
+      const price = candleSeriesRef.current.coordinateToPrice(param.point.y);
+      
+      setCrosshairInfo({
+        time,
+        x: param.point.x,
+        y: param.point.y
+      });
+      
+      lastCrosshairParamRef.current = {
+        time,
+        price: price !== null ? price : 0,
+        pointX: param.point.x,
+        logicalX: undefined
+      };
+    } else {
+      setCrosshairInfo(null);
+    }
+  }, []);
+
+  const handleChartReady = useCallback((chart: any, candleSeries: any) => {
+    chartRef.current = chart;
+    candleSeriesRef.current = candleSeries;
+    setChartReady(true);
+  }, []);
+
+  const futureWhitespaceConfig = useMemo(() => ({
+    enabled: true,
+    getFutureBarCount,
+    generateFutureWhitespace
+  }), [getFutureBarCount, generateFutureWhitespace]);
+  
   // Handler for oscillator toggles with tier restrictions
   const handleOscillatorToggle = (
     oscillatorName: string,
@@ -9037,38 +9076,10 @@ useEffect(() => {
     isFullscreen={isFullscreen}
     loading={loading}
     interval={interval}
-    onVisibleRangeChange={(count) => setVisibleCandleCount(count)}
-    onCrosshairMove={(param) => {
-      if (param.time && param.point && candleSeriesRef.current) {
-        const time = param.time as number;
-        const price = candleSeriesRef.current.coordinateToPrice(param.point.y);
-        
-        setCrosshairInfo({
-          time,
-          x: param.point.x,
-          y: param.point.y
-        });
-        
-        lastCrosshairParamRef.current = {
-          time,
-          price: price !== null ? price : 0,
-          pointX: param.point.x,
-          logicalX: undefined
-        };
-      } else {
-        setCrosshairInfo(null);
-      }
-    }}
-    onChartReady={(chart, candleSeries) => {
-      chartRef.current = chart;
-      candleSeriesRef.current = candleSeries;
-      setChartReady(true);
-    }}
-    futureWhitespace={{
-      enabled: true,
-      getFutureBarCount,
-      generateFutureWhitespace
-    }}
+    onVisibleRangeChange={handleVisibleRangeChange}
+    onCrosshairMove={handleCrosshairMove}
+    onChartReady={handleChartReady}
+    futureWhitespace={futureWhitespaceConfig}
   />
           
           {/* Clickable overlay - positioned ABOVE the canvas */}
