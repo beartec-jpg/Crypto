@@ -228,7 +228,7 @@ export function CVDTable({
               <Popover>
                 <PopoverTrigger className="cursor-help underline decoration-dotted">Vol</PopoverTrigger>
                 <PopoverContent className="w-60 text-xs p-2">
-                  <p>CVD spike indicator showing unusual volume. Colors: Green/Red (5-6 exchanges), Blue/Yellow (3-4), Grey (1-2). Superscript shows intensity level</p>
+                  <p>CVD spike indicator showing unusual volume. Colors: Green/Red (5-6 exchanges), Blue/Yellow (3-4), Grey (1-2). Number of triangles shows intensity level (1-3)</p>
                 </PopoverContent>
               </Popover>
             </th>
