@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, forwardRef, Ref } from 'react';
 import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, ISeriesApi } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
 
@@ -16,20 +16,22 @@ interface ChartContainerProps {
     getFutureBarCount: (interval: string) => number;
     generateFutureWhitespace: (lastTime: any, interval: string, count: number) => any[];
   };
+  containerRef?: Ref<HTMLDivElement>;
 }
 
-export function ChartContainer({ 
-  data, 
-  height, 
-  onChartReady, 
+export const ChartContainer = forwardRef<HTMLDivElement, Omit<ChartContainerProps, 'containerRef'>>(function ChartContainer({
+  data,
+  height,
+  onChartReady,
   isFullscreen,
   loading = false,
   interval = '1h',
   onVisibleRangeChange,
   onCrosshairMove,
   futureWhitespace
-}: ChartContainerProps) {
+}, forwardedRef) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const internalRef = forwardedRef || chartContainerRef;
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
@@ -47,7 +49,8 @@ export function ChartContainer({
     
     // Use setTimeout to ensure DOM is fully rendered
     const timer = setTimeout(() => {
-      if (!chartContainerRef.current) {
+      const container = typeof internalRef === 'function' ? null : internalRef.current;
+      if (!container) {
         console.log('Chart container ref not available');
         return;
       }
@@ -58,14 +61,13 @@ export function ChartContainer({
         return;
       }
       
-      const container = chartContainerRef.current;
       const containerWidth = container.clientWidth > 0 ? container.clientWidth : 800;
       
       console.log('Creating chart - width:', containerWidth, 'candles:', data.length);
       
-      const chart = createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth || 800,
-        height: chartContainerRef.current.clientHeight || 600,
+      const chart = createChart(container, {
+        width: container.clientWidth || 800,
+        height: container.clientHeight || 600,
         layout: {
           background: { type: ColorType.Solid, color: '#0f172a' },
           textColor: '#d1d5db',
@@ -162,9 +164,10 @@ export function ChartContainer({
     }, 100);
 
     const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
+      const container = typeof internalRef === 'function' ? null : internalRef.current;
+      if (container && chartRef.current) {
         chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
+          width: container.clientWidth,
         });
       }
     };
@@ -181,12 +184,12 @@ export function ChartContainer({
         candleSeriesRef.current = null;
       }
     };
-  }, [data.length, loading, isFullscreen, interval, onVisibleRangeChange, onCrosshairMove, futureWhitespace]);
+  }, [data.length, loading, isFullscreen, interval, onVisibleRangeChange, onCrosshairMove, futureWhitespace, internalRef]);
 
   return (
     <div 
-      ref={chartContainerRef} 
+      ref={internalRef as any}
       style={{ height: `${height}px`, width: '100%' }}
     />
   );
-}
+});
