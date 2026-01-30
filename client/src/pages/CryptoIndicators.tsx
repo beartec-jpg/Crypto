@@ -7326,10 +7326,10 @@ useEffect(() => {
     }
   }, [chartReady, candles, indicators.smc.showAutoTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectTrendlines]);
 
-  // NOTE: BOS/CHoCH labels now handled by BOSCHoCHMarkers component
-  // Label rendering removed as part of Phase 4G-3 refactoring
-  // The BOSCHoCHMarkers component handles horizontal lines for BOS/CHoCH
-  // Text labels controlled by indicators.smc.showChartLabels can be added to the component if needed
+  // NOTE: BOS/CHoCH text labels have been removed in Phase 4G-3
+  // The BOSCHoCHMarkers component currently handles only horizontal lines
+  // The "Chart Labels" toggle (indicators.smc.showChartLabels) is now non-functional
+  // Future enhancement: Add label support to BOSCHoCHMarkers component or create separate LabelOverlay component
 
   // Update backtest trade markers with price level lines and shaded zones
   useEffect(() => {
