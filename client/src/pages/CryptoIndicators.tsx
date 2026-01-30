@@ -36,6 +36,14 @@ import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { DrawingSettingsPanel } from '@/components/drawing-settings';
 import { FullscreenOscillatorPanel } from '@/components/FullscreenOscillatorPanel';
+import { RSIPanel } from '@/components/indicators/oscillators/RSIPanel';
+import { MACDPanel } from '@/components/indicators/oscillators/MACDPanel';
+import { StochasticPanel } from '@/components/indicators/oscillators/StochasticPanel';
+import { OBVPanel } from '@/components/indicators/oscillators/OBVPanel';
+import { MFIPanel } from '@/components/indicators/oscillators/MFIPanel';
+import { WilliamsRPanel } from '@/components/indicators/oscillators/WilliamsRPanel';
+import { CCIPanel } from '@/components/indicators/oscillators/CCIPanel';
+import { ADXPanel } from '@/components/indicators/oscillators/ADXPanel';
 import {
   calculateSupertrend,
   calculateVWAPBands,
@@ -783,15 +791,7 @@ useEffect(() => {
   }, [gestureController.findSnapPoint]);
 
   // Series refs for chart rendering (not part of state hook)
-  const rsiRef = useRef<HTMLDivElement>(null);
-  const macdRef = useRef<HTMLDivElement>(null);
-  const obvRef = useRef<HTMLDivElement>(null);
-  const mfiRef = useRef<HTMLDivElement>(null);
   const bbRef = useRef<HTMLDivElement>(null);
-  const stochRSIRef = useRef<HTMLDivElement>(null);
-  const williamsRRef = useRef<HTMLDivElement>(null);
-  const cciRef = useRef<HTMLDivElement>(null);
-  const adxRef = useRef<HTMLDivElement>(null);
   const oscillatorChartsRef = useRef<Map<string, IChartApi>>(new Map());
   const emaSeriesRefs = useRef<Record<string, ISeriesApi<'Line'> | null>>({});
   const emaHTFDataCache = useRef<Record<string, CandleData[]>>({});
@@ -9161,396 +9161,22 @@ useEffect(() => {
     }
   }, [candles.length, isReplayMode]);
 
-  // Create RSI chart
-  useEffect(() => {
-    if (!indicators.rsi.show || !rsiRef.current || candles.length === 0) return;
-    
-    const chart = createChart(rsiRef.current, { 
-      width: rsiRef.current.clientWidth, 
-      height: 200, 
-      layout: {
-        background: { type: ColorType.Solid, color: '#1e293b' },
-        textColor: '#94a3b8',
-      },
-      grid: {
-        vertLines: { color: '#334155' },
-        horzLines: { color: '#334155' },
-      },
-      timeScale: {
-        borderColor: '#475569',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: '#475569',
-      },
-    });
-    
-    oscillatorChartsRef.current.set('RSI', chart);
-    
-    // Sync with main chart if sync is enabled
-    if (indicators.syncOscillatorScale && chartRef.current) {
-      try {
-        const visibleRange = chartRef.current.timeScale().getVisibleRange();
-        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
-    const line = chart.addSeries(LineSeries, { color: '#ffa726', lineWidth: 2 });
-    line.setData(calculateRSI(candles, indicators.rsi.period).map(d => ({ ...d, time: d.time as Time })));
-    
-    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
-    
-    // Add overbought/oversold lines
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 70 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 30 })));
-    
-    return () => {
-      oscillatorChartsRef.current.delete('RSI');
-      chart.remove();
-    };
-  }, [indicators.rsi.show, candles, indicators.rsi.period, calculateRSI]);
+  // Helper callback for oscillator panels to register their charts
+  const handleOscillatorChartCreated = useCallback((name: string, chart: IChartApi) => {
+    oscillatorChartsRef.current.set(name, chart);
+  }, []);
 
-  // Create MACD chart
-  useEffect(() => {
-    if (!indicators.macd.show || !macdRef.current || candles.length === 0) return;
-    
-    const chart = createChart(macdRef.current, { 
-      width: macdRef.current.clientWidth, 
-      height: 200, 
-      layout: {
-        background: { type: ColorType.Solid, color: '#1e293b' },
-        textColor: '#94a3b8',
-      },
-      grid: {
-        vertLines: { color: '#334155' },
-        horzLines: { color: '#334155' },
-      },
-      timeScale: {
-        borderColor: '#475569',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: '#475569',
-      },
-    });
-    
-    oscillatorChartsRef.current.set('MACD', chart);
-    
-    // Sync with main chart if sync is enabled
+  // Get main chart visible range for oscillator sync
+  const getMainChartVisibleRange = useCallback(() => {
     if (indicators.syncOscillatorScale && chartRef.current) {
       try {
-        const visibleRange = chartRef.current.timeScale().getVisibleRange();
-        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
-      } catch (e) { /* ignore */ }
+        return chartRef.current.timeScale().getVisibleRange();
+      } catch (e) {
+        return null;
+      }
     }
-    
-    const { macd, signal, hist } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
-    chart.addSeries(LineSeries, { color: '#26a69a', lineWidth: 2 }).setData(macd.map(d => ({ ...d, time: d.time as Time })));
-    chart.addSeries(LineSeries, { color: '#ef5350', lineWidth: 2 }).setData(signal.map(d => ({ ...d, time: d.time as Time })));
-    chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(hist.map(d => ({ ...d, time: d.time as Time })));
-    
-    return () => {
-      oscillatorChartsRef.current.delete('MACD');
-      chart.remove();
-    };
-  }, [indicators.macd.show, candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, calculateMACD]);
-
-  // Create OBV chart
-  useEffect(() => {
-    if (!indicators.obv.show || !obvRef.current || candles.length === 0) return;
-    
-    const chart = createChart(obvRef.current, { 
-      width: obvRef.current.clientWidth, 
-      height: 200, 
-      layout: {
-        background: { type: ColorType.Solid, color: '#1e293b' },
-        textColor: '#94a3b8',
-      },
-      grid: {
-        vertLines: { color: '#334155' },
-        horzLines: { color: '#334155' },
-      },
-      timeScale: {
-        borderColor: '#475569',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: '#475569',
-      },
-    });
-    
-    oscillatorChartsRef.current.set('OBV', chart);
-    
-    // Sync with main chart if sync is enabled
-    if (indicators.syncOscillatorScale && chartRef.current) {
-      try {
-        const visibleRange = chartRef.current.timeScale().getVisibleRange();
-        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
-    chart.addSeries(LineSeries, { color: '#9580ff', lineWidth: 2 }).setData(calculateOBV(candles).map(d => ({ ...d, time: d.time as Time })));
-    
-    return () => {
-      oscillatorChartsRef.current.delete('OBV');
-      chart.remove();
-    };
-  }, [indicators.obv.show, candles, calculateOBV]);
-
-  // Create Stochastic RSI chart
-  useEffect(() => {
-    if (!indicators.stochRSI.show || !stochRSIRef.current || candles.length === 0) return;
-    
-    const chart = createChart(stochRSIRef.current, { 
-      width: stochRSIRef.current.clientWidth, 
-      height: 200, 
-      layout: {
-        background: { type: ColorType.Solid, color: '#1e293b' },
-        textColor: '#94a3b8',
-      },
-      grid: {
-        vertLines: { color: '#334155' },
-        horzLines: { color: '#334155' },
-      },
-      timeScale: {
-        borderColor: '#475569',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: '#475569',
-      },
-    });
-    
-    oscillatorChartsRef.current.set('StochRSI', chart);
-    
-    // Sync with main chart if sync is enabled
-    if (indicators.syncOscillatorScale && chartRef.current) {
-      try {
-        const visibleRange = chartRef.current.timeScale().getVisibleRange();
-        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
-    const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
-    const kLine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2, title: '%K' });
-    const dLine = chart.addSeries(LineSeries, { color: '#f97316', lineWidth: 2, title: '%D' });
-    
-    kLine.setData(stochData.map(d => ({ time: d.time as Time, value: d.k })));
-    dLine.setData(stochData.map(d => ({ time: d.time as Time, value: d.d })));
-    
-    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
-    
-    // Add overbought/oversold lines (80/20 for Stoch RSI)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 80 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 20 })));
-    
-    return () => {
-      oscillatorChartsRef.current.delete('StochRSI');
-      chart.remove();
-    };
-  }, [indicators.stochRSI.show, candles, indicators.stochRSI.period, calculateStochasticRSI]);
-
-  // Create Williams %R chart
-  useEffect(() => {
-    if (!indicators.williamsR.show || !williamsRRef.current || candles.length === 0) return;
-    
-    const chart = createChart(williamsRRef.current, { 
-      width: williamsRRef.current.clientWidth, 
-      height: 200, 
-      layout: {
-        background: { type: ColorType.Solid, color: '#1e293b' },
-        textColor: '#94a3b8',
-      },
-      grid: {
-        vertLines: { color: '#334155' },
-        horzLines: { color: '#334155' },
-      },
-      timeScale: {
-        borderColor: '#475569',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: '#475569',
-      },
-    });
-    
-    oscillatorChartsRef.current.set('WilliamsR', chart);
-    
-    // Sync with main chart if sync is enabled
-    if (indicators.syncOscillatorScale && chartRef.current) {
-      try {
-        const visibleRange = chartRef.current.timeScale().getVisibleRange();
-        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
-    const line = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2 });
-    line.setData(calculateWilliamsR(candles, indicators.williamsR.period).map(d => ({ ...d, time: d.time as Time })));
-    
-    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
-    
-    // Add overbought/oversold lines (-20/-80 for Williams %R)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: -20 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: -80 })));
-    
-    return () => {
-      oscillatorChartsRef.current.delete('WilliamsR');
-      chart.remove();
-    };
-  }, [indicators.williamsR.show, candles, indicators.williamsR.period, calculateWilliamsR]);
-
-  // Create MFI chart
-  useEffect(() => {
-    if (!indicators.mfi.show || !mfiRef.current || candles.length === 0) return;
-    
-    const chart = createChart(mfiRef.current, { 
-      width: mfiRef.current.clientWidth, 
-      height: 200, 
-      layout: {
-        background: { type: ColorType.Solid, color: '#1e293b' },
-        textColor: '#94a3b8',
-      },
-      grid: {
-        vertLines: { color: '#334155' },
-        horzLines: { color: '#334155' },
-      },
-      timeScale: {
-        borderColor: '#475569',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: '#475569',
-      },
-    });
-    
-    oscillatorChartsRef.current.set('MFI', chart);
-    
-    // Sync with main chart if sync is enabled
-    if (indicators.syncOscillatorScale && chartRef.current) {
-      try {
-        const visibleRange = chartRef.current.timeScale().getVisibleRange();
-        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
-    const line = chart.addSeries(LineSeries, { color: '#00bcd4', lineWidth: 2 });
-    line.setData(calculateMFI(candles, indicators.mfi.period).map(d => ({ ...d, time: d.time as Time })));
-    
-    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
-    
-    // Add overbought/oversold lines (80/20 for MFI)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 80 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 20 })));
-    
-    return () => {
-      oscillatorChartsRef.current.delete('MFI');
-      chart.remove();
-    };
-  }, [indicators.mfi.show, candles, indicators.mfi.period, calculateMFI]);
-
-  // Create CCI chart
-  useEffect(() => {
-    if (!indicators.cci.show || !cciRef.current || candles.length === 0) return;
-    
-    const chart = createChart(cciRef.current, { 
-      width: cciRef.current.clientWidth, 
-      height: 200, 
-      layout: {
-        background: { type: ColorType.Solid, color: '#1e293b' },
-        textColor: '#94a3b8',
-      },
-      grid: {
-        vertLines: { color: '#334155' },
-        horzLines: { color: '#334155' },
-      },
-      timeScale: {
-        borderColor: '#475569',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: '#475569',
-      },
-    });
-    
-    oscillatorChartsRef.current.set('CCI', chart);
-    
-    // Sync with main chart if sync is enabled
-    if (indicators.syncOscillatorScale && chartRef.current) {
-      try {
-        const visibleRange = chartRef.current.timeScale().getVisibleRange();
-        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
-    const line = chart.addSeries(LineSeries, { color: '#ec4899', lineWidth: 2 });
-    line.setData(calculateCCI(candles, indicators.cci.period).map(d => ({ ...d, time: d.time as Time })));
-    
-    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
-    
-    // Add overbought/oversold lines (+100/-100 for CCI)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 100 })));
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: -100 })));
-    chart.addSeries(LineSeries, { color: '#444', lineStyle: 2, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 0 })));
-    
-    return () => {
-      oscillatorChartsRef.current.delete('CCI');
-      chart.remove();
-    };
-  }, [indicators.cci.show, candles, indicators.cci.period]);
-
-  // Create ADX chart
-  useEffect(() => {
-    if (!indicators.adx.show || !adxRef.current || candles.length === 0) return;
-    
-    const chart = createChart(adxRef.current, { 
-      width: adxRef.current.clientWidth, 
-      height: 200, 
-      layout: {
-        background: { type: ColorType.Solid, color: '#1e293b' },
-        textColor: '#94a3b8',
-      },
-      grid: {
-        vertLines: { color: '#334155' },
-        horzLines: { color: '#334155' },
-      },
-      timeScale: {
-        borderColor: '#475569',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: '#475569',
-      },
-    });
-    
-    oscillatorChartsRef.current.set('ADX', chart);
-    
-    // Sync with main chart if sync is enabled
-    if (indicators.syncOscillatorScale && chartRef.current) {
-      try {
-        const visibleRange = chartRef.current.timeScale().getVisibleRange();
-        if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
-    const adxData = calculateADX(candles, indicators.adx.period);
-    const adxLine = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 2, title: 'ADX' });
-    const plusDILine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, title: '+DI' });
-    const minusDILine = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, title: '-DI' });
-    
-    adxLine.setData(adxData.map(d => ({ time: d.time as Time, value: d.adx })));
-    plusDILine.setData(adxData.map(d => ({ time: d.time as Time, value: d.plusDI })));
-    minusDILine.setData(adxData.map(d => ({ time: d.time as Time, value: d.minusDI })));
-    
-    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
-    
-    // Add strength level line (25 is typically considered strong trend)
-    chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 25 })));
-    
-    return () => {
-      oscillatorChartsRef.current.delete('ADX');
-      chart.remove();
-    };
-  }, [indicators.adx.show, candles, indicators.adx.period]);
+    return null;
+  }, [indicators.syncOscillatorScale]);
 
   // ========== OSCILLATOR TIME SCALE SYNC ==========
   // Sync oscillator chart time scales with main chart when enabled
@@ -12361,6 +11987,7 @@ useEffect(() => {
   <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
     {indicators.rsi.show && (() => {
       const report = isPaidTier ? getIndicatorReport('RSI') : null;
+      const rsiData = calculateRSI(candles, indicators.rsi.period);
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
@@ -12370,7 +11997,14 @@ useEffect(() => {
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={rsiRef} className="w-full" data-testid="chart-rsi" />
+            <RSIPanel 
+              data={rsiData}
+              period={indicators.rsi.period}
+              candles={candles}
+              onChartCreated={(chart) => handleOscillatorChartCreated('RSI', chart)}
+              syncWithMainChart={indicators.syncOscillatorScale}
+              mainChartVisibleRange={getMainChartVisibleRange()}
+            />
             <DivergenceMeter indicator="RSI" />
           </CardContent>
         </Card>
@@ -12378,6 +12012,7 @@ useEffect(() => {
     })()}
     {indicators.stochRSI.show && (() => {
       const report = isPaidTier ? getIndicatorReport('StochRSI') : null;
+      const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
@@ -12387,7 +12022,14 @@ useEffect(() => {
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={stochRSIRef} className="w-full" data-testid="chart-stoch-rsi" />
+            <StochasticPanel 
+              data={stochData}
+              period={indicators.stochRSI.period}
+              candles={candles}
+              onChartCreated={(chart) => handleOscillatorChartCreated('StochRSI', chart)}
+              syncWithMainChart={indicators.syncOscillatorScale}
+              mainChartVisibleRange={getMainChartVisibleRange()}
+            />
             <DivergenceMeter indicator="StochRSI" />
           </CardContent>
         </Card>
@@ -12395,6 +12037,7 @@ useEffect(() => {
     })()}
     {indicators.macd.show && (() => {
       const report = isPaidTier ? getIndicatorReport('MACD') : null;
+      const { macd, signal, hist } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
@@ -12404,7 +12047,17 @@ useEffect(() => {
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={macdRef} className="w-full" data-testid="chart-macd" />
+            <MACDPanel 
+              macdData={macd}
+              signalData={signal}
+              histogramData={hist}
+              fastPeriod={indicators.macd.fast}
+              slowPeriod={indicators.macd.slow}
+              signalPeriod={indicators.macd.signal}
+              onChartCreated={(chart) => handleOscillatorChartCreated('MACD', chart)}
+              syncWithMainChart={indicators.syncOscillatorScale}
+              mainChartVisibleRange={getMainChartVisibleRange()}
+            />
             <DivergenceMeter indicator="MACD" />
           </CardContent>
         </Card>
@@ -12412,6 +12065,7 @@ useEffect(() => {
     })()}
     {indicators.obv.show && (() => {
       const report = isPaidTier ? getIndicatorReport('OBV') : null;
+      const obvData = calculateOBV(candles);
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
@@ -12421,7 +12075,12 @@ useEffect(() => {
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={obvRef} className="w-full" data-testid="chart-obv" />
+            <OBVPanel 
+              data={obvData}
+              onChartCreated={(chart) => handleOscillatorChartCreated('OBV', chart)}
+              syncWithMainChart={indicators.syncOscillatorScale}
+              mainChartVisibleRange={getMainChartVisibleRange()}
+            />
             <DivergenceMeter indicator="OBV" />
           </CardContent>
         </Card>
@@ -12429,6 +12088,7 @@ useEffect(() => {
     })()}
     {indicators.williamsR.show && (() => {
       const report = isPaidTier ? getIndicatorReport('WilliamsR') : null;
+      const williamsRData = calculateWilliamsR(candles, indicators.williamsR.period);
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
@@ -12438,7 +12098,14 @@ useEffect(() => {
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={williamsRRef} className="w-full" data-testid="chart-williams-r" />
+            <WilliamsRPanel 
+              data={williamsRData}
+              period={indicators.williamsR.period}
+              candles={candles}
+              onChartCreated={(chart) => handleOscillatorChartCreated('WilliamsR', chart)}
+              syncWithMainChart={indicators.syncOscillatorScale}
+              mainChartVisibleRange={getMainChartVisibleRange()}
+            />
             <DivergenceMeter indicator="WilliamsR" />
           </CardContent>
         </Card>
@@ -12446,6 +12113,7 @@ useEffect(() => {
     })()}
     {indicators.mfi.show && (() => {
       const report = isPaidTier ? getIndicatorReport('MFI') : null;
+      const mfiData = calculateMFI(candles, indicators.mfi.period);
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
@@ -12455,7 +12123,14 @@ useEffect(() => {
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={mfiRef} className="w-full" data-testid="chart-mfi" />
+            <MFIPanel 
+              data={mfiData}
+              period={indicators.mfi.period}
+              candles={candles}
+              onChartCreated={(chart) => handleOscillatorChartCreated('MFI', chart)}
+              syncWithMainChart={indicators.syncOscillatorScale}
+              mainChartVisibleRange={getMainChartVisibleRange()}
+            />
             <DivergenceMeter indicator="MFI" />
           </CardContent>
         </Card>
@@ -12463,6 +12138,7 @@ useEffect(() => {
     })()}
     {indicators.cci.show && (() => {
       const report = isPaidTier ? getIndicatorReport('CCI') : null;
+      const cciData = calculateCCI(candles, indicators.cci.period);
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
@@ -12472,7 +12148,14 @@ useEffect(() => {
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={cciRef} className="w-full" data-testid="chart-cci" />
+            <CCIPanel 
+              data={cciData}
+              period={indicators.cci.period}
+              candles={candles}
+              onChartCreated={(chart) => handleOscillatorChartCreated('CCI', chart)}
+              syncWithMainChart={indicators.syncOscillatorScale}
+              mainChartVisibleRange={getMainChartVisibleRange()}
+            />
             <DivergenceMeter indicator="CCI" />
           </CardContent>
         </Card>
@@ -12480,6 +12163,7 @@ useEffect(() => {
     })()}
     {indicators.adx.show && (() => {
       const report = isPaidTier ? getIndicatorReport('ADX') : null;
+      const adxData = calculateADX(candles, indicators.adx.period);
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
@@ -12489,7 +12173,14 @@ useEffect(() => {
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={adxRef} className="w-full" data-testid="chart-adx" />
+            <ADXPanel 
+              data={adxData}
+              period={indicators.adx.period}
+              candles={candles}
+              onChartCreated={(chart) => handleOscillatorChartCreated('ADX', chart)}
+              syncWithMainChart={indicators.syncOscillatorScale}
+              mainChartVisibleRange={getMainChartVisibleRange()}
+            />
             <TrendStrengthMeter />
           </CardContent>
         </Card>
