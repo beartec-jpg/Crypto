@@ -77,6 +77,32 @@ import {
   SessionVWAPOverlay, 
   ParabolicSAROverlay 
 } from '@/components/indicators/trend';
+
+// Trading Components
+import {
+  TradingPanel,
+  BacktestPanel,
+  BacktestResults,
+  BotConfiguration,
+  AlertsPanel
+} from '@/components/trading';
+
+// AI Components
+import {
+  GrokPanel,
+  GrokInsights,
+  MarketReviewButton
+} from '@/components/ai';
+
+// Watchlist Components
+import { WatchlistPanel } from '@/components/watchlist';
+
+// Settings Components
+import { SettingsPanel } from '@/components/settings';
+
+// Common Components
+import { LoadingOverlay, ErrorDisplay } from '@/components/common';
+
 import {
   calculateSupertrend,
   calculateVWAPBands,
