@@ -44,6 +44,39 @@ import { MFIPanel } from '@/components/indicators/oscillators/MFIPanel';
 import { WilliamsRPanel } from '@/components/indicators/oscillators/WilliamsRPanel';
 import { CCIPanel } from '@/components/indicators/oscillators/CCIPanel';
 import { ADXPanel } from '@/components/indicators/oscillators/ADXPanel';
+
+// Chart Components
+import { 
+  ChartContainer, 
+  MovingAverages, 
+  ChartControls, 
+  ChartVisibleRange, 
+  ChartTimeTooltip 
+} from '@/components/chart';
+
+// SMC Components
+import { 
+  FVGOverlay, 
+  OrderBlockOverlay, 
+  BOSCHoCHMarkers, 
+  SMCControls 
+} from '@/components/smc';
+
+// Drawing Components
+import { 
+  DrawingToolbar, 
+  DrawingManager, 
+  DrawingRenderer 
+} from '@/components/drawings';
+
+// Trend Indicator Overlays
+import { 
+  SupertrendOverlay, 
+  BollingerBandsOverlay, 
+  VWAPOverlay, 
+  SessionVWAPOverlay, 
+  ParabolicSAROverlay 
+} from '@/components/indicators/trend';
 import {
   calculateSupertrend,
   calculateVWAPBands,
@@ -6894,175 +6927,6 @@ useEffect(() => {
     manageVWAP(rollingKey, indicators.vwap.showRolling, calculateRollingVWAP(candles, indicators.vwap.rollingPeriod), '#ec4899', `rVWAP(${indicators.vwap.rollingPeriod})`);
   }, [chartReady, candles, indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
 
-  // Update FVGs with shaded rectangles
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) {
-      return;
-    }
-
-    const chart = chartRef.current;
-    
-    // Extra safety check - ensure chart hasn't been disposed
-    try {
-      chart.timeScale();
-    } catch (e) {
-      return; // Chart is disposed, skip this update
-    }
-    
-    const refs = fvgSeriesRefs.current;
-
-    // Remove old FVG series
-    if (Array.isArray(refs) && refs.length > 0) {
-      refs.forEach(fl => {
-        try {
-          if (chart && fl.upper) chart.removeSeries(fl.upper);
-        } catch (e) {
-          // Series might already be removed
-        }
-        try {
-          if (chart && fl.lower) chart.removeSeries(fl.lower);
-        } catch (e) {
-          // Series might already be removed
-        }
-        try {
-          if (chart && fl.fill) chart.removeSeries(fl.fill);
-        } catch (e) {
-          // Series might already be removed
-        }
-      });
-    }
-    fvgSeriesRefs.current = [];
-    
-    if (!indicators.smc.showFVG) return;
-
-    // Extract FVG times from active CHoCH+FVG trade signals AND backtest trades
-    const activeTradeFVGTimes = new Set<number>();
-    
-    // Add FVG times from live trade signals
-    tradeSignals
-      .filter(signal => signal.strategy === 'choch_fvg' && signal.active)
-      .forEach(signal => {
-        // Signal ID format: choch_fvg_${chochTime}_${fvgTime}
-        const parts = signal.id.split('_');
-        if (parts.length >= 4) {
-          const fvgTime = parseInt(parts[3]);
-          if (!isNaN(fvgTime)) {
-            activeTradeFVGTimes.add(fvgTime);
-          }
-        }
-      });
-    
-    // Add FVG times from backtest trades (for replay mode visibility)
-    if (backtestResults && backtestResults.trades.length > 0) {
-      backtestResults.trades
-        .filter(trade => trade.strategy === 'choch_fvg')
-        .forEach(trade => {
-          // Trade ID format: choch_fvg_${chochTime}_${fvgTime}
-          const parts = trade.id.split('_');
-          if (parts.length >= 4) {
-            const fvgTime = parseInt(parts[3]);
-            if (!isNaN(fvgTime)) {
-              activeTradeFVGTimes.add(fvgTime);
-            }
-          }
-        });
-    }
-
-    const fvgs = calculateFVGs(candles, true);
-    const lastTime = candles[candles.length - 1].time;
-
-    fvgs.forEach(fvg => {
-      const hasActiveTrade = activeTradeFVGTimes.has(fvg.time);
-      
-      // Only show FVG if it has an active trade OR if it's still valid (not filled)
-      const shouldShow = hasActiveTrade || isActiveFVG(fvg, candles);
-      
-      if (shouldShow) {
-        // Skip non-high-value FVGs if filter is enabled (but always show traded FVGs)
-        if (!hasActiveTrade && indicators.smc.showHighValueOnly && !fvg.isHighValue) {
-          return;
-        }
-
-        // Use YELLOW for FVGs with active trades, normal colors otherwise
-        let color: string;
-        let borderColor: string;
-        
-        if (hasActiveTrade) {
-          // Yellow for active trade FVGs
-          color = 'rgba(234, 179, 8, 0.3)'; // Yellow with transparency
-          borderColor = '#eab308'; // Solid yellow
-        } else {
-          // Normal colors based on type and value
-          const isHighValue = fvg.isHighValue;
-          color = fvg.type === 'bullish' 
-            ? (isHighValue ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.12)')
-            : (isHighValue ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.12)');
-          borderColor = fvg.type === 'bullish' 
-            ? (isHighValue ? '#10b981' : '#10b98180')
-            : (isHighValue ? '#ef4444' : '#ef444480');
-        }
-        
-        // Find all candles from FVG time to fill time (or current time if not filled)
-        const fvgIdx = candles.findIndex(c => c.time === fvg.time);
-        const fillTime = getFVGFillTime(fvg, candles);
-        const endTime = fillTime || lastTime;
-        const endIdx = candles.findIndex(c => c.time === endTime);
-        const candlesInRange = candles.slice(fvgIdx, endIdx + 1);
-        
-        // Create histogram series to fill the gap area
-        const fillSeries = chart.addSeries(HistogramSeries, {
-          color,
-          priceFormat: {
-            type: 'price',
-          },
-          priceLineVisible: false,
-          lastValueVisible: false,
-          base: fvg.lower,
-        });
-        
-        // Create border lines
-        const lowerBorder = chart.addSeries(LineSeries, {
-          color: borderColor,
-          lineWidth: 2, // Thicker borders for better visibility
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        
-        const upperBorder = chart.addSeries(LineSeries, {
-          color: borderColor,
-          lineWidth: 2,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        
-        // Fill the gap with histogram bars for each time point
-        const gapHeight = fvg.upper - fvg.lower;
-        const histogramData = candlesInRange.map(c => ({
-          time: c.time as any,
-          value: fvg.upper, // Draw from base (fvg.lower) to fvg.upper
-          color
-        }));
-        
-        try {
-          fillSeries.setData(histogramData);
-          
-          // Add border lines (stop at fill time if filled)
-          lowerBorder.setData([
-            { time: fvg.time as any, value: fvg.lower },
-            { time: endTime as any, value: fvg.lower },
-          ]);
-          upperBorder.setData([
-            { time: fvg.time as any, value: fvg.upper },
-            { time: endTime as any, value: fvg.upper },
-          ]);
-          
-          fvgSeriesRefs.current.push({ upper: upperBorder, lower: lowerBorder, fill: fillSeries, fvg });
-        } catch (e) {
-          // Series might be disposed
-        }
-      }
-    });
-  }, [chartReady, candles, indicators.smc.showFVG, indicators.smc.showHighValueOnly, calculateFVGs, isActiveFVG, getFVGFillTime, tradeSignals, backtestResults]);
 
   // Clear HTF caches and load saved timeframe when symbol changes
   useEffect(() => {
@@ -7117,419 +6981,17 @@ useEffect(() => {
     }
   }, [indicators.ema.show, indicators.ema.configs, symbol, interval]);
 
-  // Update EMAs on chart
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
-
-    const chart = chartRef.current;
-    const refs = emaSeriesRefs.current;
-
-    // Remove old EMA series that are no longer in configs
-    const currentIds = new Set(indicators.ema.configs.map(c => c.id));
-    Object.keys(refs).forEach(key => {
-      if (!currentIds.has(key) && refs[key]) {
-        try { chart.removeSeries(refs[key]!); } catch (e) {}
-        delete refs[key];
-      }
-    });
-
-    if (!indicators.ema.show) {
-      // Remove all EMA series when disabled
-      Object.keys(refs).forEach(key => {
-        if (refs[key]) {
-          try { chart.removeSeries(refs[key]!); } catch (e) {}
-          delete refs[key];
-        }
-      });
-      return;
-    }
-
-    // Render each EMA config
-    for (const config of indicators.ema.configs) {
-      let emaData: { time: any; value: number }[] = [];
-      
-      // Determine which data source to use
-      const isCurrentTimeframe = config.timeframe === 'current' || config.timeframe === interval;
-      
-      if (isCurrentTimeframe) {
-        // Use current chart candles
-        const closes = candles.map(c => c.close);
-        const emaValues = calculateEMA(closes, config.period);
-        emaData = candles.map((c, i) => ({
-          time: c.time as any,
-          value: emaValues[i]
-        })).filter(d => d.value !== undefined);
-      } else {
-        // Use higher timeframe data and map to current chart
-        const cacheKey = `${symbol}_${config.timeframe}`;
-        const htfCandles = emaHTFDataCache.current[cacheKey];
-        
-        if (htfCandles && htfCandles.length > 0) {
-          const htfCloses = htfCandles.map(c => c.close);
-          const htfEmaValues = calculateEMA(htfCloses, config.period);
-          
-          // Map higher TF EMA values to current chart timeframe
-          // Each HTF candle's EMA value applies to all current TF candles within its time range
-          const htfEmaMap: { time: number; value: number }[] = htfCandles.map((c, i) => ({
-            time: c.time,
-            value: htfEmaValues[i]
-          })).filter(d => d.value !== undefined);
-          
-          // For each current candle, find the corresponding HTF EMA value
-          emaData = candles.map(c => {
-            // Find the most recent HTF EMA value that's <= current candle time
-            let htfValue: number | undefined;
-            for (let i = htfEmaMap.length - 1; i >= 0; i--) {
-              if (htfEmaMap[i].time <= c.time) {
-                htfValue = htfEmaMap[i].value;
-                break;
-              }
-            }
-            return {
-              time: c.time as any,
-              value: htfValue!
-            };
-          }).filter(d => d.value !== undefined);
-        }
-      }
-
-      // Format label: 21, 100D, 21W, 100h4, etc.
-      const label = formatMALabel(config.period, config.timeframe);
-
-      if (!refs[config.id]) {
-        try {
-          refs[config.id] = chart.addSeries(LineSeries, {
-            color: config.color,
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: true,
-            title: label,
-          });
-        } catch (e) { continue; }
-      } else {
-        // Update title if config changed
-        try {
-          refs[config.id]!.applyOptions({ title: label });
-        } catch (e) {}
-      }
-      
-      if (emaData.length > 0) {
-        try {
-          refs[config.id]!.setData(emaData);
-        } catch (e) {}
-      }
-    }
-  }, [chartReady, candles, indicators.ema.show, indicators.ema.configs, calculateEMA, symbol, interval]);
 
   // Manage Bollinger Bands on main chart
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
-
-    const chart = chartRef.current;
-    const refs = bbSeriesRefs.current;
-
-    // Helper to manage BB lines
-    const manageBBLine = (
-      key: 'upper' | 'middle' | 'lower',
-      show: boolean,
-      data: { time: number; value: number }[],
-      color: string,
-      lineStyle: number = 0,
-      lineWidth: LineWidth = 2 as LineWidth
-    ) => {
-      if (show) {
-        if (!refs[key]) {
-          try {
-            refs[key] = chart.addSeries(LineSeries, {
-              color,
-              lineWidth,
-              lineStyle,
-              priceLineVisible: false,
-              lastValueVisible: false,
-            });
-          } catch (e) {
-            return;
-          }
-        }
-        try {
-          refs[key]!.setData(data as any);
-        } catch (e) {
-          // Series might be disposed
-        }
-      } else if (!show && refs[key]) {
-        try {
-          chart.removeSeries(refs[key]!);
-        } catch (e) {
-          // Series might already be disposed
-        }
-        refs[key] = undefined;
-      }
-    };
-
-    const bbData = calculateBollingerBands(candles, indicators.bb.period, indicators.bb.stdDev);
-    manageBBLine('upper', indicators.bb.show, bbData.upper, '#9333ea', 0, 1 as LineWidth);
-    manageBBLine('middle', indicators.bb.show, bbData.middle, '#9333ea', 2, 1 as LineWidth);
-    manageBBLine('lower', indicators.bb.show, bbData.lower, '#9333ea', 0, 1 as LineWidth);
-  }, [chartReady, candles, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev, calculateBollingerBands]);
 
   // ========== BATCH 1 INDICATORS ==========
   
   // Supertrend Indicator
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
-    
-    const chart = chartRef.current;
-    
-    if (indicators.supertrend.show) {
-      const supertrendData = calculateSupertrend(candles, indicators.supertrend.period, indicators.supertrend.multiplier);
-      
-      if (supertrendData.length > 0) {
-        if (!supertrendSeriesRef.current) {
-          try {
-            supertrendSeriesRef.current = chart.addSeries(LineSeries, {
-              lineWidth: 3,
-              priceLineVisible: false,
-              lastValueVisible: true,
-              title: 'Supertrend',
-            });
-          } catch (e) {
-            return;
-          }
-        }
-        
-        const chartData = supertrendData.map(st => ({
-          time: st.time as any,
-          value: st.supertrend,
-          color: st.direction === 'bullish' ? '#10b981' : '#ef4444'
-        }));
-        
-        try {
-          supertrendSeriesRef.current.setData(chartData);
-        } catch (e) {}
-      }
-    } else if (!indicators.supertrend.show && supertrendSeriesRef.current) {
-      try {
-        chart.removeSeries(supertrendSeriesRef.current);
-      } catch (e) {}
-      supertrendSeriesRef.current = null;
-    }
-  }, [chartReady, candles, indicators.supertrend.show, indicators.supertrend.period, indicators.supertrend.multiplier]);
   
   // VWAP Bands
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
-    
-    const chart = chartRef.current;
-    
-    if (indicators.vwapTools.showBands) {
-      const bandsData = calculateVWAPBands(candles, indicators.vwapTools.bandsStdDev);
-      
-      if (bandsData.length > 0) {
-        if (!vwapBandsUpperRef.current) {
-          try {
-            vwapBandsUpperRef.current = chart.addSeries(LineSeries, {
-              color: '#3b82f6',
-              lineWidth: 1,
-              lineStyle: 2,
-              priceLineVisible: false,
-              lastValueVisible: true,
-              title: 'VWAP Upper',
-            });
-          } catch (e) {
-            return;
-          }
-        }
-        
-        if (!vwapBandsLowerRef.current) {
-          try {
-            vwapBandsLowerRef.current = chart.addSeries(LineSeries, {
-              color: '#3b82f6',
-              lineWidth: 1,
-              lineStyle: 2,
-              priceLineVisible: false,
-              lastValueVisible: true,
-              title: 'VWAP Lower',
-            });
-          } catch (e) {
-            return;
-          }
-        }
-        
-        const upperData = bandsData.map(b => ({ time: b.time as any, value: b.upper }));
-        const lowerData = bandsData.map(b => ({ time: b.time as any, value: b.lower }));
-        
-        try {
-          vwapBandsUpperRef.current.setData(upperData);
-          vwapBandsLowerRef.current.setData(lowerData);
-        } catch (e) {}
-      }
-    } else if (!indicators.vwapTools.showBands) {
-      if (vwapBandsUpperRef.current) {
-        try {
-          chart.removeSeries(vwapBandsUpperRef.current);
-        } catch (e) {}
-        vwapBandsUpperRef.current = null;
-      }
-      if (vwapBandsLowerRef.current) {
-        try {
-          chart.removeSeries(vwapBandsLowerRef.current);
-        } catch (e) {}
-        vwapBandsLowerRef.current = null;
-      }
-    }
-  }, [chartReady, candles, indicators.vwapTools.showBands, indicators.vwapTools.bandsStdDev]);
   
   // Session VWAP
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
-    
-    const chart = chartRef.current;
-    
-    if (indicators.vwapTools.showSession) {
-      const sessionData = calculateSessionVWAP(candles);
-      
-      if (sessionData.asia.length > 0 && !sessionVWAPAsiaRef.current) {
-        try {
-          sessionVWAPAsiaRef.current = chart.addSeries(LineSeries, {
-            color: '#f59e0b',
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: true,
-            title: 'Asia VWAP',
-          });
-          const data = sessionData.asia.map(d => ({ time: d.time as any, value: d.value }));
-          sessionVWAPAsiaRef.current.setData(data);
-        } catch (e) {}
-      }
-      
-      if (sessionData.london.length > 0 && !sessionVWAPLondonRef.current) {
-        try {
-          sessionVWAPLondonRef.current = chart.addSeries(LineSeries, {
-            color: '#3b82f6',
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: true,
-            title: 'London VWAP',
-          });
-          const data = sessionData.london.map(d => ({ time: d.time as any, value: d.value }));
-          sessionVWAPLondonRef.current.setData(data);
-        } catch (e) {}
-      }
-      
-      if (sessionData.ny.length > 0 && !sessionVWAPNYRef.current) {
-        try {
-          sessionVWAPNYRef.current = chart.addSeries(LineSeries, {
-            color: '#10b981',
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: true,
-            title: 'NY VWAP',
-          });
-          const data = sessionData.ny.map(d => ({ time: d.time as any, value: d.value }));
-          sessionVWAPNYRef.current.setData(data);
-        } catch (e) {}
-      }
-    } else if (!indicators.vwapTools.showSession) {
-      [sessionVWAPAsiaRef, sessionVWAPLondonRef, sessionVWAPNYRef].forEach(ref => {
-        if (ref.current) {
-          try {
-            chart.removeSeries(ref.current);
-          } catch (e) {}
-          ref.current = null;
-        }
-      });
-    }
-  }, [chartReady, candles, indicators.vwapTools.showSession]);
   
-  // Order Blocks (SMC) - Rendered as boxes like FVG
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
-    
-    const chart = chartRef.current;
-    
-    // Clear previous order blocks
-    orderBlocksRefs.current.forEach(ob => {
-      try {
-        if (ob.upper) chart.removeSeries(ob.upper);
-        if (ob.lower) chart.removeSeries(ob.lower);
-        if (ob.fill) chart.removeSeries(ob.fill);
-      } catch (e) {}
-    });
-    orderBlocksRefs.current = [];
-    
-    if (indicators.smc.showOrderBlocks) {
-      const orderBlocks = calculateOrderBlocks(candles, indicators.smc.obSwingLength, indicators.smc.orderBlockLength);
-      const lastTime = candles[candles.length - 1].time;
-      
-      // Render each order block as a shaded box like FVG
-      // Show fresh blocks with full opacity, mitigated with reduced opacity
-      for (const ob of orderBlocks.slice(-20)) { // Show last 20 blocks
-        try {
-          // Fresh blocks have higher opacity, mitigated blocks have lower
-          const opacity = ob.mitigated ? 0.1 : 0.25;
-          const borderOpacity = ob.mitigated ? 0.4 : 1;
-          const color = ob.type === 'bullish' 
-            ? `rgba(16, 185, 129, ${opacity})` 
-            : `rgba(239, 68, 68, ${opacity})`;
-          const borderColor = ob.type === 'bullish' 
-            ? `rgba(16, 185, 129, ${borderOpacity})` 
-            : `rgba(239, 68, 68, ${borderOpacity})`;
-          
-          // Find candles from OB time to current time
-          const obIdx = candles.findIndex(c => c.time === ob.time);
-          const candlesInRange = candles.slice(obIdx);
-          
-          // Create histogram series to fill the block area
-          const fillSeries = chart.addSeries(HistogramSeries, {
-            color,
-            priceFormat: {
-              type: 'price',
-            },
-            priceLineVisible: false,
-            lastValueVisible: false,
-            base: ob.low,
-          });
-          
-          // Create border lines
-          const lowerBorder = chart.addSeries(LineSeries, {
-            color: borderColor,
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: false,
-          });
-          
-          const upperBorder = chart.addSeries(LineSeries, {
-            color: borderColor,
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: false,
-          });
-          
-          // Fill the block with histogram bars
-          const histogramData = candlesInRange.map(c => ({
-            time: c.time as any,
-            value: ob.high,
-            color
-          }));
-          
-          // Create border data extending to current time
-          const borderData = [
-            { time: ob.time as any, value: 0 },
-            { time: lastTime as any, value: 0 },
-          ];
-          
-          const lowerData = borderData.map(d => ({ ...d, value: ob.low }));
-          const upperData = borderData.map(d => ({ ...d, value: ob.high }));
-          
-          fillSeries.setData(histogramData);
-          lowerBorder.setData(lowerData);
-          upperBorder.setData(upperData);
-          
-          orderBlocksRefs.current.push({ upper: upperBorder, lower: lowerBorder, fill: fillSeries });
-        } catch (e) {}
-      }
-    }
-  }, [chartReady, candles, indicators.smc.showOrderBlocks, indicators.smc.obSwingLength, indicators.smc.orderBlockLength]);
   
   // Premium/Discount Zones (SMC)
   useEffect(() => {
@@ -7765,194 +7227,7 @@ useEffect(() => {
   }, [chartReady, candles, indicators.sma.show, indicators.sma.configs, symbol, interval]);
   
   // Parabolic SAR
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
-    
-    const chart = chartRef.current;
-    
-    if (indicators.parabolicSAR.show) {
-      const sarData = calculateParabolicSAR(candles, indicators.parabolicSAR.step, indicators.parabolicSAR.max);
-      
-      if (sarData.length > 0 && !parabolicSARRef.current) {
-        try {
-          parabolicSARRef.current = chart.addSeries(LineSeries, {
-            lineWidth: 1,
-            priceLineVisible: false,
-            lastValueVisible: true,
-            title: 'Parabolic SAR',
-          });
-          
-          const chartData = sarData.map(s => ({
-            time: s.time as any,
-            value: s.sar,
-            color: s.isLong ? '#10b981' : '#ef4444'
-          }));
-          
-          parabolicSARRef.current.setData(chartData);
-        } catch (e) {}
-      }
-    } else if (!indicators.parabolicSAR.show && parabolicSARRef.current) {
-      try {
-        chart.removeSeries(parabolicSARRef.current);
-      } catch (e) {}
-      parabolicSARRef.current = null;
-    }
-  }, [chartReady, candles, indicators.parabolicSAR.show, indicators.parabolicSAR.step, indicators.parabolicSAR.max]);
 
-  // Update BOS markers with horizontal lines
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) {
-      return;
-    }
-
-    const chart = chartRef.current;
-    
-    // Extra safety check - ensure chart hasn't been disposed
-    try {
-      chart.timeScale();
-    } catch (e) {
-      return; // Chart is disposed, skip this update
-    }
-
-    // Remove old BOS lines with better error handling
-    if (bosSeriesRefs.current.length > 0) {
-      bosSeriesRefs.current.forEach(series => {
-        try {
-          if (series && chart) {
-            chart.removeSeries(series);
-          }
-        } catch (e) {
-          // Series already disposed, ignore
-        }
-      });
-      bosSeriesRefs.current = [];
-    }
-    
-    if (!indicators.smc.showBOS) return;
-
-    try {
-      // Calculate both BOS and CHoCH to detect conflicts
-      const { bos } = calculateBOSandCHoCH(candles, chartBosSwingLength);
-      const { choch } = calculateBOSandCHoCH(candles, chartChochSwingLength);
-      
-      // Create a Set of CHoCH pivot points (CHoCH takes precedence)
-      const chochPivots = new Set(
-        choch.map(c => `${c.swingTime}_${c.swingPrice.toFixed(4)}`)
-      );
-      
-      // Filter out BOS that conflict with CHoCH at the same pivot point
-      const filteredBos = bos.filter(b => {
-        const pivotKey = `${b.swingTime}_${b.swingPrice.toFixed(4)}`;
-        return !chochPivots.has(pivotKey);
-      });
-      
-      console.log(`🎯 Drawing ${filteredBos.length} BOS markers on chart (${bos.length - filteredBos.length} filtered due to CHoCH conflict)`);
-      
-      // Add horizontal line series for each BOS point
-      filteredBos.forEach((bosPoint, idx) => {
-        try {
-          const color = bosPoint.type === 'bullish' ? '#10b981' : '#ef4444';
-          
-          // All BOS use solid lines
-          const bosSeries = chart.addSeries(LineSeries, {
-            color,
-            lineWidth: 2,
-            lineStyle: 0, // Solid lines for all BOS
-            priceLineVisible: false,
-            lastValueVisible: false,
-          });
-          
-          // Draw horizontal line from swing to break
-          const lineData = [
-            { time: bosPoint.swingTime as any, value: bosPoint.swingPrice },
-            { time: bosPoint.breakTime as any, value: bosPoint.swingPrice },
-          ];
-          
-          if (idx === 0) {
-            const swingDate = new Date(bosPoint.swingTime * 1000);
-            const breakDate = new Date(bosPoint.breakTime * 1000);
-            const candlesBetween = (bosPoint.breakTime - bosPoint.swingTime) / 900; // 900 seconds = 15 min
-            console.log('🔍 First BOS line:', {
-              swingTime: swingDate.toLocaleString(),
-              breakTime: breakDate.toLocaleString(),
-              candlesBetween,
-              price: bosPoint.swingPrice,
-              type: bosPoint.type
-            });
-          }
-          
-          bosSeries.setData(lineData);
-          
-          bosSeriesRefs.current.push(bosSeries);
-        } catch (lineErr) {
-          console.error(`❌ Failed to draw BOS line ${idx}:`, lineErr, bosPoint);
-        }
-      });
-    } catch (e) {
-      console.error('Error updating BOS markers:', e);
-    }
-  }, [chartReady, candles, indicators.smc.showBOS, chartBosSwingLength, calculateBOSandCHoCH]);
-
-  // Update CHoCH markers with horizontal lines
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) {
-      return;
-    }
-
-    const chart = chartRef.current;
-    
-    // Extra safety check - ensure chart hasn't been disposed
-    try {
-      chart.timeScale();
-    } catch (e) {
-      return; // Chart is disposed, skip this update
-    }
-
-    // Remove old CHoCH lines with better error handling
-    if (chochSeriesRefs.current.length > 0) {
-      chochSeriesRefs.current.forEach(series => {
-        try {
-          if (series && chart) {
-            chart.removeSeries(series);
-          }
-        } catch (e) {
-          // Series already disposed, ignore
-        }
-      });
-      chochSeriesRefs.current = [];
-    }
-    
-    if (!indicators.smc.showCHoCH) return;
-
-    try {
-      // Use chart-only settings for CHoCH display (independent from strategy settings)
-      const { choch } = calculateBOSandCHoCH(candles, chartChochSwingLength);
-      
-      // Add horizontal line series for each CHoCH point
-      choch.forEach(chochPoint => {
-        const color = chochPoint.type === 'bullish' ? '#eab308' : '#ec4899'; // Yellow for bullish, Pink for bearish
-        
-        // CHoCH always uses dashed lines
-        const chochSeries = chart.addSeries(LineSeries, {
-          color,
-          lineWidth: 2,
-          lineStyle: 2, // Dashed for CHoCH
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        
-        // Draw horizontal line from swing to break
-        chochSeries.setData([
-          { time: chochPoint.swingTime as any, value: chochPoint.swingPrice },
-          { time: chochPoint.breakTime as any, value: chochPoint.swingPrice },
-        ]);
-        
-        chochSeriesRefs.current.push(chochSeries);
-      });
-    } catch (e) {
-      console.error('Error updating CHoCH markers:', e);
-    }
-  }, [chartReady, candles, indicators.smc.showCHoCH, chartChochSwingLength, calculateBOSandCHoCH]);
 
   // Draw white lines for swing pivots (visual-only indicator)
   useEffect(() => {
@@ -9521,6 +8796,59 @@ useEffect(() => {
       </div>
     );
   };
+
+  // Compute active trade FVG times for overlay highlighting
+  const activeTradeFVGTimes = useMemo(() => {
+    const times = new Set<number>();
+    
+    // Add FVG times from live trade signals
+    tradeSignals
+      .filter(signal => signal.strategy === 'choch_fvg' && signal.active)
+      .forEach(signal => {
+        const parts = signal.id.split('_');
+        if (parts.length >= 4) {
+          const fvgTime = parseInt(parts[3]);
+          if (!isNaN(fvgTime)) times.add(fvgTime);
+        }
+      });
+    
+    // Add FVG times from backtest trades
+    if (backtestResults && backtestResults.trades.length > 0) {
+      backtestResults.trades
+        .filter(trade => trade.strategy === 'choch_fvg')
+        .forEach(trade => {
+          const parts = trade.id.split('_');
+          if (parts.length >= 4) {
+            const fvgTime = parseInt(parts[3]);
+            if (!isNaN(fvgTime)) times.add(fvgTime);
+          }
+        });
+    }
+    
+    return times;
+  }, [tradeSignals, backtestResults]);
+
+  // Compute overlay data for components
+  const fvgsData = useMemo(() => calculateFVGs(candles, true), [candles, calculateFVGs]);
+  const orderBlocksData = useMemo(() => 
+    calculateOrderBlocks(candles, indicators.smc.obSwingLength, indicators.smc.orderBlockLength),
+    [candles, indicators.smc.obSwingLength, indicators.smc.orderBlockLength]
+  );
+  const bosChochData = useMemo(() => 
+    calculateBOSandCHoCH(candles, bosSwingLength),
+    [candles, bosSwingLength, calculateBOSandCHoCH]
+  );
+  const supertrendData = useMemo(() => 
+    calculateSupertrend(candles, indicators.supertrend.period, indicators.supertrend.multiplier),
+    [candles, indicators.supertrend.period, indicators.supertrend.multiplier]
+  );
+  const vwapData = useMemo(() => calculateVWAPBands(candles), [candles]);
+  const sessionVWAPData = useMemo(() => calculateSessionVWAP(candles), [candles]);
+  const psarData = useMemo(() => calculateParabolicSAR(candles), [candles]);
+  const bbData = useMemo(() => 
+    calculateBollingerBands(candles, indicators.bb.period, indicators.bb.stdDev),
+    [candles, indicators.bb.period, indicators.bb.stdDev, calculateBollingerBands]
+  );
 
   // Allow page to render for all users - unauthenticated get free tier
   // Sign in button in header handles authentication
@@ -12915,6 +12243,77 @@ useEffect(() => {
         />
 
       </div>
+      
+      {/* Chart Overlay Components - Render indicators and overlays */}
+      <MovingAverages
+        chart={chartRef.current}
+        maConfigs={indicators.ema.configs}
+        show={indicators.ema.show}
+        candles={candles}
+        calculateEMA={calculateEMA}
+        emaHTFDataCache={emaHTFDataCache}
+        symbol={symbol}
+        interval={interval}
+      />
+      
+      <FVGOverlay
+        chart={chartRef.current}
+        fvgs={fvgsData}
+        show={indicators.smc.showFVG}
+        candles={candles}
+        activeTradeFVGTimes={activeTradeFVGTimes}
+        isActiveFVG={isActiveFVG}
+        getFVGFillTime={getFVGFillTime}
+        showHighValueOnly={indicators.smc.showHighValueOnly}
+      />
+      
+      <OrderBlockOverlay
+        chart={chartRef.current}
+        orderBlocks={orderBlocksData}
+        show={indicators.smc.showOrderBlocks}
+        candles={candles}
+      />
+      
+      <BOSCHoCHMarkers
+        chart={chartRef.current}
+        bosEvents={bosChochData.bos}
+        chochEvents={bosChochData.choch}
+        showBOS={indicators.smc.showBOS}
+        showCHoCH={indicators.smc.showCHoCH}
+        candles={candles}
+      />
+      
+      <SupertrendOverlay
+        chart={chartRef.current}
+        supertrendData={supertrendData}
+        show={indicators.supertrend.show}
+      />
+      
+      <VWAPOverlay
+        chart={chartRef.current}
+        vwapData={vwapData}
+        show={indicators.vwapTools.showBands}
+      />
+      
+      <SessionVWAPOverlay
+        chart={chartRef.current}
+        asiaVWAP={sessionVWAPData.asia}
+        londonVWAP={sessionVWAPData.london}
+        nyVWAP={sessionVWAPData.ny}
+        show={indicators.vwapTools.showSession}
+      />
+      
+      <ParabolicSAROverlay
+        chart={chartRef.current}
+        psarData={psarData}
+        show={indicators.parabolicSAR.show}
+      />
+      
+      <BollingerBandsOverlay
+        chart={chartRef.current}
+        bbData={bbData}
+        show={indicators.bb.show}
+      />
       
       {/* Bottom Navigation */}
       <CryptoNavigation />
