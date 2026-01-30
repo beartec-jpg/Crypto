@@ -61,269 +61,60 @@ import {
 import { calculateEMA } from '@/utils/emaCalculations';
 import { touchesZone, inZone, aboveZone, belowZone, priceInZone } from '@/utils/zoneHelpers';
 
-interface CandleData {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
+// Type imports
+import type { 
+  CandleData, 
+  VWAPData, 
+  MAConfig 
+} from '@/types/chart.types';
 
-// Utility to generate future whitespace bars for the chart
-// This allows drawing on future dates by providing timestamps beyond the last candle
-const generateFutureWhitespace = (lastCandleTime: number, interval: string, count: number = 50): { time: number }[] => {
-  const intervalSeconds: Record<string, number> = {
-    '1m': 60,
-    '3m': 180,
-    '5m': 300,
-    '15m': 900,
-    '30m': 1800,
-    '1h': 3600,
-    '2h': 7200,
-    '4h': 14400,
-    '6h': 21600,
-    '8h': 28800,
-    '12h': 43200,
-    '1d': 86400,
-    '3d': 259200,
-    '1w': 604800,
-    '1M': 2592000,
-  };
-  
-  const seconds = intervalSeconds[interval] || 3600;
-  const futureBars: { time: number }[] = [];
-  
-  for (let i = 1; i <= count; i++) {
-    futureBars.push({ time: lastCandleTime + (seconds * i) });
-  }
-  
-  return futureBars;
-};
+import type { 
+  FVG, 
+  BOS, 
+  CHoCH,
+  FootprintData
+} from '@/types/smc.types';
 
-// Constant for future bar count - ensures consistent whitespace across all timeframes
-const FUTURE_BAR_COUNT = 300;
+import type { 
+  DrawingTool 
+} from '@/types/drawings.types';
 
-// Get recommended future bar count based on timeframe
-// User wants "half a chart worth at full zoom out" - approximately 300 bars for all timeframes
-const getFutureBarCount = (interval: string): number => {
-  // Use consistent large count for all timeframes to ensure half chart of future space
-  return FUTURE_BAR_COUNT;
-};
+import type { 
+  TradeSignal, 
+  Position, 
+  MarketAlert,
+  BacktestTrade,
+  BacktestResults,
+  TPConfig,
+  SLConfig,
+  BotTPSLConfig,
+  AutoBacktestResult,
+  AutoBacktestTestParams,
+  TPType,
+  SLType
+} from '@/types/trading.types';
 
-// Get table row limit based on timeframe - industry standard lookback periods
-const getTableRowLimit = (interval: string): number => {
-  const limits: Record<string, number> = {
-    '1m': 60,   // 1 hour of data
-    '3m': 40,   // 2 hours
-    '5m': 36,   // 3 hours
-    '15m': 32,  // 8 hours
-    '30m': 24,  // 12 hours
-    '1h': 24,   // 1 day
-    '2h': 24,   // 2 days
-    '4h': 18,   // 3 days
-    '6h': 16,   // 4 days
-    '8h': 15,   // 5 days
-    '12h': 14,  // 1 week
-    '1d': 21,   // 3 weeks
-    '3d': 14,   // 6 weeks
-    '1w': 12,   // 3 months
-    '1M': 6,    // 6 months
-  };
-  return limits[interval] || 24;
-};
+// Utility imports
+import { 
+  generateFutureWhitespace, 
+  getFutureBarCount,
+  getTableRowLimit,
+  generateRangeValues,
+  FUTURE_BAR_COUNT
+} from '@/lib/chart/timeUtils';
 
-interface VWAPData {
-  time: number;
-  value: number;
-}
+import { 
+  formatMALabel,
+  formatTickerDisplay
+} from '@/lib/chart/priceUtils';
 
-interface FVG {
-  time: number;
-  lower: number;
-  upper: number;
-  type: 'bullish' | 'bearish';
-  volumeScore?: number;
-  deltaScore?: number;
-  isHighValue?: boolean;
-}
+import { 
+  getAutoColor 
+} from '@/lib/chart/colorUtils';
 
-interface FootprintData {
-  time: number;
-  bidVol: number[];
-  askVol: number[];
-  prices: number[];
-  delta: number;
-}
-
-interface BOS {
-  swingTime: number;
-  swingPrice: number;
-  breakTime: number;
-  breakIndex: number;
-  type: 'bullish' | 'bearish';
-  isLiquidityGrab?: boolean;
-  sweptLevel?: 'high' | 'low'; // Track which level was swept for reversals
-}
-
-interface CHoCH {
-  swingTime: number;
-  swingPrice: number;
-  breakTime: number;
-  breakIndex: number;
-  type: 'bullish' | 'bearish';
-  isLiquidityGrab?: boolean;
-  sweptLevel?: 'high' | 'low'; // Track which level was swept for reversals
-}
-
-// Bot-specific TP/SL Configuration Types
-type TPType = 'structure' | 'trailing' | 'atr' | 'fixed_rr' | 'vwap' | 'ema' | 'projection';
-type SLType = 'structure' | 'fixed' | 'atr' | 'fixed_distance';
-
-interface TradeSignal {
-  id: string;
-  time: number;
-  type: 'LONG' | 'SHORT';
-  strategy: 'liquidity_grab' | 'choch_fvg' | 'vwap_rejection' | 'structure_break' | 'rs_flip' | 'bos_trend' | 'ema_trading';
-  entry: number;
-  stopLoss: number;
-  tp1: number;
-  tp2: number;
-  tp3: number;
-  tp1Type: TPType;
-  tp2Type: TPType;
-  tp3Type: TPType;
-  tp1Config?: TPConfig; // Full TP1 configuration (for exit modes and EMA settings)
-  tp2Config?: TPConfig; // Full TP2 configuration
-  tp3Config?: TPConfig; // Full TP3 configuration
-  riskReward1: number;
-  riskReward2: number;
-  riskReward3: number;
-  quantity: number;
-  reason: string;
-  active: boolean;
-  trailingActive?: boolean; // Track if trailing TP is activated
-  entryEMAState?: 'fast_above_slow' | 'fast_below_slow'; // Track EMA relationship at entry for crossover detection
-}
-
-interface Position {
-  type: 'long' | 'short';
-  entry: number;
-  stopLoss: number;
-  tp1: number;
-  tp2: number;
-  tp3: number;
-  quantity: number;
-  signalId: string;
-}
-
-interface MarketAlert {
-  id: string;
-  time: number;
-  type: 'BOS' | 'CHoCH' | 'Liquidity Sweep' | 'FVG' | 'FVG Entry' | 'VWAP Bounce' | 'VWAP Cross' | 'Trendline Breakout' | 'Trendline Rejection' | 'CVD Spike' | 'Volume Spike' | 'Level 2 Spike' | 'Oscillator Divergence' | 'Oscillator Crossover' | 'OBV Divergence' | 'OBV Trend' | 'OBV Spike' | 'BB Upper Touch' | 'BB Lower Touch' | 'BB Breakout' | 'BB Middle Cross';
-  direction: 'bullish' | 'bearish';
-  price: number;
-  description: string;
-  level?: number; // For divergence levels 1-5
-  indicators?: string[]; // For multi-indicator divergences
-}
-
-interface BacktestTrade {
-  id: string;
-  entryTime: number;
-  exitTime: number;
-  direction: 'long' | 'short';
-  strategy: string;
-  entry: number;
-  exit: number;
-  stopLoss: number;
-  tp1: number;
-  tp2: number;
-  tp3: number;
-  outcome: 'TP1' | 'TP2' | 'TP3' | 'SL' | 'Breakeven' | 'EMA Exit' | 'VWAP Exit';
-  rr: number;
-  profitLoss: number;
-  winner: boolean;
-}
-
-interface BacktestResults {
-  trades: BacktestTrade[];
-  totalTrades: number;
-  winners: number;
-  losers: number;
-  winRate: number;
-  avgRR: number;
-  totalPL: number;
-  profitFactor: number;
-  accountSize: number;
-  riskPerTrade: number;
-  avgPositionSize: number;
-  finalBalance: number;
-  returnPercent: number;
-}
-
-interface TPConfig {
-  type: TPType;
-  atrMultiplier?: number;        // For ATR-based
-  fixedRR?: number;              // For fixed R:R
-  vwapPeriod?: 'session' | 'daily' | 'weekly' | 'monthly' | 'rolling10' | 'rolling20' | 'rolling50'; // For VWAP exit
-  vwapOffset?: number;           // % offset from VWAP
-  vwapExitMode?: 'touch' | 'cross'; // VWAP exit mode: touch = price touches VWAP, cross = price crosses VWAP
-  projectionMultiplier?: number; // For projection-based
-  emaFast?: number;              // For EMA exit (fast period) - strategy-specific
-  emaSlow?: number;              // For EMA exit (slow period) - strategy-specific
-  emaExitMode?: 'touch' | 'crossover'; // EMA exit mode: touch = price touches EMA, crossover = EMAs cross each other
-  swingLength?: number;          // For structure-based TP
-  trailingSwingLength?: number;  // For trailing TP - which swing to trail
-  positionPercent: number;       // % of position to close at this TP
-}
-
-interface SLConfig {
-  type: SLType;
-  atrMultiplier?: number;        // For ATR-based
-  fixedDistance?: number;        // For fixed distance
-  swingLength?: number;          // For structure-based SL swing length
-  useNearestSwing?: boolean;     // For structure-based
-}
-
-interface BotTPSLConfig {
-  numTPs: 1 | 2 | 3;
-  tp1: TPConfig;
-  tp2?: TPConfig;
-  tp3?: TPConfig;
-  sl: SLConfig;
-}
-
-interface AutoBacktestResult {
-  config: BotTPSLConfig;
-  results: BacktestResults;
-  configDescription: string;
-  swingLength: number;
-  wickRatio: number;
-  confirmCandles: number;
-  useWickFilter: boolean;
-  useConfirmCandles: boolean;
-  trendFilter: 'ema' | 'structure' | 'both' | 'none';
-  allowedDirections: 'both' | 'long' | 'short';
-}
-
-interface AutoBacktestTestParams {
-  testTP1Types: TPType[];
-  testTP2Types: TPType[];
-  testTP3Types: TPType[];
-  testSLTypes: SLType[];
-  testATRMultipliers: number[];
-  testRRRatios: number[];
-  testProjectionMultipliers: number[];
-}
-
-// Dynamic Moving Average configuration
-interface MAConfig {
-  id: string;
-  period: number;
-  timeframe: string; // 'current' or specific timeframe like '1h', '4h', '1d'
-  color: string;
-}
+import { 
+  findPeaksAndTroughs 
+} from '@/lib/smc/pivots';
 
 const MA_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
 const MA_TIMEFRAMES = [
@@ -335,21 +126,6 @@ const MA_TIMEFRAMES = [
   { value: '1d', label: '1D' },
   { value: '1w', label: '1W' },
 ];
-
-// Helper to format MA label with timeframe suffix
-// Examples: 21 (current), 100D (daily), 21W (weekly), 100h4 (4-hour), 50h1 (hourly), 21m5 (5-min)
-const formatMALabel = (period: number, timeframe: string): string => {
-  if (timeframe === 'current') return `${period}`;
-  if (timeframe === '1d') return `${period}D`;
-  if (timeframe === '1w') return `${period}W`;
-  if (timeframe === '1M') return `${period}M`;
-  if (timeframe === '4h') return `${period}h4`;
-  if (timeframe === '1h') return `${period}h1`;
-  if (timeframe === '15m') return `${period}m15`;
-  if (timeframe === '5m') return `${period}m5`;
-  if (timeframe === '1m') return `${period}m1`;
-  return `${period}${timeframe}`;
-};
 
 export default function CryptoIndicators() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -879,11 +655,6 @@ useEffect(() => {
     updateDrawingMutationRef.current = updateDrawingMutation;
   }, [updateDrawingMutation]);
   
-  // Helper function to format ticker display (e.g., "BTCUSDT" -> "BTC/USDT")
-  const formatTickerDisplay = (ticker: string): string => {
-    return ticker.replace('USDT', '/USDT');
-  };
-  
   // Handler functions for watchlist component integration
   const handleAddTicker = useCallback((ticker: string) => {
   if (!watchlistTickers.includes(ticker)) {
@@ -924,53 +695,6 @@ useEffect(() => {
     setSymbol(ticker);
   }, []);
   
-  // Determine color based on snap types for auto-color feature
-  // For manual mode (magnet off), checks if line is above/below candles
-  const getAutoColor = (points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]): string => {
-    const snapTypes = points.map(p => p.snapType || 'none');
-    const highCount = snapTypes.filter(t => t === 'high').length;
-    const lowCount = snapTypes.filter(t => t === 'low').length;
-    const noneCount = snapTypes.filter(t => t === 'none').length;
-    
-    // All highs = resistance = red
-    if (highCount === points.length && highCount > 0) return '#ef4444'; // Red
-    
-    // All lows = support = green
-    if (lowCount === points.length && lowCount > 0) return '#22c55e'; // Green
-    
-    // If all points are free placement (manual mode), check line position relative to candles
-    if (noneCount === points.length && points.length >= 2) {
-      // For a line, get the price at each point and check against candles in range
-      const times = points.map(p => p.time as number).sort((a, b) => a - b);
-      const startTime = times[0];
-      const endTime = times[times.length - 1];
-      
-      // Get candles in range
-      const candlesInRange = candles.filter(c => {
-        const t = c.time as number;
-        return t >= startTime && t <= endTime;
-      });
-      
-      if (candlesInRange.length > 0) {
-        // For simplicity, use average price of the line
-        const avgPrice = points.reduce((sum, p) => sum + p.price, 0) / points.length;
-        
-        // Check if line is entirely below all lows (support)
-        const allLows = candlesInRange.map(c => c.low);
-        const minLow = Math.min(...allLows);
-        if (avgPrice <= minLow) return '#22c55e'; // Green - support
-        
-        // Check if line is entirely above all highs (resistance)
-        const allHighs = candlesInRange.map(c => c.high);
-        const maxHigh = Math.max(...allHighs);
-        if (avgPrice >= maxHigh) return '#ef4444'; // Red - resistance
-      }
-    }
-    
-    // Mixed highs and lows, or line crosses candles = blue
-    return '#3b82f6'; // Blue
-  };
-
   // Handle point commit from gesture controller
   const handlePointCommit = useCallback((point: GesturePoint) => {
     const currentTool = activeToolRef.current;
@@ -985,7 +709,7 @@ useEffect(() => {
       // If we have enough points, save the drawing
       if (newPoints.length >= requiredPoints) {
         // Determine color based on auto-color setting and snap types
-        const color = autoColorEnabledRef.current ? getAutoColor(newPoints) : '#3b82f6';
+        const color = autoColorEnabledRef.current ? getAutoColor(newPoints, candles) : '#3b82f6';
         
         // Load saved defaults for fib and channel tools
         let savedDefaults: any = {};
@@ -1233,27 +957,6 @@ useEffect(() => {
   // Divergence state: -3 to +3 scale (-3 = strong bearish, +3 = strong bullish)
   const [divergenceStrength, setDivergenceStrength] = useState(0);
   const [divergenceType, setDivergenceType] = useState<'bullish' | 'bearish' | 'none'>('none');
-  
-  // Find local peaks/troughs in data series
-  const findPeaksAndTroughs = (data: number[], lookback: number = 5): { peaks: number[]; troughs: number[] } => {
-    const peaks: number[] = [];
-    const troughs: number[] = [];
-    
-    for (let i = lookback; i < data.length - lookback; i++) {
-      const slice = data.slice(i - lookback, i + lookback + 1);
-      const maxVal = Math.max(...slice);
-      const minVal = Math.min(...slice);
-      
-      if (data[i] === maxVal && slice.filter(v => v === maxVal).length === 1) {
-        peaks.push(i);
-      }
-      if (data[i] === minVal && slice.filter(v => v === minVal).length === 1) {
-        troughs.push(i);
-      }
-    }
-    
-    return { peaks, troughs };
-  };
   
   // Detect divergence between price and indicator
   // Returns consecutive count: positive for bullish, negative for bearish
@@ -6106,15 +5809,6 @@ useEffect(() => {
   }, [calculateWeightedRR, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, calculateEMA, emaFastPeriod, emaSlowPeriod]);
 
   // Generate all combinations of bot configurations for auto-backtest
-  // Helper to generate range values
-  const generateRangeValues = (min: number, max: number, step: number): number[] => {
-    const values: number[] = [];
-    for (let v = min; v <= max; v += step) {
-      values.push(Number(v.toFixed(2)));
-    }
-    return values;
-  };
-
   const generateAutoBacktestCombinations = useCallback((): any[] => {
     const combinations: any[] = [];
     
