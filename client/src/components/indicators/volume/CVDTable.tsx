@@ -1,3 +1,5 @@
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
 interface CVDTableItem {
   time: string;
   date?: string;
@@ -166,21 +168,70 @@ export function CVDTable({
   };
 
   return (
-    <div className="overflow-auto max-h-96">
+    <div className="overflow-y-auto">
       <table className="w-full text-xs">
         <thead className="sticky top-0 bg-slate-800 border-b border-slate-600 z-10">
           <tr>
-            <th className="text-left py-1 px-1 font-semibold text-gray-400">Time</th>
-            <th className="text-right py-1 px-1 font-semibold text-gray-400">Δ</th>
-            <th className="text-right py-1 px-1 font-semibold text-gray-400">CVD</th>
+            <th className="text-left text-gray-400 py-1 px-1">
+              <Popover>
+                <PopoverTrigger className="cursor-help underline decoration-dotted">Time</PopoverTrigger>
+                <PopoverContent className="w-48 text-xs p-2">
+                  <p>Candle timestamp showing when each bar opened</p>
+                </PopoverContent>
+              </Popover>
+            </th>
+            <th className="text-right text-gray-400 py-1 px-1">
+              <Popover>
+                <PopoverTrigger className="cursor-help underline decoration-dotted">Delta</PopoverTrigger>
+                <PopoverContent className="w-56 text-xs p-2">
+                  <p>Net difference between buying and selling volume for this candle. Positive = more buyers, Negative = more sellers</p>
+                </PopoverContent>
+              </Popover>
+            </th>
+            <th className="text-right text-gray-400 py-1 px-1">
+              <Popover>
+                <PopoverTrigger className="cursor-help underline decoration-dotted">CVD</PopoverTrigger>
+                <PopoverContent className="w-56 text-xs p-2">
+                  <p>Cumulative Volume Delta - running total of all deltas. Shows overall buying/selling pressure over time</p>
+                </PopoverContent>
+              </Popover>
+            </th>
             {useMultiExchange && (
               <>
-                <th className="text-center py-1 px-1 font-semibold text-gray-400">Ex</th>
-                <th className="text-center py-1 px-1 font-semibold text-gray-400">B/S</th>
-                <th className="text-center py-1 px-1 font-semibold text-gray-400">Conf</th>
+                <th className="text-center text-gray-400 py-1 px-1">
+                  <Popover>
+                    <PopoverTrigger className="cursor-help underline decoration-dotted">Ex</PopoverTrigger>
+                    <PopoverContent className="w-52 text-xs p-2">
+                      <p>Number of exchanges reporting data (out of 6: Binance, Coinbase, Kraken, KuCoin, OKX, Gate.io)</p>
+                    </PopoverContent>
+                  </Popover>
+                </th>
+                <th className="text-center text-gray-400 py-1 px-1">
+                  <Popover>
+                    <PopoverTrigger className="cursor-help underline decoration-dotted">B/S</PopoverTrigger>
+                    <PopoverContent className="w-56 text-xs p-2">
+                      <p>Bullish/Bearish split - how many exchanges show positive delta vs negative. Higher agreement = stronger signal</p>
+                    </PopoverContent>
+                  </Popover>
+                </th>
+                <th className="text-center text-gray-400 py-1 px-1">
+                  <Popover>
+                    <PopoverTrigger className="cursor-help underline decoration-dotted">Conf</PopoverTrigger>
+                    <PopoverContent className="w-56 text-xs p-2">
+                      <p>Confidence level based on exchange agreement. 80%+ (green) = strong, 60%+ (yellow) = moderate, below (red) = weak</p>
+                    </PopoverContent>
+                  </Popover>
+                </th>
               </>
             )}
-            <th className="text-center py-1 px-1 font-semibold text-gray-400">Alert</th>
+            <th className="text-center text-gray-400 py-1 px-1">
+              <Popover>
+                <PopoverTrigger className="cursor-help underline decoration-dotted">Vol</PopoverTrigger>
+                <PopoverContent className="w-60 text-xs p-2">
+                  <p>CVD spike indicator showing unusual volume. Colors: Green/Red (5-6 exchanges), Blue/Yellow (3-4), Grey (1-2). Number of triangles shows intensity level (1-3)</p>
+                </PopoverContent>
+              </Popover>
+            </th>
           </tr>
         </thead>
         <tbody>
