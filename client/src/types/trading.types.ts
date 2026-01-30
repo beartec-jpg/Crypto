@@ -6,6 +6,7 @@
 // Bot-specific TP/SL Configuration Types
 export type TPType = 'structure' | 'trailing' | 'atr' | 'fixed_rr' | 'vwap' | 'ema' | 'projection';
 export type SLType = 'structure' | 'fixed' | 'atr' | 'fixed_distance';
+export type ExitType = 'TP1' | 'TP2' | 'TP3' | 'SL' | 'Breakeven' | 'EMA Exit' | 'VWAP Exit';
 
 export interface TradeSignal {
   id: string;
@@ -67,7 +68,7 @@ export interface BacktestTrade {
   tp1: number;
   tp2: number;
   tp3: number;
-  outcome: 'TP1' | 'TP2' | 'TP3' | 'SL' | 'Breakeven' | 'EMA Exit' | 'VWAP Exit';
+  outcome: ExitType;
   rr: number;
   profitLoss: number;
   winner: boolean;

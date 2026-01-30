@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, IChartApi, ColorType, LineStyle } from 'lightweight-charts';
-import type { CandleData } from '@/pages/CryptoIndicators';
+import type { CandleData } from '@/types/chart.types';
 
 interface FullscreenOscillatorPanelProps {
   isVisible: boolean;
@@ -466,24 +466,23 @@ export function FullscreenOscillatorPanel({
           {showCCI && (
             <div className="bg-slate-800 rounded-lg p-2 mb-3">
               <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-                    <span>CCI ({cciPeriod})</span>
-                  </div>
-                <div ref={cciChartRef} className="h-[180px] w-full" />
+                <span>CCI ({cciPeriod})</span>
               </div>
-            )}
+              <div ref={cciRef} className="h-[180px] w-full" />
+            </div>
+          )}
 
-            {/* Williams %R */}
-            {showWilliamsR && (
-              <div className="bg-slate-800 rounded-lg p-2 mb-3">
-                <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-                  <span>Williams %R ({williamsRPeriod})</span>
-                </div>
-                <div ref={williamsRChartRef} className="h-[180px] w-full" />
+          {/* Williams %R */}
+          {showWilliamsR && (
+            <div className="bg-slate-800 rounded-lg p-2 mb-3">
+              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
+                <span>Williams %R ({williamsRPeriod})</span>
               </div>
-            )}
-          </div>
+              <div ref={williamsRRef} className="h-[180px] w-full" />
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </>
   );
 };
