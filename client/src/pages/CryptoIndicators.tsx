@@ -19,7 +19,6 @@ import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import bearTecLogo from '@assets/1_20251120_023939_0000_1763606422703.png';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import grokLogo from '@assets/Grok_Full_Logomark_Light_1763287603908.png';
-import aiAnalysisLogo from '@assets/20251119_202707_0000_1763584050669.png';
 import bearVideo from '@assets/grok_video_2025-11-20-03-05-08_1763607929480.mp4';
 import transitionVideo from '@assets/grok_video_2025-11-20-06-10-37_1763619824022.mp4';
 import bullVideo from '@assets/grok_video_2025-11-20-06-16-11_1763619952816.mp4';
