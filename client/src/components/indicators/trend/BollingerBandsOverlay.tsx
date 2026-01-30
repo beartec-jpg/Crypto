@@ -4,7 +4,7 @@ import { BandValue } from '@/lib/indicators';
 
 interface BollingerBandsOverlayProps {
   chart: IChartApi | null;
-  bbData: { upper: BandValue[]; middle: BandValue[]; lower: BandValue[] };
+  bbData: BandValue[];
   show: boolean;
 }
 
@@ -58,9 +58,14 @@ export function BollingerBandsOverlay({ chart, bbData, show }: BollingerBandsOve
       }
     };
 
-    manageBBLine('upper', show, bbData.upper, '#9333ea', 0, 1 as LineWidth);
-    manageBBLine('middle', show, bbData.middle, '#9333ea', 2, 1 as LineWidth);
-    manageBBLine('lower', show, bbData.lower, '#9333ea', 0, 1 as LineWidth);
+    // Transform BandValue[] to separate arrays for each band
+    const upperData = bbData.map(b => ({ time: b.time, value: b.upper }));
+    const middleData = bbData.map(b => ({ time: b.time, value: b.middle }));
+    const lowerData = bbData.map(b => ({ time: b.time, value: b.lower }));
+
+    manageBBLine('upper', show, upperData, '#9333ea', 0, 1 as LineWidth);
+    manageBBLine('middle', show, middleData, '#9333ea', 2, 1 as LineWidth);
+    manageBBLine('lower', show, lowerData, '#9333ea', 0, 1 as LineWidth);
 
     return () => {
       Object.keys(refs).forEach(key => {

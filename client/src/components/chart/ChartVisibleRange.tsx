@@ -14,7 +14,7 @@ export const ChartVisibleRange: React.FC<ChartVisibleRangeProps> = ({
     if (!chart) return;
 
     // Subscribe to visible range changes to update candle count
-    const unsubscribe = chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       if (range) {
         const count = Math.round(range.to - range.from) + 1;
         onVisibleCandleCountChange(count);
@@ -26,10 +26,6 @@ export const ChartVisibleRange: React.FC<ChartVisibleRangeProps> = ({
     if (initialRange) {
       onVisibleCandleCountChange(Math.round(initialRange.to - initialRange.from) + 1);
     }
-
-    return () => {
-      unsubscribe();
-    };
   }, [chart, onVisibleCandleCountChange]);
 
   return null;
