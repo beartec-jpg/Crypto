@@ -101,7 +101,7 @@ import { WatchlistPanel } from '@/components/watchlist';
 import { SettingsPanel } from '@/components/settings';
 
 // Volume Components
-import { VolumeChart, CVDChart, CVDTable } from '@/components/indicators/volume';
+import { CVDTable } from '@/components/indicators/volume';
 
 // Common Components
 import { LoadingOverlay, ErrorDisplay } from '@/components/common';
