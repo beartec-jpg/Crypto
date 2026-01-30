@@ -16,6 +16,11 @@ import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { useLocation } from 'wouter';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
+import { useChartData } from '@/hooks/useChartData';
+import { useWebSocketConnection } from '@/hooks/useWebSocketConnection';
+import { useWatchlistState } from '@/hooks/useWatchlistState';
+import { useIndicatorState } from '@/hooks/useIndicatorState';
+import { useDrawingState } from '@/hooks/useDrawingState';
 import bearTecLogo from '@assets/1_20251120_023939_0000_1763606422703.png';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import grokLogo from '@assets/Grok_Full_Logomark_Light_1763287603908.png';
@@ -161,8 +166,51 @@ export default function CryptoIndicators() {
     const savedTimeframe = localStorage.getItem('defaultTimeframe_XRPUSDT');
     return savedTimeframe || '15m';
   });
-  const [candles, setCandles] = useState<CandleData[]>([]);
   const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
+  
+  // Multi-exchange orderflow state (needed by chart data hook)
+  const [useMultiExchange, setUseMultiExchange] = useState(true);
+  
+  // Chart data hook - manages candle data and orderflow
+  const {
+    candles,
+    setCandles,
+    loading,
+    setLoading,
+    footprintData,
+    setFootprintData,
+    realDeltaData,
+    setRealDeltaData,
+    deltaHistory,
+    setDeltaHistory,
+    cumDelta,
+    setCumDelta,
+    fetchInitialData
+  } = useChartData({ symbol, interval, useMultiExchange });
+  
+  // Watchlist hook - manages watchlist state and persistence
+  const {
+    watchlistTickers,
+    setWatchlistTickers,
+    handleAddTicker: handleAddTickerBase,
+    handleRemoveTicker: handleRemoveTickerBase,
+    refetchWatchlist
+  } = useWatchlistState();
+  
+  // Wrap handlers to include symbol change logic
+  const handleAddTicker = useCallback((ticker: string) => {
+    handleAddTickerBase(ticker, setSymbol);
+  }, [handleAddTickerBase]);
+  
+  const handleRemoveTicker = useCallback((ticker: string) => {
+    handleRemoveTickerBase(ticker, symbol, setSymbol);
+  }, [handleRemoveTickerBase, symbol]);
+  
+  // Indicator hook - manages all indicator state
+  const indicators = useIndicatorState();
+  
+  // Local state for WebSocket delta tracking (not persisted)
+  const [currentDelta, setCurrentDelta] = useState(0);
   
   // Track previous symbol to clear HTF caches on symbol change
   const prevSymbolRef = useRef(symbol);
@@ -203,7 +251,6 @@ export default function CryptoIndicators() {
     aiReviewMutation.mutate();
   };
 
-  const [loading, setLoading] = useState(true);
   const [chartReady, setChartReady] = useState(false);
   const [crosshairInfo, setCrosshairInfo] = useState<{time: number; x: number; y: number} | null>(null);
   const [visibleCandleCount, setVisibleCandleCount] = useState<number>(0);
@@ -225,36 +272,6 @@ export default function CryptoIndicators() {
 
   // Oscillator panel state for fullscreen mode
 const [showOscillatorPanel, setShowOscillatorPanel] = useState(false);
-  
-// Watchlist management - synced to database
-const { data: watchlistData, refetch: refetchWatchlist } = useQuery({
-  queryKey: ['watchlist'],
-  queryFn: async () => {
-    const response = await authenticatedApiRequest('GET', '/api/crypto/watchlist');
-    return response.json();
-  },
-  staleTime: Infinity,
-});
-
-const [watchlistTickers, setWatchlistTickers] = useState<string[]>([]);
-
-// Sync watchlist from API to local state
-useEffect(() => {
-  if (watchlistData?.tickers) {
-    setWatchlistTickers(watchlistData.tickers);
-  }
-}, [watchlistData]);
-
-// Save watchlist mutation
-const saveWatchlistMutation = useMutation({
-  mutationFn: async (tickers: string[]) => {
-    const response = await authenticatedApiRequest('POST', '/api/crypto/watchlist', { tickers });
-    return response.json();
-  },
-  onSuccess: () => {
-    refetchWatchlist();
-  },
-});
 
 const [tableTimeframe, setTableTimeframe] = useState('1h');
   
@@ -654,41 +671,6 @@ useEffect(() => {
     updateDrawingMutationRef.current = updateDrawingMutation;
   }, [updateDrawingMutation]);
   
-  // Handler functions for watchlist component integration
-  const handleAddTicker = useCallback((ticker: string) => {
-  if (!watchlistTickers.includes(ticker)) {
-    const newTickers = [...watchlistTickers, ticker];
-    setWatchlistTickers(newTickers);
-    saveWatchlistMutation.mutate(newTickers);
-    setSymbol(ticker);
-    toast({
-      title: 'Ticker added',
-      description: `${formatTickerDisplay(ticker)} has been added to your watchlist`,
-    });
-  } else {
-    toast({
-      title: 'Already in watchlist',
-      description: `${formatTickerDisplay(ticker)} is already in your watchlist`,
-      variant: 'destructive',
-    });
-  }
-}, [watchlistTickers, toast, saveWatchlistMutation]);
-
- const handleRemoveTicker = useCallback((ticker: string) => {
-  const filtered = watchlistTickers.filter(t => t !== ticker);
-  setWatchlistTickers(filtered);
-  saveWatchlistMutation.mutate(filtered);
-  if (symbol === ticker && filtered.length > 0) {
-    const currentIndex = watchlistTickers.indexOf(ticker);
-    const nextIndex = currentIndex < filtered.length ? currentIndex : currentIndex - 1;
-    setSymbol(filtered[nextIndex]);
-  }
-  toast({
-    title: 'Ticker removed',
-    description: `${formatTickerDisplay(ticker)} has been removed from your watchlist`,
-  });
-}, [watchlistTickers, symbol, toast, saveWatchlistMutation]);
-
   const handleSelectTicker = useCallback((ticker: string) => {
     incrementTickerClick(ticker);
     setSymbol(ticker);
@@ -800,156 +782,37 @@ useEffect(() => {
     findSnapPointRef.current = gestureController.findSnapPoint;
   }, [gestureController.findSnapPoint]);
 
-  // VWAP toggles
-  const [showVWAPSession, setShowVWAPSession] = useState(false);
-  const [showVWAPDaily, setShowVWAPDaily] = useState(false);
-  const [showVWAPWeekly, setShowVWAPWeekly] = useState(false);
-  const [showVWAPMonthly, setShowVWAPMonthly] = useState(false);
-  const [showVWAPRolling, setShowVWAPRolling] = useState(false);
-  const [vwapRollingPeriod, setVwapRollingPeriod] = useState(20);
-  const [vwapRollingPeriodInput, setVwapRollingPeriodInput] = useState('20');
-
-  // Indicator toggles
-  const [showFVG, setShowFVG] = useState(false);
-  const [showBOS, setShowBOS] = useState(false);
-  const [showCHoCH, setShowCHoCH] = useState(false);
-  const [showSwingPivots, setShowSwingPivots] = useState(false);
-  const [swingPivotLength, setSwingPivotLength] = useState(10);
-  const [swingPivotLengthInput, setSwingPivotLengthInput] = useState('10');
-  const [showHighValueOnly, setShowHighValueOnly] = useState(false);
-  const [showChartLabels, setShowChartLabels] = useState(false);
-  const [showAutoTrendlines, setShowAutoTrendlines] = useState(false);
-  const [trendlineMinTouches, setTrendlineMinTouches] = useState(2);
-  const [trendlineMinTouchesInput, setTrendlineMinTouchesInput] = useState('2');
-  const [trendlineTolerance, setTrendlineTolerance] = useState(0.002); // 0.2% tolerance
-  const [trendlineToleranceInput, setTrendlineToleranceInput] = useState('0.2');
-  const [trendlinePivotLength, setTrendlinePivotLength] = useState(10);
-  const [trendlinePivotLengthInput, setTrendlinePivotLengthInput] = useState('10');
-  
-  // EMA settings - dynamic list with multi-timeframe support
-  const [showEMA, setShowEMA] = useState(false);
-  const [emaConfigs, setEmaConfigs] = useState<MAConfig[]>([
-    { id: 'ema1', period: 21, timeframe: 'current', color: '#3b82f6' }
-  ]);
-  const [emaInputs, setEmaInputs] = useState<Record<string, string>>({ ema1: '21' });
-  const emaSeriesRefs = useRef<Record<string, ISeriesApi<'Line'> | null>>({});
-  const emaHTFDataCache = useRef<Record<string, CandleData[]>>({});
-  // Legacy state for backwards compatibility with trading strategies
-  const emaFastPeriod = emaConfigs[0]?.period || 21;
-  const emaSlowPeriod = emaConfigs[1]?.period || 50;
-  const [emaFastInput, setEmaFastInput] = useState('10');
-  const [emaSlowInput, setEmaSlowInput] = useState('40');
-  
-  // Oscillator indicators
+  // Series refs for chart rendering (not part of state hook)
   const rsiRef = useRef<HTMLDivElement>(null);
   const macdRef = useRef<HTMLDivElement>(null);
   const obvRef = useRef<HTMLDivElement>(null);
-  // Store oscillator chart instances for time scale sync
-  const oscillatorChartsRef = useRef<Map<string, IChartApi>>(new Map());
-  const [showRSI, setShowRSI] = useState(false);
-  const [rsiPeriod, setRsiPeriod] = useState(14);
-  const [rsiPeriodInput, setRsiPeriodInput] = useState('14');
-  const [showMACD, setShowMACD] = useState(false);
-  const [macdFast, setMacdFast] = useState(12);
-  const [macdFastInput, setMacdFastInput] = useState('12');
-  const [macdSlow, setMacdSlow] = useState(26);
-  const [macdSlowInput, setMacdSlowInput] = useState('26');
-  const [macdSignal, setMacdSignal] = useState(9);
-  const [macdSignalInput, setMacdSignalInput] = useState('9');
-  const [showOBV, setShowOBV] = useState(false);
   const mfiRef = useRef<HTMLDivElement>(null);
-  const [showMFI, setShowMFI] = useState(false);
-  const [mfiPeriod, setMfiPeriod] = useState(14);
-  const [mfiPeriodInput, setMfiPeriodInput] = useState('14');
-  const [syncOscillatorScale, setSyncOscillatorScale] = useState(false);
-  
-  // Bollinger Bands settings
   const bbRef = useRef<HTMLDivElement>(null);
-  const [showBB, setShowBB] = useState(false);
-  const [bbPeriod, setBbPeriod] = useState(20);
-  const [bbPeriodInput, setBbPeriodInput] = useState('20');
-  const [bbStdDev, setBbStdDev] = useState(2);
-  const [bbStdDevInput, setBbStdDevInput] = useState('2');
-  
-  // ========== NEW INDICATORS ==========
-  // Series refs for chart rendering
+  const stochRSIRef = useRef<HTMLDivElement>(null);
+  const williamsRRef = useRef<HTMLDivElement>(null);
+  const cciRef = useRef<HTMLDivElement>(null);
+  const adxRef = useRef<HTMLDivElement>(null);
+  const oscillatorChartsRef = useRef<Map<string, IChartApi>>(new Map());
+  const emaSeriesRefs = useRef<Record<string, ISeriesApi<'Line'> | null>>({});
+  const emaHTFDataCache = useRef<Record<string, CandleData[]>>({});
+  const smaSeriesRefs = useRef<Record<string, ISeriesApi<'Line'> | null>>({});
+  const smaHTFDataCache = useRef<Record<string, CandleData[]>>({});
   const supertrendSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const vwapBandsUpperRef = useRef<ISeriesApi<'Line'> | null>(null);
   const vwapBandsLowerRef = useRef<ISeriesApi<'Line'> | null>(null);
   const sessionVWAPAsiaRef = useRef<ISeriesApi<'Line'> | null>(null);
   const sessionVWAPLondonRef = useRef<ISeriesApi<'Line'> | null>(null);
   const sessionVWAPNYRef = useRef<ISeriesApi<'Line'> | null>(null);
-  
-  // Batch 2 SMC indicator refs
   const orderBlocksRefs = useRef<Array<{ upper: ISeriesApi<'Line'>; lower: ISeriesApi<'Line'>; fill: ISeriesApi<'Histogram'> }>>([]);
   const premiumDiscountRefs = useRef<{ equilibrium: ISeriesApi<'Line'> | null; premium: ISeriesApi<'Line'> | null; discount: ISeriesApi<'Line'> | null }>({ equilibrium: null, premium: null, discount: null });
-  
-  // Batch 3 Trend Tools & Oscillators refs
   const smaFastRef = useRef<ISeriesApi<'Line'> | null>(null);
   const smaSlowRef = useRef<ISeriesApi<'Line'> | null>(null);
   const parabolicSARRef = useRef<ISeriesApi<'Line'> | null>(null);
   
-  // SMC Controls
-  const [showOrderBlocks, setShowOrderBlocks] = useState(false);
-  const [obSwingLength, setObSwingLength] = useState(10);
-  const [obSwingLengthInput, setObSwingLengthInput] = useState('10');
-  const [orderBlockLength, setOrderBlockLength] = useState(100);
-  const [orderBlockLengthInput, setOrderBlockLengthInput] = useState('100');
-  const [showPremiumDiscount, setShowPremiumDiscount] = useState(false);
-  const [pdLookback, setPdLookback] = useState(50);
-  const [pdLookbackInput, setPdLookbackInput] = useState('50');
-  
-  // Trend Tools - SMA with dynamic list and multi-timeframe support
-  const [showSMA, setShowSMA] = useState(false);
-  const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
-    { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
-  ]);
-  const smaSeriesRefs = useRef<Record<string, ISeriesApi<'Line'> | null>>({});
-  const smaHTFDataCache = useRef<Record<string, CandleData[]>>({});
-  // Legacy state for backwards compatibility
-  const smaFastPeriod = smaConfigs[0]?.period || 20;
-  const smaSlowPeriod = smaConfigs[1]?.period || 50;
-  const [smaFastInput, setSmaFastInput] = useState('20');
-  const [smaSlowInput, setSmaSlowInput] = useState('50');
-  const [showSupertrend, setShowSupertrend] = useState(false);
-  const [supertrendPeriod, setSupertrendPeriod] = useState(10);
-  const [supertrendPeriodInput, setSupertrendPeriodInput] = useState('10');
-  const [supertrendMultiplier, setSupertrendMultiplier] = useState(3);
-  const [supertrendMultiplierInput, setSupertrendMultiplierInput] = useState('3');
-  const [showParabolicSAR, setShowParabolicSAR] = useState(false);
-  const [sarStep, setSarStep] = useState(0.02);
-  const [sarStepInput, setSarStepInput] = useState('0.02');
-  const [sarMax, setSarMax] = useState(0.2);
-  const [sarMaxInput, setSarMaxInput] = useState('0.2');
-  
-  // VWAP Tools
-  const [showVWAPBands, setShowVWAPBands] = useState(false);
-  const [vwapBandsStdDev, setVwapBandsStdDev] = useState(2);
-  const [vwapBandsStdDevInput, setVwapBandsStdDevInput] = useState('2');
-  const [showSessionVWAP, setShowSessionVWAP] = useState(false);
-  
-  // Oscillators
-  const stochRSIRef = useRef<HTMLDivElement>(null);
-  const williamsRRef = useRef<HTMLDivElement>(null);
-  const cciRef = useRef<HTMLDivElement>(null);
-  const adxRef = useRef<HTMLDivElement>(null);
-  const [showStochRSI, setShowStochRSI] = useState(false);
-  const [stochRSIPeriod, setStochRSIPeriod] = useState(14);
-  const [stochRSIPeriodInput, setStochRSIPeriodInput] = useState('14');
-  const [showWilliamsR, setShowWilliamsR] = useState(false);
-  const [williamsRPeriod, setWilliamsRPeriod] = useState(14);
-  const [williamsRPeriodInput, setWilliamsRPeriodInput] = useState('14');
-  const [showCCI, setShowCCI] = useState(false);
-  const [cciPeriod, setCciPeriod] = useState(20);
-  const [cciPeriodInput, setCciPeriodInput] = useState('20');
-  const [showADX, setShowADX] = useState(false);
-  const [adxPeriod, setAdxPeriod] = useState(14);
-  const [adxPeriodInput, setAdxPeriodInput] = useState('14');
-  
   // ========== OSCILLATOR TIER ACCESS CONTROL ==========
   // Count currently active oscillators for free tier limit
   const getActiveOscillatorCount = () => {
-    return [showRSI, showMACD, showStochRSI, showOBV, showMFI, showWilliamsR, showCCI, showADX].filter(Boolean).length;
+    return [indicators.rsi.show, indicators.macd.show, indicators.stochRSI.show, indicators.obv.show, indicators.mfi.show, indicators.williamsR.show, indicators.cci.show, indicators.adx.show].filter(Boolean).length;
   };
   
   // ========== DIVERGENCE DETECTION ==========
@@ -1152,9 +1015,6 @@ useEffect(() => {
   const [tradeSignals, setTradeSignals] = useState<TradeSignal[]>([]);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [backtesting, setBacktesting] = useState(false);
-  const [currentDelta, setCurrentDelta] = useState(0);
-  const [cumDelta, setCumDelta] = useState(0);
-  const [deltaHistory, setDeltaHistory] = useState<Array<{ time: string; timestamp: number; delta: number; cumDelta: number; isBull: boolean; volume: number; exchanges?: number; bullishExchanges?: number; bearishExchanges?: number; confidence?: number; divergence?: boolean; highValueDivergence?: boolean; volumeMultiple?: number }>>([]);
   const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(false); // Show CVD spike triangles on chart (default OFF)
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
@@ -1175,7 +1035,6 @@ useEffect(() => {
   const [aiAnalysisCost, setAiAnalysisCost] = useState<number>(0);
   const [aiAnalysisExpanded, setAiAnalysisExpanded] = useState(false);
   const [lastAnalysisCheck, setLastAnalysisCheck] = useState<number>(0);
-  const [footprintData, setFootprintData] = useState<FootprintData[]>([]);
   
   // Collapsible panel states - default to minimized
   const [marketSummaryMinimized, setMarketSummaryMinimized] = useState(true);
@@ -1217,8 +1076,7 @@ useEffect(() => {
     'BB Middle Cross': 'bollinger',
   };
   
-  // Multi-exchange orderflow state (always enabled)
-  const [useMultiExchange, setUseMultiExchange] = useState(true);
+  // Multi-exchange orderflow additional state
   const [multiExchangeData, setMultiExchangeData] = useState<any>(null);
   const [multiExchangeLoading, setMultiExchangeLoading] = useState(false);
   
@@ -1540,9 +1398,6 @@ useEffect(() => {
   const orderFlowSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const cumDeltaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
 
-  // Store real delta data from orderflow API
-  const [realDeltaData, setRealDeltaData] = useState<Map<number, number>>(new Map());
-
   // Sync EMA Trading input values to numeric state
   useEffect(() => {
     const val = parseInt(emaSinglePeriodInput);
@@ -1560,18 +1415,18 @@ useEffect(() => {
   }, [vwapThresholdInput]);
 
   useEffect(() => {
-    const val = parseInt(bbPeriodInput);
+    const val = parseInt(indicators.bb.periodInput);
     if (!isNaN(val) && val >= 5 && val <= 100) {
-      setBbPeriod(val);
+      indicators.bb.setPeriod(val);
     }
-  }, [bbPeriodInput]);
+  }, [indicators.bb.periodInput]);
 
   useEffect(() => {
-    const val = parseFloat(bbStdDevInput);
+    const val = parseFloat(indicators.bb.stdDevInput);
     if (!isNaN(val) && val >= 0.5 && val <= 4) {
-      setBbStdDev(val);
+      indicators.bb.setStdDev(val);
     }
-  }, [bbStdDevInput]);
+  }, [indicators.bb.stdDevInput]);
 
   useEffect(() => {
     const val = parseInt(emaTradingTPSwingLengthInput);
@@ -1686,181 +1541,6 @@ useEffect(() => {
     if (seconds < 3600) return `~${Math.ceil(seconds / 60)}min`;
     return `~${Math.ceil(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}min`;
   }, [totalCombinations, liqGrabAutoTestDurations]);
-
-  // Fetch initial candle data from Binance via backend proxy
-  // Fetches up to 3000 candles by making multiple requests
-  const fetchInitialData = useCallback(async () => {
-    // Cancel any pending requests
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    
-    // Create new AbortController for this request
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-    
-    // Increment generation to invalidate any pending responses
-    fetchGenerationRef.current += 1;
-    const currentGeneration = fetchGenerationRef.current;
-    
-    try {
-      setLoading(true);
-      
-      // Fetch first batch (most recent 1000 candles)
-      const url1 = `/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000`;
-      const response1 = await fetch(url1, { signal: abortController.signal });
-      
-      if (!response1.ok) {
-        throw new Error(`Failed to fetch candles: ${response1.statusText}`);
-      }
-      
-      const klines1 = await response1.json();
-      
-      // Check if this response is still relevant
-      if (currentGeneration !== fetchGenerationRef.current) {
-        console.log('🚫 Ignoring stale response from generation', currentGeneration);
-        return;
-      }
-      
-      // Get the earliest timestamp from first batch to fetch older data
-      let allKlines = [...klines1];
-      
-      if (klines1.length > 0) {
-        const earliestTime = klines1[0][0]; // First candle's open time
-        
-        // Fetch second batch with cache-busting
-        const endTime2 = earliestTime - 1;
-        console.log('📊 Fetching extended history - batch 2 endTime:', endTime2);
-        const url2 = `/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000&endTime=${endTime2}&_=${Date.now()}`;
-        
-        try {
-          const response2 = await fetch(url2, { cache: 'no-store' });
-          if (response2.ok) {
-            const klines2 = await response2.json();
-            console.log('📊 Batch 2 received:', klines2.length, 'candles, earliest:', klines2[0]?.[0]);
-            if (klines2.length > 0 && klines2[0][0] < earliestTime) {
-              allKlines = [...klines2, ...allKlines];
-              
-              // Fetch third batch
-              const endTime3 = klines2[0][0] - 1;
-              console.log('📊 Fetching extended history - batch 3 endTime:', endTime3);
-              const url3 = `/api/binance/klines?symbol=${symbol}&interval=${interval}&limit=1000&endTime=${endTime3}&_=${Date.now() + 1}`;
-              
-              try {
-                const response3 = await fetch(url3, { cache: 'no-store' });
-                if (response3.ok) {
-                  const klines3 = await response3.json();
-                  console.log('📊 Batch 3 received:', klines3.length, 'candles, earliest:', klines3[0]?.[0]);
-                  if (klines3.length > 0 && klines3[0][0] < klines2[0][0]) {
-                    allKlines = [...klines3, ...allKlines];
-                  }
-                }
-              } catch (e) {
-                console.log('📊 Batch 3 failed (optional):', e);
-              }
-            }
-          }
-        } catch (e) {
-          console.log('📊 Batch 2 failed:', e);
-        }
-      }
-      
-      // Check again if this response is still relevant
-      if (currentGeneration !== fetchGenerationRef.current) {
-        console.log('🚫 Ignoring stale response from generation', currentGeneration);
-        return;
-      }
-      
-      // Sort by time ascending (required by lightweight-charts)
-      allKlines.sort((a: any[], b: any[]) => a[0] - b[0]);
-      
-      // Remove duplicates (in case of overlapping data)
-      const uniqueKlines = allKlines.filter((kline: any[], index: number, arr: any[][]) => 
-        index === 0 || kline[0] !== arr[index - 1][0]
-      );
-      
-      const candleData: CandleData[] = uniqueKlines.map((k: any[]) => ({
-        time: k[0] / 1000,
-        open: parseFloat(k[1]),
-        high: parseFloat(k[2]),
-        low: parseFloat(k[3]),
-        close: parseFloat(k[4]),
-        volume: parseFloat(k[5]),
-      }));
-
-      console.log('✅ Fetched candle data:', candleData.length, 'candles (extended history)');
-      setCandles(candleData);
-      
-      // Fetch REAL delta data from Binance aggTrades via orderflow API
-      // SKIP if using multi-exchange mode (multi-exchange provides its own table data)
-      if (!useMultiExchange) {
-        try {
-          const yahooSymbol = symbol.replace('USDT', '-USD');
-          const footprintUrl = `/api/crypto/orderflow?symbol=${yahooSymbol}&period=1mo&interval=${interval}`;
-          const fpResponse = await fetch(footprintUrl, { signal: abortController.signal });
-          
-          if (fpResponse.ok) {
-            const fpData = await fpResponse.json();
-            
-            // Check if this response is still relevant
-            if (currentGeneration !== fetchGenerationRef.current) {
-              console.log('🚫 Ignoring stale orderflow response');
-              return;
-            }
-            
-            // Store footprint data for FVG analysis
-            if (fpData.footprint) {
-              setFootprintData(fpData.footprint);
-              
-              // Create a map of timestamp -> real delta
-              const deltaMap = new Map<number, number>();
-              fpData.footprint.forEach((fp: any) => {
-                deltaMap.set(fp.time, fp.delta);
-              });
-              setRealDeltaData(deltaMap);
-              
-              // Calculate delta history using REAL delta values
-              let runningCVD = 0;
-              const history = candleData.slice(-20).map(candle => {
-                const delta = deltaMap.get(candle.time) || 0;
-                runningCVD += delta;
-                return {
-                  time: new Date(candle.time * 1000).toLocaleTimeString(),
-                  timestamp: candle.time, // Unix timestamp for chart matching
-                  delta,
-                  cumDelta: runningCVD,
-                  isBull: candle.close >= candle.open,
-                  volume: candle.volume
-                };
-              });
-              
-              setDeltaHistory(history);
-              setCumDelta(runningCVD);
-              
-              console.log('✅ Loaded REAL delta data from Binance aggTrades:', fpData.footprint.length, 'candles');
-              console.log('📊 Delta match rate:', (fpData.footprint.filter((fp: any) => candleData.some(c => c.time === fp.time)).length / candleData.length * 100).toFixed(1) + '%');
-            }
-          }
-        } catch (fpError) {
-          // Ignore abort errors (user changed timeframe)
-          if (fpError instanceof Error && fpError.name === 'AbortError') {
-            console.log('🚫 Orderflow fetch aborted');
-            return;
-          }
-          console.warn('Could not fetch footprint data:', fpError);
-        }
-      }
-    } catch (error) {
-      // Ignore abort errors (user changed timeframe)
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log('🚫 Main fetch aborted');
-        return;
-      }
-      console.error('Error fetching initial data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [symbol, interval, useMultiExchange]);
 
   // Fetch multi-exchange orderflow data
   // Fetch AI Market Analysis
@@ -2594,9 +2274,9 @@ useEffect(() => {
   const detectDivergences = useCallback((candles: CandleData[]) => {
     if (candles.length < 20) return [];
     
-    const rsiData = calculateRSI(candles, rsiPeriod);
-    const macdData = calculateMACD(candles, macdFast, macdSlow, macdSignal).macd;
-    const mfiData = calculateMFI(candles, mfiPeriod);
+    const rsiData = calculateRSI(candles, indicators.rsi.period);
+    const macdData = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal).macd;
+    const mfiData = calculateMFI(candles, indicators.mfi.period);
     const obvData = calculateOBV(candles);
     
     const divergences: Array<{
@@ -2713,7 +2393,7 @@ useEffect(() => {
     }
     
     return divergences;
-  }, [calculateRSI, calculateMACD, calculateMFI, calculateOBV, rsiPeriod, macdFast, macdSlow, macdSignal, mfiPeriod]);
+  }, [calculateRSI, calculateMACD, calculateMFI, calculateOBV, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.mfi.period]);
 
   // Calculate BOS and CHoCH - simplified: just break of swing high/low
   const calculateBOSandCHoCH = useCallback((
@@ -2869,11 +2549,11 @@ useEffect(() => {
   // Determine market bias (EMA-based) using configurable periods
   const determineBias = useCallback((data: CandleData[]) => {
     const closes = data.map(c => c.close);
-    const emaFast = calculateEMA(closes, emaFastPeriod);
-    const emaSlow = calculateEMA(closes, emaSlowPeriod);
+    const emaFast = calculateEMA(closes, indicators.ema.fastPeriod);
+    const emaSlow = calculateEMA(closes, indicators.ema.slowPeriod);
     const newBias = emaFast[emaFast.length - 1] > emaSlow[emaSlow.length - 1] ? 'bullish' : 'bearish';
     setBias(newBias);
-  }, [calculateEMA, emaFastPeriod, emaSlowPeriod]);
+  }, [calculateEMA, indicators.ema.fastPeriod, indicators.ema.slowPeriod]);
 
   // Determine structure-based trend (HH/HL vs LH/LL)
   const determineStructureTrend = useCallback((data: CandleData[]) => {
@@ -3047,18 +2727,18 @@ useEffect(() => {
     // Check which VWAPs are enabled and get their current values
     const vwaps: number[] = [];
     
-    if (showVWAPDaily) {
+    if (indicators.vwap.showDaily) {
       const dailyVWAP = calculatePeriodicVWAP(candles, 'daily', true);
       if (dailyVWAP.length > 0) vwaps.push(dailyVWAP[dailyVWAP.length - 1].value);
     }
     
-    if (showVWAPWeekly) {
+    if (indicators.vwap.showWeekly) {
       const weeklyVWAP = calculatePeriodicVWAP(candles, 'weekly', true);
       if (weeklyVWAP.length > 0) vwaps.push(weeklyVWAP[weeklyVWAP.length - 1].value);
     }
     
-    if (showVWAPRolling) {
-      const rolling = calculateRollingVWAP(candles, vwapRollingPeriod);
+    if (indicators.vwap.showRolling) {
+      const rolling = calculateRollingVWAP(candles, indicators.vwap.rollingPeriod);
       if (rolling.length > 0) vwaps.push(rolling[rolling.length - 1].value);
     }
     
@@ -3068,7 +2748,7 @@ useEffect(() => {
     return vwaps.reduce((closest, vwap) => {
       return Math.abs(vwap - currentPrice) < Math.abs(closest - currentPrice) ? vwap : closest;
     });
-  }, [candles, showVWAPDaily, showVWAPWeekly, showVWAPRolling, vwapRollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
+  }, [candles, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
 
   // Calculate position size based on account percentage
   // Position size = (accountSize * percent) / entry price
@@ -3773,8 +3453,8 @@ useEffect(() => {
       if (emaValues.length < 3) return null;
       emaLevel = emaValues[emaValues.length - 1];
     } else {
-      const fastEMAValues = calculateEMA(data.map(c => c.close), emaFastPeriod);
-      const slowEMAValues = calculateEMA(data.map(c => c.close), emaSlowPeriod);
+      const fastEMAValues = calculateEMA(data.map(c => c.close), indicators.ema.fastPeriod);
+      const slowEMAValues = calculateEMA(data.map(c => c.close), indicators.ema.slowPeriod);
       if (fastEMAValues.length < 3 || slowEMAValues.length < 3) return null;
       fastEMA = fastEMAValues[fastEMAValues.length - 1];
       slowEMA = slowEMAValues[slowEMAValues.length - 1];
@@ -3872,7 +3552,7 @@ useEffect(() => {
         riskReward2: Math.abs(tp2 - entry) / riskAmount,
         riskReward3: Math.abs(tp3 - entry) / riskAmount,
         quantity: calculatePositionSize(entry, stopLoss),
-        reason: `EMA Crossover (${emaFastPeriod}/${emaSlowPeriod})`,
+        reason: `EMA Crossover (${indicators.ema.fastPeriod}/${indicators.ema.slowPeriod})`,
         active: true,
         entryEMAState,
       };
@@ -4004,14 +3684,14 @@ useEffect(() => {
       active: true,
       entryEMAState,
     };
-  }, [stratEMATrading, emaEntryMode, calculateEMA, emaSinglePeriod, emaFastPeriod, emaSlowPeriod, emaThreshold, getCurrentATR, emaTradingTPSL, calculateSwings, emaTradingSLSwingLength, findNextSwingLevels, emaTradingTPSwingLength, calculatePositionSize, checkDirectionFilter]);
+  }, [stratEMATrading, emaEntryMode, calculateEMA, emaSinglePeriod, indicators.ema.fastPeriod, indicators.ema.slowPeriod, emaThreshold, getCurrentATR, emaTradingTPSL, calculateSwings, emaTradingSLSwingLength, findNextSwingLevels, emaTradingTPSwingLength, calculatePositionSize, checkDirectionFilter]);
 
   // Generate R/S Flip signal (Resistance/Support Flip - retest after breakout)
   const generateRSFlipSignal = useCallback((data: CandleData[]): TradeSignal | null => {
     if (!stratRSFlip || data.length < 100) return null;
     
     // Detect trendlines
-    const trendlines = detectTrendlines(data, trendlineMinTouches, trendlineTolerance, trendlinePivotLength);
+    const trendlines = detectTrendlines(data, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength);
     if (trendlines.length === 0) return null;
     
     const currentCandle = data[data.length - 1];
@@ -4173,7 +3853,7 @@ useEffect(() => {
     }
     
     return null; // No valid R/S flip found
-  }, [stratRSFlip, detectTrendlines, trendlineMinTouches, trendlineTolerance, trendlinePivotLength, rsFlipRetestCandles, rsFlipDirectionFilter, rsFlipTrendFilter, bias, structureTrend, getCurrentATR, rsFlipTPSL, findNextSwingLevels, calculatePositionSize, rsFlipTPSwingLength]);
+  }, [stratRSFlip, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, rsFlipRetestCandles, rsFlipDirectionFilter, rsFlipTrendFilter, bias, structureTrend, getCurrentATR, rsFlipTPSL, findNextSwingLevels, calculatePositionSize, rsFlipTPSwingLength]);
 
   // Master signal generator - checks all enabled strategies
   const generateSignals = useCallback(() => {
@@ -4422,10 +4102,10 @@ useEffect(() => {
     if (candles.length > 100) {
       // Get effective pivot length (adaptive or user-set)
       const adaptivePivotLength = candles.length > 1000 ? 20 : candles.length > 500 ? 15 : 10;
-      const effectivePivotLength = trendlinePivotLength || adaptivePivotLength;
+      const effectivePivotLength = indicators.smc.trendlinePivotLength || adaptivePivotLength;
       
       // Detect current trendlines
-      const trendlines = detectTrendlines(candles, trendlineMinTouches, trendlineTolerance, effectivePivotLength);
+      const trendlines = detectTrendlines(candles, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, effectivePivotLength);
       
       if (trendlines.length > 0) {
         // 1-week lookback
@@ -4676,9 +4356,9 @@ useEffect(() => {
     
     // Multi-timeframe oscillator divergence detection (5m, 15m, 1h, 4h)
     // For now, using single timeframe with enhanced multi-indicator detection
-    const rsiData = calculateRSI(candles, rsiPeriod);
-    const macdData = calculateMACD(candles, macdFast, macdSlow, macdSignal).macd;
-    const mfiData = calculateMFI(candles, mfiPeriod);
+    const rsiData = calculateRSI(candles, indicators.rsi.period);
+    const macdData = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal).macd;
+    const mfiData = calculateMFI(candles, indicators.mfi.period);
     const obvData = calculateOBV(candles);
     
     // Look for divergences in recent candles
@@ -4775,7 +4455,7 @@ useEffect(() => {
     }
     
     // Oscillator Crossover Alerts
-    const macdFull = calculateMACD(candles, macdFast, macdSlow, macdSignal);
+    const macdFull = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
     
     // MACD crossovers
     if (macdFull.macd.length > 1) {
@@ -4920,8 +4600,8 @@ useEffect(() => {
     }
     
     // Add Bollinger Bands alerts (if enabled)
-    if (showBB && candles.length > bbPeriod) {
-      const bbData = calculateBollingerBands(candles, bbPeriod, bbStdDev);
+    if (indicators.bb.show && candles.length > indicators.bb.period) {
+      const bbData = calculateBollingerBands(candles, indicators.bb.period, indicators.bb.stdDev);
       
       // 1-week lookback
       const oneWeekSeconds = 7 * 24 * 60 * 60;
@@ -4929,13 +4609,13 @@ useEffect(() => {
       const cutoffTime = currentTime - oneWeekSeconds;
       
       // Check recent candles for BB touches and breakouts
-      for (let i = bbPeriod; i < candles.length; i++) {
+      for (let i = indicators.bb.period; i < candles.length; i++) {
         const candle = candles[i];
         
         // Skip old candles
         if (candle.time < cutoffTime) continue;
         
-        const bbIdx = i - bbPeriod + 1;
+        const bbIdx = i - indicators.bb.period + 1;
         if (bbIdx < 0 || bbIdx >= bbData.upper.length) continue;
         
         const upperBand = bbData.upper[bbIdx].value;
@@ -4993,7 +4673,7 @@ useEffect(() => {
         // Middle Band Cross (price crosses SMA)
         if (i > 0) {
           const prevCandle = candles[i - 1];
-          const prevBbIdx = i - bbPeriod;
+          const prevBbIdx = i - indicators.bb.period;
           if (prevBbIdx >= 0 && prevBbIdx < bbData.middle.length) {
             const prevMiddleBand = bbData.middle[prevBbIdx].value;
             
@@ -5005,7 +4685,7 @@ useEffect(() => {
                 type: 'BB Middle Cross',
                 direction: 'bullish',
                 price: middleBand,
-                description: `Price crossed above BB middle band (SMA${bbPeriod})`,
+                description: `Price crossed above BB middle band (SMA${indicators.bb.period})`,
               });
             }
             
@@ -5017,7 +4697,7 @@ useEffect(() => {
                 type: 'BB Middle Cross',
                 direction: 'bearish',
                 price: middleBand,
-                description: `Price crossed below BB middle band (SMA${bbPeriod})`,
+                description: `Price crossed below BB middle band (SMA${indicators.bb.period})`,
               });
             }
           }
@@ -5028,7 +4708,7 @@ useEffect(() => {
     // Sort by time descending (most recent first) and keep last 20
     const sortedAlerts = newAlerts.sort((a, b) => b.time - a.time).slice(0, 20);
     setMarketAlerts(sortedAlerts);
-  }, [candles, liqGrabSwingLength, calculateBOSandCHoCH, calculateFVGs, isActiveFVG, calculatePeriodicVWAP, vwapThreshold, detectTrendlines, trendlineMinTouches, trendlineTolerance, trendlinePivotLength, detectDivergences, cvdSpikeEnabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, showBB, bbPeriod, bbStdDev, calculateBollingerBands]);
+  }, [candles, liqGrabSwingLength, calculateBOSandCHoCH, calculateFVGs, isActiveFVG, calculatePeriodicVWAP, vwapThreshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergences, cvdSpikeEnabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev, calculateBollingerBands]);
 
   // Calculate weighted R:R for partial exits based on which TPs were hit
   const calculateWeightedRR = useCallback((strategy: string, outcome: string, rr1: number, rr2: number, rr3: number): number => {
@@ -5811,7 +5491,7 @@ useEffect(() => {
     }
     
     return null; // Trade didn't close within available data
-  }, [calculateWeightedRR, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, calculateEMA, emaFastPeriod, emaSlowPeriod]);
+  }, [calculateWeightedRR, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, calculateEMA, indicators.ema.fastPeriod, indicators.ema.slowPeriod]);
 
   // Generate all combinations of bot configurations for auto-backtest
   const generateAutoBacktestCombinations = useCallback((): any[] => {
@@ -6232,67 +5912,92 @@ useEffect(() => {
   // Save indicator defaults to localStorage (for current timeframe only)
   const saveToTimeframe = useCallback(() => {
     const indicatorDefaults = {
-      // EMAs
-      showEMA,
-      emaFastPeriod,
-      emaSlowPeriod,
-      emaConfigs,
-      // SMAs
-      showSMA,
-      smaConfigs,
-      // Oscillators
-      showRSI,
-      rsiPeriod,
-      showMACD,
-      macdFast,
-      macdSlow,
-      macdSignal,
-      showOBV,
-      showMFI,
-      mfiPeriod,
-      showStochRSI,
-      stochRSIPeriod,
-      showWilliamsR,
-      williamsRPeriod,
-      showCCI,
-      cciPeriod,
-      showADX,
-      adxPeriod,
-      // Bollinger Bands
-      showBB,
-      bbPeriod,
-      bbStdDev,
-      // VWAPs
-      showVWAPSession,
-      showVWAPDaily,
-      showVWAPWeekly,
-      showVWAPMonthly,
-      showVWAPRolling,
-      vwapRollingPeriod,
-      showVWAPBands,
-      showSessionVWAP,
-      // SMC Indicators
-      showFVG,
-      showBOS,
-      showCHoCH,
-      showSwingPivots,
-      showOrderBlocks,
-      obSwingLength,
-      orderBlockLength,
-      showPremiumDiscount,
-      // Trend Indicators
-      showSupertrend,
-      supertrendPeriod,
-      supertrendMultiplier,
-      showParabolicSAR,
-      sarStep,
-      sarMax,
-      showAutoTrendlines,
-      // Display options
-      showHighValueOnly,
-      showChartLabels,
+      indicators: {
+        ema: {
+          show: indicators.ema.show,
+          fastPeriod: indicators.ema.fastPeriod,
+          slowPeriod: indicators.ema.slowPeriod,
+          configs: indicators.ema.configs,
+        },
+        sma: {
+          show: indicators.sma.show,
+          configs: indicators.sma.configs,
+        },
+        rsi: {
+          show: indicators.rsi.show,
+          period: indicators.rsi.period,
+        },
+        macd: {
+          show: indicators.macd.show,
+          fast: indicators.macd.fast,
+          slow: indicators.macd.slow,
+          signal: indicators.macd.signal,
+        },
+        obv: {
+          show: indicators.obv.show,
+        },
+        mfi: {
+          show: indicators.mfi.show,
+          period: indicators.mfi.period,
+        },
+        stochRSI: {
+          show: indicators.stochRSI.show,
+          period: indicators.stochRSI.period,
+        },
+        williamsR: {
+          show: indicators.williamsR.show,
+          period: indicators.williamsR.period,
+        },
+        cci: {
+          show: indicators.cci.show,
+          period: indicators.cci.period,
+        },
+        adx: {
+          show: indicators.adx.show,
+          period: indicators.adx.period,
+        },
+        bb: {
+          show: indicators.bb.show,
+          period: indicators.bb.period,
+          stdDev: indicators.bb.stdDev,
+        },
+        vwap: {
+          showSession: indicators.vwap.showSession,
+          showDaily: indicators.vwap.showDaily,
+          showWeekly: indicators.vwap.showWeekly,
+          showMonthly: indicators.vwap.showMonthly,
+          showRolling: indicators.vwap.showRolling,
+          rollingPeriod: indicators.vwap.rollingPeriod,
+        },
+        vwapTools: {
+          showBands: indicators.vwapTools.showBands,
+          showSession: indicators.vwapTools.showSession,
+        },
+        smc: {
+          showFVG: indicators.smc.showFVG,
+          showBOS: indicators.smc.showBOS,
+          showCHoCH: indicators.smc.showCHoCH,
+          showSwingPivots: indicators.smc.showSwingPivots,
+          showOrderBlocks: indicators.smc.showOrderBlocks,
+          obSwingLength: indicators.smc.obSwingLength,
+          orderBlockLength: indicators.smc.orderBlockLength,
+          showPremiumDiscount: indicators.smc.showPremiumDiscount,
+          showAutoTrendlines: indicators.smc.showAutoTrendlines,
+          showHighValueOnly: indicators.smc.showHighValueOnly,
+          showChartLabels: indicators.smc.showChartLabels,
+        },
+        supertrend: {
+          show: indicators.supertrend.show,
+          period: indicators.supertrend.period,
+          multiplier: indicators.supertrend.multiplier,
+        },
+        parabolicSAR: {
+          show: indicators.parabolicSAR.show,
+          step: indicators.parabolicSAR.step,
+          max: indicators.parabolicSAR.max,
+        },
+      },
       alertFilterMode,
-      // CVD Spike settings
       cvdSpikeEnabled,
       cvdSpikeLevel1,
       cvdSpikeLevel2,
@@ -6309,7 +6014,7 @@ useEffect(() => {
     });
     
     console.log(`💾 Saved indicator defaults for ${userId}_${symbol}_${interval}:`, indicatorDefaults);
-  }, [userId, symbol, interval, showEMA, emaFastPeriod, emaSlowPeriod, emaConfigs, showSMA, smaConfigs, showRSI, rsiPeriod, showMACD, macdFast, macdSlow, macdSignal, showOBV, showMFI, mfiPeriod, showStochRSI, stochRSIPeriod, showWilliamsR, williamsRPeriod, showCCI, cciPeriod, showADX, adxPeriod, showBB, bbPeriod, bbStdDev, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, showVWAPBands, showSessionVWAP, showFVG, showBOS, showCHoCH, showSwingPivots, showOrderBlocks, obSwingLength, orderBlockLength, showPremiumDiscount, showSupertrend, supertrendPeriod, supertrendMultiplier, showParabolicSAR, sarStep, sarMax, showAutoTrendlines, showHighValueOnly, showChartLabels, alertFilterMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, toast]);
+  }, [userId, symbol, interval, indicators.ema.show, indicators.ema.fastPeriod, indicators.ema.slowPeriod, indicators.ema.configs, indicators.sma.show, indicators.sma.configs, indicators.rsi.show, indicators.rsi.period, indicators.macd.show, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.obv.show, indicators.mfi.show, indicators.mfi.period, indicators.stochRSI.show, indicators.stochRSI.period, indicators.williamsR.show, indicators.williamsR.period, indicators.cci.show, indicators.cci.period, indicators.adx.show, indicators.adx.period, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev, indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, indicators.vwapTools.showBands, indicators.vwapTools.showSession, indicators.smc.showFVG, indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showSwingPivots, indicators.smc.showOrderBlocks, indicators.smc.obSwingLength, indicators.smc.orderBlockLength, indicators.smc.showPremiumDiscount, indicators.supertrend.show, indicators.supertrend.period, indicators.supertrend.multiplier, indicators.parabolicSAR.show, indicators.parabolicSAR.step, indicators.parabolicSAR.max, indicators.smc.showAutoTrendlines, indicators.smc.showHighValueOnly, indicators.smc.showChartLabels, alertFilterMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, toast]);
 
   // Set current timeframe as the default for this symbol on page load
   const makeTimeframeDefault = useCallback(() => {
@@ -6334,45 +6039,45 @@ useEffect(() => {
   // Reset all indicators to OFF (used when no saved config exists for timeframe)
   const resetAllIndicators = useCallback(() => {
     // EMAs
-    setShowEMA(false);
-    setEmaConfigs([]);
-    setEmaInputs({});
+    indicators.ema.setShow(false);
+    indicators.ema.setConfigs([]);
+    indicators.ema.setInputs({});
     // SMAs
-    setShowSMA(false);
-    setSmaConfigs([]);
+    indicators.sma.setShow(false);
+    indicators.sma.setConfigs([]);
     // Oscillators
-    setShowRSI(false);
-    setShowMACD(false);
-    setShowOBV(false);
-    setShowMFI(false);
-    setShowStochRSI(false);
-    setShowWilliamsR(false);
-    setShowCCI(false);
-    setShowADX(false);
+    indicators.rsi.setShow(false);
+    indicators.macd.setShow(false);
+    indicators.obv.setShow(false);
+    indicators.mfi.setShow(false);
+    indicators.stochRSI.setShow(false);
+    indicators.williamsR.setShow(false);
+    indicators.cci.setShow(false);
+    indicators.adx.setShow(false);
     // Bollinger Bands
-    setShowBB(false);
+    indicators.bb.setShow(false);
     // VWAPs
-    setShowVWAPSession(false);
-    setShowVWAPDaily(false);
-    setShowVWAPWeekly(false);
-    setShowVWAPMonthly(false);
-    setShowVWAPRolling(false);
-    setShowVWAPBands(false);
-    setShowSessionVWAP(false);
+    indicators.vwap.setShowSession(false);
+    indicators.vwap.setShowDaily(false);
+    indicators.vwap.setShowWeekly(false);
+    indicators.vwap.setShowMonthly(false);
+    indicators.vwap.setShowRolling(false);
+    indicators.vwapTools.setShowBands(false);
+    indicators.vwapTools.setShowSession(false);
     // SMC Indicators
-    setShowFVG(false);
-    setShowBOS(false);
-    setShowCHoCH(false);
-    setShowSwingPivots(false);
-    setShowOrderBlocks(false);
-    setShowPremiumDiscount(false);
+    indicators.smc.setShowFVG(false);
+    indicators.smc.setShowBOS(false);
+    indicators.smc.setShowCHoCH(false);
+    indicators.smc.setShowSwingPivots(false);
+    indicators.smc.setShowOrderBlocks(false);
+    indicators.smc.setShowPremiumDiscount(false);
     // Trend Indicators
-    setShowSupertrend(false);
-    setShowParabolicSAR(false);
-    setShowAutoTrendlines(false);
+    indicators.supertrend.setShow(false);
+    indicators.parabolicSAR.setShow(false);
+    indicators.smc.setShowAutoTrendlines(false);
     // Display options
-    setShowHighValueOnly(false);
-    setShowChartLabels(false);
+    indicators.smc.setShowHighValueOnly(false);
+    indicators.smc.setShowChartLabels(false);
     // CVD Spike settings - reset to defaults (disabled by default)
     setCvdSpikeEnabled(false);
     setCvdSpikeLevel1(175);
@@ -6400,138 +6105,138 @@ useEffect(() => {
       const defaults = JSON.parse(saved);
       
       // EMAs
-      if (defaults.showEMA !== undefined) setShowEMA(defaults.showEMA);
-      if (defaults.emaFastPeriod !== undefined) {
-        setEmaFastInput(defaults.emaFastPeriod.toString());
+      if (defaults.indicators.ema.show !== undefined) indicators.ema.setShow(defaults.indicators.ema.show);
+      if (defaults.indicators.ema.fastPeriod !== undefined) {
+        indicators.ema.setFastInput(defaults.indicators.ema.fastPeriod.toString());
       }
-      if (defaults.emaSlowPeriod !== undefined) {
-        setEmaSlowInput(defaults.emaSlowPeriod.toString());
+      if (defaults.indicators.ema.slowPeriod !== undefined) {
+        indicators.ema.setSlowInput(defaults.indicators.ema.slowPeriod.toString());
       }
-      if (defaults.emaConfigs && Array.isArray(defaults.emaConfigs)) {
-        setEmaConfigs(defaults.emaConfigs);
+      if (defaults.indicators.ema.configs && Array.isArray(defaults.indicators.ema.configs)) {
+        indicators.ema.setConfigs(defaults.indicators.ema.configs);
         const inputs: Record<string, string> = {};
-        defaults.emaConfigs.forEach((c: any) => {
+        defaults.indicators.ema.configs.forEach((c: any) => {
           inputs[c.id] = String(c.period);
         });
-        setEmaInputs(inputs);
+        indicators.ema.setInputs(inputs);
       }
       
       // SMAs
-      if (defaults.showSMA !== undefined) setShowSMA(defaults.showSMA);
-      if (defaults.smaConfigs && Array.isArray(defaults.smaConfigs)) {
-        setSmaConfigs(defaults.smaConfigs);
+      if (defaults.indicators.sma.show !== undefined) indicators.sma.setShow(defaults.indicators.sma.show);
+      if (defaults.indicators.sma.configs && Array.isArray(defaults.indicators.sma.configs)) {
+        indicators.sma.setConfigs(defaults.indicators.sma.configs);
       }
       
       // Oscillators
-      if (defaults.showRSI !== undefined) setShowRSI(defaults.showRSI);
-      if (defaults.rsiPeriod !== undefined) {
-        setRsiPeriod(defaults.rsiPeriod);
-        setRsiPeriodInput(defaults.rsiPeriod.toString());
+      if (defaults.indicators.rsi.show !== undefined) indicators.rsi.setShow(defaults.indicators.rsi.show);
+      if (defaults.indicators.rsi.period !== undefined) {
+        indicators.rsi.setPeriod(defaults.indicators.rsi.period);
+        indicators.rsi.setPeriodInput(defaults.indicators.rsi.period.toString());
       }
-      if (defaults.showMACD !== undefined) setShowMACD(defaults.showMACD);
-      if (defaults.macdFast !== undefined) {
-        setMacdFast(defaults.macdFast);
-        setMacdFastInput(defaults.macdFast.toString());
+      if (defaults.indicators.macd.show !== undefined) indicators.macd.setShow(defaults.indicators.macd.show);
+      if (defaults.indicators.macd.fast !== undefined) {
+        indicators.macd.setFast(defaults.indicators.macd.fast);
+        indicators.macd.setFastInput(defaults.indicators.macd.fast.toString());
       }
-      if (defaults.macdSlow !== undefined) {
-        setMacdSlow(defaults.macdSlow);
-        setMacdSlowInput(defaults.macdSlow.toString());
+      if (defaults.indicators.macd.slow !== undefined) {
+        indicators.macd.setSlow(defaults.indicators.macd.slow);
+        indicators.macd.setSlowInput(defaults.indicators.macd.slow.toString());
       }
-      if (defaults.macdSignal !== undefined) {
-        setMacdSignal(defaults.macdSignal);
-        setMacdSignalInput(defaults.macdSignal.toString());
+      if (defaults.indicators.macd.signal !== undefined) {
+        indicators.macd.setSignal(defaults.indicators.macd.signal);
+        indicators.macd.setSignalInput(defaults.indicators.macd.signal.toString());
       }
-      if (defaults.showOBV !== undefined) setShowOBV(defaults.showOBV);
-      if (defaults.showMFI !== undefined) setShowMFI(defaults.showMFI);
-      if (defaults.mfiPeriod !== undefined) {
-        setMfiPeriod(defaults.mfiPeriod);
-        setMfiPeriodInput(defaults.mfiPeriod.toString());
+      if (defaults.indicators.obv.show !== undefined) indicators.obv.setShow(defaults.indicators.obv.show);
+      if (defaults.indicators.mfi.show !== undefined) indicators.mfi.setShow(defaults.indicators.mfi.show);
+      if (defaults.indicators.mfi.period !== undefined) {
+        indicators.mfi.setPeriod(defaults.indicators.mfi.period);
+        indicators.mfi.setPeriodInput(defaults.indicators.mfi.period.toString());
       }
-      if (defaults.showStochRSI !== undefined) setShowStochRSI(defaults.showStochRSI);
-      if (defaults.stochRSIPeriod !== undefined) {
-        setStochRSIPeriod(defaults.stochRSIPeriod);
-        setStochRSIPeriodInput(defaults.stochRSIPeriod.toString());
+      if (defaults.indicators.stochRSI.show !== undefined) indicators.stochRSI.setShow(defaults.indicators.stochRSI.show);
+      if (defaults.indicators.stochRSI.period !== undefined) {
+        indicators.stochRSI.setPeriod(defaults.indicators.stochRSI.period);
+        indicators.stochRSI.setPeriodInput(defaults.indicators.stochRSI.period.toString());
       }
-      if (defaults.showWilliamsR !== undefined) setShowWilliamsR(defaults.showWilliamsR);
-      if (defaults.williamsRPeriod !== undefined) {
-        setWilliamsRPeriod(defaults.williamsRPeriod);
-        setWilliamsRPeriodInput(defaults.williamsRPeriod.toString());
+      if (defaults.indicators.williamsR.show !== undefined) indicators.williamsR.setShow(defaults.indicators.williamsR.show);
+      if (defaults.indicators.williamsR.period !== undefined) {
+        indicators.williamsR.setPeriod(defaults.indicators.williamsR.period);
+        indicators.williamsR.setPeriodInput(defaults.indicators.williamsR.period.toString());
       }
-      if (defaults.showCCI !== undefined) setShowCCI(defaults.showCCI);
-      if (defaults.cciPeriod !== undefined) {
-        setCciPeriod(defaults.cciPeriod);
-        setCciPeriodInput(defaults.cciPeriod.toString());
+      if (defaults.indicators.cci.show !== undefined) indicators.cci.setShow(defaults.indicators.cci.show);
+      if (defaults.indicators.cci.period !== undefined) {
+        indicators.cci.setPeriod(defaults.indicators.cci.period);
+        indicators.cci.setPeriodInput(defaults.indicators.cci.period.toString());
       }
-      if (defaults.showADX !== undefined) setShowADX(defaults.showADX);
-      if (defaults.adxPeriod !== undefined) {
-        setAdxPeriod(defaults.adxPeriod);
-        setAdxPeriodInput(defaults.adxPeriod.toString());
+      if (defaults.indicators.adx.show !== undefined) indicators.adx.setShow(defaults.indicators.adx.show);
+      if (defaults.indicators.adx.period !== undefined) {
+        indicators.adx.setPeriod(defaults.indicators.adx.period);
+        indicators.adx.setPeriodInput(defaults.indicators.adx.period.toString());
       }
       
       // Bollinger Bands
-      if (defaults.showBB !== undefined) setShowBB(defaults.showBB);
-      if (defaults.bbPeriod !== undefined) {
-        setBbPeriod(defaults.bbPeriod);
-        setBbPeriodInput(defaults.bbPeriod.toString());
+      if (defaults.indicators.bb.show !== undefined) indicators.bb.setShow(defaults.indicators.bb.show);
+      if (defaults.indicators.bb.period !== undefined) {
+        indicators.bb.setPeriod(defaults.indicators.bb.period);
+        indicators.bb.setPeriodInput(defaults.indicators.bb.period.toString());
       }
-      if (defaults.bbStdDev !== undefined) {
-        setBbStdDev(defaults.bbStdDev);
-        setBbStdDevInput(defaults.bbStdDev.toString());
+      if (defaults.indicators.bb.stdDev !== undefined) {
+        indicators.bb.setStdDev(defaults.indicators.bb.stdDev);
+        indicators.bb.setStdDevInput(defaults.indicators.bb.stdDev.toString());
       }
       
       // VWAPs
-      if (defaults.showVWAPSession !== undefined) setShowVWAPSession(defaults.showVWAPSession);
-      if (defaults.showVWAPDaily !== undefined) setShowVWAPDaily(defaults.showVWAPDaily);
-      if (defaults.showVWAPWeekly !== undefined) setShowVWAPWeekly(defaults.showVWAPWeekly);
-      if (defaults.showVWAPMonthly !== undefined) setShowVWAPMonthly(defaults.showVWAPMonthly);
-      if (defaults.showVWAPRolling !== undefined) setShowVWAPRolling(defaults.showVWAPRolling);
-      if (defaults.vwapRollingPeriod !== undefined) {
-        setVwapRollingPeriod(defaults.vwapRollingPeriod);
-        setVwapRollingPeriodInput(defaults.vwapRollingPeriod.toString());
+      if (defaults.indicators.vwap.showSession !== undefined) indicators.vwap.setShowSession(defaults.indicators.vwap.showSession);
+      if (defaults.indicators.vwap.showDaily !== undefined) indicators.vwap.setShowDaily(defaults.indicators.vwap.showDaily);
+      if (defaults.indicators.vwap.showWeekly !== undefined) indicators.vwap.setShowWeekly(defaults.indicators.vwap.showWeekly);
+      if (defaults.indicators.vwap.showMonthly !== undefined) indicators.vwap.setShowMonthly(defaults.indicators.vwap.showMonthly);
+      if (defaults.indicators.vwap.showRolling !== undefined) indicators.vwap.setShowRolling(defaults.indicators.vwap.showRolling);
+      if (defaults.indicators.vwap.rollingPeriod !== undefined) {
+        indicators.vwap.setRollingPeriod(defaults.indicators.vwap.rollingPeriod);
+        indicators.vwap.setRollingPeriodInput(defaults.indicators.vwap.rollingPeriod.toString());
       }
-      if (defaults.showVWAPBands !== undefined) setShowVWAPBands(defaults.showVWAPBands);
-      if (defaults.showSessionVWAP !== undefined) setShowSessionVWAP(defaults.showSessionVWAP);
+      if (defaults.indicators.vwapTools.showBands !== undefined) indicators.vwapTools.setShowBands(defaults.indicators.vwapTools.showBands);
+      if (defaults.indicators.vwapTools.showSession !== undefined) indicators.vwapTools.setShowSession(defaults.indicators.vwapTools.showSession);
       
       // SMC Indicators
-      if (defaults.showFVG !== undefined) setShowFVG(defaults.showFVG);
-      if (defaults.showBOS !== undefined) setShowBOS(defaults.showBOS);
-      if (defaults.showCHoCH !== undefined) setShowCHoCH(defaults.showCHoCH);
-      if (defaults.showSwingPivots !== undefined) setShowSwingPivots(defaults.showSwingPivots);
-      if (defaults.showOrderBlocks !== undefined) setShowOrderBlocks(defaults.showOrderBlocks);
-      if (defaults.obSwingLength !== undefined) {
-        setObSwingLength(defaults.obSwingLength);
-        setObSwingLengthInput(defaults.obSwingLength.toString());
+      if (defaults.indicators.smc.showFVG !== undefined) indicators.smc.setShowFVG(defaults.indicators.smc.showFVG);
+      if (defaults.indicators.smc.showBOS !== undefined) indicators.smc.setShowBOS(defaults.indicators.smc.showBOS);
+      if (defaults.indicators.smc.showCHoCH !== undefined) indicators.smc.setShowCHoCH(defaults.indicators.smc.showCHoCH);
+      if (defaults.indicators.smc.showSwingPivots !== undefined) indicators.smc.setShowSwingPivots(defaults.indicators.smc.showSwingPivots);
+      if (defaults.indicators.smc.showOrderBlocks !== undefined) indicators.smc.setShowOrderBlocks(defaults.indicators.smc.showOrderBlocks);
+      if (defaults.indicators.smc.obSwingLength !== undefined) {
+        indicators.smc.setObSwingLength(defaults.indicators.smc.obSwingLength);
+        indicators.smc.setObSwingLengthInput(defaults.indicators.smc.obSwingLength.toString());
       }
-      if (defaults.orderBlockLength !== undefined) {
-        setOrderBlockLength(defaults.orderBlockLength);
-        setOrderBlockLengthInput(defaults.orderBlockLength.toString());
+      if (defaults.indicators.smc.orderBlockLength !== undefined) {
+        indicators.smc.setOrderBlockLength(defaults.indicators.smc.orderBlockLength);
+        indicators.smc.setOrderBlockLengthInput(defaults.indicators.smc.orderBlockLength.toString());
       }
-      if (defaults.showPremiumDiscount !== undefined) setShowPremiumDiscount(defaults.showPremiumDiscount);
+      if (defaults.indicators.smc.showPremiumDiscount !== undefined) indicators.smc.setShowPremiumDiscount(defaults.indicators.smc.showPremiumDiscount);
       
       // Trend Indicators
-      if (defaults.showSupertrend !== undefined) setShowSupertrend(defaults.showSupertrend);
-      if (defaults.supertrendPeriod !== undefined) {
-        setSupertrendPeriod(defaults.supertrendPeriod);
-        setSupertrendPeriodInput(defaults.supertrendPeriod.toString());
+      if (defaults.indicators.supertrend.show !== undefined) indicators.supertrend.setShow(defaults.indicators.supertrend.show);
+      if (defaults.indicators.supertrend.period !== undefined) {
+        indicators.supertrend.setPeriod(defaults.indicators.supertrend.period);
+        indicators.supertrend.setPeriodInput(defaults.indicators.supertrend.period.toString());
       }
-      if (defaults.supertrendMultiplier !== undefined) {
-        setSupertrendMultiplier(defaults.supertrendMultiplier);
-        setSupertrendMultiplierInput(defaults.supertrendMultiplier.toString());
+      if (defaults.indicators.supertrend.multiplier !== undefined) {
+        indicators.supertrend.setMultiplier(defaults.indicators.supertrend.multiplier);
+        indicators.supertrend.setMultiplierInput(defaults.indicators.supertrend.multiplier.toString());
       }
-      if (defaults.showParabolicSAR !== undefined) setShowParabolicSAR(defaults.showParabolicSAR);
-      if (defaults.sarStep !== undefined) {
-        setSarStep(defaults.sarStep);
-        setSarStepInput(defaults.sarStep.toString());
+      if (defaults.indicators.parabolicSAR.show !== undefined) indicators.parabolicSAR.setShow(defaults.indicators.parabolicSAR.show);
+      if (defaults.indicators.parabolicSAR.step !== undefined) {
+        indicators.parabolicSAR.setStep(defaults.indicators.parabolicSAR.step);
+        indicators.parabolicSAR.setStepInput(defaults.indicators.parabolicSAR.step.toString());
       }
-      if (defaults.sarMax !== undefined) {
-        setSarMax(defaults.sarMax);
-        setSarMaxInput(defaults.sarMax.toString());
+      if (defaults.indicators.parabolicSAR.max !== undefined) {
+        indicators.parabolicSAR.setMax(defaults.indicators.parabolicSAR.max);
+        indicators.parabolicSAR.setMaxInput(defaults.indicators.parabolicSAR.max.toString());
       }
-      if (defaults.showAutoTrendlines !== undefined) setShowAutoTrendlines(defaults.showAutoTrendlines);
+      if (defaults.indicators.smc.showAutoTrendlines !== undefined) indicators.smc.setShowAutoTrendlines(defaults.indicators.smc.showAutoTrendlines);
       
       // Display options
-      if (defaults.showHighValueOnly !== undefined) setShowHighValueOnly(defaults.showHighValueOnly);
-      if (defaults.showChartLabels !== undefined) setShowChartLabels(defaults.showChartLabels);
+      if (defaults.indicators.smc.showHighValueOnly !== undefined) indicators.smc.setShowHighValueOnly(defaults.indicators.smc.showHighValueOnly);
+      if (defaults.indicators.smc.showChartLabels !== undefined) indicators.smc.setShowChartLabels(defaults.indicators.smc.showChartLabels);
       if (defaults.alertFilterMode !== undefined) setAlertFilterMode(defaults.alertFilterMode);
       
       // CVD Spike settings
@@ -6605,34 +6310,34 @@ useEffect(() => {
     const active = new Set<string>();
     
     // SMC indicators
-    if (showBOS || showCHoCH || showFVG || stratLiquidityGrab || showSwingPivots) {
+    if (indicators.smc.showBOS || indicators.smc.showCHoCH || indicators.smc.showFVG || stratLiquidityGrab || indicators.smc.showSwingPivots) {
       active.add('smc');
     }
     
     // VWAP indicators
-    if (showVWAPDaily || showVWAPWeekly || showVWAPMonthly || showVWAPRolling) {
+    if (indicators.vwap.showDaily || indicators.vwap.showWeekly || indicators.vwap.showMonthly || indicators.vwap.showRolling) {
       active.add('vwap');
     }
     
     // Trendlines
-    if (showAutoTrendlines) {
+    if (indicators.smc.showAutoTrendlines) {
       active.add('trendlines');
     }
     
     // Oscillators
-    if (showRSI) active.add('rsi');
-    if (showMACD) active.add('macd');
-    if (showMFI) active.add('mfi');
-    if (showOBV) active.add('obv');
+    if (indicators.rsi.show) active.add('rsi');
+    if (indicators.macd.show) active.add('macd');
+    if (indicators.mfi.show) active.add('mfi');
+    if (indicators.obv.show) active.add('obv');
     
     // Bollinger Bands
-    if (showBB) active.add('bollinger');
+    if (indicators.bb.show) active.add('bollinger');
     
     // CVD is always active for orderflow
     if (cvdSpikeEnabled) active.add('cvd');
     
     return active;
-  }, [showBOS, showCHoCH, showFVG, stratLiquidityGrab, showSwingPivots, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, showAutoTrendlines, showRSI, showMACD, showMFI, showOBV, showBB, cvdSpikeEnabled]);
+  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, stratLiquidityGrab, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSpikeEnabled]);
 
   // Filter market alerts based on alertFilterMode and active indicators
   const filteredMarketAlerts = useMemo(() => {
@@ -7181,13 +6886,13 @@ useEffect(() => {
       }
     };
 
-    manageVWAP('session', showVWAPSession, calculatePeriodicVWAP(candles, 'daily', true), '#a78bfa', 'Session VWAP');
-    manageVWAP('daily', showVWAPDaily, calculatePeriodicVWAP(candles, 'daily', true), '#fb923c', 'Daily VWAP');
-    manageVWAP('weekly', showVWAPWeekly, calculatePeriodicVWAP(candles, 'weekly', true), '#10b981', 'Weekly VWAP');
-    manageVWAP('monthly', showVWAPMonthly, calculatePeriodicVWAP(candles, 'monthly', true), '#3b82f6', 'Monthly VWAP');
-    const rollingKey = vwapRollingPeriod === 10 ? 'rolling10' : vwapRollingPeriod === 50 ? 'rolling50' : 'rolling20';
-    manageVWAP(rollingKey, showVWAPRolling, calculateRollingVWAP(candles, vwapRollingPeriod), '#ec4899', `rVWAP(${vwapRollingPeriod})`);
-  }, [chartReady, candles, showVWAPSession, showVWAPDaily, showVWAPWeekly, showVWAPMonthly, showVWAPRolling, vwapRollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
+    manageVWAP('session', indicators.vwap.showSession, calculatePeriodicVWAP(candles, 'daily', true), '#a78bfa', 'Session VWAP');
+    manageVWAP('daily', indicators.vwap.showDaily, calculatePeriodicVWAP(candles, 'daily', true), '#fb923c', 'Daily VWAP');
+    manageVWAP('weekly', indicators.vwap.showWeekly, calculatePeriodicVWAP(candles, 'weekly', true), '#10b981', 'Weekly VWAP');
+    manageVWAP('monthly', indicators.vwap.showMonthly, calculatePeriodicVWAP(candles, 'monthly', true), '#3b82f6', 'Monthly VWAP');
+    const rollingKey = indicators.vwap.rollingPeriod === 10 ? 'rolling10' : indicators.vwap.rollingPeriod === 50 ? 'rolling50' : 'rolling20';
+    manageVWAP(rollingKey, indicators.vwap.showRolling, calculateRollingVWAP(candles, indicators.vwap.rollingPeriod), '#ec4899', `rVWAP(${indicators.vwap.rollingPeriod})`);
+  }, [chartReady, candles, indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
 
   // Update FVGs with shaded rectangles
   useEffect(() => {
@@ -7228,7 +6933,7 @@ useEffect(() => {
     }
     fvgSeriesRefs.current = [];
     
-    if (!showFVG) return;
+    if (!indicators.smc.showFVG) return;
 
     // Extract FVG times from active CHoCH+FVG trade signals AND backtest trades
     const activeTradeFVGTimes = new Set<number>();
@@ -7274,7 +6979,7 @@ useEffect(() => {
       
       if (shouldShow) {
         // Skip non-high-value FVGs if filter is enabled (but always show traded FVGs)
-        if (!hasActiveTrade && showHighValueOnly && !fvg.isHighValue) {
+        if (!hasActiveTrade && indicators.smc.showHighValueOnly && !fvg.isHighValue) {
           return;
         }
 
@@ -7357,7 +7062,7 @@ useEffect(() => {
         }
       }
     });
-  }, [chartReady, candles, showFVG, showHighValueOnly, calculateFVGs, isActiveFVG, getFVGFillTime, tradeSignals, backtestResults]);
+  }, [chartReady, candles, indicators.smc.showFVG, indicators.smc.showHighValueOnly, calculateFVGs, isActiveFVG, getFVGFillTime, tradeSignals, backtestResults]);
 
   // Clear HTF caches and load saved timeframe when symbol changes
   useEffect(() => {
@@ -7378,7 +7083,7 @@ useEffect(() => {
   // Fetch higher timeframe data for EMA calculations
   useEffect(() => {
     const fetchHTFData = async () => {
-      const htfTimeframes = emaConfigs
+      const htfTimeframes = indicators.ema.configs
         .filter(c => c.timeframe !== 'current' && c.timeframe !== interval)
         .map(c => c.timeframe);
       
@@ -7407,10 +7112,10 @@ useEffect(() => {
       }
     };
     
-    if (showEMA && symbol) {
+    if (indicators.ema.show && symbol) {
       fetchHTFData();
     }
-  }, [showEMA, emaConfigs, symbol, interval]);
+  }, [indicators.ema.show, indicators.ema.configs, symbol, interval]);
 
   // Update EMAs on chart
   useEffect(() => {
@@ -7420,7 +7125,7 @@ useEffect(() => {
     const refs = emaSeriesRefs.current;
 
     // Remove old EMA series that are no longer in configs
-    const currentIds = new Set(emaConfigs.map(c => c.id));
+    const currentIds = new Set(indicators.ema.configs.map(c => c.id));
     Object.keys(refs).forEach(key => {
       if (!currentIds.has(key) && refs[key]) {
         try { chart.removeSeries(refs[key]!); } catch (e) {}
@@ -7428,7 +7133,7 @@ useEffect(() => {
       }
     });
 
-    if (!showEMA) {
+    if (!indicators.ema.show) {
       // Remove all EMA series when disabled
       Object.keys(refs).forEach(key => {
         if (refs[key]) {
@@ -7440,7 +7145,7 @@ useEffect(() => {
     }
 
     // Render each EMA config
-    for (const config of emaConfigs) {
+    for (const config of indicators.ema.configs) {
       let emaData: { time: any; value: number }[] = [];
       
       // Determine which data source to use
@@ -7514,7 +7219,7 @@ useEffect(() => {
         } catch (e) {}
       }
     }
-  }, [chartReady, candles, showEMA, emaConfigs, calculateEMA, symbol, interval]);
+  }, [chartReady, candles, indicators.ema.show, indicators.ema.configs, calculateEMA, symbol, interval]);
 
   // Manage Bollinger Bands on main chart
   useEffect(() => {
@@ -7561,11 +7266,11 @@ useEffect(() => {
       }
     };
 
-    const bbData = calculateBollingerBands(candles, bbPeriod, bbStdDev);
-    manageBBLine('upper', showBB, bbData.upper, '#9333ea', 0, 1 as LineWidth);
-    manageBBLine('middle', showBB, bbData.middle, '#9333ea', 2, 1 as LineWidth);
-    manageBBLine('lower', showBB, bbData.lower, '#9333ea', 0, 1 as LineWidth);
-  }, [chartReady, candles, showBB, bbPeriod, bbStdDev, calculateBollingerBands]);
+    const bbData = calculateBollingerBands(candles, indicators.bb.period, indicators.bb.stdDev);
+    manageBBLine('upper', indicators.bb.show, bbData.upper, '#9333ea', 0, 1 as LineWidth);
+    manageBBLine('middle', indicators.bb.show, bbData.middle, '#9333ea', 2, 1 as LineWidth);
+    manageBBLine('lower', indicators.bb.show, bbData.lower, '#9333ea', 0, 1 as LineWidth);
+  }, [chartReady, candles, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev, calculateBollingerBands]);
 
   // ========== BATCH 1 INDICATORS ==========
   
@@ -7575,8 +7280,8 @@ useEffect(() => {
     
     const chart = chartRef.current;
     
-    if (showSupertrend) {
-      const supertrendData = calculateSupertrend(candles, supertrendPeriod, supertrendMultiplier);
+    if (indicators.supertrend.show) {
+      const supertrendData = calculateSupertrend(candles, indicators.supertrend.period, indicators.supertrend.multiplier);
       
       if (supertrendData.length > 0) {
         if (!supertrendSeriesRef.current) {
@@ -7602,13 +7307,13 @@ useEffect(() => {
           supertrendSeriesRef.current.setData(chartData);
         } catch (e) {}
       }
-    } else if (!showSupertrend && supertrendSeriesRef.current) {
+    } else if (!indicators.supertrend.show && supertrendSeriesRef.current) {
       try {
         chart.removeSeries(supertrendSeriesRef.current);
       } catch (e) {}
       supertrendSeriesRef.current = null;
     }
-  }, [chartReady, candles, showSupertrend, supertrendPeriod, supertrendMultiplier]);
+  }, [chartReady, candles, indicators.supertrend.show, indicators.supertrend.period, indicators.supertrend.multiplier]);
   
   // VWAP Bands
   useEffect(() => {
@@ -7616,8 +7321,8 @@ useEffect(() => {
     
     const chart = chartRef.current;
     
-    if (showVWAPBands) {
-      const bandsData = calculateVWAPBands(candles, vwapBandsStdDev);
+    if (indicators.vwapTools.showBands) {
+      const bandsData = calculateVWAPBands(candles, indicators.vwapTools.bandsStdDev);
       
       if (bandsData.length > 0) {
         if (!vwapBandsUpperRef.current) {
@@ -7658,7 +7363,7 @@ useEffect(() => {
           vwapBandsLowerRef.current.setData(lowerData);
         } catch (e) {}
       }
-    } else if (!showVWAPBands) {
+    } else if (!indicators.vwapTools.showBands) {
       if (vwapBandsUpperRef.current) {
         try {
           chart.removeSeries(vwapBandsUpperRef.current);
@@ -7672,7 +7377,7 @@ useEffect(() => {
         vwapBandsLowerRef.current = null;
       }
     }
-  }, [chartReady, candles, showVWAPBands, vwapBandsStdDev]);
+  }, [chartReady, candles, indicators.vwapTools.showBands, indicators.vwapTools.bandsStdDev]);
   
   // Session VWAP
   useEffect(() => {
@@ -7680,7 +7385,7 @@ useEffect(() => {
     
     const chart = chartRef.current;
     
-    if (showSessionVWAP) {
+    if (indicators.vwapTools.showSession) {
       const sessionData = calculateSessionVWAP(candles);
       
       if (sessionData.asia.length > 0 && !sessionVWAPAsiaRef.current) {
@@ -7724,7 +7429,7 @@ useEffect(() => {
           sessionVWAPNYRef.current.setData(data);
         } catch (e) {}
       }
-    } else if (!showSessionVWAP) {
+    } else if (!indicators.vwapTools.showSession) {
       [sessionVWAPAsiaRef, sessionVWAPLondonRef, sessionVWAPNYRef].forEach(ref => {
         if (ref.current) {
           try {
@@ -7734,7 +7439,7 @@ useEffect(() => {
         }
       });
     }
-  }, [chartReady, candles, showSessionVWAP]);
+  }, [chartReady, candles, indicators.vwapTools.showSession]);
   
   // Order Blocks (SMC) - Rendered as boxes like FVG
   useEffect(() => {
@@ -7752,8 +7457,8 @@ useEffect(() => {
     });
     orderBlocksRefs.current = [];
     
-    if (showOrderBlocks) {
-      const orderBlocks = calculateOrderBlocks(candles, obSwingLength, orderBlockLength);
+    if (indicators.smc.showOrderBlocks) {
+      const orderBlocks = calculateOrderBlocks(candles, indicators.smc.obSwingLength, indicators.smc.orderBlockLength);
       const lastTime = candles[candles.length - 1].time;
       
       // Render each order block as a shaded box like FVG
@@ -7824,7 +7529,7 @@ useEffect(() => {
         } catch (e) {}
       }
     }
-  }, [chartReady, candles, showOrderBlocks, obSwingLength, orderBlockLength]);
+  }, [chartReady, candles, indicators.smc.showOrderBlocks, indicators.smc.obSwingLength, indicators.smc.orderBlockLength]);
   
   // Premium/Discount Zones (SMC)
   useEffect(() => {
@@ -7833,8 +7538,8 @@ useEffect(() => {
     const chart = chartRef.current;
     const refs = premiumDiscountRefs.current;
     
-    if (showPremiumDiscount) {
-      const pdData = calculatePremiumDiscount(candles, pdLookback);
+    if (indicators.smc.showPremiumDiscount) {
+      const pdData = calculatePremiumDiscount(candles, indicators.smc.pdLookback);
       
       if (pdData.length > 0) {
         // Equilibrium line
@@ -7917,14 +7622,14 @@ useEffect(() => {
         refs.discount = null;
       }
     }
-  }, [chartReady, candles, showPremiumDiscount, pdLookback]);
+  }, [chartReady, candles, indicators.smc.showPremiumDiscount, indicators.smc.pdLookback]);
   
   // ========== BATCH 3 INDICATORS ==========
   
   // Fetch higher timeframe data for SMA calculations
   useEffect(() => {
     const fetchHTFData = async () => {
-      const htfTimeframes = smaConfigs
+      const htfTimeframes = indicators.sma.configs
         .filter(c => c.timeframe !== 'current' && c.timeframe !== interval)
         .map(c => c.timeframe);
       
@@ -7953,10 +7658,10 @@ useEffect(() => {
       }
     };
     
-    if (showSMA && symbol) {
+    if (indicators.sma.show && symbol) {
       fetchHTFData();
     }
-  }, [showSMA, smaConfigs, symbol, interval]);
+  }, [indicators.sma.show, indicators.sma.configs, symbol, interval]);
 
   // SMA (Simple Moving Average) - Dynamic config list
   useEffect(() => {
@@ -7966,7 +7671,7 @@ useEffect(() => {
     const refs = smaSeriesRefs.current;
 
     // Remove old SMA series that are no longer in configs
-    const currentIds = new Set(smaConfigs.map(c => c.id));
+    const currentIds = new Set(indicators.sma.configs.map(c => c.id));
     Object.keys(refs).forEach(key => {
       if (!currentIds.has(key) && refs[key]) {
         try { chart.removeSeries(refs[key]!); } catch (e) {}
@@ -7974,7 +7679,7 @@ useEffect(() => {
       }
     });
 
-    if (!showSMA) {
+    if (!indicators.sma.show) {
       // Remove all SMA series when disabled
       Object.keys(refs).forEach(key => {
         if (refs[key]) {
@@ -7986,7 +7691,7 @@ useEffect(() => {
     }
 
     // Render each SMA config
-    for (const config of smaConfigs) {
+    for (const config of indicators.sma.configs) {
       let smaData: { time: any; value: number }[] = [];
       
       const isCurrentTimeframe = config.timeframe === 'current' || config.timeframe === interval;
@@ -8057,7 +7762,7 @@ useEffect(() => {
         refs[config.id]!.setData(smaData);
       } catch (e) {}
     }
-  }, [chartReady, candles, showSMA, smaConfigs, symbol, interval]);
+  }, [chartReady, candles, indicators.sma.show, indicators.sma.configs, symbol, interval]);
   
   // Parabolic SAR
   useEffect(() => {
@@ -8065,8 +7770,8 @@ useEffect(() => {
     
     const chart = chartRef.current;
     
-    if (showParabolicSAR) {
-      const sarData = calculateParabolicSAR(candles, sarStep, sarMax);
+    if (indicators.parabolicSAR.show) {
+      const sarData = calculateParabolicSAR(candles, indicators.parabolicSAR.step, indicators.parabolicSAR.max);
       
       if (sarData.length > 0 && !parabolicSARRef.current) {
         try {
@@ -8086,13 +7791,13 @@ useEffect(() => {
           parabolicSARRef.current.setData(chartData);
         } catch (e) {}
       }
-    } else if (!showParabolicSAR && parabolicSARRef.current) {
+    } else if (!indicators.parabolicSAR.show && parabolicSARRef.current) {
       try {
         chart.removeSeries(parabolicSARRef.current);
       } catch (e) {}
       parabolicSARRef.current = null;
     }
-  }, [chartReady, candles, showParabolicSAR, sarStep, sarMax]);
+  }, [chartReady, candles, indicators.parabolicSAR.show, indicators.parabolicSAR.step, indicators.parabolicSAR.max]);
 
   // Update BOS markers with horizontal lines
   useEffect(() => {
@@ -8123,7 +7828,7 @@ useEffect(() => {
       bosSeriesRefs.current = [];
     }
     
-    if (!showBOS) return;
+    if (!indicators.smc.showBOS) return;
 
     try {
       // Calculate both BOS and CHoCH to detect conflicts
@@ -8186,7 +7891,7 @@ useEffect(() => {
     } catch (e) {
       console.error('Error updating BOS markers:', e);
     }
-  }, [chartReady, candles, showBOS, chartBosSwingLength, calculateBOSandCHoCH]);
+  }, [chartReady, candles, indicators.smc.showBOS, chartBosSwingLength, calculateBOSandCHoCH]);
 
   // Update CHoCH markers with horizontal lines
   useEffect(() => {
@@ -8217,7 +7922,7 @@ useEffect(() => {
       chochSeriesRefs.current = [];
     }
     
-    if (!showCHoCH) return;
+    if (!indicators.smc.showCHoCH) return;
 
     try {
       // Use chart-only settings for CHoCH display (independent from strategy settings)
@@ -8247,7 +7952,7 @@ useEffect(() => {
     } catch (e) {
       console.error('Error updating CHoCH markers:', e);
     }
-  }, [chartReady, candles, showCHoCH, chartChochSwingLength, calculateBOSandCHoCH]);
+  }, [chartReady, candles, indicators.smc.showCHoCH, chartChochSwingLength, calculateBOSandCHoCH]);
 
   // Draw white lines for swing pivots (visual-only indicator)
   useEffect(() => {
@@ -8278,13 +7983,13 @@ useEffect(() => {
       swingPivotSeriesRefs.current = [];
     }
     
-    if (!showSwingPivots) return;
+    if (!indicators.smc.showSwingPivots) return;
 
     try {
       // Calculate swings at the user-specified swing length
-      const swings = calculateSwings(candles, swingPivotLength);
+      const swings = calculateSwings(candles, indicators.smc.swingPivotLength);
       
-      console.log(`🎯 Drawing ${swings.length} swing pivot markers (length: ${swingPivotLength})`);
+      console.log(`🎯 Drawing ${swings.length} swing pivot markers (length: ${indicators.smc.swingPivotLength})`);
       
       // Draw a white line for each swing pivot spanning 3 candles
       swings.forEach((swing) => {
@@ -8323,7 +8028,7 @@ useEffect(() => {
     } catch (e) {
       console.error('Error updating swing pivot markers:', e);
     }
-  }, [chartReady, candles, showSwingPivots, swingPivotLength, calculateSwings]);
+  }, [chartReady, candles, indicators.smc.showSwingPivots, indicators.smc.swingPivotLength, calculateSwings]);
 
   // Draw cyan lines for liquidity sweeps (visual-only indicator)
   useEffect(() => {
@@ -8413,7 +8118,7 @@ useEffect(() => {
       trendlineSeriesRefs.current = [];
     }
     
-    if (!showAutoTrendlines) return;
+    if (!indicators.smc.showAutoTrendlines) return;
 
     try {
       // Adaptive pivot length based on number of visible candles
@@ -8426,9 +8131,9 @@ useEffect(() => {
       })();
       
       // Use user-set pivot length if available, otherwise use adaptive
-      const effectivePivotLength = trendlinePivotLength || adaptivePivotLength;
+      const effectivePivotLength = indicators.smc.trendlinePivotLength || adaptivePivotLength;
       
-      const trendlines = detectTrendlines(candles, trendlineMinTouches, trendlineTolerance, effectivePivotLength);
+      const trendlines = detectTrendlines(candles, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, effectivePivotLength);
       
       trendlines.forEach(trendline => {
         const color = trendline.type === 'support' ? '#10b981' : '#ef4444'; // Green for support, red for resistance
@@ -8467,7 +8172,7 @@ useEffect(() => {
     } catch (e) {
       console.error('Error drawing auto trendlines:', e);
     }
-  }, [chartReady, candles, showAutoTrendlines, trendlineMinTouches, trendlineTolerance, trendlinePivotLength, detectTrendlines]);
+  }, [chartReady, candles, indicators.smc.showAutoTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectTrendlines]);
 
   // Add text labels overlay for BOS and CHoCH with zoom/pan support
   useEffect(() => {
@@ -8485,7 +8190,7 @@ useEffect(() => {
     }
 
     // If labels are disabled, don't create container
-    if (!showChartLabels) return;
+    if (!indicators.smc.showChartLabels) return;
 
     // Create container for labels
     const labelsContainer = document.createElement('div');
@@ -8595,7 +8300,7 @@ useEffect(() => {
     let bosData: any[] = [];
     let chochData: any[] = [];
     
-    if (showBOS) {
+    if (indicators.smc.showBOS) {
       try {
         const { bos } = calculateBOSandCHoCH(candles, chartBosSwingLength);
         bosData = bos.filter(b => !b.isLiquidityGrab);
@@ -8604,7 +8309,7 @@ useEffect(() => {
       }
     }
 
-    if (showCHoCH) {
+    if (indicators.smc.showCHoCH) {
       try {
         const { choch } = calculateBOSandCHoCH(candles, chartChochSwingLength);
         chochData = choch.filter(c => !c.isLiquidityGrab);
@@ -8619,7 +8324,7 @@ useEffect(() => {
     );
     
     // Add BOS labels (filtered to exclude CHoCH conflicts)
-    if (showBOS) {
+    if (indicators.smc.showBOS) {
       try {
         bosData.forEach(bosPoint => {
           const pivotKey = `${bosPoint.swingTime}_${bosPoint.swingPrice.toFixed(4)}`;
@@ -8644,7 +8349,7 @@ useEffect(() => {
     }
 
     // Add CHoCH labels
-    if (showCHoCH) {
+    if (indicators.smc.showCHoCH) {
       try {
         chochData.forEach(chochPoint => {
           const text = chochPoint.type === 'bullish' ? 'CHoCH↑' : 'CHoCH↓';
@@ -8724,7 +8429,7 @@ useEffect(() => {
         structureLabelsRef.current = null;
       }
     };
-  }, [chartReady, candles, showBOS, showCHoCH, showChartLabels, chartBosSwingLength, chartChochSwingLength, stratLiquidityGrab, liqGrabSwingLength, calculateBOSandCHoCH]);
+  }, [chartReady, candles, indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showChartLabels, chartBosSwingLength, chartChochSwingLength, stratLiquidityGrab, liqGrabSwingLength, calculateBOSandCHoCH]);
 
   // Update backtest trade markers with price level lines and shaded zones
   useEffect(() => {
@@ -9326,107 +9031,64 @@ useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
 
-  // WebSocket connection for real-time updates (like TradingView live candles)
-  useEffect(() => {
-    if (!symbol || !interval || candles.length === 0) return;
+  // WebSocket hook - manages real-time updates
+  useWebSocketConnection({
+    symbol,
+    interval,
+    enabled: true,
+    candlesLength: candles.length,
+    onKlineUpdate: useCallback((bar: CandleData, isClosed: boolean) => {
+      // Update chart only if bar time is >= last bar time
+      if (candleSeriesRef.current) {
+        try {
+          const lastData = candleSeriesRef.current.data();
+          if (lastData.length === 0 || bar.time >= (lastData[lastData.length - 1] as any).time) {
+            candleSeriesRef.current.update(bar as any);
+          }
+        } catch (err) {
+          // Silently ignore update errors for out-of-order data
+        }
+      }
 
-    // Use global Binance endpoint (works worldwide, not just USA)
-    const ws = new WebSocket('wss://stream.binance.com:9443/ws');
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log('📡 WebSocket connected for real-time updates');
-      ws.send(JSON.stringify({
-        method: 'SUBSCRIBE',
-        params: [
-          `${symbol.toLowerCase()}@kline_${interval}`,
-          `${symbol.toLowerCase()}@trade`,
-        ],
-        id: 1,
-      }));
-    };
-
-    ws.onerror = (error) => {
-      console.error('📡 WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('📡 WebSocket closed');
-    };
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      
-      if (msg.e === 'kline') {
-        const k = msg.k;
-        const bar: CandleData = {
-          time: k.t / 1000,
-          open: parseFloat(k.o),
-          high: parseFloat(k.h),
-          low: parseFloat(k.l),
-          close: parseFloat(k.c),
-          volume: parseFloat(k.v),
-        };
-
-        // Update chart only if bar time is >= last bar time (prevents "Cannot update oldest data" error)
-        if (candleSeriesRef.current) {
-          try {
-            const lastData = candleSeriesRef.current.data();
-            if (lastData.length === 0 || bar.time >= (lastData[lastData.length - 1] as any).time) {
-              candleSeriesRef.current.update(bar as any);
-            }
-          } catch (err) {
-            // Silently ignore update errors for out-of-order data
+      setCandles(prev => {
+        const newCandles = [...prev];
+        if (isClosed) { // Candle closed
+          if (bar.time > newCandles[newCandles.length - 1].time) {
+            newCandles.push(bar);
+            // Save delta for this closed candle
+            setDeltaHistory(prevHist => {
+              const delta = realDeltaData.get(bar.time) || currentDelta;
+              const timestampSeconds = bar.time > 9999999999 ? Math.floor(bar.time / 1000) : bar.time;
+              const newHist = [...prevHist, {
+                time: new Date(timestampSeconds * 1000).toLocaleTimeString(),
+                timestamp: timestampSeconds,
+                delta,
+                cumDelta: cumDelta,
+                isBull: bar.close >= bar.open,
+                volume: bar.volume
+              }];
+              return newHist.slice(-20);
+            });
+            setCurrentDelta(0);
+          } else {
+            newCandles[newCandles.length - 1] = bar;
+          }
+        } else {
+          // Update last candle in real-time
+          if (bar.time === newCandles[newCandles.length - 1].time) {
+            newCandles[newCandles.length - 1] = bar;
+          } else {
+            newCandles.push(bar);
           }
         }
-
-        setCandles(prev => {
-          const newCandles = [...prev];
-          if (k.x) { // Candle closed
-            if (bar.time > newCandles[newCandles.length - 1].time) {
-              newCandles.push(bar);
-              // Save delta for this closed candle (use real delta if available)
-              setDeltaHistory(prevHist => {
-                const delta = realDeltaData.get(bar.time) || currentDelta;
-                // API returns timestamps in milliseconds, chart uses seconds
-                const timestampSeconds = bar.time > 9999999999 ? Math.floor(bar.time / 1000) : bar.time;
-                const newHist = [...prevHist, {
-                  time: new Date(timestampSeconds * 1000).toLocaleTimeString(),
-                  timestamp: timestampSeconds, // Unix timestamp in seconds for chart matching
-                  delta,
-                  cumDelta: cumDelta,
-                  isBull: bar.close >= bar.open,
-                  volume: bar.volume
-                }];
-                return newHist.slice(-20); // Keep last 20
-              });
-              setCurrentDelta(0);
-            } else {
-              newCandles[newCandles.length - 1] = bar;
-            }
-          } else {
-            // Update last candle in real-time (live candle movement)
-            if (bar.time === newCandles[newCandles.length - 1].time) {
-              newCandles[newCandles.length - 1] = bar;
-            } else {
-              newCandles.push(bar);
-            }
-          }
-          return newCandles;
-        });
-      } else if (msg.e === 'trade') {
-        const qty = parseFloat(msg.q);
-        const isBuy = !msg.m; // Buyer is maker = sell, not maker = buy
-        const delta = isBuy ? qty : -qty;
-        setCurrentDelta(prev => prev + delta);
-        setCumDelta(prev => prev + delta);
-      }
-    };
-
-    return () => {
-      ws.close();
-    };
-  }, [symbol, interval, candles.length]);
+        return newCandles;
+      });
+    }, [realDeltaData, currentDelta, cumDelta]),
+    onTradeUpdate: useCallback((delta: number) => {
+      setCurrentDelta(prev => prev + delta);
+      setCumDelta(prev => prev + delta);
+    }, [])
+  });
 
   // Replay mode auto-play effect
   useEffect(() => {
@@ -9501,7 +9163,7 @@ useEffect(() => {
 
   // Create RSI chart
   useEffect(() => {
-    if (!showRSI || !rsiRef.current || candles.length === 0) return;
+    if (!indicators.rsi.show || !rsiRef.current || candles.length === 0) return;
     
     const chart = createChart(rsiRef.current, { 
       width: rsiRef.current.clientWidth, 
@@ -9526,7 +9188,7 @@ useEffect(() => {
     oscillatorChartsRef.current.set('RSI', chart);
     
     // Sync with main chart if sync is enabled
-    if (syncOscillatorScale && chartRef.current) {
+    if (indicators.syncOscillatorScale && chartRef.current) {
       try {
         const visibleRange = chartRef.current.timeScale().getVisibleRange();
         if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
@@ -9534,7 +9196,7 @@ useEffect(() => {
     }
     
     const line = chart.addSeries(LineSeries, { color: '#ffa726', lineWidth: 2 });
-    line.setData(calculateRSI(candles, rsiPeriod).map(d => ({ ...d, time: d.time as Time })));
+    line.setData(calculateRSI(candles, indicators.rsi.period).map(d => ({ ...d, time: d.time as Time })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
@@ -9546,11 +9208,11 @@ useEffect(() => {
       oscillatorChartsRef.current.delete('RSI');
       chart.remove();
     };
-  }, [showRSI, candles, rsiPeriod, calculateRSI]);
+  }, [indicators.rsi.show, candles, indicators.rsi.period, calculateRSI]);
 
   // Create MACD chart
   useEffect(() => {
-    if (!showMACD || !macdRef.current || candles.length === 0) return;
+    if (!indicators.macd.show || !macdRef.current || candles.length === 0) return;
     
     const chart = createChart(macdRef.current, { 
       width: macdRef.current.clientWidth, 
@@ -9575,14 +9237,14 @@ useEffect(() => {
     oscillatorChartsRef.current.set('MACD', chart);
     
     // Sync with main chart if sync is enabled
-    if (syncOscillatorScale && chartRef.current) {
+    if (indicators.syncOscillatorScale && chartRef.current) {
       try {
         const visibleRange = chartRef.current.timeScale().getVisibleRange();
         if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
       } catch (e) { /* ignore */ }
     }
     
-    const { macd, signal, hist } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
+    const { macd, signal, hist } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
     chart.addSeries(LineSeries, { color: '#26a69a', lineWidth: 2 }).setData(macd.map(d => ({ ...d, time: d.time as Time })));
     chart.addSeries(LineSeries, { color: '#ef5350', lineWidth: 2 }).setData(signal.map(d => ({ ...d, time: d.time as Time })));
     chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(hist.map(d => ({ ...d, time: d.time as Time })));
@@ -9591,11 +9253,11 @@ useEffect(() => {
       oscillatorChartsRef.current.delete('MACD');
       chart.remove();
     };
-  }, [showMACD, candles, macdFast, macdSlow, macdSignal, calculateMACD]);
+  }, [indicators.macd.show, candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, calculateMACD]);
 
   // Create OBV chart
   useEffect(() => {
-    if (!showOBV || !obvRef.current || candles.length === 0) return;
+    if (!indicators.obv.show || !obvRef.current || candles.length === 0) return;
     
     const chart = createChart(obvRef.current, { 
       width: obvRef.current.clientWidth, 
@@ -9620,7 +9282,7 @@ useEffect(() => {
     oscillatorChartsRef.current.set('OBV', chart);
     
     // Sync with main chart if sync is enabled
-    if (syncOscillatorScale && chartRef.current) {
+    if (indicators.syncOscillatorScale && chartRef.current) {
       try {
         const visibleRange = chartRef.current.timeScale().getVisibleRange();
         if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
@@ -9633,11 +9295,11 @@ useEffect(() => {
       oscillatorChartsRef.current.delete('OBV');
       chart.remove();
     };
-  }, [showOBV, candles, calculateOBV]);
+  }, [indicators.obv.show, candles, calculateOBV]);
 
   // Create Stochastic RSI chart
   useEffect(() => {
-    if (!showStochRSI || !stochRSIRef.current || candles.length === 0) return;
+    if (!indicators.stochRSI.show || !stochRSIRef.current || candles.length === 0) return;
     
     const chart = createChart(stochRSIRef.current, { 
       width: stochRSIRef.current.clientWidth, 
@@ -9662,14 +9324,14 @@ useEffect(() => {
     oscillatorChartsRef.current.set('StochRSI', chart);
     
     // Sync with main chart if sync is enabled
-    if (syncOscillatorScale && chartRef.current) {
+    if (indicators.syncOscillatorScale && chartRef.current) {
       try {
         const visibleRange = chartRef.current.timeScale().getVisibleRange();
         if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
       } catch (e) { /* ignore */ }
     }
     
-    const stochData = calculateStochasticRSI(candles, stochRSIPeriod);
+    const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
     const kLine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2, title: '%K' });
     const dLine = chart.addSeries(LineSeries, { color: '#f97316', lineWidth: 2, title: '%D' });
     
@@ -9686,11 +9348,11 @@ useEffect(() => {
       oscillatorChartsRef.current.delete('StochRSI');
       chart.remove();
     };
-  }, [showStochRSI, candles, stochRSIPeriod, calculateStochasticRSI]);
+  }, [indicators.stochRSI.show, candles, indicators.stochRSI.period, calculateStochasticRSI]);
 
   // Create Williams %R chart
   useEffect(() => {
-    if (!showWilliamsR || !williamsRRef.current || candles.length === 0) return;
+    if (!indicators.williamsR.show || !williamsRRef.current || candles.length === 0) return;
     
     const chart = createChart(williamsRRef.current, { 
       width: williamsRRef.current.clientWidth, 
@@ -9715,7 +9377,7 @@ useEffect(() => {
     oscillatorChartsRef.current.set('WilliamsR', chart);
     
     // Sync with main chart if sync is enabled
-    if (syncOscillatorScale && chartRef.current) {
+    if (indicators.syncOscillatorScale && chartRef.current) {
       try {
         const visibleRange = chartRef.current.timeScale().getVisibleRange();
         if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
@@ -9723,7 +9385,7 @@ useEffect(() => {
     }
     
     const line = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2 });
-    line.setData(calculateWilliamsR(candles, williamsRPeriod).map(d => ({ ...d, time: d.time as Time })));
+    line.setData(calculateWilliamsR(candles, indicators.williamsR.period).map(d => ({ ...d, time: d.time as Time })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
@@ -9735,11 +9397,11 @@ useEffect(() => {
       oscillatorChartsRef.current.delete('WilliamsR');
       chart.remove();
     };
-  }, [showWilliamsR, candles, williamsRPeriod, calculateWilliamsR]);
+  }, [indicators.williamsR.show, candles, indicators.williamsR.period, calculateWilliamsR]);
 
   // Create MFI chart
   useEffect(() => {
-    if (!showMFI || !mfiRef.current || candles.length === 0) return;
+    if (!indicators.mfi.show || !mfiRef.current || candles.length === 0) return;
     
     const chart = createChart(mfiRef.current, { 
       width: mfiRef.current.clientWidth, 
@@ -9764,7 +9426,7 @@ useEffect(() => {
     oscillatorChartsRef.current.set('MFI', chart);
     
     // Sync with main chart if sync is enabled
-    if (syncOscillatorScale && chartRef.current) {
+    if (indicators.syncOscillatorScale && chartRef.current) {
       try {
         const visibleRange = chartRef.current.timeScale().getVisibleRange();
         if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
@@ -9772,7 +9434,7 @@ useEffect(() => {
     }
     
     const line = chart.addSeries(LineSeries, { color: '#00bcd4', lineWidth: 2 });
-    line.setData(calculateMFI(candles, mfiPeriod).map(d => ({ ...d, time: d.time as Time })));
+    line.setData(calculateMFI(candles, indicators.mfi.period).map(d => ({ ...d, time: d.time as Time })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
@@ -9784,11 +9446,11 @@ useEffect(() => {
       oscillatorChartsRef.current.delete('MFI');
       chart.remove();
     };
-  }, [showMFI, candles, mfiPeriod, calculateMFI]);
+  }, [indicators.mfi.show, candles, indicators.mfi.period, calculateMFI]);
 
   // Create CCI chart
   useEffect(() => {
-    if (!showCCI || !cciRef.current || candles.length === 0) return;
+    if (!indicators.cci.show || !cciRef.current || candles.length === 0) return;
     
     const chart = createChart(cciRef.current, { 
       width: cciRef.current.clientWidth, 
@@ -9813,7 +9475,7 @@ useEffect(() => {
     oscillatorChartsRef.current.set('CCI', chart);
     
     // Sync with main chart if sync is enabled
-    if (syncOscillatorScale && chartRef.current) {
+    if (indicators.syncOscillatorScale && chartRef.current) {
       try {
         const visibleRange = chartRef.current.timeScale().getVisibleRange();
         if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
@@ -9821,7 +9483,7 @@ useEffect(() => {
     }
     
     const line = chart.addSeries(LineSeries, { color: '#ec4899', lineWidth: 2 });
-    line.setData(calculateCCI(candles, cciPeriod).map(d => ({ ...d, time: d.time as Time })));
+    line.setData(calculateCCI(candles, indicators.cci.period).map(d => ({ ...d, time: d.time as Time })));
     
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
     
@@ -9834,11 +9496,11 @@ useEffect(() => {
       oscillatorChartsRef.current.delete('CCI');
       chart.remove();
     };
-  }, [showCCI, candles, cciPeriod]);
+  }, [indicators.cci.show, candles, indicators.cci.period]);
 
   // Create ADX chart
   useEffect(() => {
-    if (!showADX || !adxRef.current || candles.length === 0) return;
+    if (!indicators.adx.show || !adxRef.current || candles.length === 0) return;
     
     const chart = createChart(adxRef.current, { 
       width: adxRef.current.clientWidth, 
@@ -9863,14 +9525,14 @@ useEffect(() => {
     oscillatorChartsRef.current.set('ADX', chart);
     
     // Sync with main chart if sync is enabled
-    if (syncOscillatorScale && chartRef.current) {
+    if (indicators.syncOscillatorScale && chartRef.current) {
       try {
         const visibleRange = chartRef.current.timeScale().getVisibleRange();
         if (visibleRange) chart.timeScale().setVisibleRange(visibleRange);
       } catch (e) { /* ignore */ }
     }
     
-    const adxData = calculateADX(candles, adxPeriod);
+    const adxData = calculateADX(candles, indicators.adx.period);
     const adxLine = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 2, title: 'ADX' });
     const plusDILine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, title: '+DI' });
     const minusDILine = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, title: '-DI' });
@@ -9888,12 +9550,12 @@ useEffect(() => {
       oscillatorChartsRef.current.delete('ADX');
       chart.remove();
     };
-  }, [showADX, candles, adxPeriod]);
+  }, [indicators.adx.show, candles, indicators.adx.period]);
 
   // ========== OSCILLATOR TIME SCALE SYNC ==========
   // Sync oscillator chart time scales with main chart when enabled
   useEffect(() => {
-    if (!syncOscillatorScale || !chartRef.current) return;
+    if (!indicators.syncOscillatorScale || !chartRef.current) return;
     
     const mainChart = chartRef.current;
     const timeScale = mainChart.timeScale();
@@ -9935,7 +9597,7 @@ useEffect(() => {
       }
       timeScale.unsubscribeVisibleTimeRangeChange(syncVisibleRange);
     };
-  }, [syncOscillatorScale]);
+  }, [indicators.syncOscillatorScale]);
 
   // ========== DIVERGENCE CALCULATION ==========
   // Calculate divergence from active oscillators
@@ -9951,8 +9613,8 @@ useEffect(() => {
     let oscillatorCount = 0;
     
     // Check RSI divergence
-    if (showRSI) {
-      const rsiData = calculateRSI(candles, rsiPeriod);
+    if (indicators.rsi.show) {
+      const rsiData = calculateRSI(candles, indicators.rsi.period);
       const rsiValues = rsiData.map(d => d.value);
       if (rsiValues.length > 0) {
         totalDivergence += detectDivergence(priceData.slice(-rsiValues.length), rsiValues);
@@ -9961,8 +9623,8 @@ useEffect(() => {
     }
     
     // Check MACD divergence (using histogram)
-    if (showMACD) {
-      const { hist } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
+    if (indicators.macd.show) {
+      const { hist } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
       const histValues = hist.map(d => d.value);
       if (histValues.length > 0) {
         totalDivergence += detectDivergence(priceData.slice(-histValues.length), histValues);
@@ -9971,7 +9633,7 @@ useEffect(() => {
     }
     
     // Check OBV divergence
-    if (showOBV) {
+    if (indicators.obv.show) {
       const obvData = calculateOBV(candles);
       const obvValues = obvData.map(d => d.value);
       if (obvValues.length > 0) {
@@ -9981,8 +9643,8 @@ useEffect(() => {
     }
     
     // Check Stoch RSI divergence
-    if (showStochRSI) {
-      const stochData = calculateStochasticRSI(candles, stochRSIPeriod);
+    if (indicators.stochRSI.show) {
+      const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
       const kValues = stochData.map(d => d.k);
       if (kValues.length > 0) {
         totalDivergence += detectDivergence(priceData.slice(-kValues.length), kValues);
@@ -9996,7 +9658,7 @@ useEffect(() => {
     setDivergenceStrength(clampedStrength);
     setDivergenceType(clampedStrength > 0 ? 'bullish' : clampedStrength < 0 ? 'bearish' : 'none');
     
-  }, [candles, showRSI, showMACD, showOBV, showStochRSI, rsiPeriod, macdFast, macdSlow, macdSignal, stochRSIPeriod, calculateRSI, calculateMACD, calculateOBV, calculateStochasticRSI, detectDivergence]);
+  }, [candles, indicators.rsi.show, indicators.macd.show, indicators.obv.show, indicators.stochRSI.show, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.stochRSI.period, calculateRSI, calculateMACD, calculateOBV, calculateStochasticRSI, detectDivergence]);
 
   // ========== INDICATOR REPORTS (Paid only) ==========
   // Generate brief contextual reports for active oscillators
@@ -10007,7 +9669,7 @@ useEffect(() => {
     
     switch (indicator) {
       case 'RSI': {
-        const rsiData = calculateRSI(candles, rsiPeriod);
+        const rsiData = calculateRSI(candles, indicators.rsi.period);
         const lastRSI = rsiData[rsiData.length - 1]?.value;
         if (!lastRSI) return { text: '', color: '' };
         if (lastRSI >= 70) return { text: `Overbought (${lastRSI.toFixed(0)})`, color: 'text-red-400' };
@@ -10015,7 +9677,7 @@ useEffect(() => {
         return { text: `Neutral (${lastRSI.toFixed(0)})`, color: 'text-gray-400' };
       }
       case 'MACD': {
-        const { macd, signal } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
+        const { macd, signal } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
         const lastMACD = macd[macd.length - 1]?.value;
         const lastSignal = signal[signal.length - 1]?.value;
         const prevMACD = macd[macd.length - 2]?.value;
@@ -10036,7 +9698,7 @@ useEffect(() => {
         return { text: 'Flat', color: 'text-gray-400' };
       }
       case 'ADX': {
-        const adxData = calculateADX(candles, adxPeriod);
+        const adxData = calculateADX(candles, indicators.adx.period);
         const lastADX = adxData[adxData.length - 1];
         if (!lastADX) return { text: '', color: '' };
         if (lastADX.adx >= 40) return { text: `Strong Trend (${lastADX.adx.toFixed(0)})`, color: 'text-blue-400' };
@@ -10044,7 +9706,7 @@ useEffect(() => {
         return { text: `Weak Trend (${lastADX.adx.toFixed(0)})`, color: 'text-gray-400' };
       }
       case 'StochRSI': {
-        const stochData = calculateStochasticRSI(candles, stochRSIPeriod);
+        const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
         const lastK = stochData[stochData.length - 1]?.k;
         if (!lastK) return { text: '', color: '' };
         if (lastK >= 80) return { text: `Overbought (${lastK.toFixed(0)})`, color: 'text-red-400' };
@@ -10052,7 +9714,7 @@ useEffect(() => {
         return { text: `Neutral (${lastK.toFixed(0)})`, color: 'text-gray-400' };
       }
       case 'MFI': {
-        const mfiData = calculateMFI(candles, mfiPeriod);
+        const mfiData = calculateMFI(candles, indicators.mfi.period);
         const lastMFI = mfiData[mfiData.length - 1]?.value;
         if (!lastMFI) return { text: '', color: '' };
         if (lastMFI >= 80) return { text: `Overbought (${lastMFI.toFixed(0)})`, color: 'text-red-400' };
@@ -10060,7 +9722,7 @@ useEffect(() => {
         return { text: `Neutral (${lastMFI.toFixed(0)})`, color: 'text-gray-400' };
       }
       case 'WilliamsR': {
-        const wrData = calculateWilliamsR(candles, williamsRPeriod);
+        const wrData = calculateWilliamsR(candles, indicators.williamsR.period);
         const lastWR = wrData[wrData.length - 1]?.value;
         if (!lastWR) return { text: '', color: '' };
         if (lastWR >= -20) return { text: `Overbought (${lastWR.toFixed(0)})`, color: 'text-red-400' };
@@ -10068,7 +9730,7 @@ useEffect(() => {
         return { text: `Neutral (${lastWR.toFixed(0)})`, color: 'text-gray-400' };
       }
       case 'CCI': {
-        const cciData = calculateCCI(candles, cciPeriod);
+        const cciData = calculateCCI(candles, indicators.cci.period);
         const lastCCI = cciData[cciData.length - 1]?.value;
         if (!lastCCI) return { text: '', color: '' };
         if (lastCCI >= 100) return { text: `Overbought (${lastCCI.toFixed(0)})`, color: 'text-red-400' };
@@ -10078,7 +9740,7 @@ useEffect(() => {
       default:
         return { text: '', color: '' };
     }
-  }, [candles, rsiPeriod, macdFast, macdSlow, macdSignal, adxPeriod, stochRSIPeriod, mfiPeriod, williamsRPeriod, cciPeriod, calculateRSI, calculateMACD, calculateOBV, calculateADX, calculateStochasticRSI, calculateMFI, calculateWilliamsR, calculateCCI]);
+  }, [candles, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.adx.period, indicators.stochRSI.period, indicators.mfi.period, indicators.williamsR.period, indicators.cci.period, calculateRSI, calculateMACD, calculateOBV, calculateADX, calculateStochasticRSI, calculateMFI, calculateWilliamsR, calculateCCI]);
 
   // Get per-oscillator divergence
   const getOscillatorDivergence = useCallback((indicator: string): { strength: number; type: 'bullish' | 'bearish' | 'none' } => {
@@ -10089,13 +9751,13 @@ useEffect(() => {
     
     switch (indicator) {
       case 'RSI': {
-        const rsiData = calculateRSI(candles, rsiPeriod);
+        const rsiData = calculateRSI(candles, indicators.rsi.period);
         const rsiValues = rsiData.map(d => d.value);
         if (rsiValues.length > 0) divergence = detectDivergence(priceData.slice(-rsiValues.length), rsiValues);
         break;
       }
       case 'MACD': {
-        const { hist } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
+        const { hist } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
         const histValues = hist.map(d => d.value);
         if (histValues.length > 0) divergence = detectDivergence(priceData.slice(-histValues.length), histValues);
         break;
@@ -10107,31 +9769,31 @@ useEffect(() => {
         break;
       }
       case 'StochRSI': {
-        const stochData = calculateStochasticRSI(candles, stochRSIPeriod);
+        const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
         const kValues = stochData.map(d => d.k);
         if (kValues.length > 0) divergence = detectDivergence(priceData.slice(-kValues.length), kValues);
         break;
       }
       case 'MFI': {
-        const mfiData = calculateMFI(candles, mfiPeriod);
+        const mfiData = calculateMFI(candles, indicators.mfi.period);
         const mfiValues = mfiData.map(d => d.value);
         if (mfiValues.length > 0) divergence = detectDivergence(priceData.slice(-mfiValues.length), mfiValues);
         break;
       }
       case 'WilliamsR': {
-        const wrData = calculateWilliamsR(candles, williamsRPeriod);
+        const wrData = calculateWilliamsR(candles, indicators.williamsR.period);
         const wrValues = wrData.map(d => d.value);
         if (wrValues.length > 0) divergence = detectDivergence(priceData.slice(-wrValues.length), wrValues);
         break;
       }
       case 'CCI': {
-        const cciData = calculateCCI(candles, cciPeriod);
+        const cciData = calculateCCI(candles, indicators.cci.period);
         const cciValues = cciData.map(d => d.value);
         if (cciValues.length > 0) divergence = detectDivergence(priceData.slice(-cciValues.length), cciValues);
         break;
       }
       case 'ADX': {
-        const adxData = calculateADX(candles, adxPeriod);
+        const adxData = calculateADX(candles, indicators.adx.period);
         const adxValues = adxData.map(d => d.adx);
         if (adxValues.length > 0) divergence = detectDivergence(priceData.slice(-adxValues.length), adxValues);
         break;
@@ -10140,7 +9802,7 @@ useEffect(() => {
     
     const clamped = Math.max(-3, Math.min(3, divergence));
     return { strength: clamped, type: clamped > 0 ? 'bullish' : clamped < 0 ? 'bearish' : 'none' };
-  }, [candles, rsiPeriod, macdFast, macdSlow, macdSignal, stochRSIPeriod, mfiPeriod, williamsRPeriod, cciPeriod, adxPeriod, calculateRSI, calculateMACD, calculateOBV, calculateStochasticRSI, calculateMFI, calculateWilliamsR, calculateCCI, calculateADX, detectDivergence]);
+  }, [candles, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.stochRSI.period, indicators.mfi.period, indicators.williamsR.period, indicators.cci.period, indicators.adx.period, calculateRSI, calculateMACD, calculateOBV, calculateStochasticRSI, calculateMFI, calculateWilliamsR, calculateCCI, calculateADX, detectDivergence]);
 
   // Mini divergence meter component for each oscillator
   const DivergenceMeter = ({ indicator }: { indicator: string }) => {
@@ -10178,7 +9840,7 @@ useEffect(() => {
 
   // ADX Trend Strength Meter - uses +DI/-DI for direction and ADX value for strength
   const TrendStrengthMeter = () => {
-    const adxData = calculateADX(candles, adxPeriod);
+    const adxData = calculateADX(candles, indicators.adx.period);
     const lastADX = adxData[adxData.length - 1];
     
     if (!lastADX) {
@@ -11613,19 +11275,19 @@ useEffect(() => {
                       {/* Main toggles */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showFVG} onCheckedChange={() => handleSMCToolToggle('FVG', showFVG, setShowFVG)} id="show-fvg" data-testid="switch-fvg" disabled={!isPaidTier && !showFVG} />
+                          <Switch checked={indicators.smc.showFVG} onCheckedChange={() => handleSMCToolToggle('FVG', indicators.smc.showFVG, indicators.smc.setShowFVG)} id="show-fvg" data-testid="switch-fvg" disabled={!isPaidTier && !indicators.smc.showFVG} />
                           <Label htmlFor="show-fvg" className="text-sm text-white cursor-pointer">FVG {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showBOS} onCheckedChange={() => handleSMCToolToggle('BOS', showBOS, setShowBOS)} id="show-bos" data-testid="switch-bos" disabled={!isPaidTier && !showBOS} />
+                          <Switch checked={indicators.smc.showBOS} onCheckedChange={() => handleSMCToolToggle('BOS', indicators.smc.showBOS, indicators.smc.setShowBOS)} id="show-bos" data-testid="switch-bos" disabled={!isPaidTier && !indicators.smc.showBOS} />
                           <Label htmlFor="show-bos" className="text-sm text-white cursor-pointer">BOS {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showCHoCH} onCheckedChange={() => handleSMCToolToggle('CHoCH', showCHoCH, setShowCHoCH)} id="show-choch" data-testid="switch-choch" disabled={!isPaidTier && !showCHoCH} />
+                          <Switch checked={indicators.smc.showCHoCH} onCheckedChange={() => handleSMCToolToggle('CHoCH', indicators.smc.showCHoCH, indicators.smc.setShowCHoCH)} id="show-choch" data-testid="switch-choch" disabled={!isPaidTier && !indicators.smc.showCHoCH} />
                           <Label htmlFor="show-choch" className="text-sm text-white cursor-pointer">CHoCH {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showSwingPivots} onCheckedChange={() => handleSMCToolToggle('Swing Pivots', showSwingPivots, setShowSwingPivots)} id="show-pivots" data-testid="switch-pivots" disabled={!isPaidTier && !showSwingPivots} />
+                          <Switch checked={indicators.smc.showSwingPivots} onCheckedChange={() => handleSMCToolToggle('Swing Pivots', indicators.smc.showSwingPivots, indicators.smc.setShowSwingPivots)} id="show-pivots" data-testid="switch-pivots" disabled={!isPaidTier && !indicators.smc.showSwingPivots} />
                           <Label htmlFor="show-pivots" className="text-sm text-white cursor-pointer">Swing Pivots {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
@@ -11633,15 +11295,15 @@ useEffect(() => {
                           <Label htmlFor="show-liquidity" className="text-sm text-white cursor-pointer">Liquidity Sweeps {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showOrderBlocks} onCheckedChange={() => handleSMCToolToggle('Order Blocks', showOrderBlocks, setShowOrderBlocks)} id="show-order-blocks" data-testid="switch-order-blocks" disabled={!isPaidTier && !showOrderBlocks} />
+                          <Switch checked={indicators.smc.showOrderBlocks} onCheckedChange={() => handleSMCToolToggle('Order Blocks', indicators.smc.showOrderBlocks, indicators.smc.setShowOrderBlocks)} id="show-order-blocks" data-testid="switch-order-blocks" disabled={!isPaidTier && !indicators.smc.showOrderBlocks} />
                           <Label htmlFor="show-order-blocks" className="text-sm text-white cursor-pointer">Order Blocks {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showPremiumDiscount} onCheckedChange={() => handleSMCToolToggle('Premium/Discount', showPremiumDiscount, setShowPremiumDiscount)} id="show-premium-discount" data-testid="switch-premium-discount" disabled={!isPaidTier && !showPremiumDiscount} />
+                          <Switch checked={indicators.smc.showPremiumDiscount} onCheckedChange={() => handleSMCToolToggle('Premium/Discount', indicators.smc.showPremiumDiscount, indicators.smc.setShowPremiumDiscount)} id="show-premium-discount" data-testid="switch-premium-discount" disabled={!isPaidTier && !indicators.smc.showPremiumDiscount} />
                           <Label htmlFor="show-premium-discount" className="text-sm text-white cursor-pointer">Premium/Discount {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showChartLabels} onCheckedChange={() => handleSMCToolToggle('Chart Labels', showChartLabels, setShowChartLabels)} id="show-labels" data-testid="switch-labels" disabled={!isPaidTier && !showChartLabels} />
+                          <Switch checked={indicators.smc.showChartLabels} onCheckedChange={() => handleSMCToolToggle('Chart Labels', indicators.smc.showChartLabels, indicators.smc.setShowChartLabels)} id="show-labels" data-testid="switch-labels" disabled={!isPaidTier && !indicators.smc.showChartLabels} />
                           <Label htmlFor="show-labels" className="text-sm text-white cursor-pointer">Chart Labels {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
@@ -11708,13 +11370,13 @@ useEffect(() => {
                       )}
                       
                       {/* FVG Settings */}
-                      {showFVG && (
+                      {indicators.smc.showFVG && (
                         <div className="bg-slate-800/50 rounded-lg p-3 space-y-2">
                           <div className="text-xs font-semibold text-blue-400 mb-2">FVG Settings</div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="flex items-center justify-between">
                               <Label className="text-xs text-gray-300">High Value Only</Label>
-                              <Switch checked={showHighValueOnly} onCheckedChange={setShowHighValueOnly} />
+                              <Switch checked={indicators.smc.showHighValueOnly} onCheckedChange={indicators.smc.setShowHighValueOnly} />
                             </div>
                             <div className="flex items-center justify-between">
                               <Label className="text-xs text-gray-300">Volume Threshold</Label>
@@ -11733,7 +11395,7 @@ useEffect(() => {
                       )}
                       
                       {/* BOS Settings */}
-                      {showBOS && (
+                      {indicators.smc.showBOS && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">BOS Settings</div>
                           <div className="flex items-center justify-between">
@@ -11756,7 +11418,7 @@ useEffect(() => {
                       )}
                       
                       {/* CHoCH Settings */}
-                      {showCHoCH && (
+                      {indicators.smc.showCHoCH && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">CHoCH Settings</div>
                           <div className="flex items-center justify-between">
@@ -11778,7 +11440,7 @@ useEffect(() => {
                       )}
                       
                       {/* Swing Pivots Settings */}
-                      {showSwingPivots && (
+                      {indicators.smc.showSwingPivots && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Swing Pivot Settings</div>
                           <div className="flex items-center justify-between">
@@ -11787,11 +11449,11 @@ useEffect(() => {
                               type="number"
                               min="1"
                               max="50"
-                              value={swingPivotLengthInput}
+                              value={indicators.smc.swingPivotLengthInput}
                               onChange={(e) => {
-                                setSwingPivotLengthInput(e.target.value);
+                                indicators.smc.setSwingPivotLengthInput(e.target.value);
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val >= 1) setSwingPivotLength(val);
+                                if (!isNaN(val) && val >= 1) indicators.smc.setSwingPivotLength(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                             />
@@ -11822,7 +11484,7 @@ useEffect(() => {
                       )}
                       
                       {/* Order Blocks Settings */}
-                      {showOrderBlocks && (
+                      {indicators.smc.showOrderBlocks && (
                         <div className="bg-slate-800/50 rounded-lg p-3 space-y-2">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Order Blocks Settings</div>
                           <div className="grid grid-cols-2 gap-3">
@@ -11832,11 +11494,11 @@ useEffect(() => {
                                 type="number"
                                 min="5"
                                 max="50"
-                                value={obSwingLengthInput}
+                                value={indicators.smc.obSwingLengthInput}
                                 onChange={(e) => {
-                                  setObSwingLengthInput(e.target.value);
+                                  indicators.smc.setObSwingLengthInput(e.target.value);
                                   const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setObSwingLength(val);
+                                  if (!isNaN(val) && val >= 5) indicators.smc.setObSwingLength(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-ob-swing-length"
@@ -11849,11 +11511,11 @@ useEffect(() => {
                                 min="20"
                                 max="200"
                                 step="10"
-                                value={orderBlockLengthInput}
+                                value={indicators.smc.orderBlockLengthInput}
                                 onChange={(e) => {
-                                  setOrderBlockLengthInput(e.target.value);
+                                  indicators.smc.setOrderBlockLengthInput(e.target.value);
                                   const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 20) setOrderBlockLength(val);
+                                  if (!isNaN(val) && val >= 20) indicators.smc.setOrderBlockLength(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-ob-lookback"
@@ -11865,7 +11527,7 @@ useEffect(() => {
                       )}
                       
                       {/* Premium/Discount Settings */}
-                      {showPremiumDiscount && (
+                      {indicators.smc.showPremiumDiscount && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Premium/Discount Settings</div>
                           <div className="flex items-center justify-between">
@@ -11874,11 +11536,11 @@ useEffect(() => {
                               type="number"
                               min="20"
                               max="200"
-                              value={pdLookbackInput}
+                              value={indicators.smc.pdLookbackInput}
                               onChange={(e) => {
-                                setPdLookbackInput(e.target.value);
+                                indicators.smc.setPdLookbackInput(e.target.value);
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val >= 20) setPdLookback(val);
+                                if (!isNaN(val) && val >= 20) indicators.smc.setPdLookback(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               data-testid="input-pd-lookback"
@@ -11927,46 +11589,46 @@ useEffect(() => {
                       {/* Main toggles */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div className="flex items-center gap-2">
-                          <Switch checked={showEMA} onCheckedChange={() => handleTrendToolToggle('EMA', showEMA, setShowEMA)} id="show-ema" data-testid="switch-ema" />
+                          <Switch checked={indicators.ema.show} onCheckedChange={() => handleTrendToolToggle('EMA', indicators.ema.show, indicators.ema.setShow)} id="show-ema" data-testid="switch-ema" />
                           <Label htmlFor="show-ema" className="text-sm text-white cursor-pointer">EMA</Label>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={showSMA} onCheckedChange={() => handleTrendToolToggle('SMA', showSMA, setShowSMA)} id="show-sma" data-testid="switch-sma" />
+                          <Switch checked={indicators.sma.show} onCheckedChange={() => handleTrendToolToggle('SMA', indicators.sma.show, indicators.sma.setShow)} id="show-sma" data-testid="switch-sma" />
                           <Label htmlFor="show-sma" className="text-sm text-white cursor-pointer">SMA</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showBB} onCheckedChange={() => handleTrendToolToggle('Bollinger Bands', showBB, setShowBB)} id="show-bb" data-testid="switch-bollinger-bands" disabled={!isPaidTier && !showBB} />
+                          <Switch checked={indicators.bb.show} onCheckedChange={() => handleTrendToolToggle('Bollinger Bands', indicators.bb.show, indicators.bb.setShow)} id="show-bb" data-testid="switch-bollinger-bands" disabled={!isPaidTier && !indicators.bb.show} />
                           <Label htmlFor="show-bb" className="text-sm text-white cursor-pointer">Bollinger Bands {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showSupertrend} onCheckedChange={() => handleTrendToolToggle('Supertrend', showSupertrend, setShowSupertrend)} id="show-supertrend" data-testid="switch-supertrend" disabled={!isPaidTier && !showSupertrend} />
+                          <Switch checked={indicators.supertrend.show} onCheckedChange={() => handleTrendToolToggle('Supertrend', indicators.supertrend.show, indicators.supertrend.setShow)} id="show-supertrend" data-testid="switch-supertrend" disabled={!isPaidTier && !indicators.supertrend.show} />
                           <Label htmlFor="show-supertrend" className="text-sm text-white cursor-pointer">Supertrend {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showParabolicSAR} onCheckedChange={() => handleTrendToolToggle('Parabolic SAR', showParabolicSAR, setShowParabolicSAR)} id="show-sar" data-testid="switch-sar" disabled={!isPaidTier && !showParabolicSAR} />
+                          <Switch checked={indicators.parabolicSAR.show} onCheckedChange={() => handleTrendToolToggle('Parabolic SAR', indicators.parabolicSAR.show, indicators.parabolicSAR.setShow)} id="show-sar" data-testid="switch-sar" disabled={!isPaidTier && !indicators.parabolicSAR.show} />
                           <Label htmlFor="show-sar" className="text-sm text-white cursor-pointer">Parabolic SAR {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showAutoTrendlines} onCheckedChange={() => handleTrendToolToggle('Auto Trendlines', showAutoTrendlines, setShowAutoTrendlines)} id="show-trendlines" data-testid="switch-trendlines" disabled={!isPaidTier && !showAutoTrendlines} />
+                          <Switch checked={indicators.smc.showAutoTrendlines} onCheckedChange={() => handleTrendToolToggle('Auto Trendlines', indicators.smc.showAutoTrendlines, indicators.smc.setShowAutoTrendlines)} id="show-trendlines" data-testid="switch-trendlines" disabled={!isPaidTier && !indicators.smc.showAutoTrendlines} />
                           <Label htmlFor="show-trendlines" className="text-sm text-white cursor-pointer">Auto Trendlines {!isPaidTier && '🔒'}</Label>
                         </div>
                       </div>
                       
                       {/* EMA Settings - Dynamic List */}
-                      {showEMA && (
+                      {indicators.ema.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="flex justify-between items-center mb-2">
                             <div className="text-xs font-semibold text-blue-400">EMA Lines</div>
-                            {emaConfigs.length < 6 && (
+                            {indicators.ema.configs.length < 6 && (
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 className="h-6 text-xs text-green-400 hover:text-green-300"
                                 onClick={() => {
                                   const newId = `ema${Date.now()}`;
-                                  const colorIdx = emaConfigs.length % MA_COLORS.length;
-                                  setEmaConfigs([...emaConfigs, { id: newId, period: 50, timeframe: 'current', color: MA_COLORS[colorIdx] }]);
-                                  setEmaInputs(prev => ({ ...prev, [newId]: '50' }));
+                                  const colorIdx = indicators.ema.configs.length % MA_COLORS.length;
+                                  indicators.ema.setConfigs([...indicators.ema.configs, { id: newId, period: 50, timeframe: 'current', color: MA_COLORS[colorIdx] }]);
+                                  indicators.ema.setInputs(prev => ({ ...prev, [newId]: '50' }));
                                 }}
                               >
                                 + Add EMA
@@ -11974,45 +11636,45 @@ useEffect(() => {
                             )}
                           </div>
                           <div className="space-y-2">
-                            {emaConfigs.map((config, idx) => (
+                            {indicators.ema.configs.map((config, idx) => (
                               <div key={config.id} className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: config.color }} />
                                 <input
                                   type="text"
                                   inputMode="numeric"
                                   pattern="[0-9]*"
-                                  value={emaInputs[config.id] ?? String(config.period)}
+                                  value={indicators.ema.inputs[config.id] ?? String(config.period)}
                                   onChange={(e) => {
                                     const inputVal = e.target.value;
-                                    setEmaInputs(prev => ({ ...prev, [config.id]: inputVal }));
+                                    indicators.ema.setInputs(prev => ({ ...prev, [config.id]: inputVal }));
                                     const val = parseInt(inputVal);
                                     if (!isNaN(val) && val >= 5 && val <= 500) {
-                                      setEmaConfigs(emaConfigs.map(c => c.id === config.id ? { ...c, period: val } : c));
+                                      indicators.ema.setConfigs(indicators.ema.configs.map(c => c.id === config.id ? { ...c, period: val } : c));
                                     }
                                   }}
                                   onBlur={(e) => {
                                     const val = parseInt(e.target.value);
                                     if (isNaN(val) || val < 5) {
-                                      setEmaInputs(prev => ({ ...prev, [config.id]: String(config.period) }));
+                                      indicators.ema.setInputs(prev => ({ ...prev, [config.id]: String(config.period) }));
                                     }
                                   }}
                                   className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 />
                                 <select
                                   value={config.timeframe}
-                                  onChange={(e) => setEmaConfigs(emaConfigs.map(c => c.id === config.id ? { ...c, timeframe: e.target.value } : c))}
+                                  onChange={(e) => indicators.ema.setConfigs(indicators.ema.configs.map(c => c.id === config.id ? { ...c, timeframe: e.target.value } : c))}
                                   className="bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 >
                                   {MA_TIMEFRAMES.map(tf => (
                                     <option key={tf.value} value={tf.value}>{tf.label}</option>
                                   ))}
                                 </select>
-                                {emaConfigs.length > 1 && (
+                                {indicators.ema.configs.length > 1 && (
                                   <Button
                                     size="sm"
                                     variant="ghost"
                                     className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
-                                    onClick={() => setEmaConfigs(emaConfigs.filter(c => c.id !== config.id))}
+                                    onClick={() => indicators.ema.setConfigs(indicators.ema.configs.filter(c => c.id !== config.id))}
                                   >
                                     ×
                                   </Button>
@@ -12024,7 +11686,7 @@ useEffect(() => {
                       )}
                       
                       {/* Bollinger Bands Settings */}
-                      {showBB && (
+                      {indicators.bb.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Bollinger Bands Settings</div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -12034,11 +11696,11 @@ useEffect(() => {
                                 type="number"
                                 min="5"
                                 max="100"
-                                value={bbPeriodInput}
+                                value={indicators.bb.periodInput}
                                 onChange={(e) => {
-                                  setBbPeriodInput(e.target.value);
+                                  indicators.bb.setPeriodInput(e.target.value);
                                   const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setBbPeriod(val);
+                                  if (!isNaN(val) && val >= 5) indicators.bb.setPeriod(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-bb-period"
@@ -12051,11 +11713,11 @@ useEffect(() => {
                                 min="0.5"
                                 max="4"
                                 step="0.1"
-                                value={bbStdDevInput}
+                                value={indicators.bb.stdDevInput}
                                 onChange={(e) => {
-                                  setBbStdDevInput(e.target.value);
+                                  indicators.bb.setStdDevInput(e.target.value);
                                   const val = parseFloat(e.target.value);
-                                  if (!isNaN(val) && val >= 0.5) setBbStdDev(val);
+                                  if (!isNaN(val) && val >= 0.5) indicators.bb.setStdDev(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-bb-stddev"
@@ -12066,7 +11728,7 @@ useEffect(() => {
                       )}
                       
                       {/* Auto Trendlines Settings */}
-                      {showAutoTrendlines && (
+                      {indicators.smc.showAutoTrendlines && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Auto Trendline Settings</div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -12076,11 +11738,11 @@ useEffect(() => {
                                 type="number"
                                 min="3"
                                 max="5"
-                                value={trendlineMinTouchesInput}
+                                value={indicators.smc.trendlineMinTouchesInput}
                                 onChange={(e) => {
-                                  setTrendlineMinTouchesInput(e.target.value);
+                                  indicators.smc.setTrendlineMinTouchesInput(e.target.value);
                                   const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 3) setTrendlineMinTouches(val);
+                                  if (!isNaN(val) && val >= 3) indicators.smc.setTrendlineMinTouches(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               />
@@ -12092,11 +11754,11 @@ useEffect(() => {
                                 min="0.1"
                                 max="1.0"
                                 step="0.1"
-                                value={trendlineToleranceInput}
+                                value={indicators.smc.trendlineToleranceInput}
                                 onChange={(e) => {
-                                  setTrendlineToleranceInput(e.target.value);
+                                  indicators.smc.setTrendlineToleranceInput(e.target.value);
                                   const val = parseFloat(e.target.value) / 100;
-                                  if (!isNaN(val) && val >= 0.001) setTrendlineTolerance(val);
+                                  if (!isNaN(val) && val >= 0.001) indicators.smc.setTrendlineTolerance(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               />
@@ -12107,11 +11769,11 @@ useEffect(() => {
                                 type="number"
                                 min="5"
                                 max="20"
-                                value={trendlinePivotLengthInput}
+                                value={indicators.smc.trendlinePivotLengthInput}
                                 onChange={(e) => {
-                                  setTrendlinePivotLengthInput(e.target.value);
+                                  indicators.smc.setTrendlinePivotLengthInput(e.target.value);
                                   const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setTrendlinePivotLength(val);
+                                  if (!isNaN(val) && val >= 5) indicators.smc.setTrendlinePivotLength(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               />
@@ -12121,19 +11783,19 @@ useEffect(() => {
                       )}
                       
                       {/* SMA Settings - Dynamic List */}
-                      {showSMA && (
+                      {indicators.sma.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="flex justify-between items-center mb-2">
                             <div className="text-xs font-semibold text-amber-400">SMA Lines</div>
-                            {smaConfigs.length < 6 && (
+                            {indicators.sma.configs.length < 6 && (
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 className="h-6 text-xs text-green-400 hover:text-green-300"
                                 onClick={() => {
                                   const newId = `sma${Date.now()}`;
-                                  const colorIdx = smaConfigs.length % MA_COLORS.length;
-                                  setSmaConfigs([...smaConfigs, { id: newId, period: 50, timeframe: 'current', color: MA_COLORS[colorIdx] }]);
+                                  const colorIdx = indicators.sma.configs.length % MA_COLORS.length;
+                                  indicators.sma.setConfigs([...indicators.sma.configs, { id: newId, period: 50, timeframe: 'current', color: MA_COLORS[colorIdx] }]);
                                 }}
                               >
                                 + Add SMA
@@ -12141,7 +11803,7 @@ useEffect(() => {
                             )}
                           </div>
                           <div className="space-y-2">
-                            {smaConfigs.map((config, idx) => (
+                            {indicators.sma.configs.map((config, idx) => (
                               <div key={config.id} className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: config.color }} />
                                 <input
@@ -12152,26 +11814,26 @@ useEffect(() => {
                                   onChange={(e) => {
                                     const val = parseInt(e.target.value);
                                     if (!isNaN(val) && val >= 5) {
-                                      setSmaConfigs(smaConfigs.map(c => c.id === config.id ? { ...c, period: val } : c));
+                                      indicators.sma.setConfigs(indicators.sma.configs.map(c => c.id === config.id ? { ...c, period: val } : c));
                                     }
                                   }}
                                   className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 />
                                 <select
                                   value={config.timeframe}
-                                  onChange={(e) => setSmaConfigs(smaConfigs.map(c => c.id === config.id ? { ...c, timeframe: e.target.value } : c))}
+                                  onChange={(e) => indicators.sma.setConfigs(indicators.sma.configs.map(c => c.id === config.id ? { ...c, timeframe: e.target.value } : c))}
                                   className="bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 >
                                   {MA_TIMEFRAMES.map(tf => (
                                     <option key={tf.value} value={tf.value}>{tf.label}</option>
                                   ))}
                                 </select>
-                                {smaConfigs.length > 1 && (
+                                {indicators.sma.configs.length > 1 && (
                                   <Button
                                     size="sm"
                                     variant="ghost"
                                     className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
-                                    onClick={() => setSmaConfigs(smaConfigs.filter(c => c.id !== config.id))}
+                                    onClick={() => indicators.sma.setConfigs(indicators.sma.configs.filter(c => c.id !== config.id))}
                                   >
                                     ×
                                   </Button>
@@ -12183,7 +11845,7 @@ useEffect(() => {
                       )}
                       
                       {/* Supertrend Settings */}
-                      {showSupertrend && (
+                      {indicators.supertrend.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Supertrend Settings</div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -12193,11 +11855,11 @@ useEffect(() => {
                                 type="number"
                                 min="5"
                                 max="50"
-                                value={supertrendPeriodInput}
+                                value={indicators.supertrend.periodInput}
                                 onChange={(e) => {
-                                  setSupertrendPeriodInput(e.target.value);
+                                  indicators.supertrend.setPeriodInput(e.target.value);
                                   const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setSupertrendPeriod(val);
+                                  if (!isNaN(val) && val >= 5) indicators.supertrend.setPeriod(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-supertrend-period"
@@ -12210,11 +11872,11 @@ useEffect(() => {
                                 min="1"
                                 max="10"
                                 step="0.5"
-                                value={supertrendMultiplierInput}
+                                value={indicators.supertrend.multiplierInput}
                                 onChange={(e) => {
-                                  setSupertrendMultiplierInput(e.target.value);
+                                  indicators.supertrend.setMultiplierInput(e.target.value);
                                   const val = parseFloat(e.target.value);
-                                  if (!isNaN(val) && val >= 1) setSupertrendMultiplier(val);
+                                  if (!isNaN(val) && val >= 1) indicators.supertrend.setMultiplier(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-supertrend-multiplier"
@@ -12226,7 +11888,7 @@ useEffect(() => {
                       )}
                       
                       {/* Parabolic SAR Settings */}
-                      {showParabolicSAR && (
+                      {indicators.parabolicSAR.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Parabolic SAR Settings</div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -12237,11 +11899,11 @@ useEffect(() => {
                                 min="0.01"
                                 max="0.1"
                                 step="0.01"
-                                value={sarStepInput}
+                                value={indicators.parabolicSAR.stepInput}
                                 onChange={(e) => {
-                                  setSarStepInput(e.target.value);
+                                  indicators.parabolicSAR.setStepInput(e.target.value);
                                   const val = parseFloat(e.target.value);
-                                  if (!isNaN(val) && val >= 0.01) setSarStep(val);
+                                  if (!isNaN(val) && val >= 0.01) indicators.parabolicSAR.setStep(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-sar-step"
@@ -12254,11 +11916,11 @@ useEffect(() => {
                                 min="0.1"
                                 max="0.5"
                                 step="0.05"
-                                value={sarMaxInput}
+                                value={indicators.parabolicSAR.maxInput}
                                 onChange={(e) => {
-                                  setSarMaxInput(e.target.value);
+                                  indicators.parabolicSAR.setMaxInput(e.target.value);
                                   const val = parseFloat(e.target.value);
-                                  if (!isNaN(val) && val >= 0.1) setSarMax(val);
+                                  if (!isNaN(val) && val >= 0.1) indicators.parabolicSAR.setMax(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-sar-max"
@@ -12303,33 +11965,33 @@ useEffect(() => {
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div className="flex items-center gap-2">
-                          <Switch checked={showVWAPDaily} onCheckedChange={setShowVWAPDaily} id="show-vwap-daily" data-testid="switch-vwap-daily" />
+                          <Switch checked={indicators.vwap.showDaily} onCheckedChange={indicators.vwap.setShowDaily} id="show-vwap-daily" data-testid="switch-vwap-daily" />
                           <Label htmlFor="show-vwap-daily" className="text-sm text-white cursor-pointer">Daily</Label>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={showVWAPWeekly} onCheckedChange={setShowVWAPWeekly} id="show-vwap-weekly" data-testid="switch-vwap-weekly" />
+                          <Switch checked={indicators.vwap.showWeekly} onCheckedChange={indicators.vwap.setShowWeekly} id="show-vwap-weekly" data-testid="switch-vwap-weekly" />
                           <Label htmlFor="show-vwap-weekly" className="text-sm text-white cursor-pointer">Weekly</Label>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={showVWAPMonthly} onCheckedChange={setShowVWAPMonthly} id="show-vwap-monthly" data-testid="switch-vwap-monthly" />
+                          <Switch checked={indicators.vwap.showMonthly} onCheckedChange={indicators.vwap.setShowMonthly} id="show-vwap-monthly" data-testid="switch-vwap-monthly" />
                           <Label htmlFor="show-vwap-monthly" className="text-sm text-white cursor-pointer">Monthly</Label>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={showVWAPRolling} onCheckedChange={setShowVWAPRolling} id="show-vwap-rolling" data-testid="switch-vwap-rolling" />
+                          <Switch checked={indicators.vwap.showRolling} onCheckedChange={indicators.vwap.setShowRolling} id="show-vwap-rolling" data-testid="switch-vwap-rolling" />
                           <Label htmlFor="show-vwap-rolling" className="text-sm text-white cursor-pointer">Rolling VWAP</Label>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={showVWAPBands} onCheckedChange={setShowVWAPBands} id="show-vwap-bands" data-testid="switch-vwap-bands" />
+                          <Switch checked={indicators.vwapTools.showBands} onCheckedChange={indicators.vwapTools.setShowBands} id="show-vwap-bands" data-testid="switch-vwap-bands" />
                           <Label htmlFor="show-vwap-bands" className="text-sm text-white cursor-pointer">VWAP Bands</Label>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={showSessionVWAP} onCheckedChange={setShowSessionVWAP} id="show-session-vwap" data-testid="switch-session-vwap" />
+                          <Switch checked={indicators.vwapTools.showSession} onCheckedChange={indicators.vwapTools.setShowSession} id="show-session-vwap" data-testid="switch-session-vwap" />
                           <Label htmlFor="show-session-vwap" className="text-sm text-white cursor-pointer">Session VWAP</Label>
                         </div>
                       </div>
                       
                       {/* Rolling VWAP Settings */}
-                      {showVWAPRolling && (
+                      {indicators.vwap.showRolling && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Rolling VWAP Settings</div>
                           <div className="flex items-center justify-between">
@@ -12338,11 +12000,11 @@ useEffect(() => {
                               type="number"
                               min="5"
                               max="200"
-                              value={vwapRollingPeriodInput}
+                              value={indicators.vwap.rollingPeriodInput}
                               onChange={(e) => {
-                                setVwapRollingPeriodInput(e.target.value);
+                                indicators.vwap.setRollingPeriodInput(e.target.value);
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val >= 5) setVwapRollingPeriod(val);
+                                if (!isNaN(val) && val >= 5) indicators.vwap.setRollingPeriod(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               data-testid="input-vwap-rolling-period"
@@ -12353,7 +12015,7 @@ useEffect(() => {
                       )}
                       
                       {/* VWAP Bands Settings */}
-                      {showVWAPBands && (
+                      {indicators.vwapTools.showBands && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">VWAP Bands Settings</div>
                           <div className="flex items-center justify-between">
@@ -12363,11 +12025,11 @@ useEffect(() => {
                               min="0.5"
                               max="4"
                               step="0.5"
-                              value={vwapBandsStdDevInput}
+                              value={indicators.vwapTools.bandsStdDevInput}
                               onChange={(e) => {
-                                setVwapBandsStdDevInput(e.target.value);
+                                indicators.vwapTools.setBandsStdDevInput(e.target.value);
                                 const val = parseFloat(e.target.value);
-                                if (!isNaN(val) && val >= 0.5) setVwapBandsStdDev(val);
+                                if (!isNaN(val) && val >= 0.5) indicators.vwapTools.setBandsStdDev(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               data-testid="input-vwap-bands-stddev"
@@ -12419,8 +12081,8 @@ useEffect(() => {
                       <div className="flex items-center justify-between bg-slate-800/50 rounded-lg p-2">
                         <div className="flex items-center gap-2">
                           <Switch 
-                            checked={syncOscillatorScale} 
-                            onCheckedChange={setSyncOscillatorScale}
+                            checked={indicators.syncOscillatorScale} 
+                            onCheckedChange={indicators.setSyncOscillatorScale}
                             id="sync-oscillator-scale" 
                             data-testid="switch-sync-oscillator-scale" 
                           />
@@ -12434,41 +12096,41 @@ useEffect(() => {
                       {/* Main toggles */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div className="flex items-center gap-2">
-                          <Switch checked={showRSI} onCheckedChange={() => handleOscillatorToggle('RSI', showRSI, setShowRSI)} id="show-rsi" data-testid="switch-rsi" />
+                          <Switch checked={indicators.rsi.show} onCheckedChange={() => handleOscillatorToggle('RSI', indicators.rsi.show, indicators.rsi.setShow)} id="show-rsi" data-testid="switch-rsi" />
                           <Label htmlFor="show-rsi" className="text-sm text-white cursor-pointer">RSI</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showStochRSI} onCheckedChange={() => handleOscillatorToggle('Stochastic RSI', showStochRSI, setShowStochRSI)} id="show-stoch-rsi" data-testid="switch-stoch-rsi" disabled={!isPaidTier && !showStochRSI} />
+                          <Switch checked={indicators.stochRSI.show} onCheckedChange={() => handleOscillatorToggle('Stochastic RSI', indicators.stochRSI.show, indicators.stochRSI.setShow)} id="show-stoch-rsi" data-testid="switch-stoch-rsi" disabled={!isPaidTier && !indicators.stochRSI.show} />
                           <Label htmlFor="show-stoch-rsi" className="text-sm text-white cursor-pointer">Stochastic RSI {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={showMACD} onCheckedChange={() => handleOscillatorToggle('MACD', showMACD, setShowMACD)} id="show-macd" data-testid="switch-macd" />
+                          <Switch checked={indicators.macd.show} onCheckedChange={() => handleOscillatorToggle('MACD', indicators.macd.show, indicators.macd.setShow)} id="show-macd" data-testid="switch-macd" />
                           <Label htmlFor="show-macd" className="text-sm text-white cursor-pointer">MACD</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showOBV} onCheckedChange={() => handleOscillatorToggle('OBV', showOBV, setShowOBV)} id="show-obv" data-testid="switch-obv" disabled={!isPaidTier && !showOBV} />
+                          <Switch checked={indicators.obv.show} onCheckedChange={() => handleOscillatorToggle('OBV', indicators.obv.show, indicators.obv.setShow)} id="show-obv" data-testid="switch-obv" disabled={!isPaidTier && !indicators.obv.show} />
                           <Label htmlFor="show-obv" className="text-sm text-white cursor-pointer">OBV {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showMFI} onCheckedChange={() => handleOscillatorToggle('MFI', showMFI, setShowMFI)} id="show-mfi" data-testid="switch-mfi" disabled={!isPaidTier && !showMFI} />
+                          <Switch checked={indicators.mfi.show} onCheckedChange={() => handleOscillatorToggle('MFI', indicators.mfi.show, indicators.mfi.setShow)} id="show-mfi" data-testid="switch-mfi" disabled={!isPaidTier && !indicators.mfi.show} />
                           <Label htmlFor="show-mfi" className="text-sm text-white cursor-pointer">MFI {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showWilliamsR} onCheckedChange={() => handleOscillatorToggle('Williams %R', showWilliamsR, setShowWilliamsR)} id="show-williams-r" data-testid="switch-williams-r" disabled={!isPaidTier && !showWilliamsR} />
+                          <Switch checked={indicators.williamsR.show} onCheckedChange={() => handleOscillatorToggle('Williams %R', indicators.williamsR.show, indicators.williamsR.setShow)} id="show-williams-r" data-testid="switch-williams-r" disabled={!isPaidTier && !indicators.williamsR.show} />
                           <Label htmlFor="show-williams-r" className="text-sm text-white cursor-pointer">Williams %R {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showCCI} onCheckedChange={() => handleOscillatorToggle('CCI', showCCI, setShowCCI)} id="show-cci" data-testid="switch-cci" disabled={!isPaidTier && !showCCI} />
+                          <Switch checked={indicators.cci.show} onCheckedChange={() => handleOscillatorToggle('CCI', indicators.cci.show, indicators.cci.setShow)} id="show-cci" data-testid="switch-cci" disabled={!isPaidTier && !indicators.cci.show} />
                           <Label htmlFor="show-cci" className="text-sm text-white cursor-pointer">CCI {!isPaidTier && '🔒'}</Label>
                         </div>
                         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-                          <Switch checked={showADX} onCheckedChange={() => handleOscillatorToggle('ADX', showADX, setShowADX)} id="show-adx" data-testid="switch-adx" disabled={!isPaidTier && !showADX} />
+                          <Switch checked={indicators.adx.show} onCheckedChange={() => handleOscillatorToggle('ADX', indicators.adx.show, indicators.adx.setShow)} id="show-adx" data-testid="switch-adx" disabled={!isPaidTier && !indicators.adx.show} />
                           <Label htmlFor="show-adx" className="text-sm text-white cursor-pointer">ADX {!isPaidTier && '🔒'}</Label>
                         </div>
                       </div>
                       
                       {/* RSI Settings */}
-                      {showRSI && (
+                      {indicators.rsi.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">RSI Settings</div>
                           <div className="flex items-center justify-between">
@@ -12477,11 +12139,11 @@ useEffect(() => {
                               type="number"
                               min="5"
                               max="50"
-                              value={rsiPeriodInput}
+                              value={indicators.rsi.periodInput}
                               onChange={(e) => {
-                                setRsiPeriodInput(e.target.value);
+                                indicators.rsi.setPeriodInput(e.target.value);
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val >= 5) setRsiPeriod(val);
+                                if (!isNaN(val) && val >= 5) indicators.rsi.setPeriod(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               data-testid="input-rsi-period"
@@ -12491,7 +12153,7 @@ useEffect(() => {
                       )}
                       
                       {/* MACD Settings */}
-                      {showMACD && (
+                      {indicators.macd.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">MACD Settings</div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -12501,11 +12163,11 @@ useEffect(() => {
                                 type="number"
                                 min="5"
                                 max="50"
-                                value={macdFastInput}
+                                value={indicators.macd.fastInput}
                                 onChange={(e) => {
-                                  setMacdFastInput(e.target.value);
+                                  indicators.macd.setFastInput(e.target.value);
                                   const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setMacdFast(val);
+                                  if (!isNaN(val) && val >= 5) indicators.macd.setFast(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-macd-fast"
@@ -12517,11 +12179,11 @@ useEffect(() => {
                                 type="number"
                                 min="10"
                                 max="100"
-                                value={macdSlowInput}
+                                value={indicators.macd.slowInput}
                                 onChange={(e) => {
-                                  setMacdSlowInput(e.target.value);
+                                  indicators.macd.setSlowInput(e.target.value);
                                   const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 10) setMacdSlow(val);
+                                  if (!isNaN(val) && val >= 10) indicators.macd.setSlow(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-macd-slow"
@@ -12533,11 +12195,11 @@ useEffect(() => {
                                 type="number"
                                 min="5"
                                 max="50"
-                                value={macdSignalInput}
+                                value={indicators.macd.signalInput}
                                 onChange={(e) => {
-                                  setMacdSignalInput(e.target.value);
+                                  indicators.macd.setSignalInput(e.target.value);
                                   const val = parseInt(e.target.value);
-                                  if (!isNaN(val) && val >= 5) setMacdSignal(val);
+                                  if (!isNaN(val) && val >= 5) indicators.macd.setSignal(val);
                                 }}
                                 className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                                 data-testid="input-macd-signal"
@@ -12548,7 +12210,7 @@ useEffect(() => {
                       )}
                       
                       {/* MFI Settings */}
-                      {showMFI && (
+                      {indicators.mfi.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">MFI Settings</div>
                           <div className="flex items-center justify-between">
@@ -12557,11 +12219,11 @@ useEffect(() => {
                               type="number"
                               min="5"
                               max="50"
-                              value={mfiPeriodInput}
+                              value={indicators.mfi.periodInput}
                               onChange={(e) => {
-                                setMfiPeriodInput(e.target.value);
+                                indicators.mfi.setPeriodInput(e.target.value);
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val >= 5) setMfiPeriod(val);
+                                if (!isNaN(val) && val >= 5) indicators.mfi.setPeriod(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               data-testid="input-mfi-period"
@@ -12571,7 +12233,7 @@ useEffect(() => {
                       )}
                       
                       {/* Stochastic RSI Settings */}
-                      {showStochRSI && (
+                      {indicators.stochRSI.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Stochastic RSI Settings</div>
                           <div className="flex items-center justify-between">
@@ -12580,11 +12242,11 @@ useEffect(() => {
                               type="number"
                               min="5"
                               max="50"
-                              value={stochRSIPeriodInput}
+                              value={indicators.stochRSI.periodInput}
                               onChange={(e) => {
-                                setStochRSIPeriodInput(e.target.value);
+                                indicators.stochRSI.setPeriodInput(e.target.value);
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val >= 5) setStochRSIPeriod(val);
+                                if (!isNaN(val) && val >= 5) indicators.stochRSI.setPeriod(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               data-testid="input-stoch-rsi-period"
@@ -12595,7 +12257,7 @@ useEffect(() => {
                       )}
                       
                       {/* Williams %R Settings */}
-                      {showWilliamsR && (
+                      {indicators.williamsR.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">Williams %R Settings</div>
                           <div className="flex items-center justify-between">
@@ -12604,11 +12266,11 @@ useEffect(() => {
                               type="number"
                               min="5"
                               max="50"
-                              value={williamsRPeriodInput}
+                              value={indicators.williamsR.periodInput}
                               onChange={(e) => {
-                                setWilliamsRPeriodInput(e.target.value);
+                                indicators.williamsR.setPeriodInput(e.target.value);
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val >= 5) setWilliamsRPeriod(val);
+                                if (!isNaN(val) && val >= 5) indicators.williamsR.setPeriod(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               data-testid="input-williams-r-period"
@@ -12619,7 +12281,7 @@ useEffect(() => {
                       )}
                       
                       {/* CCI Settings */}
-                      {showCCI && (
+                      {indicators.cci.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">CCI Settings</div>
                           <div className="flex items-center justify-between">
@@ -12628,11 +12290,11 @@ useEffect(() => {
                               type="number"
                               min="5"
                               max="50"
-                              value={cciPeriodInput}
+                              value={indicators.cci.periodInput}
                               onChange={(e) => {
-                                setCciPeriodInput(e.target.value);
+                                indicators.cci.setPeriodInput(e.target.value);
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val >= 5) setCciPeriod(val);
+                                if (!isNaN(val) && val >= 5) indicators.cci.setPeriod(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               data-testid="input-cci-period"
@@ -12643,7 +12305,7 @@ useEffect(() => {
                       )}
                       
                       {/* ADX Settings */}
-                      {showADX && (
+                      {indicators.adx.show && (
                         <div className="bg-slate-800/50 rounded-lg p-3">
                           <div className="text-xs font-semibold text-blue-400 mb-2">ADX Settings</div>
                           <div className="flex items-center justify-between">
@@ -12652,11 +12314,11 @@ useEffect(() => {
                               type="number"
                               min="5"
                               max="50"
-                              value={adxPeriodInput}
+                              value={indicators.adx.periodInput}
                               onChange={(e) => {
-                                setAdxPeriodInput(e.target.value);
+                                indicators.adx.setPeriodInput(e.target.value);
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val >= 5) setAdxPeriod(val);
+                                if (!isNaN(val) && val >= 5) indicators.adx.setPeriod(val);
                               }}
                               className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
                               data-testid="input-adx-period"
@@ -12695,15 +12357,15 @@ useEffect(() => {
         </Card>
 
 {/* Oscillator Charts - Conditionally rendered based on mode */}
-{!isFullscreen && (showRSI || showStochRSI || showMACD || showOBV || showWilliamsR || showMFI || showCCI || showADX) && (
+{!isFullscreen && (indicators.rsi.show || indicators.stochRSI.show || indicators.macd.show || indicators.obv.show || indicators.williamsR.show || indicators.mfi.show || indicators.cci.show || indicators.adx.show) && (
   <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-    {showRSI && (() => {
+    {indicators.rsi.show && (() => {
       const report = isPaidTier ? getIndicatorReport('RSI') : null;
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-white text-sm">RSI ({rsiPeriod})</CardTitle>
+              <CardTitle className="text-white text-sm">RSI ({indicators.rsi.period})</CardTitle>
               {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
             </div>
           </CardHeader>
@@ -12714,13 +12376,13 @@ useEffect(() => {
         </Card>
       );
     })()}
-    {showStochRSI && (() => {
+    {indicators.stochRSI.show && (() => {
       const report = isPaidTier ? getIndicatorReport('StochRSI') : null;
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-white text-sm">Stochastic RSI ({stochRSIPeriod})</CardTitle>
+              <CardTitle className="text-white text-sm">Stochastic RSI ({indicators.stochRSI.period})</CardTitle>
               {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
             </div>
           </CardHeader>
@@ -12731,13 +12393,13 @@ useEffect(() => {
         </Card>
       );
     })()}
-    {showMACD && (() => {
+    {indicators.macd.show && (() => {
       const report = isPaidTier ? getIndicatorReport('MACD') : null;
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-white text-sm">MACD ({macdFast}, {macdSlow}, {macdSignal})</CardTitle>
+              <CardTitle className="text-white text-sm">MACD ({indicators.macd.fast}, {indicators.macd.slow}, {indicators.macd.signal})</CardTitle>
               {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
             </div>
           </CardHeader>
@@ -12748,7 +12410,7 @@ useEffect(() => {
         </Card>
       );
     })()}
-    {showOBV && (() => {
+    {indicators.obv.show && (() => {
       const report = isPaidTier ? getIndicatorReport('OBV') : null;
       return (
         <Card className="bg-slate-800 border-slate-700">
@@ -12765,13 +12427,13 @@ useEffect(() => {
         </Card>
       );
     })()}
-    {showWilliamsR && (() => {
+    {indicators.williamsR.show && (() => {
       const report = isPaidTier ? getIndicatorReport('WilliamsR') : null;
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-white text-sm">Williams %R ({williamsRPeriod})</CardTitle>
+              <CardTitle className="text-white text-sm">Williams %R ({indicators.williamsR.period})</CardTitle>
               {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
             </div>
           </CardHeader>
@@ -12782,13 +12444,13 @@ useEffect(() => {
         </Card>
       );
     })()}
-    {showMFI && (() => {
+    {indicators.mfi.show && (() => {
       const report = isPaidTier ? getIndicatorReport('MFI') : null;
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-white text-sm">Money Flow Index ({mfiPeriod})</CardTitle>
+              <CardTitle className="text-white text-sm">Money Flow Index ({indicators.mfi.period})</CardTitle>
               {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
             </div>
           </CardHeader>
@@ -12799,13 +12461,13 @@ useEffect(() => {
         </Card>
       );
     })()}
-    {showCCI && (() => {
+    {indicators.cci.show && (() => {
       const report = isPaidTier ? getIndicatorReport('CCI') : null;
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-white text-sm">CCI ({cciPeriod})</CardTitle>
+              <CardTitle className="text-white text-sm">CCI ({indicators.cci.period})</CardTitle>
               {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
             </div>
           </CardHeader>
@@ -12816,13 +12478,13 @@ useEffect(() => {
         </Card>
       );
     })()}
-    {showADX && (() => {
+    {indicators.adx.show && (() => {
       const report = isPaidTier ? getIndicatorReport('ADX') : null;
       return (
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader className="pb-1">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-white text-sm">ADX ({adxPeriod})</CardTitle>
+              <CardTitle className="text-white text-sm">ADX ({indicators.adx.period})</CardTitle>
               {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
             </div>
           </CardHeader>
@@ -12841,13 +12503,13 @@ useEffect(() => {
         onClose={() => setShowOscillatorPanel(false)}
         candles={candles}
         mainChartRef={chartRef}
-        rsiPeriod={rsiPeriod}
-        macdFast={macdFast}
-        macdSlow={macdSlow}
-        macdSignal={macdSignal}
-        stochRSIPeriod={stochRSIPeriod}
-        cciPeriod={cciPeriod}
-        williamsRPeriod={williamsRPeriod}
+        rsiPeriod={indicators.rsi.period}
+        macdFast={indicators.macd.fast}
+        macdSlow={indicators.macd.slow}
+        macdSignal={indicators.macd.signal}
+        stochRSIPeriod={indicators.stochRSI.period}
+        cciPeriod={indicators.cci.period}
+        williamsRPeriod={indicators.williamsR.period}
         calculateRSI={calculateRSI}
         calculateMACD={calculateMACD}
         calculateStochRSI={calculateStochRSI}
