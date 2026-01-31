@@ -6468,10 +6468,16 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
               <TrendlineMenu
                 position={trendlineMenuPos}
                 trendlineColor={drawnTrendlines.find(l => l.id === selectedTrendline)?.color}
+                opacity={drawnTrendlines.find(l => l.id === selectedTrendline)?.opacity ?? 1}
                 onDelete={deleteTrendline}
                 onToggleColorSubmenu={() => setActiveSubmenu(activeSubmenu === 'color' ? null : 'color')}
                 onToggleExtendSubmenu={() => setActiveSubmenu(activeSubmenu === 'extend' ? null : 'extend')}
                 onToggleLabelSubmenu={() => setActiveSubmenu(activeSubmenu === 'label' ? null : 'label')}
+                onOpacityChange={(value) => {
+                  if (selectedTrendline) {
+                    updateTrendline(selectedTrendline, { opacity: value });
+                  }
+                }}
                 onSaveAsFavorite={saveAsFavorite}
                 onDragStart={(e) => {
                   setDraggingMenu(true);
@@ -6690,6 +6696,7 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
               <HorizontalMenu
                 position={horizontalMenuPos}
                 horizontalColor={drawnHorizontals.find(l => l.id === selectedHorizontal)?.color}
+                opacity={drawnHorizontals.find(l => l.id === selectedHorizontal)?.opacity ?? 1}
                 onDelete={deleteHorizontal}
                 onMove={() => {
                   setMovingHorizontal(selectedHorizontal);
@@ -6698,6 +6705,11 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
                 }}
                 onToggleColorSubmenu={() => setActiveSubmenu(activeSubmenu === 'h-color' ? null : 'h-color')}
                 onToggleLabelSubmenu={() => setActiveSubmenu(activeSubmenu === 'h-label' ? null : 'h-label')}
+                onOpacityChange={(value) => {
+                  if (selectedHorizontal) {
+                    updateHorizontal(selectedHorizontal, { opacity: value });
+                  }
+                }}
                 onSaveAsFavorite={saveHorizontalAsFavorite}
                 onDragStart={(e) => {
                   setDraggingMenu(true);
@@ -6814,6 +6826,7 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
                 <ChannelMenu
                   position={channelMenuPos}
                   channelColor={channel?.color}
+                  opacity={channel?.opacity ?? 1}
                   onDelete={deleteChannel}
                   onMove={() => {
                     setMovingChannel(selectedChannel);
@@ -6822,6 +6835,11 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
                   }}
                   onToggleColorSubmenu={() => setActiveSubmenu(activeSubmenu === 'ch-color' ? null : 'ch-color')}
                   onToggleLinesSubmenu={() => setActiveSubmenu(activeSubmenu === 'ch-lines' ? null : 'ch-lines')}
+                  onOpacityChange={(value) => {
+                    if (selectedChannel) {
+                      updateChannel(selectedChannel, { opacity: value });
+                    }
+                  }}
                   onSaveAsFavorite={() => {
                     if (channel) {
                       const defaults = { color: channel.color, opacity: channel.opacity, lineStyle: channel.lineStyle, thickness: channel.thickness, internalLineStyle: channel.internalLineStyle, internalLineColor: channel.internalLineColor };

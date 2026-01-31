@@ -7,10 +7,12 @@ describe('TrendlineMenu', () => {
   const defaultProps = {
     position: { x: 100, y: 200 },
     trendlineColor: '#3b82f6',
+    opacity: 1,
     onDelete: vi.fn(),
     onToggleColorSubmenu: vi.fn(),
     onToggleExtendSubmenu: vi.fn(),
     onToggleLabelSubmenu: vi.fn(),
+    onOpacityChange: vi.fn(),
     onSaveAsFavorite: vi.fn(),
     onDragStart: vi.fn(),
     activeSubmenu: null,

@@ -14,6 +14,7 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
   const customLabels = drawing.style?.customLabels || {};
   const levelColors = drawing.style?.levelColors || {};
   const boundaryColors = drawing.style?.boundaryColors || {};
+  const opacity = drawing.style?.opacity ?? 1;
   const fillOpacity = drawing.style?.fillOpacity ?? 0.1;
   const hideLabels = drawing.style?.hideLabels || false;
   const lineStyle = drawing.style?.lineStyle || 'solid';
@@ -37,6 +38,13 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
         value={internalLineStyle}
         onChange={(style) => onUpdate({ internalLineStyle: style })}
         label="Internal Line Style"
+      />
+
+      {/* Opacity */}
+      <OpacitySlider
+        value={opacity}
+        onChange={(val) => onUpdate({ opacity: val })}
+        label="Line Opacity"
       />
 
       {/* Internal Markers */}

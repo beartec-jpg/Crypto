@@ -7,10 +7,12 @@ describe('ChannelMenu', () => {
   const defaultProps = {
     position: { x: 200, y: 300 },
     channelColor: '#22c55e',
+    opacity: 1,
     onDelete: vi.fn(),
     onMove: vi.fn(),
     onToggleColorSubmenu: vi.fn(),
     onToggleLinesSubmenu: vi.fn(),
+    onOpacityChange: vi.fn(),
     onSaveAsFavorite: vi.fn(),
     onDragStart: vi.fn(),
     activeSubmenu: null,
