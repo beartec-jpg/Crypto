@@ -20,7 +20,7 @@ export function useDrawingsPersistence(symbol: string, interval: string) {
   const { data: drawings = [], isLoading, refetch: refetchDrawings } = useQuery<Drawing[]>({
     queryKey: ['/api/crypto/chart-drawings', symbol, interval],
     queryFn: async () => {
-      const response = await authenticatedApiRequest('GET', `/api/crypto/chart-drawings?symbol=${symbol}&interval=${interval}`);
+      const response = await authenticatedApiRequest('GET', `/api/crypto/chart-drawings?symbol=${symbol}&interval=${interval}`) as unknown;
       return response as Drawing[];
     },
   });

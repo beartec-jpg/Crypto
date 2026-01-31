@@ -9,7 +9,12 @@ import { WilliamsRPanel } from './oscillators/WilliamsRPanel';
 import { CCIPanel } from './oscillators/CCIPanel';
 import { ADXPanel } from './oscillators/ADXPanel';
 import { calculateRSI, calculateMACD } from '@/lib/indicators/momentum';
-import { calculateStochasticRSI, calculateWilliamsR, calculateCCI, calculateADX } from '@/lib/indicators/trend';
+import { 
+  calculateStochasticRSI, 
+  calculateWilliamsR, 
+  calculateCCI, 
+  calculateADX 
+} from '@/lib/indicators';
 import { calculateOBV, calculateMFI } from '@/lib/indicators/volume';
 
 interface CandleData {

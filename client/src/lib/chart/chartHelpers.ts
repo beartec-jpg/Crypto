@@ -1,4 +1,4 @@
-import { IChartApi } from 'lightweight-charts';
+import { IChartApi, ISeriesApi } from 'lightweight-charts';
 
 interface CandleData {
   time: number;
@@ -50,14 +50,14 @@ export function getVisibleCandles(
 }
 
 /**
- * Converts a price value to a Y coordinate on the chart
+ * Converts a price value to a Y coordinate on the chart (requires series)
  */
 export function priceToCoordinate(
-  chart: IChartApi,
+  series: ISeriesApi<any>,
   price: number
 ): number | null {
   try {
-    return chart.priceScale('right').priceToCoordinate(price);
+    return series.priceToCoordinate(price);
   } catch (error) {
     console.error('Failed to convert price to coordinate:', error);
     return null;
@@ -65,14 +65,14 @@ export function priceToCoordinate(
 }
 
 /**
- * Converts a Y coordinate to a price value on the chart
+ * Converts a Y coordinate to a price value on the chart (requires series)
  */
 export function coordinateToPrice(
-  chart: IChartApi,
+  series: ISeriesApi<any>,
   coordinate: number
 ): number | null {
   try {
-    return chart.priceScale('right').coordinateToPrice(coordinate);
+    return series.coordinateToPrice(coordinate);
   } catch (error) {
     console.error('Failed to convert coordinate to price:', error);
     return null;
