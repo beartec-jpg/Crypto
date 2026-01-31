@@ -32,7 +32,7 @@ export function LineStyleSelector({
           >
             <div className="flex flex-col items-center gap-1">
               <span className="text-xs capitalize">{style}</span>
-              <svg width="24" height="4" viewBox="0 0 24 4">
+              <svg width="24" height="4" viewBox="0 0 24 4" aria-hidden="true">
                 {style === 'solid' && (
                   <line x1="0" y1="2" x2="24" y2="2" stroke="currentColor" strokeWidth="2" />
                 )}

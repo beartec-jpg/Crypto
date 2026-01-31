@@ -63,6 +63,18 @@ function applyOpacity(color: string, opacity: number): string {
   return color;
 }
 
+// Helper function to apply line style dash patterns
+function applyLineStyle(ctx: CanvasRenderingContext2D, lineStyle?: 'solid' | 'dashed' | 'dotted') {
+  const style = lineStyle || 'solid';
+  if (style === 'solid') {
+    ctx.setLineDash([]);
+  } else if (style === 'dotted') {
+    ctx.setLineDash([2, 2]);
+  } else if (style === 'dashed') {
+    ctx.setLineDash([5, 5]);
+  }
+}
+
 class TrendLineRenderer implements IPrimitivePaneRenderer {
   private _point1: DrawingPoint;
   private _point2: DrawingPoint;
@@ -143,14 +155,7 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
       const colorWithOpacity = applyOpacity(this._style.color, opacity);
       
       // Apply line style
-      const lineStyle = this._style.lineStyle || 'solid';
-      if (lineStyle === 'solid') {
-        ctx.setLineDash([]);
-      } else if (lineStyle === 'dotted') {
-        ctx.setLineDash([2, 2]);
-      } else if (lineStyle === 'dashed') {
-        ctx.setLineDash([5, 5]);
-      }
+      applyLineStyle(ctx, this._style.lineStyle);
       
       ctx.beginPath();
       ctx.strokeStyle = colorWithOpacity;
@@ -306,14 +311,7 @@ class HorizontalLineRenderer implements IPrimitivePaneRenderer {
       const colorWithOpacity = applyOpacity(this._style.color, opacity);
       
       // Apply line style
-      const lineStyle = this._style.lineStyle || 'solid';
-      if (lineStyle === 'solid') {
-        ctx.setLineDash([]);
-      } else if (lineStyle === 'dotted') {
-        ctx.setLineDash([2, 2]);
-      } else if (lineStyle === 'dashed') {
-        ctx.setLineDash([5, 5]);
-      }
+      applyLineStyle(ctx, this._style.lineStyle);
       
       ctx.beginPath();
       ctx.strokeStyle = colorWithOpacity;
@@ -1197,14 +1195,7 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
       const bottomColor = boundaryColors.bottom || (autoColor ? '#22c55e' : (this._style.color || '#3b82f6'));
 
       // Apply boundary line style
-      const lineStyle = this._style.lineStyle || 'solid';
-      if (lineStyle === 'solid') {
-        ctx.setLineDash([]);
-      } else if (lineStyle === 'dotted') {
-        ctx.setLineDash([2, 2]);
-      } else if (lineStyle === 'dashed') {
-        ctx.setLineDash([5, 5]);
-      }
+      applyLineStyle(ctx, this._style.lineStyle);
 
       // Draw top horizontal line
       ctx.beginPath();
@@ -1261,14 +1252,7 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
       const priceDiff = topPrice - bottomPrice;
       
       // Apply internal line style
-      const internalLineStyle = this._style.internalLineStyle || 'dashed';
-      if (internalLineStyle === 'solid') {
-        ctx.setLineDash([]);
-      } else if (internalLineStyle === 'dotted') {
-        ctx.setLineDash([2, 2]);
-      } else if (internalLineStyle === 'dashed') {
-        ctx.setLineDash([5, 5]);
-      }
+      applyLineStyle(ctx, this._style.internalLineStyle || 'dashed');
       
       CHANNEL_LEVELS.forEach((level) => {
         const roundedLevel = Math.round(level * 10000) / 10000;
