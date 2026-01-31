@@ -1,6 +1,7 @@
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 import { LineWidthSelector } from './shared/LineWidthSelector';
+import { LineStyleSelector } from './shared/LineStyleSelector';
 
 interface HorizontalLineSettingsProps {
   drawing: any;
@@ -11,6 +12,7 @@ export function HorizontalLineSettings({ drawing, onUpdate }: HorizontalLineSett
   const color = drawing.style?.color || '#facc15';
   const opacity = drawing.style?.opacity ?? 1;
   const lineWidth = drawing.style?.lineWidth || 2;
+  const lineStyle = drawing.style?.lineStyle || 'solid';
 
   return (
     <div className="space-y-4 p-4 bg-slate-900 rounded-lg">
@@ -34,6 +36,12 @@ export function HorizontalLineSettings({ drawing, onUpdate }: HorizontalLineSett
       <LineWidthSelector
         value={lineWidth}
         onChange={(w) => onUpdate({ lineWidth: w })}
+      />
+
+      {/* Line Style */}
+      <LineStyleSelector
+        value={lineStyle}
+        onChange={(style) => onUpdate({ lineStyle: style })}
       />
     </div>
   );

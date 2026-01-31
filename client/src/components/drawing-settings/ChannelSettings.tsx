@@ -1,5 +1,6 @@
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
+import { LineStyleSelector } from './shared/LineStyleSelector';
 
 interface ChannelSettingsProps {
   drawing: any; // Replace with proper type
@@ -15,6 +16,8 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
   const boundaryColors = drawing.style?.boundaryColors || {};
   const fillOpacity = drawing.style?.fillOpacity ?? 0.1;
   const hideLabels = drawing.style?.hideLabels || false;
+  const lineStyle = drawing.style?.lineStyle || 'solid';
+  const internalLineStyle = drawing.style?.internalLineStyle || 'dashed';
 
   const roundLevel = (n: number) => Math.round(n * 10000) / 10000;
   const isLevelHidden = (level: number) => 
@@ -22,6 +25,20 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
 
   return (
     <div className="space-y-4 p-4 bg-slate-900 rounded-lg">
+      {/* Boundary Line Style */}
+      <LineStyleSelector
+        value={lineStyle}
+        onChange={(style) => onUpdate({ lineStyle: style })}
+        label="Boundary Line Style"
+      />
+
+      {/* Internal Line Style */}
+      <LineStyleSelector
+        value={internalLineStyle}
+        onChange={(style) => onUpdate({ internalLineStyle: style })}
+        label="Internal Line Style"
+      />
+
       {/* Internal Markers */}
       <div>
         <div className="text-xs text-gray-300 mb-2 font-semibold">Internal Markers</div>
