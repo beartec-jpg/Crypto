@@ -135,19 +135,27 @@ export function getNearestCandle(
 
 /**
  * Gets the visible time range from the chart
+ * Note: This returns an approximate range based on logical indices
  */
 export function getVisibleTimeRange(
-  chart: IChartApi
+  chart: IChartApi,
+  candles: CandleData[]
 ): { from: number; to: number } | null {
   try {
     const timeScale = chart.timeScale();
     const visibleRange = timeScale.getVisibleLogicalRange();
     
-    if (!visibleRange) return null;
+    if (!visibleRange || candles.length === 0) return null;
 
-    // Convert logical range to time range
-    const from = timeScale.coordinateToTime(visibleRange.from) as number;
-    const to = timeScale.coordinateToTime(visibleRange.to) as number;
+    // Clamp to valid candle indices
+    const fromIndex = Math.max(0, Math.floor(visibleRange.from));
+    const toIndex = Math.min(candles.length - 1, Math.ceil(visibleRange.to));
+
+    // Get times from candles at these indices
+    const from = candles[fromIndex]?.time;
+    const to = candles[toIndex]?.time;
+
+    if (from === undefined || to === undefined) return null;
 
     return { from, to };
   } catch (error) {

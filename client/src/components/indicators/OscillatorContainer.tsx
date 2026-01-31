@@ -133,15 +133,17 @@ export function OscillatorContainer({
                 background: signedStrength === 0 
                   ? '#3b82f6' 
                   : signedStrength > 0 
-                    ? `linear-gradient(to right, #3b82f6, ${signedStrength === 1 ? '#86efac' : signedStrength === 2 ? '#4ade80' : '#22c55e'})`
-                    : `linear-gradient(to left, #3b82f6, ${signedStrength === -1 ? '#fca5a5' : signedStrength === -2 ? '#f87171' : '#ef4444'})`,
+                    ? `linear-gradient(to right, #3b82f6, ${strengthValue === 1 ? '#86efac' : strengthValue === 2 ? '#4ade80' : '#22c55e'})`
+                    : `linear-gradient(to left, #3b82f6, ${strengthValue === 1 ? '#fca5a5' : strengthValue === 2 ? '#f87171' : '#ef4444'})`,
               }}
             />
           </div>
           <span className="text-sm">🐂</span>
-          <span className={`text-xs font-medium ${isBullish ? 'text-green-400' : 'text-red-400'}`}>
-            {isBullish ? '▲' : '▼'}{strengthValue}
-          </span>
+          {strengthValue > 0 && (
+            <span className={`text-xs font-medium ${isBullish ? 'text-green-400' : 'text-red-400'}`}>
+              {isBullish ? '▲' : '▼'}{strengthValue}
+            </span>
+          )}
         </div>
       </div>
     );
