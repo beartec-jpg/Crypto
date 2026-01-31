@@ -82,7 +82,7 @@ import {
 import {
   TradingPanel,
   BacktestPanel,
-  BacktestResults,
+  BacktestResults as BacktestResultsComponent,
   BotConfiguration,
   AlertsPanel
 } from '@/components/trading';
@@ -115,7 +115,6 @@ import {
   calculateParabolicSAR,
   calculateStochasticRSI,
   calculateWilliamsR,
-  calculateMFI,
   calculateCCI,
   calculateADX,
   calculateSMA,
@@ -132,8 +131,26 @@ import {
   FibRetracementPrimitive,
   ChannelPrimitive
 } from '@/lib/chartPrimitives';
-import { calculateEMA } from '@/utils/emaCalculations';
 import { touchesZone, inZone, aboveZone, belowZone, priceInZone } from '@/utils/zoneHelpers';
+
+// Indicator calculation utilities
+import { calculateRSI, calculateMACD, calculateEMA } from '@/lib/indicators/momentum';
+import { calculateOBV, calculateMFI } from '@/lib/indicators/volume';
+import { calculateBollingerBands } from '@/lib/indicators/volatility';
+import { calculateATR } from '@/lib/indicators/trend';
+
+// SMC utilities
+import { isActiveFVG } from '@/lib/smc/fvg';
+import { calculateSwings } from '@/lib/smc/pivots';
+import { detectTrendlines, Trendline } from '@/lib/smc/trendlineDetector';
+
+// Trading utilities
+import { calculatePositionSize } from '@/lib/trading/positionCalculator';
+import { calculateWeightedRR } from '@/lib/trading/riskCalculator';
+
+// Chart utilities  
+import { formatPrice, formatVolume, formatPercentChange } from '@/lib/chart/priceUtils';
+import { getBullBearColor, getIndicatorColor, getZoneColor } from '@/lib/chart/styleUtils';
 
 // Type imports
 import type { 
@@ -1890,25 +1907,6 @@ useEffect(() => {
     return result;
   }, [getPeriodKey]);
 
-  // Calculate ATR
-  const calculateATR = useCallback((data: CandleData[], period: number = 14): number[] => {
-    const tr: number[] = [];
-    for (let i = 1; i < data.length; i++) {
-      const highLow = data[i].high - data[i].low;
-      const highClose = Math.abs(data[i].high - data[i - 1].close);
-      const lowClose = Math.abs(data[i].low - data[i - 1].close);
-      tr.push(Math.max(highLow, highClose, lowClose));
-    }
-    const atr: number[] = [];
-    let sum = tr.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    atr.push(sum);
-    for (let i = period; i < tr.length; i++) {
-      sum = (atr[atr.length - 1] * (period - 1) + tr[i]) / period;
-      atr.push(sum);
-    }
-    return atr;
-  }, []);
-
   // Analyze FVG volume/delta scores
   const analyzeFVGValue = useCallback((fvg: FVG, candles: CandleData[], footprint: FootprintData[]): { volumeScore: number; deltaScore: number; isHighValue: boolean } => {
     // Find all candles that overlap with the FVG zone
@@ -1978,26 +1976,7 @@ useEffect(() => {
       }
     }
     return fvgs;
-  }, [calculateATR, analyzeFVGValue, footprintData]);
-
-  // Check if FVG is still active (not filled)
-  const isActiveFVG = useCallback((fvg: FVG, data: CandleData[]): boolean => {
-    const startIdx = data.findIndex(d => d.time === fvg.time);
-    
-    // Check if FVG has been filled (price went through it completely)
-    for (let i = startIdx + 1; i < data.length; i++) {
-      // For bullish FVG, it's filled if price went below the lower boundary
-      if (fvg.type === 'bullish' && data[i].low <= fvg.lower) {
-        return false; // FVG is filled
-      }
-      // For bearish FVG, it's filled if price went above the upper boundary
-      if (fvg.type === 'bearish' && data[i].high >= fvg.upper) {
-        return false; // FVG is filled
-      }
-    }
-    
-    return true; // FVG is still unfilled
-  }, []);
+  }, [analyzeFVGValue, footprintData]);
 
   // Get the time when FVG was filled (or null if still active)
   const getFVGFillTime = useCallback((fvg: FVG, data: CandleData[]): number | null => {
@@ -2018,270 +1997,9 @@ useEffect(() => {
     return null; // FVG is still unfilled
   }, []);
 
-  // Calculate swing points (highs and lows)
-  const calculateSwings = useCallback((data: CandleData[], swingLength: number = 5) => {
-    const swings: Array<{ time: number; value: number; type: 'high' | 'low'; index: number }> = [];
-    
-    for (let i = swingLength; i < data.length - swingLength; i++) {
-      const leftHighs = data.slice(i - swingLength, i).map(b => b.high);
-      const rightHighs = data.slice(i + 1, i + swingLength + 1).map(b => b.high);
-      if (data[i].high >= Math.max(...leftHighs) && data[i].high >= Math.max(...rightHighs)) {
-        swings.push({ time: data[i].time, value: data[i].high, type: 'high', index: i });
-      }
-      
-      const leftLows = data.slice(i - swingLength, i).map(b => b.low);
-      const rightLows = data.slice(i + 1, i + swingLength + 1).map(b => b.low);
-      if (data[i].low <= Math.min(...leftLows) && data[i].low <= Math.min(...rightLows)) {
-        swings.push({ time: data[i].time, value: data[i].low, type: 'low', index: i });
-      }
-    }
-    
-    return swings.sort((a, b) => a.index - b.index);
-  }, []);
-
-  // Detect auto trendlines from swing points
-  const detectTrendlines = useCallback((data: CandleData[], minTouches: number = 3, tolerance: number = 0.002, pivotLength: number = 10) => {
-    interface Trendline {
-      points: Array<{ time: number; price: number; index: number }>;
-      slope: number;
-      intercept: number;
-      type: 'resistance' | 'support';
-      strength: number;
-      span: number;
-    }
-    
-    const swings = calculateSwings(data, pivotLength);
-    const swingHighs = swings.filter(s => s.type === 'high');
-    const swingLows = swings.filter(s => s.type === 'low');
-    
-    // EXTREMITY-FIRST APPROACH: Always anchor from the absolute extremity
-    const findTrendlineFromExtremity = (pivots: typeof swings, type: 'resistance' | 'support'): Trendline | null => {
-      if (pivots.length < 2) return null;
-      
-      // Find TOP 3 absolute extremities (highest highs or lowest lows)
-      const sortedByExtremity = type === 'resistance'
-        ? [...pivots].sort((a, b) => b.value - a.value) // Highest first
-        : [...pivots].sort((a, b) => a.value - b.value); // Lowest first
-      
-      // Use only the top 3 most extreme pivots as anchor points
-      const extremeAnchors = sortedByExtremity.slice(0, 3);
-      
-      // Try building lines between extreme anchors
-      const allCandidateLines: Array<Trendline & { violationRate: number }> = [];
-      
-      // Try connecting each extreme anchor to other extreme anchors or nearby pivots
-      for (const starter of extremeAnchors) {
-        // Find pivots after this starter, prioritize other extreme anchors
-        const pivotsAfterStarter = pivots.filter(p => p.index > starter.index);
-        if (pivotsAfterStarter.length === 0) continue;
-        
-        // Sort second points: prefer extreme values first (other extremities)
-        const sortedSecondPoints = type === 'resistance'
-          ? [...pivotsAfterStarter].sort((a, b) => b.value - a.value) // Highest first
-          : [...pivotsAfterStarter].sort((a, b) => a.value - b.value); // Lowest first
-        
-        // Try connecting to the top 5 most extreme second points
-        for (const secondPoint of sortedSecondPoints.slice(0, 5)) {
-          const slope = (secondPoint.value - starter.value) / (secondPoint.index - starter.index);
-          const intercept = starter.value - slope * starter.index;
-          
-          // Find all pivots that align with this line
-          const alignedPoints: Array<{ time: number; price: number; index: number }> = [
-            { time: starter.time, price: starter.value, index: starter.index },
-            { time: secondPoint.time, price: secondPoint.value, index: secondPoint.index }
-          ];
-          
-          for (const pivot of pivots) {
-            if (pivot.index === starter.index || pivot.index === secondPoint.index) continue;
-            
-            const expectedPrice = slope * pivot.index + intercept;
-            const priceDeviation = Math.abs(pivot.value - expectedPrice) / pivot.value;
-            
-            if (priceDeviation <= tolerance) {
-              alignedPoints.push({ time: pivot.time, price: pivot.value, index: pivot.index });
-            }
-          }
-          
-          if (alignedPoints.length >= minTouches) {
-            alignedPoints.sort((a, b) => a.index - b.index);
-            
-            // Calculate violation rate for this line
-            const firstIdx = alignedPoints[0].index;
-            const lastIdx = alignedPoints[alignedPoints.length - 1].index;
-            let violations = 0;
-            let totalCandles = 0;
-            
-            for (let i = firstIdx; i <= lastIdx; i++) {
-              const candle = data[i];
-              const expectedPrice = slope * i + intercept;
-              
-              if (type === 'resistance') {
-                if (candle.close > expectedPrice * 1.01) violations++;
-              } else {
-                if (candle.close < expectedPrice * 0.99) violations++;
-              }
-              totalCandles++;
-            }
-            
-            const violationRate = totalCandles > 0 ? violations / totalCandles : 1;
-            
-            allCandidateLines.push({
-              points: alignedPoints,
-              slope,
-              intercept,
-              type,
-              strength: alignedPoints.length,
-              span: alignedPoints[alignedPoints.length - 1].index - alignedPoints[0].index,
-              violationRate
-            });
-          }
-        }
-      }
-      
-      if (allCandidateLines.length === 0) return null;
-      
-      // Calculate extremity score for each line (higher = touches more extreme points)
-      const getExtremityScore = (line: typeof allCandidateLines[0]) => {
-        const extremeIndices = new Set(extremeAnchors.map(e => e.index));
-        return line.points.filter(p => extremeIndices.has(p.index)).length;
-      };
-      
-      // Pick the BEST line: most extremity touches, then lowest violation rate, then most touches
-      return allCandidateLines.reduce((best, current) => {
-        const bestExtremity = getExtremityScore(best);
-        const currentExtremity = getExtremityScore(current);
-        
-        // Strongly prefer lines touching more extreme points
-        if (currentExtremity > bestExtremity) return current;
-        if (bestExtremity > currentExtremity) return best;
-        
-        // Then prefer cleaner lines (lower violation rate)
-        if (current.violationRate < best.violationRate - 0.02) return current;
-        if (best.violationRate < current.violationRate - 0.02) return best;
-        
-        // Then prefer more touches
-        if (current.strength > best.strength) return current;
-        if (best.strength > current.strength) return best;
-        
-        // Finally prefer more recent last pivot
-        const bestLastPivot = best.points[best.points.length - 1].index;
-        const currentLastPivot = current.points[current.points.length - 1].index;
-        return currentLastPivot > bestLastPivot ? current : best;
-      });
-    };
-    
-    // Validate trendlines - check price respects line through the trend
-    const validateTrendline = (line: Trendline): boolean => {
-      const firstIdx = line.points[0].index;
-      const lastPivotIdx = line.points[line.points.length - 1].index;
-      
-      let violations = 0;
-      let totalCandles = 0;
-      
-      // Check candles from first pivot to last pivot (not to current price)
-      // This validates the trend was respected during its formation
-      for (let i = firstIdx; i <= lastPivotIdx; i++) {
-        const candle = data[i];
-        const expectedPrice = line.slope * i + line.intercept;
-        
-        // For resistance: VIOLATION = closing significantly ABOVE the line
-        // For support: VIOLATION = closing significantly BELOW the line
-        // Price can break THROUGH the line later (that's a breakout, not a violation)
-        if (line.type === 'resistance') {
-          // Only count violations when price is ABOVE resistance
-          if (candle.close > expectedPrice * 1.01) { // 1% tolerance
-            violations++;
-          }
-        } else { // support
-          // Only count violations when price is BELOW support
-          if (candle.close < expectedPrice * 0.99) { // 1% tolerance
-            violations++;
-          }
-        }
-        totalCandles++;
-      }
-      
-      // Reject if more than 15% of candles violate (very relaxed)
-      const violationRate = violations / totalCandles;
-      return violationRate <= 0.15;
-    };
-    
-    // Find trendlines using new extremity-based approach
-    const resistanceLine = findTrendlineFromExtremity(swingHighs, 'resistance');
-    const supportLine = findTrendlineFromExtremity(swingLows, 'support');
-    
-    const result: Trendline[] = [];
-    
-    // Debug logging
-    if (resistanceLine) {
-      const isValid = validateTrendline(resistanceLine);
-      const violationRate = (resistanceLine as any).violationRate || 0;
-      console.log('✅ Resistance line:', {
-        startPrice: resistanceLine.points[0].price.toFixed(4),
-        endPrice: resistanceLine.points[resistanceLine.points.length - 1].price.toFixed(4),
-        touches: resistanceLine.points.length,
-        violationRate: (violationRate * 100).toFixed(1) + '%',
-        valid: isValid
-      });
-      if (isValid) {
-        result.push(resistanceLine);
-      }
-    } else {
-      console.log('❌ No resistance line found');
-    }
-    
-    // Validate and add support line
-    if (supportLine) {
-      const isValid = validateTrendline(supportLine);
-      const violationRate = (supportLine as any).violationRate || 0;
-      console.log('✅ Support line:', {
-        startPrice: supportLine.points[0].price.toFixed(4),
-        endPrice: supportLine.points[supportLine.points.length - 1].price.toFixed(4),
-        touches: supportLine.points.length,
-        violationRate: (violationRate * 100).toFixed(1) + '%',
-        valid: isValid
-      });
-      if (isValid) {
-        result.push(supportLine);
-      }
-    } else {
-      console.log('❌ No support line found');
-    }
-    
-    return result;
-  }, [calculateSwings]);
-
   // Oscillator calculation functions
-  const calculateRSI = useCallback((bars: CandleData[], period: number = 14) => {
-    let gains = 0, losses = 0;
-    return bars.map((bar, i) => {
-      if (i === 0) return { time: bar.time, value: 50 };
-      const diff = bar.close - bars[i-1].close;
-      if (diff > 0) { 
-        gains = (gains * (period-1) + diff) / period; 
-        losses = (losses * (period-1)) / period; 
-      } else { 
-        losses = (losses * (period-1) - diff) / period; 
-        gains = (gains * (period-1)) / period; 
-      }
-      const rs = losses === 0 ? 100 : gains / losses;
-      return { time: bar.time, value: 100 - 100 / (1 + rs) };
-    });
-  }, []);
 
-  const calculateMACD = useCallback((bars: CandleData[], fastPeriod: number = 12, slowPeriod: number = 26, signalPeriod: number = 9) => {
-    const close = bars.map(b => b.close);
-    const emaFast = calculateEMA(close, fastPeriod);
-    const emaSlow = calculateEMA(close, slowPeriod);
-    const macdLine = close.map((_, i) => emaFast[i] - emaSlow[i]);
-    const signal = calculateEMA(macdLine, signalPeriod);
-    const histogram = macdLine.map((v, i) => v - signal[i]);
-    return { 
-      macd: macdLine.map((v, i) => ({ time: bars[i].time, value: v })),
-      signal: signal.map((v, i) => ({ time: bars[i].time, value: v })),
-      hist: histogram.map((v, i) => ({ time: bars[i].time, value: v, color: v > 0 ? '#00ff9d' : '#ff3b69' })) 
-    };
-  }, []);
+
 
   const calculateStochRSI = useCallback((bars: CandleData[], period: number = 14) => {
     // Use the existing calculateStochasticRSI from indicators lib and return %K line
@@ -2289,80 +2007,11 @@ useEffect(() => {
     return stochData.map(d => ({ time: d.time, value: d.k }));
   }, [calculateStochasticRSI]);
 
-  const calculateOBV = useCallback((bars: CandleData[]) => {
-    let obv = 0;
-    return bars.map((bar, i) => {
-      if (i === 0) return { time: bar.time, value: 0 };
-      if (bar.close > bars[i-1].close) obv += bar.volume;
-      else if (bar.close < bars[i-1].close) obv -= bar.volume;
-      return { time: bar.time, value: obv };
-    });
-  }, []);
 
-  const calculateMFI = useCallback((candles: CandleData[], period: number = 14) => {
-    if (candles.length < period + 1) return [];
-    const result: { time: number; value: number }[] = [];
-    
-    for (let i = period; i < candles.length; i++) {
-      let posFlow = 0;
-      let negFlow = 0;
-      
-      for (let j = i - period + 1; j <= i; j++) {
-        const typicalPrice = (candles[j].high + candles[j].low + candles[j].close) / 3;
-        const rawMoneyFlow = typicalPrice * candles[j].volume;
-        
-        if (j > 0) {
-          const prevTypicalPrice = (candles[j-1].high + candles[j-1].low + candles[j-1].close) / 3;
-          if (typicalPrice > prevTypicalPrice) {
-            posFlow += rawMoneyFlow;
-          } else if (typicalPrice < prevTypicalPrice) {
-            negFlow += rawMoneyFlow;
-          }
-        }
-      }
-      
-      const mfi = negFlow === 0 ? 100 : (100 - (100 / (1 + (posFlow / negFlow))));
-      result.push({ time: candles[i].time as number, value: mfi });
-    }
-    
-    return result;
-  }, []);
 
-  const calculateBollingerBands = useCallback((candles: CandleData[], period: number = 20, stdDev: number = 2) => {
-    if (candles.length < period) return { upper: [], middle: [], lower: [] };
-    
-    const result: { 
-      upper: { time: number; value: number }[];
-      middle: { time: number; value: number }[];
-      lower: { time: number; value: number }[];
-    } = { upper: [], middle: [], lower: [] };
-    
-    for (let i = period - 1; i < candles.length; i++) {
-      // Calculate SMA (middle band)
-      let sum = 0;
-      for (let j = i - period + 1; j <= i; j++) {
-        sum += candles[j].close;
-      }
-      const sma = sum / period;
-      
-      // Calculate standard deviation
-      let variance = 0;
-      for (let j = i - period + 1; j <= i; j++) {
-        variance += Math.pow(candles[j].close - sma, 2);
-      }
-      const standardDeviation = Math.sqrt(variance / period);
-      
-      // Calculate upper and lower bands
-      const upperBand = sma + (stdDev * standardDeviation);
-      const lowerBand = sma - (stdDev * standardDeviation);
-      
-      result.middle.push({ time: candles[i].time as number, value: sma });
-      result.upper.push({ time: candles[i].time as number, value: upperBand });
-      result.lower.push({ time: candles[i].time as number, value: lowerBand });
-    }
-    
-    return result;
-  }, []);
+
+
+
 
   const detectDivergences = useCallback((candles: CandleData[]) => {
     if (candles.length < 20) return [];
@@ -2628,16 +2277,7 @@ useEffect(() => {
     return { bos: bosArray, choch: chochArray };
   }, [calculateSwings]);
 
-  // Calculate EMA
-  const calculateEMA = useCallback((data: number[], period: number): number[] => {
-    const ema: number[] = [];
-    const k = 2 / (period + 1);
-    ema[0] = data[0];
-    for (let i = 1; i < data.length; i++) {
-      ema[i] = data[i] * k + ema[i - 1] * (1 - k);
-    }
-    return ema;
-  }, []);
+
 
   // Determine market bias (EMA-based) using configurable periods
   const determineBias = useCallback((data: CandleData[]) => {
@@ -2646,7 +2286,7 @@ useEffect(() => {
     const emaSlow = calculateEMA(closes, indicators.ema.slowPeriod);
     const newBias = emaFast[emaFast.length - 1] > emaSlow[emaSlow.length - 1] ? 'bullish' : 'bearish';
     setBias(newBias);
-  }, [calculateEMA, indicators.ema.fastPeriod, indicators.ema.slowPeriod]);
+  }, [indicators.ema.fastPeriod, indicators.ema.slowPeriod]);
 
   // Determine structure-based trend (HH/HL vs LH/LL)
   const determineStructureTrend = useCallback((data: CandleData[]) => {
@@ -2842,15 +2482,6 @@ useEffect(() => {
       return Math.abs(vwap - currentPrice) < Math.abs(closest - currentPrice) ? vwap : closest;
     });
   }, [candles, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
-
-  // Calculate position size based on account percentage
-  // Position size = (accountSize * percent) / entry price
-  // Risk is then determined by how far the SL is from entry
-  const calculatePositionSize = useCallback((entry: number, stopLoss: number): number => {
-    const positionValue = accountSize * (riskPercent / 100);
-    if (entry === 0) return 0;
-    return positionValue / entry;
-  }, [accountSize, riskPercent]);
 
   // Check if trend filter passes
   const checkTrendFilter = useCallback((): boolean => {
@@ -3053,7 +2684,7 @@ useEffect(() => {
       riskReward1: Math.abs(tp1 - entry) / riskAmount,
       riskReward2: Math.abs(tp2 - entry) / riskAmount,
       riskReward3: Math.abs(tp3 - entry) / riskAmount,
-      quantity: calculatePositionSize(entry, stopLoss),
+      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
       reason: `Liquidity sweep at ${lastEvent.swingPrice?.toFixed(4) || 'unknown'}`,
       active: true,
       trailingActive: tp1Config.type === 'trailing' ? false : undefined, // Start inactive for trailing TP
@@ -3187,7 +2818,7 @@ useEffect(() => {
       riskReward1: Math.abs(tp1 - entry) / riskAmount,
       riskReward2: Math.abs(tp2 - entry) / riskAmount,
       riskReward3: Math.abs(tp3 - entry) / riskAmount,
-      quantity: calculatePositionSize(entry, stopLoss),
+      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
       reason: `BOS ${isLong ? 'Bullish' : 'Bearish'} at ${lastBOS.swingPrice.toFixed(4)}`,
       active: true,
     };
@@ -3328,7 +2959,7 @@ useEffect(() => {
       riskReward1: Math.abs(tp1 - entry) / riskAmount,
       riskReward2: Math.abs(tp1 - entry) / riskAmount,
       riskReward3: Math.abs(tp1 - entry) / riskAmount,
-      quantity: calculatePositionSize(entry, stopLoss),
+      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
       reason: `FVG Retest (${fvg.type})`,
       active: true,
       trailingActive: tp1Config.type === 'trailing' ? false : undefined, // Start inactive for trailing
@@ -3525,12 +3156,12 @@ useEffect(() => {
       riskReward1: Math.abs(tp1 - entry) / riskAmount,
       riskReward2: Math.abs(tp2 - entry) / riskAmount,
       riskReward3: Math.abs(tp3 - entry) / riskAmount,
-      quantity: calculatePositionSize(entry, stopLoss),
+      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
       reason: `VWAP ${signal.pattern} at ${vwapLevel.toFixed(4)}`,
       active: true,
       entryEMAState,
     };
-  }, [stratVWAPRejection, vwapType, calculatePeriodicVWAP, calculateRollingVWAP, getCurrentATR, vwapTPSL, findNextSwingLevels, calculatePositionSize, checkDirectionFilter, vwapThreshold, vwapTPSwingLength, calculateEMA, vwapEntryCandles]);
+  }, [stratVWAPRejection, vwapType, calculatePeriodicVWAP, calculateRollingVWAP, getCurrentATR, vwapTPSL, findNextSwingLevels, accountSize, riskPercent, checkDirectionFilter, vwapThreshold, vwapTPSwingLength, vwapEntryCandles]);
 
   // Generate EMA Trading signal (Bounce, Cross, and Trend Trade patterns)
   const generateEMATradingSignal = useCallback((data: CandleData[]): TradeSignal | null => {
@@ -3644,7 +3275,7 @@ useEffect(() => {
         riskReward1: Math.abs(tp1 - entry) / riskAmount,
         riskReward2: Math.abs(tp2 - entry) / riskAmount,
         riskReward3: Math.abs(tp3 - entry) / riskAmount,
-        quantity: calculatePositionSize(entry, stopLoss),
+        quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
         reason: `EMA Crossover (${indicators.ema.fastPeriod}/${indicators.ema.slowPeriod})`,
         active: true,
         entryEMAState,
@@ -3772,12 +3403,12 @@ useEffect(() => {
       riskReward1: Math.abs(tp1 - entry) / riskAmount,
       riskReward2: Math.abs(tp2 - entry) / riskAmount,
       riskReward3: Math.abs(tp3 - entry) / riskAmount,
-      quantity: calculatePositionSize(entry, stopLoss),
+      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
       reason: `EMA ${signal.pattern} at ${emaLevel.toFixed(4)} (${emaSinglePeriod}MA)`,
       active: true,
       entryEMAState,
     };
-  }, [stratEMATrading, emaEntryMode, calculateEMA, emaSinglePeriod, indicators.ema.fastPeriod, indicators.ema.slowPeriod, emaThreshold, getCurrentATR, emaTradingTPSL, calculateSwings, emaTradingSLSwingLength, findNextSwingLevels, emaTradingTPSwingLength, calculatePositionSize, checkDirectionFilter]);
+  }, [stratEMATrading, emaEntryMode, emaSinglePeriod, indicators.ema.fastPeriod, indicators.ema.slowPeriod, emaThreshold, getCurrentATR, emaTradingTPSL, calculateSwings, emaTradingSLSwingLength, findNextSwingLevels, emaTradingTPSwingLength, accountSize, riskPercent, checkDirectionFilter]);
 
   // Generate R/S Flip signal (Resistance/Support Flip - retest after breakout)
   const generateRSFlipSignal = useCallback((data: CandleData[]): TradeSignal | null => {
@@ -3939,7 +3570,7 @@ useEffect(() => {
         riskReward1: Math.abs(tp1 - entry) / riskAmount,
         riskReward2: Math.abs(tp2 - entry) / riskAmount,
         riskReward3: Math.abs(tp3 - entry) / riskAmount,
-        quantity: calculatePositionSize(entry, stopLoss),
+        quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
         reason: `${line.type === 'resistance' ? 'Resistance' : 'Support'} flip retest at ${currentLinePrice.toFixed(4)}`,
         active: true,
       };
@@ -4801,41 +4432,15 @@ useEffect(() => {
     // Sort by time descending (most recent first) and keep last 20
     const sortedAlerts = newAlerts.sort((a, b) => b.time - a.time).slice(0, 20);
     setMarketAlerts(sortedAlerts);
-  }, [candles, liqGrabSwingLength, calculateBOSandCHoCH, calculateFVGs, isActiveFVG, calculatePeriodicVWAP, vwapThreshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergences, cvdSpikeEnabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev, calculateBollingerBands]);
+  }, [candles, liqGrabSwingLength, calculateBOSandCHoCH, calculateFVGs, isActiveFVG, calculatePeriodicVWAP, vwapThreshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergences, cvdSpikeEnabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
 
-  // Calculate weighted R:R for partial exits based on which TPs were hit
-  const calculateWeightedRR = useCallback((strategy: string, outcome: string, rr1: number, rr2: number, rr3: number): number => {
-    // Get bot-specific config
-    let config: BotTPSLConfig;
-    if (strategy === 'liquidity_grab') config = liqGrabTPSL;
-    else if (strategy === 'bos_trend') config = bosTPSL;
-    else if (strategy === 'choch_fvg') config = chochTPSL;
-    else if (strategy === 'vwap_rejection') config = vwapTPSL;
-    else return outcome === 'SL' ? -1 : rr1; // Fallback
-    
-    const tp1Pct = config.tp1.positionPercent / 100;
-    const tp2Pct = (config.tp2?.positionPercent || 0) / 100;
-    const tp3Pct = (config.tp3?.positionPercent || 0) / 100;
-    
-    // Calculate weighted R based on outcome
-    if (outcome === 'SL') return -1;
-    if (outcome === 'Breakeven') return 0;
-    
-    if (outcome === 'TP1') {
-      // Only TP1 hit - exit full position there
-      return rr1;
-    } else if (outcome === 'TP2') {
-      // TP1 and TP2 hit - partial exit at TP1, rest at TP2
-      if (config.numTPs === 1) return rr2; // Full position
-      return (tp1Pct * rr1) + ((tp2Pct + tp3Pct) * rr2);
-    } else if (outcome === 'TP3') {
-      // All TPs hit - partial exits at each level
-      if (config.numTPs === 1) return rr3; // Full position
-      if (config.numTPs === 2) return (tp1Pct * rr1) + (tp2Pct * rr3);
-      return (tp1Pct * rr1) + (tp2Pct * rr2) + (tp3Pct * rr3);
-    }
-    
-    return rr1; // Default
+  // Helper to get config for calculateWeightedRR
+  const getConfigForStrategy = useCallback((strategy: string): BotTPSLConfig => {
+    if (strategy === 'liquidity_grab') return liqGrabTPSL;
+    if (strategy === 'bos_trend') return bosTPSL;
+    if (strategy === 'choch_fvg') return chochTPSL;
+    if (strategy === 'vwap_rejection') return vwapTPSL;
+    return liqGrabTPSL; // fallback
   }, [liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL]);
 
   // Simulate a single trade forward to find outcome
@@ -5155,7 +4760,7 @@ useEffect(() => {
             const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp1 * commissionRate)) * signal.quantity;
             const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp1 * slippageBps)) * signal.quantity;
             const netPL = rawPL - commission - slippage;
-            const weightedRR = calculateWeightedRR(signal.strategy, 'TP1', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+            const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy), 'TP1', signal.riskReward1, signal.riskReward2, signal.riskReward3);
             
             console.log('💰 LONG TP1 Hit:', {
               strategy: signal.strategy,
@@ -5201,7 +4806,7 @@ useEffect(() => {
             const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp2 * commissionRate)) * signal.quantity;
             const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp2 * slippageBps)) * signal.quantity;
             const netPL = rawPL - commission - slippage;
-            const weightedRR = calculateWeightedRR(signal.strategy, 'TP2', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+            const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy), 'TP2', signal.riskReward1, signal.riskReward2, signal.riskReward3);
             
             return {
               id: signal.id,
@@ -5228,7 +4833,7 @@ useEffect(() => {
           const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp3 * commissionRate)) * signal.quantity;
           const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp3 * slippageBps)) * signal.quantity;
           const netPL = rawPL - commission - slippage;
-          const weightedRR = calculateWeightedRR(signal.strategy, 'TP3', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy), 'TP3', signal.riskReward1, signal.riskReward2, signal.riskReward3);
           
           return {
             id: signal.id,
@@ -5499,7 +5104,7 @@ useEffect(() => {
             const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp1 * commissionRate)) * signal.quantity;
             const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp1 * slippageBps)) * signal.quantity;
             const netPL = rawPL - commission - slippage;
-            const weightedRR = calculateWeightedRR(signal.strategy, 'TP1', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+            const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy), 'TP1', signal.riskReward1, signal.riskReward2, signal.riskReward3);
             
             return {
               id: signal.id,
@@ -5533,7 +5138,7 @@ useEffect(() => {
             const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp2 * commissionRate)) * signal.quantity;
             const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp2 * slippageBps)) * signal.quantity;
             const netPL = rawPL - commission - slippage;
-            const weightedRR = calculateWeightedRR(signal.strategy, 'TP2', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+            const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy), 'TP2', signal.riskReward1, signal.riskReward2, signal.riskReward3);
             
             return {
               id: signal.id,
@@ -5560,7 +5165,7 @@ useEffect(() => {
           const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp3 * commissionRate)) * signal.quantity;
           const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp3 * slippageBps)) * signal.quantity;
           const netPL = rawPL - commission - slippage;
-          const weightedRR = calculateWeightedRR(signal.strategy, 'TP3', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy), 'TP3', signal.riskReward1, signal.riskReward2, signal.riskReward3);
           
           return {
             id: signal.id,
@@ -8470,10 +8075,16 @@ useEffect(() => {
   const vwapData = useMemo(() => calculateVWAPBands(candles), [candles]);
   const sessionVWAPData = useMemo(() => calculateSessionVWAP(candles), [candles]);
   const psarData = useMemo(() => calculateParabolicSAR(candles), [candles]);
-  const bbData = useMemo(() => 
-    calculateBollingerBands(candles, indicators.bb.period, indicators.bb.stdDev),
-    [candles, indicators.bb.period, indicators.bb.stdDev, calculateBollingerBands]
-  );
+  const bbData = useMemo(() => {
+    const result = calculateBollingerBands(candles, indicators.bb.period, indicators.bb.stdDev);
+    // Convert BollingerBandsResult to BandValue[]
+    return result.upper.map((_, i) => ({
+      time: result.upper[i].time,
+      upper: result.upper[i].value,
+      middle: result.middle[i].value,
+      lower: result.lower[i].value,
+    }));
+  }, [candles, indicators.bb.period, indicators.bb.stdDev]);
 
   // Allow page to render for all users - unauthenticated get free tier
   // Sign in button in header handles authentication
