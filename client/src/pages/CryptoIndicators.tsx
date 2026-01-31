@@ -195,7 +195,10 @@ import {
   getFutureBarCount,
   getTableRowLimit,
   generateRangeValues,
-  FUTURE_BAR_COUNT
+  FUTURE_BAR_COUNT,
+  formatTimestamp,
+  formatTimeOnly,
+  formatDateOnly
 } from '@/lib/chart/timeUtils';
 
 import { 
@@ -1777,10 +1780,9 @@ useEffect(() => {
             runningCVD += row.delta;
             // API returns timestamps in milliseconds, chart uses seconds
             const timestampSeconds = row.time > 9999999999 ? Math.floor(row.time / 1000) : row.time;
-            const date = new Date(timestampSeconds * 1000);
             return {
-              time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              date: date.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+              time: formatTimeOnly(timestampSeconds),
+              date: formatDateOnly(timestampSeconds),
               timestamp: timestampSeconds,
               delta: row.delta,
               cumDelta: runningCVD,
