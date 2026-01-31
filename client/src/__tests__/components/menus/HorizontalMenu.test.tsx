@@ -7,10 +7,12 @@ describe('HorizontalMenu', () => {
   const defaultProps = {
     position: { x: 150, y: 250 },
     horizontalColor: '#facc15',
+    opacity: 1,
     onDelete: vi.fn(),
     onMove: vi.fn(),
     onToggleColorSubmenu: vi.fn(),
     onToggleLabelSubmenu: vi.fn(),
+    onOpacityChange: vi.fn(),
     onSaveAsFavorite: vi.fn(),
     onDragStart: vi.fn(),
     activeSubmenu: null,

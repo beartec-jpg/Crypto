@@ -2,12 +2,13 @@ interface OpacitySliderProps {
   value: number; // 0-1
   onChange: (value: number) => void;
   className?: string;
+  label?: string;
 }
 
-export function OpacitySlider({ value, onChange, className = '' }: OpacitySliderProps) {
+export function OpacitySlider({ value, onChange, className = '', label = 'Opacity' }: OpacitySliderProps) {
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <span className="text-xs text-slate-400 whitespace-nowrap">Opacity:</span>
+      <span className="text-xs text-slate-400 whitespace-nowrap">{label}:</span>
       <input
         type="range"
         min="0"
