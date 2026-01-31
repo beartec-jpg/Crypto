@@ -140,7 +140,7 @@ import { calculateBollingerBands } from '@/lib/indicators/volatility';
 import { calculateATR } from '@/lib/indicators/trend';
 
 // SMC utilities
-import { calculateFVGs as calculateFVGsUtil, isActiveFVG } from '@/lib/smc/fvg';
+import { isActiveFVG } from '@/lib/smc/fvg';
 import { calculateSwings } from '@/lib/smc/pivots';
 import { detectTrendlines, Trendline } from '@/lib/smc/trendlineDetector';
 
