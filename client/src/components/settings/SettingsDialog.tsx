@@ -91,7 +91,12 @@ export function SettingsDialog({
 
           <TabsContent value="indicators" className="mt-4">
             <IndicatorSettings 
-              indicators={indicators}
+              indicators={{
+                ema: { show: indicators.ema?.show || false, fastPeriod: (indicators.ema as any)?.fastPeriod || 9, slowPeriod: (indicators.ema as any)?.slowPeriod || 21 },
+                sma: { show: indicators.sma?.show || false, period: (indicators.sma as any)?.period || 50 },
+                rsi: { show: indicators.rsi?.show || false, period: (indicators.rsi as any)?.period || 14 },
+                macd: { show: indicators.macd?.show || false, fastPeriod: (indicators.macd as any)?.fast || 12, slowPeriod: (indicators.macd as any)?.slow || 26, signalPeriod: (indicators.macd as any)?.signal || 9 }
+              }}
               onToggle={(indicator, value) => onUpdateIndicator(indicator, { show: value })}
               onPeriodChange={(indicator, field, value) => onUpdateIndicator(indicator, { [field]: value })}
             />
