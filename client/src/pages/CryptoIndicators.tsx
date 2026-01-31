@@ -99,7 +99,10 @@ import {
 import { WatchlistPanel } from '@/components/watchlist';
 
 // Settings Components
-import { SettingsPanel } from '@/components/settings';
+import { SettingsPanel, SettingsDialog } from '@/components/settings';
+import { ConfirmationDialog } from '@/components/modals';
+import { useModalManager } from '@/hooks/useModalManager';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 // Volume Components
 import { CVDTable } from '@/components/indicators/volume';
@@ -261,6 +264,12 @@ export default function CryptoIndicators() {
     return savedTimeframe || '15m';
   });
   const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [apiKeys, setApiKeys] = useState({
+    binance: localStorage.getItem('binance_api_key') || '',
+    coinbase: localStorage.getItem('coinbase_api_key') || '',
+    xai: localStorage.getItem('xai_api_key') || ''
+  });
   
   // Multi-exchange orderflow state (needed by chart data hook)
   const [useMultiExchange, setUseMultiExchange] = useState(true);
@@ -372,6 +381,26 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
   // Native primitives for high-performance drawing rendering
   const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
+  
+  // Modal manager for confirmation dialogs
+  const modalManager = useModalManager();
+  
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onToggleDrawingMode: () => setDrawingMode(prev => prev === 'draw' ? 'off' : 'draw'),
+    onSelectTool: (tool) => {
+      setActiveTool(tool as any);
+      setDrawingMode('draw');
+    },
+    onToggleFullscreen: () => setIsFullscreen(prev => !prev),
+    onOpenSettings: () => setSettingsDialogOpen(true),
+    onDeleteSelected: () => {
+      if (selectedDrawingId) {
+        modalManager.openModal('delete-drawing', { id: selectedDrawingId });
+      }
+    },
+    onDeselectAll: () => setSelectedDrawingId(null)
+  });
   const [editFibMode, setEditFibMode] = useState<'none' | 'values' | 'labels'>('none');
   const [crosshairModeActive, setCrosshairModeActive] = useState(false);
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true);
@@ -8206,6 +8235,15 @@ useEffect(() => {
               </SelectContent>
             </Select>
             <Button
+              onClick={() => setSettingsDialogOpen(true)}
+              className="bg-slate-700 hover:bg-slate-600 text-white px-3 md:px-4"
+              data-testid="button-open-settings"
+              title="Settings (Ctrl+,)"
+            >
+              <Settings className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Settings</span>
+            </Button>
+            <Button
               onClick={() => setAlertSettingsOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-4"
               data-testid="button-open-alert-settings"
@@ -9418,8 +9456,8 @@ useEffect(() => {
                   saveToTimeframe={saveToTimeframe}
                   makeTimeframeDefault={makeTimeframeDefault}
                   loading={loading}
-                  chartControlsTab={chartControlsTab}
-                  setChartControlsTab={setChartControlsTab}
+                  chartControlsTab={chartControlsTab || 'smc'}
+                  setChartControlsTab={(tab: string) => setChartControlsTab(tab as 'smc' | 'trend' | 'vwap' | 'oscillators')}
                 />
               </div>
             )}
@@ -10058,6 +10096,61 @@ useEffect(() => {
         <AlertSettingsDialog 
           open={alertSettingsOpen} 
           onOpenChange={setAlertSettingsOpen} 
+        />
+
+        {/* Settings Dialog - Simplified for Phase 4G-7 */}
+        <SettingsDialog
+          isOpen={settingsDialogOpen}
+          onClose={() => setSettingsDialogOpen(false)}
+          indicators={{
+            rsi: { show: indicators.rsi.show, period: indicators.rsi.period },
+            macd: { show: indicators.macd.show, fast: indicators.macd.fast, slow: indicators.macd.slow, signal: indicators.macd.signal },
+            stochastic: { show: indicators.stochRSI.show, period: indicators.stochRSI.period },
+            obv: { show: indicators.obv.show },
+            mfi: { show: indicators.mfi.show, period: indicators.mfi.period },
+            williamsR: { show: indicators.williamsR.show },
+            cci: { show: indicators.cci.show },
+            adx: { show: indicators.adx.show },
+            bollingerBands: { show: indicators.bb.show, period: indicators.bb.period },
+            atr: { show: false, period: 14 },
+            fvg: { show: indicators.showFVG, showHighValueOnly: indicators.showHighValueOnly },
+            bos: { show: indicators.showBOS },
+            choch: { show: indicators.showCHoCH },
+            orderBlocks: { show: indicators.showOrderBlocks },
+            ema: { show: indicators.ema.show, fastPeriod: indicators.ema.fastPeriod, slowPeriod: indicators.ema.slowPeriod },
+            sma: { show: indicators.sma.show, period: indicators.sma.fastPeriod },
+          }}
+          onUpdateIndicator={(indicator, updates) => {
+            // Simplified handler - logs for now, full implementation would map to setters
+            console.log('Update indicator:', indicator, updates);
+          }}
+          chartTheme="dark"
+          apiKeys={apiKeys}
+          onUpdateApiKey={(provider, key) => {
+            setApiKeys(prev => ({ ...prev, [provider]: key }));
+            localStorage.setItem(`${provider}_api_key`, key);
+          }}
+        />
+
+        {/* Confirmation Dialog */}
+        <ConfirmationDialog
+          isOpen={modalManager.isModalOpen('delete-drawing')}
+          onClose={modalManager.closeModal}
+          onConfirm={() => {
+            const drawingId = modalManager.modalData?.id;
+            if (drawingId) {
+              setDrawings(prev => prev.filter(d => d.id !== drawingId));
+              setSelectedDrawingId(null);
+              toast({
+                title: 'Drawing deleted',
+                description: 'The drawing has been removed from the chart.'
+              });
+            }
+            modalManager.closeModal();
+          }}
+          title="Delete Drawing"
+          description="Are you sure you want to delete this drawing? This action cannot be undone."
+          variant="destructive"
         />
 
       </div>
