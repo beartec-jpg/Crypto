@@ -865,7 +865,7 @@ useEffect(() => {
   const sessionVWAPAsiaRef = useRef<ISeriesApi<'Line'> | null>(null);
   const sessionVWAPLondonRef = useRef<ISeriesApi<'Line'> | null>(null);
   const sessionVWAPNYRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const orderBlocksRefs = useRef<Array<{ upper: ISeriesApi<'Line'>; lower: ISeriesApi<'Line'>; fill: ISeriesApi<'Histogram'> }>>([]);
+  // NOTE: orderBlocksRefs removed - now managed by OrderBlockOverlay component
   const premiumDiscountRefs = useRef<{ equilibrium: ISeriesApi<'Line'> | null; premium: ISeriesApi<'Line'> | null; discount: ISeriesApi<'Line'> | null }>({ equilibrium: null, premium: null, discount: null });
   const smaFastRef = useRef<ISeriesApi<'Line'> | null>(null);
   const smaSlowRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -1483,17 +1483,13 @@ useEffect(() => {
     lower?: ISeriesApi<'Line'>;
   }>({});
 
-  // FVG series refs
-  const fvgSeriesRefs = useRef<Array<{ upper: ISeriesApi<'Line'>; lower: ISeriesApi<'Line'>; fill: ISeriesApi<'Histogram'>; fvg: FVG }>>([]);
-
-  // BOS and CHoCH line series refs
-  const bosSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
-  const chochSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
+  // NOTE: fvgSeriesRefs removed - now managed by FVGOverlay component
+  // NOTE: bosSeriesRefs and chochSeriesRefs removed - now managed by BOSCHoCHMarkers component
+  // NOTE: structureLabelsRef removed - label rendering removed in Phase 4G-3
   const swingPivotSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
   const liquiditySweepSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
   const trendlineSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
   const tradeMarkerRefs = useRef<Array<any>>([]);
-  const structureLabelsRef = useRef<HTMLDivElement | null>(null);
 
   // Sync EMA Trading input values to numeric state
   useEffect(() => {
@@ -7330,262 +7326,10 @@ useEffect(() => {
     }
   }, [chartReady, candles, indicators.smc.showAutoTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectTrendlines]);
 
-  // Add text labels overlay for BOS and CHoCH with zoom/pan support
-  useEffect(() => {
-    if (!chartReady || !chartRef.current || !chartContainerRef.current || candles.length === 0) {
-      return;
-    }
-
-    const chart = chartRef.current;
-    const container = chartContainerRef.current;
-
-    // Clean up old labels
-    if (structureLabelsRef.current) {
-      structureLabelsRef.current.remove();
-      structureLabelsRef.current = null;
-    }
-
-    // If labels are disabled, don't create container
-    if (!indicators.smc.showChartLabels) return;
-
-    // Create container for labels
-    const labelsContainer = document.createElement('div');
-    labelsContainer.style.position = 'absolute';
-    labelsContainer.style.top = '0';
-    labelsContainer.style.left = '0';
-    labelsContainer.style.width = '100%';
-    labelsContainer.style.height = '100%';
-    labelsContainer.style.pointerEvents = 'none';
-    labelsContainer.style.zIndex = '10';
-    container.style.position = 'relative';
-    container.appendChild(labelsContainer);
-    structureLabelsRef.current = labelsContainer;
-
-    // Store label data for repositioning
-    interface LabelData {
-      text: string;
-      price: number;
-      time: number;
-      color: string;
-      element: HTMLDivElement;
-    }
-    const labelDataArray: LabelData[] = [];
-
-    const createLabel = (text: string, price: number, time: number, color: string): HTMLDivElement => {
-      const label = document.createElement('div');
-      label.textContent = text;
-      label.style.position = 'absolute';
-      label.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
-      label.style.color = color;
-      label.style.padding = '2px 6px';
-      label.style.borderRadius = '3px';
-      label.style.fontSize = '10px';
-      label.style.fontWeight = '600';
-      label.style.whiteSpace = 'nowrap';
-      label.style.border = `1px solid ${color}`;
-      labelsContainer.appendChild(label);
-      return label;
-    };
-
-    const updateLabelPositions = () => {
-      const containerRect = labelsContainer.getBoundingClientRect();
-      const chartWidth = containerRect.width;
-      const chartHeight = containerRect.height;
-      
-      labelDataArray.forEach(({ price, time, element }) => {
-        try {
-          const yCoord = candleSeriesRef.current?.priceToCoordinate(price);
-          const xCoord = chart.timeScale().timeToCoordinate(time as any);
-          
-          if (yCoord === null || yCoord === undefined || xCoord === null) {
-            element.style.display = 'none';
-            return;
-          }
-          
-          // Get label dimensions
-          const labelWidth = element.offsetWidth || 50;
-          const labelHeight = element.offsetHeight || 20;
-          
-          // Hide labels that are outside the visible viewport
-          // Left side: hide if the label would be mostly off-screen
-          if (xCoord < -labelWidth / 2) {
-            element.style.display = 'none';
-            return;
-          }
-          // Right side: hide if x coordinate is beyond chart width
-          if (xCoord > chartWidth) {
-            element.style.display = 'none';
-            return;
-          }
-          // Top/bottom: hide if outside visible price range
-          if (yCoord < -labelHeight || yCoord > chartHeight + labelHeight) {
-            element.style.display = 'none';
-            return;
-          }
-
-          element.style.display = 'block';
-          
-          // Calculate position with offset
-          let leftPos = xCoord + 5;
-          let topPos = yCoord - 10;
-          
-          // Only constrain labels that are partially visible
-          // Right boundary: ensure label doesn't extend beyond chart width
-          if (leftPos + labelWidth > chartWidth) {
-            leftPos = chartWidth - labelWidth - 5;
-          }
-          // Bottom boundary
-          if (topPos + labelHeight > chartHeight) {
-            topPos = chartHeight - labelHeight - 5;
-          }
-          // Top boundary
-          if (topPos < 0) {
-            topPos = 5;
-          }
-          
-          element.style.left = `${leftPos}px`;
-          element.style.top = `${topPos}px`;
-        } catch (e) {
-          element.style.display = 'none';
-        }
-      });
-    };
-
-    // Collect all label data
-    // Calculate both BOS and CHoCH first to handle conflicts (CHoCH takes precedence)
-    let bosData: any[] = [];
-    let chochData: any[] = [];
-    
-    if (indicators.smc.showBOS) {
-      try {
-        const { bos } = calculateBOSandCHoCH(candles, chartBosSwingLength);
-        bosData = bos.filter(b => !b.isLiquidityGrab);
-      } catch (e) {
-        console.error('Error calculating BOS labels:', e);
-      }
-    }
-
-    if (indicators.smc.showCHoCH) {
-      try {
-        const { choch } = calculateBOSandCHoCH(candles, chartChochSwingLength);
-        chochData = choch.filter(c => !c.isLiquidityGrab);
-      } catch (e) {
-        console.error('Error calculating CHoCH labels:', e);
-      }
-    }
-    
-    // Create Set of CHoCH pivot points to filter BOS conflicts
-    const chochPivots = new Set(
-      chochData.map(c => `${c.swingTime}_${c.swingPrice.toFixed(4)}`)
-    );
-    
-    // Add BOS labels (filtered to exclude CHoCH conflicts)
-    if (indicators.smc.showBOS) {
-      try {
-        bosData.forEach(bosPoint => {
-          const pivotKey = `${bosPoint.swingTime}_${bosPoint.swingPrice.toFixed(4)}`;
-          
-          // Skip if CHoCH exists at same pivot (CHoCH takes precedence)
-          if (chochPivots.has(pivotKey)) return;
-          
-          const text = bosPoint.type === 'bullish' ? 'BOS↑' : 'BOS↓';
-          const color = bosPoint.type === 'bullish' ? '#10b981' : '#ef4444';
-          const element = createLabel(text, bosPoint.swingPrice, bosPoint.swingTime, color);
-          labelDataArray.push({
-            text,
-            price: bosPoint.swingPrice,
-            time: bosPoint.swingTime,
-            color,
-            element,
-          });
-        });
-      } catch (e) {
-        console.error('Error creating BOS labels:', e);
-      }
-    }
-
-    // Add CHoCH labels
-    if (indicators.smc.showCHoCH) {
-      try {
-        chochData.forEach(chochPoint => {
-          const text = chochPoint.type === 'bullish' ? 'CHoCH↑' : 'CHoCH↓';
-          const color = chochPoint.type === 'bullish' ? '#eab308' : '#ec4899'; // Yellow for bullish, Pink for bearish
-          const element = createLabel(text, chochPoint.swingPrice, chochPoint.swingTime, color);
-          labelDataArray.push({
-            text,
-            price: chochPoint.swingPrice,
-            time: chochPoint.swingTime,
-            color,
-            element,
-          });
-        });
-      } catch (e) {
-        console.error('Error creating CHoCH labels:', e);
-      }
-    }
-    
-    // Add liquidity sweep labels from STRATEGY (cyan)
-    if (stratLiquidityGrab) {
-      try {
-        const { bos, choch } = calculateBOSandCHoCH(
-          candles,
-          liqGrabSwingLength
-        );
-        const allSweeps = [...bos, ...choch].filter(e => e.isLiquidityGrab);
-        
-        allSweeps.forEach(sweep => {
-          const text = sweep.type === 'bullish' ? '↓↑' : '↑↓';
-          const color = '#22d3ee'; // Cyan for liquidity grab strategy
-          const element = createLabel(text, sweep.swingPrice, sweep.swingTime, color);
-          labelDataArray.push({
-            text,
-            price: sweep.swingPrice,
-            time: sweep.swingTime,
-            color,
-            element,
-          });
-        });
-      } catch (e) {
-        console.error('Error creating liquidity sweep labels:', e);
-      }
-    }
-
-    // Initial positioning
-    updateLabelPositions();
-
-    // Subscribe to time range changes (zoom/pan) with requestAnimationFrame throttling
-    let rafId: number | null = null;
-    const handleVisibleTimeRangeChange = () => {
-      // Cancel any pending frame to avoid queueing updates
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-      }
-      // Schedule update on next animation frame for smooth performance
-      rafId = requestAnimationFrame(() => {
-        updateLabelPositions();
-        rafId = null;
-      });
-    };
-    
-    chart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
-
-    // Cleanup function
-    return () => {
-      // Cancel any pending animation frame
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-      }
-      try {
-        chart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
-      } catch (e) {
-        // Chart already disposed
-      }
-      if (structureLabelsRef.current) {
-        structureLabelsRef.current.remove();
-        structureLabelsRef.current = null;
-      }
-    };
-  }, [chartReady, candles, indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showChartLabels, chartBosSwingLength, chartChochSwingLength, stratLiquidityGrab, liqGrabSwingLength, calculateBOSandCHoCH]);
+  // NOTE: BOS/CHoCH text labels have been removed in Phase 4G-3
+  // The BOSCHoCHMarkers component currently handles only horizontal lines
+  // The "Chart Labels" toggle (indicators.smc.showChartLabels) is now non-functional
+  // Future enhancement: Add label support to BOSCHoCHMarkers component or create separate LabelOverlay component
 
   // Update backtest trade markers with price level lines and shaded zones
   useEffect(() => {
