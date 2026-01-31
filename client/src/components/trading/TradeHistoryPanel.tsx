@@ -32,7 +32,7 @@ export function TradeHistoryPanel({ trades }: TradeHistoryPanelProps) {
   const avgLoss = losingTrades > 0
     ? Math.abs(trades.filter(t => t.pnl < 0).reduce((sum, t) => sum + t.pnl, 0) / losingTrades)
     : 0;
-  const profitFactor = avgLoss > 0 ? avgWin / avgLoss : 0;
+  const profitFactor = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? Infinity : 0);
 
   return (
     <div className="bg-slate-900 rounded-lg p-4 space-y-4">
@@ -59,7 +59,7 @@ export function TradeHistoryPanel({ trades }: TradeHistoryPanelProps) {
         <div className="bg-slate-800 rounded p-3">
           <div className="text-gray-400 text-xs">Profit Factor</div>
           <div className="text-xl font-bold text-white">
-            {profitFactor.toFixed(2)}
+            {isFinite(profitFactor) ? profitFactor.toFixed(2) : '∞'}
           </div>
         </div>
       </div>

@@ -109,6 +109,8 @@ export function PositionTrackerPanel({
                     size="sm"
                     className="flex-1"
                     onClick={() => onModifyPosition(position.id, {})}
+                    disabled
+                    title="Modification feature coming soon"
                   >
                     Modify
                   </Button>
