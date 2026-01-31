@@ -21,6 +21,7 @@ import { useWebSocketConnection } from '@/hooks/useWebSocketConnection';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { useIndicatorState } from '@/hooks/useIndicatorState';
 import { useDrawingState } from '@/hooks/useDrawingState';
+import { useFullscreen } from '@/hooks/useFullscreen';
 import bearTecLogo from '@assets/1_20251120_023939_0000_1763606422703.png';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import grokLogo from '@assets/Grok_Full_Logomark_Light_1763287603908.png';
@@ -105,6 +106,9 @@ import { CVDTable } from '@/components/indicators/volume';
 
 // Common Components
 import { LoadingOverlay, ErrorDisplay } from '@/components/common';
+
+// Data utilities
+import { binanceToCandleData, removeUSDTSuffix, formatMultiExchangeSymbol } from '@/lib/data/candleTransforms';
 
 import {
   calculateSupertrend,
@@ -349,7 +353,7 @@ export default function CryptoIndicators() {
   // Drawing tools state
   type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
   const [drawingMode, setDrawingMode] = useState<'off' | 'draw' | 'select'>('draw'); // Draw mode active by default
-  const [isFullscreen, setIsFullscreen] = useState(false); // Fullscreen chart mode
+  const { isFullscreen, setIsFullscreen } = useFullscreen(); // Fullscreen chart mode with keyboard support
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [drawings, setDrawings] = useState<any[]>([]);
@@ -831,7 +835,7 @@ useEffect(() => {
     }
   }, [drawingMode, activeTool]);
   
-  // Fullscreen mode: resize chart and handle Escape key
+  // Fullscreen mode: resize chart
   useEffect(() => {
    const handleResize = () => {
   if (chartContainerRef.current && chartRef.current) {
@@ -844,23 +848,14 @@ useEffect(() => {
   }
 };
     
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) {
-        setIsFullscreen(false);
-        setTimeout(handleResize, 100);
-      }
-    };
-    
     if (isFullscreen) {
       window.addEventListener('resize', handleResize);
-      window.addEventListener('keydown', handleKeyDown);
       // Trigger resize immediately when entering fullscreen
       setTimeout(handleResize, 50);
     }
     
     return () => {
       window.removeEventListener('resize', handleResize);
-      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isFullscreen]);
   
@@ -1753,7 +1748,7 @@ useEffect(() => {
     
     setMultiExchangeLoading(true);
     try {
-      const binanceSymbol = symbol.replace('USDT', '');
+      const binanceSymbol = removeUSDTSuffix(symbol);
       const multiUrl = `/api/crypto/multi-exchange-orderflow?symbol=${binanceSymbol}USDT&period=1mo&interval=${interval}`;
       
       console.log('🌐 Fetching multi-exchange orderflow data...');
@@ -6443,14 +6438,7 @@ useEffect(() => {
           const response = await fetch(`/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=500`);
           if (response.ok) {
             const data = await response.json();
-            emaHTFDataCache.current[cacheKey] = data.map((k: any) => ({
-              time: Math.floor(k[0] / 1000),
-              open: parseFloat(k[1]),
-              high: parseFloat(k[2]),
-              low: parseFloat(k[3]),
-              close: parseFloat(k[4]),
-              volume: parseFloat(k[5])
-            }));
+            emaHTFDataCache.current[cacheKey] = binanceToCandleData(data);
           }
         } catch (e) {
           console.error(`Failed to fetch ${tf} data for EMA:`, e);
@@ -6587,14 +6575,7 @@ useEffect(() => {
           const response = await fetch(`/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=500`);
           if (response.ok) {
             const data = await response.json();
-            smaHTFDataCache.current[cacheKey] = data.map((k: any) => ({
-              time: Math.floor(k[0] / 1000),
-              open: parseFloat(k[1]),
-              high: parseFloat(k[2]),
-              low: parseFloat(k[3]),
-              close: parseFloat(k[4]),
-              volume: parseFloat(k[5])
-            }));
+            smaHTFDataCache.current[cacheKey] = binanceToCandleData(data);
           }
         } catch (e) {
           console.error(`Failed to fetch ${tf} data for SMA:`, e);
@@ -8388,19 +8369,6 @@ useEffect(() => {
       ? 'fixed inset-0 z-50 rounded-none border-0' 
       : ''
   }`}
-  onKeyDown={(e) => {
-    if (e.key === 'Escape' && isFullscreen) {
-      setIsFullscreen(false);
-      setTimeout(() => {
-        if (chartRef.current && chartContainerRef.current) {
-          chartRef.current.applyOptions({
-            width: chartContainerRef.current.clientWidth,
-            height: chartContainerRef.current.clientHeight
-          });
-        }
-      }, 100);
-    }
-  }}
   tabIndex={isFullscreen ? 0 : -1}
 >
   <CardContent className={`p-4 bg-slate-800 ${isFullscreen ? 'h-full' : ''}`}>
