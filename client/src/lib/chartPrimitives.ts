@@ -21,6 +21,7 @@ interface DrawingStyle {
   opacity?: number;
   lineWidth?: number;
   lineStyle?: 'solid' | 'dashed' | 'dotted';
+  internalLineStyle?: 'solid' | 'dashed' | 'dotted';
   extendLeft?: boolean;
   extendRight?: boolean;
   labelPosition?: 'left' | 'right';
@@ -141,12 +142,23 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
       const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
       const colorWithOpacity = applyOpacity(this._style.color, opacity);
       
+      // Apply line style
+      const lineStyle = this._style.lineStyle || 'solid';
+      if (lineStyle === 'solid') {
+        ctx.setLineDash([]);
+      } else if (lineStyle === 'dotted') {
+        ctx.setLineDash([2, 2]);
+      } else if (lineStyle === 'dashed') {
+        ctx.setLineDash([5, 5]);
+      }
+      
       ctx.beginPath();
       ctx.strokeStyle = colorWithOpacity;
       ctx.lineWidth = this._style.lineWidth || 2;
       ctx.moveTo(drawX1, drawY1);
       ctx.lineTo(drawX2, drawY2);
       ctx.stroke();
+      ctx.setLineDash([]);
 
       // Draw selection handles at original points (not extended edges)
       if (this._isSelected) {
@@ -293,10 +305,19 @@ class HorizontalLineRenderer implements IPrimitivePaneRenderer {
       const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
       const colorWithOpacity = applyOpacity(this._style.color, opacity);
       
+      // Apply line style
+      const lineStyle = this._style.lineStyle || 'solid';
+      if (lineStyle === 'solid') {
+        ctx.setLineDash([]);
+      } else if (lineStyle === 'dotted') {
+        ctx.setLineDash([2, 2]);
+      } else if (lineStyle === 'dashed') {
+        ctx.setLineDash([5, 5]);
+      }
+      
       ctx.beginPath();
       ctx.strokeStyle = colorWithOpacity;
       ctx.lineWidth = this._style.lineWidth || 2;
-      ctx.setLineDash([5, 5]);
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
       ctx.stroke();
@@ -1175,11 +1196,20 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
       const topColor = boundaryColors.top || (autoColor ? '#ef4444' : (this._style.color || '#3b82f6'));
       const bottomColor = boundaryColors.bottom || (autoColor ? '#22c55e' : (this._style.color || '#3b82f6'));
 
+      // Apply boundary line style
+      const lineStyle = this._style.lineStyle || 'solid';
+      if (lineStyle === 'solid') {
+        ctx.setLineDash([]);
+      } else if (lineStyle === 'dotted') {
+        ctx.setLineDash([2, 2]);
+      } else if (lineStyle === 'dashed') {
+        ctx.setLineDash([5, 5]);
+      }
+
       // Draw top horizontal line
       ctx.beginPath();
       ctx.strokeStyle = topColor;
       ctx.lineWidth = 2;
-      ctx.setLineDash([]);
       ctx.moveTo(lineLeft, yTop);
       ctx.lineTo(lineRight, yTop);
       ctx.stroke();
@@ -1191,6 +1221,9 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
       ctx.moveTo(lineLeft, yBottom);
       ctx.lineTo(lineRight, yBottom);
       ctx.stroke();
+      
+      // Reset line dash after boundary lines
+      ctx.setLineDash([]);
 
       // Draw top and bottom labels
       if (showLabels) {
@@ -1227,6 +1260,16 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
       const levelColors = this._style.levelColors || {};
       const priceDiff = topPrice - bottomPrice;
       
+      // Apply internal line style
+      const internalLineStyle = this._style.internalLineStyle || 'dashed';
+      if (internalLineStyle === 'solid') {
+        ctx.setLineDash([]);
+      } else if (internalLineStyle === 'dotted') {
+        ctx.setLineDash([2, 2]);
+      } else if (internalLineStyle === 'dashed') {
+        ctx.setLineDash([5, 5]);
+      }
+      
       CHANNEL_LEVELS.forEach((level) => {
         const roundedLevel = Math.round(level * 10000) / 10000;
         if (hiddenLevels.some((h: number) => Math.round(h * 10000) / 10000 === roundedLevel)) return;
@@ -1239,11 +1282,9 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
         ctx.beginPath();
         ctx.strokeStyle = levelColor;
         ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
         ctx.moveTo(lineLeft, y);
         ctx.lineTo(lineRight, y);
         ctx.stroke();
-        ctx.setLineDash([]);
 
         if (showLabels) {
           const customLabels = this._style.customLabels || {};
@@ -1265,6 +1306,9 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
           ctx.textAlign = 'left';
         }
       });
+      
+      // Reset line dash after internal lines
+      ctx.setLineDash([]);
 
       // Fill channel area with subtle background
       const fillOpacity = this._style.fillOpacity !== undefined ? this._style.fillOpacity : 0.1;
