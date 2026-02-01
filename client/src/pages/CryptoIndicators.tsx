@@ -102,6 +102,10 @@ import { useModalState } from '@/hooks/useModalState';
 
 // Volume Components
 import { CVDTable } from '@/components/indicators/volume';
+import { CVDDetailsPanel } from '@/components/volume';
+
+// Alert Components
+import { MarketAlertsPanel } from '@/components/alerts';
 
 // Common Components
 import { LoadingOverlay, ErrorDisplay } from '@/components/common';
@@ -1177,7 +1181,6 @@ useEffect(() => {
   // Collapsible panel states - default to minimized
   const [marketSummaryMinimized, setMarketSummaryMinimized] = useState(true);
   const [cvdTableMinimized, setCvdTableMinimized] = useState(true);
-  const [marketAlertsMinimized, setMarketAlertsMinimized] = useState(true);
   const [marketAlerts, setMarketAlerts] = useState<MarketAlert[]>([]);
   const [alertFilterMode, setAlertFilterMode] = useState<'all' | 'active'>('all');
   
@@ -6056,32 +6059,6 @@ useEffect(() => {
     return active;
   }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, stratLiquidityGrab, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSpikeEnabled]);
 
-  // Filter market alerts based on alertFilterMode and active indicators
-  const filteredMarketAlerts = useMemo(() => {
-    if (alertFilterMode === 'all') {
-      return marketAlerts;
-    }
-    
-    // Filter to only show alerts from active indicators
-    return marketAlerts.filter(alert => {
-      const indicatorKey = alertTypeToIndicator[alert.type];
-      
-      // Safety fallback: If alert type not in mapping, show it by default and log warning
-      if (!indicatorKey) {
-        console.warn(`⚠️ Unmapped alert type in filter: "${alert.type}". Showing alert by default. Please add to alertTypeToIndicator mapping.`);
-        return true;
-      }
-      
-      // If alert can come from multiple indicators (array), show if ANY are active
-      if (Array.isArray(indicatorKey)) {
-        return indicatorKey.some(key => activeIndicators.has(key));
-      }
-      
-      // Single indicator - check if it's active
-      return activeIndicators.has(indicatorKey);
-    });
-  }, [marketAlerts, alertFilterMode, activeIndicators, alertTypeToIndicator]);
-
   // Run backtest on historical data
   // NEW: Only allow 1 trade at a time - no overlapping trades
   const runBacktest = useCallback(async () => {
@@ -9506,123 +9483,14 @@ useEffect(() => {
 
         {/* Market Alerts */}
         {tier !== 'free' && (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader 
-              className="pb-2 cursor-pointer"
-              onClick={() => setMarketAlertsMinimized(!marketAlertsMinimized)}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-white text-sm flex items-center gap-2">
-                    <span className={`transition-transform duration-200 ${marketAlertsMinimized ? '' : 'rotate-90'}`}>▶</span>
-                    <span className="text-lg">🔔</span>
-                    Market Alerts
-                    {marketAlertsMinimized && filteredMarketAlerts.length > 0 && (
-                      <span className="text-xs bg-blue-600 px-2 py-0.5 rounded-full">{filteredMarketAlerts.length}</span>
-                    )}
-                  </CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => { e.stopPropagation(); setAlertSettingsOpen(true); }}
-                    className="text-gray-400 hover:text-white h-8 px-2"
-                    data-testid="button-market-alerts-settings"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex items-center gap-1 bg-slate-700 rounded-md p-1" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => setAlertFilterMode('all')}
-                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                      alertFilterMode === 'all' 
-                        ? 'bg-blue-600 text-white' 
-                        : 'text-gray-400 hover:text-white'
-                    }`}
-                    data-testid="button-alert-filter-all"
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={() => setAlertFilterMode('active')}
-                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                      alertFilterMode === 'active' 
-                        ? 'bg-blue-600 text-white' 
-                        : 'text-gray-400 hover:text-white'
-                    }`}
-                    data-testid="button-alert-filter-active"
-                  >
-                    Active Only
-                  </button>
-                </div>
-              </div>
-            </CardHeader>
-            {!marketAlertsMinimized && (
-            <CardContent className="space-y-2">
-              {filteredMarketAlerts.length === 0 ? (
-                <div className="text-gray-400 text-sm text-center py-4">
-                  {alertFilterMode === 'active' && marketAlerts.length > 0 ? (
-                    <>
-                      <p className="font-semibold">No alerts from active indicators</p>
-                      <p className="text-xs mt-1">Enable more indicators or switch to "All" to see all alerts</p>
-                    </>
-                  ) : (
-                    'No alerts yet'
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2 overflow-y-auto">
-                  {filteredMarketAlerts.slice(0, 10).map((alert) => (
-                    <div 
-                      key={alert.id}
-                      className="bg-slate-900 p-2 rounded border border-slate-700"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {alert.type === 'Liquidity Sweep' && (
-                            <span className="text-yellow-400 text-xs font-semibold">💧 SWEEP</span>
-                          )}
-                          {alert.type === 'BOS' && (
-                            <span className="text-green-400 text-xs font-semibold">📈 BOS</span>
-                          )}
-                          {alert.type === 'CHoCH' && (
-                            <span className="text-orange-400 text-xs font-semibold">🔄 CHoCH</span>
-                          )}
-                          {alert.type === 'FVG' && (
-                            <span className="text-purple-400 text-xs font-semibold">⬜ FVG</span>
-                          )}
-                          {alert.type === 'VWAP Bounce' && (
-                            <span className="text-cyan-400 text-xs font-semibold">📊 VWAP BOUNCE</span>
-                          )}
-                          {alert.type === 'VWAP Cross' && (
-                            <span className="text-blue-400 text-xs font-semibold">↗️ VWAP X</span>
-                          )}
-                          {alert.direction === 'bullish' ? (
-                            <TrendingUp className="h-3 w-3 text-green-500" />
-                          ) : (
-                            <TrendingDown className="h-3 w-3 text-red-500" />
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-400">
-                          {new Date(alert.time * 1000).toLocaleString('en-GB', { 
-                            day: '2-digit', 
-                            month: '2-digit', 
-                            year: 'numeric',
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                          })}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-300 mt-1">
-                        {alert.description}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-            )}
-          </Card>
+          <MarketAlertsPanel
+            alerts={marketAlerts}
+            filterMode={alertFilterMode}
+            onFilterModeChange={setAlertFilterMode}
+            onSettingsClick={() => setAlertSettingsOpen(true)}
+            activeIndicators={activeIndicators}
+            alertTypeToIndicator={alertTypeToIndicator}
+          />
         )}
 
         </div>
