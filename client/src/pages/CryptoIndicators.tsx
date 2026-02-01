@@ -45,7 +45,8 @@ import {
   MovingAverages, 
   ChartControls, 
   ChartVisibleRange, 
-  ChartTimeTooltip 
+  ChartTimeTooltip,
+  ChartControlBar
 } from '@/components/chart';
 
 // SMC Components
@@ -78,7 +79,9 @@ import {
   BacktestPanel,
   BacktestResults as BacktestResultsComponent,
   BotConfiguration,
-  AlertsPanel
+  AlertsPanel,
+  StrategyGeneratorPanel,
+  BacktestResultsPanel
 } from '@/components/trading';
 
 // AI Components
