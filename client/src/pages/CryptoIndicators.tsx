@@ -266,7 +266,9 @@ export default function CryptoIndicators() {
     const savedTimeframe = localStorage.getItem('defaultTimeframe_XRPUSDT');
     return savedTimeframe || '15m';
   });
-  const [period, setPeriod] = useState('30d'); // Chart data period (24h, 7d, 30d, 90d)
+  // TODO: Period state for ChartControlBar - implement period-based data fetching
+  // This will control how much historical data to display (24h, 7d, 30d, 90d)
+  const [period, setPeriod] = useState('30d');
   
   // Consolidated modal state management
   const modals = useModalState();
@@ -6262,17 +6264,17 @@ useEffect(() => {
   }, [candles, generateLiquidityGrabSignal, generateChochFVGSignal, generateVWAPTradingSignal, generateEMATradingSignal, generateRSFlipSignal, generateBOSTrendSignal, simulateTrade, accountSize, riskPercent, liqGrabSwingLength, liqGrabTrendFilter, liqGrabDirectionFilter, stratLiquidityGrab, calculateBOSandCHoCH, liqGrabTPSL]);
 
   // Handle strategy generation
-  const handleGenerateStrategy = useCallback(async (type: 'scalping' | 'day-trading' | 'swing-trading') => {
-    // This would integrate with existing strategy generation logic
-    // For now, it's a placeholder that could be expanded
+  const handleGenerateStrategy = useCallback((type: 'scalping' | 'day-trading' | 'swing-trading') => {
+    // TODO: Integrate with existing strategy generation logic
+    // This is a placeholder that will be expanded to:
+    // - scalping: Quick entries/exits, tight stops (1-5min timeframes)
+    // - day-trading: Intraday patterns (15m-1h timeframes)
+    // - swing-trading: Multi-day holds (4h-1d timeframes)
+    
     console.log('Generating strategy of type:', type);
     
-    // Could trigger different signal generators based on type:
-    // - scalping: Quick entries/exits, tight stops
-    // - day-trading: Intraday patterns
-    // - swing-trading: Multi-day holds
-    
     // Future: Set up appropriate indicators and parameters for the strategy type
+    // Could trigger different signal generators based on type
   }, []);
 
   // Fix chart when navigating back to page
