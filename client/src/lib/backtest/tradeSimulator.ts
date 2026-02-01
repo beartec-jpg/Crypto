@@ -47,7 +47,7 @@ function calculatePeriodicVWAP(data: CandleData[], period: string, currentOnly: 
     let shouldReset = false;
     if (period === 'daily') {
       const prevDate = i > 0 ? new Date(data[i - 1].time * 1000) : null;
-      shouldReset = prevDate && date.getUTCDate() !== prevDate.getUTCDate();
+      shouldReset = !!(prevDate && date.getUTCDate() !== prevDate.getUTCDate());
     } else if (period === 'weekly') {
       const getWeekNumber = (d: Date) => {
         const firstDayOfYear = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
@@ -55,10 +55,10 @@ function calculatePeriodicVWAP(data: CandleData[], period: string, currentOnly: 
         return Math.ceil((pastDaysOfYear + firstDayOfYear.getUTCDay() + 1) / 7);
       };
       const prevDate = i > 0 ? new Date(data[i - 1].time * 1000) : null;
-      shouldReset = prevDate && getWeekNumber(date) !== getWeekNumber(prevDate);
+      shouldReset = !!(prevDate && getWeekNumber(date) !== getWeekNumber(prevDate));
     } else if (period === 'monthly') {
       const prevDate = i > 0 ? new Date(data[i - 1].time * 1000) : null;
-      shouldReset = prevDate && date.getUTCMonth() !== prevDate.getUTCMonth();
+      shouldReset = !!(prevDate && date.getUTCMonth() !== prevDate.getUTCMonth());
     }
     
     if (shouldReset) {

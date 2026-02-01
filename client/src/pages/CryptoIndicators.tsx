@@ -398,7 +398,7 @@ export default function CryptoIndicators() {
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   
   // ChartControlBar state
-  const [period, setPeriod] = useState('24h');
+  const [chartPeriod, setChartPeriod] = useState('24h');
   const [autoScroll, setAutoScroll] = useState(false);
 
   // Oscillator panel state for fullscreen mode
@@ -2575,7 +2575,7 @@ useEffect(() => {
         const filtered = prev.filter(s => 
           !newSignals.some(ns => ns.strategy === s.strategy && s.active)
         );
-        return [...filtered, ...newSignals];
+        return [...filtered, ...newSignals] as TradeSignal[];
       });
     }
   }, [botEnabled, candles, checkTrendFilter, generateChochFVGSignal, generateVWAPTradingSignal, generateBOSTrendSignal]);
@@ -4466,19 +4466,6 @@ useEffect(() => {
   }, [candles, generateLiquidityGrabSignal, generateChochFVGSignal, generateVWAPTradingSignal, generateEMATradingSignal, generateRSFlipSignal, generateBOSTrendSignal, simulateTradeWrapper, accountSize, riskPercent, liqGrabSwingLength, liqGrabTrendFilter, liqGrabDirectionFilter, stratLiquidityGrab, calculateBOSandCHoCH, liqGrabTPSL]);
 
   // Handle strategy generation
-  const handleGenerateStrategy = useCallback((type: 'scalping' | 'day-trading' | 'swing-trading') => {
-    // TODO: Integrate with existing strategy generation logic
-    // This is a placeholder that will be expanded to:
-    // - scalping: Quick entries/exits, tight stops (1-5min timeframes)
-    // - day-trading: Intraday patterns (15m-1h timeframes)
-    // - swing-trading: Multi-day holds (4h-1d timeframes)
-    
-    console.log('Generating strategy of type:', type);
-    
-    // Future: Set up appropriate indicators and parameters for the strategy type
-    // Could trigger different signal generators based on type
-  }, []);
-
   // Fix chart when navigating back to page
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -6323,10 +6310,10 @@ useEffect(() => {
         <ChartControlBar
           symbol={symbol}
           interval={interval}
-          period={period}
+          period={chartPeriod}
           onSymbolChange={setSymbol}
           onIntervalChange={setTimeframeInterval}
-          onPeriodChange={setPeriod}
+          onPeriodChange={setChartPeriod}
           onRefresh={() => fetchInitialData()}
           isFullscreen={isFullscreen}
           onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
@@ -6509,10 +6496,10 @@ useEffect(() => {
         <ChartControlBar
           symbol={symbol}
           interval={interval}
-          period={period}
+          period={chartPeriod}
           onSymbolChange={setSymbol}
           onIntervalChange={setTimeframeInterval}
-          onPeriodChange={setPeriod}
+          onPeriodChange={setChartPeriod}
           onRefresh={fetchInitialData}
           isFullscreen={isFullscreen}
           onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
