@@ -1201,7 +1201,7 @@ useEffect(() => {
       };
       tradingState.completeBacktest(mockResults);
     }, 2000);
-  }, [candles, toast, tradingState.startBacktest, tradingState.completeBacktest]);
+  }, [candles, toast, tradingState]);
   
   const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(false); // Show CVD spike triangles on chart (default OFF)
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
@@ -9393,7 +9393,6 @@ useEffect(() => {
         {/* Strategy Generator Panel */}
         <StrategyGeneratorPanel
           onGenerateStrategy={handleGenerateStrategy}
-          currentStrategy={undefined}
           candles={candles}
           indicators={indicators}
         />
