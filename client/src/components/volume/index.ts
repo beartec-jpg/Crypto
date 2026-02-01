@@ -1,0 +1,1 @@
+export { CVDDetailsPanel } from './CVDDetailsPanel';
