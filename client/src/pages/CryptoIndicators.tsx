@@ -263,8 +263,10 @@ export default function CryptoIndicators() {
     const savedTimeframe = localStorage.getItem('defaultTimeframe_XRPUSDT');
     return savedTimeframe || '15m';
   });
-  const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  
+  // Consolidated modal state management
+  const modals = useModalState();
+  
   const [apiKeys, setApiKeys] = useState({
     binance: localStorage.getItem('binance_api_key') || '',
     coinbase: localStorage.getItem('coinbase_api_key') || '',
@@ -380,7 +382,6 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
   
   // Native primitives for high-performance drawing rendering
   const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
-  const [showDrawingSettings, setShowDrawingSettings] = useState(false);
   
   // Modal manager for confirmation dialogs
   const modalManager = useModalManager();
@@ -393,7 +394,7 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
       setDrawingMode('draw');
     },
     onToggleFullscreen: () => setIsFullscreen(prev => !prev),
-    onOpenSettings: () => setSettingsDialogOpen(true),
+    onOpenSettings: () => modals.openModal('settings-dialog'),
     onDeleteSelected: () => {
       if (selectedDrawingId) {
         modalManager.openModal('delete-drawing', { id: selectedDrawingId });
@@ -8115,7 +8116,7 @@ useEffect(() => {
               </SelectContent>
             </Select>
             <Button
-              onClick={() => setSettingsDialogOpen(true)}
+              onClick={() => modals.openModal('settings-dialog')}
               className="bg-slate-700 hover:bg-slate-600 text-white px-3 md:px-4"
               data-testid="button-open-settings"
               title="Settings (Ctrl+,)"
@@ -8124,7 +8125,7 @@ useEffect(() => {
               <span className="hidden md:inline">Settings</span>
             </Button>
             <Button
-              onClick={() => setAlertSettingsOpen(true)}
+              onClick={() => modals.openModal('alert-settings')}
               className="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-4"
               data-testid="button-open-alert-settings"
             >
@@ -8997,8 +8998,8 @@ useEffect(() => {
                   {/* Settings Button - only show when a drawing is selected */}
                   {selectedDrawingId && (
                     <button
-                      onClick={() => setShowDrawingSettings(!showDrawingSettings)}
-                      className={`p-2 rounded-lg transition-all ${showDrawingSettings ? 'bg-blue-500 text-white' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`}
+                      onClick={() => modals.toggleModal('drawing-settings')}
+                      className={`p-2 rounded-lg transition-all ${modals.isOpen('drawing-settings') ? 'bg-blue-500 text-white' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`}
                       title="Drawing Settings"
                       data-testid="btn-drawing-settings"
                     >
@@ -9015,7 +9016,7 @@ useEffect(() => {
                       onClick={() => {
                         deleteDrawingMutation.mutate(selectedDrawingId);
                         setSelectedDrawingId(null);
-                        setShowDrawingSettings(false);
+                        modals.closeModal('drawing-settings');
                         toast({ title: 'Drawing Deleted', description: 'Selected drawing removed from chart' });
                       }}
                       className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all animate-pulse"
@@ -9252,7 +9253,7 @@ useEffect(() => {
                 )}
                 
                 {/* Drawing Settings Panel (if any comes next) */}
-                {showDrawingSettings && selectedDrawingId && (
+                {modals.isOpen('drawing-settings') && selectedDrawingId && (
                 <DrawingSettingsPanel
                   drawing={drawings.find(d => d.id === selectedDrawingId) || null}
                   onUpdate={(updates) => {
@@ -9276,7 +9277,7 @@ useEffect(() => {
                     updateDrawingMutation.mutate({ id: selectedDrawingId, style: mergedStyle });
                   }}
                   onClose={() => {
-                    setShowDrawingSettings(false);
+                    modals.closeModal('drawing-settings');
                     setSelectedDrawingId(null);
                   }}
                />
@@ -9487,7 +9488,7 @@ useEffect(() => {
             alerts={marketAlerts}
             filterMode={alertFilterMode}
             onFilterModeChange={setAlertFilterMode}
-            onSettingsClick={() => setAlertSettingsOpen(true)}
+            onSettingsClick={() => modals.openModal('alert-settings')}
             activeIndicators={activeIndicators}
             alertTypeToIndicator={alertTypeToIndicator}
           />
@@ -9585,15 +9586,15 @@ useEffect(() => {
         </div>
 
         {/* Alert Settings Dialog */}
-        <AlertSettingsDialog 
-          open={alertSettingsOpen} 
-          onOpenChange={setAlertSettingsOpen} 
+        <AlertSettingsDialog
+          open={modals.isOpen('alert-settings')}
+          onOpenChange={(open) => open ? modals.openModal('alert-settings') : modals.closeModal('alert-settings')}
         />
 
         {/* Settings Dialog - Simplified for Phase 4G-7 */}
         <SettingsDialog
-          isOpen={settingsDialogOpen}
-          onClose={() => setSettingsDialogOpen(false)}
+          isOpen={modals.isOpen('settings-dialog')}
+          onClose={() => modals.closeModal('settings-dialog')}
           indicators={{
             rsi: { show: indicators.rsi.show, period: indicators.rsi.period },
             macd: { show: indicators.macd.show, fast: indicators.macd.fast, slow: indicators.macd.slow, signal: indicators.macd.signal },
