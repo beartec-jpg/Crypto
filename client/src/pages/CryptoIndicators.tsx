@@ -159,6 +159,21 @@ import { calculatePositionSize } from '@/lib/trading/positionCalculator';
 import { calculateWeightedRR } from '@/lib/trading/riskCalculator';
 import { simulateTrade } from '@/lib/backtest/tradeSimulator';
 
+// Strategy utilities
+import {
+  calculateBOSandCHoCH,
+  getCurrentATR,
+  findStopLossLevel,
+  findNextSwingLevels,
+  getClosestVWAP as getClosestVWAPHelper,
+  generateLiquidityGrabSignal as generateLiquidityGrabSignalCore,
+  generateBOSTrendSignal as generateBOSTrendSignalCore,
+  generateChochFVGSignal as generateChochFVGSignalCore,
+  generateVWAPTradingSignal as generateVWAPTradingSignalCore,
+  generateEMATradingSignal as generateEMATradingSignalCore,
+  generateRSFlipSignal as generateRSFlipSignalCore,
+} from '@/lib/strategies';
+
 // Chart utilities  
 import { formatPrice, formatVolume, formatPercentChange } from '@/lib/chart/priceUtils';
 import { getBullBearColor, getIndicatorColor, getZoneColor } from '@/lib/chart/styleUtils';
@@ -2209,148 +2224,6 @@ useEffect(() => {
     return divergences;
   }, [calculateRSI, calculateMACD, calculateMFI, calculateOBV, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.mfi.period]);
 
-  // Calculate BOS and CHoCH - simplified: just break of swing high/low
-  const calculateBOSandCHoCH = useCallback((
-    data: CandleData[], 
-    swingLength: number = 5
-  ) => {
-    const swings = calculateSwings(data, swingLength);
-    const bosArray: BOS[] = [];
-    const chochArray: CHoCH[] = [];
-    
-    if (swings.length < 3) return { bos: bosArray, choch: chochArray };
-    
-    // Store arrays of swing highs and lows as they form chronologically
-    const swingHighs: typeof swings = [];
-    const swingLows: typeof swings = [];
-    
-    // Track current trend: 'bullish', 'bearish', or null (no trend yet)
-    let currentTrend: 'bullish' | 'bearish' | null = null;
-    
-    // Process swings chronologically and detect breaks
-    for (let i = 0; i < swings.length; i++) {
-      const swing = swings[i];
-      
-      if (swing.type === 'high') {
-        swingHighs.push(swing);
-        
-        // Check if this high breaks previous swing HIGH
-        if (swingHighs.length >= 2) {
-          const previousHigh = swingHighs[swingHighs.length - 2];
-          
-          if (swing.value > previousHigh.value) {
-            // This is a higher high - could be BOS or CHoCH
-            const breakIdx = data.findIndex((c, idx) => 
-              idx > previousHigh.index && idx <= swing.index && c.high > previousHigh.value
-            );
-            
-            if (breakIdx !== -1) {
-              const breakCandle = data[breakIdx];
-              
-              // Check for liquidity grab: price breaks high but then closes back below it
-              // Look at candles after the break to see if price reversed
-              let isLiqGrab = false;
-              for (let j = breakIdx + 1; j < Math.min(breakIdx + 5, data.length); j++) {
-                if (data[j].close < previousHigh.value) {
-                  isLiqGrab = true;
-                  break;
-                }
-              }
-              
-              // If we were in a bearish trend, this is CHoCH (reversal to bullish)
-              // Otherwise it's BOS (continuation)
-              if (currentTrend === 'bearish') {
-                chochArray.push({
-                  swingTime: previousHigh.time,
-                  swingPrice: previousHigh.value,
-                  breakTime: breakCandle.time,
-                  breakIndex: breakIdx,
-                  type: 'bullish',
-                  sweptLevel: 'high',
-                  isLiquidityGrab: isLiqGrab
-                });
-                currentTrend = 'bullish'; // Trend reversed
-              } else {
-                bosArray.push({
-                  swingTime: previousHigh.time,
-                  swingPrice: previousHigh.value,
-                  breakTime: breakCandle.time,
-                  breakIndex: breakIdx,
-                  type: 'bullish',
-                  sweptLevel: 'high',
-                  isLiquidityGrab: isLiqGrab
-                });
-                currentTrend = 'bullish'; // Trend continuing or starting
-              }
-            }
-          }
-        }
-        
-      } else {
-        // Swing low
-        swingLows.push(swing);
-        
-        // Check if this low breaks previous swing LOW
-        if (swingLows.length >= 2) {
-          const previousLow = swingLows[swingLows.length - 2];
-          
-          if (swing.value < previousLow.value) {
-            // This is a lower low - could be BOS or CHoCH
-            const breakIdx = data.findIndex((c, idx) => 
-              idx > previousLow.index && idx <= swing.index && c.low < previousLow.value
-            );
-            
-            if (breakIdx !== -1) {
-              const breakCandle = data[breakIdx];
-              
-              // Check for liquidity grab: price breaks low but then closes back above it
-              // Look at candles after the break to see if price reversed
-              let isLiqGrab = false;
-              for (let j = breakIdx + 1; j < Math.min(breakIdx + 5, data.length); j++) {
-                if (data[j].close > previousLow.value) {
-                  isLiqGrab = true;
-                  break;
-                }
-              }
-              
-              // If we were in a bullish trend, this is CHoCH (reversal to bearish)
-              // Otherwise it's BOS (continuation)
-              if (currentTrend === 'bullish') {
-                chochArray.push({
-                  swingTime: previousLow.time,
-                  swingPrice: previousLow.value,
-                  breakTime: breakCandle.time,
-                  breakIndex: breakIdx,
-                  type: 'bearish',
-                  sweptLevel: 'low',
-                  isLiquidityGrab: isLiqGrab
-                });
-                currentTrend = 'bearish'; // Trend reversed
-              } else {
-                bosArray.push({
-                  swingTime: previousLow.time,
-                  swingPrice: previousLow.value,
-                  breakTime: breakCandle.time,
-                  breakIndex: breakIdx,
-                  type: 'bearish',
-                  sweptLevel: 'low',
-                  isLiquidityGrab: isLiqGrab
-                });
-                currentTrend = 'bearish'; // Trend continuing or starting
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    console.log(`📊 BOS/CHoCH Detection: ${bosArray.length} BOS, ${chochArray.length} CHoCH from ${swings.length} swings`);
-    
-    return { bos: bosArray, choch: chochArray };
-  }, [calculateSwings]);
-
-
-
   // Determine market bias (EMA-based) using configurable periods
   const determineBias = useCallback((data: CandleData[]) => {
     const closes = data.map(c => c.close);
@@ -2397,64 +2270,7 @@ useEffect(() => {
     }
   }, [calculateSwings, chartBosSwingLength]);
 
-  // Get current ATR value for stop loss placement
-  const getCurrentATR = useCallback((data: CandleData[], period: number = 14): number => {
-    if (data.length < period) return 0;
-    
-    const trueRanges: number[] = [];
-    for (let i = 1; i < data.length; i++) {
-      const high = data[i].high;
-      const low = data[i].low;
-      const prevClose = data[i - 1].close;
-      const tr = Math.max(
-        high - low,
-        Math.abs(high - prevClose),
-        Math.abs(low - prevClose)
-      );
-      trueRanges.push(tr);
-    }
-    
-    const atr = trueRanges.slice(-period).reduce((sum, tr) => sum + tr, 0) / period;
-    return atr;
-  }, []);
-
-  // Find stop loss level based on swing structure
-  const findStopLossLevel = useCallback((data: CandleData[], entry: number, direction: 'long' | 'short', customSwingLength?: number): number => {
-    const swingLengthToUse = customSwingLength ?? swingLength;
-    const swings = calculateSwings(data, swingLengthToUse);
-    
-    if (direction === 'long') {
-      // For LONG: Find swing low BELOW entry (for stop loss protection)
-      const lows = swings.filter(s => s.type === 'low' && s.value < entry).sort((a, b) => b.value - a.value);
-      return lows.length > 0 ? lows[0].value : entry * 0.99;
-    } else {
-      // For SHORT: Find swing high ABOVE entry (for stop loss protection)
-      const highs = swings.filter(s => s.type === 'high' && s.value > entry).sort((a, b) => a.value - b.value);
-      return highs.length > 0 ? highs[0].value : entry * 1.01;
-    }
-  }, [calculateSwings, swingLength]);
-
-  // Find next swing high/low for TP targets (FUTURE PIVOTS - for strategies waiting for new pivots to form)
-  const findNextSwingLevels = useCallback((data: CandleData[], currentPrice: number, direction: 'long' | 'short', customSwingLength?: number) => {
-    const swingLengthToUse = customSwingLength ?? swingLength;
-    const swings = calculateSwings(data, swingLengthToUse);
-    
-    if (direction === 'long') {
-      // Find next swing high above current price
-      const highs = swings.filter(s => s.type === 'high' && s.value > currentPrice).sort((a, b) => a.value - b.value);
-      return {
-        tp2: highs.length > 0 ? highs[0].value : currentPrice * 1.02,
-        tp3: highs.length > 1 ? highs[1].value : currentPrice * 1.03,
-      };
-    } else {
-      // Find next swing low below current price
-      const lows = swings.filter(s => s.type === 'low' && s.value < currentPrice).sort((a, b) => b.value - a.value);
-      return {
-        tp2: lows.length > 0 ? lows[0].value : currentPrice * 0.98,
-        tp3: lows.length > 1 ? lows[1].value : currentPrice * 0.97,
-      };
-    }
-  }, [calculateSwings, swingLength]);
+  // *** Helper functions removed - using imported versions from @/lib/strategies ***
 
   // Find PREVIOUS swing high/low for TP targets (PAST PIVOTS - for quick scalps back to last resistance/support)
   const findPreviousSwingLevels = useCallback((data: CandleData[], currentPrice: number, direction: 'long' | 'short', customSwingLength?: number, endIndex?: number) => {
@@ -2579,6 +2395,9 @@ useEffect(() => {
   }, [directionFilter]);
 
   // Generate liquidity grab signal
+  // ==================== STRATEGY SIGNAL GENERATORS (Wrappers for extracted modules) ====================
+  
+  // Generate liquidity grab signal - wrapper for extracted core function
   const generateLiquidityGrabSignal = useCallback((
     data: CandleData[], 
     bypassToggle = false,
@@ -2593,1063 +2412,144 @@ useEffect(() => {
       tpslConfig?: typeof liqGrabTPSL;
     }
   ): TradeSignal | null => {
-    if ((!stratLiquidityGrab && !bypassToggle) || data.length < 50) return null;
-    
-    // Use override settings if provided, otherwise use state
-    const swingLength = overrideSettings?.swingLength ?? liqGrabSwingLength;
-    const trendFilter = overrideSettings?.trendFilter ?? liqGrabTrendFilter;
-    const directionFilter = overrideSettings?.directionFilter ?? liqGrabDirectionFilter;
-    const tpslConfig = overrideSettings?.tpslConfig ?? liqGrabTPSL;
-    
-    // Use strategy-specific settings with optional filters
-    const { bos, choch } = calculateBOSandCHoCH(data, swingLength);
-    const allEvents = [...bos, ...choch].filter(e => e.isLiquidityGrab);
-    
-    if (allEvents.length === 0) return null;
-    
-    // Get the most recent sweep (for backtesting, we want the last one in the data)
-    const lastEvent = allEvents[allEvents.length - 1];
-    const currentCandle = data[data.length - 1];
-    const currentPrice = currentCandle.close;
-    const atr = getCurrentATR(data);
-    
-    // Liquidity grab REVERSAL logic (independent of BOS/CHoCH structure):
-    // Sweep LOW → price reverses UP → LONG
-    // Sweep HIGH → price reverses DOWN → SHORT
-    const isLong = lastEvent.sweptLevel === 'low';
-    
-    // Check strategy-specific direction filter
-    if (directionFilter !== 'both') {
-      if (directionFilter === 'bull' && !isLong) return null;
-      if (directionFilter === 'bear' && isLong) return null;
+    // Get VWAP values if needed
+    const vwapValues: number[] = [];
+    if (indicators.vwap.showDaily) {
+      const dailyVWAP = calculatePeriodicVWAP(candles, 'daily', true);
+      if (dailyVWAP.length > 0) vwapValues.push(dailyVWAP[dailyVWAP.length - 1].value);
     }
-    
-    // Check strategy-specific trend filter
-    if (trendFilter !== 'none') {
-      if (trendFilter === 'ema' && bias === null) return null;
-      if (trendFilter === 'structure' && (structureTrend === null || structureTrend === 'ranging')) return null;
-      if (trendFilter === 'both') {
-        const emaBullish = bias === 'bullish';
-        const structureBullish = structureTrend === 'uptrend';
-        const emaBearish = bias === 'bearish';
-        const structureBearish = structureTrend === 'downtrend';
-        if (!((emaBullish && structureBullish) || (emaBearish && structureBearish))) return null;
-      }
+    if (indicators.vwap.showWeekly) {
+      const weeklyVWAP = calculatePeriodicVWAP(candles, 'weekly', true);
+      if (weeklyVWAP.length > 0) vwapValues.push(weeklyVWAP[weeklyVWAP.length - 1].value);
     }
-    
-    // Entry at the close price of the sweep candle (reversal entry)
-    // Find the candle where the sweep occurred
-    const sweepCandleIdx = data.findIndex(c => c.time === lastEvent.breakTime);
-    const sweepCandle = sweepCandleIdx >= 0 ? data[sweepCandleIdx] : data[data.length - 1];
-    const entry = sweepCandle.close;
-    
-    // Use bot-specific SL configuration
-    const slConfig = tpslConfig.sl;
-    let stopLoss: number;
-    if (slConfig.type === 'atr') {
-      // Place SL at ATR distance from entry
-      stopLoss = isLong ? entry - (atr * (slConfig.atrMultiplier || 1.5)) : entry + (atr * (slConfig.atrMultiplier || 1.5));
-    } else if (slConfig.type === 'structure') {
-      // For structure SL, if swing length is provided, calculate proper swing level
-      // Otherwise fall back to swept swing level (legacy behavior)
-      if (slConfig.swingLength) {
-        stopLoss = findStopLossLevel(data, entry, isLong ? 'long' : 'short', slConfig.swingLength);
-      } else {
-        // Place SL at the swept swing level (small buffer for slippage)
-        const slBuffer = 0.0005; // 0.05% buffer
-        stopLoss = isLong 
-          ? lastEvent.swingPrice * (1 - slBuffer)  // SL below swept low
-          : lastEvent.swingPrice * (1 + slBuffer); // SL above swept high
-      }
-    } else {
-      // Fixed distance in percentage
-      const distancePercent = (slConfig.fixedDistance || 1.0) / 100;
-      stopLoss = isLong ? entry * (1 - distancePercent) : entry * (1 + distancePercent);
+    if (indicators.vwap.showRolling) {
+      const rolling = calculateRollingVWAP(candles, indicators.vwap.rollingPeriod);
+      if (rolling.length > 0) vwapValues.push(rolling[rolling.length - 1].value);
     }
-    
-    const riskAmount = Math.abs(entry - stopLoss);
-    
-    // Calculate TPs based on bot-specific configuration
-    const { tp1: tp1Config, tp2: tp2Config, tp3: tp3Config } = tpslConfig;
-    
-    // For structure-based calculations, use TP1 swing length if configured, otherwise use default
-    const structureSwingLength = tp1Config.type === 'structure' && tp1Config.swingLength 
-      ? tp1Config.swingLength 
-      : liqGrabTPSwingLength;
-    
-    const { tp2: structureTP2, tp3: structureTP3 } = findNextSwingLevels(data, entry, isLong ? 'long' : 'short', structureSwingLength);
-    
-    let tp1: number, tp2: number, tp3: number;
-    let tp1Type: TPType;
-    let tp2Type: TPType;
-    let tp3Type: TPType;
-    
-    // TP1 calculation
-    tp1Type = tp1Config.type;
-    if (tp1Config.type === 'ema') {
-      // EMA exits have no price target - only exit on signal
-      tp1 = isLong ? Infinity : -Infinity;
-    } else if (tp1Config.type === 'atr') {
-      tp1 = isLong ? entry + (atr * (tp1Config.atrMultiplier || 1.5)) : entry - (atr * (tp1Config.atrMultiplier || 1.5));
-    } else if (tp1Config.type === 'structure') {
-      tp1 = structureTP2;
-    } else if (tp1Config.type === 'fixed_rr') {
-      tp1 = isLong ? entry + (riskAmount * (tp1Config.fixedRR || 2.0)) : entry - (riskAmount * (tp1Config.fixedRR || 2.0));
-    } else if (tp1Config.type === 'vwap') {
-      tp1 = getClosestVWAP(entry) || structureTP2;
-    } else if (tp1Config.type === 'trailing') {
-      // Trailing TP: Set far away initially, will activate once profitable + swing forms
-      tp1 = isLong ? entry * 100 : entry * 0.01;
-    } else {
-      tp1 = isLong ? entry + (structureTP2 - entry) * (tp1Config.projectionMultiplier || 2.0) : entry - (entry - structureTP2) * (tp1Config.projectionMultiplier || 2.0);
-    }
-    
-    // TP2 calculation
-    tp2Type = tp2Config?.type || 'structure';
-    if (tp2Config?.type === 'atr') {
-      tp2 = isLong ? entry + (atr * (tp2Config.atrMultiplier || 2.0)) : entry - (atr * (tp2Config.atrMultiplier || 2.0));
-    } else if (tp2Config?.type === 'fixed_rr') {
-      tp2 = isLong ? entry + (riskAmount * (tp2Config.fixedRR || 3.0)) : entry - (riskAmount * (tp2Config.fixedRR || 3.0));
-    } else if (tp2Config?.type === 'trailing') {
-      // Trailing TP: Set far away initially, will activate once profitable + swing forms
-      tp2 = isLong ? entry * 100 : entry * 0.01;
-    } else {
-      tp2 = structureTP3;
-    }
-    
-    // TP3 calculation
-    tp3Type = tp3Config?.type || 'projection';
-    if (tp3Config?.type === 'projection') {
-      tp3 = isLong ? entry + (structureTP2 - entry) * (tp3Config.projectionMultiplier || 3.0) : entry - (entry - structureTP2) * (tp3Config.projectionMultiplier || 3.0);
-    } else if (tp3Config?.type === 'trailing') {
-      // Trailing TP: Set far away initially, will activate once profitable + swing forms
-      tp3 = isLong ? entry * 100 : entry * 0.01;
-    } else {
-      tp3 = isLong ? entry + (riskAmount * 5.0) : entry - (riskAmount * 5.0);
-    }
-    
-    console.log(`🎯 Liquidity Grab TP calculation:`, {
-      type: isLong ? 'LONG' : 'SHORT',
-      entry: entry?.toFixed(4) || 'N/A',
-      stopLoss: stopLoss?.toFixed(4) || 'N/A',
-      tp1: tp1?.toFixed(4) || 'N/A',
-      tp1Type,
-      rr1: (entry && tp1 && riskAmount) ? (Math.abs(tp1 - entry) / riskAmount).toFixed(2) : 'N/A',
-      numTPs: tpslConfig.numTPs
-    });
-    
-    // Use stable ID based on the actual market event time, not current time
-    // Set signal time to the sweep candle time for proper alignment on chart
-    return {
-      id: `liq_grab_${lastEvent.breakTime}`,
-      time: lastEvent.breakTime, // Use sweep candle time, not current time
-      type: isLong ? 'LONG' : 'SHORT',
-      strategy: 'liquidity_grab',
-      entry,
-      stopLoss,
-      tp1,
-      tp2,
-      tp3,
-      tp1Type,
-      tp2Type,
-      tp3Type,
-      riskReward1: Math.abs(tp1 - entry) / riskAmount,
-      riskReward2: Math.abs(tp2 - entry) / riskAmount,
-      riskReward3: Math.abs(tp3 - entry) / riskAmount,
-      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
-      reason: `Liquidity sweep at ${lastEvent.swingPrice?.toFixed(4) || 'unknown'}`,
-      active: true,
-      trailingActive: tp1Config.type === 'trailing' ? false : undefined, // Start inactive for trailing TP
-    };
-  }, [stratLiquidityGrab, calculateBOSandCHoCH, liqGrabSwingLength, liqGrabDirectionFilter, liqGrabTrendFilter, bias, structureTrend, findStopLossLevel, findNextSwingLevels, calculatePositionSize, liqGrabTPSL, getCurrentATR, getClosestVWAP, liqGrabTPSwingLength]);
 
-  // Generate BOS Trend Follow signal
+    return generateLiquidityGrabSignalCore(data, {
+      enabled: bypassToggle || stratLiquidityGrab,
+      swingLength: overrideSettings?.swingLength ?? liqGrabSwingLength,
+      trendFilter: overrideSettings?.trendFilter ?? liqGrabTrendFilter,
+      directionFilter: overrideSettings?.directionFilter ?? liqGrabDirectionFilter,
+      tpslConfig: overrideSettings?.tpslConfig ?? liqGrabTPSL,
+      tpSwingLength: liqGrabTPSwingLength,
+      accountSize,
+      riskPercent,
+      bias,
+      structureTrend,
+      vwapValues
+    }, bypassToggle);
+  }, [stratLiquidityGrab, liqGrabSwingLength, liqGrabDirectionFilter, liqGrabTrendFilter, bias, structureTrend, liqGrabTPSL, liqGrabTPSwingLength, accountSize, riskPercent, candles, indicators.vwap, calculatePeriodicVWAP, calculateRollingVWAP]);
+
+  // Generate BOS Trend Follow signal - wrapper for extracted core function
   const generateBOSTrendSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    if (!stratBOSTrend || data.length < 50) return null;
-    
-    const { bos } = calculateBOSandCHoCH(data, bosSwingLength);
-    
-    // Filter out liquidity grabs (same as chart display)
-    const trendBOS = bos.filter(b => !b.isLiquidityGrab);
-    if (trendBOS.length === 0) return null;
-    
-    // Get the most recent BOS event and enter the trade
-    const lastBOS = trendBOS[trendBOS.length - 1];
-    const currentCandle = data[data.length - 1];
-    const isLong = lastBOS.type === 'bullish';
-    
-    // Check direction filter
-    if (bosDirectionFilter !== 'both') {
-      if (bosDirectionFilter === 'bull' && !isLong) return null;
-      if (bosDirectionFilter === 'bear' && isLong) return null;
+    const vwapValues: number[] = [];
+    if (indicators.vwap.showDaily) {
+      const dailyVWAP = calculatePeriodicVWAP(candles, 'daily', true);
+      if (dailyVWAP.length > 0) vwapValues.push(dailyVWAP[dailyVWAP.length - 1].value);
     }
-    
-    // Check trend filter
-    if (bosTrendFilter !== 'none') {
-      if (bosTrendFilter === 'ema' && bias === null) return null;
-      if (bosTrendFilter === 'structure' && (structureTrend === null || structureTrend === 'ranging')) return null;
-      if (bosTrendFilter === 'both') {
-        const emaBullish = bias === 'bullish';
-        const structureBullish = structureTrend === 'uptrend';
-        const emaBearish = bias === 'bearish';
-        const structureBearish = structureTrend === 'downtrend';
-        if (!((emaBullish && structureBullish) || (emaBearish && structureBearish))) return null;
-      }
+    if (indicators.vwap.showWeekly) {
+      const weeklyVWAP = calculatePeriodicVWAP(candles, 'weekly', true);
+      if (weeklyVWAP.length > 0) vwapValues.push(weeklyVWAP[weeklyVWAP.length - 1].value);
     }
-    
-    const entry = currentCandle.close;
-    const atr = getCurrentATR(data);
-    
-    // Use bot-specific SL configuration
-    const slConfig = bosTPSL.sl;
-    let stopLoss: number;
-    if (slConfig.type === 'atr') {
-      stopLoss = isLong ? entry - (atr * (slConfig.atrMultiplier || 1.5)) : entry + (atr * (slConfig.atrMultiplier || 1.5));
-    } else if (slConfig.type === 'structure') {
-      const swings = calculateSwings(data, bosSLSwingLength);
-      if (isLong) {
-        const lows = swings.filter(s => s.type === 'low' && s.value < entry).sort((a, b) => b.value - a.value);
-        stopLoss = lows.length > 0 ? lows[0].value : entry * 0.99;
-      } else {
-        const highs = swings.filter(s => s.type === 'high' && s.value > entry).sort((a, b) => a.value - b.value);
-        stopLoss = highs.length > 0 ? highs[0].value : entry * 1.01;
-      }
-    } else {
-      // Fixed distance in percentage
-      const distancePercent = (slConfig.fixedDistance || 1.0) / 100;
-      stopLoss = isLong ? entry * (1 - distancePercent) : entry * (1 + distancePercent);
+    if (indicators.vwap.showRolling) {
+      const rolling = calculateRollingVWAP(candles, indicators.vwap.rollingPeriod);
+      if (rolling.length > 0) vwapValues.push(rolling[rolling.length - 1].value);
     }
-    
-    const riskAmount = Math.abs(entry - stopLoss);
-    
-    // Calculate TPs based on bot-specific configuration
-    const { tp1: tp1Config, tp2: tp2Config, tp3: tp3Config } = bosTPSL;
-    const { tp2: structureTP2, tp3: structureTP3 } = findNextSwingLevels(data, entry, isLong ? 'long' : 'short', bosTPSwingLength);
-    
-    let tp1: number, tp2: number, tp3: number;
-    let tp1Type: TPType;
-    let tp2Type: TPType;
-    let tp3Type: TPType;
-    
-    // TP1 calculation
-    tp1Type = tp1Config.type;
-    if (tp1Config.type === 'atr') {
-      tp1 = isLong ? entry + (atr * (tp1Config.atrMultiplier || 1.5)) : entry - (atr * (tp1Config.atrMultiplier || 1.5));
-    } else if (tp1Config.type === 'structure') {
-      tp1 = structureTP2;
-    } else if (tp1Config.type === 'fixed_rr') {
-      tp1 = isLong ? entry + (riskAmount * (tp1Config.fixedRR || 1.5)) : entry - (riskAmount * (tp1Config.fixedRR || 1.5));
-    } else if (tp1Config.type === 'vwap') {
-      tp1 = getClosestVWAP(entry) || structureTP2;
-    } else {
-      tp1 = isLong ? entry + (structureTP2 - entry) * (tp1Config.projectionMultiplier || 2.0) : entry - (entry - structureTP2) * (tp1Config.projectionMultiplier || 2.0);
-    }
-    
-    // TP2 calculation
-    tp2Type = tp2Config?.type || 'structure';
-    if (tp2Config?.type === 'atr') {
-      tp2 = isLong ? entry + (atr * (tp2Config.atrMultiplier || 2.0)) : entry - (atr * (tp2Config.atrMultiplier || 2.0));
-    } else if (tp2Config?.type === 'fixed_rr') {
-      tp2 = isLong ? entry + (riskAmount * (tp2Config.fixedRR || 2.5)) : entry - (riskAmount * (tp2Config.fixedRR || 2.5));
-    } else {
-      tp2 = structureTP3;
-    }
-    
-    // TP3 calculation
-    tp3Type = tp3Config?.type || 'projection';
-    if (tp3Config?.type === 'projection') {
-      tp3 = isLong ? entry + (structureTP2 - entry) * (tp3Config.projectionMultiplier || 3.0) : entry - (entry - structureTP2) * (tp3Config.projectionMultiplier || 3.0);
-    } else {
-      tp3 = isLong ? entry + (riskAmount * 4.0) : entry - (riskAmount * 4.0);
-    }
-    
-    console.log(`🎯 BOS Trend TP calculation:`, {
-      type: isLong ? 'LONG' : 'SHORT',
-      entry: entry.toFixed(4),
-      stopLoss: stopLoss.toFixed(4),
-      tp1: tp1.toFixed(4),
-      tp1Type,
-      rr1: (Math.abs(tp1 - entry) / riskAmount).toFixed(2),
-      numTPs: bosTPSL.numTPs,
-      swingLength: bosSwingLength
-    });
-    
-    return {
-      id: `bos_trend_${lastBOS.breakTime}`,
-      time: lastBOS.breakTime,
-      type: isLong ? 'LONG' : 'SHORT',
-      strategy: 'bos_trend',
-      entry,
-      stopLoss,
-      tp1,
-      tp2,
-      tp3,
-      tp1Type,
-      tp2Type,
-      tp3Type,
-      riskReward1: Math.abs(tp1 - entry) / riskAmount,
-      riskReward2: Math.abs(tp2 - entry) / riskAmount,
-      riskReward3: Math.abs(tp3 - entry) / riskAmount,
-      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
-      reason: `BOS ${isLong ? 'Bullish' : 'Bearish'} at ${lastBOS.swingPrice.toFixed(4)}`,
-      active: true,
-    };
-  }, [stratBOSTrend, calculateBOSandCHoCH, bosSwingLength, bosDirectionFilter, bosTrendFilter, bias, structureTrend, calculatePositionSize, bosTPSL, getCurrentATR, getClosestVWAP, findNextSwingLevels, calculateSwings, bosTPSwingLength, bosSLSwingLength]);
 
-  // Generate SIMPLIFIED FVG retest signal (NO CHoCH requirements)
+    return generateBOSTrendSignalCore(data, {
+      enabled: stratBOSTrend,
+      swingLength: bosSwingLength,
+      directionFilter: bosDirectionFilter,
+      trendFilter: bosTrendFilter,
+      tpslConfig: bosTPSL,
+      slSwingLength: bosSLSwingLength,
+      tpSwingLength: bosTPSwingLength,
+      accountSize,
+      riskPercent,
+      bias,
+      structureTrend,
+      vwapValues
+    });
+  }, [stratBOSTrend, bosSwingLength, bosDirectionFilter, bosTrendFilter, bias, structureTrend, bosTPSL, bosSLSwingLength, bosTPSwingLength, accountSize, riskPercent, candles, indicators.vwap, calculatePeriodicVWAP, calculateRollingVWAP]);
+
+  // Generate CHoCH + FVG signal - wrapper for extracted core function
   const generateChochFVGSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    if (!stratChochFVG || data.length < 50) return null;
-    
-    // Calculate FVGs
-    const fvgs = calculateFVGs(data, true);
-    const currentCandle = data[data.length - 1];
-    const currentPrice = currentCandle.close;
-    
-    // Simple FVG retest detection:
-    // LONG: Price enters bullish FVG from above (retracement down into support)
-    // SHORT: Price enters bearish FVG from below (retracement up into resistance)
-    const relevantFVGs = fvgs.filter(fvg => {
-      const inZoneCheck = priceInZone(currentPrice, fvg.lower, fvg.upper);
-      const validVolume = (fvg.volumeScore || 0) >= chochFVGVolumeThreshold;
-      
-      // OPTIONAL: Ensure FVG has minimum height (filter out tiny gaps)
-      let significantSize = true;
-      if (chochUseFVGSizeFilter) {
-        const fvgHeight = fvg.upper - fvg.lower;
-        const minHeight = getCurrentATR(data) * (chochFVGMinSizeATR / 100);
-        significantSize = fvgHeight >= minHeight;
-      }
-      
-      // Entry direction check - price must enter from correct side
-      const fvgIndex = data.findIndex(c => c.time === fvg.time);
-      if (fvgIndex < 0 || fvgIndex >= data.length - 1) return false;
-      
-      // Check if current candle is entering FVG from the right direction
-      const prevCandle = data[data.length - 2];
-      const enteringFromAbove = prevCandle.close > fvg.upper && currentPrice >= fvg.lower && currentPrice <= fvg.upper;
-      const enteringFromBelow = prevCandle.close < fvg.lower && currentPrice >= fvg.lower && currentPrice <= fvg.upper;
-      
-      const correctEntry = (fvg.type === 'bullish' && enteringFromAbove) || (fvg.type === 'bearish' && enteringFromBelow);
-      
-      return inZoneCheck && validVolume && significantSize && correctEntry;
+    return generateChochFVGSignalCore(data, {
+      enabled: stratChochFVG,
+      volumeThreshold: chochFVGVolumeThreshold,
+      useFVGSizeFilter: chochUseFVGSizeFilter,
+      fvgMinSizeATR: chochFVGMinSizeATR,
+      tpslConfig: chochTPSL,
+      slSwingLength: chochSLSwingLength,
+      tpSwingLength: chochTPSwingLength,
+      accountSize,
+      riskPercent,
+      footprintData: [],
+      fvgVolumeThreshold: chochFVGVolumeThreshold
     });
-    
-    if (relevantFVGs.length === 0) return null;
-    
-    const fvg = relevantFVGs[0];
-    const isLong = fvg.type === 'bullish';
-    const entry = isLong ? fvg.upper : fvg.lower;
-    const atr = getCurrentATR(data);
-    
-    console.log('✅ FVG Retest Entry:', {
-      type: fvg.type.toUpperCase(),
-      direction: isLong ? 'LONG' : 'SHORT',
-      fvgZone: `${fvg.lower.toFixed(4)} - ${fvg.upper.toFixed(4)}`,
-      entry: entry.toFixed(4),
-      currentPrice: currentPrice.toFixed(4),
-    });
-    
-    // Stop Loss: Fixed % from FVG boundary OR nearest pivot beyond FVG
-    const slConfig = chochTPSL.sl;
-    let stopLoss: number;
-    
-    if (slConfig.type === 'structure') {
-      // Find nearest pivot BEYOND the FVG (opposite side from entry)
-      const swings = calculateSwings(data, chochSLSwingLength);
-      const fvgBoundary = isLong ? fvg.lower : fvg.upper;
-      
-      let nearestPivot: number | null = null;
-      for (let i = swings.length - 1; i >= 0; i--) {
-        const swing = swings[i];
-        if (isLong && swing.type === 'low' && swing.value < fvgBoundary) {
-          nearestPivot = swing.value;
-          break;
-        } else if (!isLong && swing.type === 'high' && swing.value > fvgBoundary) {
-          nearestPivot = swing.value;
-          break;
-        }
-      }
-      
-      // If no pivot found, use fixed % from FVG
-      stopLoss = nearestPivot !== null ? nearestPivot : (isLong ? fvg.lower * 0.99 : fvg.upper * 1.01);
-    } else {
-      // Fixed % from FVG boundary
-      const distancePercent = (slConfig.fixedDistance || 1.0) / 100;
-      const fvgBoundary = isLong ? fvg.lower : fvg.upper;
-      stopLoss = isLong ? fvgBoundary * (1 - distancePercent) : fvgBoundary * (1 + distancePercent);
-    }
-    
-    const riskAmount = Math.abs(entry - stopLoss);
-    
-    // TP Mode: Structure (last swing high/low) OR Trailing (starts at SL, moves to new pivots)
-    const { tp1: tp1Config } = chochTPSL;
-    let tp1: number;
-    let tp1Type: TPType = 'structure';
-    
-    if (tp1Config.type === 'structure') {
-      // Target last swing high (longs) or low (shorts)
-      const swings = calculateSwings(data, chochTPSwingLength);
-      const targetPivots = isLong 
-        ? swings.filter(s => s.type === 'high' && s.value > entry).sort((a, b) => a.value - b.value)
-        : swings.filter(s => s.type === 'low' && s.value < entry).sort((a, b) => b.value - a.value);
-      
-      tp1 = targetPivots.length > 0 ? targetPivots[0].value : stopLoss;
-      
-      console.log('📊 Structure TP:', {
-        direction: isLong ? 'LONG' : 'SHORT',
-        entry: entry.toFixed(4),
-        targetPivot: tp1.toFixed(4),
-        pivotsFound: targetPivots.length,
-      });
-    } else {
-      // Trailing TP: Set far away initially, will activate once profitable + swing forms
-      tp1 = isLong ? entry * 100 : entry * 0.01; // Far away price to prevent premature exit
-      tp1Type = 'trailing';
-      
-      console.log('📊 Trailing TP Initialized:', {
-        direction: isLong ? 'LONG' : 'SHORT',
-        entry: entry.toFixed(4),
-        sl: stopLoss.toFixed(4),
-        initialTP: 'Disabled (far away)',
-        note: 'Will activate when profitable + swing forms',
-      });
-    }
-    
-    const signal: TradeSignal = {
-      id: `fvg_${fvg.time}_${entry.toFixed(4)}`,
-      time: data[data.length - 1].time,
-      type: isLong ? 'LONG' : 'SHORT',
-      strategy: 'choch_fvg',
-      entry,
-      stopLoss,
-      tp1,
-      tp2: tp1, // Single TP approach
-      tp3: tp1,
-      tp1Type,
-      tp2Type: tp1Type,
-      tp3Type: tp1Type,
-      riskReward1: Math.abs(tp1 - entry) / riskAmount,
-      riskReward2: Math.abs(tp1 - entry) / riskAmount,
-      riskReward3: Math.abs(tp1 - entry) / riskAmount,
-      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
-      reason: `FVG Retest (${fvg.type})`,
-      active: true,
-      trailingActive: tp1Config.type === 'trailing' ? false : undefined, // Start inactive for trailing
-    };
-    
-    return signal;
-  }, [stratChochFVG, calculateFVGs, getCurrentATR, chochFVGVolumeThreshold, chochUseFVGSizeFilter, chochFVGMinSizeATR, chochTPSL, chochSLSwingLength, calculateSwings, chochTPSwingLength, calculatePositionSize]);
+  }, [stratChochFVG, chochFVGVolumeThreshold, chochUseFVGSizeFilter, chochFVGMinSizeATR, chochTPSL, chochSLSwingLength, chochTPSwingLength, accountSize, riskPercent]);
 
-  // Generate VWAP Trading signal (Bounce and Cross patterns)
+  // Generate VWAP Trading signal - wrapper for extracted core function
   const generateVWAPTradingSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    if (!stratVWAPRejection || data.length < 50) return null;
+    // Skip if vwapType is 'session' as it's not supported by core function
+    if (vwapType === 'session') return null;
     
-    // Calculate VWAP independently based on vwapType setting
-    let vwapData: VWAPData[];
-    if (vwapType === 'daily') {
-      vwapData = calculatePeriodicVWAP(data, 'daily', true);
-    } else if (vwapType === 'weekly') {
-      vwapData = calculatePeriodicVWAP(data, 'weekly', true);
-    } else if (vwapType === 'monthly') {
-      vwapData = calculatePeriodicVWAP(data, 'monthly', true);
-    } else if (vwapType === 'rolling10') {
-      vwapData = calculateRollingVWAP(data, 10);
-    } else if (vwapType === 'rolling20') {
-      vwapData = calculateRollingVWAP(data, 20);
-    } else if (vwapType === 'rolling50') {
-      vwapData = calculateRollingVWAP(data, 50);
-    } else {
-      vwapData = calculatePeriodicVWAP(data, 'weekly', true); // default
-    }
-    
-    if (vwapData.length < 2) return null;
-    const vwapLevel = vwapData[vwapData.length - 1].value;
-    
-    // Get last 2 candles - simple approach
-    if (data.length < 2) return null;
-    const prevCandle = data[data.length - 2];
-    const currentCandle = data[data.length - 1];
-    
-    const tolerance = vwapLevel * (vwapThreshold / 100);
-    const upperZone = vwapLevel + tolerance;
-    const lowerZone = vwapLevel - tolerance;
-    
-    let signal: { type: 'LONG' | 'SHORT', pattern: 'Bounce' | 'Cross' } | null = null;
-    
-    if (vwapEntryCandles === 'single') {
-      // SINGLE CANDLE MODE: Current candle does everything (instant entry)
-      if (touchesZone(currentCandle, lowerZone, upperZone)) {
-        // BULLISH BOUNCE: touches zone + closes above VWAP line
-        if (currentCandle.close > vwapLevel) {
-          signal = { type: 'LONG', pattern: 'Bounce' };
-        }
-        // BEARISH BOUNCE: touches zone + closes below VWAP line
-        else if (currentCandle.close < vwapLevel) {
-          signal = { type: 'SHORT', pattern: 'Bounce' };
-        }
-      }
-      
-      // CROSS PATTERN: touches zone + closes OUTSIDE threshold opposite side
-      if (!signal && touchesZone(currentCandle, lowerZone, upperZone)) {
-        // BULLISH CROSS: closes above upper zone
-        if (currentCandle.close > upperZone) {
-          signal = { type: 'LONG', pattern: 'Cross' };
-        }
-        // BEARISH CROSS: closes below lower zone
-        else if (currentCandle.close < lowerZone) {
-          signal = { type: 'SHORT', pattern: 'Cross' };
-        }
-      }
-    } else {
-      // DOUBLE CANDLE MODE: Previous candle touches, current candle confirms
-      if (touchesZone(prevCandle, lowerZone, upperZone)) {
-        // BULLISH BOUNCE: prev touched zone, current confirms by closing above VWAP
-        if (currentCandle.close > vwapLevel) {
-          signal = { type: 'LONG', pattern: 'Bounce' };
-        }
-        // BEARISH BOUNCE: prev touched zone, current confirms by closing below VWAP
-        else if (currentCandle.close < vwapLevel) {
-          signal = { type: 'SHORT', pattern: 'Bounce' };
-        }
-      }
-      
-      // CROSS PATTERN: prev touched zone, current confirms by closing OUTSIDE zone
-      if (!signal && touchesZone(prevCandle, lowerZone, upperZone)) {
-        // BULLISH CROSS: confirms by closing above upper zone
-        if (currentCandle.close > upperZone) {
-          signal = { type: 'LONG', pattern: 'Cross' };
-        }
-        // BEARISH CROSS: confirms by closing below lower zone
-        else if (currentCandle.close < lowerZone) {
-          signal = { type: 'SHORT', pattern: 'Cross' };
-        }
-      }
-    }
-    
-    if (!signal) return null;
-    
-    const isLong = signal.type === 'LONG';
-    if (!checkDirectionFilter(signal.type)) return null;
-    
-    const entry = currentCandle.close;
-    const atr = getCurrentATR(data);
-    
-    // Calculate stop loss
-    const slConfig = vwapTPSL.sl;
-    let stopLoss: number;
-    if (slConfig.type === 'atr') {
-      stopLoss = isLong ? vwapLevel - (atr * (slConfig.atrMultiplier || 1.5)) : vwapLevel + (atr * (slConfig.atrMultiplier || 1.5));
-    } else if (slConfig.type === 'structure') {
-      stopLoss = isLong ? vwapLevel - atr : vwapLevel + atr;
-    } else {
-      const distancePercent = (slConfig.fixedDistance || 1.0) / 100;
-      stopLoss = isLong ? entry * (1 - distancePercent) : entry * (1 + distancePercent);
-    }
-    
-    const riskAmount = Math.abs(entry - stopLoss);
-    const { tp2: structureTP2, tp3: structureTP3 } = findNextSwingLevels(data, entry, isLong ? 'long' : 'short', vwapTPSwingLength);
-    
-    // Calculate TPs
-    const { tp1: tp1Config, tp2: tp2Config } = vwapTPSL;
-    
-    let tp1: number, tp2: number, tp3: number;
-    let tp1Type: TPType = tp1Config.type;
-    let tp2Type: TPType = tp2Config?.type || 'structure';
-    let tp3Type: TPType = 'projection';
-    
-    // TP1
-    if (tp1Config.type === 'ema' || tp1Config.type === 'vwap') {
-      // EMA/VWAP exits have no price target - only exit on signal
-      tp1 = isLong ? Infinity : -Infinity;
-    } else if (tp1Config.type === 'atr') {
-      tp1 = isLong ? entry + (atr * (tp1Config.atrMultiplier || 1.5)) : entry - (atr * (tp1Config.atrMultiplier || 1.5));
-    } else if (tp1Config.type === 'structure') {
-      tp1 = structureTP2;
-    } else if (tp1Config.type === 'fixed_rr') {
-      tp1 = isLong ? entry + (riskAmount * (tp1Config.fixedRR || 2.0)) : entry - (riskAmount * (tp1Config.fixedRR || 2.0));
-    } else {
-      tp1 = structureTP2;
-    }
-    
-    // TP2
-    if (tp2Config?.type === 'ema' || tp2Config?.type === 'vwap') {
-      // EMA/VWAP exits have no price target - only exit on signal
-      tp2 = isLong ? Infinity : -Infinity;
-    } else if (tp2Config?.type === 'atr') {
-      tp2 = isLong ? entry + (atr * (tp2Config.atrMultiplier || 2.0)) : entry - (atr * (tp2Config.atrMultiplier || 2.0));
-    } else if (tp2Config?.type === 'fixed_rr') {
-      tp2 = isLong ? entry + (riskAmount * (tp2Config.fixedRR || 3.0)) : entry - (riskAmount * (tp2Config.fixedRR || 3.0));
-    } else {
-      tp2 = structureTP3;
-    }
-    
-    // TP3
-    if (vwapTPSL.tp3?.type === 'ema' || vwapTPSL.tp3?.type === 'vwap') {
-      tp3 = isLong ? Infinity : -Infinity;
-    } else {
-      tp3 = isLong ? entry + (structureTP2 - entry) * 1.5 : entry - (entry - structureTP2) * 1.5;
-    }
-    
-    // Capture EMA state at entry for crossover exit detection
-    let entryEMAState: 'fast_above_slow' | 'fast_below_slow' | undefined;
-    const hasEMAExit = vwapTPSL.tp1.type === 'ema' || vwapTPSL.tp2?.type === 'ema' || vwapTPSL.tp3?.type === 'ema';
-    if (hasEMAExit) {
-      const tp1EMA = vwapTPSL.tp1.type === 'ema' ? vwapTPSL.tp1 : (vwapTPSL.tp2?.type === 'ema' ? vwapTPSL.tp2 : vwapTPSL.tp3);
-      // Use configured EMA periods or defaults (match backtest defaults)
-      const fastPeriod = (tp1EMA as any)?.fastEMA || 10;
-      const slowPeriod = (tp1EMA as any)?.slowEMA || 40;
-      
-      const closes = data.map(c => c.close);
-      const fastEMAValues = calculateEMA(closes, fastPeriod);
-      const slowEMAValues = calculateEMA(closes, slowPeriod);
-      if (fastEMAValues.length > 0 && slowEMAValues.length > 0) {
-        const currentFast = fastEMAValues[fastEMAValues.length - 1];
-        const currentSlow = slowEMAValues[slowEMAValues.length - 1];
-        entryEMAState = currentFast >= currentSlow ? 'fast_above_slow' : 'fast_below_slow';
-      }
-    }
-    
-    return {
-      id: `vwap_${signal.pattern.toLowerCase()}_${currentCandle.time}_${isLong ? 'long' : 'short'}`,
-      time: currentCandle.time,
-      type: signal.type,
-      strategy: 'vwap_rejection',
-      entry,
-      stopLoss,
-      tp1,
-      tp2,
-      tp3,
-      tp1Type,
-      tp2Type,
-      tp3Type,
-      tp1Config: vwapTPSL.tp1,
-      tp2Config: vwapTPSL.tp2,
-      tp3Config: vwapTPSL.tp3,
-      riskReward1: Math.abs(tp1 - entry) / riskAmount,
-      riskReward2: Math.abs(tp2 - entry) / riskAmount,
-      riskReward3: Math.abs(tp3 - entry) / riskAmount,
-      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
-      reason: `VWAP ${signal.pattern} at ${vwapLevel.toFixed(4)}`,
-      active: true,
-      entryEMAState,
-    };
-  }, [stratVWAPRejection, vwapType, calculatePeriodicVWAP, calculateRollingVWAP, getCurrentATR, vwapTPSL, findNextSwingLevels, accountSize, riskPercent, checkDirectionFilter, vwapThreshold, vwapTPSwingLength, vwapEntryCandles]);
+    return generateVWAPTradingSignalCore(data, {
+      enabled: stratVWAPRejection,
+      vwapType: vwapType as 'daily' | 'weekly' | 'monthly' | 'rolling10' | 'rolling20' | 'rolling50',
+      threshold: vwapThreshold,
+      entryCandles: vwapEntryCandles,
+      tpslConfig: vwapTPSL,
+      tpSwingLength: vwapTPSwingLength,
+      accountSize,
+      riskPercent,
+      directionFilter: (type: 'LONG' | 'SHORT') => checkDirectionFilter(type)
+    });
+  }, [stratVWAPRejection, vwapType, vwapThreshold, vwapEntryCandles, vwapTPSL, vwapTPSwingLength, accountSize, riskPercent, checkDirectionFilter]);
 
-  // Generate EMA Trading signal (Bounce, Cross, and Trend Trade patterns)
+  // Generate EMA Trading signal - wrapper for extracted core function
   const generateEMATradingSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    if (!stratEMATrading || data.length < 50) return null;
+    // Map emaEntryMode to the format expected by core function
+    const mappedEntryMode: 'bounce' | 'cross' | 'trend' = 
+      emaEntryMode === 'trend_trade' ? 'trend' : emaEntryMode;
     
-    // Calculate EMA based on entry mode
-    let emaLevel: number | null = null;
-    let fastEMA: number | null = null;
-    let slowEMA: number | null = null;
-    
-    if (emaEntryMode === 'bounce' || emaEntryMode === 'cross') {
-      const emaValues = calculateEMA(data.map(c => c.close), emaSinglePeriod);
-      if (emaValues.length < 3) return null;
-      emaLevel = emaValues[emaValues.length - 1];
-    } else {
-      const fastEMAValues = calculateEMA(data.map(c => c.close), indicators.ema.fastPeriod);
-      const slowEMAValues = calculateEMA(data.map(c => c.close), indicators.ema.slowPeriod);
-      if (fastEMAValues.length < 3 || slowEMAValues.length < 3) return null;
-      fastEMA = fastEMAValues[fastEMAValues.length - 1];
-      slowEMA = slowEMAValues[slowEMAValues.length - 1];
-      const prevFastEMA = fastEMAValues[fastEMAValues.length - 2];
-      const prevSlowEMA = slowEMAValues[slowEMAValues.length - 2];
-      
-      // Trend Trade: Fast EMA crosses Slow EMA
-      const bullishCross = prevFastEMA <= prevSlowEMA && fastEMA > slowEMA;
-      const bearishCross = prevFastEMA >= prevSlowEMA && fastEMA < slowEMA;
-      
-      if (!bullishCross && !bearishCross) return null;
-      
-      const signal: 'LONG' | 'SHORT' = bullishCross ? 'LONG' : 'SHORT';
-      if (!checkDirectionFilter(signal)) return null;
-      
-      const currentCandle = data[data.length - 1];
-      const entry = currentCandle.close;
-      const atr = getCurrentATR(data);
-      
-      // Calculate stop loss
-      const slConfig = emaTradingTPSL.sl;
-      let stopLoss: number;
-      if (slConfig.type === 'atr') {
-        stopLoss = signal === 'LONG' ? entry - (atr * (slConfig.atrMultiplier || 1.5)) : entry + (atr * (slConfig.atrMultiplier || 1.5));
-      } else if (slConfig.type === 'structure') {
-        const swings = calculateSwings(data, emaTradingSLSwingLength);
-        const recentSwings = swings.slice(-10);
-        const swingLevels = signal === 'LONG' ? recentSwings.filter(s => s.type === 'low').map(s => s.value) : recentSwings.filter(s => s.type === 'high').map(s => s.value);
-        stopLoss = signal === 'LONG' ? (swingLevels.length > 0 ? Math.max(...swingLevels) : entry - atr) : (swingLevels.length > 0 ? Math.min(...swingLevels) : entry + atr);
-      } else {
-        const distancePercent = (slConfig.fixedDistance || 1.0) / 100;
-        stopLoss = signal === 'LONG' ? entry * (1 - distancePercent) : entry * (1 + distancePercent);
-      }
-      
-      const riskAmount = Math.abs(entry - stopLoss);
-      const { tp2: structureTP2, tp3: structureTP3 } = findNextSwingLevels(data, entry, signal === 'LONG' ? 'long' : 'short', emaTradingTPSwingLength);
-      
-      // Calculate TPs
-      const { tp1: tp1Config, tp2: tp2Config } = emaTradingTPSL;
-      
-      let tp1: number, tp2: number, tp3: number;
-      let tp1Type: TPType = tp1Config.type;
-      let tp2Type: TPType = tp2Config?.type || 'structure';
-      
-      if (tp1Config.type === 'ema' || tp1Config.type === 'vwap') {
-        // EMA/VWAP exits have no price target - only exit on signal
-        tp1 = signal === 'LONG' ? Infinity : -Infinity;
-      } else if (tp1Config.type === 'atr') {
-        tp1 = signal === 'LONG' ? entry + (atr * (tp1Config.atrMultiplier || 1.5)) : entry - (atr * (tp1Config.atrMultiplier || 1.5));
-      } else if (tp1Config.type === 'structure') {
-        tp1 = structureTP2;
-      } else if (tp1Config.type === 'fixed_rr') {
-        tp1 = signal === 'LONG' ? entry + (riskAmount * (tp1Config.fixedRR || 2.0)) : entry - (riskAmount * (tp1Config.fixedRR || 2.0));
-      } else {
-        tp1 = structureTP2;
-      }
-      
-      if (tp2Config?.type === 'ema' || tp2Config?.type === 'vwap') {
-        tp2 = signal === 'LONG' ? Infinity : -Infinity;
-      } else if (tp2Config?.type === 'atr') {
-        tp2 = signal === 'LONG' ? entry + (atr * (tp2Config.atrMultiplier || 2.0)) : entry - (atr * (tp2Config.atrMultiplier || 2.0));
-      } else if (tp2Config?.type === 'fixed_rr') {
-        tp2 = signal === 'LONG' ? entry + (riskAmount * (tp2Config.fixedRR || 3.0)) : entry - (riskAmount * (tp2Config.fixedRR || 3.0));
-      } else {
-        tp2 = structureTP3;
-      }
-      
-      if (emaTradingTPSL.tp3?.type === 'ema' || emaTradingTPSL.tp3?.type === 'vwap') {
-        tp3 = signal === 'LONG' ? Infinity : -Infinity;
-      } else {
-        tp3 = signal === 'LONG' ? entry + (structureTP2 - entry) * 1.5 : entry - (entry - structureTP2) * 1.5;
-      }
-      
-      // Capture EMA state at entry for crossover exit detection
-      let entryEMAState: 'fast_above_slow' | 'fast_below_slow' | undefined;
-      const hasEMAExit = tp1Type === 'ema' || tp2Type === 'ema' || emaTradingTPSL.tp3?.type === 'ema';
-      if (hasEMAExit && fastEMA !== null && slowEMA !== null) {
-        entryEMAState = fastEMA >= slowEMA ? 'fast_above_slow' : 'fast_below_slow';
-      }
-      
-      return {
-        id: `ema_trend_${currentCandle.time}_${signal.toLowerCase()}`,
-        time: currentCandle.time,
-        type: signal,
-        strategy: 'ema_trading',
-        entry,
-        stopLoss,
-        tp1,
-        tp2,
-        tp3,
-        tp1Type,
-        tp2Type,
-        tp3Type: 'projection',
-        riskReward1: Math.abs(tp1 - entry) / riskAmount,
-        riskReward2: Math.abs(tp2 - entry) / riskAmount,
-        riskReward3: Math.abs(tp3 - entry) / riskAmount,
-        quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
-        reason: `EMA Crossover (${indicators.ema.fastPeriod}/${indicators.ema.slowPeriod})`,
-        active: true,
-        entryEMAState,
-      };
-    }
-    
-    // For Bounce and Cross modes
-    if (data.length < 3 || !emaLevel) return null;
-    
-    const prevCandle = data[data.length - 3];
-    const entryCandle = data[data.length - 2];
-    const confirmCandle = data[data.length - 1];
-    
-    const tolerance = emaLevel * (emaThreshold / 100);
-    const upperZone = emaLevel + tolerance;
-    const lowerZone = emaLevel - tolerance;
-    
-    let signal: { type: 'LONG' | 'SHORT', pattern: 'Bounce' | 'Cross' } | null = null;
-    
-    if (emaEntryMode === 'bounce' && inZone(entryCandle, lowerZone, upperZone)) {
-      if (belowZone(prevCandle, lowerZone) && confirmCandle.close > emaLevel) {
-        signal = { type: 'LONG', pattern: 'Bounce' };
-      } else if (aboveZone(prevCandle, upperZone) && confirmCandle.close < emaLevel) {
-        signal = { type: 'SHORT', pattern: 'Bounce' };
-      }
-    }
-    
-    if (emaEntryMode === 'cross' && !signal && inZone(entryCandle, lowerZone, upperZone)) {
-      if (belowZone(prevCandle, lowerZone) && confirmCandle.close > upperZone) {
-        signal = { type: 'LONG', pattern: 'Cross' };
-      } else if (aboveZone(prevCandle, upperZone) && confirmCandle.close < lowerZone) {
-        signal = { type: 'SHORT', pattern: 'Cross' };
-      }
-    }
-    
-    if (!signal) return null;
-    if (!checkDirectionFilter(signal.type)) return null;
-    
-    const entry = confirmCandle.close;
-    const atr = getCurrentATR(data);
-    
-    // Calculate stop loss
-    const slConfig = emaTradingTPSL.sl;
-    let stopLoss: number;
-    if (slConfig.type === 'atr') {
-      stopLoss = signal.type === 'LONG' ? emaLevel - (atr * (slConfig.atrMultiplier || 1.5)) : emaLevel + (atr * (slConfig.atrMultiplier || 1.5));
-    } else if (slConfig.type === 'structure') {
-      stopLoss = signal.type === 'LONG' ? emaLevel - atr : emaLevel + atr;
-    } else {
-      const distancePercent = (slConfig.fixedDistance || 1.0) / 100;
-      stopLoss = signal.type === 'LONG' ? entry * (1 - distancePercent) : entry * (1 + distancePercent);
-    }
-    
-    const riskAmount = Math.abs(entry - stopLoss);
-    const { tp2: structureTP2, tp3: structureTP3 } = findNextSwingLevels(data, entry, signal.type === 'LONG' ? 'long' : 'short', emaTradingTPSwingLength);
-    
-    // Calculate TPs
-    const { tp1: tp1Config, tp2: tp2Config } = emaTradingTPSL;
-    
-    let tp1: number, tp2: number, tp3: number;
-    let tp1Type: TPType = tp1Config.type;
-    let tp2Type: TPType = tp2Config?.type || 'structure';
-    
-    if (tp1Config.type === 'ema' || tp1Config.type === 'vwap') {
-      // EMA/VWAP exits have no price target - only exit on signal
-      tp1 = signal.type === 'LONG' ? Infinity : -Infinity;
-    } else if (tp1Config.type === 'atr') {
-      tp1 = signal.type === 'LONG' ? entry + (atr * (tp1Config.atrMultiplier || 1.5)) : entry - (atr * (tp1Config.atrMultiplier || 1.5));
-    } else if (tp1Config.type === 'structure') {
-      tp1 = structureTP2;
-    } else if (tp1Config.type === 'fixed_rr') {
-      tp1 = signal.type === 'LONG' ? entry + (riskAmount * (tp1Config.fixedRR || 2.0)) : entry - (riskAmount * (tp1Config.fixedRR || 2.0));
-    } else {
-      tp1 = structureTP2;
-    }
-    
-    if (tp2Config?.type === 'ema' || tp2Config?.type === 'vwap') {
-      tp2 = signal.type === 'LONG' ? Infinity : -Infinity;
-    } else if (tp2Config?.type === 'atr') {
-      tp2 = signal.type === 'LONG' ? entry + (atr * (tp2Config.atrMultiplier || 2.0)) : entry - (atr * (tp2Config.atrMultiplier || 2.0));
-    } else if (tp2Config?.type === 'fixed_rr') {
-      tp2 = signal.type === 'LONG' ? entry + (riskAmount * (tp2Config.fixedRR || 3.0)) : entry - (riskAmount * (tp2Config.fixedRR || 3.0));
-    } else {
-      tp2 = structureTP3;
-    }
-    
-    if (emaTradingTPSL.tp3?.type === 'ema' || emaTradingTPSL.tp3?.type === 'vwap') {
-      tp3 = signal.type === 'LONG' ? Infinity : -Infinity;
-    } else {
-      tp3 = signal.type === 'LONG' ? entry + (structureTP2 - entry) * 1.5 : entry - (entry - structureTP2) * 1.5;
-    }
-    
-    // Capture EMA state at entry for crossover exit detection (if EMA exit configured)
-    let entryEMAState: 'fast_above_slow' | 'fast_below_slow' | undefined;
-    const hasEMAExit = tp1Type === 'ema' || tp2Type === 'ema' || emaTradingTPSL.tp3?.type === 'ema';
-    if (hasEMAExit) {
-      const tp1EMA = tp1Config.type === 'ema' ? tp1Config : (tp2Config?.type === 'ema' ? tp2Config : emaTradingTPSL.tp3);
-      // Use configured EMA periods or defaults (match backtest defaults)
-      const fastPeriod = (tp1EMA as any)?.fastEMA || 10;
-      const slowPeriod = (tp1EMA as any)?.slowEMA || 40;
-      
-      const closes = data.map(c => c.close);
-      const fastEMAValues = calculateEMA(closes, fastPeriod);
-      const slowEMAValues = calculateEMA(closes, slowPeriod);
-      if (fastEMAValues.length > 0 && slowEMAValues.length > 0) {
-        const currentFast = fastEMAValues[fastEMAValues.length - 1];
-        const currentSlow = slowEMAValues[slowEMAValues.length - 1];
-        entryEMAState = currentFast >= currentSlow ? 'fast_above_slow' : 'fast_below_slow';
-      }
-    }
-    
-    return {
-      id: `ema_${signal.pattern.toLowerCase()}_${entryCandle.time}_${signal.type.toLowerCase()}`,
-      time: confirmCandle.time,
-      type: signal.type,
-      strategy: 'ema_trading',
-      entry,
-      stopLoss,
-      tp1,
-      tp2,
-      tp3,
-      tp1Type,
-      tp2Type,
-      tp3Type: 'projection',
-      riskReward1: Math.abs(tp1 - entry) / riskAmount,
-      riskReward2: Math.abs(tp2 - entry) / riskAmount,
-      riskReward3: Math.abs(tp3 - entry) / riskAmount,
-      quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
-      reason: `EMA ${signal.pattern} at ${emaLevel.toFixed(4)} (${emaSinglePeriod}MA)`,
-      active: true,
-      entryEMAState,
-    };
-  }, [stratEMATrading, emaEntryMode, emaSinglePeriod, indicators.ema.fastPeriod, indicators.ema.slowPeriod, emaThreshold, getCurrentATR, emaTradingTPSL, calculateSwings, emaTradingSLSwingLength, findNextSwingLevels, emaTradingTPSwingLength, accountSize, riskPercent, checkDirectionFilter]);
+    return generateEMATradingSignalCore(data, {
+      enabled: stratEMATrading,
+      entryMode: mappedEntryMode,
+      singlePeriod: emaSinglePeriod,
+      fastPeriod: indicators.ema.fastPeriod,
+      slowPeriod: indicators.ema.slowPeriod,
+      threshold: emaThreshold,
+      tpslConfig: emaTradingTPSL,
+      slSwingLength: emaTradingSLSwingLength,
+      tpSwingLength: emaTradingTPSwingLength,
+      accountSize,
+      riskPercent,
+      directionFilter: (type: 'LONG' | 'SHORT') => checkDirectionFilter(type)
+    });
+  }, [stratEMATrading, emaEntryMode, emaSinglePeriod, indicators.ema.fastPeriod, indicators.ema.slowPeriod, emaThreshold, emaTradingTPSL, emaTradingSLSwingLength, emaTradingTPSwingLength, accountSize, riskPercent, checkDirectionFilter]);
 
-  // Generate R/S Flip signal (Resistance/Support Flip - retest after breakout)
+  // Generate R/S Flip signal - wrapper for extracted core function
   const generateRSFlipSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    if (!stratRSFlip || data.length < 100) return null;
-    
-    // Detect trendlines
-    const trendlines = detectTrendlines(data, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength);
-    if (trendlines.length === 0) return null;
-    
-    const currentCandle = data[data.length - 1];
-    const currentPrice = currentCandle.close;
-    
-    // Look for recent breakouts (within last rsFlipRetestCandles)
-    for (const line of trendlines) {
-      const currentLinePrice = line.slope * (data.length - 1) + line.intercept;
-      
-      // Check if we're near the broken trendline (within 0.5%)
-      const tolerance = currentLinePrice * 0.005;
-      const nearLine = Math.abs(currentPrice - currentLinePrice) < tolerance;
-      
-      if (!nearLine) continue;
-      
-      // Look back to find the breakout candle
-      let breakoutIdx = -1;
-      for (let i = data.length - 2; i >= Math.max(0, data.length - rsFlipRetestCandles - 1); i--) {
-        const prevCandle = data[i - 1];
-        const candle = data[i];
-        const linePrice = line.slope * i + line.intercept;
-        const prevLinePrice = line.slope * (i - 1) + line.intercept;
-        
-        if (line.type === 'resistance') {
-          // Bullish breakout: was below, closed above
-          if (prevCandle.close < prevLinePrice && candle.close > linePrice) {
-            breakoutIdx = i;
-            break;
-          }
-        } else {
-          // Bearish breakout: was above, closed below
-          if (prevCandle.close > prevLinePrice && candle.close < linePrice) {
-            breakoutIdx = i;
-            break;
-          }
-        }
-      }
-      
-      if (breakoutIdx === -1) continue; // No recent breakout found
-      
-      // Check if this is a retest (price came back to the line)
-      const candlesSinceBreakout = data.length - 1 - breakoutIdx;
-      if (candlesSinceBreakout < 2 || candlesSinceBreakout > rsFlipRetestCandles) continue;
-      
-      // Confirm rejection/bounce at the retested level
-      const isLong = line.type === 'resistance'; // Broken resistance becomes support
-      
-      // Look for rejection pattern on current or recent candles
-      let hasRejection = false;
-      for (let i = Math.max(0, data.length - 3); i < data.length; i++) {
-        const c = data[i];
-        const linePrice = line.slope * i + line.intercept;
-        
-        if (isLong) {
-          // For support (former resistance): wick below, close above
-          const wickedBelow = c.low < linePrice && c.close > linePrice;
-          if (wickedBelow) hasRejection = true;
-        } else {
-          // For resistance (former support): wick above, close below
-          const wickedAbove = c.high > linePrice && c.close < linePrice;
-          if (wickedAbove) hasRejection = true;
-        }
-      }
-      
-      if (!hasRejection) continue;
-      
-      // Check direction filter
-      if (rsFlipDirectionFilter !== 'both') {
-        if (rsFlipDirectionFilter === 'bull' && !isLong) continue;
-        if (rsFlipDirectionFilter === 'bear' && isLong) continue;
-      }
-      
-      // Check trend filter (if enabled)
-      if (rsFlipTrendFilter !== 'none') {
-        if (rsFlipTrendFilter === 'ema' && bias === null) continue;
-        if (rsFlipTrendFilter === 'structure' && (structureTrend === null || structureTrend === 'ranging')) continue;
-        if (rsFlipTrendFilter === 'both') {
-          const emaBullish = bias === 'bullish';
-          const structureBullish = structureTrend === 'uptrend';
-          const emaBearish = bias === 'bearish';
-          const structureBearish = structureTrend === 'downtrend';
-          if (!((emaBullish && structureBullish) || (emaBearish && structureBearish))) continue;
-        }
-      }
-      
-      // Generate signal
-      const entry = currentPrice;
-      const atr = getCurrentATR(data);
-      
-      // Use bot-specific SL configuration
-      const slConfig = rsFlipTPSL.sl;
-      let stopLoss: number;
-      if (slConfig.type === 'structure') {
-        // Place SL just beyond the broken trendline
-        const buffer = currentLinePrice * 0.003; // 0.3% buffer
-        stopLoss = isLong ? currentLinePrice - buffer : currentLinePrice + buffer;
-      } else if (slConfig.type === 'atr') {
-        stopLoss = isLong ? entry - (atr * (slConfig.atrMultiplier || 1.5)) : entry + (atr * (slConfig.atrMultiplier || 1.5));
-      } else {
-        const distancePercent = (slConfig.fixedDistance || 1.0) / 100;
-        stopLoss = isLong ? entry * (1 - distancePercent) : entry * (1 + distancePercent);
-      }
-      
-      const riskAmount = Math.abs(entry - stopLoss);
-      const { tp2: structureTP2, tp3: structureTP3 } = findNextSwingLevels(data, entry, isLong ? 'long' : 'short', rsFlipTPSwingLength);
-      
-      // Calculate TPs based on bot-specific config
-      const { tp1: tp1Config, tp2: tp2Config } = rsFlipTPSL;
-      
-      let tp1: number, tp2: number, tp3: number;
-      let tp1Type: TPType = tp1Config.type;
-      let tp2Type: TPType = tp2Config?.type || 'structure';
-      let tp3Type: TPType = 'projection';
-      
-      // TP1 calculation
-      if (tp1Config.type === 'atr') {
-        tp1 = isLong ? entry + (atr * (tp1Config.atrMultiplier || 1.5)) : entry - (atr * (tp1Config.atrMultiplier || 1.5));
-      } else if (tp1Config.type === 'structure') {
-        tp1 = structureTP2;
-      } else if (tp1Config.type === 'fixed_rr') {
-        tp1 = isLong ? entry + (riskAmount * (tp1Config.fixedRR || 2.0)) : entry - (riskAmount * (tp1Config.fixedRR || 2.0));
-      } else {
-        tp1 = structureTP2;
-      }
-      
-      // TP2 calculation
-      if (tp2Config?.type === 'atr') {
-        tp2 = isLong ? entry + (atr * (tp2Config.atrMultiplier || 2.0)) : entry - (atr * (tp2Config.atrMultiplier || 2.0));
-      } else if (tp2Config?.type === 'fixed_rr') {
-        tp2 = isLong ? entry + (riskAmount * (tp2Config.fixedRR || 3.0)) : entry - (riskAmount * (tp2Config.fixedRR || 3.0));
-      } else {
-        tp2 = structureTP3;
-      }
-      
-      // TP3 (default projection)
-      tp3 = isLong ? entry + (structureTP2 - entry) * 1.5 : entry - (entry - structureTP2) * 1.5;
-      
-      // Found a valid R/S Flip signal
-      return {
-        id: `rs_flip_${line.type}_${breakoutIdx}`,
-        time: currentCandle.time,
-        type: isLong ? 'LONG' : 'SHORT',
-        strategy: 'rs_flip',
-        entry,
-        stopLoss,
-        tp1,
-        tp2,
-        tp3,
-        tp1Type,
-        tp2Type,
-        tp3Type,
-        riskReward1: Math.abs(tp1 - entry) / riskAmount,
-        riskReward2: Math.abs(tp2 - entry) / riskAmount,
-        riskReward3: Math.abs(tp3 - entry) / riskAmount,
-        quantity: calculatePositionSize(accountSize, riskPercent, entry, stopLoss),
-        reason: `${line.type === 'resistance' ? 'Resistance' : 'Support'} flip retest at ${currentLinePrice.toFixed(4)}`,
-        active: true,
-      };
-    }
-    
-    return null; // No valid R/S flip found
-  }, [stratRSFlip, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, rsFlipRetestCandles, rsFlipDirectionFilter, rsFlipTrendFilter, bias, structureTrend, getCurrentATR, rsFlipTPSL, findNextSwingLevels, calculatePositionSize, rsFlipTPSwingLength]);
+    return generateRSFlipSignalCore(data, {
+      enabled: stratRSFlip,
+      retestCandles: rsFlipRetestCandles,
+      directionFilter: rsFlipDirectionFilter,
+      trendFilter: rsFlipTrendFilter,
+      trendlineMinTouches: indicators.smc.trendlineMinTouches,
+      trendlineTolerance: indicators.smc.trendlineTolerance,
+      trendlinePivotLength: indicators.smc.trendlinePivotLength,
+      tpslConfig: rsFlipTPSL,
+      tpSwingLength: rsFlipTPSwingLength,
+      accountSize,
+      riskPercent,
+      bias,
+      structureTrend
+    });
+  }, [stratRSFlip, rsFlipRetestCandles, rsFlipDirectionFilter, rsFlipTrendFilter, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, rsFlipTPSL, rsFlipTPSwingLength, accountSize, riskPercent, bias, structureTrend]);
+
 
   // Master signal generator - checks all enabled strategies
   const generateSignals = useCallback(() => {
