@@ -18,7 +18,7 @@ interface CVDDetailsPanelProps {
 
 /**
  * CVD Details Panel - displays a simplified CVD analysis summary
- * Extracted from CryptoIndicators.tsx for Phase 4G-11
+ * Created for Phase 4G-11 as a reusable component for displaying CVD metrics
  * 
  * This is different from CVDTable - it shows a summary overview rather than the full table
  */
