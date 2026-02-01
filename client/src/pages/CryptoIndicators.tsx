@@ -4517,10 +4517,11 @@ useEffect(() => {
       chochTPSL,
       vwapTPSL,
       rsFlipTPSL,
+      emaTradingTPSL,
       chochTPSwingLength,
       liqGrabTPSwingLength,
     });
-  }, [vwapType, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, chochTPSwingLength, liqGrabTPSwingLength]);
+  }, [vwapType, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, emaTradingTPSL, chochTPSwingLength, liqGrabTPSwingLength]);
   // Generate all combinations of bot configurations for auto-backtest
   const generateAutoBacktestCombinations = useCallback((): any[] => {
     const combinations: any[] = [];

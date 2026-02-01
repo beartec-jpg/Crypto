@@ -19,6 +19,27 @@ function calculatePeriodicVWAP(data: CandleData[], period: string, currentOnly: 
   let cumulativeVolume = 0;
   let lastPeriodStart = 0;
   
+  // Helper to check if next candle is in a different period
+  const isNextPeriodBoundary = (currentIdx: number, currentDate: Date): boolean => {
+    if (currentIdx >= data.length - 1) return true;
+    
+    const nextDate = new Date(data[currentIdx + 1].time * 1000);
+    
+    if (period === 'daily') {
+      return nextDate.getUTCDate() !== currentDate.getUTCDate();
+    } else if (period === 'weekly') {
+      const getWeekNumber = (d: Date) => {
+        const firstDayOfYear = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        const pastDaysOfYear = (d.getTime() - firstDayOfYear.getTime()) / 86400000;
+        return Math.ceil((pastDaysOfYear + firstDayOfYear.getUTCDay() + 1) / 7);
+      };
+      return getWeekNumber(nextDate) !== getWeekNumber(currentDate);
+    } else if (period === 'monthly') {
+      return nextDate.getUTCMonth() !== currentDate.getUTCMonth();
+    }
+    return false;
+  };
+  
   for (let i = 0; i < data.length; i++) {
     const candle = data[i];
     const date = new Date(candle.time * 1000);
@@ -53,7 +74,7 @@ function calculatePeriodicVWAP(data: CandleData[], period: string, currentOnly: 
     const vwap = cumulativeVolume > 0 ? cumulativePV / cumulativeVolume : typicalPrice;
     
     if (currentOnly) {
-      if (i === data.length - 1 || (i < data.length - 1 && (period === 'daily' ? new Date(data[i + 1].time * 1000).getUTCDate() !== date.getUTCDate() : period === 'weekly' ? Math.ceil(((new Date(data[i + 1].time * 1000).getTime() - new Date(Date.UTC(new Date(data[i + 1].time * 1000).getUTCFullYear(), 0, 1)).getTime()) / 86400000 + new Date(Date.UTC(new Date(data[i + 1].time * 1000).getUTCFullYear(), 0, 1)).getUTCDay() + 1) / 7) !== Math.ceil(((date.getTime() - new Date(Date.UTC(date.getUTCFullYear(), 0, 1)).getTime()) / 86400000 + new Date(Date.UTC(date.getUTCFullYear(), 0, 1)).getUTCDay() + 1) / 7) : new Date(data[i + 1].time * 1000).getUTCMonth() !== date.getUTCMonth()))) {
+      if (isNextPeriodBoundary(i, date)) {
         for (let j = lastPeriodStart; j <= i; j++) {
           result.push({ time: data[j].time, value: vwap });
         }
@@ -131,6 +152,7 @@ function getConfigForStrategy(
     chochTPSL: BotTPSLConfig;
     vwapTPSL: BotTPSLConfig;
     rsFlipTPSL: BotTPSLConfig;
+    emaTradingTPSL: BotTPSLConfig;
   }
 ): BotTPSLConfig {
   if (strategy === 'liquidity_grab') return configs.liqGrabTPSL;
@@ -138,6 +160,7 @@ function getConfigForStrategy(
   if (strategy === 'choch_fvg') return configs.chochTPSL;
   if (strategy === 'vwap_rejection') return configs.vwapTPSL;
   if (strategy === 'rs_flip') return configs.rsFlipTPSL;
+  if (strategy === 'ema_trading') return configs.emaTradingTPSL;
   return configs.liqGrabTPSL;
 }
 
@@ -150,6 +173,7 @@ export interface SimulateTradeOptions {
   chochTPSL: BotTPSLConfig;
   vwapTPSL: BotTPSLConfig;
   rsFlipTPSL: BotTPSLConfig;
+  emaTradingTPSL: BotTPSLConfig;
   chochTPSwingLength: number;
   liqGrabTPSwingLength: number;
 }
@@ -173,6 +197,7 @@ export function simulateTrade(
     chochTPSL,
     vwapTPSL,
     rsFlipTPSL,
+    emaTradingTPSL,
     chochTPSwingLength,
     liqGrabTPSwingLength,
   } = options;
@@ -487,7 +512,7 @@ export function simulateTrade(
           const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp1 * commissionRate)) * signal.quantity;
           const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp1 * slippageBps)) * signal.quantity;
           const netPL = rawPL - commission - slippage;
-          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL }), 'TP1', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, emaTradingTPSL }), 'TP1', signal.riskReward1, signal.riskReward2, signal.riskReward3);
           
           console.log('💰 LONG TP1 Hit:', {
             strategy: signal.strategy,
@@ -533,7 +558,7 @@ export function simulateTrade(
           const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp2 * commissionRate)) * signal.quantity;
           const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp2 * slippageBps)) * signal.quantity;
           const netPL = rawPL - commission - slippage;
-          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL }), 'TP2', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, emaTradingTPSL }), 'TP2', signal.riskReward1, signal.riskReward2, signal.riskReward3);
           
           return {
             id: signal.id,
@@ -560,7 +585,7 @@ export function simulateTrade(
         const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp3 * commissionRate)) * signal.quantity;
         const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp3 * slippageBps)) * signal.quantity;
         const netPL = rawPL - commission - slippage;
-        const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL }), 'TP3', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+        const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, emaTradingTPSL }), 'TP3', signal.riskReward1, signal.riskReward2, signal.riskReward3);
         
         return {
           id: signal.id,
@@ -831,7 +856,7 @@ export function simulateTrade(
           const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp1 * commissionRate)) * signal.quantity;
           const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp1 * slippageBps)) * signal.quantity;
           const netPL = rawPL - commission - slippage;
-          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL }), 'TP1', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, emaTradingTPSL }), 'TP1', signal.riskReward1, signal.riskReward2, signal.riskReward3);
           
           return {
             id: signal.id,
@@ -865,7 +890,7 @@ export function simulateTrade(
           const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp2 * commissionRate)) * signal.quantity;
           const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp2 * slippageBps)) * signal.quantity;
           const netPL = rawPL - commission - slippage;
-          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL }), 'TP2', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+          const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, emaTradingTPSL }), 'TP2', signal.riskReward1, signal.riskReward2, signal.riskReward3);
           
           return {
             id: signal.id,
@@ -892,7 +917,7 @@ export function simulateTrade(
         const commission = (Math.abs(signal.entry * commissionRate) + Math.abs(signal.tp3 * commissionRate)) * signal.quantity;
         const slippage = (Math.abs(signal.entry * slippageBps) + Math.abs(signal.tp3 * slippageBps)) * signal.quantity;
         const netPL = rawPL - commission - slippage;
-        const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL }), 'TP3', signal.riskReward1, signal.riskReward2, signal.riskReward3);
+        const weightedRR = calculateWeightedRR(getConfigForStrategy(signal.strategy, { liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, emaTradingTPSL }), 'TP3', signal.riskReward1, signal.riskReward2, signal.riskReward3);
         
         return {
           id: signal.id,
