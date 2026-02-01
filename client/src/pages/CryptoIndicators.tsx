@@ -97,6 +97,8 @@ import { SettingsPanel, SettingsDialog } from '@/components/settings';
 import { ConfirmationDialog } from '@/components/modals';
 import { useModalManager } from '@/hooks/useModalManager';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useTradingState } from '@/hooks/useTradingState';
+import { useModalState } from '@/hooks/useModalState';
 
 // Volume Components
 import { CVDTable } from '@/components/indicators/volume';
@@ -1149,11 +1151,8 @@ useEffect(() => {
   const [botEnabled, setBotEnabled] = useState(false);
   const [bias, setBias] = useState<'bullish' | 'bearish' | null>(null);
   const [structureTrend, setStructureTrend] = useState<'uptrend' | 'downtrend' | 'ranging' | null>(null);
-  const [position, setPosition] = useState<Position | null>(null);
-  const [signals, setSignals] = useState<TradeSignal[]>([]);
-  const [tradeSignals, setTradeSignals] = useState<TradeSignal[]>([]);
-  const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
-  const [backtesting, setBacktesting] = useState(false);
+  // Trading state management - consolidated via useTradingState hook
+  const tradingState = useTradingState();
   const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(false); // Show CVD spike triangles on chart (default OFF)
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
@@ -3618,7 +3617,7 @@ useEffect(() => {
     if (bosTrendSignal) newSignals.push(bosTrendSignal);
     
     if (newSignals.length > 0) {
-      setTradeSignals(prev => {
+      tradingState.setTradeSignals(prev => {
         // Remove duplicate signals for same strategy
         const filtered = prev.filter(s => 
           !newSignals.some(ns => ns.strategy === s.strategy && s.active)
@@ -6091,7 +6090,7 @@ useEffect(() => {
       return;
     }
     
-    setBacktesting(true);
+    tradingState.setBacktesting(true);
     
     // Process candles sequentially and generate signals
     const allSignals: TradeSignal[] = [];
@@ -6276,8 +6275,8 @@ useEffect(() => {
       totalPL: totalPL.toFixed(2)
     });
     
-    setBacktestResults(results);
-    setBacktesting(false);
+    tradingState.setBacktestResults(results);
+    tradingState.setBacktesting(false);
   }, [candles, generateLiquidityGrabSignal, generateChochFVGSignal, generateVWAPTradingSignal, generateEMATradingSignal, generateRSFlipSignal, generateBOSTrendSignal, simulateTrade, accountSize, riskPercent, liqGrabSwingLength, liqGrabTrendFilter, liqGrabDirectionFilter, stratLiquidityGrab, calculateBOSandCHoCH, liqGrabTPSL]);
 
   // Fix chart when navigating back to page
@@ -6976,10 +6975,10 @@ useEffect(() => {
     const allMarkers: any[] = [];
     
     // Filter trades for replay mode - only show trades that have opened by current replay time
-    const hasBacktestTrades = backtestResults && backtestResults.trades && backtestResults.trades.length > 0;
+    const hasBacktestTrades = tradingState.backtestResults && tradingState.backtestResults.trades && tradingState.backtestResults.trades.length > 0;
     const currentReplayTime = isReplayMode && candles.length > 0 ? candles[candles.length - 1].time : Infinity;
     const visibleTrades = hasBacktestTrades 
-      ? backtestResults.trades.filter(trade => !isReplayMode || trade.entryTime <= currentReplayTime)
+      ? tradingState.backtestResults.trades.filter(trade => !isReplayMode || trade.entryTime <= currentReplayTime)
       : [];
 
     // Add shaded zones and horizontal lines for each visible trade
@@ -7416,7 +7415,7 @@ useEffect(() => {
     } else {
       console.warn('⚠️ candleSeriesRef.current is null');
     }
-  }, [chartReady, backtestResults, candles, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, isReplayMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, deltaHistory]);
+  }, [chartReady, tradingState.backtestResults, candles, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, isReplayMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, deltaHistory]);
 
   // ========== DEBOUNCE EFFECTS FOR STRATEGY SETTINGS ==========
   
@@ -7948,7 +7947,7 @@ useEffect(() => {
     const times = new Set<number>();
     
     // Add FVG times from live trade signals
-    tradeSignals
+    tradingState.tradeSignals
       .filter(signal => signal.strategy === 'choch_fvg' && signal.active)
       .forEach(signal => {
         const parts = signal.id.split('_');
@@ -7959,8 +7958,8 @@ useEffect(() => {
       });
     
     // Add FVG times from backtest trades
-    if (backtestResults && backtestResults.trades.length > 0) {
-      backtestResults.trades
+    if (tradingState.backtestResults && tradingState.backtestResults.trades.length > 0) {
+      tradingState.backtestResults.trades
         .filter(trade => trade.strategy === 'choch_fvg')
         .forEach(trade => {
           const parts = trade.id.split('_');
@@ -7972,7 +7971,7 @@ useEffect(() => {
     }
     
     return times;
-  }, [tradeSignals, backtestResults]);
+  }, [tradingState.tradeSignals, tradingState.backtestResults]);
 
   // Compute overlay data for components
   const fvgsData = useMemo(() => calculateFVGs(candles, true), [candles, calculateFVGs]);
