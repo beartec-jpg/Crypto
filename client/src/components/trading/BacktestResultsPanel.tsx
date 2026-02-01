@@ -2,28 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { BarChart2, Loader2, Play } from 'lucide-react';
-
-interface Trade {
-  direction: 'LONG' | 'SHORT';
-  entryPrice: number;
-  exitPrice: number;
-  profit: number;
-  entryTime?: number;
-  exitTime?: number;
-}
-
-interface BacktestResults {
-  totalTrades: number;
-  winningTrades: number;
-  losingTrades: number;
-  winRate: number;
-  profitFactor: number;
-  totalProfit: number;
-  maxDrawdown: number;
-  avgWin: number;
-  avgLoss: number;
-  trades: Trade[];
-}
+import { BacktestResults } from '@/hooks/useTradingState';
 
 interface BacktestResultsPanelProps {
   results: BacktestResults | null;
@@ -39,6 +18,10 @@ export function BacktestResultsPanel({
   onClear
 }: BacktestResultsPanelProps) {
   const [showDetails, setShowDetails] = useState(false);
+
+  // Calculate winning/losing trades from the trades array
+  const winningTrades = results?.trades.filter(t => t.pnl > 0).length || 0;
+  const losingTrades = results?.trades.filter(t => t.pnl <= 0).length || 0;
 
   return (
     <Card className="bg-slate-800 border-slate-700">
@@ -98,8 +81,8 @@ export function BacktestResultsPanel({
             </div>
             <div className="bg-slate-900 p-3 rounded">
               <div className="text-xs text-gray-400">Total P&L</div>
-              <div className={`text-lg font-bold ${results.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ${results.totalProfit.toFixed(2)}
+              <div className={`text-lg font-bold ${results.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                ${results.totalPnL.toFixed(2)}
               </div>
             </div>
             <div className="bg-slate-900 p-3 rounded">
@@ -120,11 +103,11 @@ export function BacktestResultsPanel({
               </div>
               <div>
                 <div className="text-gray-400">Wins</div>
-                <div className="text-green-400 font-medium">{results.winningTrades}</div>
+                <div className="text-green-400 font-medium">{winningTrades}</div>
               </div>
               <div>
                 <div className="text-gray-400">Losses</div>
-                <div className="text-red-400 font-medium">{results.losingTrades}</div>
+                <div className="text-red-400 font-medium">{losingTrades}</div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-700">
@@ -171,14 +154,14 @@ export function BacktestResultsPanel({
                           </span>
                         </td>
                         <td className="px-2 py-1 text-right text-gray-300">
-                          ${trade.entryPrice.toFixed(2)}
+                          {trade.entryTime ? new Date(trade.entryTime).toLocaleTimeString() : '-'}
                         </td>
                         <td className="px-2 py-1 text-right text-gray-300">
-                          ${trade.exitPrice.toFixed(2)}
+                          {trade.exitTime ? new Date(trade.exitTime).toLocaleTimeString() : '-'}
                         </td>
                         <td className="px-2 py-1 text-right">
-                          <span className={trade.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            ${trade.profit.toFixed(2)}
+                          <span className={trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>
+                            ${trade.pnl.toFixed(2)}
                           </span>
                         </td>
                       </tr>
