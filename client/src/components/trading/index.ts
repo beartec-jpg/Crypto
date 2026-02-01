@@ -6,6 +6,8 @@ export { AlertsPanel } from './AlertsPanel';
 export { TradeEntryPanel } from './TradeEntryPanel';
 export { PositionTrackerPanel } from './PositionTrackerPanel';
 export { TradeHistoryPanel } from './TradeHistoryPanel';
+export { StrategyGeneratorPanel } from './StrategyGeneratorPanel';
+export { BacktestResultsPanel } from './BacktestResultsPanel';
 
 export type { TradeSetup } from './TradeEntryPanel';
 export type { Position } from './PositionTrackerPanel';

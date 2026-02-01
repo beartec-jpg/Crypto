@@ -7,3 +7,4 @@ export { ChartVisibleRange } from './ChartVisibleRange';
 export { ChartTimeTooltip } from './ChartTimeTooltip';
 export { darkTheme, lightTheme, CHART_COLORS, applyChartTheme } from './ChartTheme';
 export type { ChartThemeConfig } from './ChartTheme';
+export { ChartControlBar } from './ChartControlBar';
