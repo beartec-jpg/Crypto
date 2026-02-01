@@ -377,6 +377,10 @@ export default function CryptoIndicators() {
   const [drawingsVisible, setDrawingsVisible] = useState(true); // Toggle to hide/show all drawings
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  
+  // ChartControlBar state
+  const [period, setPeriod] = useState('24h');
+  const [autoScroll, setAutoScroll] = useState(false);
 
   // Oscillator panel state for fullscreen mode
 const [showOscillatorPanel, setShowOscillatorPanel] = useState(false);
@@ -1161,6 +1165,44 @@ useEffect(() => {
   const [structureTrend, setStructureTrend] = useState<'uptrend' | 'downtrend' | 'ranging' | null>(null);
   // Trading state management - consolidated via useTradingState hook
   const tradingState = useTradingState();
+  
+  // Strategy Generator handler
+  const handleGenerateStrategy = useCallback((type: 'scalping' | 'day-trading' | 'swing-trading') => {
+    toast({ 
+      title: `${type} strategy generated`, 
+      description: 'Strategy ready for backtesting' 
+    });
+    // Future: actual strategy generation logic
+  }, [toast]);
+  
+  // Backtest handler
+  const handleRunBacktest = useCallback(() => {
+    if (!candles || candles.length === 0) {
+      toast({ 
+        title: 'Error', 
+        description: 'No candle data available', 
+        variant: 'destructive' 
+      });
+      return;
+    }
+    tradingState.startBacktest();
+    // Simulate backtest completion after 2 seconds
+    setTimeout(() => {
+      // Mock results for now
+      const mockResults = {
+        totalTrades: 10,
+        winRate: 60,
+        profitFactor: 1.5,
+        totalPnL: 150.50,
+        avgWin: 25.50,
+        avgLoss: -15.30,
+        maxDrawdown: 8.5,
+        trades: []
+      };
+      tradingState.completeBacktest(mockResults);
+    }, 2000);
+  }, [candles, toast, tradingState.startBacktest, tradingState.completeBacktest]);
+  
   const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(false); // Show CVD spike triangles on chart (default OFF)
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
@@ -8100,24 +8142,24 @@ useEffect(() => {
           />
         </div>
 
-        {/* Timeframe Selector and Action Buttons */}
+        {/* Chart Control Bar */}
+        <ChartControlBar
+          symbol={symbol}
+          interval={interval}
+          period={period}
+          onSymbolChange={setSymbol}
+          onIntervalChange={setTimeframeInterval}
+          onPeriodChange={setPeriod}
+          onRefresh={() => fetchInitialData()}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+          autoScroll={autoScroll}
+          onToggleAutoScroll={() => setAutoScroll(!autoScroll)}
+        />
+        
+        {/* Additional Action Buttons */}
         <div className="flex flex-col items-center gap-4">
           <div className="flex items-center gap-2 md:gap-4">
-            <Select value={interval} onValueChange={setTimeframeInterval}>
-              <SelectTrigger className="w-20 md:w-32 bg-slate-800 border-slate-600">
-                <SelectValue className="text-white font-bold" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1m">1m</SelectItem>
-                <SelectItem value="5m">5m</SelectItem>
-                <SelectItem value="15m">15m</SelectItem>
-                <SelectItem value="1h">1h</SelectItem>
-                <SelectItem value="4h">4h</SelectItem>
-                <SelectItem value="1d">1D</SelectItem>
-                <SelectItem value="1w">1W</SelectItem>
-                <SelectItem value="1M">1M</SelectItem>
-              </SelectContent>
-            </Select>
             <Button
               onClick={() => modals.openModal('settings-dialog')}
               className="bg-slate-700 hover:bg-slate-600 text-white px-3 md:px-4"
@@ -9347,6 +9389,22 @@ useEffect(() => {
             )}
           </CardContent>
         </Card>
+
+        {/* Strategy Generator Panel */}
+        <StrategyGeneratorPanel
+          onGenerateStrategy={handleGenerateStrategy}
+          currentStrategy={undefined}
+          candles={candles}
+          indicators={indicators}
+        />
+
+        {/* Backtest Results Panel */}
+        <BacktestResultsPanel
+          results={tradingState.backtestResults}
+          isRunning={tradingState.backtesting}
+          onRun={handleRunBacktest}
+          onClear={() => tradingState.clearBacktest()}
+        />
 
 {/* Oscillator Charts - Conditionally rendered based on mode */}
 {!isFullscreen && (indicators.rsi.show || indicators.stochRSI.show || indicators.macd.show || indicators.obv.show || indicators.williamsR.show || indicators.mfi.show || indicators.cci.show || indicators.adx.show) && (
