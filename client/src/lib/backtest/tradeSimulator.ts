@@ -390,6 +390,8 @@ export function simulateTrade(
       else if (signal.strategy === 'bos_trend') numTPs = bosTPSL.numTPs;
       else if (signal.strategy === 'choch_fvg') numTPs = chochTPSL.numTPs;
       else if (signal.strategy === 'vwap_rejection') numTPs = vwapTPSL.numTPs;
+      else if (signal.strategy === 'rs_flip') numTPs = rsFlipTPSL.numTPs;
+      else if (signal.strategy === 'ema_trading') numTPs = emaTradingTPSL.numTPs;
       
       // TRAILING TP LOGIC FOR LONGS
       if (signal.tp1Type === 'trailing' && signal.strategy === 'choch_fvg') {
@@ -734,6 +736,8 @@ export function simulateTrade(
       else if (signal.strategy === 'bos_trend') numTPs = bosTPSL.numTPs;
       else if (signal.strategy === 'choch_fvg') numTPs = chochTPSL.numTPs;
       else if (signal.strategy === 'vwap_rejection') numTPs = vwapTPSL.numTPs;
+      else if (signal.strategy === 'rs_flip') numTPs = rsFlipTPSL.numTPs;
+      else if (signal.strategy === 'ema_trading') numTPs = emaTradingTPSL.numTPs;
       
       // TRAILING TP LOGIC FOR SHORTS
       if (signal.tp1Type === 'trailing' && signal.strategy === 'choch_fvg') {
