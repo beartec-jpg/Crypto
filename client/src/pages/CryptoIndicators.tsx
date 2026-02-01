@@ -266,6 +266,7 @@ export default function CryptoIndicators() {
     const savedTimeframe = localStorage.getItem('defaultTimeframe_XRPUSDT');
     return savedTimeframe || '15m';
   });
+  const [period, setPeriod] = useState('30d'); // Chart data period (24h, 7d, 30d, 90d)
   
   // Consolidated modal state management
   const modals = useModalState();
@@ -6260,6 +6261,20 @@ useEffect(() => {
     tradingState.setBacktesting(false);
   }, [candles, generateLiquidityGrabSignal, generateChochFVGSignal, generateVWAPTradingSignal, generateEMATradingSignal, generateRSFlipSignal, generateBOSTrendSignal, simulateTrade, accountSize, riskPercent, liqGrabSwingLength, liqGrabTrendFilter, liqGrabDirectionFilter, stratLiquidityGrab, calculateBOSandCHoCH, liqGrabTPSL]);
 
+  // Handle strategy generation
+  const handleGenerateStrategy = useCallback(async (type: 'scalping' | 'day-trading' | 'swing-trading') => {
+    // This would integrate with existing strategy generation logic
+    // For now, it's a placeholder that could be expanded
+    console.log('Generating strategy of type:', type);
+    
+    // Could trigger different signal generators based on type:
+    // - scalping: Quick entries/exits, tight stops
+    // - day-trading: Intraday patterns
+    // - swing-trading: Multi-day holds
+    
+    // Future: Set up appropriate indicators and parameters for the strategy type
+  }, []);
+
   // Fix chart when navigating back to page
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -8286,6 +8301,19 @@ useEffect(() => {
           </CardContent>
         </Card>
 
+        {/* Chart Control Bar */}
+        <ChartControlBar
+          symbol={symbol}
+          interval={interval}
+          period={period}
+          onSymbolChange={setSymbol}
+          onIntervalChange={setTimeframeInterval}
+          onPeriodChange={setPeriod}
+          onRefresh={fetchInitialData}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+        />
+
         {/* Main Chart */}
 <Card 
   className={`bg-slate-800 border-slate-700 transition-all duration-300 ${
@@ -9499,6 +9527,22 @@ useEffect(() => {
 
         </div>
         {/* End of 2x2 Grid */}
+
+        {/* Strategy & Backtest Panels */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+          <StrategyGeneratorPanel
+            onGenerateStrategy={handleGenerateStrategy}
+            candles={candles}
+            indicators={indicators}
+          />
+          
+          <BacktestResultsPanel
+            results={tradingState.backtestResults}
+            isRunning={tradingState.backtesting}
+            onRun={runBacktest}
+            onClear={() => tradingState.setBacktestResults(null)}
+          />
+        </div>
 
         {/* Unlock AI Analysis CTA */}
         <Card className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30 p-4 text-center">
