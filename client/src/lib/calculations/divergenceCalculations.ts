@@ -8,13 +8,18 @@ import { findPeaksAndTroughs } from '@/lib/smc/pivots';
 import { 
   calculateRSI, 
   calculateMACD, 
+  calculateEMA
+} from '@/lib/indicators/momentum';
+import {
   calculateOBV,
+  calculateMFI
+} from '@/lib/indicators/volume';
+import {
   calculateStochasticRSI,
-  calculateMFI,
   calculateWilliamsR,
   calculateCCI,
   calculateADX
-} from '@/lib/indicators/momentum';
+} from '@/lib/indicators';
 import type { CandleData } from '@/types/chart.types';
 
 // ==================== TYPES ====================
@@ -137,49 +142,49 @@ export function getOscillatorDivergence(
   switch (indicator) {
     case 'RSI': {
       const rsiData = calculateRSI(candles, config.rsiPeriod);
-      const rsiValues = rsiData.map(d => d.value);
+      const rsiValues = rsiData.map((d: { value: number }) => d.value);
       if (rsiValues.length > 0) divergence = detectDivergence(priceData.slice(-rsiValues.length), rsiValues);
       break;
     }
     case 'MACD': {
       const { hist } = calculateMACD(candles, config.macdFast, config.macdSlow, config.macdSignal);
-      const histValues = hist.map(d => d.value);
+      const histValues = hist.map((d: { value: number }) => d.value);
       if (histValues.length > 0) divergence = detectDivergence(priceData.slice(-histValues.length), histValues);
       break;
     }
     case 'OBV': {
       const obvData = calculateOBV(candles);
-      const obvValues = obvData.map(d => d.value);
+      const obvValues = obvData.map((d: { value: number }) => d.value);
       if (obvValues.length > 0) divergence = detectDivergence(priceData.slice(-obvValues.length), obvValues);
       break;
     }
     case 'StochRSI': {
       const stochData = calculateStochasticRSI(candles, config.stochRSIPeriod);
-      const kValues = stochData.map(d => d.k);
+      const kValues = stochData.map((d: { k: number }) => d.k);
       if (kValues.length > 0) divergence = detectDivergence(priceData.slice(-kValues.length), kValues);
       break;
     }
     case 'MFI': {
       const mfiData = calculateMFI(candles, config.mfiPeriod);
-      const mfiValues = mfiData.map(d => d.value);
+      const mfiValues = mfiData.map((d: { value: number }) => d.value);
       if (mfiValues.length > 0) divergence = detectDivergence(priceData.slice(-mfiValues.length), mfiValues);
       break;
     }
     case 'WilliamsR': {
       const wrData = calculateWilliamsR(candles, config.williamsRPeriod);
-      const wrValues = wrData.map(d => d.value);
+      const wrValues = wrData.map((d: { value: number }) => d.value);
       if (wrValues.length > 0) divergence = detectDivergence(priceData.slice(-wrValues.length), wrValues);
       break;
     }
     case 'CCI': {
       const cciData = calculateCCI(candles, config.cciPeriod);
-      const cciValues = cciData.map(d => d.value);
+      const cciValues = cciData.map((d: { value: number }) => d.value);
       if (cciValues.length > 0) divergence = detectDivergence(priceData.slice(-cciValues.length), cciValues);
       break;
     }
     case 'ADX': {
       const adxData = calculateADX(candles, config.adxPeriod);
-      const adxValues = adxData.map(d => d.adx);
+      const adxValues = adxData.map((d: { adx: number }) => d.adx);
       if (adxValues.length > 0) divergence = detectDivergence(priceData.slice(-adxValues.length), adxValues);
       break;
     }
@@ -225,7 +230,7 @@ export function detectDivergences(
       
       if (priceLL) {
         // RSI bullish divergence
-        const rsiIdx = rsiData.findIndex(r => r.time === candles[i].time);
+        const rsiIdx = rsiData.findIndex((r: { time: number }) => r.time === candles[i].time);
         if (rsiIdx > 5 && rsiIdx < rsiData.length - 2) {
           if (rsiData[rsiIdx].value > rsiData[rsiIdx-5].value) {
             indicatorsDiverging.push('RSI');
@@ -233,7 +238,7 @@ export function detectDivergences(
         }
         
         // MACD bullish divergence
-        const macdIdx = macdData.findIndex(m => m.time === candles[i].time);
+        const macdIdx = macdData.findIndex((m: { time: number }) => m.time === candles[i].time);
         if (macdIdx > 5 && macdIdx < macdData.length - 2) {
           if (macdData[macdIdx].value > macdData[macdIdx-5].value) {
             indicatorsDiverging.push('MACD');
@@ -241,7 +246,7 @@ export function detectDivergences(
         }
         
         // MFI bullish divergence
-        const mfiIdx = mfiData.findIndex(m => m.time === candles[i].time);
+        const mfiIdx = mfiData.findIndex((m: { time: number }) => m.time === candles[i].time);
         if (mfiIdx > 5 && mfiIdx < mfiData.length - 2) {
           if (mfiData[mfiIdx].value > mfiData[mfiIdx-5].value) {
             indicatorsDiverging.push('MFI');
@@ -249,7 +254,7 @@ export function detectDivergences(
         }
         
         // OBV bullish divergence
-        const obvIdx = obvData.findIndex(o => o.time === candles[i].time);
+        const obvIdx = obvData.findIndex((o: { time: number }) => o.time === candles[i].time);
         if (obvIdx > 5 && obvIdx < obvData.length - 2) {
           if (obvData[obvIdx].value > obvData[obvIdx-5].value) {
             indicatorsDiverging.push('OBV');
@@ -274,7 +279,7 @@ export function detectDivergences(
       
       if (priceHH) {
         // RSI bearish divergence
-        const rsiIdx = rsiData.findIndex(r => r.time === candles[i].time);
+        const rsiIdx = rsiData.findIndex((r: { time: number }) => r.time === candles[i].time);
         if (rsiIdx > 5 && rsiIdx < rsiData.length - 2) {
           if (rsiData[rsiIdx].value < rsiData[rsiIdx-5].value) {
             bearishIndicators.push('RSI');
@@ -282,7 +287,7 @@ export function detectDivergences(
         }
         
         // MACD bearish divergence
-        const macdIdx = macdData.findIndex(m => m.time === candles[i].time);
+        const macdIdx = macdData.findIndex((m: { time: number }) => m.time === candles[i].time);
         if (macdIdx > 5 && macdIdx < macdData.length - 2) {
           if (macdData[macdIdx].value < macdData[macdIdx-5].value) {
             bearishIndicators.push('MACD');
@@ -290,7 +295,7 @@ export function detectDivergences(
         }
         
         // MFI bearish divergence
-        const mfiIdx = mfiData.findIndex(m => m.time === candles[i].time);
+        const mfiIdx = mfiData.findIndex((m: { time: number }) => m.time === candles[i].time);
         if (mfiIdx > 5 && mfiIdx < mfiData.length - 2) {
           if (mfiData[mfiIdx].value < mfiData[mfiIdx-5].value) {
             bearishIndicators.push('MFI');
@@ -298,7 +303,7 @@ export function detectDivergences(
         }
         
         // OBV bearish divergence
-        const obvIdx = obvData.findIndex(o => o.time === candles[i].time);
+        const obvIdx = obvData.findIndex((o: { time: number }) => o.time === candles[i].time);
         if (obvIdx > 5 && obvIdx < obvData.length - 2) {
           if (obvData[obvIdx].value < obvData[obvIdx-5].value) {
             bearishIndicators.push('OBV');
