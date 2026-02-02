@@ -1201,15 +1201,20 @@ useEffect(() => {
     // Simulate backtest completion after 2 seconds
     setTimeout(() => {
       // Mock results for now
-      const mockResults = {
+      const mockResults: BacktestResults = {
+        trades: [],
         totalTrades: 10,
+        winners: 6,
+        losers: 4,
         winRate: 60,
+        avgRR: 1.5,
+        totalPL: 150.50,
         profitFactor: 1.5,
-        totalPnL: 150.50,
-        avgWin: 25.50,
-        avgLoss: -15.30,
-        maxDrawdown: 8.5,
-        trades: []
+        accountSize: 10000,
+        riskPerTrade: 1,
+        avgPositionSize: 100,
+        finalBalance: 10150.50,
+        returnPercent: 1.5,
       };
       tradingState.completeBacktest(mockResults);
     }, 2000);
@@ -2062,7 +2067,8 @@ useEffect(() => {
 
   // Find PREVIOUS swing high/low for TP targets (PAST PIVOTS - for quick scalps back to last resistance/support)
   const findPreviousSwingLevels = useCallback((data: CandleData[], currentPrice: number, direction: 'long' | 'short', customSwingLength?: number, endIndex?: number) => {
-    const swingLengthToUse = customSwingLength ?? swingLength;
+    const swingLength = customSwingLength ?? chartSettings.legacy.swingLength;
+    const swingLengthToUse = swingLength;
     
     // DEBUG: Log exactly what swing length we're using
     console.log('🔍 findPreviousSwingLevels CALLED:', {
@@ -2127,7 +2133,7 @@ useEffect(() => {
         tp3: lows.length > 2 ? lows[2].value : currentPrice,
       };
     }
-  }, [calculateSwings, swingLength]);
+  }, [calculateSwings, chartSettings.legacy.swingLength]);
 
   // Get closest VWAP value
   const getClosestVWAP = useCallback((currentPrice: number): number | null => {
@@ -2160,10 +2166,12 @@ useEffect(() => {
   }, [candles, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
 
   // Check if trend filter passes
-  const checkTrendFilter = useCallback((): boolean => {
-    if (trendFilter === 'ema') {
+  const checkTrendFilter = useCallback((trendFilter?: 'ema' | 'structure' | 'both' | 'none'): boolean => {
+    const filter = trendFilter ?? strategySettings.liquidityGrab.trendFilter;
+    if (filter === 'none') return true;
+    if (filter === 'ema') {
       return bias !== null;
-    } else if (trendFilter === 'structure') {
+    } else if (filter === 'structure') {
       return structureTrend !== null && structureTrend !== 'ranging';
     } else { // both
       const emaBullish = bias === 'bullish';
@@ -2172,15 +2180,15 @@ useEffect(() => {
       const structureBearish = structureTrend === 'downtrend';
       return (emaBullish && structureBullish) || (emaBearish && structureBearish);
     }
-  }, [bias, structureTrend, trendFilter]);
+  }, [bias, structureTrend, strategySettings.liquidityGrab.trendFilter]);
 
   // Check if direction filter passes
-  const checkDirectionFilter = useCallback((signalType: 'LONG' | 'SHORT'): boolean => {
+  const checkDirectionFilter = useCallback((signalType: 'LONG' | 'SHORT', directionFilter: 'bull' | 'bear' | 'both' = strategySettings.liquidityGrab.directionFilter): boolean => {
     if (directionFilter === 'both') return true;
     if (directionFilter === 'bull') return signalType === 'LONG';
     if (directionFilter === 'bear') return signalType === 'SHORT';
     return false;
-  }, [directionFilter]);
+  }, [strategySettings.liquidityGrab.directionFilter]);
 
   // Generate liquidity grab signal
   // ==================== STRATEGY SIGNAL GENERATORS (Wrappers for extracted modules) ====================
@@ -3492,10 +3500,8 @@ useEffect(() => {
     
     // Track duration and combo count for future time estimates
     const duration = performance.now() - startTime;
-    backtestSettings.autoTest.setDurations(prev => {
-      const updated = [...prev, { duration, combos: combinations.length }];
-      return updated.slice(-5); // Keep only last 5
-    });
+    const updated = [...backtestSettings.autoTest.durations, { duration, combos: combinations.length }];
+    backtestSettings.autoTest.setDurations(updated.slice(-5)); // Keep only last 5
     
     backtestSettings.autoTest.setResults(results);
     backtestSettings.autoTest.setProgress(100);
@@ -3540,7 +3546,7 @@ useEffect(() => {
     });
     
     console.log('✅ Applied auto-backtest configuration:', {
-      swingLength: result.chartSettings.legacy.swingLength,
+      swingLength: result.swingLength,
       trendFilter: result.trendFilter,
       allowedDirections: result.allowedDirections,
       tpsl: result.config
@@ -4831,7 +4837,7 @@ useEffect(() => {
     } catch (e) {
       console.error('Error drawing liquidity sweep lines:', e);
     }
-  }, [chartReady, candles, strategySettings.liquidityGrab.enabled, chartSettings.liquiditySweep.chartSettings.legacy.swingLength, calculateBOSandCHoCH]);
+  }, [chartReady, candles, strategySettings.liquidityGrab.enabled, chartSettings.liquiditySweep.swingLength, calculateBOSandCHoCH]);
 
   // Draw auto trendlines on chart
   useEffect(() => {
@@ -4952,7 +4958,7 @@ useEffect(() => {
     // Filter trades for replay mode - only show trades that have opened by current replay time
     const hasBacktestTrades = tradingState.backtestResults && tradingState.backtestResults.trades && tradingState.backtestResults.trades.length > 0;
     const currentReplayTime = replayMode.isReplayMode && candles.length > 0 ? candles[candles.length - 1].time : Infinity;
-    const visibleTrades = hasBacktestTrades 
+    const visibleTrades = (hasBacktestTrades && tradingState.backtestResults) 
       ? tradingState.backtestResults.trades.filter(trade => !replayMode.isReplayMode || trade.entryTime <= currentReplayTime)
       : [];
 
@@ -5450,13 +5456,13 @@ useEffect(() => {
   // Chart Liquidity Sweep Settings (separate from bot strategy)
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(chartSettings.liquiditySweep.chartSettings.legacy.swingLengthInput);
+      const num = parseInt(chartSettings.liquiditySweep.swingLengthInput);
       if (!isNaN(num) && num >= 5 && num <= 50) {
-        chartSettings.liquiditySweep.chartSettings.legacy.setSwingLength(num);
+        chartSettings.liquiditySweep.setSwingLength(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [chartSettings.liquiditySweep.chartSettings.legacy.swingLengthInput]);
+  }, [chartSettings.liquiditySweep.swingLengthInput]);
 
   // Legacy debounce effects (deprecated - keeping for backward compatibility)
   useEffect(() => {
@@ -5471,23 +5477,23 @@ useEffect(() => {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(liqGrabInput);
+      const num = parseInt(chartSettings.legacy.liqGrabInput);
       if (!isNaN(num) && num >= 1 && num <= 5) {
         chartSettings.legacy.setLiqGrabCandles(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [liqGrabInput]);
+  }, [chartSettings.legacy.liqGrabInput]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(wickRatioInput);
+      const num = parseInt(chartSettings.legacy.wickRatioInput);
       if (!isNaN(num) && num >= 50 && num <= 500) {
         chartSettings.legacy.setWickToBodyRatio(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [wickRatioInput]);
+  }, [chartSettings.legacy.wickRatioInput]);
 
   // Determine bias when candles change
   useEffect(() => {
@@ -5574,38 +5580,6 @@ useEffect(() => {
       setCumDelta(prev => prev + delta);
     }, [])
   });
-
-  // Replay mode auto-play effect
-  useEffect(() => {
-    if (replayMode.isReplayPlaying && replayMode.isReplayMode && replayMode.fullCandleData.length > 0) {
-      const baseInterval = 1000; // 1 second base
-      const intervalDuration = baseInterval / replayMode.replaySpeed;
-      
-      const timer: any = setInterval(() => {
-        replayMode.setReplayIndex(prev => {
-          if (prev >= replayMode.fullCandleData.length) {
-            replayMode.setIsReplayPlaying(false);
-            return prev;
-          }
-          return prev + 1;
-        });
-      }, intervalDuration);
-      
-      replayIntervalRef.current = timer as NodeJS.Timeout;
-
-      return () => {
-        if (replayIntervalRef.current) {
-          clearInterval(replayIntervalRef.current);
-          replayIntervalRef.current = null;
-        }
-      };
-    } else {
-      if (replayIntervalRef.current) {
-        clearInterval(replayIntervalRef.current);
-        replayIntervalRef.current = null;
-      }
-    }
-  }, [replayMode.isReplayPlaying, replayMode.isReplayMode, replayMode.replaySpeed, replayMode.fullCandleData.length]);
 
   // Update candles when in replay mode
   useEffect(() => {
@@ -6160,16 +6134,8 @@ useEffect(() => {
                         replayMode.setFullCandleData(currentCandles);
                         replayMode.setReplayIndex(100);
                         replayMode.setIsReplayPlaying(false);
-                        if (replayIntervalRef.current) {
-                          clearInterval(replayIntervalRef.current);
-                          replayIntervalRef.current = null;
-                        }
                       } else {
                         // Exiting replay mode - restore all candles
-                        if (replayIntervalRef.current) {
-                          clearInterval(replayIntervalRef.current);
-                          replayIntervalRef.current = null;
-                        }
                         replayMode.setIsReplayPlaying(false);
                         // Restore full candles
                         if (replayMode.fullCandleData.length > 0) {
@@ -6211,10 +6177,6 @@ useEffect(() => {
                         onClick={() => {
                           if (replayMode.isReplayPlaying) {
                             replayMode.setIsReplayPlaying(false);
-                            if (replayIntervalRef.current) {
-                              clearInterval(replayIntervalRef.current);
-                              replayIntervalRef.current = null;
-                            }
                           } else {
                             replayMode.setIsReplayPlaying(true);
                           }
@@ -7328,20 +7290,20 @@ useEffect(() => {
                   setCvdSpikeLevel3={setCvdSpikeLevel3}
                   fvgVolumeThreshold={chartSettings.legacy.fvgVolumeThreshold}
                   setFvgVolumeThreshold={chartSettings.legacy.setFvgVolumeThreshold}
-                  bosSwingLengthInput={chartSettings.bos.swingLengthInput}
-                  setBosSwingLengthInput={chartSettings.bos.setSwingLengthInput}
-                  bosSwingLength={chartSettings.bos.swingLength}
-                  setBosSwingLength={chartSettings.bos.setSwingLength}
-                  chochSwingLengthInput={chartSettings.choch.swingLengthInput}
-                  setChochSwingLengthInput={chartSettings.choch.setSwingLengthInput}
-                  chochSwingLength={chartSettings.choch.swingLength}
-                  setChochSwingLength={chartSettings.choch.setSwingLength}
+                  chartBosSwingLengthInput={chartSettings.bos.swingLengthInput}
+                  setChartBosSwingLengthInput={chartSettings.bos.setSwingLengthInput}
+                  chartBosSwingLength={chartSettings.bos.swingLength}
+                  setChartBosSwingLength={chartSettings.bos.setSwingLength}
+                  chartChochSwingLengthInput={chartSettings.choch.swingLengthInput}
+                  setChartChochSwingLengthInput={chartSettings.choch.setSwingLengthInput}
+                  chartChochSwingLength={chartSettings.choch.swingLength}
+                  setChartChochSwingLength={chartSettings.choch.setSwingLength}
                   stratLiquidityGrab={strategySettings.liquidityGrab.enabled}
                   setStratLiquidityGrab={strategySettings.liquidityGrab.setEnabled}
-                  liquiditySweepSwingLengthInput={chartSettings.liquiditySweep.swingLengthInput}
-                  setLiquiditySweepSwingLengthInput={chartSettings.liquiditySweep.setSwingLengthInput}
-                  liquiditySweepSwingLength={chartSettings.liquiditySweep.swingLength}
-                  setLiquiditySweepSwingLength={chartSettings.liquiditySweep.setSwingLength}
+                  chartLiquiditySweepSwingLengthInput={chartSettings.liquiditySweep.swingLengthInput}
+                  setChartLiquiditySweepSwingLengthInput={chartSettings.liquiditySweep.setSwingLengthInput}
+                  chartLiquiditySweepSwingLength={chartSettings.liquiditySweep.swingLength}
+                  setChartLiquiditySweepSwingLength={chartSettings.liquiditySweep.setSwingLength}
                   setLocation={setLocation}
                   interval={interval}
                   saveToTimeframe={saveToTimeframe}
@@ -7647,10 +7609,10 @@ useEffect(() => {
             adx: { show: indicators.adx.show },
             bollingerBands: { show: indicators.bb.show, period: indicators.bb.period },
             atr: { show: false, period: 14 },
-            fvg: { show: indicators.showFVG, showHighValueOnly: indicators.showHighValueOnly },
-            bos: { show: indicators.showBOS },
-            choch: { show: indicators.showCHoCH },
-            orderBlocks: { show: indicators.showOrderBlocks },
+            fvg: { show: indicators.smc.showFVG, showHighValueOnly: indicators.smc.showHighValueOnly },
+            bos: { show: indicators.smc.showBOS },
+            choch: { show: indicators.smc.showCHoCH },
+            orderBlocks: { show: indicators.smc.showOrderBlocks },
             ema: { show: indicators.ema.show, fastPeriod: indicators.ema.fastPeriod, slowPeriod: indicators.ema.slowPeriod },
             sma: { show: indicators.sma.show, period: indicators.sma.fastPeriod },
           }}

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import type { TradeSignal, BacktestResults, Position as TradingPosition } from '@/types/trading.types';
 
 /**
  * Trading-related types
@@ -13,33 +14,6 @@ export interface Position {
   stopLoss: number;
   targets: { price: number; filled: boolean }[];
   openTime: number;
-}
-
-export interface TradeSignal {
-  id: string;
-  time: number;
-  type: 'LONG' | 'SHORT';
-  price: number;
-  pattern: string;
-  strength?: number;
-  description?: string;
-}
-
-export interface BacktestResults {
-  totalTrades: number;
-  winRate: number;
-  profitFactor: number;
-  totalPnL: number;
-  avgWin: number;
-  avgLoss: number;
-  maxDrawdown: number;
-  sharpeRatio?: number;
-  trades: Array<{
-    entryTime: number;
-    exitTime: number;
-    pnl: number;
-    direction: 'LONG' | 'SHORT';
-  }>;
 }
 
 /**
