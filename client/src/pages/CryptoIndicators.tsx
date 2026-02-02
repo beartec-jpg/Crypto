@@ -259,6 +259,15 @@ import {
   findPeaksAndTroughs 
 } from '@/lib/smc/pivots';
 
+// Backtest imports
+import {
+  runAutoBacktest as runAutoBacktestCore,
+  calculateTotalCombinations,
+  type AutoBacktestConfig as AutoBacktestConfigType,
+  type ParameterRanges,
+  type TestOptions
+} from '@/lib/backtest';
+
 const MA_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
 const MA_TIMEFRAMES = [
   { value: 'current', label: 'Current' },
@@ -1397,86 +1406,36 @@ useEffect(() => {
     }
   }, [strategySettings.emaTrading.slSwingLengthInput]);
 
-  // Calculate total combinations for auto-backtest
+  // Calculate total combinations for auto-backtest using extracted utility
   const totalCombinations = useMemo(() => {
     if (!backtestSettings.autoTest.mode) return 0;
 
-    const getRangeCount = (min: number, max: number, step: number) => {
-      if (step <= 0 || min > max) return 0;
-      return Math.floor((max - min) / step) + 1;
-    };
-
-    let count = 1;
-
-    // Strategy parameters
-    count *= backtestSettings.parameterTests.strategy.trendFilters.length || 1;
-    count *= backtestSettings.parameterTests.strategy.directions.length || 1;
-    count *= getRangeCount(backtestSettings.ranges.swingLength.min, backtestSettings.ranges.swingLength.max, backtestSettings.ranges.swingLength.step);
-    // Only test wick ratios when wick filter is enabled
-    if (backtestSettings.parameterTests.strategy.useWickFilter) {
-      count *= getRangeCount(backtestSettings.ranges.wickRatio.min, backtestSettings.ranges.wickRatio.max, backtestSettings.ranges.wickRatio.step);
-    }
-    // Only test confirm candles when confirm candles is enabled
-    if (backtestSettings.parameterTests.strategy.useConfirmCandles) {
-      count *= getRangeCount(backtestSettings.ranges.confirmCandles.min, backtestSettings.ranges.confirmCandles.max, backtestSettings.ranges.confirmCandles.step);
-    }
-
-    // TP1 parameters (always active if numTPs >= 1)
-    if (strategySettings.liquidityGrab.tpsl.numTPs >= 1) {
-      let tp1Count = 0;
-      if (backtestSettings.parameterTests.tp1.structure) tp1Count += getRangeCount(backtestSettings.ranges.tp1SwingLength.min, backtestSettings.ranges.tp1SwingLength.max, backtestSettings.ranges.tp1SwingLength.step);
-      if (backtestSettings.parameterTests.tp1.trailing) tp1Count += getRangeCount(backtestSettings.ranges.tp1TrailingSwing.min, backtestSettings.ranges.tp1TrailingSwing.max, backtestSettings.ranges.tp1TrailingSwing.step);
-      if (backtestSettings.parameterTests.tp1.ema) tp1Count += getRangeCount(backtestSettings.ranges.tp1EMAFast.min, backtestSettings.ranges.tp1EMAFast.max, backtestSettings.ranges.tp1EMAFast.step) * getRangeCount(backtestSettings.ranges.tp1EMASlow.min, backtestSettings.ranges.tp1EMASlow.max, backtestSettings.ranges.tp1EMASlow.step);
-      if (backtestSettings.parameterTests.tp1.fixedRR) tp1Count += getRangeCount(backtestSettings.ranges.tp1RR.min, backtestSettings.ranges.tp1RR.max, backtestSettings.ranges.tp1RR.step);
-      count *= tp1Count || 1;
-    }
-
-    // TP2 parameters (only if numTPs >= 2)
-    if (strategySettings.liquidityGrab.tpsl.numTPs >= 2) {
-      let tp2Count = 0;
-      if (backtestSettings.parameterTests.tp2.structure) tp2Count += getRangeCount(backtestSettings.ranges.tp2SwingLength.min, backtestSettings.ranges.tp2SwingLength.max, backtestSettings.ranges.tp2SwingLength.step);
-      if (backtestSettings.parameterTests.tp2.trailing) tp2Count += getRangeCount(backtestSettings.ranges.tp2TrailingSwing.min, backtestSettings.ranges.tp2TrailingSwing.max, backtestSettings.ranges.tp2TrailingSwing.step);
-      if (backtestSettings.parameterTests.tp2.ema) tp2Count += getRangeCount(backtestSettings.ranges.tp2EMAFast.min, backtestSettings.ranges.tp2EMAFast.max, backtestSettings.ranges.tp2EMAFast.step) * getRangeCount(backtestSettings.ranges.tp2EMASlow.min, backtestSettings.ranges.tp2EMASlow.max, backtestSettings.ranges.tp2EMASlow.step);
-      if (backtestSettings.parameterTests.tp2.fixedRR) tp2Count += getRangeCount(backtestSettings.ranges.tp2RR.min, backtestSettings.ranges.tp2RR.max, backtestSettings.ranges.tp2RR.step);
-      count *= tp2Count || 1;
-    }
-
-    // TP3 parameters (only if numTPs >= 3)
-    if (strategySettings.liquidityGrab.tpsl.numTPs >= 3) {
-      let tp3Count = 0;
-      if (backtestSettings.parameterTests.tp3.structure) tp3Count += getRangeCount(backtestSettings.ranges.tp3SwingLength.min, backtestSettings.ranges.tp3SwingLength.max, backtestSettings.ranges.tp3SwingLength.step);
-      if (backtestSettings.parameterTests.tp3.trailing) tp3Count += getRangeCount(backtestSettings.ranges.tp3TrailingSwing.min, backtestSettings.ranges.tp3TrailingSwing.max, backtestSettings.ranges.tp3TrailingSwing.step);
-      if (backtestSettings.parameterTests.tp3.ema) tp3Count += getRangeCount(backtestSettings.ranges.tp3EMAFast.min, backtestSettings.ranges.tp3EMAFast.max, backtestSettings.ranges.tp3EMAFast.step) * getRangeCount(backtestSettings.ranges.tp3EMASlow.min, backtestSettings.ranges.tp3EMASlow.max, backtestSettings.ranges.tp3EMASlow.step);
-      if (backtestSettings.parameterTests.tp3.fixedRR) tp3Count += getRangeCount(backtestSettings.ranges.tp3RR.min, backtestSettings.ranges.tp3RR.max, backtestSettings.ranges.tp3RR.step);
-      count *= tp3Count || 1;
-    }
-
-    // SL parameters
-    let slCount = 0;
-    if (backtestSettings.parameterTests.sl.atr) slCount += getRangeCount(backtestSettings.ranges.slATR.min, backtestSettings.ranges.slATR.max, backtestSettings.ranges.slATR.step);
-    if (backtestSettings.parameterTests.sl.structure) slCount += getRangeCount(backtestSettings.ranges.slSwingLength.min, backtestSettings.ranges.slSwingLength.max, backtestSettings.ranges.slSwingLength.step);
-    if (backtestSettings.parameterTests.sl.fixedDistance) slCount += getRangeCount(backtestSettings.ranges.slFixedDistance.min, backtestSettings.ranges.slFixedDistance.max, backtestSettings.ranges.slFixedDistance.step);
-    count *= slCount || 1;
-
-    return count;
+    return calculateTotalCombinations(
+      backtestSettings.ranges as ParameterRanges,
+      {
+        trendFilters: backtestSettings.parameterTests.strategy.trendFilters,
+        directions: backtestSettings.parameterTests.strategy.directions,
+        useWickFilter: backtestSettings.parameterTests.strategy.useWickFilter,
+        useConfirmCandles: backtestSettings.parameterTests.strategy.useConfirmCandles,
+        tp1: backtestSettings.parameterTests.tp1,
+        tp2: backtestSettings.parameterTests.tp2,
+        tp3: backtestSettings.parameterTests.tp3,
+        sl: backtestSettings.parameterTests.sl,
+      } as TestOptions,
+      strategySettings.liquidityGrab.tpsl.numTPs
+    );
   }, [
     backtestSettings.autoTest.mode,
     backtestSettings.parameterTests.strategy.trendFilters,
     backtestSettings.parameterTests.strategy.directions,
-    backtestSettings.ranges.swingLength,
-    backtestSettings.ranges.wickRatio,
-    backtestSettings.ranges.confirmCandles,
+    backtestSettings.ranges,
     backtestSettings.parameterTests.strategy.useWickFilter,
     backtestSettings.parameterTests.strategy.useConfirmCandles,
-    /* FIXME */ strategySettings.liquidityGrab.tpsl.numTPs,
-    backtestSettings.parameterTests.tp1.structure, backtestSettings.parameterTests.tp1.trailing, backtestSettings.parameterTests.tp1.ema, backtestSettings.parameterTests.tp1.fixedRR,
-    backtestSettings.ranges.tp1SwingLength, backtestSettings.ranges.tp1TrailingSwing, backtestSettings.ranges.tp1EMAFast, backtestSettings.ranges.tp1EMASlow, backtestSettings.ranges.tp1RR,
-    backtestSettings.parameterTests.tp2.structure, backtestSettings.parameterTests.tp2.trailing, backtestSettings.parameterTests.tp2.ema, backtestSettings.parameterTests.tp2.fixedRR,
-    backtestSettings.ranges.tp2SwingLength, backtestSettings.ranges.tp2TrailingSwing, backtestSettings.ranges.tp2EMAFast, backtestSettings.ranges.tp2EMASlow, backtestSettings.ranges.tp2RR,
-    backtestSettings.parameterTests.tp3.structure, backtestSettings.parameterTests.tp3.trailing, backtestSettings.parameterTests.tp3.ema, backtestSettings.parameterTests.tp3.fixedRR,
-    backtestSettings.ranges.tp3SwingLength, backtestSettings.ranges.tp3TrailingSwing, backtestSettings.ranges.tp3EMAFast, backtestSettings.ranges.tp3EMASlow, backtestSettings.ranges.tp3RR,
-    backtestSettings.parameterTests.sl.atr, backtestSettings.parameterTests.sl.structure, backtestSettings.parameterTests.sl.fixedDistance,
-    backtestSettings.ranges.slATR, backtestSettings.ranges.slSwingLength, backtestSettings.ranges.slFixedDistance
+    strategySettings.liquidityGrab.tpsl.numTPs,
+    backtestSettings.parameterTests.tp1,
+    backtestSettings.parameterTests.tp2,
+    backtestSettings.parameterTests.tp3,
+    backtestSettings.parameterTests.sl,
   ]);
 
   // Calculate estimated completion time using actual performance data
@@ -2821,301 +2780,76 @@ useEffect(() => {
     });
   }, [strategySettings.vwapTrading.type, strategySettings.liquidityGrab.tpsl, strategySettings.bosStructure.tpsl, strategySettings.chochFvg.tpsl, strategySettings.vwapTrading.tpsl, strategySettings.rsFlip.tpsl, strategySettings.emaTrading.tpsl, strategySettings.chochFvg.tpSwingLength, strategySettings.liquidityGrab.tpSwingLength]);
   // Generate all combinations of bot configurations for auto-backtest
-  const generateAutoBacktestCombinations = useCallback((): any[] => {
-    const combinations: any[] = [];
-    
-    // Generate arrays from ranges for strategy parameters
-    const swingLengthValues = generateRangeValues(backtestSettings.ranges.swingLength.min, backtestSettings.ranges.swingLength.max, backtestSettings.ranges.swingLength.step);
-    const wickRatioValues = generateRangeValues(backtestSettings.ranges.wickRatio.min, backtestSettings.ranges.wickRatio.max, backtestSettings.ranges.wickRatio.step);
-    const confirmCandlesValues = generateRangeValues(backtestSettings.ranges.confirmCandles.min, backtestSettings.ranges.confirmCandles.max, backtestSettings.ranges.confirmCandles.step);
-    
-    // TP1 parameter arrays - Liquidity Grab uses: Structure, Trailing, EMA, Fixed R:R
-    const tp1StructureSwingValues = backtestSettings.parameterTests.tp1.structure ? generateRangeValues(backtestSettings.ranges.tp1SwingLength.min, backtestSettings.ranges.tp1SwingLength.max, backtestSettings.ranges.tp1SwingLength.step) : [];
-    const tp1TrailingSwingValues = backtestSettings.parameterTests.tp1.trailing ? generateRangeValues(backtestSettings.ranges.tp1TrailingSwing.min, backtestSettings.ranges.tp1TrailingSwing.max, backtestSettings.ranges.tp1TrailingSwing.step) : [];
-    const tp1EMAFastValues = backtestSettings.parameterTests.tp1.ema ? generateRangeValues(backtestSettings.ranges.tp1EMAFast.min, backtestSettings.ranges.tp1EMAFast.max, backtestSettings.ranges.tp1EMAFast.step) : [];
-    const tp1EMASlowValues = backtestSettings.parameterTests.tp1.ema ? generateRangeValues(backtestSettings.ranges.tp1EMASlow.min, backtestSettings.ranges.tp1EMASlow.max, backtestSettings.ranges.tp1EMASlow.step) : [];
-    const tp1RRValues = backtestSettings.parameterTests.tp1.fixedRR ? generateRangeValues(backtestSettings.ranges.tp1RR.min, backtestSettings.ranges.tp1RR.max, backtestSettings.ranges.tp1RR.step) : [];
-    
-    // TP2 parameter arrays
-    const tp2StructureSwingValues = backtestSettings.parameterTests.tp2.structure ? generateRangeValues(backtestSettings.ranges.tp2SwingLength.min, backtestSettings.ranges.tp2SwingLength.max, backtestSettings.ranges.tp2SwingLength.step) : [];
-    const tp2TrailingSwingValues = backtestSettings.parameterTests.tp2.trailing ? generateRangeValues(backtestSettings.ranges.tp2TrailingSwing.min, backtestSettings.ranges.tp2TrailingSwing.max, backtestSettings.ranges.tp2TrailingSwing.step) : [];
-    const tp2EMAFastValues = backtestSettings.parameterTests.tp2.ema ? generateRangeValues(backtestSettings.ranges.tp2EMAFast.min, backtestSettings.ranges.tp2EMAFast.max, backtestSettings.ranges.tp2EMAFast.step) : [];
-    const tp2EMASlowValues = backtestSettings.parameterTests.tp2.ema ? generateRangeValues(backtestSettings.ranges.tp2EMASlow.min, backtestSettings.ranges.tp2EMASlow.max, backtestSettings.ranges.tp2EMASlow.step) : [];
-    const tp2RRValues = backtestSettings.parameterTests.tp2.fixedRR ? generateRangeValues(backtestSettings.ranges.tp2RR.min, backtestSettings.ranges.tp2RR.max, backtestSettings.ranges.tp2RR.step) : [];
-    
-    // TP3 parameter arrays
-    const tp3StructureSwingValues = backtestSettings.parameterTests.tp3.structure ? generateRangeValues(backtestSettings.ranges.tp3SwingLength.min, backtestSettings.ranges.tp3SwingLength.max, backtestSettings.ranges.tp3SwingLength.step) : [];
-    const tp3TrailingSwingValues = backtestSettings.parameterTests.tp3.trailing ? generateRangeValues(backtestSettings.ranges.tp3TrailingSwing.min, backtestSettings.ranges.tp3TrailingSwing.max, backtestSettings.ranges.tp3TrailingSwing.step) : [];
-    const tp3EMAFastValues = backtestSettings.parameterTests.tp3.ema ? generateRangeValues(backtestSettings.ranges.tp3EMAFast.min, backtestSettings.ranges.tp3EMAFast.max, backtestSettings.ranges.tp3EMAFast.step) : [];
-    const tp3EMASlowValues = backtestSettings.parameterTests.tp3.ema ? generateRangeValues(backtestSettings.ranges.tp3EMASlow.min, backtestSettings.ranges.tp3EMASlow.max, backtestSettings.ranges.tp3EMASlow.step) : [];
-    const tp3RRValues = backtestSettings.parameterTests.tp3.fixedRR ? generateRangeValues(backtestSettings.ranges.tp3RR.min, backtestSettings.ranges.tp3RR.max, backtestSettings.ranges.tp3RR.step) : [];
-    
-    // SL parameter arrays
-    const slATRValues = backtestSettings.parameterTests.sl.atr ? generateRangeValues(backtestSettings.ranges.slATR.min, backtestSettings.ranges.slATR.max, backtestSettings.ranges.slATR.step) : [];
-    const slStructureSwingValues = backtestSettings.parameterTests.sl.structure ? generateRangeValues(backtestSettings.ranges.slSwingLength.min, backtestSettings.ranges.slSwingLength.max, backtestSettings.ranges.slSwingLength.step) : [];
-    const slFixedDistanceValues = backtestSettings.parameterTests.sl.fixedDistance ? generateRangeValues(backtestSettings.ranges.slFixedDistance.min, backtestSettings.ranges.slFixedDistance.max, backtestSettings.ranges.slFixedDistance.step) : [];
-    
-    // Combine all TP1 types (include positionPercent from current config)
-    const tp1Configs: any[] = [];
-    tp1StructureSwingValues.forEach(v => tp1Configs.push({ type: 'structure', swingLength: v, positionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent }));
-    tp1TrailingSwingValues.forEach(v => tp1Configs.push({ type: 'trailing', trailingSwingLength: v, positionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent }));
-    // For EMA, create combinations of fast and slow
-    tp1EMAFastValues.forEach(fast => {
-      tp1EMASlowValues.forEach(slow => {
-        if (slow > fast) { // Ensure slow > fast
-          tp1Configs.push({ type: 'ema', emaFast: fast, emaSlow: slow, positionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent });
-        }
-      });
-    });
-    tp1RRValues.forEach(v => tp1Configs.push({ type: 'fixed_rr', fixedRR: v, positionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent }));
-    
-    // Combine all TP2 types (include positionPercent from current config)
-    const tp2Configs: any[] = [];
-    const tp2PositionPercent = strategySettings.liquidityGrab.tpsl.tp2?.positionPercent || 30;
-    tp2StructureSwingValues.forEach(v => tp2Configs.push({ type: 'structure', swingLength: v, positionPercent: tp2PositionPercent }));
-    tp2TrailingSwingValues.forEach(v => tp2Configs.push({ type: 'trailing', trailingSwingLength: v, positionPercent: tp2PositionPercent }));
-    tp2EMAFastValues.forEach(fast => {
-      tp2EMASlowValues.forEach(slow => {
-        if (slow > fast) {
-          tp2Configs.push({ type: 'ema', emaFast: fast, emaSlow: slow, positionPercent: tp2PositionPercent });
-        }
-      });
-    });
-    tp2RRValues.forEach(v => tp2Configs.push({ type: 'fixed_rr', fixedRR: v, positionPercent: tp2PositionPercent }));
-    
-    // Combine all TP3 types (include positionPercent from current config)
-    const tp3Configs: any[] = [];
-    const tp3PositionPercent = strategySettings.liquidityGrab.tpsl.tp3?.positionPercent || 20;
-    tp3StructureSwingValues.forEach(v => tp3Configs.push({ type: 'structure', swingLength: v, positionPercent: tp3PositionPercent }));
-    tp3TrailingSwingValues.forEach(v => tp3Configs.push({ type: 'trailing', trailingSwingLength: v, positionPercent: tp3PositionPercent }));
-    tp3EMAFastValues.forEach(fast => {
-      tp3EMASlowValues.forEach(slow => {
-        if (slow > fast) {
-          tp3Configs.push({ type: 'ema', emaFast: fast, emaSlow: slow, positionPercent: tp3PositionPercent });
-        }
-      });
-    });
-    tp3RRValues.forEach(v => tp3Configs.push({ type: 'fixed_rr', fixedRR: v, positionPercent: tp3PositionPercent }));
-    
-    // Combine all SL types
-    const slConfigs: any[] = [];
-    slATRValues.forEach(v => slConfigs.push({ type: 'atr', atrMultiplier: v }));
-    slStructureSwingValues.forEach(v => slConfigs.push({ type: 'structure', swingLength: v }));
-    slFixedDistanceValues.forEach(v => slConfigs.push({ type: 'fixed_distance', distancePercent: v }));
-    
-    // Boolean filter combinations - only test when checkbox is enabled
-    const wickFilterOptions = backtestSettings.parameterTests.strategy.useWickFilter ? [true] : [false];
-    const confirmCandlesOptions = backtestSettings.parameterTests.strategy.useConfirmCandles ? [true] : [false];
-    
-    // Generate all combinations
-    for (const trendFilter of backtestSettings.parameterTests.strategy.trendFilters) {
-      for (const direction of backtestSettings.parameterTests.strategy.directions) {
-        for (const useWickFilter of wickFilterOptions) {
-          for (const useConfirmCandles of confirmCandlesOptions) {
-            for (const swingLength of swingLengthValues) {
-              // Only test different wick ratios when wick filter is enabled
-              const wickRatiosToTest = useWickFilter ? wickRatioValues : [100];
-              for (const wickRatio of wickRatiosToTest) {
-                // Only test different confirm candles when confirm candles is enabled
-                const confirmCandlesToTest = useConfirmCandles ? confirmCandlesValues : [0];
-                for (const confirmCandles of confirmCandlesToTest) {
-                  for (const tp1 of tp1Configs.length > 0 ? tp1Configs : [null]) {
-                    for (const tp2 of strategySettings.liquidityGrab.tpsl.numTPs >= 2 && tp2Configs.length > 0 ? tp2Configs : [null]) {
-                      for (const tp3 of strategySettings.liquidityGrab.tpsl.numTPs >= 3 && tp3Configs.length > 0 ? tp3Configs : [null]) {
-                        for (const sl of slConfigs) {
-                          combinations.push({
-                            numTPs: strategySettings.liquidityGrab.tpsl.numTPs,
-                            trendFilter,
-                            direction,
-                            swingLength,
-                            wickRatio,
-                            confirmCandles,
-                            useWickFilter,
-                            useConfirmCandles,
-                            tp1,
-                            tp2,
-                            tp3,
-                            sl
-                          });
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    console.log(`🧪 Generated ${combinations.length} test combinations`);
-    return combinations;
-  }, [
-    backtestSettings.parameterTests.strategy.trendFilters, backtestSettings.parameterTests.strategy.directions,
-    backtestSettings.ranges.swingLength, backtestSettings.ranges.wickRatio, backtestSettings.ranges.confirmCandles,
-    backtestSettings.parameterTests.strategy.useWickFilter, backtestSettings.parameterTests.strategy.useConfirmCandles,
-    /* FIXME */ strategySettings.liquidityGrab.tpsl.numTPs, strategySettings.liquidityGrab.tpsl.tp1.positionPercent, strategySettings.liquidityGrab.tpsl.tp2, strategySettings.liquidityGrab.tpsl.tp3,
-    backtestSettings.parameterTests.tp1.structure, backtestSettings.parameterTests.tp1.trailing, backtestSettings.parameterTests.tp1.ema, backtestSettings.parameterTests.tp1.fixedRR,
-    backtestSettings.ranges.tp1SwingLength, backtestSettings.ranges.tp1TrailingSwing, backtestSettings.ranges.tp1EMAFast, backtestSettings.ranges.tp1EMASlow, backtestSettings.ranges.tp1RR,
-    backtestSettings.parameterTests.tp2.structure, backtestSettings.parameterTests.tp2.trailing, backtestSettings.parameterTests.tp2.ema, backtestSettings.parameterTests.tp2.fixedRR,
-    backtestSettings.ranges.tp2SwingLength, backtestSettings.ranges.tp2TrailingSwing, backtestSettings.ranges.tp2EMAFast, backtestSettings.ranges.tp2EMASlow, backtestSettings.ranges.tp2RR,
-    backtestSettings.parameterTests.tp3.structure, backtestSettings.parameterTests.tp3.trailing, backtestSettings.parameterTests.tp3.ema, backtestSettings.parameterTests.tp3.fixedRR,
-    backtestSettings.ranges.tp3SwingLength, backtestSettings.ranges.tp3TrailingSwing, backtestSettings.ranges.tp3EMAFast, backtestSettings.ranges.tp3EMASlow, backtestSettings.ranges.tp3RR,
-    backtestSettings.parameterTests.sl.atr, backtestSettings.parameterTests.sl.structure, backtestSettings.parameterTests.sl.fixedDistance,
-    backtestSettings.ranges.slATR, backtestSettings.ranges.slSwingLength, backtestSettings.ranges.slFixedDistance
-  ]);
-
-  // Run auto-backtest with all combinations
+  // Run auto-backtest with all combinations using extracted backtest engine
   const runAutoBacktest = useCallback(async () => {
     if (candles.length < 100) {
       alert('Need at least 100 candles for backtest');
       return;
     }
     
-    const startTime = performance.now();
-    
     backtestSettings.autoTest.setRunning(true);
     backtestSettings.autoTest.setResults([]);
     backtestSettings.autoTest.setProgress(0);
     
-    const combinations = generateAutoBacktestCombinations();
-    const results: AutoBacktestResult[] = [];
-    
-    console.log(`🚀 Starting auto-backtest with ${combinations.length} configurations...`);
-    
-    // Test each combination (simplified backtest)
-    for (let i = 0; i < combinations.length; i++) {
-      const config = combinations[i];
-      
-      // Update progress
-      backtestSettings.autoTest.setProgress(Math.round((i / combinations.length) * 100));
-      
-      // Run a simplified backtest for this config (config passed directly to signal generator)
-      const allSignals: TradeSignal[] = [];
-      const completedTrades: BacktestTrade[] = [];
-      let lastTradeExitTime = 0;
-      
-      for (let j = 50; j < candles.length - 10; j++) {
-        const currentTime = candles[j].time;
-        if (currentTime < lastTradeExitTime) continue;
-        
-        const dataSlice = candles.slice(0, j + 1);
-        const liqSignal = generateLiquidityGrabSignal(dataSlice, true, {
-          swingLength: config.swingLength,
-          wickRatio: config.wickRatio,
-          confirmCandles: config.confirmCandles,
-          useWickFilter: config.useWickFilter,
-          useConfirmCandles: config.useConfirmCandles,
-          trendFilter: config.trendFilter,
-          directionFilter: config.direction,
-          tpslConfig: config
-        });
-        
-        if (liqSignal && !allSignals.some(s => s.id === liqSignal.id)) {
-          allSignals.push(liqSignal);
-          const trade = simulateTradeWrapper(liqSignal, j, candles);
-          if (trade) {
-            completedTrades.push(trade);
-            lastTradeExitTime = trade.exitTime;
-          }
-        }
-      }
-      
-      // Calculate results
-      const winners = completedTrades.filter(t => t.winner).length;
-      const losers = completedTrades.filter(t => !t.winner).length;
-      const totalPL = completedTrades.reduce((sum, t) => sum + t.profitLoss, 0);
-      const avgRR = completedTrades.length > 0 ? completedTrades.reduce((sum, t) => sum + t.rr, 0) / completedTrades.length : 0;
-      const winRate = completedTrades.length > 0 ? (winners / completedTrades.length) * 100 : 0;
-      
-      const grossProfit = completedTrades.filter(t => t.winner).reduce((sum, t) => sum + t.profitLoss, 0);
-      const grossLoss = Math.abs(completedTrades.filter(t => !t.winner).reduce((sum, t) => sum + t.profitLoss, 0));
-      const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0;
-      
-      const finalBalance = strategySettings.risk.accountSize + totalPL;
-      const returnPercent = ((finalBalance - strategySettings.risk.accountSize) / strategySettings.risk.accountSize) * 100;
-      
-      const backtestResults: BacktestResults = {
-        trades: completedTrades,
-        totalTrades: completedTrades.length,
-        winners,
-        losers,
-        winRate,
-        avgRR,
-        totalPL,
-        profitFactor,
-        accountSize: strategySettings.risk.accountSize,
-        riskPerTrade: strategySettings.risk.riskPercent,
-        avgPositionSize: 0,
-        finalBalance,
-        returnPercent
+    try {
+      // Configure auto-backtest
+      const config: AutoBacktestConfigType = {
+        candles,
+        ranges: backtestSettings.ranges as ParameterRanges,
+        parameterTests: {
+          trendFilters: backtestSettings.parameterTests.strategy.trendFilters,
+          directions: backtestSettings.parameterTests.strategy.directions,
+          useWickFilter: backtestSettings.parameterTests.strategy.useWickFilter,
+          useConfirmCandles: backtestSettings.parameterTests.strategy.useConfirmCandles,
+          tp1: backtestSettings.parameterTests.tp1,
+          tp2: backtestSettings.parameterTests.tp2,
+          tp3: backtestSettings.parameterTests.tp3,
+          sl: backtestSettings.parameterTests.sl,
+        } as TestOptions,
+        strategySettings: {
+          numTPs: strategySettings.liquidityGrab.tpsl.numTPs,
+          tp1PositionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent,
+          tp2PositionPercent: strategySettings.liquidityGrab.tpsl.tp2?.positionPercent || 30,
+          tp3PositionPercent: strategySettings.liquidityGrab.tpsl.tp3?.positionPercent || 20,
+          accountSize: strategySettings.risk.accountSize,
+          riskPercent: strategySettings.risk.riskPercent,
+        },
+        generateSignal: generateLiquidityGrabSignal,
+        simulateTrade: simulateTradeWrapper,
+        onProgress: (progress) => {
+          backtestSettings.autoTest.setProgress(progress);
+        },
       };
       
-      // Create description - only show configured TPs
-      let desc = `Swing:${config.swingLength}`;
-      if (config.useWickFilter) desc += ` | Wick:${config.wickRatio}%`;
-      if (config.useConfirmCandles) desc += ` | Confirm:${config.confirmCandles}`;
-      desc += ` | Trend:${config.trendFilter} | Dir:${config.direction}`;
-      desc += ` | TP1:${config.tp1.type}`;
-      if (config.tp1.type === 'atr') desc += `(${config.tp1.atrMultiplier}x)`;
-      if (config.tp1.type === 'fixed_rr') desc += `(${config.tp1.fixedRR}:1)`;
-      if (config.tp1.type === 'structure') desc += `(sw${config.tp1.swingLength})`;
+      // Run auto-backtest
+      const startTime = performance.now();
+      const results = await runAutoBacktestCore(config);
       
-      if (config.numTPs >= 2 && config.tp2) {
-        desc += ` | TP2:${config.tp2.type}`;
-        if (config.tp2.type === 'atr') desc += `(${config.tp2.atrMultiplier}x)`;
-        if (config.tp2.type === 'fixed_rr') desc += `(${config.tp2.fixedRR}:1)`;
-        if (config.tp2.type === 'structure') desc += `(sw${config.tp2.swingLength})`;
-      }
+      // Track duration for future time estimates
+      const duration = performance.now() - startTime;
+      const updated = [...backtestSettings.autoTest.durations, { duration, combos: results.length }];
+      backtestSettings.autoTest.setDurations(updated.slice(-5)); // Keep only last 5
       
-      if (config.numTPs === 3 && config.tp3) {
-        desc += ` | TP3:${config.tp3.type}`;
-        if (config.tp3.type === 'atr') desc += `(${config.tp3.atrMultiplier}x)`;
-        if (config.tp3.type === 'structure') desc += `(sw${config.tp3.swingLength})`;
-      }
-      
-      desc += ` | SL:${config.sl.type}`;
-      if (config.sl.type === 'atr') desc += `(${config.sl.atrMultiplier}x)`;
-      if (config.sl.type === 'structure') desc += `(sw${config.sl.swingLength})`;
-      if (config.sl.type === 'fixed_distance') desc += `(${config.sl.distancePercent}%)`;
-      
-      results.push({
-        config,
-        results: backtestResults,
-        configDescription: desc,
-        swingLength: config.chartSettings.legacy.swingLength,
-        wickRatio: config.wickRatio || 100,
-        confirmCandles: config.confirmCandles || 0,
-        useWickFilter: config.useWickFilter || false,
-        useConfirmCandles: config.useConfirmCandles || false,
-        trendFilter: config.trendFilter,
-        allowedDirections: config.direction
-      });
-      
-      // Allow UI to update
-      await new Promise(resolve => setTimeout(resolve, 10));
+      // Update results
+      backtestSettings.autoTest.setResults(results);
+      backtestSettings.autoTest.setProgress(100);
+    } catch (error) {
+      console.error('Auto-backtest failed:', error);
+      alert('Auto-backtest failed. See console for details.');
+    } finally {
+      backtestSettings.autoTest.setRunning(false);
     }
-    
-    // Sort by total profit (default)
-    results.sort((a, b) => b.results.totalPL - a.results.totalPL);
-    
-    // Track duration and combo count for future time estimates
-    const duration = performance.now() - startTime;
-    const updated = [...backtestSettings.autoTest.durations, { duration, combos: combinations.length }];
-    backtestSettings.autoTest.setDurations(updated.slice(-5)); // Keep only last 5
-    
-    backtestSettings.autoTest.setResults(results);
-    backtestSettings.autoTest.setProgress(100);
-    backtestSettings.autoTest.setRunning(false);
-    
-    console.log('✅ Auto-backtest complete!', {
-      totalConfigs: results.length,
-      bestProfit: results[0]?.results.totalPL.toFixed(2),
-      bestConfig: results[0]?.configDescription,
-      duration: `${(duration / 1000).toFixed(1)}s`
-    });
-  }, [candles, generateAutoBacktestCombinations, generateLiquidityGrabSignal, simulateTradeWrapper, strategySettings.liquidityGrab.tpsl, strategySettings.risk.accountSize, strategySettings.risk.riskPercent]);
+  }, [
+    candles,
+    backtestSettings.ranges,
+    backtestSettings.parameterTests,
+    backtestSettings.autoTest,
+    strategySettings.liquidityGrab.tpsl,
+    strategySettings.risk.accountSize,
+    strategySettings.risk.riskPercent,
+    generateLiquidityGrabSignal,
+    simulateTradeWrapper
+  ]);
 
   // Apply all settings from an auto-backtest result
   const applyAutoBacktestConfig = useCallback((result: AutoBacktestResult) => {
