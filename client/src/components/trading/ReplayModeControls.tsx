@@ -152,7 +152,7 @@ export function ReplayModeControls({
                 <div className="flex-1 bg-slate-900 rounded h-2 overflow-hidden">
                   <div 
                     className="bg-blue-500 h-full transition-all duration-200"
-                    style={{ width: `${(replayIndex / maxCandles) * 100}%` }}
+                    style={{ width: `${maxCandles > 0 ? (replayIndex / maxCandles) * 100 : 0}%` }}
                   />
                 </div>
               </div>

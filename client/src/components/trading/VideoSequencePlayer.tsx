@@ -52,8 +52,16 @@ export function VideoSequencePlayer({
 
   // Detect market status changes and trigger video sequences
   useEffect(() => {
+    // Only trigger transition if we're past initial phase and market state actually changed
     if (videoPhase !== 'initial_bear' && !isInitialLoad) {
-      setVideoPhase('transition');
+      // Check if we need to transition (market state doesn't match current video)
+      const shouldTransition = 
+        (videoPhase === 'final' && targetMarketState === 'bullish' && transitionVideoRef.current?.paused !== false) ||
+        (videoPhase === 'final' && targetMarketState === 'bearish' && bearVideoRef.current?.paused !== false);
+      
+      if (shouldTransition) {
+        setVideoPhase('transition');
+      }
     }
   }, [targetMarketState, videoPhase, isInitialLoad]);
 
@@ -87,6 +95,11 @@ export function VideoSequencePlayer({
       if (transition.readyState >= 2) {
         transition.play().catch(err => console.log('Transition video play failed:', err));
       }
+      
+      // Cleanup function to remove listener if effect re-runs
+      return () => {
+        transition.removeEventListener('ended', handleTransitionEnd);
+      };
     } else if (videoPhase === 'final') {
       if (targetMarketState === 'bullish') {
         bull.currentTime = 0;
