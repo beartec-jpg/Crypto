@@ -791,9 +791,6 @@ useEffect(() => {
   }, [symbol, interval, drawingsPersistence]);
   
   const deleteDrawing = useCallback((drawingId: string) => {
-    // Store original state in case we need to restore on error
-    const originalDrawings = [...drawings];
-    
     // Immediately remove from local state for instant UI feedback
     setDrawings(prev => prev.filter(d => d.id !== drawingId));
     setSelectedDrawingId(null);
@@ -801,7 +798,7 @@ useEffect(() => {
     // Delete from database via hook
     // Note: If this fails, the refetch from the hook will restore the correct state
     drawingsPersistence.deleteDrawing(drawingId);
-  }, [drawings, drawingsPersistence]);
+  }, [drawingsPersistence]);
   
   const clearDrawings = useCallback(() => {
     // Clear local state
@@ -867,11 +864,10 @@ useEffect(() => {
           points: newPoints,
           style: { color, lineWidth: 2, ...savedDefaults, ...channelStyle }
         };
-        // Don't add to local state here - will be added by saveDrawing wrapper
         
-        // Save to database
+        // Save to database (wrapper adds to local state for instant feedback and handles persistence)
         saveDrawing(newDrawing);
-        // Don't show toast here - hook will show it
+        // Toast notification is shown by the hook
         
         // Reset for next drawing
         return { points: [] };
@@ -879,7 +875,7 @@ useEffect(() => {
       
       return { points: newPoints };
     });
-  }, [drawingMode, saveDrawing, toast]);
+  }, [drawingMode, saveDrawing]);
   
   // Gesture controller hook for touch/click handling
   const gestureController = useChartGestures({
