@@ -163,10 +163,6 @@ import { simulateTrade } from '@/lib/backtest/tradeSimulator';
 // Strategy utilities
 import {
   calculateBOSandCHoCH,
-  getCurrentATR,
-  findStopLossLevel,
-  findNextSwingLevels,
-  getClosestVWAP as getClosestVWAPHelper,
   generateLiquidityGrabSignal as generateLiquidityGrabSignalCore,
   generateBOSTrendSignal as generateBOSTrendSignalCore,
   generateChochFVGSignal as generateChochFVGSignalCore,
@@ -174,6 +170,32 @@ import {
   generateEMATradingSignal as generateEMATradingSignalCore,
   generateRSFlipSignal as generateRSFlipSignalCore,
 } from '@/lib/strategies';
+
+// Calculation utilities
+import {
+  // Divergence
+  detectDivergence,
+  getOscillatorDivergence,
+  detectDivergences,
+  // Pivots
+  findStopLossLevel,
+  findNextSwingLevels,
+  findPreviousSwingLevels,
+  // VWAP
+  calculateRollingVWAP,
+  calculatePeriodicVWAP,
+  getClosestVWAP as getClosestVWAPHelper,
+  // FVG
+  analyzeFVGValue,
+  calculateFVGs,
+  getFVGFillTime,
+  // Market Analysis
+  getCurrentATR,
+  determineBias as determineBiasCalc,
+  determineStructureTrend as determineStructureTrendCalc,
+  checkTrendFilter as checkTrendFilterCalc,
+  checkDirectionFilter as checkDirectionFilterCalc,
+} from '@/lib/calculations';
 
 // Chart utilities  
 import { formatPrice, formatVolume, formatPercentChange } from '@/lib/chart/priceUtils';
@@ -956,68 +978,10 @@ useEffect(() => {
   
   // Detect divergence between price and indicator
   // Returns consecutive count: positive for bullish, negative for bearish
-  const detectDivergence = useCallback((
-    priceData: number[],
-    indicatorData: number[],
-    lookback: number = 5
-  ): number => {
-    if (priceData.length < 30 || indicatorData.length < 30) return 0;
-    
-    const pricePeaksTroughs = findPeaksAndTroughs(priceData, lookback);
-    const indicatorPeaksTroughs = findPeaksAndTroughs(indicatorData, lookback);
-    
-    let bullishCount = 0;
-    let bearishCount = 0;
-    
-    // Check for bullish divergence: price lower lows, indicator higher lows
-    const recentPriceTroughs = pricePeaksTroughs.troughs.slice(-5);
-    const recentIndicatorTroughs = indicatorPeaksTroughs.troughs.slice(-5);
-    
-    for (let i = 1; i < Math.min(recentPriceTroughs.length, recentIndicatorTroughs.length); i++) {
-      const prevPriceTrough = recentPriceTroughs[i - 1];
-      const currPriceTrough = recentPriceTroughs[i];
-      const prevIndTrough = recentIndicatorTroughs[i - 1];
-      const currIndTrough = recentIndicatorTroughs[i];
-      
-      if (prevPriceTrough < priceData.length && currPriceTrough < priceData.length &&
-          prevIndTrough < indicatorData.length && currIndTrough < indicatorData.length) {
-        // Price making lower low, indicator making higher low = bullish divergence
-        if (priceData[currPriceTrough] < priceData[prevPriceTrough] &&
-            indicatorData[currIndTrough] > indicatorData[prevIndTrough]) {
-          bullishCount++;
-        }
-      }
-    }
-    
-    // Check for bearish divergence: price higher highs, indicator lower highs
-    const recentPricePeaks = pricePeaksTroughs.peaks.slice(-5);
-    const recentIndicatorPeaks = indicatorPeaksTroughs.peaks.slice(-5);
-    
-    for (let i = 1; i < Math.min(recentPricePeaks.length, recentIndicatorPeaks.length); i++) {
-      const prevPricePeak = recentPricePeaks[i - 1];
-      const currPricePeak = recentPricePeaks[i];
-      const prevIndPeak = recentIndicatorPeaks[i - 1];
-      const currIndPeak = recentIndicatorPeaks[i];
-      
-      if (prevPricePeak < priceData.length && currPricePeak < priceData.length &&
-          prevIndPeak < indicatorData.length && currIndPeak < indicatorData.length) {
-        // Price making higher high, indicator making lower high = bearish divergence
-        if (priceData[currPricePeak] > priceData[prevPricePeak] &&
-            indicatorData[currIndPeak] < indicatorData[prevIndPeak]) {
-          bearishCount++;
-        }
-      }
-    }
-    
-    // Return net divergence: positive for bullish, negative for bearish
-    // Capped at ±3 for strength scale
-    if (bullishCount > bearishCount) {
-      return Math.min(bullishCount, 3);
-    } else if (bearishCount > bullishCount) {
-      return -Math.min(bearishCount, 3);
-    }
-    return 0;
-  }, []);
+
+
+
+
   
   // Chart callbacks for ChartContainer component
   const handleVisibleRangeChange = useCallback((count: number) => {
@@ -1732,150 +1696,7 @@ useEffect(() => {
   }, [useMultiExchange, candles.length, fetchMultiExchangeData]);
 
   // Calculate rolling VWAP
-  const calculateRollingVWAP = useCallback((data: CandleData[], count: number): VWAPData[] => {
-    const result: VWAPData[] = [];
-    for (let i = count - 1; i < data.length; i++) {
-      const slice = data.slice(i - count + 1, i + 1);
-      let sumPV = 0, sumV = 0;
-      slice.forEach(bar => {
-        const typical = (bar.high + bar.low + bar.close) / 3;
-        sumPV += typical * bar.volume;
-        sumV += bar.volume;
-      });
-      result.push({ time: data[i].time, value: sumPV / sumV });
-    }
-    return result;
-  }, []);
 
-  // Get period key for anchored VWAP
-  const getPeriodKey = useCallback((time: number, period: string): string => {
-    const date = new Date(time * 1000);
-    if (period === 'daily') {
-      return date.toISOString().slice(0, 10);
-    } else if (period === 'weekly') {
-      const startOfWeek = new Date(date);
-      startOfWeek.setUTCDate(date.getUTCDate() - date.getUTCDay());
-      return startOfWeek.toISOString().slice(0, 10);
-    } else if (period === 'monthly') {
-      return date.getUTCFullYear() + '-' + String(date.getUTCMonth() + 1).padStart(2, '0');
-    }
-    return '';
-  }, []);
-
-  // Calculate periodic (anchored) VWAP with currentOnly option
-  const calculatePeriodicVWAP = useCallback((data: CandleData[], period: string, currentOnly: boolean): VWAPData[] => {
-    if (data.length === 0) return [];
-    const result: VWAPData[] = [];
-    let sumPV = 0, sumV = 0;
-    let lastPeriodKey = getPeriodKey(data[0].time, period);
-    const currentPeriodKey = getPeriodKey(data[data.length - 1].time, period);
-    
-    data.forEach(bar => {
-      const periodKey = getPeriodKey(bar.time, period);
-      if (periodKey !== lastPeriodKey) {
-        sumPV = 0;
-        sumV = 0;
-      }
-      lastPeriodKey = periodKey;
-      const typical = (bar.high + bar.low + bar.close) / 3;
-      sumPV += typical * bar.volume;
-      sumV += bar.volume;
-      if (sumV > 0 && (!currentOnly || periodKey === currentPeriodKey)) {
-        result.push({ time: bar.time, value: sumPV / sumV });
-      }
-    });
-    return result;
-  }, [getPeriodKey]);
-
-  // Analyze FVG volume/delta scores
-  const analyzeFVGValue = useCallback((fvg: FVG, candles: CandleData[], footprint: FootprintData[]): { volumeScore: number; deltaScore: number; isHighValue: boolean } => {
-    // Find all candles that overlap with the FVG zone
-    let totalVolume = 0;
-    let totalDelta = 0;
-    let count = 0;
-
-    for (let i = 0; i < candles.length; i++) {
-      const candle = candles[i];
-      // Check if this candle's price range overlaps with the FVG
-      if (candle.low <= fvg.upper && candle.high >= fvg.lower) {
-        totalVolume += candle.volume;
-        
-        // Get footprint data for this candle if available
-        const fp = footprint.find(f => f.time === candle.time);
-        if (fp) {
-          totalDelta += Math.abs(fp.delta);
-        }
-        count++;
-      }
-    }
-
-    // Calculate average volume across all candles for comparison
-    const avgCandleVolume = candles.reduce((sum, c) => sum + c.volume, 0) / candles.length;
-    
-    // Volume score: total volume in FVG zone relative to average
-    const volumeScore = count > 0 ? totalVolume / (avgCandleVolume * count) : 0;
-    
-    // Delta score: average delta imbalance in the zone
-    const deltaScore = count > 0 ? totalDelta / count : 0;
-    
-    // High value if volume score exceeds threshold
-    const isHighValue = volumeScore >= chartSettings.legacy.fvgVolumeThreshold;
-
-    return { volumeScore, deltaScore, isHighValue };
-  }, [chartSettings.legacy.fvgVolumeThreshold]);
-
-  // Calculate FVGs with volume analysis
-  const calculateFVGs = useCallback((data: CandleData[], useAtrFilter: boolean = true, atrFactor: number = 1): FVG[] => {
-    const atr = calculateATR(data);
-    const fvgs: FVG[] = [];
-    for (let i = 2; i < data.length; i++) {
-      let minGap = 0;
-      if (useAtrFilter) minGap = atr[i - 2] * atrFactor;
-      if (data[i].low > data[i - 2].high) {
-        const lower = data[i - 2].high;
-        const upper = data[i].low;
-        if (upper - lower >= minGap) {
-          const fvg: FVG = { time: data[i].time, lower, upper, type: 'bullish' };
-          const analysis = analyzeFVGValue(fvg, data, footprintData);
-          fvg.volumeScore = analysis.volumeScore;
-          fvg.deltaScore = analysis.deltaScore;
-          fvg.isHighValue = analysis.isHighValue;
-          fvgs.push(fvg);
-        }
-      } else if (data[i].high < data[i - 2].low) {
-        const lower = data[i].high;
-        const upper = data[i - 2].low;
-        if (upper - lower >= minGap) {
-          const fvg: FVG = { time: data[i].time, lower, upper, type: 'bearish' };
-          const analysis = analyzeFVGValue(fvg, data, footprintData);
-          fvg.volumeScore = analysis.volumeScore;
-          fvg.deltaScore = analysis.deltaScore;
-          fvg.isHighValue = analysis.isHighValue;
-          fvgs.push(fvg);
-        }
-      }
-    }
-    return fvgs;
-  }, [analyzeFVGValue, footprintData]);
-
-  // Get the time when FVG was filled (or null if still active)
-  const getFVGFillTime = useCallback((fvg: FVG, data: CandleData[]): number | null => {
-    const startIdx = data.findIndex(d => d.time === fvg.time);
-    
-    // Find the first candle that filled the FVG
-    for (let i = startIdx + 1; i < data.length; i++) {
-      // For bullish FVG, it's filled if price went below the lower boundary
-      if (fvg.type === 'bullish' && data[i].low <= fvg.lower) {
-        return data[i].time; // Return the time it was filled
-      }
-      // For bearish FVG, it's filled if price went above the upper boundary
-      if (fvg.type === 'bearish' && data[i].high >= fvg.upper) {
-        return data[i].time; // Return the time it was filled
-      }
-    }
-    
-    return null; // FVG is still unfilled
-  }, []);
 
   // Oscillator calculation functions
 
@@ -1893,302 +1714,83 @@ useEffect(() => {
 
 
 
-  const detectDivergences = useCallback((candles: CandleData[]) => {
-    if (candles.length < 20) return [];
-    
-    const rsiData = calculateRSI(candles, indicators.rsi.period);
-    const macdData = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal).macd;
-    const mfiData = calculateMFI(candles, indicators.mfi.period);
-    const obvData = calculateOBV(candles);
-    
-    const divergences: Array<{
-      type: string;
-      direction: 'bullish' | 'bearish';
-      time: number;
-      description: string;
-      indicators: string[];
-      level: number;
-    }> = [];
-    
-    // Look for divergences in the last 20 candles
-    for (let i = candles.length - 20; i < candles.length - 1; i++) {
-      const indicatorsDiverging: string[] = [];
-      
-      // Check for bullish divergence (price making lower lows, indicator making higher lows)
-      if (i >= 10 && i < candles.length - 2) {
-        const priceLL = candles[i].low < candles[i-5].low && candles[i].low < candles[i+2].low;
-        
-        if (priceLL) {
-          // RSI bullish divergence
-          const rsiIdx = rsiData.findIndex(r => r.time === candles[i].time);
-          if (rsiIdx > 5 && rsiIdx < rsiData.length - 2) {
-            if (rsiData[rsiIdx].value > rsiData[rsiIdx-5].value) {
-              indicatorsDiverging.push('RSI');
-            }
-          }
-          
-          // MACD bullish divergence
-          const macdIdx = macdData.findIndex(m => m.time === candles[i].time);
-          if (macdIdx > 5 && macdIdx < macdData.length - 2) {
-            if (macdData[macdIdx].value > macdData[macdIdx-5].value) {
-              indicatorsDiverging.push('MACD');
-            }
-          }
-          
-          // MFI bullish divergence
-          const mfiIdx = mfiData.findIndex(m => m.time === candles[i].time);
-          if (mfiIdx > 5 && mfiIdx < mfiData.length - 2) {
-            if (mfiData[mfiIdx].value > mfiData[mfiIdx-5].value) {
-              indicatorsDiverging.push('MFI');
-            }
-          }
-          
-          // OBV bullish divergence
-          const obvIdx = obvData.findIndex(o => o.time === candles[i].time);
-          if (obvIdx > 5 && obvIdx < obvData.length - 2) {
-            if (obvData[obvIdx].value > obvData[obvIdx-5].value) {
-              indicatorsDiverging.push('OBV');
-            }
-          }
-          
-          if (indicatorsDiverging.length >= 1) {
-            divergences.push({
-              type: 'Bullish Divergence',
-              direction: 'bullish',
-              time: candles[i].time as number,
-              description: `Level ${indicatorsDiverging.length} bullish divergence (${indicatorsDiverging.join(', ')})`,
-              indicators: indicatorsDiverging,
-              level: indicatorsDiverging.length
-            });
-          }
-        }
-        
-        // Check for bearish divergence (price making higher highs, indicator making lower highs)
-        const priceHH = candles[i].high > candles[i-5].high && candles[i].high > candles[i+2].high;
-        const bearishIndicators: string[] = [];
-        
-        if (priceHH) {
-          // RSI bearish divergence
-          const rsiIdx = rsiData.findIndex(r => r.time === candles[i].time);
-          if (rsiIdx > 5 && rsiIdx < rsiData.length - 2) {
-            if (rsiData[rsiIdx].value < rsiData[rsiIdx-5].value) {
-              bearishIndicators.push('RSI');
-            }
-          }
-          
-          // MACD bearish divergence
-          const macdIdx = macdData.findIndex(m => m.time === candles[i].time);
-          if (macdIdx > 5 && macdIdx < macdData.length - 2) {
-            if (macdData[macdIdx].value < macdData[macdIdx-5].value) {
-              bearishIndicators.push('MACD');
-            }
-          }
-          
-          // MFI bearish divergence
-          const mfiIdx = mfiData.findIndex(m => m.time === candles[i].time);
-          if (mfiIdx > 5 && mfiIdx < mfiData.length - 2) {
-            if (mfiData[mfiIdx].value < mfiData[mfiIdx-5].value) {
-              bearishIndicators.push('MFI');
-            }
-          }
-          
-          // OBV bearish divergence
-          const obvIdx = obvData.findIndex(o => o.time === candles[i].time);
-          if (obvIdx > 5 && obvIdx < obvData.length - 2) {
-            if (obvData[obvIdx].value < obvData[obvIdx-5].value) {
-              bearishIndicators.push('OBV');
-            }
-          }
-          
-          if (bearishIndicators.length >= 1) {
-            divergences.push({
-              type: 'Bearish Divergence',
-              direction: 'bearish',
-              time: candles[i].time as number,
-              description: `Level ${bearishIndicators.length} bearish divergence (${bearishIndicators.join(', ')})`,
-              indicators: bearishIndicators,
-              level: bearishIndicators.length
-            });
-          }
-        }
-      }
-    }
-    
-    return divergences;
-  }, [calculateRSI, calculateMACD, calculateMFI, calculateOBV, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.mfi.period]);
 
-  // Determine market bias (EMA-based) using configurable periods
-  const determineBias = useCallback((data: CandleData[]) => {
-    const closes = data.map(c => c.close);
-    const emaFast = calculateEMA(closes, indicators.ema.fastPeriod);
-    const emaSlow = calculateEMA(closes, indicators.ema.slowPeriod);
-    const newBias = emaFast[emaFast.length - 1] > emaSlow[emaSlow.length - 1] ? 'bullish' : 'bearish';
-    setBias(newBias);
-  }, [indicators.ema.fastPeriod, indicators.ema.slowPeriod]);
 
-  // Determine structure-based trend (HH/HL vs LH/LL)
-  const determineStructureTrend = useCallback((data: CandleData[]) => {
-    const swings = calculateSwings(data, chartSettings.bos.swingLength);
-    if (swings.length < 4) {
-      setStructureTrend('ranging');
-      return 'ranging';
-    }
 
-    const highs = swings.filter(s => s.type === 'high');
-    const lows = swings.filter(s => s.type === 'low');
-
-    if (highs.length < 2 || lows.length < 2) {
-      setStructureTrend('ranging');
-      return 'ranging';
-    }
-
-    // Check last 3 highs and lows for trend
-    const recentHighs = highs.slice(-3);
-    const recentLows = lows.slice(-3);
-
-    const higherHighs = recentHighs.length >= 2 && recentHighs[recentHighs.length - 1].value > recentHighs[recentHighs.length - 2].value;
-    const higherLows = recentLows.length >= 2 && recentLows[recentLows.length - 1].value > recentLows[recentLows.length - 2].value;
-    const lowerHighs = recentHighs.length >= 2 && recentHighs[recentHighs.length - 1].value < recentHighs[recentHighs.length - 2].value;
-    const lowerLows = recentLows.length >= 2 && recentLows[recentLows.length - 1].value < recentLows[recentLows.length - 2].value;
-
-    if (higherHighs && higherLows) {
-      setStructureTrend('uptrend');
-      return 'uptrend';
-    } else if (lowerHighs && lowerLows) {
-      setStructureTrend('downtrend');
-      return 'downtrend';
-    } else {
-      setStructureTrend('ranging');
-      return 'ranging';
-    }
-  }, [calculateSwings, chartSettings.bos.swingLength]);
 
   // *** Helper functions removed - using imported versions from @/lib/strategies ***
 
-  // Find PREVIOUS swing high/low for TP targets (PAST PIVOTS - for quick scalps back to last resistance/support)
-  const findPreviousSwingLevels = useCallback((data: CandleData[], currentPrice: number, direction: 'long' | 'short', customSwingLength?: number, endIndex?: number) => {
-    const swingLength = customSwingLength ?? chartSettings.legacy.swingLength;
-    const swingLengthToUse = swingLength;
-    
-    // DEBUG: Log exactly what swing length we're using
-    console.log('🔍 findPreviousSwingLevels CALLED:', {
-      receivedSwingLength: customSwingLength,
-      defaultSwingLength: chartSettings.legacy.swingLength,
-      actuallyUsing: swingLengthToUse,
-      direction: direction.toUpperCase(),
-      backtestMode: endIndex !== undefined ? `YES (candle ${endIndex + 1}/${data.length})` : 'NO (live)',
-    });
-    
-    // If endIndex provided, only use data up to that point (for backtest accuracy)
-    const dataToUse = endIndex !== undefined ? data.slice(0, endIndex + 1) : data;
-    const swings = calculateSwings(dataToUse, swingLengthToUse);
-    
-    console.log('🔍 Calculated Swings:', {
-      totalSwings: swings.length,
-      swingLength: swingLengthToUse,
-      highs: swings.filter(s => s.type === 'high').length,
-      lows: swings.filter(s => s.type === 'low').length,
-    });
-    
-    if (direction === 'long') {
-      // Find previous swing highs ABOVE current price (scalp back UP to last resistance)
-      const highs = swings
-        .filter(s => s.type === 'high' && s.value > currentPrice)
-        .sort((a, b) => a.value - b.value); // Ascending: closest above us first
-      
-      console.log('📊 Previous Swing Levels (LONG):', {
-        entry: currentPrice.toFixed(4),
-        candlesUsed: endIndex !== undefined ? `${endIndex + 1}/${data.length}` : `${data.length} (live)`,
-        swingsAbove: highs.length,
-        tp1: highs.length > 0 ? highs[0].value.toFixed(4) : 'NO SWING FOUND',
-        tp2: highs.length > 1 ? highs[1].value.toFixed(4) : 'NO SWING FOUND',
-        tp3: highs.length > 2 ? highs[2].value.toFixed(4) : 'NO SWING FOUND',
-        allSwingHighs: highs.map(h => h.value.toFixed(4)).join(', '),
-      });
-      
-      return {
-        tp1: highs.length > 0 ? highs[0].value : currentPrice,
-        tp2: highs.length > 1 ? highs[1].value : currentPrice,
-        tp3: highs.length > 2 ? highs[2].value : currentPrice,
-      };
-    } else {
-      // Find previous swing lows BELOW current price (scalp back DOWN to last support)
-      const lows = swings
-        .filter(s => s.type === 'low' && s.value < currentPrice)
-        .sort((a, b) => b.value - a.value); // Descending: closest below us first
-      
-      console.log('📊 Previous Swing Levels (SHORT):', {
-        entry: currentPrice.toFixed(4),
-        candlesUsed: endIndex !== undefined ? `${endIndex + 1}/${data.length}` : `${data.length} (live)`,
-        swingsBelow: lows.length,
-        tp1: lows.length > 0 ? lows[0].value.toFixed(4) : 'NO SWING FOUND',
-        tp2: lows.length > 1 ? lows[1].value.toFixed(4) : 'NO SWING FOUND',
-        tp3: lows.length > 2 ? lows[2].value.toFixed(4) : 'NO SWING FOUND',
-        allSwingLows: lows.map(l => l.value.toFixed(4)).join(', '),
-      });
-      
-      return {
-        tp1: lows.length > 0 ? lows[0].value : currentPrice,
-        tp2: lows.length > 1 ? lows[1].value : currentPrice,
-        tp3: lows.length > 2 ? lows[2].value : currentPrice,
-      };
-    }
-  }, [calculateSwings, chartSettings.legacy.swingLength]);
+  // ==================== WRAPPER CALLBACKS FOR IMPORTED CALCULATION FUNCTIONS ====================
+  
+  // Wrap determineBias to set state
+  const determineBias = useCallback((data: CandleData[]) => {
+    const newBias = determineBiasCalc(data, indicators.ema.fastPeriod, indicators.ema.slowPeriod);
+    setBias(newBias);
+  }, [indicators.ema.fastPeriod, indicators.ema.slowPeriod]);
 
-  // Get closest VWAP value
-  const getClosestVWAP = useCallback((currentPrice: number): number | null => {
-    if (!chartRef.current) return null;
-    
-    // Check which VWAPs are enabled and get their current values
-    const vwaps: number[] = [];
-    
-    if (indicators.vwap.showDaily) {
-      const dailyVWAP = calculatePeriodicVWAP(candles, 'daily', true);
-      if (dailyVWAP.length > 0) vwaps.push(dailyVWAP[dailyVWAP.length - 1].value);
-    }
-    
-    if (indicators.vwap.showWeekly) {
-      const weeklyVWAP = calculatePeriodicVWAP(candles, 'weekly', true);
-      if (weeklyVWAP.length > 0) vwaps.push(weeklyVWAP[weeklyVWAP.length - 1].value);
-    }
-    
-    if (indicators.vwap.showRolling) {
-      const rolling = calculateRollingVWAP(candles, indicators.vwap.rollingPeriod);
-      if (rolling.length > 0) vwaps.push(rolling[rolling.length - 1].value);
-    }
-    
-    if (vwaps.length === 0) return null;
-    
-    // Find closest VWAP to current price
-    return vwaps.reduce((closest, vwap) => {
-      return Math.abs(vwap - currentPrice) < Math.abs(closest - currentPrice) ? vwap : closest;
-    });
-  }, [candles, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
+  // Wrap determineStructureTrend to set state
+  const determineStructureTrend = useCallback((data: CandleData[]) => {
+    const trend = determineStructureTrendCalc(data, chartSettings.bos.swingLength);
+    setStructureTrend(trend);
+    return trend;
+  }, [chartSettings.bos.swingLength]);
 
-  // Check if trend filter passes
+  // Wrap checkTrendFilter with current state
   const checkTrendFilter = useCallback((trendFilter?: 'ema' | 'structure' | 'both' | 'none'): boolean => {
     const filter = trendFilter ?? strategySettings.liquidityGrab.trendFilter;
-    if (filter === 'none') return true;
-    if (filter === 'ema') {
-      return bias !== null;
-    } else if (filter === 'structure') {
-      return structureTrend !== null && structureTrend !== 'ranging';
-    } else { // both
-      const emaBullish = bias === 'bullish';
-      const structureBullish = structureTrend === 'uptrend';
-      const emaBearish = bias === 'bearish';
-      const structureBearish = structureTrend === 'downtrend';
-      return (emaBullish && structureBullish) || (emaBearish && structureBearish);
-    }
+    return checkTrendFilterCalc(filter, bias, structureTrend);
   }, [bias, structureTrend, strategySettings.liquidityGrab.trendFilter]);
 
-  // Check if direction filter passes
+  // Wrap checkDirectionFilter
   const checkDirectionFilter = useCallback((signalType: 'LONG' | 'SHORT', directionFilter: 'bull' | 'bear' | 'both' = strategySettings.liquidityGrab.directionFilter): boolean => {
-    if (directionFilter === 'both') return true;
-    if (directionFilter === 'bull') return signalType === 'LONG';
-    if (directionFilter === 'bear') return signalType === 'SHORT';
-    return false;
+    return checkDirectionFilterCalc(directionFilter, signalType);
   }, [strategySettings.liquidityGrab.directionFilter]);
+
+  // Wrap calculateFVGs with footprintData dependency
+  const calculateFVGsWrapper = useCallback((data: CandleData[], useAtrFilter: boolean = true, atrFactor: number = 1): FVG[] => {
+    return calculateFVGs(data, footprintData, useAtrFilter, atrFactor, chartSettings.legacy.fvgVolumeThreshold);
+  }, [footprintData, chartSettings.legacy.fvgVolumeThreshold]);
+
+  // Wrap getOscillatorDivergence with config
+  const getOscillatorDivergenceWrapper = useCallback((indicator: string) => {
+    return getOscillatorDivergence(indicator, candles, {
+      rsiPeriod: indicators.rsi.period,
+      macdFast: indicators.macd.fast,
+      macdSlow: indicators.macd.slow,
+      macdSignal: indicators.macd.signal,
+      stochRSIPeriod: indicators.stochRSI.period,
+      mfiPeriod: indicators.mfi.period,
+      williamsRPeriod: indicators.williamsR.period,
+      cciPeriod: indicators.cci.period,
+      adxPeriod: indicators.adx.period,
+    });
+  }, [candles, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.stochRSI.period, indicators.mfi.period, indicators.williamsR.period, indicators.cci.period, indicators.adx.period]);
+
+  // Wrap detectDivergences with config
+  const detectDivergencesWrapper = useCallback((candles: CandleData[]) => {
+    return detectDivergences(candles, {
+      rsiPeriod: indicators.rsi.period,
+      macdFast: indicators.macd.fast,
+      macdSlow: indicators.macd.slow,
+      macdSignal: indicators.macd.signal,
+      mfiPeriod: indicators.mfi.period,
+    });
+  }, [indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.mfi.period]);
+
+  // Wrap getClosestVWAP with config
+  const getClosestVWAP = useCallback((currentPrice: number): number | null => {
+    if (!chartRef.current) return null;
+    return getClosestVWAPHelper(currentPrice, candles, {
+      showDaily: indicators.vwap.showDaily,
+      showWeekly: indicators.vwap.showWeekly,
+      showRolling: indicators.vwap.showRolling,
+      rollingPeriod: indicators.vwap.rollingPeriod,
+    });
+  }, [candles, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod]);
+
+  // ====================================================================================
+
+
 
   // Generate liquidity grab signal
   // ==================== STRATEGY SIGNAL GENERATORS (Wrappers for extracted modules) ====================
@@ -2419,7 +2021,7 @@ useEffect(() => {
     });
     
     // Add high-value FVG alerts
-    const fvgs = calculateFVGs(candles, true);
+    const fvgs = calculateFVGsWrapper(candles, true);
     fvgs.forEach(fvg => {
       if (fvg.isHighValue && isActiveFVG(fvg, candles)) {
         newAlerts.push({
@@ -3200,7 +2802,7 @@ useEffect(() => {
     // Sort by time descending (most recent first) and keep last 20
     const sortedAlerts = newAlerts.sort((a, b) => b.time - a.time).slice(0, 20);
     setMarketAlerts(sortedAlerts);
-  }, [candles, strategySettings.liquidityGrab.swingLength, calculateBOSandCHoCH, calculateFVGs, isActiveFVG, calculatePeriodicVWAP, strategySettings.vwapTrading.threshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergences, cvdSpikeEnabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
+  }, [candles, strategySettings.liquidityGrab.swingLength, calculateBOSandCHoCH, calculateFVGsWrapper, isActiveFVG, calculatePeriodicVWAP, strategySettings.vwapTrading.threshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergencesWrapper, cvdSpikeEnabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
 
   // Wrapper for simulateTrade to pass all necessary dependencies
   const simulateTradeWrapper = useCallback((signal: TradeSignal, startIdx: number, data: CandleData[]): BacktestTrade | null => {
@@ -5828,66 +5430,6 @@ useEffect(() => {
   }, [candles, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.adx.period, indicators.stochRSI.period, indicators.mfi.period, indicators.williamsR.period, indicators.cci.period, calculateRSI, calculateMACD, calculateOBV, calculateADX, calculateStochasticRSI, calculateMFI, calculateWilliamsR, calculateCCI]);
 
   // Get per-oscillator divergence
-  const getOscillatorDivergence = useCallback((indicator: string): { strength: number; type: 'bullish' | 'bearish' | 'none' } => {
-    if (candles.length < 50) return { strength: 0, type: 'none' };
-    
-    const priceData = candles.map(c => c.close);
-    let divergence = 0;
-    
-    switch (indicator) {
-      case 'RSI': {
-        const rsiData = calculateRSI(candles, indicators.rsi.period);
-        const rsiValues = rsiData.map(d => d.value);
-        if (rsiValues.length > 0) divergence = detectDivergence(priceData.slice(-rsiValues.length), rsiValues);
-        break;
-      }
-      case 'MACD': {
-        const { hist } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
-        const histValues = hist.map(d => d.value);
-        if (histValues.length > 0) divergence = detectDivergence(priceData.slice(-histValues.length), histValues);
-        break;
-      }
-      case 'OBV': {
-        const obvData = calculateOBV(candles);
-        const obvValues = obvData.map(d => d.value);
-        if (obvValues.length > 0) divergence = detectDivergence(priceData.slice(-obvValues.length), obvValues);
-        break;
-      }
-      case 'StochRSI': {
-        const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
-        const kValues = stochData.map(d => d.k);
-        if (kValues.length > 0) divergence = detectDivergence(priceData.slice(-kValues.length), kValues);
-        break;
-      }
-      case 'MFI': {
-        const mfiData = calculateMFI(candles, indicators.mfi.period);
-        const mfiValues = mfiData.map(d => d.value);
-        if (mfiValues.length > 0) divergence = detectDivergence(priceData.slice(-mfiValues.length), mfiValues);
-        break;
-      }
-      case 'WilliamsR': {
-        const wrData = calculateWilliamsR(candles, indicators.williamsR.period);
-        const wrValues = wrData.map(d => d.value);
-        if (wrValues.length > 0) divergence = detectDivergence(priceData.slice(-wrValues.length), wrValues);
-        break;
-      }
-      case 'CCI': {
-        const cciData = calculateCCI(candles, indicators.cci.period);
-        const cciValues = cciData.map(d => d.value);
-        if (cciValues.length > 0) divergence = detectDivergence(priceData.slice(-cciValues.length), cciValues);
-        break;
-      }
-      case 'ADX': {
-        const adxData = calculateADX(candles, indicators.adx.period);
-        const adxValues = adxData.map(d => d.adx);
-        if (adxValues.length > 0) divergence = detectDivergence(priceData.slice(-adxValues.length), adxValues);
-        break;
-      }
-    }
-    
-    const clamped = Math.max(-3, Math.min(3, divergence));
-    return { strength: clamped, type: clamped > 0 ? 'bullish' : clamped < 0 ? 'bearish' : 'none' };
-  }, [candles, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.stochRSI.period, indicators.mfi.period, indicators.williamsR.period, indicators.cci.period, indicators.adx.period, calculateRSI, calculateMACD, calculateOBV, calculateStochasticRSI, calculateMFI, calculateWilliamsR, calculateCCI, calculateADX, detectDivergence]);
 
   // Mini divergence meter component for each oscillator
 
@@ -5923,7 +5465,7 @@ useEffect(() => {
   }, [tradingState.tradeSignals, tradingState.backtestResults]);
 
   // Compute overlay data for components
-  const fvgsData = useMemo(() => calculateFVGs(candles, true), [candles, calculateFVGs]);
+  const fvgsData = useMemo(() => calculateFVGsWrapper(candles, true), [candles, calculateFVGsWrapper]);
   const orderBlocksData = useMemo(() => 
     calculateOrderBlocks(candles, indicators.smc.obSwingLength, indicators.smc.orderBlockLength),
     [candles, indicators.smc.obSwingLength, indicators.smc.orderBlockLength]
@@ -7341,7 +6883,7 @@ useEffect(() => {
     getMainChartVisibleRange={getMainChartVisibleRange}
     isPaidTier={isPaidTier}
     getIndicatorReport={getIndicatorReport}
-    getOscillatorDivergence={getOscillatorDivergence}
+    getOscillatorDivergence={getOscillatorDivergenceWrapper}
   />
 )}
                 {/* Fullscreen Oscillator Panel Component */}
