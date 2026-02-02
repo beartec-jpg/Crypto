@@ -102,6 +102,7 @@ import { useModalManager } from '@/hooks/useModalManager';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useTradingState } from '@/hooks/useTradingState';
 import { useModalState } from '@/hooks/useModalState';
+import { useStrategySettings, useBacktestSettings, useReplayMode, useChartSettings } from '@/hooks';
 
 // Volume Components
 import { CVDTable } from '@/components/indicators/volume';
@@ -1162,28 +1163,20 @@ useEffect(() => {
   
   // ========== CHART DISPLAY SETTINGS (independent from strategy settings) ==========
   // BOS swing length: 5 for tighter swing detection, CHoCH swing length: 20 for broader trend changes
-  const [chartBosSwingLength, setChartBosSwingLength] = useState(5);
-  const [chartBosSwingLengthInput, setChartBosSwingLengthInput] = useState('5');
-  const [chartChochSwingLength, setChartChochSwingLength] = useState(20);
-  const [chartChochSwingLengthInput, setChartChochSwingLengthInput] = useState('20');
-  const [chartLiquiditySweepSwingLength, setChartLiquiditySweepSwingLength] = useState(20);
-  const [chartLiquiditySweepSwingLengthInput, setChartLiquiditySweepSwingLengthInput] = useState('20');
+  // Chart settings moved to useChartSettings hook (Phase 2)
   
-  // Legacy SMC Settings (deprecated - use chart settings or strategy settings instead)
-  const [swingLength, setSwingLength] = useState(15);
-  const [liqGrabCandles, setLiqGrabCandles] = useState(2);
-  const [wickToBodyRatio, setWickToBodyRatio] = useState(150); // Wick must be 150% of body (1.5x)
-  const [swingLengthInput, setSwingLengthInput] = useState('15');
-  const [liqGrabInput, setLiqGrabInput] = useState('2');
-  const [wickRatioInput, setWickRatioInput] = useState('150');
-  const [fvgVolumeThreshold, setFvgVolumeThreshold] = useState(1.5); // 1.5x average volume
-
   // Bot state
   const [botEnabled, setBotEnabled] = useState(false);
   const [bias, setBias] = useState<'bullish' | 'bearish' | null>(null);
   const [structureTrend, setStructureTrend] = useState<'uptrend' | 'downtrend' | 'ranging' | null>(null);
   // Trading state management - consolidated via useTradingState hook
   const tradingState = useTradingState();
+  
+  // Phase 2: State Management Hooks
+  const strategySettings = useStrategySettings();
+  const backtestSettings = useBacktestSettings();
+  const replayMode = useReplayMode();
+  const chartSettings = useChartSettings();
   
   // Strategy Generator handler
   const handleGenerateStrategy = useCallback((type: 'scalping' | 'day-trading' | 'swing-trading') => {
@@ -1359,216 +1352,11 @@ useEffect(() => {
     }
   }, [videoPhase, targetMarketState]);
   
-  // ========== LIQUIDITY GRAB STRATEGY SETTINGS ==========
-  const [stratLiquidityGrab, setStratLiquidityGrab] = useState(false);
-  const [liqGrabTrendFilter, setLiqGrabTrendFilter] = useState<'ema' | 'structure' | 'both' | 'none'>('structure');
-  const [liqGrabDirectionFilter, setLiqGrabDirectionFilter] = useState<'bull' | 'bear' | 'both'>('both');
-  const [liqGrabSwingLength, setLiqGrabSwingLength] = useState(15);
-  const [liqGrabSwingLengthInput, setLiqGrabSwingLengthInput] = useState('15');
-  const [liqGrabTPSwingLength, setLiqGrabTPSwingLength] = useState(15);
-  const [liqGrabTPSwingLengthInput, setLiqGrabTPSwingLengthInput] = useState('15');
-  const [liqGrabSLSwingLength, setLiqGrabSLSwingLength] = useState(5);
-  const [liqGrabSLSwingLengthInput, setLiqGrabSLSwingLengthInput] = useState('5');
+  // ========== STRATEGY SETTINGS (Moved to useStrategySettings hook - Phase 2) ==========
+  // All strategy state declarations moved to hooks (lines saved: ~300)
 
-  // ========== BOS STRUCTURE STRATEGY SETTINGS ==========
-  const [stratBOSTrend, setStratBOSTrend] = useState(false);
-  const [bosTrendFilter, setBosTrendFilter] = useState<'ema' | 'structure' | 'both' | 'none'>('none');
-  const [bosDirectionFilter, setBosDirectionFilter] = useState<'bull' | 'bear' | 'both'>('both');
-  const [bosSwingLength, setBosSwingLength] = useState(5);
-  const [bosSwingLengthInput, setBosSwingLengthInput] = useState('5');
-  const [bosTPSwingLength, setBosTPSwingLength] = useState(15);
-  const [bosTPSwingLengthInput, setBosTPSwingLengthInput] = useState('15');
-  const [bosSLSwingLength, setBosSLSwingLength] = useState(5);
-  const [bosSLSwingLengthInput, setBosSLSwingLengthInput] = useState('5');
-  
-  // ========== CHoCH + FVG STRATEGY SETTINGS ==========
-  const [stratChochFVG, setStratChochFVG] = useState(false);
-  const [chochStructureType, setChochStructureType] = useState<'bos' | 'choch' | 'both'>('bos');
-  const [chochTrendFilter, setChochTrendFilter] = useState<'ema' | 'structure' | 'both' | 'none'>('none');
-  const [chochDirectionFilter, setChochDirectionFilter] = useState<'bull' | 'bear' | 'both'>('both');
-  const [chochSwingLength, setChochSwingLength] = useState(10);
-  const [chochSwingLengthInput, setChochSwingLengthInput] = useState('10');
-  const [chochFVGVolumeThreshold, setChochFVGVolumeThreshold] = useState(1.0);
-  const [chochTPSwingLength, setChochTPSwingLength] = useState(10);
-  const [chochTPSwingLengthInput, setChochTPSwingLengthInput] = useState('10');
-  const [chochSLSwingLength, setChochSLSwingLength] = useState(5);
-  const [chochSLSwingLengthInput, setChochSLSwingLengthInput] = useState('5');
-  const [chochUseFVGSizeFilter, setChochUseFVGSizeFilter] = useState(false);
-  const [chochFVGMinSizeATR, setChochFVGMinSizeATR] = useState(10); // Percentage of ATR (0-50)
-  
-  // ========== VWAP REJECTION STRATEGY SETTINGS ==========
-  const [stratVWAPRejection, setStratVWAPRejection] = useState(false);
-  const [vwapTrendFilter, setVwapTrendFilter] = useState<'ema' | 'structure' | 'both' | 'none'>('structure');
-  const [vwapDirectionFilter, setVwapDirectionFilter] = useState<'bull' | 'bear' | 'both'>('both');
-  const [vwapType, setVwapType] = useState<'session' | 'daily' | 'weekly' | 'monthly' | 'rolling10' | 'rolling20' | 'rolling50'>('weekly');
-  const [vwapThreshold, setVwapThreshold] = useState(0.3);
-  const [vwapThresholdInput, setVwapThresholdInput] = useState('0.3');
-  const [vwapEntryCandles, setVwapEntryCandles] = useState<'single' | 'double'>('single');
-  const [vwapTPSwingLength, setVwapTPSwingLength] = useState(15);
-  const [vwapTPSwingLengthInput, setVwapTPSwingLengthInput] = useState('15');
-  const [vwapSLSwingLength, setVwapSLSwingLength] = useState(5);
-  const [vwapSLSwingLengthInput, setVwapSLSwingLengthInput] = useState('5');
-  
-  // ========== STRUCTURE BREAK STRATEGY SETTINGS ==========
-  const [stratStructureBreak, setStratStructureBreak] = useState(false);
-  const [structureTrendFilter, setStructureTrendFilter] = useState<'ema' | 'structure' | 'both' | 'none'>('structure');
-  const [structureDirectionFilter, setStructureDirectionFilter] = useState<'bull' | 'bear' | 'both'>('both');
-  
-  // ========== R/S FLIP STRATEGY SETTINGS ==========
-  const [stratRSFlip, setStratRSFlip] = useState(false);
-  const [rsFlipTrendFilter, setRsFlipTrendFilter] = useState<'ema' | 'structure' | 'both' | 'none'>('none');
-  const [rsFlipDirectionFilter, setRsFlipDirectionFilter] = useState<'bull' | 'bear' | 'both'>('both');
-  const [rsFlipRetestCandles, setRsFlipRetestCandles] = useState(20);
-  const [rsFlipRetestCandlesInput, setRsFlipRetestCandlesInput] = useState('20');
-  const [rsFlipTPSwingLength, setRsFlipTPSwingLength] = useState(15);
-  const [rsFlipTPSwingLengthInput, setRsFlipTPSwingLengthInput] = useState('15');
-  const [rsFlipSLSwingLength, setRsFlipSLSwingLength] = useState(5);
-  const [rsFlipSLSwingLengthInput, setRsFlipSLSwingLengthInput] = useState('5');
-  
-  // ========== EMA TRADING STRATEGY SETTINGS ==========
-  const [stratEMATrading, setStratEMATrading] = useState(false);
-  const [emaEntryMode, setEmaEntryMode] = useState<'bounce' | 'cross' | 'trend_trade'>('trend_trade');
-  const [emaSinglePeriod, setEmaSinglePeriod] = useState(50);
-  const [emaSinglePeriodInput, setEmaSinglePeriodInput] = useState('50');
-  const [emaThreshold, setEmaThreshold] = useState(0.3);
-  const [emaTradingTPSwingLength, setEmaTradingTPSwingLength] = useState(15);
-  const [emaTradingTPSwingLengthInput, setEmaTradingTPSwingLengthInput] = useState('15');
-  const [emaTradingSLSwingLength, setEmaTradingSLSwingLength] = useState(5);
-  const [emaTradingSLSwingLengthInput, setEmaTradingSLSwingLengthInput] = useState('5');
-  const [emaTradingTrendFilter, setEmaTradingTrendFilter] = useState<'ema' | 'structure' | 'both' | 'none'>('none');
-  const [emaTradingDirectionFilter, setEmaTradingDirectionFilter] = useState<'bull' | 'bear' | 'both'>('both');
-  
-  // Legacy global settings (deprecated - keeping for backward compatibility)
-  const [trendFilter, setTrendFilter] = useState<'ema' | 'structure' | 'both'>('structure');
-  const [trendFilterType, setTrendFilterType] = useState<'ema' | 'structure' | 'both' | 'none'>('structure');
-  const [directionFilter, setDirectionFilter] = useState<'bull' | 'bear' | 'both'>('both');
-  
-  // Risk management (global settings)
-  const [accountSize, setAccountSize] = useState(10000);
-  const [riskPercent, setRiskPercent] = useState(1);
-  
-  // ========== BOT-SPECIFIC TP/SL CONFIGURATIONS ==========
-  // Liquidity Grab Bot Configuration
-  const [liqGrabTPSL, setLiqGrabTPSL] = useState<BotTPSLConfig>({
-    numTPs: 1,
-    tp1: { type: 'atr', atrMultiplier: 1.5, positionPercent: 100 },
-    tp2: { type: 'structure', positionPercent: 30 },
-    tp3: { type: 'atr', atrMultiplier: 2.5, positionPercent: 20 },
-    sl: { type: 'atr', atrMultiplier: 1.5 }
-  });
-
-  // Auto-Backtest Mode for Liquidity Grab
-  const [liqGrabAutoTestMode, setLiqGrabAutoTestMode] = useState(false);
-  const [liqGrabAutoTestRunning, setLiqGrabAutoTestRunning] = useState(false);
-  const [liqGrabAutoTestProgress, setLiqGrabAutoTestProgress] = useState(0);
-  const [liqGrabAutoTestResults, setLiqGrabAutoTestResults] = useState<AutoBacktestResult[]>([]);
-  const [liqGrabAutoTestDurations, setLiqGrabAutoTestDurations] = useState<{duration: number, combos: number}[]>([]);
-  const [liqGrabAutoTestSortBy, setLiqGrabAutoTestSortBy] = useState<'profit' | 'winRate' | 'trades' | 'avgRR'>('profit');
-  
-  // Parameter checkboxes for auto-test (Liquidity Grab: Structure, Trailing, EMA, Fixed R:R)
-  const [testTP1Structure, setTestTP1Structure] = useState(true);
-  const [testTP1Trailing, setTestTP1Trailing] = useState(false);
-  const [testTP1EMA, setTestTP1EMA] = useState(false);
-  const [testTP1FixedRR, setTestTP1FixedRR] = useState(true);
-  
-  const [testTP2Structure, setTestTP2Structure] = useState(true);
-  const [testTP2Trailing, setTestTP2Trailing] = useState(false);
-  const [testTP2EMA, setTestTP2EMA] = useState(false);
-  const [testTP2FixedRR, setTestTP2FixedRR] = useState(false);
-  
-  const [testTP3Structure, setTestTP3Structure] = useState(true);
-  const [testTP3Trailing, setTestTP3Trailing] = useState(false);
-  const [testTP3EMA, setTestTP3EMA] = useState(false);
-  const [testTP3FixedRR, setTestTP3FixedRR] = useState(false);
-  
-  const [testSLATR, setTestSLATR] = useState(true);
-  const [testSLStructure, setTestSLStructure] = useState(true);
-  const [testSLFixedDistance, setTestSLFixedDistance] = useState(false);
-  
-  // Strategy parameter test options
-  const [testTrendFilters, setTestTrendFilters] = useState<('ema' | 'structure' | 'both' | 'none')[]>(['structure', 'both']);
-  const [testDirections, setTestDirections] = useState<('bull' | 'bear' | 'both')[]>(['both']);
-  const [testUseWickFilter, setTestUseWickFilter] = useState<boolean>(true);
-  const [testUseConfirmCandles, setTestUseConfirmCandles] = useState<boolean>(true);
-  
-  // Range inputs for numeric parameters (min, max, step)
-  const [swingLengthRange, setSwingLengthRange] = useState({ min: 10, max: 20, step: 5 });
-  const [wickRatioRange, setWickRatioRange] = useState({ min: 100, max: 200, step: 50 });
-  const [confirmCandlesRange, setConfirmCandlesRange] = useState({ min: 1, max: 3, step: 1 });
-  
-  // TP/SL parameter ranges
-  const [tp1RRRange, setTp1RRRange] = useState({ min: 1.5, max: 3.0, step: 0.5 });
-  const [tp1SwingLengthRange, setTp1SwingLengthRange] = useState({ min: 10, max: 20, step: 5 });
-  const [tp1TrailingSwingRange, setTp1TrailingSwingRange] = useState({ min: 3, max: 10, step: 2 });
-  const [tp1EMAFastRange, setTp1EMAFastRange] = useState({ min: 10, max: 30, step: 10 });
-  const [tp1EMASlowRange, setTp1EMASlowRange] = useState({ min: 50, max: 200, step: 50 });
-  
-  const [tp2RRRange, setTp2RRRange] = useState({ min: 2.0, max: 4.0, step: 0.5 });
-  const [tp2SwingLengthRange, setTp2SwingLengthRange] = useState({ min: 15, max: 25, step: 5 });
-  const [tp2TrailingSwingRange, setTp2TrailingSwingRange] = useState({ min: 5, max: 15, step: 5 });
-  const [tp2EMAFastRange, setTp2EMAFastRange] = useState({ min: 10, max: 30, step: 10 });
-  const [tp2EMASlowRange, setTp2EMASlowRange] = useState({ min: 50, max: 200, step: 50 });
-  
-  const [tp3RRRange, setTp3RRRange] = useState({ min: 3.0, max: 5.0, step: 1.0 });
-  const [tp3SwingLengthRange, setTp3SwingLengthRange] = useState({ min: 20, max: 30, step: 5 });
-  const [tp3TrailingSwingRange, setTp3TrailingSwingRange] = useState({ min: 10, max: 20, step: 5 });
-  const [tp3EMAFastRange, setTp3EMAFastRange] = useState({ min: 10, max: 30, step: 10 });
-  const [tp3EMASlowRange, setTp3EMASlowRange] = useState({ min: 50, max: 200, step: 50 });
-  
-  const [slATRRange, setSlATRRange] = useState({ min: 1.0, max: 2.0, step: 0.5 });
-  const [slSwingLengthRange, setSlSwingLengthRange] = useState({ min: 3, max: 10, step: 2 });
-  const [slFixedDistanceRange, setSlFixedDistanceRange] = useState({ min: 1.0, max: 3.0, step: 0.5 });
-  
-  // BOS Structure Bot Configuration
-  const [bosTPSL, setBosTPSL] = useState<BotTPSLConfig>({
-    numTPs: 1,
-    tp1: { type: 'atr', atrMultiplier: 1.5, positionPercent: 100 },
-    tp2: { type: 'structure', positionPercent: 30 },
-    tp3: { type: 'atr', atrMultiplier: 2.5, positionPercent: 20 },
-    sl: { type: 'atr', atrMultiplier: 1.5 }
-  });
-  
-  // CHoCH + FVG Bot Configuration
-  const [chochTPSL, setChochTPSL] = useState<BotTPSLConfig>({
-    numTPs: 1,
-    tp1: { type: 'structure', positionPercent: 100 },
-    tp2: { type: 'vwap', vwapPeriod: 'weekly', vwapOffset: 0, positionPercent: 30 },
-    tp3: { type: 'structure', positionPercent: 20 },
-    sl: { type: 'structure' }
-  });
-  
-  // VWAP Trading Bot Configuration
-  const [vwapTPSL, setVwapTPSL] = useState<BotTPSLConfig>({
-    numTPs: 1,
-    tp1: { type: 'ema', emaFast: 10, emaSlow: 40, emaExitMode: 'crossover', positionPercent: 100 },
-    tp2: { type: 'structure', positionPercent: 30 },
-    tp3: { type: 'atr', atrMultiplier: 2.5, positionPercent: 20 },
-    sl: { type: 'fixed_distance', fixedDistance: 2.0 }
-  });
-  
-  // R/S Flip Bot Configuration
-  const [rsFlipTPSL, setRsFlipTPSL] = useState<BotTPSLConfig>({
-    numTPs: 1,
-    tp1: { type: 'fixed_rr', fixedRR: 2.0, positionPercent: 100 },
-    tp2: { type: 'structure', positionPercent: 30 },
-    sl: { type: 'structure' } // Use broken trendline as SL by default
-  });
-  
-  // EMA Trading Bot Configuration
-  const [emaTradingTPSL, setEmaTradingTPSL] = useState<BotTPSLConfig>({
-    numTPs: 1,
-    tp1: { type: 'fixed_rr', fixedRR: 2.0, positionPercent: 100 },
-    tp2: { type: 'structure', positionPercent: 30 },
-    sl: { type: 'atr', atrMultiplier: 1.5 }
-  });
-
-  // ========== REPLAY MODE SETTINGS ==========
-  const [isReplayMode, setIsReplayMode] = useState(false);
-  const [replayIndex, setReplayIndex] = useState(100); // Start with 100 candles visible
-  const [replaySpeed, setReplaySpeed] = useState(1); // 1x, 2x, 5x, 10x
-  const [isReplayPlaying, setIsReplayPlaying] = useState(false);
-  const [fullCandleData, setFullCandleData] = useState<CandleData[]>([]);
-  const replayIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // ========== REPLAY MODE SETTINGS (Moved to useReplayMode hook - Phase 2) ==========
+  // Replay mode state moved to hook
 
   // VWAP series refs
   const vwapSeriesRefs = useRef<{
