@@ -3325,7 +3325,7 @@ useEffect(() => {
                             numTPs: strategySettings.liquidityGrab.tpsl.numTPs,
                             trendFilter,
                             direction,
-                            swingLength: chartSettings.legacy.swingLength,
+                            swingLength,
                             wickRatio,
                             confirmCandles,
                             useWickFilter,
@@ -3400,7 +3400,7 @@ useEffect(() => {
         
         const dataSlice = candles.slice(0, j + 1);
         const liqSignal = generateLiquidityGrabSignal(dataSlice, true, {
-          swingLength: config.chartSettings.legacy.swingLength,
+          swingLength: config.swingLength,
           wickRatio: config.wickRatio,
           confirmCandles: config.confirmCandles,
           useWickFilter: config.useWickFilter,
