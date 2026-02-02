@@ -14,3 +14,5 @@ export * from './useTradingState';
 export * from './useModalState';
 export * from './useIndicatorState';
 export * from './useDrawingState';
+export * from './useDrawingsPersistence';
+export * from './useSettingsPersistence';

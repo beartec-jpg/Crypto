@@ -102,7 +102,7 @@ import { useModalManager } from '@/hooks/useModalManager';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useTradingState } from '@/hooks/useTradingState';
 import { useModalState } from '@/hooks/useModalState';
-import { useStrategySettings, useBacktestSettings, useReplayMode, useChartSettings } from '@/hooks';
+import { useStrategySettings, useBacktestSettings, useReplayMode, useChartSettings, useDrawingsPersistence, useSettingsPersistence } from '@/hooks';
 
 // Volume Components
 import { CVDTable } from '@/components/indicators/volume';
@@ -425,6 +425,9 @@ export default function CryptoIndicators() {
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   
+  // Drawings persistence hook - replaces inline mutations
+  const drawingsPersistence = useDrawingsPersistence(symbol, interval);
+  
   // ChartControlBar state
   const [chartPeriod, setChartPeriod] = useState('24h');
   const [autoScroll, setAutoScroll] = useState(false);
@@ -667,14 +670,9 @@ useEffect(() => {
   const lastCrosshairParamRef = useRef<{ time: number; price: number; logicalX?: number; pointX?: number } | null>(null);
   
   // Fetch saved drawings from database
-  const { data: savedDrawings = [], refetch: refetchDrawings } = useQuery<any[]>({
-    queryKey: ['/api/crypto/chart-drawings', symbol, interval],
-    queryFn: async () => {
-      const response = await authenticatedApiRequest('GET', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${interval}`);
-      return response.json();
-    },
-    enabled: isAuthenticated && !authLoading && !!symbol && !!interval,
-  });
+  // Drawings data from persistence hook
+  const savedDrawings = drawingsPersistence.drawings;
+  const refetchDrawings = drawingsPersistence.refetchDrawings;
   
   // Load saved drawings into state when data changes
   useEffect(() => {
@@ -777,77 +775,40 @@ useEffect(() => {
   }, [chartReady, drawings, selectedDrawingId, activeEdit, drawingsVisible]);
   
   // Save drawing mutation
-  const saveDrawingMutation = useMutation({
-    mutationFn: async (drawing: any) => {
-      const response = await authenticatedApiRequest('POST', '/api/crypto/chart-drawings', {
-        symbol,
-        timeframe: interval,
-        drawingType: drawing.type,
-        coordinates: { points: drawing.points },
-        style: drawing.style,
-      });
-      return { ...(await response.json()), localId: drawing.id };
-    },
-    onSuccess: (serverDrawing) => {
-      // Update local state with server ID before refetch
-      setDrawings(prev => prev.map(d => 
-        d.id === serverDrawing.localId 
-          ? { ...d, id: serverDrawing.id }
-          : d
-      ));
-      refetchDrawings();
-    },
-  });
+  // Drawing mutation wrappers with local state sync
+  const saveDrawing = useCallback((drawing: any) => {
+    drawingsPersistence.saveDrawing({
+      symbol,
+      interval,
+      tool: drawing.type,
+      points: drawing.points,
+      style: drawing.style,
+    });
+  }, [symbol, interval, drawingsPersistence]);
   
-  // Delete drawing mutation  
-  const deleteDrawingMutation = useMutation({
-    mutationFn: async (drawingId: string) => {
-      // Immediately remove from local state for instant UI feedback
-      setDrawings(prev => prev.filter(d => d.id !== drawingId));
-      setSelectedDrawingId(null);
-      
-      const response = await authenticatedApiRequest('DELETE', `/api/crypto/chart-drawings/${drawingId}`);
-      return response.json();
-    },
-    onSuccess: () => {
-      refetchDrawings();
-    },
-    onError: () => {
-      // If delete fails, refetch to restore the drawing
-      refetchDrawings();
-    },
-  });
+  const deleteDrawing = useCallback((drawingId: string) => {
+    // Immediately remove from local state for instant UI feedback
+    setDrawings(prev => prev.filter(d => d.id !== drawingId));
+    setSelectedDrawingId(null);
+    drawingsPersistence.deleteDrawing(drawingId);
+  }, [drawingsPersistence]);
   
-  // Clear all drawings mutation
-  const clearDrawingsMutation = useMutation({
-    mutationFn: async () => {
-      const response = await authenticatedApiRequest('DELETE', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${interval}`);
-      return response.json();
-    },
-    onSuccess: () => {
-      setDrawings([]);
-      refetchDrawings();
-    },
-  });
+  const clearDrawings = useCallback(() => {
+    setDrawings([]);
+    drawingsPersistence.clearDrawings();
+  }, [drawingsPersistence]);
   
-  // Update drawing mutation (for settings changes)
-  const updateDrawingMutation = useMutation({
-    mutationFn: async ({ id, style, coordinates }: { id: string; style?: any; coordinates?: any }) => {
-      const body: Record<string, any> = {};
-      if (style) body.style = style;
-      if (coordinates) body.coordinates = coordinates;
-      const response = await authenticatedApiRequest('PATCH', `/api/crypto/chart-drawings/${id}`, body);
-      return response.json();
-    },
-    onSuccess: () => {
-      refetchDrawings();
-    },
-  });
+  const updateDrawing = useCallback(({ id, style, coordinates }: { id: string; style?: any; coordinates?: any }) => {
+    const updates: any = {};
+    if (style) updates.style = style;
+    if (coordinates) updates.coordinates = coordinates;
+    drawingsPersistence.updateDrawing({ id, updates });
+  }, [drawingsPersistence]);
   
-  // Keep mutation ref in sync for point dragging
+  // Keep mutation ref in sync for point dragging (now using wrapper)
   useEffect(() => {
-    updateDrawingMutationRef.current = updateDrawingMutation;
-  }, [updateDrawingMutation]);
+    updateDrawingMutationRef.current = { mutate: updateDrawing };
+  }, [updateDrawing]);
   
   const handleSelectTicker = useCallback((ticker: string) => {
     incrementTickerClick(ticker);
@@ -894,7 +855,7 @@ useEffect(() => {
         setDrawings(d => [...d, newDrawing]);
         
         // Save to database
-        saveDrawingMutation.mutate(newDrawing);
+        saveDrawing(newDrawing);
         toast({ title: 'Drawing Saved', description: `${currentTool.replace('_', ' ')} added to chart` });
         
         // Reset for next drawing
@@ -903,7 +864,7 @@ useEffect(() => {
       
       return { points: newPoints };
     });
-  }, [drawingMode, saveDrawingMutation, toast]);
+  }, [drawingMode, saveDrawing, toast]);
   
   // Gesture controller hook for touch/click handling
   const gestureController = useChartGestures({
@@ -6026,8 +5987,7 @@ useEffect(() => {
                   {selectedDrawingId && (
                     <button
                       onClick={() => {
-                        deleteDrawingMutation.mutate(selectedDrawingId);
-                        setSelectedDrawingId(null);
+                        deleteDrawing(selectedDrawingId);
                         modals.closeModal('drawing-settings');
                         toast({ title: 'Drawing Deleted', description: 'Selected drawing removed from chart' });
                       }}
@@ -6150,7 +6110,7 @@ useEffect(() => {
                   <button
                     onClick={() => {
                       if (drawings.length > 0 && confirm('Clear all drawings?')) {
-                        clearDrawingsMutation.mutate();
+                        clearDrawings();
                         setSelectedDrawingId(null);
                         toast({ title: 'Drawings Cleared', description: 'All drawings removed from chart' });
                       }
@@ -6286,7 +6246,7 @@ useEffect(() => {
                     }
 
                     // Save to database
-                    updateDrawingMutation.mutate({ id: selectedDrawingId, style: mergedStyle });
+                    updateDrawing({ id: selectedDrawingId, style: mergedStyle });
                   }}
                   onClose={() => {
                     modals.closeModal('drawing-settings');
