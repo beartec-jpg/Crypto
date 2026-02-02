@@ -29,6 +29,25 @@ A comprehensive cryptocurrency analysis platform with real-time charting, techni
 - Fibonacci analysis
 - Custom indicator learning
 
+## Refactoring Progress
+
+CryptoIndicators.tsx refactoring (Feb 2026):
+- **Original:** 13,875 lines → **Current:** 6,773 lines (51% reduction)
+- **Target:** 5,358 lines (Phase 6)
+- **Extracted:** 7,350 lines across 5 completed phases
+- See [`docs/REFACTORING_2026.md`](docs/REFACTORING_2026.md) for details
+
+### Completed Phases
+- ✅ Phase 1: Strategy Generators (1,474 lines) - `/lib/strategies/`
+- ✅ Phase 2: State Hooks (1,722 lines) - `/hooks/`
+- ✅ Phase 3: Calculations (857 lines) - `/lib/calculations/`
+- ✅ Phase 4: Backtest Engine (1,770 lines) - `/lib/backtest/`
+- ✅ Phase 5: UI Components (1,527 lines) - `/components/trading/`
+
+### Next Phase
+- 🔄 Phase 6: Final Optimization (1,415 lines remaining, 3-4 weeks)
+- See [`docs/PHASE_6_ROADMAP.md`](docs/PHASE_6_ROADMAP.md) for implementation plan
+
 ## Development
 
 ### Prerequisites
