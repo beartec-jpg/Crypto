@@ -25,9 +25,6 @@ import { useFullscreen } from '@/hooks/useFullscreen';
 import bearTecLogo from '@assets/1_20251120_023939_0000_1763606422703.png';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import grokLogo from '@assets/Grok_Full_Logomark_Light_1763287603908.png';
-import bearVideo from '@assets/grok_video_2025-11-20-03-05-08_1763607929480.mp4';
-import transitionVideo from '@assets/grok_video_2025-11-20-06-10-37_1763619824022.mp4';
-import bullVideo from '@assets/grok_video_2025-11-20-06-16-11_1763619952816.mp4';
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { incrementTickerClick } from '@/lib/tickerUtils';
@@ -81,7 +78,10 @@ import {
   BotConfiguration,
   AlertsPanel,
   StrategyGeneratorPanel,
-  BacktestResultsPanel
+  BacktestResultsPanel,
+  ReplayModeControls,
+  VideoSequencePlayer,
+  ActionButtonsToolbar
 } from '@/components/trading';
 
 // AI Components
@@ -374,13 +374,9 @@ export default function CryptoIndicators() {
   // Track previous symbol to clear HTF caches on symbol change
   const prevSymbolRef = useRef(symbol);
   
-  // Video sequence state
-  const [videoPhase, setVideoPhase] = useState<'initial_bear' | 'transition' | 'final'>('initial_bear');
+  // Video sequence state - targetMarketState is used by VideoSequencePlayer
   const [targetMarketState, setTargetMarketState] = useState<'bullish' | 'bearish'>('bearish');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const bearVideoRef = useRef<HTMLVideoElement>(null);
-  const transitionVideoRef = useRef<HTMLVideoElement>(null);
-  const bullVideoRef = useRef<HTMLVideoElement>(null);
 
   const aiReviewMutation = useMutation({
     mutationFn: async () => {
@@ -1266,69 +1262,21 @@ useEffect(() => {
     intervalRef.current = interval;
   }, [symbol, interval]);
   
-  // Detect market status changes and trigger video sequences (only after initial bear completes)
+  // Detect market status changes for video player
   useEffect(() => {
     const isBullish = bias === 'bullish' && structureTrend === 'uptrend';
     const newState = isBullish ? 'bullish' : 'bearish';
     
-    // Update target state but don't trigger transitions during initial_bear phase
+    // Update target state
     if (newState !== targetMarketState) {
       setTargetMarketState(newState);
-      
-      // Only trigger transitions if we're past initial_bear phase
-      if (videoPhase !== 'initial_bear' && !isInitialLoad) {
-        setVideoPhase('transition');
-      }
       
       // Mark that we've detected the initial state
       if (isInitialLoad) {
         setIsInitialLoad(false);
       }
     }
-  }, [bias, structureTrend, targetMarketState, videoPhase, isInitialLoad]);
-  
-  // Control video playback based on phase changes
-  useEffect(() => {
-    const bear = bearVideoRef.current;
-    const transition = transitionVideoRef.current;
-    const bull = bullVideoRef.current;
-    
-    if (!bear || !transition || !bull) return;
-    
-    // Reset all videos first
-    bear.pause();
-    transition.pause();
-    bull.pause();
-    
-    // Play the appropriate video based on phase with error handling
-    if (videoPhase === 'initial_bear') {
-      bear.currentTime = 0;
-      bear.play().catch(err => console.log('Bear video play failed:', err));
-    } else if (videoPhase === 'transition') {
-      if (targetMarketState === 'bearish') {
-        // Skip reverse playback - not supported in all browsers
-        // Just go directly to final state
-        setVideoPhase('final');
-      } else {
-        // Play transition forward
-        try {
-          transition.playbackRate = 1;
-        } catch (e) {
-          console.log('playbackRate not supported:', e);
-        }
-        transition.currentTime = 0;
-        transition.play().catch(err => console.log('Transition video play failed:', err));
-      }
-    } else if (videoPhase === 'final') {
-      if (targetMarketState === 'bullish') {
-        bull.currentTime = 0;
-        bull.play().catch(err => console.log('Bull video play failed:', err));
-      } else {
-        bear.currentTime = 0;
-        bear.play().catch(err => console.log('Bear video play failed:', err));
-      }
-    }
-  }, [videoPhase, targetMarketState]);
+  }, [bias, structureTrend, targetMarketState, isInitialLoad]);
   
   // ========== STRATEGY SETTINGS (Moved to useStrategySettings hook - Phase 2) ==========
   // All strategy state declarations moved to hooks (lines saved: ~300)
@@ -5252,76 +5200,11 @@ useEffect(() => {
           </div>
           
           {/* Dynamic Market Status Animation - Top Center */}
-          <div className="w-full flex justify-center relative">
-            {/* Bear Video */}
-            <video 
-              ref={bearVideoRef}
-              src={bearVideo}
-              muted
-              autoPlay
-              playsInline
-              preload="auto"
-              className="h-[240px] max-w-full object-contain absolute"
-              style={{
-                opacity: videoPhase === 'initial_bear' || (videoPhase === 'final' && targetMarketState === 'bearish') ? 1 : 0,
-                pointerEvents: videoPhase === 'initial_bear' || (videoPhase === 'final' && targetMarketState === 'bearish') ? 'auto' : 'none'
-              }}
-              onEnded={() => {
-                if (videoPhase === 'initial_bear') {
-                  if (targetMarketState === 'bullish') {
-                    setVideoPhase('transition');
-                  } else {
-                    setVideoPhase('final');
-                  }
-                }
-              }}
-              onMouseEnter={() => {
-                if (videoPhase === 'final' && targetMarketState === 'bearish' && bearVideoRef.current) {
-                  bearVideoRef.current.currentTime = 0;
-                  bearVideoRef.current.play().catch(err => console.log('Bear hover replay failed:', err));
-                }
-              }}
-            />
-            
-            {/* Transition Video */}
-            <video 
-              ref={transitionVideoRef}
-              src={transitionVideo}
-              muted
-              playsInline
-              preload="auto"
-              className="h-[240px] max-w-full object-contain absolute"
-              style={{
-                opacity: videoPhase === 'transition' ? 1 : 0,
-                pointerEvents: videoPhase === 'transition' ? 'auto' : 'none'
-              }}
-              onEnded={() => {
-                if (videoPhase === 'transition') {
-                  setVideoPhase('final');
-                }
-              }}
-            />
-            
-            {/* Bull Video */}
-            <video 
-              ref={bullVideoRef}
-              src={bullVideo}
-              muted
-              playsInline
-              preload="auto"
-              className="h-[240px] max-w-full object-contain absolute"
-              style={{
-                opacity: videoPhase === 'final' && targetMarketState === 'bullish' ? 1 : 0,
-                pointerEvents: videoPhase === 'final' && targetMarketState === 'bullish' ? 'auto' : 'none'
-              }}
-              onMouseEnter={() => {
-                if (videoPhase === 'final' && targetMarketState === 'bullish' && bullVideoRef.current) {
-                  bullVideoRef.current.currentTime = 0;
-                  bullVideoRef.current.play().catch(err => console.log('Bull hover replay failed:', err));
-                }
-              }}
-            />
-          </div>
+          <VideoSequencePlayer
+            targetMarketState={targetMarketState}
+            isInitialLoad={isInitialLoad}
+            onInitialComplete={() => setIsInitialLoad(false)}
+          />
         </div>
 
         {/* Spacer to prevent content overlap with animation */}
@@ -5360,163 +5243,44 @@ useEffect(() => {
         />
         
         {/* Additional Action Buttons */}
-        <div className="flex flex-col items-center gap-4">
-          <div className="flex items-center gap-2 md:gap-4">
-            <Button
-              onClick={() => modals.openModal('settings-dialog')}
-              className="bg-slate-700 hover:bg-slate-600 text-white px-3 md:px-4"
-              data-testid="button-open-settings"
-              title="Settings (Ctrl+,)"
-            >
-              <Settings className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Settings</span>
-            </Button>
-            <Button
-              onClick={() => modals.openModal('alert-settings')}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-4"
-              data-testid="button-open-alert-settings"
-            >
-              <Bell className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Alert Settings</span>
-            </Button>
-            <a href="/crypto/feedback">
-              <Button
-                variant="outline"
-                className="border-[#00c4b4] text-[#00c4b4] hover:bg-[#00c4b4]/10 px-3 md:px-4"
-                data-testid="link-feedback"
-              >
-                <MessageSquare className="h-4 w-4 md:mr-2" />
-                <span className="hidden md:inline">Feedback</span>
-              </Button>
-            </a>
-          </div>
-        </div>
+        <ActionButtonsToolbar
+          onOpenSettings={() => modals.openModal('settings-dialog')}
+          onOpenAlertSettings={() => modals.openModal('alert-settings')}
+          feedbackUrl="/crypto/feedback"
+        />
 
         {/* Replay Mode Controls */}
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="p-3">
-            <div className="space-y-2">
-              {/* Row 1: Toggle, Reset, and Playback Controls */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center gap-2 bg-slate-900 px-3 py-2 rounded">
-                  <Label className="text-white font-semibold text-sm">Replay Mode</Label>
-                  <Switch 
-                    checked={replayMode.isReplayMode} 
-                    onCheckedChange={(checked) => {
-                      replayMode.setIsReplayMode(checked);
-                      if (checked) {
-                        // Entering replay mode
-                        const currentCandles = [...candles];
-                        replayMode.setFullCandleData(currentCandles);
-                        replayMode.setReplayIndex(100);
-                        replayMode.setIsReplayPlaying(false);
-                      } else {
-                        // Exiting replay mode - restore all candles
-                        replayMode.setIsReplayPlaying(false);
-                        // Restore full candles
-                        if (replayMode.fullCandleData.length > 0) {
-                          setCandles([...replayMode.fullCandleData]);
-                        }
-                      }
-                    }}
-                  />
-                </div>
-
-                {replayMode.isReplayMode && (
-                  <>
-                    <button
-                      onClick={() => replayMode.setReplayIndex(100)}
-                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm font-semibold transition-colors"
-                      data-testid="button-replay-reset"
-                    >
-                      🔄 Reset
-                    </button>
-                    
-                    <div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1.5 rounded">
-                      <button
-                        onClick={() => replayMode.setReplayIndex(Math.max(100, replayMode.replayIndex - 10))}
-                        disabled={replayMode.replayIndex <= 100}
-                        className="px-2.5 py-1 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
-                        data-testid="button-replay-backward-10"
-                      >
-                        ⏪ -10
-                      </button>
-                      <button
-                        onClick={() => replayMode.setReplayIndex(Math.max(100, replayMode.replayIndex - 1))}
-                        disabled={replayMode.replayIndex <= 100}
-                        className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
-                        data-testid="button-replay-backward-1"
-                      >
-                        ◀ -1
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (replayMode.isReplayPlaying) {
-                            replayMode.setIsReplayPlaying(false);
-                          } else {
-                            replayMode.setIsReplayPlaying(true);
-                          }
-                        }}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold transition-colors"
-                        data-testid="button-replay-play"
-                      >
-                        {replayMode.isReplayPlaying ? '⏸ Pause' : '▶ Play'}
-                      </button>
-                      <button
-                        onClick={() => replayMode.setReplayIndex(Math.min(replayMode.fullCandleData.length, replayMode.replayIndex + 1))}
-                        disabled={replayMode.replayIndex >= replayMode.fullCandleData.length}
-                        className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
-                        data-testid="button-replay-forward-1"
-                      >
-                        +1 ▶
-                      </button>
-                      <button
-                        onClick={() => replayMode.setReplayIndex(Math.min(replayMode.fullCandleData.length, replayMode.replayIndex + 10))}
-                        disabled={replayMode.replayIndex >= replayMode.fullCandleData.length}
-                        className="px-2.5 py-1 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
-                        data-testid="button-replay-forward-10"
-                      >
-                        +10 ⏩
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Row 2: Speed & Progress Bar */}
-              {replayMode.isReplayMode && (
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-gray-400 text-xs">Speed:</Label>
-                    <Select value={replayMode.replaySpeed.toString()} onValueChange={(v) => replayMode.setReplaySpeed(parseInt(v))}>
-                      <SelectTrigger className="w-20 h-7 bg-slate-900 text-white border-slate-600 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1x</SelectItem>
-                        <SelectItem value="2">2x</SelectItem>
-                        <SelectItem value="5">5x</SelectItem>
-                        <SelectItem value="10">10x</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex-1 flex items-center gap-2">
-                    <span className="text-gray-400 text-xs whitespace-nowrap">
-                      {replayMode.replayIndex} / {replayMode.fullCandleData.length} candles
-                    </span>
-                    <div className="flex-1 bg-slate-900 rounded h-2 overflow-hidden">
-                      <div 
-                        className="bg-blue-500 h-full transition-all duration-200"
-                        style={{ width: `${(replayMode.replayIndex / replayMode.fullCandleData.length) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <ReplayModeControls
+          isReplayMode={replayMode.isReplayMode}
+          replayIndex={replayMode.replayIndex}
+          replaySpeed={replayMode.replaySpeed}
+          isReplayPlaying={replayMode.isReplayPlaying}
+          maxCandles={replayMode.fullCandleData.length}
+          onToggleReplayMode={() => {
+            const checked = !replayMode.isReplayMode;
+            replayMode.setIsReplayMode(checked);
+            if (checked) {
+              // Entering replay mode
+              const currentCandles = [...candles];
+              replayMode.setFullCandleData(currentCandles);
+              replayMode.setReplayIndex(100);
+              replayMode.setIsReplayPlaying(false);
+            } else {
+              // Exiting replay mode - restore all candles
+              replayMode.setIsReplayPlaying(false);
+              // Restore full candles
+              if (replayMode.fullCandleData.length > 0) {
+                setCandles([...replayMode.fullCandleData]);
+              }
+            }
+          }}
+          onSetReplayIndex={replayMode.setReplayIndex}
+          onSetReplaySpeed={replayMode.setReplaySpeed}
+          onTogglePlayback={() => replayMode.setIsReplayPlaying(!replayMode.isReplayPlaying)}
+          onStepBackward={(steps) => replayMode.setReplayIndex(Math.max(100, replayMode.replayIndex - steps))}
+          onStepForward={(steps) => replayMode.setReplayIndex(Math.min(replayMode.fullCandleData.length, replayMode.replayIndex + steps))}
+          onReset={() => replayMode.setReplayIndex(100)}
+        />
 
         {/* Chart Control Bar */}
         <ChartControlBar
