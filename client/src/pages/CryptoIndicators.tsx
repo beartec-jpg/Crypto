@@ -775,8 +775,12 @@ useEffect(() => {
   }, [chartReady, drawings, selectedDrawingId, activeEdit, drawingsVisible]);
   
   // Save drawing mutation
-  // Drawing mutation wrappers with local state sync
+  // Drawing mutation wrappers - hook handles refetching and toasts
   const saveDrawing = useCallback((drawing: any) => {
+    // Add to local state immediately for instant feedback
+    setDrawings(d => [...d, drawing]);
+    
+    // Save to database via hook (handles refetch automatically)
     drawingsPersistence.saveDrawing({
       symbol,
       interval,
@@ -787,14 +791,23 @@ useEffect(() => {
   }, [symbol, interval, drawingsPersistence]);
   
   const deleteDrawing = useCallback((drawingId: string) => {
+    // Store original state in case we need to restore on error
+    const originalDrawings = [...drawings];
+    
     // Immediately remove from local state for instant UI feedback
     setDrawings(prev => prev.filter(d => d.id !== drawingId));
     setSelectedDrawingId(null);
+    
+    // Delete from database via hook
+    // Note: If this fails, the refetch from the hook will restore the correct state
     drawingsPersistence.deleteDrawing(drawingId);
-  }, [drawingsPersistence]);
+  }, [drawings, drawingsPersistence]);
   
   const clearDrawings = useCallback(() => {
+    // Clear local state
     setDrawings([]);
+    
+    // Clear from database via hook (handles refetch automatically)
     drawingsPersistence.clearDrawings();
   }, [drawingsPersistence]);
   
@@ -802,6 +815,8 @@ useEffect(() => {
     const updates: any = {};
     if (style) updates.style = style;
     if (coordinates) updates.coordinates = coordinates;
+    
+    // Update in database via hook (handles refetch automatically)
     drawingsPersistence.updateDrawing({ id, updates });
   }, [drawingsPersistence]);
   
@@ -852,11 +867,11 @@ useEffect(() => {
           points: newPoints,
           style: { color, lineWidth: 2, ...savedDefaults, ...channelStyle }
         };
-        setDrawings(d => [...d, newDrawing]);
+        // Don't add to local state here - will be added by saveDrawing wrapper
         
         // Save to database
         saveDrawing(newDrawing);
-        toast({ title: 'Drawing Saved', description: `${currentTool.replace('_', ' ')} added to chart` });
+        // Don't show toast here - hook will show it
         
         // Reset for next drawing
         return { points: [] };
@@ -5989,7 +6004,7 @@ useEffect(() => {
                       onClick={() => {
                         deleteDrawing(selectedDrawingId);
                         modals.closeModal('drawing-settings');
-                        toast({ title: 'Drawing Deleted', description: 'Selected drawing removed from chart' });
+                        // Toast will be shown by the hook
                       }}
                       className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all animate-pulse"
                       title="Delete Selected Drawing"
@@ -6112,7 +6127,7 @@ useEffect(() => {
                       if (drawings.length > 0 && confirm('Clear all drawings?')) {
                         clearDrawings();
                         setSelectedDrawingId(null);
-                        toast({ title: 'Drawings Cleared', description: 'All drawings removed from chart' });
+                        // Toast will be shown by the hook
                       }
                     }}
                     className="p-2 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-red-600 hover:text-white transition-all"
