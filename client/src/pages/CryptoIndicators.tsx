@@ -778,6 +778,7 @@ useEffect(() => {
   // Drawing mutation wrappers - hook handles refetching and toasts
   const saveDrawing = useCallback((drawing: any) => {
     // Add to local state immediately for instant feedback
+    // Note: The hook will refetch after save, which syncs server-generated IDs back via the useEffect at line 678
     setDrawings(d => [...d, drawing]);
     
     // Save to database via hook (handles refetch automatically)
@@ -814,6 +815,8 @@ useEffect(() => {
     if (coordinates) updates.coordinates = coordinates;
     
     // Update in database via hook (handles refetch automatically)
+    // Note: No optimistic update here - style changes are visual-only and don't need instant feedback
+    // The refetch will sync the updated state from the server
     drawingsPersistence.updateDrawing({ id, updates });
   }, [drawingsPersistence]);
   
