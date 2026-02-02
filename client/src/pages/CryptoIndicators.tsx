@@ -1386,19 +1386,19 @@ useEffect(() => {
 
   // Sync EMA Trading input values to numeric state
   useEffect(() => {
-    const val = parseInt(emaSinglePeriodInput);
+    const val = parseInt(strategySettings.emaTrading.singlePeriodInput);
     if (!isNaN(val) && val >= 5 && val <= 500) {
-      setEmaSinglePeriod(val);
+      strategySettings.emaTrading.setSinglePeriod(val);
     }
-  }, [emaSinglePeriodInput]);
+  }, [strategySettings.emaTrading.singlePeriodInput]);
   
   // Sync VWAP threshold input to numeric state
   useEffect(() => {
-    const val = parseFloat(vwapThresholdInput);
+    const val = parseFloat(strategySettings.vwapTrading.thresholdInput);
     if (!isNaN(val) && val >= 0.1 && val <= 5) {
-      setVwapThreshold(val);
+      strategySettings.vwapTrading.setThreshold(val);
     }
-  }, [vwapThresholdInput]);
+  }, [strategySettings.vwapTrading.thresholdInput]);
 
   useEffect(() => {
     const val = parseInt(indicators.bb.periodInput);
@@ -1415,22 +1415,22 @@ useEffect(() => {
   }, [indicators.bb.stdDevInput]);
 
   useEffect(() => {
-    const val = parseInt(emaTradingTPSwingLengthInput);
+    const val = parseInt(strategySettings.emaTrading.tpSwingLengthInput);
     if (!isNaN(val) && val >= 5 && val <= 50) {
-      setEmaTradingTPSwingLength(val);
+      strategySettings.emaTrading.setTpSwingLength(val);
     }
-  }, [emaTradingTPSwingLengthInput]);
+  }, [strategySettings.emaTrading.tpSwingLengthInput]);
 
   useEffect(() => {
-    const val = parseInt(emaTradingSLSwingLengthInput);
+    const val = parseInt(strategySettings.emaTrading.slSwingLengthInput);
     if (!isNaN(val) && val >= 3 && val <= 30) {
-      setEmaTradingSLSwingLength(val);
+      strategySettings.emaTrading.setSlSwingLength(val);
     }
-  }, [emaTradingSLSwingLengthInput]);
+  }, [strategySettings.emaTrading.slSwingLengthInput]);
 
   // Calculate total combinations for auto-backtest
   const totalCombinations = useMemo(() => {
-    if (!liqGrabAutoTestMode) return 0;
+    if (!backtestSettings.autoTest.mode) return 0;
 
     const getRangeCount = (min: number, max: number, step: number) => {
       if (step <= 0 || min > max) return 0;
@@ -1440,74 +1440,74 @@ useEffect(() => {
     let count = 1;
 
     // Strategy parameters
-    count *= testTrendFilters.length || 1;
-    count *= testDirections.length || 1;
-    count *= getRangeCount(swingLengthRange.min, swingLengthRange.max, swingLengthRange.step);
+    count *= backtestSettings.parameterTests.strategy.trendFilters.length || 1;
+    count *= backtestSettings.parameterTests.strategy.directions.length || 1;
+    count *= getRangeCount(backtestSettings.ranges.swingLength.min, backtestSettings.ranges.swingLength.max, backtestSettings.ranges.swingLength.step);
     // Only test wick ratios when wick filter is enabled
-    if (testUseWickFilter) {
-      count *= getRangeCount(wickRatioRange.min, wickRatioRange.max, wickRatioRange.step);
+    if (backtestSettings.parameterTests.strategy.useWickFilter) {
+      count *= getRangeCount(backtestSettings.ranges.wickRatio.min, backtestSettings.ranges.wickRatio.max, backtestSettings.ranges.wickRatio.step);
     }
     // Only test confirm candles when confirm candles is enabled
-    if (testUseConfirmCandles) {
-      count *= getRangeCount(confirmCandlesRange.min, confirmCandlesRange.max, confirmCandlesRange.step);
+    if (backtestSettings.parameterTests.strategy.useConfirmCandles) {
+      count *= getRangeCount(backtestSettings.ranges.confirmCandles.min, backtestSettings.ranges.confirmCandles.max, backtestSettings.ranges.confirmCandles.step);
     }
 
     // TP1 parameters (always active if numTPs >= 1)
-    if (liqGrabTPSL.numTPs >= 1) {
+    if (strategySettings.liquidityGrab.tpsl.numTPs >= 1) {
       let tp1Count = 0;
-      if (testTP1Structure) tp1Count += getRangeCount(tp1SwingLengthRange.min, tp1SwingLengthRange.max, tp1SwingLengthRange.step);
-      if (testTP1Trailing) tp1Count += getRangeCount(tp1TrailingSwingRange.min, tp1TrailingSwingRange.max, tp1TrailingSwingRange.step);
-      if (testTP1EMA) tp1Count += getRangeCount(tp1EMAFastRange.min, tp1EMAFastRange.max, tp1EMAFastRange.step) * getRangeCount(tp1EMASlowRange.min, tp1EMASlowRange.max, tp1EMASlowRange.step);
-      if (testTP1FixedRR) tp1Count += getRangeCount(tp1RRRange.min, tp1RRRange.max, tp1RRRange.step);
+      if (backtestSettings.parameterTests.tp1.structure) tp1Count += getRangeCount(backtestSettings.ranges.tp1SwingLength.min, backtestSettings.ranges.tp1SwingLength.max, backtestSettings.ranges.tp1SwingLength.step);
+      if (backtestSettings.parameterTests.tp1.trailing) tp1Count += getRangeCount(backtestSettings.ranges.tp1TrailingSwing.min, backtestSettings.ranges.tp1TrailingSwing.max, backtestSettings.ranges.tp1TrailingSwing.step);
+      if (backtestSettings.parameterTests.tp1.ema) tp1Count += getRangeCount(backtestSettings.ranges.tp1EMAFast.min, backtestSettings.ranges.tp1EMAFast.max, backtestSettings.ranges.tp1EMAFast.step) * getRangeCount(backtestSettings.ranges.tp1EMASlow.min, backtestSettings.ranges.tp1EMASlow.max, backtestSettings.ranges.tp1EMASlow.step);
+      if (backtestSettings.parameterTests.tp1.fixedRR) tp1Count += getRangeCount(backtestSettings.ranges.tp1RR.min, backtestSettings.ranges.tp1RR.max, backtestSettings.ranges.tp1RR.step);
       count *= tp1Count || 1;
     }
 
     // TP2 parameters (only if numTPs >= 2)
-    if (liqGrabTPSL.numTPs >= 2) {
+    if (strategySettings.liquidityGrab.tpsl.numTPs >= 2) {
       let tp2Count = 0;
-      if (testTP2Structure) tp2Count += getRangeCount(tp2SwingLengthRange.min, tp2SwingLengthRange.max, tp2SwingLengthRange.step);
-      if (testTP2Trailing) tp2Count += getRangeCount(tp2TrailingSwingRange.min, tp2TrailingSwingRange.max, tp2TrailingSwingRange.step);
-      if (testTP2EMA) tp2Count += getRangeCount(tp2EMAFastRange.min, tp2EMAFastRange.max, tp2EMAFastRange.step) * getRangeCount(tp2EMASlowRange.min, tp2EMASlowRange.max, tp2EMASlowRange.step);
-      if (testTP2FixedRR) tp2Count += getRangeCount(tp2RRRange.min, tp2RRRange.max, tp2RRRange.step);
+      if (backtestSettings.parameterTests.tp2.structure) tp2Count += getRangeCount(backtestSettings.ranges.tp2SwingLength.min, backtestSettings.ranges.tp2SwingLength.max, backtestSettings.ranges.tp2SwingLength.step);
+      if (backtestSettings.parameterTests.tp2.trailing) tp2Count += getRangeCount(backtestSettings.ranges.tp2TrailingSwing.min, backtestSettings.ranges.tp2TrailingSwing.max, backtestSettings.ranges.tp2TrailingSwing.step);
+      if (backtestSettings.parameterTests.tp2.ema) tp2Count += getRangeCount(backtestSettings.ranges.tp2EMAFast.min, backtestSettings.ranges.tp2EMAFast.max, backtestSettings.ranges.tp2EMAFast.step) * getRangeCount(backtestSettings.ranges.tp2EMASlow.min, backtestSettings.ranges.tp2EMASlow.max, backtestSettings.ranges.tp2EMASlow.step);
+      if (backtestSettings.parameterTests.tp2.fixedRR) tp2Count += getRangeCount(backtestSettings.ranges.tp2RR.min, backtestSettings.ranges.tp2RR.max, backtestSettings.ranges.tp2RR.step);
       count *= tp2Count || 1;
     }
 
     // TP3 parameters (only if numTPs >= 3)
-    if (liqGrabTPSL.numTPs >= 3) {
+    if (strategySettings.liquidityGrab.tpsl.numTPs >= 3) {
       let tp3Count = 0;
-      if (testTP3Structure) tp3Count += getRangeCount(tp3SwingLengthRange.min, tp3SwingLengthRange.max, tp3SwingLengthRange.step);
-      if (testTP3Trailing) tp3Count += getRangeCount(tp3TrailingSwingRange.min, tp3TrailingSwingRange.max, tp3TrailingSwingRange.step);
-      if (testTP3EMA) tp3Count += getRangeCount(tp3EMAFastRange.min, tp3EMAFastRange.max, tp3EMAFastRange.step) * getRangeCount(tp3EMASlowRange.min, tp3EMASlowRange.max, tp3EMASlowRange.step);
-      if (testTP3FixedRR) tp3Count += getRangeCount(tp3RRRange.min, tp3RRRange.max, tp3RRRange.step);
+      if (backtestSettings.parameterTests.tp3.structure) tp3Count += getRangeCount(backtestSettings.ranges.tp3SwingLength.min, backtestSettings.ranges.tp3SwingLength.max, backtestSettings.ranges.tp3SwingLength.step);
+      if (backtestSettings.parameterTests.tp3.trailing) tp3Count += getRangeCount(backtestSettings.ranges.tp3TrailingSwing.min, backtestSettings.ranges.tp3TrailingSwing.max, backtestSettings.ranges.tp3TrailingSwing.step);
+      if (backtestSettings.parameterTests.tp3.ema) tp3Count += getRangeCount(backtestSettings.ranges.tp3EMAFast.min, backtestSettings.ranges.tp3EMAFast.max, backtestSettings.ranges.tp3EMAFast.step) * getRangeCount(backtestSettings.ranges.tp3EMASlow.min, backtestSettings.ranges.tp3EMASlow.max, backtestSettings.ranges.tp3EMASlow.step);
+      if (backtestSettings.parameterTests.tp3.fixedRR) tp3Count += getRangeCount(backtestSettings.ranges.tp3RR.min, backtestSettings.ranges.tp3RR.max, backtestSettings.ranges.tp3RR.step);
       count *= tp3Count || 1;
     }
 
     // SL parameters
     let slCount = 0;
-    if (testSLATR) slCount += getRangeCount(slATRRange.min, slATRRange.max, slATRRange.step);
-    if (testSLStructure) slCount += getRangeCount(slSwingLengthRange.min, slSwingLengthRange.max, slSwingLengthRange.step);
-    if (testSLFixedDistance) slCount += getRangeCount(slFixedDistanceRange.min, slFixedDistanceRange.max, slFixedDistanceRange.step);
+    if (backtestSettings.parameterTests.sl.atr) slCount += getRangeCount(backtestSettings.ranges.slATR.min, backtestSettings.ranges.slATR.max, backtestSettings.ranges.slATR.step);
+    if (backtestSettings.parameterTests.sl.structure) slCount += getRangeCount(backtestSettings.ranges.slSwingLength.min, backtestSettings.ranges.slSwingLength.max, backtestSettings.ranges.slSwingLength.step);
+    if (backtestSettings.parameterTests.sl.fixedDistance) slCount += getRangeCount(backtestSettings.ranges.slFixedDistance.min, backtestSettings.ranges.slFixedDistance.max, backtestSettings.ranges.slFixedDistance.step);
     count *= slCount || 1;
 
     return count;
   }, [
-    liqGrabAutoTestMode,
-    testTrendFilters,
-    testDirections,
-    swingLengthRange,
-    wickRatioRange,
-    confirmCandlesRange,
-    testUseWickFilter,
-    testUseConfirmCandles,
-    liqGrabTPSL.numTPs,
-    testTP1Structure, testTP1Trailing, testTP1EMA, testTP1FixedRR,
-    tp1SwingLengthRange, tp1TrailingSwingRange, tp1EMAFastRange, tp1EMASlowRange, tp1RRRange,
-    testTP2Structure, testTP2Trailing, testTP2EMA, testTP2FixedRR,
-    tp2SwingLengthRange, tp2TrailingSwingRange, tp2EMAFastRange, tp2EMASlowRange, tp2RRRange,
-    testTP3Structure, testTP3Trailing, testTP3EMA, testTP3FixedRR,
-    tp3SwingLengthRange, tp3TrailingSwingRange, tp3EMAFastRange, tp3EMASlowRange, tp3RRRange,
-    testSLATR, testSLStructure, testSLFixedDistance,
-    slATRRange, slSwingLengthRange, slFixedDistanceRange
+    backtestSettings.autoTest.mode,
+    backtestSettings.parameterTests.strategy.trendFilters,
+    backtestSettings.parameterTests.strategy.directions,
+    backtestSettings.ranges.swingLength,
+    backtestSettings.ranges.wickRatio,
+    backtestSettings.ranges.confirmCandles,
+    backtestSettings.parameterTests.strategy.useWickFilter,
+    backtestSettings.parameterTests.strategy.useConfirmCandles,
+    /* FIXME */ strategySettings.liquidityGrab.tpsl.numTPs,
+    backtestSettings.parameterTests.tp1.structure, backtestSettings.parameterTests.tp1.trailing, backtestSettings.parameterTests.tp1.ema, backtestSettings.parameterTests.tp1.fixedRR,
+    backtestSettings.ranges.tp1SwingLength, backtestSettings.ranges.tp1TrailingSwing, backtestSettings.ranges.tp1EMAFast, backtestSettings.ranges.tp1EMASlow, backtestSettings.ranges.tp1RR,
+    backtestSettings.parameterTests.tp2.structure, backtestSettings.parameterTests.tp2.trailing, backtestSettings.parameterTests.tp2.ema, backtestSettings.parameterTests.tp2.fixedRR,
+    backtestSettings.ranges.tp2SwingLength, backtestSettings.ranges.tp2TrailingSwing, backtestSettings.ranges.tp2EMAFast, backtestSettings.ranges.tp2EMASlow, backtestSettings.ranges.tp2RR,
+    backtestSettings.parameterTests.tp3.structure, backtestSettings.parameterTests.tp3.trailing, backtestSettings.parameterTests.tp3.ema, backtestSettings.parameterTests.tp3.fixedRR,
+    backtestSettings.ranges.tp3SwingLength, backtestSettings.ranges.tp3TrailingSwing, backtestSettings.ranges.tp3EMAFast, backtestSettings.ranges.tp3EMASlow, backtestSettings.ranges.tp3RR,
+    backtestSettings.parameterTests.sl.atr, backtestSettings.parameterTests.sl.structure, backtestSettings.parameterTests.sl.fixedDistance,
+    backtestSettings.ranges.slATR, backtestSettings.ranges.slSwingLength, backtestSettings.ranges.slFixedDistance
   ]);
 
   // Calculate estimated completion time using actual performance data
@@ -1515,8 +1515,8 @@ useEffect(() => {
     let msPerTest = 100; // Default fallback
     
     // If we have historical data, use average ms-per-test from last 5 runs
-    if (liqGrabAutoTestDurations.length > 0) {
-      const recentRuns = liqGrabAutoTestDurations.slice(-5);
+    if (backtestSettings.autoTest.durations.length > 0) {
+      const recentRuns = backtestSettings.autoTest.durations.slice(-5);
       // Calculate ms-per-test for each run, then average
       const msPerTestValues = recentRuns.map(run => run.duration / run.combos);
       msPerTest = msPerTestValues.reduce((sum, v) => sum + v, 0) / msPerTestValues.length;
@@ -1526,7 +1526,7 @@ useEffect(() => {
     if (seconds < 60) return `~${seconds}s`;
     if (seconds < 3600) return `~${Math.ceil(seconds / 60)}min`;
     return `~${Math.ceil(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}min`;
-  }, [totalCombinations, liqGrabAutoTestDurations]);
+  }, [totalCombinations, backtestSettings.autoTest.durations]);
 
   // Fetch multi-exchange orderflow data
   // Fetch AI Market Analysis
@@ -1814,10 +1814,10 @@ useEffect(() => {
     const deltaScore = count > 0 ? totalDelta / count : 0;
     
     // High value if volume score exceeds threshold
-    const isHighValue = volumeScore >= fvgVolumeThreshold;
+    const isHighValue = volumeScore >= chartSettings.legacy.fvgVolumeThreshold;
 
     return { volumeScore, deltaScore, isHighValue };
-  }, [fvgVolumeThreshold]);
+  }, [chartSettings.legacy.fvgVolumeThreshold]);
 
   // Calculate FVGs with volume analysis
   const calculateFVGs = useCallback((data: CandleData[], useAtrFilter: boolean = true, atrFactor: number = 1): FVG[] => {
@@ -2023,7 +2023,7 @@ useEffect(() => {
 
   // Determine structure-based trend (HH/HL vs LH/LL)
   const determineStructureTrend = useCallback((data: CandleData[]) => {
-    const swings = calculateSwings(data, chartBosSwingLength);
+    const swings = calculateSwings(data, chartSettings.bos.swingLength);
     if (swings.length < 4) {
       setStructureTrend('ranging');
       return 'ranging';
@@ -2056,7 +2056,7 @@ useEffect(() => {
       setStructureTrend('ranging');
       return 'ranging';
     }
-  }, [calculateSwings, chartBosSwingLength]);
+  }, [calculateSwings, chartSettings.bos.swingLength]);
 
   // *** Helper functions removed - using imported versions from @/lib/strategies ***
 
@@ -2067,7 +2067,7 @@ useEffect(() => {
     // DEBUG: Log exactly what swing length we're using
     console.log('🔍 findPreviousSwingLevels CALLED:', {
       receivedSwingLength: customSwingLength,
-      defaultSwingLength: swingLength,
+      defaultSwingLength: chartSettings.legacy.swingLength,
       actuallyUsing: swingLengthToUse,
       direction: direction.toUpperCase(),
       backtestMode: endIndex !== undefined ? `YES (candle ${endIndex + 1}/${data.length})` : 'NO (live)',
@@ -2197,7 +2197,7 @@ useEffect(() => {
       useConfirmCandles?: boolean;
       trendFilter?: 'none' | 'ema' | 'structure' | 'both';
       directionFilter?: 'both' | 'bull' | 'bear';
-      tpslConfig?: typeof liqGrabTPSL;
+      tpslConfig?: typeof strategySettings.liquidityGrab.tpsl;
     }
   ): TradeSignal | null => {
     // Get VWAP values if needed
@@ -2216,19 +2216,19 @@ useEffect(() => {
     }
 
     return generateLiquidityGrabSignalCore(data, {
-      enabled: bypassToggle || stratLiquidityGrab,
-      swingLength: overrideSettings?.swingLength ?? liqGrabSwingLength,
-      trendFilter: overrideSettings?.trendFilter ?? liqGrabTrendFilter,
-      directionFilter: overrideSettings?.directionFilter ?? liqGrabDirectionFilter,
-      tpslConfig: overrideSettings?.tpslConfig ?? liqGrabTPSL,
-      tpSwingLength: liqGrabTPSwingLength,
-      accountSize,
-      riskPercent,
+      enabled: bypassToggle || strategySettings.liquidityGrab.enabled,
+      swingLength: overrideSettings?.swingLength ?? strategySettings.liquidityGrab.swingLength,
+      trendFilter: overrideSettings?.trendFilter ?? strategySettings.liquidityGrab.trendFilter,
+      directionFilter: overrideSettings?.directionFilter ?? strategySettings.liquidityGrab.directionFilter,
+      tpslConfig: overrideSettings?.tpslConfig ?? strategySettings.liquidityGrab.tpsl,
+      tpSwingLength: strategySettings.liquidityGrab.tpSwingLength,
+      accountSize: strategySettings.risk.accountSize,
+      riskPercent: strategySettings.risk.riskPercent,
       bias,
       structureTrend,
       vwapValues
     }, bypassToggle);
-  }, [stratLiquidityGrab, liqGrabSwingLength, liqGrabDirectionFilter, liqGrabTrendFilter, bias, structureTrend, liqGrabTPSL, liqGrabTPSwingLength, accountSize, riskPercent, candles, indicators.vwap, calculatePeriodicVWAP, calculateRollingVWAP]);
+  }, [strategySettings.liquidityGrab.enabled, strategySettings.liquidityGrab.swingLength, strategySettings.liquidityGrab.directionFilter, strategySettings.liquidityGrab.trendFilter, bias, structureTrend, strategySettings.liquidityGrab.tpsl, strategySettings.liquidityGrab.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, candles, indicators.vwap, calculatePeriodicVWAP, calculateRollingVWAP]);
 
   // Generate BOS Trend Follow signal - wrapper for extracted core function
   const generateBOSTrendSignal = useCallback((data: CandleData[]): TradeSignal | null => {
@@ -2247,96 +2247,96 @@ useEffect(() => {
     }
 
     return generateBOSTrendSignalCore(data, {
-      enabled: stratBOSTrend,
-      swingLength: bosSwingLength,
-      directionFilter: bosDirectionFilter,
-      trendFilter: bosTrendFilter,
-      tpslConfig: bosTPSL,
-      slSwingLength: bosSLSwingLength,
-      tpSwingLength: bosTPSwingLength,
-      accountSize,
-      riskPercent,
+      enabled: strategySettings.bosStructure.enabled,
+      swingLength: strategySettings.bosStructure.swingLength,
+      directionFilter: strategySettings.bosStructure.directionFilter,
+      trendFilter: strategySettings.bosStructure.trendFilter,
+      tpslConfig: strategySettings.bosStructure.tpsl,
+      slSwingLength: strategySettings.bosStructure.slSwingLength,
+      tpSwingLength: strategySettings.bosStructure.tpSwingLength,
+      accountSize: strategySettings.risk.accountSize,
+      riskPercent: strategySettings.risk.riskPercent,
       bias,
       structureTrend,
       vwapValues
     });
-  }, [stratBOSTrend, bosSwingLength, bosDirectionFilter, bosTrendFilter, bias, structureTrend, bosTPSL, bosSLSwingLength, bosTPSwingLength, accountSize, riskPercent, candles, indicators.vwap, calculatePeriodicVWAP, calculateRollingVWAP]);
+  }, [strategySettings.bosStructure.enabled, strategySettings.bosStructure.swingLength, strategySettings.bosStructure.directionFilter, strategySettings.bosStructure.trendFilter, bias, structureTrend, strategySettings.bosStructure.tpsl, strategySettings.bosStructure.slSwingLength, strategySettings.bosStructure.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, candles, indicators.vwap, calculatePeriodicVWAP, calculateRollingVWAP]);
 
   // Generate CHoCH + FVG signal - wrapper for extracted core function
   const generateChochFVGSignal = useCallback((data: CandleData[]): TradeSignal | null => {
     return generateChochFVGSignalCore(data, {
-      enabled: stratChochFVG,
-      volumeThreshold: chochFVGVolumeThreshold,
-      useFVGSizeFilter: chochUseFVGSizeFilter,
-      fvgMinSizeATR: chochFVGMinSizeATR,
-      tpslConfig: chochTPSL,
-      slSwingLength: chochSLSwingLength,
-      tpSwingLength: chochTPSwingLength,
-      accountSize,
-      riskPercent,
+      enabled: strategySettings.chochFvg.enabled,
+      volumeThreshold: strategySettings.chochFvg.fvgVolumeThreshold,
+      useFVGSizeFilter: strategySettings.chochFvg.useFVGSizeFilter,
+      fvgMinSizeATR: strategySettings.chochFvg.fvgMinSizeATR,
+      tpslConfig: strategySettings.chochFvg.tpsl,
+      slSwingLength: strategySettings.chochFvg.slSwingLength,
+      tpSwingLength: strategySettings.chochFvg.tpSwingLength,
+      accountSize: strategySettings.risk.accountSize,
+      riskPercent: strategySettings.risk.riskPercent,
       footprintData: [],
-      fvgVolumeThreshold: chochFVGVolumeThreshold
+      fvgVolumeThreshold: strategySettings.chochFvg.fvgVolumeThreshold
     });
-  }, [stratChochFVG, chochFVGVolumeThreshold, chochUseFVGSizeFilter, chochFVGMinSizeATR, chochTPSL, chochSLSwingLength, chochTPSwingLength, accountSize, riskPercent]);
+  }, [strategySettings.chochFvg.enabled, strategySettings.chochFvg.fvgVolumeThreshold, strategySettings.chochFvg.useFVGSizeFilter, strategySettings.chochFvg.fvgMinSizeATR, strategySettings.chochFvg.tpsl, strategySettings.chochFvg.slSwingLength, strategySettings.chochFvg.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent]);
 
   // Generate VWAP Trading signal - wrapper for extracted core function
   const generateVWAPTradingSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    // Skip if vwapType is 'session' as it's not supported by core function
-    if (vwapType === 'session') return null;
+    // Skip if strategySettings.vwapTrading.type is 'session' as it's not supported by core function
+    if (strategySettings.vwapTrading.type === 'session') return null;
     
     return generateVWAPTradingSignalCore(data, {
-      enabled: stratVWAPRejection,
-      vwapType: vwapType as 'daily' | 'weekly' | 'monthly' | 'rolling10' | 'rolling20' | 'rolling50',
-      threshold: vwapThreshold,
-      entryCandles: vwapEntryCandles,
-      tpslConfig: vwapTPSL,
-      tpSwingLength: vwapTPSwingLength,
-      accountSize,
-      riskPercent,
+      enabled: strategySettings.vwapTrading.enabled,
+      vwapType: strategySettings.vwapTrading.type as 'daily' | 'weekly' | 'monthly' | 'rolling10' | 'rolling20' | 'rolling50',
+      threshold: strategySettings.vwapTrading.threshold,
+      entryCandles: strategySettings.vwapTrading.entryCandles,
+      tpslConfig: strategySettings.vwapTrading.tpsl,
+      tpSwingLength: strategySettings.vwapTrading.tpSwingLength,
+      accountSize: strategySettings.risk.accountSize,
+      riskPercent: strategySettings.risk.riskPercent,
       directionFilter: (type: 'LONG' | 'SHORT') => checkDirectionFilter(type)
     });
-  }, [stratVWAPRejection, vwapType, vwapThreshold, vwapEntryCandles, vwapTPSL, vwapTPSwingLength, accountSize, riskPercent, checkDirectionFilter]);
+  }, [strategySettings.vwapTrading.enabled, strategySettings.vwapTrading.type, strategySettings.vwapTrading.threshold, strategySettings.vwapTrading.entryCandles, strategySettings.vwapTrading.tpsl, strategySettings.vwapTrading.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, checkDirectionFilter]);
 
   // Generate EMA Trading signal - wrapper for extracted core function
   const generateEMATradingSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    // Map emaEntryMode to the format expected by core function
+    // Map strategySettings.emaTrading.entryMode to the format expected by core function
     const mappedEntryMode: 'bounce' | 'cross' | 'trend' = 
-      emaEntryMode === 'trend_trade' ? 'trend' : emaEntryMode;
+      strategySettings.emaTrading.entryMode === 'trend_trade' ? 'trend' : strategySettings.emaTrading.entryMode;
     
     return generateEMATradingSignalCore(data, {
-      enabled: stratEMATrading,
+      enabled: strategySettings.emaTrading.enabled,
       entryMode: mappedEntryMode,
-      singlePeriod: emaSinglePeriod,
+      singlePeriod: strategySettings.emaTrading.singlePeriod,
       fastPeriod: indicators.ema.fastPeriod,
       slowPeriod: indicators.ema.slowPeriod,
-      threshold: emaThreshold,
-      tpslConfig: emaTradingTPSL,
-      slSwingLength: emaTradingSLSwingLength,
-      tpSwingLength: emaTradingTPSwingLength,
-      accountSize,
-      riskPercent,
+      threshold: strategySettings.emaTrading.threshold,
+      tpslConfig: strategySettings.emaTrading.tpsl,
+      slSwingLength: strategySettings.emaTrading.slSwingLength,
+      tpSwingLength: strategySettings.emaTrading.tpSwingLength,
+      accountSize: strategySettings.risk.accountSize,
+      riskPercent: strategySettings.risk.riskPercent,
       directionFilter: (type: 'LONG' | 'SHORT') => checkDirectionFilter(type)
     });
-  }, [stratEMATrading, emaEntryMode, emaSinglePeriod, indicators.ema.fastPeriod, indicators.ema.slowPeriod, emaThreshold, emaTradingTPSL, emaTradingSLSwingLength, emaTradingTPSwingLength, accountSize, riskPercent, checkDirectionFilter]);
+  }, [strategySettings.emaTrading.enabled, strategySettings.emaTrading.entryMode, strategySettings.emaTrading.singlePeriod, indicators.ema.fastPeriod, indicators.ema.slowPeriod, strategySettings.emaTrading.threshold, strategySettings.emaTrading.tpsl, strategySettings.emaTrading.slSwingLength, strategySettings.emaTrading.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, checkDirectionFilter]);
 
   // Generate R/S Flip signal - wrapper for extracted core function
   const generateRSFlipSignal = useCallback((data: CandleData[]): TradeSignal | null => {
     return generateRSFlipSignalCore(data, {
-      enabled: stratRSFlip,
-      retestCandles: rsFlipRetestCandles,
-      directionFilter: rsFlipDirectionFilter,
-      trendFilter: rsFlipTrendFilter,
+      enabled: strategySettings.rsFlip.enabled,
+      retestCandles: strategySettings.rsFlip.retestCandles,
+      directionFilter: strategySettings.rsFlip.directionFilter,
+      trendFilter: strategySettings.rsFlip.trendFilter,
       trendlineMinTouches: indicators.smc.trendlineMinTouches,
       trendlineTolerance: indicators.smc.trendlineTolerance,
       trendlinePivotLength: indicators.smc.trendlinePivotLength,
-      tpslConfig: rsFlipTPSL,
-      tpSwingLength: rsFlipTPSwingLength,
-      accountSize,
-      riskPercent,
+      tpslConfig: strategySettings.rsFlip.tpsl,
+      tpSwingLength: strategySettings.rsFlip.tpSwingLength,
+      accountSize: strategySettings.risk.accountSize,
+      riskPercent: strategySettings.risk.riskPercent,
       bias,
       structureTrend
     });
-  }, [stratRSFlip, rsFlipRetestCandles, rsFlipDirectionFilter, rsFlipTrendFilter, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, rsFlipTPSL, rsFlipTPSwingLength, accountSize, riskPercent, bias, structureTrend]);
+  }, [strategySettings.rsFlip.enabled, strategySettings.rsFlip.retestCandles, strategySettings.rsFlip.directionFilter, strategySettings.rsFlip.trendFilter, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, strategySettings.rsFlip.tpsl, strategySettings.rsFlip.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, bias, structureTrend]);
 
 
   // Master signal generator - checks all enabled strategies
@@ -2372,7 +2372,7 @@ useEffect(() => {
   const detectMarketAlerts = useCallback(() => {
     if (candles.length < 50) return;
     
-    const { bos, choch } = calculateBOSandCHoCH(candles, liqGrabSwingLength);
+    const { bos, choch } = calculateBOSandCHoCH(candles, strategySettings.liquidityGrab.swingLength);
     
     const newAlerts: MarketAlert[] = [];
     
@@ -2543,15 +2543,15 @@ useEffect(() => {
         } else {
           // Only check for bounces if it's NOT a cross
           // VWAP Bounces: enters VWAP zone, close stays on same side (AND previous close was same side)
-          const vwapZone = vwapValue * (vwapThreshold / 100);
+          const vwapZone = vwapValue * (strategySettings.vwapTrading.threshold / 100);
           
           // Bullish bounce: wick enters VWAP zone from below, close above zone, previous close above zone
           const enteredZoneFromBelow = candle.low <= vwapValue + vwapZone && candle.low >= vwapValue - vwapZone;
           const closedAboveZone = candle.close > vwapValue + vwapZone;
-          const prevClosedAboveZone = prevCandle.close > prevVwapValue + (prevVwapValue * (vwapThreshold / 100));
+          const prevClosedAboveZone = prevCandle.close > prevVwapValue + (prevVwapValue * (strategySettings.vwapTrading.threshold / 100));
           
           if (enteredZoneFromBelow && closedAboveZone && prevClosedAboveZone) {
-            console.log(`🟢 VWAP Bullish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${vwapThreshold}%`);
+            console.log(`🟢 VWAP Bullish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${strategySettings.vwapTrading.threshold}%`);
             newAlerts.push({
               id: `alert_${candle.time}_VWAP_BOUNCE_BULL`,
               time: candle.time,
@@ -2565,10 +2565,10 @@ useEffect(() => {
           // Bearish bounce: wick enters VWAP zone from above, close below zone, previous close below zone
           const enteredZoneFromAbove = candle.high >= vwapValue - vwapZone && candle.high <= vwapValue + vwapZone;
           const closedBelowZone = candle.close < vwapValue - vwapZone;
-          const prevClosedBelowZone = prevCandle.close < prevVwapValue - (prevVwapValue * (vwapThreshold / 100));
+          const prevClosedBelowZone = prevCandle.close < prevVwapValue - (prevVwapValue * (strategySettings.vwapTrading.threshold / 100));
           
           if (enteredZoneFromAbove && closedBelowZone && prevClosedBelowZone) {
-            console.log(`🔴 VWAP Bearish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${vwapThreshold}%`);
+            console.log(`🔴 VWAP Bearish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${strategySettings.vwapTrading.threshold}%`);
             newAlerts.push({
               id: `alert_${candle.time}_VWAP_BOUNCE_BEAR`,
               time: candle.time,
@@ -3192,76 +3192,76 @@ useEffect(() => {
     // Sort by time descending (most recent first) and keep last 20
     const sortedAlerts = newAlerts.sort((a, b) => b.time - a.time).slice(0, 20);
     setMarketAlerts(sortedAlerts);
-  }, [candles, liqGrabSwingLength, calculateBOSandCHoCH, calculateFVGs, isActiveFVG, calculatePeriodicVWAP, vwapThreshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergences, cvdSpikeEnabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
+  }, [candles, strategySettings.liquidityGrab.swingLength, calculateBOSandCHoCH, calculateFVGs, isActiveFVG, calculatePeriodicVWAP, strategySettings.vwapTrading.threshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergences, cvdSpikeEnabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
 
   // Wrapper for simulateTrade to pass all necessary dependencies
   const simulateTradeWrapper = useCallback((signal: TradeSignal, startIdx: number, data: CandleData[]): BacktestTrade | null => {
     return simulateTrade(signal, startIdx, data, {
-      vwapType,
+      vwapType: strategySettings.vwapTrading.type,
       commissionRate: 0.001,
       slippageBps: 0.0005,
-      liqGrabTPSL,
-      bosTPSL,
-      chochTPSL,
-      vwapTPSL,
-      rsFlipTPSL,
-      emaTradingTPSL,
-      chochTPSwingLength,
-      liqGrabTPSwingLength,
+      liqGrabTPSL: strategySettings.liquidityGrab.tpsl,
+      bosTPSL: strategySettings.bosStructure.tpsl,
+      chochTPSL: strategySettings.chochFvg.tpsl,
+      vwapTPSL: strategySettings.vwapTrading.tpsl,
+      rsFlipTPSL: strategySettings.rsFlip.tpsl,
+      emaTradingTPSL: strategySettings.emaTrading.tpsl,
+      chochTPSwingLength: strategySettings.chochFvg.tpSwingLength,
+      liqGrabTPSwingLength: strategySettings.liquidityGrab.tpSwingLength,
     });
-  }, [vwapType, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, rsFlipTPSL, emaTradingTPSL, chochTPSwingLength, liqGrabTPSwingLength]);
+  }, [strategySettings.vwapTrading.type, strategySettings.liquidityGrab.tpsl, strategySettings.bosStructure.tpsl, strategySettings.chochFvg.tpsl, strategySettings.vwapTrading.tpsl, strategySettings.rsFlip.tpsl, strategySettings.emaTrading.tpsl, strategySettings.chochFvg.tpSwingLength, strategySettings.liquidityGrab.tpSwingLength]);
   // Generate all combinations of bot configurations for auto-backtest
   const generateAutoBacktestCombinations = useCallback((): any[] => {
     const combinations: any[] = [];
     
     // Generate arrays from ranges for strategy parameters
-    const swingLengthValues = generateRangeValues(swingLengthRange.min, swingLengthRange.max, swingLengthRange.step);
-    const wickRatioValues = generateRangeValues(wickRatioRange.min, wickRatioRange.max, wickRatioRange.step);
-    const confirmCandlesValues = generateRangeValues(confirmCandlesRange.min, confirmCandlesRange.max, confirmCandlesRange.step);
+    const swingLengthValues = generateRangeValues(backtestSettings.ranges.swingLength.min, backtestSettings.ranges.swingLength.max, backtestSettings.ranges.swingLength.step);
+    const wickRatioValues = generateRangeValues(backtestSettings.ranges.wickRatio.min, backtestSettings.ranges.wickRatio.max, backtestSettings.ranges.wickRatio.step);
+    const confirmCandlesValues = generateRangeValues(backtestSettings.ranges.confirmCandles.min, backtestSettings.ranges.confirmCandles.max, backtestSettings.ranges.confirmCandles.step);
     
     // TP1 parameter arrays - Liquidity Grab uses: Structure, Trailing, EMA, Fixed R:R
-    const tp1StructureSwingValues = testTP1Structure ? generateRangeValues(tp1SwingLengthRange.min, tp1SwingLengthRange.max, tp1SwingLengthRange.step) : [];
-    const tp1TrailingSwingValues = testTP1Trailing ? generateRangeValues(tp1TrailingSwingRange.min, tp1TrailingSwingRange.max, tp1TrailingSwingRange.step) : [];
-    const tp1EMAFastValues = testTP1EMA ? generateRangeValues(tp1EMAFastRange.min, tp1EMAFastRange.max, tp1EMAFastRange.step) : [];
-    const tp1EMASlowValues = testTP1EMA ? generateRangeValues(tp1EMASlowRange.min, tp1EMASlowRange.max, tp1EMASlowRange.step) : [];
-    const tp1RRValues = testTP1FixedRR ? generateRangeValues(tp1RRRange.min, tp1RRRange.max, tp1RRRange.step) : [];
+    const tp1StructureSwingValues = backtestSettings.parameterTests.tp1.structure ? generateRangeValues(backtestSettings.ranges.tp1SwingLength.min, backtestSettings.ranges.tp1SwingLength.max, backtestSettings.ranges.tp1SwingLength.step) : [];
+    const tp1TrailingSwingValues = backtestSettings.parameterTests.tp1.trailing ? generateRangeValues(backtestSettings.ranges.tp1TrailingSwing.min, backtestSettings.ranges.tp1TrailingSwing.max, backtestSettings.ranges.tp1TrailingSwing.step) : [];
+    const tp1EMAFastValues = backtestSettings.parameterTests.tp1.ema ? generateRangeValues(backtestSettings.ranges.tp1EMAFast.min, backtestSettings.ranges.tp1EMAFast.max, backtestSettings.ranges.tp1EMAFast.step) : [];
+    const tp1EMASlowValues = backtestSettings.parameterTests.tp1.ema ? generateRangeValues(backtestSettings.ranges.tp1EMASlow.min, backtestSettings.ranges.tp1EMASlow.max, backtestSettings.ranges.tp1EMASlow.step) : [];
+    const tp1RRValues = backtestSettings.parameterTests.tp1.fixedRR ? generateRangeValues(backtestSettings.ranges.tp1RR.min, backtestSettings.ranges.tp1RR.max, backtestSettings.ranges.tp1RR.step) : [];
     
     // TP2 parameter arrays
-    const tp2StructureSwingValues = testTP2Structure ? generateRangeValues(tp2SwingLengthRange.min, tp2SwingLengthRange.max, tp2SwingLengthRange.step) : [];
-    const tp2TrailingSwingValues = testTP2Trailing ? generateRangeValues(tp2TrailingSwingRange.min, tp2TrailingSwingRange.max, tp2TrailingSwingRange.step) : [];
-    const tp2EMAFastValues = testTP2EMA ? generateRangeValues(tp2EMAFastRange.min, tp2EMAFastRange.max, tp2EMAFastRange.step) : [];
-    const tp2EMASlowValues = testTP2EMA ? generateRangeValues(tp2EMASlowRange.min, tp2EMASlowRange.max, tp2EMASlowRange.step) : [];
-    const tp2RRValues = testTP2FixedRR ? generateRangeValues(tp2RRRange.min, tp2RRRange.max, tp2RRRange.step) : [];
+    const tp2StructureSwingValues = backtestSettings.parameterTests.tp2.structure ? generateRangeValues(backtestSettings.ranges.tp2SwingLength.min, backtestSettings.ranges.tp2SwingLength.max, backtestSettings.ranges.tp2SwingLength.step) : [];
+    const tp2TrailingSwingValues = backtestSettings.parameterTests.tp2.trailing ? generateRangeValues(backtestSettings.ranges.tp2TrailingSwing.min, backtestSettings.ranges.tp2TrailingSwing.max, backtestSettings.ranges.tp2TrailingSwing.step) : [];
+    const tp2EMAFastValues = backtestSettings.parameterTests.tp2.ema ? generateRangeValues(backtestSettings.ranges.tp2EMAFast.min, backtestSettings.ranges.tp2EMAFast.max, backtestSettings.ranges.tp2EMAFast.step) : [];
+    const tp2EMASlowValues = backtestSettings.parameterTests.tp2.ema ? generateRangeValues(backtestSettings.ranges.tp2EMASlow.min, backtestSettings.ranges.tp2EMASlow.max, backtestSettings.ranges.tp2EMASlow.step) : [];
+    const tp2RRValues = backtestSettings.parameterTests.tp2.fixedRR ? generateRangeValues(backtestSettings.ranges.tp2RR.min, backtestSettings.ranges.tp2RR.max, backtestSettings.ranges.tp2RR.step) : [];
     
     // TP3 parameter arrays
-    const tp3StructureSwingValues = testTP3Structure ? generateRangeValues(tp3SwingLengthRange.min, tp3SwingLengthRange.max, tp3SwingLengthRange.step) : [];
-    const tp3TrailingSwingValues = testTP3Trailing ? generateRangeValues(tp3TrailingSwingRange.min, tp3TrailingSwingRange.max, tp3TrailingSwingRange.step) : [];
-    const tp3EMAFastValues = testTP3EMA ? generateRangeValues(tp3EMAFastRange.min, tp3EMAFastRange.max, tp3EMAFastRange.step) : [];
-    const tp3EMASlowValues = testTP3EMA ? generateRangeValues(tp3EMASlowRange.min, tp3EMASlowRange.max, tp3EMASlowRange.step) : [];
-    const tp3RRValues = testTP3FixedRR ? generateRangeValues(tp3RRRange.min, tp3RRRange.max, tp3RRRange.step) : [];
+    const tp3StructureSwingValues = backtestSettings.parameterTests.tp3.structure ? generateRangeValues(backtestSettings.ranges.tp3SwingLength.min, backtestSettings.ranges.tp3SwingLength.max, backtestSettings.ranges.tp3SwingLength.step) : [];
+    const tp3TrailingSwingValues = backtestSettings.parameterTests.tp3.trailing ? generateRangeValues(backtestSettings.ranges.tp3TrailingSwing.min, backtestSettings.ranges.tp3TrailingSwing.max, backtestSettings.ranges.tp3TrailingSwing.step) : [];
+    const tp3EMAFastValues = backtestSettings.parameterTests.tp3.ema ? generateRangeValues(backtestSettings.ranges.tp3EMAFast.min, backtestSettings.ranges.tp3EMAFast.max, backtestSettings.ranges.tp3EMAFast.step) : [];
+    const tp3EMASlowValues = backtestSettings.parameterTests.tp3.ema ? generateRangeValues(backtestSettings.ranges.tp3EMASlow.min, backtestSettings.ranges.tp3EMASlow.max, backtestSettings.ranges.tp3EMASlow.step) : [];
+    const tp3RRValues = backtestSettings.parameterTests.tp3.fixedRR ? generateRangeValues(backtestSettings.ranges.tp3RR.min, backtestSettings.ranges.tp3RR.max, backtestSettings.ranges.tp3RR.step) : [];
     
     // SL parameter arrays
-    const slATRValues = testSLATR ? generateRangeValues(slATRRange.min, slATRRange.max, slATRRange.step) : [];
-    const slStructureSwingValues = testSLStructure ? generateRangeValues(slSwingLengthRange.min, slSwingLengthRange.max, slSwingLengthRange.step) : [];
-    const slFixedDistanceValues = testSLFixedDistance ? generateRangeValues(slFixedDistanceRange.min, slFixedDistanceRange.max, slFixedDistanceRange.step) : [];
+    const slATRValues = backtestSettings.parameterTests.sl.atr ? generateRangeValues(backtestSettings.ranges.slATR.min, backtestSettings.ranges.slATR.max, backtestSettings.ranges.slATR.step) : [];
+    const slStructureSwingValues = backtestSettings.parameterTests.sl.structure ? generateRangeValues(backtestSettings.ranges.slSwingLength.min, backtestSettings.ranges.slSwingLength.max, backtestSettings.ranges.slSwingLength.step) : [];
+    const slFixedDistanceValues = backtestSettings.parameterTests.sl.fixedDistance ? generateRangeValues(backtestSettings.ranges.slFixedDistance.min, backtestSettings.ranges.slFixedDistance.max, backtestSettings.ranges.slFixedDistance.step) : [];
     
     // Combine all TP1 types (include positionPercent from current config)
     const tp1Configs: any[] = [];
-    tp1StructureSwingValues.forEach(v => tp1Configs.push({ type: 'structure', swingLength: v, positionPercent: liqGrabTPSL.tp1.positionPercent }));
-    tp1TrailingSwingValues.forEach(v => tp1Configs.push({ type: 'trailing', trailingSwingLength: v, positionPercent: liqGrabTPSL.tp1.positionPercent }));
+    tp1StructureSwingValues.forEach(v => tp1Configs.push({ type: 'structure', swingLength: v, positionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent }));
+    tp1TrailingSwingValues.forEach(v => tp1Configs.push({ type: 'trailing', trailingSwingLength: v, positionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent }));
     // For EMA, create combinations of fast and slow
     tp1EMAFastValues.forEach(fast => {
       tp1EMASlowValues.forEach(slow => {
         if (slow > fast) { // Ensure slow > fast
-          tp1Configs.push({ type: 'ema', emaFast: fast, emaSlow: slow, positionPercent: liqGrabTPSL.tp1.positionPercent });
+          tp1Configs.push({ type: 'ema', emaFast: fast, emaSlow: slow, positionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent });
         }
       });
     });
-    tp1RRValues.forEach(v => tp1Configs.push({ type: 'fixed_rr', fixedRR: v, positionPercent: liqGrabTPSL.tp1.positionPercent }));
+    tp1RRValues.forEach(v => tp1Configs.push({ type: 'fixed_rr', fixedRR: v, positionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent }));
     
     // Combine all TP2 types (include positionPercent from current config)
     const tp2Configs: any[] = [];
-    const tp2PositionPercent = liqGrabTPSL.tp2?.positionPercent || 30;
+    const tp2PositionPercent = strategySettings.liquidityGrab.tpsl.tp2?.positionPercent || 30;
     tp2StructureSwingValues.forEach(v => tp2Configs.push({ type: 'structure', swingLength: v, positionPercent: tp2PositionPercent }));
     tp2TrailingSwingValues.forEach(v => tp2Configs.push({ type: 'trailing', trailingSwingLength: v, positionPercent: tp2PositionPercent }));
     tp2EMAFastValues.forEach(fast => {
@@ -3275,7 +3275,7 @@ useEffect(() => {
     
     // Combine all TP3 types (include positionPercent from current config)
     const tp3Configs: any[] = [];
-    const tp3PositionPercent = liqGrabTPSL.tp3?.positionPercent || 20;
+    const tp3PositionPercent = strategySettings.liquidityGrab.tpsl.tp3?.positionPercent || 20;
     tp3StructureSwingValues.forEach(v => tp3Configs.push({ type: 'structure', swingLength: v, positionPercent: tp3PositionPercent }));
     tp3TrailingSwingValues.forEach(v => tp3Configs.push({ type: 'trailing', trailingSwingLength: v, positionPercent: tp3PositionPercent }));
     tp3EMAFastValues.forEach(fast => {
@@ -3294,12 +3294,12 @@ useEffect(() => {
     slFixedDistanceValues.forEach(v => slConfigs.push({ type: 'fixed_distance', distancePercent: v }));
     
     // Boolean filter combinations - only test when checkbox is enabled
-    const wickFilterOptions = testUseWickFilter ? [true] : [false];
-    const confirmCandlesOptions = testUseConfirmCandles ? [true] : [false];
+    const wickFilterOptions = backtestSettings.parameterTests.strategy.useWickFilter ? [true] : [false];
+    const confirmCandlesOptions = backtestSettings.parameterTests.strategy.useConfirmCandles ? [true] : [false];
     
     // Generate all combinations
-    for (const trendFilter of testTrendFilters) {
-      for (const direction of testDirections) {
+    for (const trendFilter of backtestSettings.parameterTests.strategy.trendFilters) {
+      for (const direction of backtestSettings.parameterTests.strategy.directions) {
         for (const useWickFilter of wickFilterOptions) {
           for (const useConfirmCandles of confirmCandlesOptions) {
             for (const swingLength of swingLengthValues) {
@@ -3310,14 +3310,14 @@ useEffect(() => {
                 const confirmCandlesToTest = useConfirmCandles ? confirmCandlesValues : [0];
                 for (const confirmCandles of confirmCandlesToTest) {
                   for (const tp1 of tp1Configs.length > 0 ? tp1Configs : [null]) {
-                    for (const tp2 of liqGrabTPSL.numTPs >= 2 && tp2Configs.length > 0 ? tp2Configs : [null]) {
-                      for (const tp3 of liqGrabTPSL.numTPs >= 3 && tp3Configs.length > 0 ? tp3Configs : [null]) {
+                    for (const tp2 of strategySettings.liquidityGrab.tpsl.numTPs >= 2 && tp2Configs.length > 0 ? tp2Configs : [null]) {
+                      for (const tp3 of strategySettings.liquidityGrab.tpsl.numTPs >= 3 && tp3Configs.length > 0 ? tp3Configs : [null]) {
                         for (const sl of slConfigs) {
                           combinations.push({
-                            numTPs: liqGrabTPSL.numTPs,
+                            numTPs: strategySettings.liquidityGrab.tpsl.numTPs,
                             trendFilter,
                             direction,
-                            swingLength,
+                            swingLength: chartSettings.legacy.swingLength,
                             wickRatio,
                             confirmCandles,
                             useWickFilter,
@@ -3342,18 +3342,18 @@ useEffect(() => {
     console.log(`🧪 Generated ${combinations.length} test combinations`);
     return combinations;
   }, [
-    testTrendFilters, testDirections,
-    swingLengthRange, wickRatioRange, confirmCandlesRange,
-    testUseWickFilter, testUseConfirmCandles,
-    liqGrabTPSL.numTPs, liqGrabTPSL.tp1.positionPercent, liqGrabTPSL.tp2, liqGrabTPSL.tp3,
-    testTP1Structure, testTP1Trailing, testTP1EMA, testTP1FixedRR,
-    tp1SwingLengthRange, tp1TrailingSwingRange, tp1EMAFastRange, tp1EMASlowRange, tp1RRRange,
-    testTP2Structure, testTP2Trailing, testTP2EMA, testTP2FixedRR,
-    tp2SwingLengthRange, tp2TrailingSwingRange, tp2EMAFastRange, tp2EMASlowRange, tp2RRRange,
-    testTP3Structure, testTP3Trailing, testTP3EMA, testTP3FixedRR,
-    tp3SwingLengthRange, tp3TrailingSwingRange, tp3EMAFastRange, tp3EMASlowRange, tp3RRRange,
-    testSLATR, testSLStructure, testSLFixedDistance,
-    slATRRange, slSwingLengthRange, slFixedDistanceRange
+    backtestSettings.parameterTests.strategy.trendFilters, backtestSettings.parameterTests.strategy.directions,
+    backtestSettings.ranges.swingLength, backtestSettings.ranges.wickRatio, backtestSettings.ranges.confirmCandles,
+    backtestSettings.parameterTests.strategy.useWickFilter, backtestSettings.parameterTests.strategy.useConfirmCandles,
+    /* FIXME */ strategySettings.liquidityGrab.tpsl.numTPs, strategySettings.liquidityGrab.tpsl.tp1.positionPercent, strategySettings.liquidityGrab.tpsl.tp2, strategySettings.liquidityGrab.tpsl.tp3,
+    backtestSettings.parameterTests.tp1.structure, backtestSettings.parameterTests.tp1.trailing, backtestSettings.parameterTests.tp1.ema, backtestSettings.parameterTests.tp1.fixedRR,
+    backtestSettings.ranges.tp1SwingLength, backtestSettings.ranges.tp1TrailingSwing, backtestSettings.ranges.tp1EMAFast, backtestSettings.ranges.tp1EMASlow, backtestSettings.ranges.tp1RR,
+    backtestSettings.parameterTests.tp2.structure, backtestSettings.parameterTests.tp2.trailing, backtestSettings.parameterTests.tp2.ema, backtestSettings.parameterTests.tp2.fixedRR,
+    backtestSettings.ranges.tp2SwingLength, backtestSettings.ranges.tp2TrailingSwing, backtestSettings.ranges.tp2EMAFast, backtestSettings.ranges.tp2EMASlow, backtestSettings.ranges.tp2RR,
+    backtestSettings.parameterTests.tp3.structure, backtestSettings.parameterTests.tp3.trailing, backtestSettings.parameterTests.tp3.ema, backtestSettings.parameterTests.tp3.fixedRR,
+    backtestSettings.ranges.tp3SwingLength, backtestSettings.ranges.tp3TrailingSwing, backtestSettings.ranges.tp3EMAFast, backtestSettings.ranges.tp3EMASlow, backtestSettings.ranges.tp3RR,
+    backtestSettings.parameterTests.sl.atr, backtestSettings.parameterTests.sl.structure, backtestSettings.parameterTests.sl.fixedDistance,
+    backtestSettings.ranges.slATR, backtestSettings.ranges.slSwingLength, backtestSettings.ranges.slFixedDistance
   ]);
 
   // Run auto-backtest with all combinations
@@ -3365,9 +3365,9 @@ useEffect(() => {
     
     const startTime = performance.now();
     
-    setLiqGrabAutoTestRunning(true);
-    setLiqGrabAutoTestResults([]);
-    setLiqGrabAutoTestProgress(0);
+    backtestSettings.autoTest.setRunning(true);
+    backtestSettings.autoTest.setResults([]);
+    backtestSettings.autoTest.setProgress(0);
     
     const combinations = generateAutoBacktestCombinations();
     const results: AutoBacktestResult[] = [];
@@ -3379,7 +3379,7 @@ useEffect(() => {
       const config = combinations[i];
       
       // Update progress
-      setLiqGrabAutoTestProgress(Math.round((i / combinations.length) * 100));
+      backtestSettings.autoTest.setProgress(Math.round((i / combinations.length) * 100));
       
       // Run a simplified backtest for this config (config passed directly to signal generator)
       const allSignals: TradeSignal[] = [];
@@ -3392,7 +3392,7 @@ useEffect(() => {
         
         const dataSlice = candles.slice(0, j + 1);
         const liqSignal = generateLiquidityGrabSignal(dataSlice, true, {
-          swingLength: config.swingLength,
+          swingLength: config.chartSettings.legacy.swingLength,
           wickRatio: config.wickRatio,
           confirmCandles: config.confirmCandles,
           useWickFilter: config.useWickFilter,
@@ -3423,8 +3423,8 @@ useEffect(() => {
       const grossLoss = Math.abs(completedTrades.filter(t => !t.winner).reduce((sum, t) => sum + t.profitLoss, 0));
       const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0;
       
-      const finalBalance = accountSize + totalPL;
-      const returnPercent = ((finalBalance - accountSize) / accountSize) * 100;
+      const finalBalance = strategySettings.risk.accountSize + totalPL;
+      const returnPercent = ((finalBalance - strategySettings.risk.accountSize) / strategySettings.risk.accountSize) * 100;
       
       const backtestResults: BacktestResults = {
         trades: completedTrades,
@@ -3435,8 +3435,8 @@ useEffect(() => {
         avgRR,
         totalPL,
         profitFactor,
-        accountSize,
-        riskPerTrade: riskPercent,
+        accountSize: strategySettings.risk.accountSize,
+        riskPerTrade: strategySettings.risk.riskPercent,
         avgPositionSize: 0,
         finalBalance,
         returnPercent
@@ -3474,7 +3474,7 @@ useEffect(() => {
         config,
         results: backtestResults,
         configDescription: desc,
-        swingLength: config.swingLength,
+        swingLength: config.chartSettings.legacy.swingLength,
         wickRatio: config.wickRatio || 100,
         confirmCandles: config.confirmCandles || 0,
         useWickFilter: config.useWickFilter || false,
@@ -3492,14 +3492,14 @@ useEffect(() => {
     
     // Track duration and combo count for future time estimates
     const duration = performance.now() - startTime;
-    setLiqGrabAutoTestDurations(prev => {
+    backtestSettings.autoTest.setDurations(prev => {
       const updated = [...prev, { duration, combos: combinations.length }];
       return updated.slice(-5); // Keep only last 5
     });
     
-    setLiqGrabAutoTestResults(results);
-    setLiqGrabAutoTestProgress(100);
-    setLiqGrabAutoTestRunning(false);
+    backtestSettings.autoTest.setResults(results);
+    backtestSettings.autoTest.setProgress(100);
+    backtestSettings.autoTest.setRunning(false);
     
     console.log('✅ Auto-backtest complete!', {
       totalConfigs: results.length,
@@ -3507,29 +3507,29 @@ useEffect(() => {
       bestConfig: results[0]?.configDescription,
       duration: `${(duration / 1000).toFixed(1)}s`
     });
-  }, [candles, generateAutoBacktestCombinations, generateLiquidityGrabSignal, simulateTradeWrapper, liqGrabTPSL, accountSize, riskPercent]);
+  }, [candles, generateAutoBacktestCombinations, generateLiquidityGrabSignal, simulateTradeWrapper, strategySettings.liquidityGrab.tpsl, strategySettings.risk.accountSize, strategySettings.risk.riskPercent]);
 
   // Apply all settings from an auto-backtest result
   const applyAutoBacktestConfig = useCallback((result: AutoBacktestResult) => {
     // Apply TP/SL configuration
-    setLiqGrabTPSL(result.config);
+    strategySettings.liquidityGrab.setTpsl(result.config);
     
     // Apply strategy parameters
-    setLiqGrabSwingLength(result.swingLength);
-    setLiqGrabSwingLengthInput(result.swingLength.toString());
-    setLiqGrabTrendFilter(result.trendFilter);
+    strategySettings.liquidityGrab.setSwingLength(result.swingLength);
+    strategySettings.liquidityGrab.setSwingLengthInput(result.swingLength.toString());
+    strategySettings.liquidityGrab.setTrendFilter(result.trendFilter);
     // Convert 'long'/'short' to 'bull'/'bear'
     const directionFilter = result.allowedDirections === 'long' ? 'bull' : result.allowedDirections === 'short' ? 'bear' : 'both';
-    setLiqGrabDirectionFilter(directionFilter);
+    strategySettings.liquidityGrab.setDirectionFilter(directionFilter);
     
     // Apply TP/SL swing lengths from config if they're structure type
     if (result.config.tp1.type === 'structure' && result.config.tp1.swingLength) {
-      setLiqGrabTPSwingLength(result.config.tp1.swingLength);
-      setLiqGrabTPSwingLengthInput(result.config.tp1.swingLength.toString());
+      strategySettings.liquidityGrab.setTpSwingLength(result.config.tp1.swingLength);
+      strategySettings.liquidityGrab.setTpSwingLengthInput(result.config.tp1.swingLength.toString());
     }
     if (result.config.sl.type === 'structure' && result.config.sl.swingLength) {
-      setLiqGrabSLSwingLength(result.config.sl.swingLength);
-      setLiqGrabSLSwingLengthInput(result.config.sl.swingLength.toString());
+      strategySettings.liquidityGrab.setSlSwingLength(result.config.sl.swingLength);
+      strategySettings.liquidityGrab.setSlSwingLengthInput(result.config.sl.swingLength.toString());
     }
     
     // Show success notification
@@ -3540,7 +3540,7 @@ useEffect(() => {
     });
     
     console.log('✅ Applied auto-backtest configuration:', {
-      swingLength: result.swingLength,
+      swingLength: result.chartSettings.legacy.swingLength,
       trendFilter: result.trendFilter,
       allowedDirections: result.allowedDirections,
       tpsl: result.config
@@ -3550,12 +3550,12 @@ useEffect(() => {
   // Save current Liquidity Grab settings as default
   const saveAsDefault = useCallback(() => {
     const defaultSettings = {
-      swingLength: liqGrabSwingLength,
-      trendFilter: liqGrabTrendFilter,
-      directionFilter: liqGrabDirectionFilter,
-      tpSwingLength: liqGrabTPSwingLength,
-      slSwingLength: liqGrabSLSwingLength,
-      tpslConfig: liqGrabTPSL
+      swingLength: strategySettings.liquidityGrab.swingLength,
+      trendFilter: strategySettings.liquidityGrab.trendFilter,
+      directionFilter: strategySettings.liquidityGrab.directionFilter,
+      tpSwingLength: strategySettings.liquidityGrab.tpSwingLength,
+      slSwingLength: strategySettings.liquidityGrab.slSwingLength,
+      tpslConfig: strategySettings.liquidityGrab.tpsl
     };
     
     localStorage.setItem('liqGrabDefaultSettings', JSON.stringify(defaultSettings));
@@ -3567,7 +3567,7 @@ useEffect(() => {
     });
     
     console.log('💾 Saved default settings:', defaultSettings);
-  }, [liqGrabSwingLength, liqGrabTrendFilter, liqGrabDirectionFilter, liqGrabTPSwingLength, liqGrabSLSwingLength, liqGrabTPSL, toast]);
+  }, [strategySettings.liquidityGrab.swingLength, strategySettings.liquidityGrab.trendFilter, strategySettings.liquidityGrab.directionFilter, strategySettings.liquidityGrab.tpSwingLength, strategySettings.liquidityGrab.slSwingLength, strategySettings.liquidityGrab.tpsl, toast]);
 
   // Load default settings from localStorage
   const loadDefaultSettings = useCallback(() => {
@@ -3577,37 +3577,37 @@ useEffect(() => {
         const defaultSettings = JSON.parse(saved);
         
         if (defaultSettings.swingLength !== undefined) {
-          setLiqGrabSwingLength(defaultSettings.swingLength);
-          setLiqGrabSwingLengthInput(defaultSettings.swingLength.toString());
+          strategySettings.liquidityGrab.setSwingLength(defaultSettings.swingLength);
+          strategySettings.liquidityGrab.setSwingLengthInput(defaultSettings.swingLength.toString());
         }
         if (defaultSettings.trendFilter !== undefined) {
-          setLiqGrabTrendFilter(defaultSettings.trendFilter);
+          strategySettings.liquidityGrab.setTrendFilter(defaultSettings.trendFilter);
         }
         if (defaultSettings.directionFilter !== undefined) {
-          setLiqGrabDirectionFilter(defaultSettings.directionFilter);
+          strategySettings.liquidityGrab.setDirectionFilter(defaultSettings.directionFilter);
         }
         if (defaultSettings.tpSwingLength !== undefined) {
-          setLiqGrabTPSwingLength(defaultSettings.tpSwingLength);
-          setLiqGrabTPSwingLengthInput(defaultSettings.tpSwingLength.toString());
+          strategySettings.liquidityGrab.setTpSwingLength(defaultSettings.tpSwingLength);
+          strategySettings.liquidityGrab.setTpSwingLengthInput(defaultSettings.tpSwingLength.toString());
         }
         if (defaultSettings.slSwingLength !== undefined) {
-          setLiqGrabSLSwingLength(defaultSettings.slSwingLength);
-          setLiqGrabSLSwingLengthInput(defaultSettings.slSwingLength.toString());
+          strategySettings.liquidityGrab.setSlSwingLength(defaultSettings.slSwingLength);
+          strategySettings.liquidityGrab.setSlSwingLengthInput(defaultSettings.slSwingLength.toString());
         }
         if (defaultSettings.tpslConfig !== undefined) {
-          setLiqGrabTPSL(defaultSettings.tpslConfig);
+          strategySettings.liquidityGrab.setTpsl(defaultSettings.tpslConfig);
           console.log('✅ TP/SL configuration loaded:', defaultSettings.tpslConfig);
           
           // Sync SL swing length from tpslConfig (this takes priority over the separate slSwingLength field)
           if (defaultSettings.tpslConfig.sl?.swingLength !== undefined) {
-            setLiqGrabSLSwingLength(defaultSettings.tpslConfig.sl.swingLength);
-            setLiqGrabSLSwingLengthInput(defaultSettings.tpslConfig.sl.swingLength.toString());
+            strategySettings.liquidityGrab.setSlSwingLength(defaultSettings.tpslConfig.sl.swingLength);
+            strategySettings.liquidityGrab.setSlSwingLengthInput(defaultSettings.tpslConfig.sl.swingLength.toString());
             console.log('✅ Synced SL swing length from tpslConfig:', defaultSettings.tpslConfig.sl.swingLength);
           }
           // Sync TP trailing swing length from tpslConfig if it exists
           if (defaultSettings.tpslConfig.tp1?.trailingSwingLength !== undefined) {
-            setLiqGrabTPSwingLength(defaultSettings.tpslConfig.tp1.trailingSwingLength);
-            setLiqGrabTPSwingLengthInput(defaultSettings.tpslConfig.tp1.trailingSwingLength.toString());
+            strategySettings.liquidityGrab.setTpSwingLength(defaultSettings.tpslConfig.tp1.trailingSwingLength);
+            strategySettings.liquidityGrab.setTpSwingLengthInput(defaultSettings.tpslConfig.tp1.trailingSwingLength.toString());
             console.log('✅ Synced TP trailing swing length from tpslConfig:', defaultSettings.tpslConfig.tp1.trailingSwingLength);
           }
         }
@@ -4007,8 +4007,8 @@ useEffect(() => {
 
   // Sort auto-backtest results based on selected column
   const sortedAutoBacktestResults = useMemo(() => {
-    const sorted = [...liqGrabAutoTestResults];
-    switch (liqGrabAutoTestSortBy) {
+    const sorted = [...backtestSettings.autoTest.results];
+    switch (backtestSettings.autoTest.sortBy) {
       case 'profit':
         return sorted.sort((a, b) => b.results.totalPL - a.results.totalPL);
       case 'winRate':
@@ -4020,14 +4020,14 @@ useEffect(() => {
       default:
         return sorted;
     }
-  }, [liqGrabAutoTestResults, liqGrabAutoTestSortBy]);
+  }, [backtestSettings.autoTest.results, backtestSettings.autoTest.sortBy]);
 
   // Determine which indicators are currently active
   const activeIndicators = useMemo(() => {
     const active = new Set<string>();
     
     // SMC indicators
-    if (indicators.smc.showBOS || indicators.smc.showCHoCH || indicators.smc.showFVG || stratLiquidityGrab || indicators.smc.showSwingPivots) {
+    if (indicators.smc.showBOS || indicators.smc.showCHoCH || indicators.smc.showFVG || strategySettings.liquidityGrab.enabled || indicators.smc.showSwingPivots) {
       active.add('smc');
     }
     
@@ -4054,7 +4054,7 @@ useEffect(() => {
     if (cvdSpikeEnabled) active.add('cvd');
     
     return active;
-  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, stratLiquidityGrab, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSpikeEnabled]);
+  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, strategySettings.liquidityGrab.enabled, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSpikeEnabled]);
 
   // Run backtest on historical data
   // NEW: Only allow 1 trade at a time - no overlapping trades
@@ -4093,10 +4093,10 @@ useEffect(() => {
         // Try to generate signals at this point in time (only if no trade is open)
         // Pass current state values as override to ensure manual backtest matches auto-backtest behavior
         const liqSignal = generateLiquidityGrabSignal(dataSlice, true, {
-          swingLength: liqGrabSwingLength,
-          trendFilter: liqGrabTrendFilter,
-          directionFilter: liqGrabDirectionFilter,
-          tpslConfig: liqGrabTPSL
+          swingLength: strategySettings.liquidityGrab.swingLength,
+          trendFilter: strategySettings.liquidityGrab.trendFilter,
+          directionFilter: strategySettings.liquidityGrab.directionFilter,
+          tpslConfig: strategySettings.liquidityGrab.tpsl
         });
         if (liqSignal && !allSignals.some(s => s.id === liqSignal.id)) {
           console.log('💰 Liquidity Grab trade signal at', new Date(candles[j].time * 1000).toLocaleString(), {
@@ -4188,8 +4188,8 @@ useEffect(() => {
     const avgPositionSize = completedTrades.length > 0
       ? allSignals.reduce((sum, s) => sum + s.quantity, 0) / allSignals.length
       : 0;
-    const finalBalance = accountSize + totalPL;
-    const returnPercent = (totalPL / accountSize) * 100;
+    const finalBalance = strategySettings.risk.accountSize + totalPL;
+    const returnPercent = (totalPL / strategySettings.risk.accountSize) * 100;
     
     const results: BacktestResults = {
       trades: completedTrades,
@@ -4200,16 +4200,16 @@ useEffect(() => {
       avgRR,
       totalPL,
       profitFactor: grossLosses > 0 ? grossWins / grossLosses : grossWins > 0 ? 999 : 0,
-      accountSize,
-      riskPerTrade: riskPercent,
+      accountSize: strategySettings.risk.accountSize,
+      riskPerTrade: strategySettings.risk.riskPercent,
       avgPositionSize,
       finalBalance,
       returnPercent,
     };
     
     // Analyze sweep detection vs trade execution (only for Liquidity Grab strategy)
-    if (stratLiquidityGrab) {
-      const { bos, choch } = calculateBOSandCHoCH(candles, liqGrabSwingLength);
+    if (strategySettings.liquidityGrab.enabled) {
+      const { bos, choch } = calculateBOSandCHoCH(candles, strategySettings.liquidityGrab.swingLength);
       const allSweeps = [...bos, ...choch].filter(e => e.isLiquidityGrab);
       const liqGrabTrades = completedTrades.filter(t => t.strategy === 'liquidity_grab');
       
@@ -4218,10 +4218,10 @@ useEffect(() => {
         tradesTaken: liqGrabTrades.length,
         sweepsNotTraded: allSweeps.length - liqGrabTrades.length,
         settings: {
-          swingLength: liqGrabSwingLength,
-          trendFilter: liqGrabTrendFilter,
-          directionFilter: liqGrabDirectionFilter,
-          numTPs: liqGrabTPSL.numTPs
+          swingLength: strategySettings.liquidityGrab.swingLength,
+          trendFilter: strategySettings.liquidityGrab.trendFilter,
+          directionFilter: strategySettings.liquidityGrab.directionFilter,
+          numTPs: strategySettings.liquidityGrab.tpsl.numTPs
         }
       });
       
@@ -4251,7 +4251,7 @@ useEffect(() => {
     
     tradingState.setBacktestResults(results);
     tradingState.setBacktesting(false);
-  }, [candles, generateLiquidityGrabSignal, generateChochFVGSignal, generateVWAPTradingSignal, generateEMATradingSignal, generateRSFlipSignal, generateBOSTrendSignal, simulateTradeWrapper, accountSize, riskPercent, liqGrabSwingLength, liqGrabTrendFilter, liqGrabDirectionFilter, stratLiquidityGrab, calculateBOSandCHoCH, liqGrabTPSL]);
+  }, [candles, generateLiquidityGrabSignal, generateChochFVGSignal, generateVWAPTradingSignal, generateEMATradingSignal, generateRSFlipSignal, generateBOSTrendSignal, simulateTradeWrapper, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, strategySettings.liquidityGrab.swingLength, strategySettings.liquidityGrab.trendFilter, strategySettings.liquidityGrab.directionFilter, strategySettings.liquidityGrab.enabled, calculateBOSandCHoCH, strategySettings.liquidityGrab.tpsl]);
 
   // Handle strategy generation
   // Fix chart when navigating back to page
@@ -4797,15 +4797,15 @@ useEffect(() => {
     }
     
     // Show liquidity sweeps on chart when the indicator is toggled (independent of bot strategy)
-    if (!stratLiquidityGrab) return;
+    if (!strategySettings.liquidityGrab.enabled) return;
 
     try {
-      const { bos, choch} = calculateBOSandCHoCH(candles, chartLiquiditySweepSwingLength);
+      const { bos, choch} = calculateBOSandCHoCH(candles, chartSettings.liquiditySweep.swingLength);
       
       const allSweeps = [...bos, ...choch].filter(e => e.isLiquidityGrab);
       
       console.log(`📊 Chart Display: Found ${allSweeps.length} liquidity sweeps out of ${bos.length + choch.length} total BOS/CHoCH`, {
-        swingLength: chartLiquiditySweepSwingLength
+        swingLength: chartSettings.liquiditySweep.swingLength
       });
       
       allSweeps.forEach(sweep => {
@@ -4831,7 +4831,7 @@ useEffect(() => {
     } catch (e) {
       console.error('Error drawing liquidity sweep lines:', e);
     }
-  }, [chartReady, candles, stratLiquidityGrab, chartLiquiditySweepSwingLength, calculateBOSandCHoCH]);
+  }, [chartReady, candles, strategySettings.liquidityGrab.enabled, chartSettings.liquiditySweep.chartSettings.legacy.swingLength, calculateBOSandCHoCH]);
 
   // Draw auto trendlines on chart
   useEffect(() => {
@@ -4951,9 +4951,9 @@ useEffect(() => {
     
     // Filter trades for replay mode - only show trades that have opened by current replay time
     const hasBacktestTrades = tradingState.backtestResults && tradingState.backtestResults.trades && tradingState.backtestResults.trades.length > 0;
-    const currentReplayTime = isReplayMode && candles.length > 0 ? candles[candles.length - 1].time : Infinity;
+    const currentReplayTime = replayMode.isReplayMode && candles.length > 0 ? candles[candles.length - 1].time : Infinity;
     const visibleTrades = hasBacktestTrades 
-      ? tradingState.backtestResults.trades.filter(trade => !isReplayMode || trade.entryTime <= currentReplayTime)
+      ? tradingState.backtestResults.trades.filter(trade => !replayMode.isReplayMode || trade.entryTime <= currentReplayTime)
       : [];
 
     // Add shaded zones and horizontal lines for each visible trade
@@ -4963,15 +4963,15 @@ useEffect(() => {
       // Determine numTPs based on strategy
       let numTPs = 1; // Default to 1 TP to be safe
       if (strategy === 'liquidity_grab') {
-        numTPs = liqGrabTPSL.numTPs;
+        numTPs = strategySettings.liquidityGrab.tpsl.numTPs;
       } else if (strategy === 'bos_trend') {
-        numTPs = bosTPSL.numTPs;
+        numTPs = strategySettings.bosStructure.tpsl.numTPs;
       } else if (strategy === 'choch_fvg') {
-        numTPs = chochTPSL.numTPs;
+        numTPs = strategySettings.chochFvg.tpsl.numTPs;
       } else if (strategy === 'vwap_rejection') {
-        numTPs = vwapTPSL.numTPs;
+        numTPs = strategySettings.vwapTrading.tpsl.numTPs;
       } else if (strategy === 'rs_flip') {
-        numTPs = rsFlipTPSL.numTPs;
+        numTPs = strategySettings.rsFlip.tpsl.numTPs;
       } else if (strategy === 'structure_break') {
         numTPs = 2; // Structure break default
       }
@@ -5390,90 +5390,90 @@ useEffect(() => {
     } else {
       console.warn('⚠️ candleSeriesRef.current is null');
     }
-  }, [chartReady, tradingState.backtestResults, candles, liqGrabTPSL, bosTPSL, chochTPSL, vwapTPSL, isReplayMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, deltaHistory]);
+  }, [chartReady, tradingState.backtestResults, candles, strategySettings.liquidityGrab.tpsl, strategySettings.bosStructure.tpsl, strategySettings.chochFvg.tpsl, strategySettings.vwapTrading.tpsl, replayMode.isReplayMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, deltaHistory]);
 
   // ========== DEBOUNCE EFFECTS FOR STRATEGY SETTINGS ==========
   
   // Liquidity Grab Strategy
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(liqGrabSwingLengthInput);
+      const num = parseInt(strategySettings.liquidityGrab.swingLengthInput);
       if (!isNaN(num) && num >= 5 && num <= 20) {
-        setLiqGrabSwingLength(num);
+        strategySettings.liquidityGrab.setSwingLength(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [liqGrabSwingLengthInput]);
+  }, [strategySettings.liquidityGrab.swingLengthInput]);
 
   // BOS Structure Strategy
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(bosSwingLengthInput);
+      const num = parseInt(strategySettings.bosStructure.swingLengthInput);
       if (!isNaN(num) && num >= 5 && num <= 20) {
-        setBosSwingLength(num);
+        strategySettings.bosStructure.setSwingLength(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [bosSwingLengthInput]);
+  }, [strategySettings.bosStructure.swingLengthInput]);
 
   // CHoCH + FVG Strategy
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(chochSwingLengthInput);
+      const num = parseInt(strategySettings.chochFvg.swingLengthInput);
       if (!isNaN(num) && num >= 5 && num <= 20) {
-        setChochSwingLength(num);
+        strategySettings.chochFvg.setSwingLength(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [chochSwingLengthInput]);
+  }, [strategySettings.chochFvg.swingLengthInput]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(chochTPSwingLengthInput);
+      const num = parseInt(strategySettings.chochFvg.tpSwingLengthInput);
       if (!isNaN(num) && num >= 5 && num <= 50) {
-        setChochTPSwingLength(num);
+        strategySettings.chochFvg.setTpSwingLength(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [chochTPSwingLengthInput]);
+  }, [strategySettings.chochFvg.tpSwingLengthInput]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(chochSLSwingLengthInput);
+      const num = parseInt(strategySettings.chochFvg.slSwingLengthInput);
       if (!isNaN(num) && num >= 3 && num <= 30) {
-        setChochSLSwingLength(num);
+        strategySettings.chochFvg.setSlSwingLength(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [chochSLSwingLengthInput]);
+  }, [strategySettings.chochFvg.slSwingLengthInput]);
 
   // Chart Liquidity Sweep Settings (separate from bot strategy)
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(chartLiquiditySweepSwingLengthInput);
+      const num = parseInt(chartSettings.liquiditySweep.chartSettings.legacy.swingLengthInput);
       if (!isNaN(num) && num >= 5 && num <= 50) {
-        setChartLiquiditySweepSwingLength(num);
+        chartSettings.liquiditySweep.chartSettings.legacy.setSwingLength(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [chartLiquiditySweepSwingLengthInput]);
+  }, [chartSettings.liquiditySweep.chartSettings.legacy.swingLengthInput]);
 
   // Legacy debounce effects (deprecated - keeping for backward compatibility)
   useEffect(() => {
     const timer = setTimeout(() => {
-      const num = parseInt(swingLengthInput);
+      const num = parseInt(chartSettings.legacy.swingLengthInput);
       if (!isNaN(num) && num >= 5 && num <= 20) {
-        setSwingLength(num);
+        chartSettings.legacy.setSwingLength(num);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [swingLengthInput]);
+  }, [chartSettings.legacy.swingLengthInput]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       const num = parseInt(liqGrabInput);
       if (!isNaN(num) && num >= 1 && num <= 5) {
-        setLiqGrabCandles(num);
+        chartSettings.legacy.setLiqGrabCandles(num);
       }
     }, 500);
     return () => clearTimeout(timer);
@@ -5483,7 +5483,7 @@ useEffect(() => {
     const timer = setTimeout(() => {
       const num = parseInt(wickRatioInput);
       if (!isNaN(num) && num >= 50 && num <= 500) {
-        setWickToBodyRatio(num);
+        chartSettings.legacy.setWickToBodyRatio(num);
       }
     }, 500);
     return () => clearTimeout(timer);
@@ -5577,14 +5577,14 @@ useEffect(() => {
 
   // Replay mode auto-play effect
   useEffect(() => {
-    if (isReplayPlaying && isReplayMode && fullCandleData.length > 0) {
+    if (replayMode.isReplayPlaying && replayMode.isReplayMode && replayMode.fullCandleData.length > 0) {
       const baseInterval = 1000; // 1 second base
-      const intervalDuration = baseInterval / replaySpeed;
+      const intervalDuration = baseInterval / replayMode.replaySpeed;
       
       const timer: any = setInterval(() => {
-        setReplayIndex(prev => {
-          if (prev >= fullCandleData.length) {
-            setIsReplayPlaying(false);
+        replayMode.setReplayIndex(prev => {
+          if (prev >= replayMode.fullCandleData.length) {
+            replayMode.setIsReplayPlaying(false);
             return prev;
           }
           return prev + 1;
@@ -5605,11 +5605,11 @@ useEffect(() => {
         replayIntervalRef.current = null;
       }
     }
-  }, [isReplayPlaying, isReplayMode, replaySpeed, fullCandleData.length]);
+  }, [replayMode.isReplayPlaying, replayMode.isReplayMode, replayMode.replaySpeed, replayMode.fullCandleData.length]);
 
   // Update candles when in replay mode
   useEffect(() => {
-    if (isReplayMode && fullCandleData.length > 0) {
+    if (replayMode.isReplayMode && replayMode.fullCandleData.length > 0) {
       // Store current visible range before updating candles
       let savedRange: any = null;
       if (chartRef.current) {
@@ -5620,7 +5620,7 @@ useEffect(() => {
         }
       }
       
-      const replayCandles = fullCandleData.slice(0, replayIndex);
+      const replayCandles = replayMode.fullCandleData.slice(0, replayMode.replayIndex);
       setCandles(replayCandles);
       
       // Restore visible range after candles update (in next tick)
@@ -5636,15 +5636,15 @@ useEffect(() => {
         }, 50);
       }
     }
-  }, [isReplayMode, replayIndex, fullCandleData]);
+  }, [replayMode.isReplayMode, replayMode.replayIndex, replayMode.fullCandleData]);
 
   // Store full candle data when new data is fetched (not in replay mode)
   useEffect(() => {
-    if (!isReplayMode && candles.length > 0) {
-      // Always update fullCandleData with latest candles when not in replay mode
-      setFullCandleData([...candles]);
+    if (!replayMode.isReplayMode && candles.length > 0) {
+      // Always update replayMode.fullCandleData with latest candles when not in replay mode
+      replayMode.setFullCandleData([...candles]);
     }
-  }, [candles.length, isReplayMode]);
+  }, [candles.length, replayMode.isReplayMode]);
 
   // Helper callback for oscillator panels to register their charts
   const handleOscillatorChartCreated = useCallback((name: string, chart: IChartApi) => {
@@ -5955,8 +5955,8 @@ useEffect(() => {
     [candles, indicators.smc.obSwingLength, indicators.smc.orderBlockLength]
   );
   const bosChochData = useMemo(() => 
-    calculateBOSandCHoCH(candles, bosSwingLength),
-    [candles, bosSwingLength, calculateBOSandCHoCH]
+    calculateBOSandCHoCH(candles, strategySettings.bosStructure.swingLength),
+    [candles, strategySettings.bosStructure.swingLength, calculateBOSandCHoCH]
   );
   const supertrendData = useMemo(() => 
     calculateSupertrend(candles, indicators.supertrend.period, indicators.supertrend.multiplier),
@@ -6151,15 +6151,15 @@ useEffect(() => {
                 <div className="flex items-center gap-2 bg-slate-900 px-3 py-2 rounded">
                   <Label className="text-white font-semibold text-sm">Replay Mode</Label>
                   <Switch 
-                    checked={isReplayMode} 
+                    checked={replayMode.isReplayMode} 
                     onCheckedChange={(checked) => {
-                      setIsReplayMode(checked);
+                      replayMode.setIsReplayMode(checked);
                       if (checked) {
                         // Entering replay mode
                         const currentCandles = [...candles];
-                        setFullCandleData(currentCandles);
-                        setReplayIndex(100);
-                        setIsReplayPlaying(false);
+                        replayMode.setFullCandleData(currentCandles);
+                        replayMode.setReplayIndex(100);
+                        replayMode.setIsReplayPlaying(false);
                         if (replayIntervalRef.current) {
                           clearInterval(replayIntervalRef.current);
                           replayIntervalRef.current = null;
@@ -6170,20 +6170,20 @@ useEffect(() => {
                           clearInterval(replayIntervalRef.current);
                           replayIntervalRef.current = null;
                         }
-                        setIsReplayPlaying(false);
+                        replayMode.setIsReplayPlaying(false);
                         // Restore full candles
-                        if (fullCandleData.length > 0) {
-                          setCandles([...fullCandleData]);
+                        if (replayMode.fullCandleData.length > 0) {
+                          setCandles([...replayMode.fullCandleData]);
                         }
                       }
                     }}
                   />
                 </div>
 
-                {isReplayMode && (
+                {replayMode.isReplayMode && (
                   <>
                     <button
-                      onClick={() => setReplayIndex(100)}
+                      onClick={() => replayMode.setReplayIndex(100)}
                       className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm font-semibold transition-colors"
                       data-testid="button-replay-reset"
                     >
@@ -6192,16 +6192,16 @@ useEffect(() => {
                     
                     <div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1.5 rounded">
                       <button
-                        onClick={() => setReplayIndex(Math.max(100, replayIndex - 10))}
-                        disabled={replayIndex <= 100}
+                        onClick={() => replayMode.setReplayIndex(Math.max(100, replayMode.replayIndex - 10))}
+                        disabled={replayMode.replayIndex <= 100}
                         className="px-2.5 py-1 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
                         data-testid="button-replay-backward-10"
                       >
                         ⏪ -10
                       </button>
                       <button
-                        onClick={() => setReplayIndex(Math.max(100, replayIndex - 1))}
-                        disabled={replayIndex <= 100}
+                        onClick={() => replayMode.setReplayIndex(Math.max(100, replayMode.replayIndex - 1))}
+                        disabled={replayMode.replayIndex <= 100}
                         className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
                         data-testid="button-replay-backward-1"
                       >
@@ -6209,32 +6209,32 @@ useEffect(() => {
                       </button>
                       <button
                         onClick={() => {
-                          if (isReplayPlaying) {
-                            setIsReplayPlaying(false);
+                          if (replayMode.isReplayPlaying) {
+                            replayMode.setIsReplayPlaying(false);
                             if (replayIntervalRef.current) {
                               clearInterval(replayIntervalRef.current);
                               replayIntervalRef.current = null;
                             }
                           } else {
-                            setIsReplayPlaying(true);
+                            replayMode.setIsReplayPlaying(true);
                           }
                         }}
                         className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold transition-colors"
                         data-testid="button-replay-play"
                       >
-                        {isReplayPlaying ? '⏸ Pause' : '▶ Play'}
+                        {replayMode.isReplayPlaying ? '⏸ Pause' : '▶ Play'}
                       </button>
                       <button
-                        onClick={() => setReplayIndex(Math.min(fullCandleData.length, replayIndex + 1))}
-                        disabled={replayIndex >= fullCandleData.length}
+                        onClick={() => replayMode.setReplayIndex(Math.min(replayMode.fullCandleData.length, replayMode.replayIndex + 1))}
+                        disabled={replayMode.replayIndex >= replayMode.fullCandleData.length}
                         className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
                         data-testid="button-replay-forward-1"
                       >
                         +1 ▶
                       </button>
                       <button
-                        onClick={() => setReplayIndex(Math.min(fullCandleData.length, replayIndex + 10))}
-                        disabled={replayIndex >= fullCandleData.length}
+                        onClick={() => replayMode.setReplayIndex(Math.min(replayMode.fullCandleData.length, replayMode.replayIndex + 10))}
+                        disabled={replayMode.replayIndex >= replayMode.fullCandleData.length}
                         className="px-2.5 py-1 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
                         data-testid="button-replay-forward-10"
                       >
@@ -6246,11 +6246,11 @@ useEffect(() => {
               </div>
 
               {/* Row 2: Speed & Progress Bar */}
-              {isReplayMode && (
+              {replayMode.isReplayMode && (
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <Label className="text-gray-400 text-xs">Speed:</Label>
-                    <Select value={replaySpeed.toString()} onValueChange={(v) => setReplaySpeed(parseInt(v))}>
+                    <Select value={replayMode.replaySpeed.toString()} onValueChange={(v) => replayMode.setReplaySpeed(parseInt(v))}>
                       <SelectTrigger className="w-20 h-7 bg-slate-900 text-white border-slate-600 text-xs">
                         <SelectValue />
                       </SelectTrigger>
@@ -6265,12 +6265,12 @@ useEffect(() => {
 
                   <div className="flex-1 flex items-center gap-2">
                     <span className="text-gray-400 text-xs whitespace-nowrap">
-                      {replayIndex} / {fullCandleData.length} candles
+                      {replayMode.replayIndex} / {replayMode.fullCandleData.length} candles
                     </span>
                     <div className="flex-1 bg-slate-900 rounded h-2 overflow-hidden">
                       <div 
                         className="bg-blue-500 h-full transition-all duration-200"
-                        style={{ width: `${(replayIndex / fullCandleData.length) * 100}%` }}
+                        style={{ width: `${(replayMode.replayIndex / replayMode.fullCandleData.length) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -7326,22 +7326,22 @@ useEffect(() => {
                   setCvdSpikeLevel3Input={setCvdSpikeLevel3Input}
                   cvdSpikeLevel3={cvdSpikeLevel3}
                   setCvdSpikeLevel3={setCvdSpikeLevel3}
-                  fvgVolumeThreshold={fvgVolumeThreshold}
-                  setFvgVolumeThreshold={setFvgVolumeThreshold}
-                  chartBosSwingLengthInput={chartBosSwingLengthInput}
-                  setChartBosSwingLengthInput={setChartBosSwingLengthInput}
-                  chartBosSwingLength={chartBosSwingLength}
-                  setChartBosSwingLength={setChartBosSwingLength}
-                  chartChochSwingLengthInput={chartChochSwingLengthInput}
-                  setChartChochSwingLengthInput={setChartChochSwingLengthInput}
-                  chartChochSwingLength={chartChochSwingLength}
-                  setChartChochSwingLength={setChartChochSwingLength}
-                  stratLiquidityGrab={stratLiquidityGrab}
-                  setStratLiquidityGrab={setStratLiquidityGrab}
-                  chartLiquiditySweepSwingLengthInput={chartLiquiditySweepSwingLengthInput}
-                  setChartLiquiditySweepSwingLengthInput={setChartLiquiditySweepSwingLengthInput}
-                  chartLiquiditySweepSwingLength={chartLiquiditySweepSwingLength}
-                  setChartLiquiditySweepSwingLength={setChartLiquiditySweepSwingLength}
+                  fvgVolumeThreshold={chartSettings.legacy.fvgVolumeThreshold}
+                  setFvgVolumeThreshold={chartSettings.legacy.setFvgVolumeThreshold}
+                  bosSwingLengthInput={chartSettings.bos.swingLengthInput}
+                  setBosSwingLengthInput={chartSettings.bos.setSwingLengthInput}
+                  bosSwingLength={chartSettings.bos.swingLength}
+                  setBosSwingLength={chartSettings.bos.setSwingLength}
+                  chochSwingLengthInput={chartSettings.choch.swingLengthInput}
+                  setChochSwingLengthInput={chartSettings.choch.setSwingLengthInput}
+                  chochSwingLength={chartSettings.choch.swingLength}
+                  setChochSwingLength={chartSettings.choch.setSwingLength}
+                  stratLiquidityGrab={strategySettings.liquidityGrab.enabled}
+                  setStratLiquidityGrab={strategySettings.liquidityGrab.setEnabled}
+                  liquiditySweepSwingLengthInput={chartSettings.liquiditySweep.swingLengthInput}
+                  setLiquiditySweepSwingLengthInput={chartSettings.liquiditySweep.setSwingLengthInput}
+                  liquiditySweepSwingLength={chartSettings.liquiditySweep.swingLength}
+                  setLiquiditySweepSwingLength={chartSettings.liquiditySweep.setSwingLength}
                   setLocation={setLocation}
                   interval={interval}
                   saveToTimeframe={saveToTimeframe}
