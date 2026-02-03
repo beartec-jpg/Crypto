@@ -459,7 +459,7 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
     onToggleDrawingMode: () => chartControls.setDrawingMode(prev => prev === 'draw' ? 'off' : 'draw'),
     onSelectTool: (tool) => {
       setActiveTool(tool as any);
-      chartControls.chartControls.setDrawingMode('draw');
+      chartControls.setDrawingMode('draw');
     },
     onToggleFullscreen: () => setIsFullscreen(prev => !prev),
     onOpenSettings: () => modals.openModal('settings-dialog'),
