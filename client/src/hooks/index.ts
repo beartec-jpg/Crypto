@@ -9,6 +9,13 @@ export * from './useBacktestSettings';
 export * from './useReplayMode';
 export * from './useChartSettings';
 
+// Phase 6 Priority 4: Final Cleanup Hooks
+export * from './useCVDSettings';
+export * from './useChartControls';
+export * from './useAIAnalysis';
+export * from './useIndicatorCalculations';
+export * from './usePanelState';
+
 // Existing hooks
 export * from './useTradingState';
 export * from './useModalState';
