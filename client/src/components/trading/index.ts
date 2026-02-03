@@ -14,6 +14,9 @@ export { ReplayModeControls } from './ReplayModeControls';
 export { VideoSequencePlayer } from './VideoSequencePlayer';
 export { ActionButtonsToolbar } from './ActionButtonsToolbar';
 
+// Phase 6 Priority 2: UI Panel Components
+export { ExchangeStatusPopover } from './ExchangeStatusPopover';
+
 export type { TradeSetup } from './TradeEntryPanel';
 export type { Position } from './PositionTrackerPanel';
 export type { CompletedTrade } from './TradeHistoryPanel';
