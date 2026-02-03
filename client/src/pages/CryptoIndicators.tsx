@@ -103,7 +103,19 @@ import { useModalManager } from '@/hooks/useModalManager';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useTradingState } from '@/hooks/useTradingState';
 import { useModalState } from '@/hooks/useModalState';
-import { useStrategySettings, useBacktestSettings, useReplayMode, useChartSettings, useDrawingsPersistence, useSettingsPersistence } from '@/hooks';
+import { 
+  useStrategySettings, 
+  useBacktestSettings, 
+  useReplayMode, 
+  useChartSettings, 
+  useDrawingsPersistence, 
+  useSettingsPersistence,
+  useCVDSettings,
+  useChartControls,
+  useAIAnalysis,
+  useIndicatorCalculations,
+  usePanelState
+} from '@/hooks';
 
 // Volume Components
 import { CVDTable } from '@/components/indicators/volume';
@@ -121,10 +133,8 @@ import { binanceToCandleData, removeUSDTSuffix, formatMultiExchangeSymbol } from
 import {
   calculateSupertrend,
   calculateVWAPBands,
-  calculateSessionVWAP,
   calculateOrderBlocks,
   calculatePremiumDiscount,
-  calculateParabolicSAR,
   calculateStochasticRSI,
   calculateWilliamsR,
   calculateCCI,
@@ -369,6 +379,18 @@ export default function CryptoIndicators() {
   // Indicator hook - manages all indicator state
   const indicators = useIndicatorState();
   
+  // CVD Settings hook - manages CVD spike level state
+  const cvdSettings = useCVDSettings();
+  
+  // Chart Controls hook - manages chart UI state
+  const chartControls = useChartControls();
+  
+  // AI Analysis hook - manages AI market analysis state
+  const aiAnalysisState = useAIAnalysis();
+  
+  // Panel State hook - manages collapsible panel states
+  const panels = usePanelState();
+  
   // Local state for WebSocket delta tracking (not persisted)
   const [currentDelta, setCurrentDelta] = useState(0);
   
@@ -407,17 +429,8 @@ export default function CryptoIndicators() {
     aiReviewMutation.mutate();
   };
 
-  const [chartReady, setChartReady] = useState(false);
-  const [crosshairInfo, setCrosshairInfo] = useState<{time: number; x: number; y: number} | null>(null);
-  const [visibleCandleCount, setVisibleCandleCount] = useState<number>(0);
-  
-  // Chart controls tab state - null means no tab selected (collapsed)
-  const [chartControlsTab, setChartControlsTab] = useState<'smc' | 'trend' | 'vwap' | 'oscillators' | null>(null);
-  const chartControlsRef = useRef<HTMLDivElement>(null);
-  
   // Drawing tools state
   type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
-  const [drawingMode, setDrawingMode] = useState<'off' | 'draw' | 'select'>('draw'); // Draw mode active by default
   const { isFullscreen, setIsFullscreen } = useFullscreen(); // Fullscreen chart mode with keyboard support
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   const [showToolPicker, setShowToolPicker] = useState(false);
@@ -433,9 +446,6 @@ export default function CryptoIndicators() {
   const [chartPeriod, setChartPeriod] = useState('24h');
   const [autoScroll, setAutoScroll] = useState(false);
 
-  // Oscillator panel state for fullscreen mode
-const [showOscillatorPanel, setShowOscillatorPanel] = useState(false);
-
 const [tableTimeframe, setTableTimeframe] = useState('1h');
   
   // Native primitives for high-performance drawing rendering
@@ -446,10 +456,10 @@ const [tableTimeframe, setTableTimeframe] = useState('1h');
   
   // Keyboard shortcuts
   useKeyboardShortcuts({
-    onToggleDrawingMode: () => setDrawingMode(prev => prev === 'draw' ? 'off' : 'draw'),
+    onToggleDrawingMode: () => chartControls.setDrawingMode(prev => prev === 'draw' ? 'off' : 'draw'),
     onSelectTool: (tool) => {
       setActiveTool(tool as any);
-      setDrawingMode('draw');
+      chartControls.chartControls.setDrawingMode('draw');
     },
     onToggleFullscreen: () => setIsFullscreen(prev => !prev),
     onOpenSettings: () => modals.openModal('settings-dialog'),
@@ -512,7 +522,7 @@ useEffect(() => {
     
     return () => clearTimeout(resizeTimeout);
   }
-}, [showOscillatorPanel, isFullscreen]);
+}, [panels.oscillatorPanel, isFullscreen]);
 
     // Resize chart when oscillator panel visibility changes in fullscreen
   useEffect(() => {
@@ -529,7 +539,7 @@ useEffect(() => {
       
       return () => clearTimeout(resizeTimeout);
     }
-  }, [showOscillatorPanel, isFullscreen]);
+  }, [panels.oscillatorPanel, isFullscreen]);
 
   // Force resize when entering/exiting fullscreen
   useEffect(() => {
@@ -690,7 +700,7 @@ useEffect(() => {
   
   // Attach/detach native primitives for high-performance rendering
   useEffect(() => {
-    if (!chartReady || !candleSeriesRef.current) return;
+    if (!chartControls.chartReady || !candleSeriesRef.current) return;
     
     const candleSeries = candleSeriesRef.current;
     const currentPrimitives = drawingPrimitivesRef.current;
@@ -773,7 +783,7 @@ useEffect(() => {
       });
       currentPrimitives.clear();
     };
-  }, [chartReady, drawings, selectedDrawingId, activeEdit, drawingsVisible]);
+  }, [chartControls.chartReady, drawings, selectedDrawingId, activeEdit, drawingsVisible]);
   
   // Save drawing mutation
   // Drawing mutation wrappers - hook handles refetching and toasts
@@ -834,7 +844,7 @@ useEffect(() => {
   // Handle point commit from gesture controller
   const handlePointCommit = useCallback((point: GesturePoint) => {
     const currentTool = activeToolRef.current;
-    if (drawingMode !== 'draw' || !currentTool) return;
+    if (chartControls.drawingMode !== 'draw' || !currentTool) return;
     
     setTempDrawing(prev => {
       if (!prev) return { points: [{ time: point.time as number, price: point.price, snapType: point.snapType }] };
@@ -879,11 +889,11 @@ useEffect(() => {
       
       return { points: newPoints };
     });
-  }, [drawingMode, saveDrawing]);
+  }, [chartControls.drawingMode, saveDrawing]);
   
   // Gesture controller hook for touch/click handling
   const gestureController = useChartGestures({
-    enabled: drawingMode === 'draw' && activeTool !== null,
+    enabled: chartControls.chartControls.drawingMode === 'draw' && activeTool !== null,
     data: candles as unknown as { time: Time; open: number; high: number; low: number; close: number }[],
     onPointCommit: handlePointCommit,
     onCrosshairModeChange: setCrosshairModeActive,
@@ -892,11 +902,11 @@ useEffect(() => {
   
   // Cancel crosshair when draw mode is turned off or tool is deselected
   useEffect(() => {
-    if (drawingMode !== 'draw' || activeTool === null) {
+    if (chartControls.drawingMode !== 'draw' || activeTool === null) {
       gestureController.cancelCrosshairMode();
       setCrosshairModeActive(false);
     }
-  }, [drawingMode, activeTool]);
+  }, [chartControls.drawingMode, activeTool]);
   
   // Fullscreen mode: resize chart
   useEffect(() => {
@@ -966,7 +976,7 @@ useEffect(() => {
   
   // Chart callbacks for ChartContainer component
   const handleVisibleRangeChange = useCallback((count: number) => {
-    setVisibleCandleCount(count);
+    chartControls.setVisibleCandleCount(count);
   }, []);
 
   const handleCrosshairMove = useCallback((param: any) => {
@@ -974,7 +984,7 @@ useEffect(() => {
       const time = param.time as number;
       const price = candleSeriesRef.current.coordinateToPrice(param.point.y);
       
-      setCrosshairInfo({
+      chartControls.setCrosshairInfo({
         time,
         x: param.point.x,
         y: param.point.y
@@ -987,14 +997,14 @@ useEffect(() => {
         logicalX: undefined
       };
     } else {
-      setCrosshairInfo(null);
+      chartControls.setCrosshairInfo(null);
     }
   }, []);
 
   const handleChartReady = useCallback((chart: any, candleSeries: any) => {
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
-    setChartReady(true);
+    chartControls.setChartReady(true);
   }, []);
 
   const futureWhitespaceConfig = useMemo(() => ({
@@ -1165,30 +1175,11 @@ useEffect(() => {
     }, 2000);
   }, [candles, toast, tradingState]);
   
-  const [cvdSpikeEnabled, setCvdSpikeEnabled] = useState(false); // Show CVD spike triangles on chart (default OFF)
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
   const [cvdBearishThreshold, setCvdBearishThreshold] = useState(200); // % of average bearish delta
   const [cvdBearishThresholdInput, setCvdBearishThresholdInput] = useState('200');
-  // CVD Spike Level Thresholds (percentage of average delta)
-  const [cvdSpikeLevel1, setCvdSpikeLevel1] = useState(175); // Level 1: ▲ (default 175%)
-  const [cvdSpikeLevel1Input, setCvdSpikeLevel1Input] = useState('175');
-  const [cvdSpikeLevel2, setCvdSpikeLevel2] = useState(250); // Level 2: ▲² (default 250%)
-  const [cvdSpikeLevel2Input, setCvdSpikeLevel2Input] = useState('250');
-  const [cvdSpikeLevel3, setCvdSpikeLevel3] = useState(400); // Level 3: ▲³ (default 400%)
-  const [cvdSpikeLevel3Input, setCvdSpikeLevel3Input] = useState('400');
 
-  // AI Market Analysis state
-  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
-  const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
-  const [aiAnalysisTimestamp, setAiAnalysisTimestamp] = useState<number | null>(null);
-  const [aiAnalysisCost, setAiAnalysisCost] = useState<number>(0);
-  const [aiAnalysisExpanded, setAiAnalysisExpanded] = useState(false);
-  const [lastAnalysisCheck, setLastAnalysisCheck] = useState<number>(0);
-  
-  // Collapsible panel states - default to minimized
-  const [marketSummaryMinimized, setMarketSummaryMinimized] = useState(true);
-  const [cvdTableMinimized, setCvdTableMinimized] = useState(true);
   const [marketAlerts, setMarketAlerts] = useState<MarketAlert[]>([]);
   const [alertFilterMode, setAlertFilterMode] = useState<'all' | 'active'>('all');
   
@@ -1383,12 +1374,12 @@ useEffect(() => {
   // Fetch multi-exchange orderflow data
   // Fetch AI Market Analysis
   const fetchAIAnalysis = useCallback(async (force = false) => {
-    if (aiAnalysisLoading || candles.length < 100) return;
+    if (aiAnalysisState.loading || candles.length < 100) return;
     
     // Check 60-minute cooldown
     const now = Date.now();
     const cooldownMs = 60 * 60 * 1000; // 1 hour
-    const timeSinceLastCheck = lastAnalysisCheck ? now - lastAnalysisCheck : cooldownMs + 1;
+    const timeSinceLastCheck = aiAnalysisState.lastCheck ? now - aiAnalysisState.lastCheck : cooldownMs + 1;
     
     if (timeSinceLastCheck < cooldownMs) {
       // User tried to refresh within the cooldown period
@@ -1404,8 +1395,8 @@ useEffect(() => {
       return;
     }
     
-    setAiAnalysisLoading(true);
-    setLastAnalysisCheck(now);
+    aiAnalysisState.setLoading(true);
+    aiAnalysisState.setLastCheck(now);
     
     try {
       const token = await getToken();
@@ -1415,7 +1406,7 @@ useEffect(() => {
           description: "Please sign in to use AI analysis.",
           duration: 5000,
         });
-        setAiAnalysisLoading(false);
+        aiAnalysisState.setLoading(false);
         return;
       }
       
@@ -1438,9 +1429,9 @@ useEffect(() => {
       }
       
       const data = await response.json();
-      setAiAnalysis(data.analysis);
-      setAiAnalysisTimestamp(now);
-      setAiAnalysisCost(data.estimatedCost || 0);
+      aiAnalysisState.setAnalysis(data.analysis);
+      aiAnalysisState.setTimestamp(now);
+      aiAnalysisState.setCost(data.estimatedCost || 0);
       
       console.log('🤖 AI Analysis received', {
         cached: data.cached,
@@ -1449,18 +1440,18 @@ useEffect(() => {
       });
     } catch (error: any) {
       console.error('❌ Error fetching AI analysis:', error);
-      setAiAnalysis(`Error: ${error.message}`);
+      aiAnalysisState.setAnalysis(`Error: ${error.message}`);
     } finally {
-      setAiAnalysisLoading(false);
+      aiAnalysisState.setLoading(false);
     }
-  }, [candles, symbol, interval, aiAnalysisLoading, lastAnalysisCheck, toast]);
+  }, [candles, symbol, interval, aiAnalysisState.loading, aiAnalysisState.lastCheck, toast]);
 
   // Hourly AI Market Analysis auto-refresh
   useEffect(() => {
     if (candles.length < 100) return;
     
     // Fetch on mount when chart data is available
-    if (!aiAnalysis) {
+    if (!aiAnalysisState.analysis) {
       fetchAIAnalysis(false);
     }
     
@@ -1471,7 +1462,7 @@ useEffect(() => {
     }, 60 * 60 * 1000); // Every hour
     
     return () => clearInterval(intervalId);
-  }, [candles.length, aiAnalysis, fetchAIAnalysis]);
+  }, [candles.length, aiAnalysisState.analysis, fetchAIAnalysis]);
 
   const fetchMultiExchangeData = useCallback(async () => {
     if (!useMultiExchange) return;
@@ -2176,7 +2167,7 @@ useEffect(() => {
     // Add divergence alerts (skip - replaced with enhanced multi-indicator divergence detection below)
     
     // Add CVD/Delta Spike alerts with exchange consensus color grading
-    if (cvdSpikeEnabled && deltaHistory.length >= 10) {
+    if (cvdSettings.enabled && deltaHistory.length >= 10) {
       // Calculate separate averages for bullish and bearish deltas
       const bullishDeltas = deltaHistory.filter(h => h.delta > 0);
       const bearishDeltas = deltaHistory.filter(h => h.delta < 0);
@@ -2201,9 +2192,9 @@ useEffect(() => {
         const bearishExchanges = bar.bearishExchanges || 0;
         
         // Bullish spike detection with configurable thresholds
-        const level1Mult = cvdSpikeLevel1 / 100;
-        const level2Mult = cvdSpikeLevel2 / 100;
-        const level3Mult = cvdSpikeLevel3 / 100;
+        const level1Mult = cvdSettings.level1 / 100;
+        const level2Mult = cvdSettings.level2 / 100;
+        const level3Mult = cvdSettings.level3 / 100;
         
         if (bar.delta > 0 && avgBullishDelta > 0) {
           const multiple = bar.delta / avgBullishDelta;
@@ -2217,13 +2208,13 @@ useEffect(() => {
               consensusEmoji = '🔵'; // 3-4 exchanges (moderate)
             }
             
-            let gradeLabel = `${cvdSpikeLevel1}%`;
+            let gradeLabel = `${cvdSettings.level1}%`;
             let gradeEmoji = '▲';
             if (multiple >= level3Mult) {
-              gradeLabel = `${cvdSpikeLevel3}%`;
+              gradeLabel = `${cvdSettings.level3}%`;
               gradeEmoji = '▲³';
             } else if (multiple >= level2Mult) {
-              gradeLabel = `${cvdSpikeLevel2}%`;
+              gradeLabel = `${cvdSettings.level2}%`;
               gradeEmoji = '▲²';
             }
             
@@ -2251,13 +2242,13 @@ useEffect(() => {
               consensusEmoji = '🟡'; // 3-4 exchanges (moderate)
             }
             
-            let gradeLabel = `${cvdSpikeLevel1}%`;
+            let gradeLabel = `${cvdSettings.level1}%`;
             let gradeEmoji = '▼';
             if (multiple >= level3Mult) {
-              gradeLabel = `${cvdSpikeLevel3}%`;
+              gradeLabel = `${cvdSettings.level3}%`;
               gradeEmoji = '▼³';
             } else if (multiple >= level2Mult) {
-              gradeLabel = `${cvdSpikeLevel2}%`;
+              gradeLabel = `${cvdSettings.level2}%`;
               gradeEmoji = '▼²';
             }
             
@@ -2685,7 +2676,7 @@ useEffect(() => {
     // Sort by time descending (most recent first) and keep last 20
     const sortedAlerts = newAlerts.sort((a, b) => b.time - a.time).slice(0, 20);
     setMarketAlerts(sortedAlerts);
-  }, [candles, strategySettings.liquidityGrab.swingLength, calculateBOSandCHoCH, calculateFVGsWrapper, isActiveFVG, calculatePeriodicVWAP, strategySettings.vwapTrading.threshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergencesWrapper, cvdSpikeEnabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
+  }, [candles, strategySettings.liquidityGrab.swingLength, calculateBOSandCHoCH, calculateFVGsWrapper, isActiveFVG, calculatePeriodicVWAP, strategySettings.vwapTrading.threshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergencesWrapper, cvdSettings.enabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
 
   // Wrapper for simulateTrade to pass all necessary dependencies
   const simulateTradeWrapper = useCallback((signal: TradeSignal, startIdx: number, data: CandleData[]): BacktestTrade | null => {
@@ -2981,10 +2972,10 @@ useEffect(() => {
         },
       },
       alertFilterMode,
-      cvdSpikeEnabled,
-      cvdSpikeLevel1,
-      cvdSpikeLevel2,
-      cvdSpikeLevel3,
+      cvdSpikeEnabled: cvdSettings.enabled,
+      cvdSpikeLevel1: cvdSettings.level1,
+      cvdSpikeLevel2: cvdSettings.level2,
+      cvdSpikeLevel3: cvdSettings.level3,
     };
     
     const storageKey = `indicatorDefaults_${userId}_${symbol}_${interval}`;
@@ -2997,7 +2988,7 @@ useEffect(() => {
     });
     
     console.log(`💾 Saved indicator defaults for ${userId}_${symbol}_${interval}:`, indicatorDefaults);
-  }, [userId, symbol, interval, indicators.ema.show, indicators.ema.fastPeriod, indicators.ema.slowPeriod, indicators.ema.configs, indicators.sma.show, indicators.sma.configs, indicators.rsi.show, indicators.rsi.period, indicators.macd.show, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.obv.show, indicators.mfi.show, indicators.mfi.period, indicators.stochRSI.show, indicators.stochRSI.period, indicators.williamsR.show, indicators.williamsR.period, indicators.cci.show, indicators.cci.period, indicators.adx.show, indicators.adx.period, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev, indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, indicators.vwapTools.showBands, indicators.vwapTools.showSession, indicators.smc.showFVG, indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showSwingPivots, indicators.smc.showOrderBlocks, indicators.smc.obSwingLength, indicators.smc.orderBlockLength, indicators.smc.showPremiumDiscount, indicators.supertrend.show, indicators.supertrend.period, indicators.supertrend.multiplier, indicators.parabolicSAR.show, indicators.parabolicSAR.step, indicators.parabolicSAR.max, indicators.smc.showAutoTrendlines, indicators.smc.showHighValueOnly, indicators.smc.showChartLabels, alertFilterMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, toast]);
+  }, [userId, symbol, interval, indicators.ema.show, indicators.ema.fastPeriod, indicators.ema.slowPeriod, indicators.ema.configs, indicators.sma.show, indicators.sma.configs, indicators.rsi.show, indicators.rsi.period, indicators.macd.show, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.obv.show, indicators.mfi.show, indicators.mfi.period, indicators.stochRSI.show, indicators.stochRSI.period, indicators.williamsR.show, indicators.williamsR.period, indicators.cci.show, indicators.cci.period, indicators.adx.show, indicators.adx.period, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev, indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, indicators.vwapTools.showBands, indicators.vwapTools.showSession, indicators.smc.showFVG, indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showSwingPivots, indicators.smc.showOrderBlocks, indicators.smc.obSwingLength, indicators.smc.orderBlockLength, indicators.smc.showPremiumDiscount, indicators.supertrend.show, indicators.supertrend.period, indicators.supertrend.multiplier, indicators.parabolicSAR.show, indicators.parabolicSAR.step, indicators.parabolicSAR.max, indicators.smc.showAutoTrendlines, indicators.smc.showHighValueOnly, indicators.smc.showChartLabels, alertFilterMode, cvdSettings.enabled, cvdSettings.level1, cvdSettings.level2, cvdSettings.level3, toast]);
 
   // Set current timeframe as the default for this symbol on page load
   const makeTimeframeDefault = useCallback(() => {
@@ -3062,13 +3053,13 @@ useEffect(() => {
     indicators.smc.setShowHighValueOnly(false);
     indicators.smc.setShowChartLabels(false);
     // CVD Spike settings - reset to defaults (disabled by default)
-    setCvdSpikeEnabled(false);
-    setCvdSpikeLevel1(175);
-    setCvdSpikeLevel1Input('175');
-    setCvdSpikeLevel2(250);
-    setCvdSpikeLevel2Input('250');
-    setCvdSpikeLevel3(400);
-    setCvdSpikeLevel3Input('400');
+    cvdSettings.setEnabled(false);
+    cvdSettings.setLevel1(175);
+    cvdSettings.setLevel1Input('175');
+    cvdSettings.setLevel2(250);
+    cvdSettings.setLevel2Input('250');
+    cvdSettings.setLevel3(400);
+    cvdSettings.setLevel3Input('400');
     
     console.log(`🔄 Reset all indicators to OFF for ${symbol}_${interval} (no saved config)`);
   }, [symbol, interval]);
@@ -3223,18 +3214,18 @@ useEffect(() => {
       if (defaults.alertFilterMode !== undefined) setAlertFilterMode(defaults.alertFilterMode);
       
       // CVD Spike settings
-      if (defaults.cvdSpikeEnabled !== undefined) setCvdSpikeEnabled(defaults.cvdSpikeEnabled);
+      if (defaults.cvdSpikeEnabled !== undefined) cvdSettings.setEnabled(defaults.cvdSpikeEnabled);
       if (defaults.cvdSpikeLevel1 !== undefined) {
-        setCvdSpikeLevel1(defaults.cvdSpikeLevel1);
-        setCvdSpikeLevel1Input(defaults.cvdSpikeLevel1.toString());
+        cvdSettings.setLevel1(defaults.cvdSpikeLevel1);
+        cvdSettings.setLevel1Input(defaults.cvdSpikeLevel1.toString());
       }
       if (defaults.cvdSpikeLevel2 !== undefined) {
-        setCvdSpikeLevel2(defaults.cvdSpikeLevel2);
-        setCvdSpikeLevel2Input(defaults.cvdSpikeLevel2.toString());
+        cvdSettings.setLevel2(defaults.cvdSpikeLevel2);
+        cvdSettings.setLevel2Input(defaults.cvdSpikeLevel2.toString());
       }
       if (defaults.cvdSpikeLevel3 !== undefined) {
-        setCvdSpikeLevel3(defaults.cvdSpikeLevel3);
-        setCvdSpikeLevel3Input(defaults.cvdSpikeLevel3.toString());
+        cvdSettings.setLevel3(defaults.cvdSpikeLevel3);
+        cvdSettings.setLevel3Input(defaults.cvdSpikeLevel3.toString());
       }
       
       toast({
@@ -3260,8 +3251,8 @@ useEffect(() => {
   // Click outside to deselect tab and collapse controls
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (chartControlsRef.current && !chartControlsRef.current.contains(event.target as Node)) {
-        setChartControlsTab(null);
+      if (chartControls.chartControlsRef.current && !chartControls.chartControlsRef.current.contains(event.target as Node)) {
+        chartControls.setActiveTab(null);
       }
     };
 
@@ -3317,10 +3308,10 @@ useEffect(() => {
     if (indicators.bb.show) active.add('bollinger');
     
     // CVD is always active for orderflow
-    if (cvdSpikeEnabled) active.add('cvd');
+    if (cvdSettings.enabled) active.add('cvd');
     
     return active;
-  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, strategySettings.liquidityGrab.enabled, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSpikeEnabled]);
+  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, strategySettings.liquidityGrab.enabled, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSettings.enabled]);
 
   // Run backtest on historical data
   // NEW: Only allow 1 trade at a time - no overlapping trades
@@ -3548,9 +3539,9 @@ useEffect(() => {
     const candleSeries = candleSeriesRef.current;
     const container = chartContainerRef.current;
     
-    console.log('[GestureAttach] Effect running:', { chart: !!chart, candleSeries: !!candleSeries, container: !!container, chartReady });
+    console.log('[GestureAttach] Effect running:', { chart: !!chart, candleSeries: !!candleSeries, container: !!container, chartReady: chartControls.chartReady });
     
-    if (!chart || !candleSeries || !container || !chartReady) return;
+    if (!chart || !candleSeries || !container || !chartControls.chartReady) return;
     
     console.log('[GestureAttach] Calling attachToChart...');
     // Attach the gesture controller to handle touch/click for drawing tools
@@ -3561,14 +3552,14 @@ useEffect(() => {
       console.log('[GestureAttach] Cleanup: detaching');
       gestureController.detachFromChart();
     };
-  }, [chartReady, gestureController]);
+  }, [chartControls.chartReady, gestureController]);
   
   // Render drawings on chart using price lines
   const drawingLinesRef = useRef<any[]>([]);
   
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
-    if (!candleSeries || !chartReady) return;
+    if (!candleSeries || !chartControls.chartReady) return;
     
     // Clear existing drawing lines
     drawingLinesRef.current.forEach(line => {
@@ -3604,11 +3595,11 @@ useEffect(() => {
       }
       // For trendlines and other drawings, we'll use the overlay canvas later
     });
-  }, [drawings, chartReady, selectedDrawingId, activeEdit]);
+  }, [drawings, chartControls.chartReady, selectedDrawingId, activeEdit]);
 
   // Update VWAPs
   useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
+    if (!chartControls.chartReady || !chartRef.current || candles.length === 0) return;
 
     const chart = chartRef.current;
     
@@ -3667,7 +3658,7 @@ useEffect(() => {
     manageVWAP('monthly', indicators.vwap.showMonthly, calculatePeriodicVWAP(candles, 'monthly', true), '#3b82f6', 'Monthly VWAP');
     const rollingKey = indicators.vwap.rollingPeriod === 10 ? 'rolling10' : indicators.vwap.rollingPeriod === 50 ? 'rolling50' : 'rolling20';
     manageVWAP(rollingKey, indicators.vwap.showRolling, calculateRollingVWAP(candles, indicators.vwap.rollingPeriod), '#ec4899', `rVWAP(${indicators.vwap.rollingPeriod})`);
-  }, [chartReady, candles, indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
+  }, [chartControls.chartReady, candles, indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, calculatePeriodicVWAP, calculateRollingVWAP]);
 
 
   // Clear HTF caches and load saved timeframe when symbol changes
@@ -3730,7 +3721,7 @@ useEffect(() => {
   
   // Premium/Discount Zones (SMC)
   useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
+    if (!chartControls.chartReady || !chartRef.current || candles.length === 0) return;
     
     const chart = chartRef.current;
     const refs = premiumDiscountRefs.current;
@@ -3819,7 +3810,7 @@ useEffect(() => {
         refs.discount = null;
       }
     }
-  }, [chartReady, candles, indicators.smc.showPremiumDiscount, indicators.smc.pdLookback]);
+  }, [chartControls.chartReady, candles, indicators.smc.showPremiumDiscount, indicators.smc.pdLookback]);
   
   // ========== BATCH 3 INDICATORS ==========
   
@@ -3855,7 +3846,7 @@ useEffect(() => {
 
   // SMA (Simple Moving Average) - Dynamic config list
   useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) return;
+    if (!chartControls.chartReady || !chartRef.current || candles.length === 0) return;
     
     const chart = chartRef.current;
     const refs = smaSeriesRefs.current;
@@ -3952,14 +3943,14 @@ useEffect(() => {
         refs[config.id]!.setData(smaData);
       } catch (e) {}
     }
-  }, [chartReady, candles, indicators.sma.show, indicators.sma.configs, symbol, interval]);
+  }, [chartControls.chartReady, candles, indicators.sma.show, indicators.sma.configs, symbol, interval]);
   
   // Parabolic SAR
 
 
   // Draw white lines for swing pivots (visual-only indicator)
   useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) {
+    if (!chartControls.chartReady || !chartRef.current || candles.length === 0) {
       return;
     }
 
@@ -4031,11 +4022,11 @@ useEffect(() => {
     } catch (e) {
       console.error('Error updating swing pivot markers:', e);
     }
-  }, [chartReady, candles, indicators.smc.showSwingPivots, indicators.smc.swingPivotLength, calculateSwings]);
+  }, [chartControls.chartReady, candles, indicators.smc.showSwingPivots, indicators.smc.swingPivotLength, calculateSwings]);
 
   // Draw cyan lines for liquidity sweeps (visual-only indicator)
   useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length === 0) {
+    if (!chartControls.chartReady || !chartRef.current || candles.length === 0) {
       return;
     }
 
@@ -4097,11 +4088,11 @@ useEffect(() => {
     } catch (e) {
       console.error('Error drawing liquidity sweep lines:', e);
     }
-  }, [chartReady, candles, strategySettings.liquidityGrab.enabled, chartSettings.liquiditySweep.swingLength, calculateBOSandCHoCH]);
+  }, [chartControls.chartReady, candles, strategySettings.liquidityGrab.enabled, chartSettings.liquiditySweep.swingLength, calculateBOSandCHoCH]);
 
   // Draw auto trendlines on chart
   useEffect(() => {
-    if (!chartReady || !chartRef.current || candles.length < 50) {
+    if (!chartControls.chartReady || !chartRef.current || candles.length < 50) {
       return;
     }
 
@@ -4175,7 +4166,7 @@ useEffect(() => {
     } catch (e) {
       console.error('Error drawing auto trendlines:', e);
     }
-  }, [chartReady, candles, indicators.smc.showAutoTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectTrendlines]);
+  }, [chartControls.chartReady, candles, indicators.smc.showAutoTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectTrendlines]);
 
   // NOTE: BOS/CHoCH text labels have been removed in Phase 4G-3
   // The BOSCHoCHMarkers component currently handles only horizontal lines
@@ -4185,7 +4176,7 @@ useEffect(() => {
   // Update backtest trade markers with price level lines and shaded zones
   useEffect(() => {
     // Only return early if chart isn't ready at all
-    if (!chartReady || !chartRef.current) {
+    if (!chartControls.chartReady || !chartRef.current) {
       return;
     }
 
@@ -4513,8 +4504,8 @@ useEffect(() => {
     });
     
     // Add CVD spike markers if enabled
-    console.log('📊 CVD Spike Check:', { cvdSpikeEnabled, deltaHistoryLen: deltaHistory.length, candlesLen: candles.length });
-    if (cvdSpikeEnabled && deltaHistory.length >= 10 && candles.length > 0) {
+    console.log('📊 CVD Spike Check:', { cvdSpikeEnabled: cvdSettings.enabled, deltaHistoryLen: deltaHistory.length, candlesLen: candles.length });
+    if (cvdSettings.enabled && deltaHistory.length >= 10 && candles.length > 0) {
       // Calculate average delta for bullish and bearish separately
       const bullishDeltas = deltaHistory.filter(d => d.delta > 0).map(d => d.delta);
       const bearishDeltas = deltaHistory.filter(d => d.delta < 0).map(d => Math.abs(d.delta));
@@ -4548,9 +4539,9 @@ useEffect(() => {
         const bearishExchanges = bar.bearishExchanges || 0;
         
         // Bullish spike detection with configurable thresholds
-        const level1Mult = cvdSpikeLevel1 / 100; // e.g., 175% = 1.75x
-        const level2Mult = cvdSpikeLevel2 / 100; // e.g., 250% = 2.5x
-        const level3Mult = cvdSpikeLevel3 / 100; // e.g., 400% = 4.0x
+        const level1Mult = cvdSettings.level1 / 100; // e.g., 175% = 1.75x
+        const level2Mult = cvdSettings.level2 / 100; // e.g., 250% = 2.5x
+        const level3Mult = cvdSettings.level3 / 100; // e.g., 400% = 4.0x
         
         if (bar.delta > 0 && avgBullishDelta > 0) {
           const multiple = bar.delta / avgBullishDelta;
@@ -4656,7 +4647,7 @@ useEffect(() => {
     } else {
       console.warn('⚠️ candleSeriesRef.current is null');
     }
-  }, [chartReady, tradingState.backtestResults, candles, strategySettings.liquidityGrab.tpsl, strategySettings.bosStructure.tpsl, strategySettings.chochFvg.tpsl, strategySettings.vwapTrading.tpsl, replayMode.isReplayMode, cvdSpikeEnabled, cvdSpikeLevel1, cvdSpikeLevel2, cvdSpikeLevel3, deltaHistory]);
+  }, [chartControls.chartReady, tradingState.backtestResults, candles, strategySettings.liquidityGrab.tpsl, strategySettings.bosStructure.tpsl, strategySettings.chochFvg.tpsl, strategySettings.vwapTrading.tpsl, replayMode.isReplayMode, cvdSettings.enabled, cvdSettings.level1, cvdSettings.level2, cvdSettings.level3, deltaHistory]);
 
   // ========== DEBOUNCE EFFECTS FOR STRATEGY SETTINGS ==========
   
@@ -5137,18 +5128,13 @@ useEffect(() => {
     [candles, indicators.supertrend.period, indicators.supertrend.multiplier]
   );
   const vwapData = useMemo(() => calculateVWAPBands(candles), [candles]);
-  const sessionVWAPData = useMemo(() => calculateSessionVWAP(candles), [candles]);
-  const psarData = useMemo(() => calculateParabolicSAR(candles), [candles]);
-  const bbData = useMemo(() => {
-    const result = calculateBollingerBands(candles, indicators.bb.period, indicators.bb.stdDev);
-    // Convert BollingerBandsResult to BandValue[]
-    return result.upper.map((_, i) => ({
-      time: result.upper[i].time,
-      upper: result.upper[i].value,
-      middle: result.middle[i].value,
-      lower: result.lower[i].value,
-    }));
-  }, [candles, indicators.bb.period, indicators.bb.stdDev]);
+  
+  // Indicator calculations hook - replaces inline useMemo calculations
+  const { sessionVWAP: sessionVWAPData, parabolicSAR: psarData, bollingerBands: bbData } = useIndicatorCalculations({
+    candles,
+    bbPeriod: indicators.bb.period,
+    bbStdDev: indicators.bb.stdDev,
+  });
 
   // Allow page to render for all users - unauthenticated get free tier
   // Sign in button in header handles authentication
@@ -5346,15 +5332,15 @@ useEffect(() => {
         </div>
 
         {/* Custom Crosshair Time Tooltip for Future Whitespace Area */}
-        {crosshairInfo && crosshairInfo.time > 0 && (
+        {chartControls.crosshairInfo && chartControls.crosshairInfo.time > 0 && (
           <div 
             className="absolute pointer-events-none z-20 bg-slate-900/90 text-white text-xs px-2 py-1 rounded border border-slate-600"
             style={{ 
-              left: Math.min(crosshairInfo.x, (chartContainerRef.current?.clientWidth || 800) - 120), 
+              left: Math.min(chartControls.crosshairInfo.x, (chartContainerRef.current?.clientWidth || 800) - 120), 
               bottom: 10
             }}
           >
-            {new Date(crosshairInfo.time * 1000).toLocaleString('en-GB', {
+            {new Date(chartControls.crosshairInfo.time * 1000).toLocaleString('en-GB', {
               day: '2-digit',
               month: 'short',
               year: 'numeric',
@@ -5367,7 +5353,7 @@ useEffect(() => {
                 {/* SVG Overlay for Selection Hit Areas & Edit Mode */}
                 {/* Primitives handle visible rendering, SVG provides invisible hit areas for selection */}
                 <svg 
-                  className={`absolute top-0 left-0 ${(drawingMode === 'select' || activeEdit) ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
+                  className={`absolute top-0 left-0 ${(chartControls.drawingMode === 'select' || activeEdit) ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}
                   style={{ width: '100%', height: isFullscreen ? '100%' : '600px', zIndex: 10 }}
                   data-testid="drawing-overlay"
                   onClick={(e) => {
@@ -5377,7 +5363,7 @@ useEffect(() => {
                       e.stopPropagation();
                       return;
                     }
-                    if (drawingMode === 'select') {
+                    if (chartControls.drawingMode === 'select') {
                       // If clicking on empty space, deselect
                       if ((e.target as Element).tagName === 'svg') {
                         setSelectedDrawingId(null);
@@ -5389,7 +5375,7 @@ useEffect(() => {
                   {drawings.map(drawing => {
                     const isBeingEdited = activeEdit && activeEdit.drawingId === drawing.id;
                     const renderVisible = isBeingEdited; // Only show SVG graphics when editing this drawing
-                    if (!chartRef.current || !chartReady) return null;
+                    if (!chartRef.current || !chartControls.chartReady) return null;
                     
                     const chart = chartRef.current;
                     const timeScale = chart.timeScale();
@@ -5414,7 +5400,7 @@ useEffect(() => {
                     
                     const handleClick = (e: React.MouseEvent) => {
                       e.stopPropagation();
-                      if (drawingMode === 'select') {
+                      if (chartControls.drawingMode === 'select') {
                         setSelectedDrawingId(drawing.id === selectedDrawingId ? null : drawing.id);
                       }
                     };
@@ -5537,7 +5523,7 @@ useEffect(() => {
                       const effectiveAnchor = labelX < 60 ? 'start' : (labelX > chartWidth - 60 ? 'end' : (labelRight ? 'start' : 'end'));
                       
                       return (
-                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: chartControls.drawingMode === 'select' ? 'pointer' : 'default' }}>
                           {/* Invisible hit area for selection - always present */}
                           <line 
                             x1={lineX1} y1={lineY1} x2={lineX2} y2={lineY2}
@@ -5629,7 +5615,7 @@ useEffect(() => {
                       const labelX = labelRight ? Math.min(p1.x, p2.x) + Math.abs(p2.x - p1.x) - 5 : Math.min(p1.x, p2.x) + 5;
                       
                       return (
-                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: chartControls.drawingMode === 'select' ? 'pointer' : 'default' }}>
                           {/* Invisible hit area for selection */}
                           <rect 
                             x={x} y={y} width={rectWidth} height={h}
@@ -5698,7 +5684,7 @@ useEffect(() => {
                       const lineEndX = extendRight ? chartWidth : baseEndX;
                       
                       return (
-                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: chartControls.drawingMode === 'select' ? 'pointer' : 'default' }}>
                           {/* Click target area for channel */}
                           <rect x={lineStartX} y={Math.min(p1.y, p2.y)} width={lineEndX - lineStartX} height={Math.abs(p2.y - p1.y)} fill="transparent" />
                           {/* Edit mode point handles */}
@@ -5742,7 +5728,7 @@ useEffect(() => {
                       const lineEndX = extendRight ? chartWidth : baseEndX;
                       
                       return (
-                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: chartControls.drawingMode === 'select' ? 'pointer' : 'default' }}>
                           {/* Click target area - always present (fib lines/labels drawn by primitive) */}
                           <rect x={lineStartX} y={p1.y < p2.y ? p1.y : p2.y} width={lineEndX - lineStartX} height={Math.abs(p2.y - p1.y)} fill="transparent" />
                           {/* Edit mode point handles */}
@@ -5800,7 +5786,7 @@ useEffect(() => {
                       }));
                       
                       return (
-                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: chartControls.drawingMode === 'select' ? 'pointer' : 'default' }}>
                           {/* Click target area (trend_fib lines/labels drawn by primitive) */}
                           <rect x={lineStartX} y={minY} width={lineEndX - lineStartX} height={maxY - minY} fill="transparent" />
                           {/* Wave measurement line - always visible for context */}
@@ -5855,7 +5841,7 @@ useEffect(() => {
                       const chartWidth = chartContainerRef.current?.clientWidth || 800;
                       
                       return (
-                        <g key={drawing.id} onClick={handleClick} style={{ cursor: drawingMode === 'select' ? 'pointer' : 'default' }}>
+                        <g key={drawing.id} onClick={handleClick} style={{ cursor: chartControls.drawingMode === 'select' ? 'pointer' : 'default' }}>
                           {/* Invisible thicker line for easier clicking */}
                           <line 
                             x1={0} y1={y} x2={chartWidth} y2={y}
@@ -5900,7 +5886,7 @@ useEffect(() => {
                   })}
                   
                   {/* Temp drawing preview */}
-                  {tempDrawing && tempDrawing.points.length > 0 && chartReady && (
+                  {tempDrawing && tempDrawing.points.length > 0 && chartControls.chartReady && (
                     (() => {
                       const toPixel = (point: { time: number; price: number }) => {
                         const x = chartRef.current?.timeScale().timeToCoordinate(point.time as any);
@@ -5933,7 +5919,7 @@ useEffect(() => {
                     <button
                       onClick={() => setShowToolPicker(prev => !prev)}
                     className={`p-2 rounded-lg transition-all ${
-                      drawingMode === 'draw' 
+                      chartControls.drawingMode === 'draw' 
                         ? 'bg-blue-500 text-white' 
                         : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
                     }`}
@@ -5948,12 +5934,12 @@ useEffect(() => {
                   {/* Select/Cursor Button */}
                   <button
                     onClick={() => {
-                      setDrawingMode(prev => prev === 'select' ? 'off' : 'select');
+                      chartControls.setDrawingMode(prev => prev === 'select' ? 'off' : 'select');
                       setActiveTool(null);
                       setShowToolPicker(false);
                     }}
                     className={`p-2 rounded-lg transition-all ${
-                      drawingMode === 'select' 
+                      chartControls.drawingMode === 'select' 
                         ? 'bg-green-500 text-white' 
                         : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
                     }`}
@@ -5968,7 +5954,7 @@ useEffect(() => {
                   {/* Deselect/Cancel Button */}
                   <button
                     onClick={() => {
-                      setDrawingMode('off');
+                      chartControls.setDrawingMode('off');
                       setActiveTool(null);
                       setShowToolPicker(false);
                       setSelectedDrawingId(null);
@@ -6141,11 +6127,11 @@ useEffect(() => {
                      {/* Oscillator Panel Toggle */}
 <button
   onClick={() => {
-    console.log('Oscillator button clicked, current state:', showOscillatorPanel);
-    setShowOscillatorPanel(!showOscillatorPanel);
+    console.log('Oscillator button clicked, current state:', panels.oscillatorPanel);
+    panels.togglePanel('oscillatorPanel');
   }}
   className={`p-2 rounded-lg transition-all ${
-    showOscillatorPanel 
+    panels.oscillatorPanel 
       ? 'bg-purple-500 text-white' 
       : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
   }`}
@@ -6222,7 +6208,7 @@ useEffect(() => {
                         key={tool.id}
                         onClick={() => {
                           setActiveTool(tool.id as DrawingTool);
-                          setDrawingMode('draw');
+                          chartControls.setDrawingMode('draw');
                           setShowToolPicker(false);
                           setTempDrawing({ points: [] });
                           toast({ title: `${tool.name} Selected`, description: 'Click on chart to place points' });
@@ -6271,7 +6257,7 @@ useEffect(() => {
             )}
                                    
                 {/* Active Tool Indicator */}
-                {activeTool && drawingMode === 'draw' && (
+                {activeTool && chartControls.drawingMode === 'draw' && (
                   <div className="absolute top-2 left-44 z-20 bg-blue-500/90 text-white px-3 py-1 rounded-lg text-xs font-medium">
                     Drawing: {activeTool.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                     {tempDrawing && ` (${tempDrawing.points.length}/${activeTool === 'horizontal' ? 1 : 2} points)`}
@@ -6282,27 +6268,27 @@ useEffect(() => {
             
             {/* Chart Controls - Tabbed Interface */}
             {!loading && (
-              <div ref={chartControlsRef}>
+              <div ref={chartControls.chartControlsRef}>
                 <SettingsPanel
                   isPaidTier={isPaidTier}
                   indicators={indicators}
                   handleSMCToolToggle={handleSMCToolToggle}
                   handleTrendToolToggle={handleTrendToolToggle}
                   handleOscillatorToggle={handleOscillatorToggle}
-                  cvdSpikeEnabled={cvdSpikeEnabled}
-                  setCvdSpikeEnabled={setCvdSpikeEnabled}
-                  cvdSpikeLevel1Input={cvdSpikeLevel1Input}
-                  setCvdSpikeLevel1Input={setCvdSpikeLevel1Input}
-                  cvdSpikeLevel1={cvdSpikeLevel1}
-                  setCvdSpikeLevel1={setCvdSpikeLevel1}
-                  cvdSpikeLevel2Input={cvdSpikeLevel2Input}
-                  setCvdSpikeLevel2Input={setCvdSpikeLevel2Input}
-                  cvdSpikeLevel2={cvdSpikeLevel2}
-                  setCvdSpikeLevel2={setCvdSpikeLevel2}
-                  cvdSpikeLevel3Input={cvdSpikeLevel3Input}
-                  setCvdSpikeLevel3Input={setCvdSpikeLevel3Input}
-                  cvdSpikeLevel3={cvdSpikeLevel3}
-                  setCvdSpikeLevel3={setCvdSpikeLevel3}
+                  cvdSpikeEnabled={cvdSettings.enabled}
+                  setCvdSpikeEnabled={cvdSettings.setEnabled}
+                  cvdSpikeLevel1Input={cvdSettings.level1Input}
+                  setCvdSpikeLevel1Input={cvdSettings.setLevel1Input}
+                  cvdSpikeLevel1={cvdSettings.level1}
+                  setCvdSpikeLevel1={cvdSettings.setLevel1}
+                  cvdSpikeLevel2Input={cvdSettings.level2Input}
+                  setCvdSpikeLevel2Input={cvdSettings.setLevel2Input}
+                  cvdSpikeLevel2={cvdSettings.level2}
+                  setCvdSpikeLevel2={cvdSettings.setLevel2}
+                  cvdSpikeLevel3Input={cvdSettings.level3Input}
+                  setCvdSpikeLevel3Input={cvdSettings.setLevel3Input}
+                  cvdSpikeLevel3={cvdSettings.level3}
+                  setCvdSpikeLevel3={cvdSettings.setLevel3}
                   fvgVolumeThreshold={chartSettings.legacy.fvgVolumeThreshold}
                   setFvgVolumeThreshold={chartSettings.legacy.setFvgVolumeThreshold}
                   chartBosSwingLengthInput={chartSettings.bos.swingLengthInput}
@@ -6324,8 +6310,8 @@ useEffect(() => {
                   saveToTimeframe={saveToTimeframe}
                   makeTimeframeDefault={makeTimeframeDefault}
                   loading={loading}
-                  chartControlsTab={chartControlsTab || 'smc'}
-                  setChartControlsTab={(tab: string) => setChartControlsTab(tab as 'smc' | 'trend' | 'vwap' | 'oscillators')}
+                  chartControlsTab={chartControls.activeTab || 'smc'}
+                  setChartControlsTab={(tab: string) => chartControls.setActiveTab(tab as 'smc' | 'trend' | 'vwap' | 'oscillators')}
                 />
               </div>
             )}
@@ -6361,8 +6347,8 @@ useEffect(() => {
 )}
                 {/* Fullscreen Oscillator Panel Component */}
       <FullscreenOscillatorPanel
-        isVisible={isFullscreen && showOscillatorPanel}
-        onClose={() => setShowOscillatorPanel(false)}
+        isVisible={isFullscreen && panels.oscillatorPanel}
+        onClose={() => panels.togglePanel('oscillatorPanel')}
         candles={candles}
         mainChartRef={chartRef}
         rsiPeriod={indicators.rsi.period}
@@ -6386,11 +6372,11 @@ useEffect(() => {
         <MarketSummaryCard
           tier={tier as 'free' | 'intermediate' | 'professional'}
           grokLogo={grokLogo}
-          minimized={marketSummaryMinimized}
-          onToggleMinimize={() => setMarketSummaryMinimized(!marketSummaryMinimized)}
-          analysis={aiAnalysis}
-          loading={aiAnalysisLoading}
-          timestamp={aiAnalysisTimestamp}
+          minimized={panels.marketSummary}
+          onToggleMinimize={() => panels.togglePanel('marketSummary')}
+          analysis={aiAnalysisState.analysis}
+          loading={aiAnalysisState.loading}
+          timestamp={aiAnalysisState.timestamp}
           candlesLength={candles.length}
           onRefresh={() => fetchAIAnalysis(true)}
           onUpgrade={() => window.location.href = '/cryptosubscribe'}
@@ -6398,10 +6384,10 @@ useEffect(() => {
 
         {/* Footprint Delta Table */}
         <Card className="bg-slate-800 border-slate-700">
-          <CardHeader className="pb-2 cursor-pointer" onClick={() => setCvdTableMinimized(!cvdTableMinimized)}>
+          <CardHeader className="pb-2 cursor-pointer" onClick={() => panels.togglePanel('cvdTable')}>
             <div className="flex items-center justify-between">
               <CardTitle className="text-white text-sm flex items-center gap-2">
-                <span className={`transition-transform duration-200 ${cvdTableMinimized ? '' : 'rotate-90'}`}>▶</span>
+                <span className={`transition-transform duration-200 ${panels.cvdTable ? '' : 'rotate-90'}`}>▶</span>
                 <span className="text-lg">📊</span>
                 Delta Vs CVD
               </CardTitle>
@@ -6414,14 +6400,14 @@ useEffect(() => {
                 </div>
               </div>
               </CardHeader>
-              {!cvdTableMinimized && (
+              {!panels.cvdTable && (
               <CardContent>
                 <CVDTable
                   data={deltaHistory}
                   useMultiExchange={useMultiExchange}
-                  cvdSpikeLevel1={cvdSpikeLevel1}
-                  cvdSpikeLevel2={cvdSpikeLevel2}
-                  cvdSpikeLevel3={cvdSpikeLevel3}
+                  cvdSpikeLevel1={cvdSettings.level1}
+                  cvdSpikeLevel2={cvdSettings.level2}
+                  cvdSpikeLevel3={cvdSettings.level3}
                   tableLimit={getTableRowLimit(interval)}
                 />
               </CardContent>
