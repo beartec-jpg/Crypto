@@ -6157,7 +6157,7 @@ useEffect(() => {
                 </div>
               )}
 
-                {/* Fullscreen Header Bar - Ticker and Timeframe */}
+                 {/* Fullscreen Header Bar - Ticker and Timeframe */}
               {isFullscreen && (
                 <ChartControls
                   symbol={isFullscreen ? fullscreenSymbol : symbol}
