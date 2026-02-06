@@ -171,6 +171,7 @@ export function TickerTable({
                 `https://api.binance.com/api/v3/klines?symbol=${ticker}&interval=${binanceTimeframe}&limit=150`
               );
               const candles = await candleResponse.json();
+              console.log(`📊 Fetched ${candles.length} candles for ${ticker} on ${binanceTimeframe}`);
               
               // Parse candles
               const parsedCandles = candles.map((c: any) => ({
@@ -225,6 +226,7 @@ export function TickerTable({
         }
 
         setTickerData(newTickerData);
+        console.log('✅ Loaded ticker data:', Object.keys(newTickerData).length, 'tickers');
       } catch (error) {
         console.error('Failed to fetch ticker data:', error);
         toast({
@@ -310,8 +312,8 @@ export function TickerTable({
               <th className="px-2 sm:px-4 py-2 text-left text-xs sm:text-sm font-medium text-gray-300">Ticker</th>
               <th className="px-2 sm:px-4 py-2 text-right text-xs sm:text-sm font-medium text-gray-300">Price</th>
               <th className="px-2 sm:px-4 py-2 text-right text-xs sm:text-sm font-medium text-gray-300">% Chg</th>
-              <th className="px-2 sm:px-4 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 hidden md:table-cell">EMA</th>
-              <th className="px-2 sm:px-4 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 hidden lg:table-cell">Structure</th>
+              <th className="px-2 sm:px-4 py-2 text-center text-xs sm:text-sm font-medium text-gray-300">EMA</th>
+              <th className="px-2 sm:px-4 py-2 text-center text-xs sm:text-sm font-medium text-gray-300">Structure</th>
               <th className="px-2 sm:px-4 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-12 sm:w-16"></th>
             </tr>
           </thead>
@@ -350,13 +352,13 @@ export function TickerTable({
                     <td className="px-2 sm:px-4 py-3 text-right font-mono text-xs sm:text-sm">
                       {data ? formatChange(data.priceChange) : '-'}
                     </td>
-                    <td className="px-2 sm:px-4 py-3 hidden md:table-cell">
+                    <td className="px-2 sm:px-4 py-3">
                       <div className="flex items-center justify-center gap-1 sm:gap-2">
                         {data && getBiasIcon(data.emaBias)}
                         <span className="hidden sm:inline">{data && getBiasText(data.emaBias)}</span>
                       </div>
                     </td>
-                    <td className="px-2 sm:px-4 py-3 hidden lg:table-cell">
+                    <td className="px-2 sm:px-4 py-3">
                       <div className="flex items-center justify-center gap-1 sm:gap-2">
                         {data && getBiasIcon(data.structureBias)}
                         <span className="hidden sm:inline">{data && getBiasText(data.structureBias)}</span>
