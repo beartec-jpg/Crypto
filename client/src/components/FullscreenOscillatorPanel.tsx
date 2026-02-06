@@ -319,9 +319,9 @@ export function FullscreenOscillatorPanel({
   const oscillators = [
     { id: 'rsi', name: 'RSI', enabled: showRSI, setter: setShowRSI },
     { id: 'macd', name: 'MACD', enabled: showMACD, setter: setShowMACD },
-    { id: 'stoch', name: 'Stochastic', enabled: showStochRSI, setter: setShowStochRSI },
+    { id: 'stochrsi', name: 'Stochastic RSI', enabled: showStochRSI, setter: setShowStochRSI },
     { id: 'cci', name: 'CCI', enabled: showCCI, setter: setShowCCI },
-    { id: 'williams', name: 'Williams %R', enabled: showWilliamsR, setter: setShowWilliamsR },
+    { id: 'williamsr', name: 'Williams %R', enabled: showWilliamsR, setter: setShowWilliamsR },
   ];
 
   const hasAnyEnabled = showRSI || showMACD || showStochRSI || showCCI || showWilliamsR;
@@ -330,12 +330,13 @@ export function FullscreenOscillatorPanel({
     <>
       {/* Oscillator Picker Dropdown */}
       {showPicker && (
-        <div className="fixed top-20 left-4 z-[60] bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl min-w-[180px]">
+        <div className="fixed top-20 left-4 z-[999] bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl min-w-[180px]">
           <div className="text-xs text-gray-400 mb-2 px-2">Select Oscillator</div>
           {oscillators.map(osc => (
             <button
               key={osc.id}
               onClick={() => {
+                console.log('🎯 Toggling oscillator:', osc.name, 'from', osc.enabled, 'to', !osc.enabled);
                 osc.setter(!osc.enabled);
                 setShowPicker(false);
               }}
@@ -350,10 +351,15 @@ export function FullscreenOscillatorPanel({
         </div>
       )}
 
-      {/* Floating Oscillator Panel */}
+      {/* Fullscreen Oscillator Panel - Bottom 20% */}
       <div 
-        className="fixed bottom-4 right-4 w-[500px] max-w-[90vw] bg-slate-900 border-2 border-slate-600 rounded-lg shadow-2xl z-50 overflow-hidden"
-        style={{ maxHeight: '450px' }}
+        className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t-2 border-slate-600 overflow-y-auto"
+        style={{ 
+          height: '20vh',
+          minHeight: '200px',
+          maxHeight: '20vh',
+          zIndex: 50
+        }}
       >
         {/* Header */}
         <div className="flex items-center justify-between bg-slate-800 px-3 py-2 border-b border-slate-600">
@@ -390,9 +396,9 @@ export function FullscreenOscillatorPanel({
         </div>
         
         {/* Content */}
-        <div className="p-3 overflow-y-auto" style={{ maxHeight: '390px' }}>
+        <div className="p-3 overflow-y-auto" style={{ maxHeight: 'calc(20vh - 45px)' }}>
           {!hasAnyEnabled && (
-            <div className="flex items-center justify-center h-[200px] text-gray-400 text-sm">
+            <div className="flex items-center justify-center h-[120px] text-gray-400 text-sm">
               Click + to add an oscillator
             </div>
           )}
@@ -467,8 +473,21 @@ export function FullscreenOscillatorPanel({
             <div className="bg-slate-800 rounded-lg p-2 mb-3">
               <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
                 <span>CCI ({cciPeriod})</span>
+                <button
+                  onClick={() => {
+                    setShowCCI(false);
+                    const chart = chartsRef.current.get('CCI');
+                    if (chart) {
+                      chart.remove();
+                      chartsRef.current.delete('CCI');
+                    }
+                  }}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
               </div>
-              <div ref={cciRef} className="h-[180px] w-full" />
+              <div ref={cciRef} className="w-full" />
             </div>
           )}
 
@@ -477,12 +496,25 @@ export function FullscreenOscillatorPanel({
             <div className="bg-slate-800 rounded-lg p-2 mb-3">
               <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
                 <span>Williams %R ({williamsRPeriod})</span>
+                <button
+                  onClick={() => {
+                    setShowWilliamsR(false);
+                    const chart = chartsRef.current.get('WilliamsR');
+                    if (chart) {
+                      chart.remove();
+                      chartsRef.current.delete('WilliamsR');
+                    }
+                  }}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
               </div>
-              <div ref={williamsRRef} className="h-[180px] w-full" />
+              <div ref={williamsRRef} className="w-full" />
             </div>
           )}
         </div>
       </div>
     </>
   );
-};
+}
