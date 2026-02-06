@@ -14,8 +14,11 @@ export function useWatchlistState() {
   const { data: watchlistData, refetch: refetchWatchlist } = useQuery({
     queryKey: ['watchlist'],
     queryFn: async () => {
+      console.log('📥 Fetching watchlist from API');
       const response = await authenticatedApiRequest('GET', '/api/crypto/watchlist');
-      return response.json();
+      const data = await response.json();
+      console.log('✅ Watchlist loaded:', data);
+      return data;
     },
     staleTime: Infinity,
   });
@@ -32,11 +35,23 @@ export function useWatchlistState() {
   // Save watchlist mutation
   const saveWatchlistMutation = useMutation({
     mutationFn: async (tickers: string[]) => {
+      console.log('💾 Saving watchlist:', tickers);
       const response = await authenticatedApiRequest('POST', '/api/crypto/watchlist', { tickers });
-      return response.json();
+      const data = await response.json();
+      console.log('✅ Watchlist saved:', data);
+      return data;
     },
     onSuccess: () => {
+      console.log('♻️ Refetching watchlist');
       refetchWatchlist();
+    },
+    onError: (error) => {
+      console.error('❌ Failed to save watchlist:', error);
+      toast({
+        title: 'Failed to save',
+        description: 'Could not save watchlist to account',
+        variant: 'destructive',
+      });
     },
   });
 
