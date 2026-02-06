@@ -6168,14 +6168,6 @@ useEffect(() => {
                   isFullscreen={isFullscreen}
                 />
               )}
-                    className="px-3 py-2 bg-slate-800/90 text-white rounded-lg border border-slate-600 hover:bg-slate-700 transition-all text-sm font-medium"
-                  >
-                    {watchlistTickers.map(ticker => (
-                      <option key={ticker} value={ticker}>
-                        {ticker.replace('USDT', '/USDT')}
-                      </option>
-                    ))}
-                  </select>
                   
                   {/* Timeframe Dropdown */}
                   <select
