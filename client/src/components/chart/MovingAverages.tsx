@@ -87,58 +87,46 @@ export function MovingAverages({
           const htfCloses = htfCandles.map(c => c.close);
           const htfEmaValues = calculateEMA(htfCloses, config.period);
           
-          // Map higher TF EMA values to current chart timeframe
-          // Each HTF candle's EMA value applies to all current TF candles within its time range
-          const htfEmaMap: { time: number; value: number }[] = htfCandles.map((c, i) => ({
-            time: c.time,
+          // Map HTF EMA to current chart timeframe
+          emaData = htfCandles.map((c, i) => ({
+            time: c.time as any,
             value: htfEmaValues[i]
           })).filter(d => d.value !== undefined);
-          
-          // For each current candle, find the corresponding HTF EMA value
-          emaData = candles.map(c => {
-            // Find the most recent HTF EMA value that's <= current candle time
-            let htfValue: number | undefined;
-            for (let i = htfEmaMap.length - 1; i >= 0; i--) {
-              if (htfEmaMap[i].time <= c.time) {
-                htfValue = htfEmaMap[i].value;
-                break;
-              }
-            }
-            return {
-              time: c.time as any,
-              value: htfValue!
-            };
-          }).filter(d => d.value !== undefined);
         }
       }
 
-      // Format label: 21, 100D, 21W, 100h4, etc.
-      const label = formatMALabel(config.period, config.timeframe);
+      if (emaData.length === 0) continue;
 
+      // Create or update series
       if (!refs[config.id]) {
-        try {
-          refs[config.id] = chart.addSeries(LineSeries, {
-            color: config.color,
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: true,
-            title: label,
-          });
-        } catch (e) { continue; }
+        const series = chart.addLineSeries({
+          color: config.color,
+          lineWidth: 2,
+          title: formatMALabel(config.period, config.timeframe),
+          priceLineVisible: false,
+          lastValueVisible: true,
+        });
+        series.setData(emaData);
+        refs[config.id] = series;
       } else {
-        // Update title if config changed
-        try {
-          refs[config.id]!.applyOptions({ title: label });
-        } catch (e) {}
-      }
-      
-      if (emaData.length > 0) {
-        try {
-          refs[config.id]!.setData(emaData);
-        } catch (e) {}
+        refs[config.id].setData(emaData);
+        refs[config.id].applyOptions({
+          color: config.color,
+          title: formatMALabel(config.period, config.timeframe),
+        });
       }
     }
-  }, [chart, candles, show, maConfigs, calculateEMA, symbol, interval]);
+
+    return () => {
+      // Cleanup on unmount
+      Object.keys(refs).forEach(key => {
+        if (refs[key]) {
+          try { chart.removeSeries(refs[key]!); } catch (e) {}
+        }
+      });
+      emaSeriesRefs.current = {};
+    };
+  }, [chart, maConfigs, show, candles, calculateEMA, symbol, interval]);
 
   return null;
 }
