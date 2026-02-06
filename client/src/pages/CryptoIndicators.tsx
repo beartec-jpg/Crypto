@@ -5188,21 +5188,6 @@ useEffect(() => {
             onTimeframeChange={setTableTimeframe}
           />
         </div>
-
-        {/* Chart Control Bar */}
-        <ChartControlBar
-          symbol={symbol}
-          interval={interval}
-          period={chartPeriod}
-          onSymbolChange={setSymbol}
-          onIntervalChange={setTimeframeInterval}
-          onPeriodChange={setChartPeriod}
-          onRefresh={() => fetchInitialData()}
-          isFullscreen={isFullscreen}
-          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
-          autoScroll={autoScroll}
-          onToggleAutoScroll={() => setAutoScroll(!autoScroll)}
-        />
         
         {/* Additional Action Buttons */}
         <ActionButtonsToolbar
