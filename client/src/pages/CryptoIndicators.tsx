@@ -446,7 +446,11 @@ export default function CryptoIndicators() {
   const [chartPeriod, setChartPeriod] = useState('24h');
   const [autoScroll, setAutoScroll] = useState(false);
 
-const [tableTimeframe, setTableTimeframe] = useState('1h');
+  const [tableTimeframe, setTableTimeframe] = useState('1h');
+    // Independent fullscreen chart state
+  const [fullscreenSymbol, setFullscreenSymbol] = useState(symbol);
+  const [fullscreenInterval, setFullscreenInterval] = useState(interval);
+  const [fullscreenCandles, setFullscreenCandles] = useState<CandleData[]>([]);
   
   // Native primitives for high-performance drawing rendering
   const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
@@ -558,6 +562,16 @@ useEffect(() => {
       return () => clearTimeout(resizeTimeout);
     }
   }, [isFullscreen]);
+
+  // Sync fullscreen chart state when entering fullscreen
+  useEffect(() => {
+    if (isFullscreen) {
+      setFullscreenSymbol(symbol);
+      setFullscreenInterval(interval);
+      setFullscreenCandles([...candles]);
+      console.log('📺 Entered fullscreen - synced state');
+    }
+  }, [isFullscreen, symbol, interval, candles]);
     
   // Cooldown ref to prevent immediate placement after pickup (1 second delay)
   const pointPstyleimeRef = useRef<number>(0);
@@ -836,10 +850,22 @@ useEffect(() => {
     updateDrawingMutationRef.current = { mutate: updateDrawing };
   }, [updateDrawing]);
   
-  const handleSelectTicker = useCallback((ticker: string) => {
-    incrementTickerClick(ticker);
-    setSymbol(ticker);
-  }, []);
+   // Handle fullscreen chart interval change independently
+  const handleFullscreenIntervalChange = useCallback(async (newInterval: string) => {
+    console.log('🔄 Fullscreen interval change:', newInterval);
+    setFullscreenInterval(newInterval);
+    
+    try {
+      const response = await fetch(`/api/binance/klines?symbol=${fullscreenSymbol}&interval=${newInterval}&limit=500`);
+      if (response.ok) {
+        const data = await response.json();
+        setFullscreenCandles(binanceToCandleData(data));
+        console.log('✅ Fullscreen candles loaded:', data.length);
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch fullscreen candles:', error);
+    }
+  }, [fullscreenSymbol]);
   
   // Handle point commit from gesture controller
   const handlePointCommit = useCallback((point: GesturePoint) => {
@@ -5273,7 +5299,7 @@ useEffect(() => {
   {/* Chart canvas rendered by ChartContainer component */}
   <ChartContainer
     ref={chartContainerRef}
-    data={candles}
+    data={isFullscreen ? fullscreenCandles : candles}
     height={isFullscreen ? window.innerHeight : 600}
     isFullscreen={isFullscreen}
     loading={loading}
@@ -6133,16 +6159,15 @@ useEffect(() => {
 
                 {/* Fullscreen Header Bar - Ticker and Timeframe */}
               {isFullscreen && (
-                <div className="absolute top-2 right-2 z-20 flex items-center gap-2">
-                  {/* Ticker Dropdown */}
-                  <select
-                    value={symbol}
-                    onChange={(e) => {
-                      const newSymbol = e.target.value;
-                      if (newSymbol && newSymbol !== symbol) {
-                        window.location.href = `/chart/${newSymbol}`;
-                      }
-                    }}
+                <ChartControls
+                  symbol={isFullscreen ? fullscreenSymbol : symbol}
+                  interval={isFullscreen ? fullscreenInterval : interval}
+                  onSymbolChange={isFullscreen ? setFullscreenSymbol : setSymbol}
+                  onIntervalChange={isFullscreen ? handleFullscreenIntervalChange : setTimeframeInterval}
+                  watchlistTickers={watchlistTickers}
+                  isFullscreen={isFullscreen}
+                />
+              )}
                     className="px-3 py-2 bg-slate-800/90 text-white rounded-lg border border-slate-600 hover:bg-slate-700 transition-all text-sm font-medium"
                   >
                     {watchlistTickers.map(ticker => (
@@ -6302,21 +6327,6 @@ useEffect(() => {
             )}
           </CardContent>
         </Card>
-
-        {/* Strategy Generator Panel */}
-        <StrategyGeneratorPanel
-          onGenerateStrategy={handleGenerateStrategy}
-          candles={candles}
-          indicators={indicators}
-        />
-
-        {/* Backtest Results Panel */}
-        <BacktestResultsPanel
-          results={tradingState.backtestResults}
-          isRunning={tradingState.backtesting}
-          onRun={handleRunBacktest}
-          onClear={() => tradingState.clearBacktest()}
-        />
 
 {/* Oscillator Charts - Conditionally rendered based on mode */}
 {!isFullscreen && (indicators.rsi.show || indicators.stochRSI.show || indicators.macd.show || indicators.obv.show || indicators.williamsR.show || indicators.mfi.show || indicators.cci.show || indicators.adx.show) && (
