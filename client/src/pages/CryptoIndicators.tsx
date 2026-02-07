@@ -368,66 +368,72 @@ export default function CryptoIndicators() {
   } = useWatchlistState();
   
   // Wrap handlers to include symbol change logic
-  const handleAddTicker = useCallback((ticker: string) => {
-    handleAddTickerBase(ticker, setSymbol);
-  }, [handleAddTickerBase]);
-  
-  const handleRemoveTicker = useCallback((ticker: string) => {
-    handleRemoveTickerBase(ticker, symbol, setSymbol);
-  }, [handleRemoveTickerBase, symbol]);
-  
-  // Indicator hook - manages all indicator state
-  const indicators = useIndicatorState();
-  
-  // CVD Settings hook - manages CVD spike level state
-  const cvdSettings = useCVDSettings();
-  
-  // Chart Controls hook - manages chart UI state
-  const chartControls = useChartControls();
-  
-  // AI Analysis hook - manages AI market analysis state
-  const aiAnalysisState = useAIAnalysis();
-  
-  // Panel State hook - manages collapsible panel states
-  const panels = usePanelState();
-  
-  // Local state for WebSocket delta tracking (not persisted)
-  const [currentDelta, setCurrentDelta] = useState(0);
-  
-  // Track previous symbol to clear HTF caches on symbol change
-  const prevSymbolRef = useRef(symbol);
-  
-  // Video sequence state - targetMarketState is used by VideoSequencePlayer
-  const [targetMarketState, setTargetMarketState] = useState<'bullish' | 'bearish'>('bearish');
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+const handleAddTicker = useCallback((ticker: string) => {
+  handleAddTickerBase(ticker, setSymbol);
+}, [handleAddTickerBase]);
 
-  const aiReviewMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest('POST', '/api/crypto/ai-market-review', {
-        candles: candles,
-        currentPrice: candles[candles.length - 1]?.close
-      });
-      return await response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: 'AI Market Review',
-        description: data.analysis,
-        duration: 10000
-      });
-    },
-    onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to get AI analysis. Please upgrade to Beginner tier.',
-        variant: 'destructive'
-      });
-    }
-  });
+const handleRemoveTicker = useCallback((ticker: string) => {
+  handleRemoveTickerBase(ticker, symbol, setSymbol);
+}, [handleRemoveTickerBase, symbol]);
 
-  const handleAIMarketReview = () => {
-    aiReviewMutation.mutate();
-  };
+// Handler for selecting a ticker from the table
+const handleSelectTicker = useCallback((ticker: string) => {
+  setSymbol(ticker);
+  incrementTickerClick(ticker);
+}, []);
+
+// Indicator hook - manages all indicator state
+const indicators = useIndicatorState();
+
+// CVD Settings hook - manages CVD spike level state
+const cvdSettings = useCVDSettings();
+
+// Chart Controls hook - manages chart UI state
+const chartControls = useChartControls();
+
+// AI Analysis hook - manages AI market analysis state
+const aiAnalysisState = useAIAnalysis();
+
+// Panel State hook - manages collapsible panel states
+const panels = usePanelState();
+
+// Local state for WebSocket delta tracking (not persisted)
+const [currentDelta, setCurrentDelta] = useState(0);
+
+// Track previous symbol to clear HTF caches on symbol change
+const prevSymbolRef = useRef(symbol);
+
+// Video sequence state - targetMarketState is used by VideoSequencePlayer
+const [targetMarketState, setTargetMarketState] = useState<'bullish' | 'bearish'>('bearish');
+const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+const aiReviewMutation = useMutation({
+  mutationFn: async () => {
+    const response = await apiRequest('POST', '/api/crypto/ai-market-review', {
+      candles: candles,
+      currentPrice: candles[candles.length - 1]?.close
+    });
+    return await response.json();
+  },
+  onSuccess: (data) => {
+    toast({
+      title: 'AI Market Review',
+      description: data.analysis,
+      duration: 10000
+    });
+  },
+  onError: () => {
+    toast({
+      title: 'Error',
+      description: 'Failed to get AI analysis. Please upgrade to Beginner tier.',
+      variant: 'destructive'
+    });
+  }
+});
+
+const handleAIMarketReview = () => {
+  aiReviewMutation.mutate();
+};
 
   // Drawing tools state
   type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
