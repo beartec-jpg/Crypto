@@ -1607,16 +1607,7 @@ useEffect(() => {
     const stochData = calculateStochasticRSI(bars, period, period);
     return stochData.map(d => ({ time: d.time, value: d.k }));
   }, [calculateStochasticRSI]);
-
-
-
-
-
-
-
-
-
-
+  
 
   // *** Helper functions removed - using imported versions from @/lib/strategies ***
 
