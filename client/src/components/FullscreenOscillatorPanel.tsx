@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ColorType, LineStyle } from 'lightweight-charts';
+import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeries } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
 
 interface FullscreenOscillatorPanelProps {
@@ -95,25 +95,25 @@ export function FullscreenOscillatorPanel({
     chartsRef.current.set('RSI', chart);
 
     const rsiData = calculateRSI(candles, rsiPeriod);
-    const line = chart.addLineSeries({ 
+    const line = chart.addSeries(LineSeries, { 
       color: '#fbbf24',
       lineWidth: 2,
     });
     line.setData(rsiData);
 
-    const upperBand = chart.addLineSeries({ 
+    const upperBand = chart.addSeries(LineSeries, { 
       color: '#64748b', 
       lineWidth: 1, 
       lineStyle: LineStyle.Dashed 
     });
-    upperBand.setData(candles.map(c => ({ time: c.time, value: 70 })));
+    upperBand.setData(candles.map(c => ({ time: c.time as any, value: 70 })));
 
-    const lowerBand = chart.addLineSeries({ 
+    const lowerBand = chart.addSeries(LineSeries, { 
       color: '#64748b', 
       lineWidth: 1, 
       lineStyle: LineStyle.Dashed 
     });
-    lowerBand.setData(candles.map(c => ({ time: c.time, value: 30 })));
+    lowerBand.setData(candles.map(c => ({ time: c.time as any, value: 30 })));
 
     chart.timeScale().fitContent();
 
@@ -151,13 +151,13 @@ export function FullscreenOscillatorPanel({
 
     const { macd, signal, histogram } = calculateMACD(candles, macdFast, macdSlow, macdSignal);
     
-    const macdLine = chart.addLineSeries({ color: '#3b82f6', lineWidth: 2 });
+    const macdLine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 });
     macdLine.setData(macd);
 
-    const signalLine = chart.addLineSeries({ color: '#ef4444', lineWidth: 2 });
+    const signalLine = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 2 });
     signalLine.setData(signal);
 
-    const histSeries = chart.addHistogramSeries({
+    const histSeries = chart.addSeries(HistogramSeries, {
       color: '#10b981',
       priceFormat: { type: 'price', precision: 6, minMove: 0.000001 },
     });
@@ -201,7 +201,7 @@ export function FullscreenOscillatorPanel({
     chartsRef.current.set('StochRSI', chart);
 
     const stochData = calculateStochRSI(candles, stochRSIPeriod);
-    const kLine = chart.addLineSeries({ color: '#3b82f6', lineWidth: 2 });
+    const kLine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 });
     kLine.setData(stochData);
 
     chart.timeScale().fitContent();
@@ -239,7 +239,7 @@ export function FullscreenOscillatorPanel({
     chartsRef.current.set('CCI', chart);
 
     const cciData = calculateCCI(candles, cciPeriod);
-    const line = chart.addLineSeries({ color: '#8b5cf6', lineWidth: 2 });
+    const line = chart.addSeries(LineSeries, { color: '#8b5cf6', lineWidth: 2 });
     line.setData(cciData);
 
     chart.timeScale().fitContent();
@@ -277,7 +277,7 @@ export function FullscreenOscillatorPanel({
     chartsRef.current.set('WilliamsR', chart);
 
     const williamsData = calculateWilliamsR(candles, williamsRPeriod);
-    const line = chart.addLineSeries({ color: '#ec4899', lineWidth: 2 });
+    const line = chart.addSeries(LineSeries, { color: '#ec4899', lineWidth: 2 });
     line.setData(williamsData);
 
     chart.timeScale().fitContent();

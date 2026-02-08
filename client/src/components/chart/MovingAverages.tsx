@@ -99,7 +99,7 @@ export function MovingAverages({
 
       // Create or update series
       if (!refs[config.id]) {
-        const series = chart.addLineSeries({
+        const series = chart.addSeries(LineSeries, {
           color: config.color,
           lineWidth: 2,
           title: formatMALabel(config.period, config.timeframe),
