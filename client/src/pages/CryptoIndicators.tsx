@@ -1514,7 +1514,7 @@ useEffect(() => {
   const detectMarketAlerts = useCallback(() => {
     if (candles.length < 50) return;
     
-    const { bos, choch } = calculateBOSandCHoCH(candles, strategySettings.liquidityGrab.swingLength);
+    const { bos, choch } = calculateBOSandCHoCH(candles, chartSettings.bos.swingLength);
     
     const newAlerts: MarketAlert[] = [];
     
@@ -1685,15 +1685,16 @@ useEffect(() => {
         } else {
           // Only check for bounces if it's NOT a cross
           // VWAP Bounces: enters VWAP zone, close stays on same side (AND previous close was same side)
-          const vwapZone = vwapValue * (strategySettings.vwapTrading.threshold / 100);
+          const vwapThreshold = 0.3; // 0.3% zone around VWAP for bounce detection
+          const vwapZone = vwapValue * (vwapThreshold / 100);
           
           // Bullish bounce: wick enters VWAP zone from below, close above zone, previous close above zone
           const enteredZoneFromBelow = candle.low <= vwapValue + vwapZone && candle.low >= vwapValue - vwapZone;
           const closedAboveZone = candle.close > vwapValue + vwapZone;
-          const prevClosedAboveZone = prevCandle.close > prevVwapValue + (prevVwapValue * (strategySettings.vwapTrading.threshold / 100));
+          const prevClosedAboveZone = prevCandle.close > prevVwapValue + (prevVwapValue * (vwapThreshold / 100));
           
           if (enteredZoneFromBelow && closedAboveZone && prevClosedAboveZone) {
-            console.log(`🟢 VWAP Bullish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${strategySettings.vwapTrading.threshold}%`);
+            console.log(`🟢 VWAP Bullish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${vwapThreshold}%`);
             newAlerts.push({
               id: `alert_${candle.time}_VWAP_BOUNCE_BULL`,
               time: candle.time,
@@ -1707,10 +1708,10 @@ useEffect(() => {
           // Bearish bounce: wick enters VWAP zone from above, close below zone, previous close below zone
           const enteredZoneFromAbove = candle.high >= vwapValue - vwapZone && candle.high <= vwapValue + vwapZone;
           const closedBelowZone = candle.close < vwapValue - vwapZone;
-          const prevClosedBelowZone = prevCandle.close < prevVwapValue - (prevVwapValue * (strategySettings.vwapTrading.threshold / 100));
+          const prevClosedBelowZone = prevCandle.close < prevVwapValue - (prevVwapValue * (vwapThreshold / 100));
           
           if (enteredZoneFromAbove && closedBelowZone && prevClosedBelowZone) {
-            console.log(`🔴 VWAP Bearish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${strategySettings.vwapTrading.threshold}%`);
+            console.log(`🔴 VWAP Bearish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${vwapThreshold}%`);
             newAlerts.push({
               id: `alert_${candle.time}_VWAP_BOUNCE_BEAR`,
               time: candle.time,
@@ -2334,7 +2335,7 @@ useEffect(() => {
     // Sort by time descending (most recent first) and keep last 20
     const sortedAlerts = newAlerts.sort((a, b) => b.time - a.time).slice(0, 20);
     setMarketAlerts(sortedAlerts);
-  }, [candles, strategySettings.liquidityGrab.swingLength, calculateBOSandCHoCH, calculateFVGsWrapper, isActiveFVG, calculatePeriodicVWAP, strategySettings.vwapTrading.threshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergencesWrapper, cvdSettings.enabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
+  }, [candles, chartSettings.bos.swingLength, calculateBOSandCHoCH, calculateFVGsWrapper, isActiveFVG, calculatePeriodicVWAP, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergencesWrapper, cvdSettings.enabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
 
   // Save indicator defaults to localStorage (for current timeframe only)
   const saveToTimeframe = useCallback(() => {
@@ -2715,29 +2716,12 @@ useEffect(() => {
     };
   }, []);
 
-  // Sort auto-backtest results based on selected column
-  const sortedAutoBacktestResults = useMemo(() => {
-    const sorted = [...backtestSettings.autoTest.results];
-    switch (backtestSettings.autoTest.sortBy) {
-      case 'profit':
-        return sorted.sort((a, b) => b.results.totalPL - a.results.totalPL);
-      case 'winRate':
-        return sorted.sort((a, b) => b.results.winRate - a.results.winRate);
-      case 'trades':
-        return sorted.sort((a, b) => b.results.totalTrades - a.results.totalTrades);
-      case 'avgRR':
-        return sorted.sort((a, b) => b.results.avgRR - a.results.avgRR);
-      default:
-        return sorted;
-    }
-  }, [backtestSettings.autoTest.results, backtestSettings.autoTest.sortBy]);
-
   // Determine which indicators are currently active
   const activeIndicators = useMemo(() => {
     const active = new Set<string>();
     
     // SMC indicators
-    if (indicators.smc.showBOS || indicators.smc.showCHoCH || indicators.smc.showFVG || strategySettings.liquidityGrab.enabled || indicators.smc.showSwingPivots) {
+    if (indicators.smc.showBOS || indicators.smc.showCHoCH || indicators.smc.showFVG || indicators.smc.showSwingPivots) {
       active.add('smc');
     }
     
@@ -2764,7 +2748,7 @@ useEffect(() => {
     if (cvdSettings.enabled) active.add('cvd');
     
     return active;
-  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, strategySettings.liquidityGrab.enabled, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSettings.enabled]);
+  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSettings.enabled]);
 
   // Run backtest on historical data
   // Handle strategy generation
@@ -3365,61 +3349,6 @@ useEffect(() => {
   // Future enhancement: Add label support to BOSCHoCHMarkers component or create separate LabelOverlay component
 
 
-  // ========== DEBOUNCE EFFECTS FOR STRATEGY SETTINGS ==========
-  
-  // Liquidity Grab Strategy
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.liquidityGrab.swingLengthInput);
-      if (!isNaN(num) && num >= 5 && num <= 20) {
-        strategySettings.liquidityGrab.setSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.liquidityGrab.swingLengthInput]);
-
-  // BOS Structure Strategy
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.bosStructure.swingLengthInput);
-      if (!isNaN(num) && num >= 5 && num <= 20) {
-        strategySettings.bosStructure.setSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.bosStructure.swingLengthInput]);
-
-  // CHoCH + FVG Strategy
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.chochFvg.swingLengthInput);
-      if (!isNaN(num) && num >= 5 && num <= 20) {
-        strategySettings.chochFvg.setSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.chochFvg.swingLengthInput]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.chochFvg.tpSwingLengthInput);
-      if (!isNaN(num) && num >= 5 && num <= 50) {
-        strategySettings.chochFvg.setTpSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.chochFvg.tpSwingLengthInput]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.chochFvg.slSwingLengthInput);
-      if (!isNaN(num) && num >= 3 && num <= 30) {
-        strategySettings.chochFvg.setSlSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.chochFvg.slSwingLengthInput]);
-
   // Chart Liquidity Sweep Settings (separate from bot strategy)
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -3798,8 +3727,8 @@ useEffect(() => {
     [candles, indicators.smc.obSwingLength, indicators.smc.orderBlockLength]
   );
   const bosChochData = useMemo(() => 
-    calculateBOSandCHoCH(candles, strategySettings.bosStructure.swingLength),
-    [candles, strategySettings.bosStructure.swingLength, calculateBOSandCHoCH]
+    calculateBOSandCHoCH(candles, chartSettings.bos.swingLength),
+    [candles, chartSettings.bos.swingLength, calculateBOSandCHoCH]
   );
   const supertrendData = useMemo(() => 
     calculateSupertrend(candles, indicators.supertrend.period, indicators.supertrend.multiplier),
@@ -4924,8 +4853,6 @@ useEffect(() => {
                   setChartChochSwingLengthInput={chartSettings.choch.setSwingLengthInput}
                   chartChochSwingLength={chartSettings.choch.swingLength}
                   setChartChochSwingLength={chartSettings.choch.setSwingLength}
-                  stratLiquidityGrab={strategySettings.liquidityGrab.enabled}
-                  setStratLiquidityGrab={strategySettings.liquidityGrab.setEnabled}
                   chartLiquiditySweepSwingLengthInput={chartSettings.liquiditySweep.swingLengthInput}
                   setChartLiquiditySweepSwingLengthInput={chartSettings.liquiditySweep.setSwingLengthInput}
                   chartLiquiditySweepSwingLength={chartSettings.liquiditySweep.swingLength}
