@@ -157,7 +157,7 @@ import { isActiveFVG } from '@/lib/smc/fvg';
 import { calculateSwings } from '@/lib/smc/pivots';
 import { detectTrendlines, Trendline } from '@/lib/smc/trendlineDetector';
 
-// Strategy utilities (keep calculateBOSandCHoCH for market alerts)
+// Market structure utilities (for market alerts and visualization)
 import {
   calculateBOSandCHoCH,
 } from '@/lib/strategies';
@@ -3470,7 +3470,7 @@ useEffect(() => {
     }
   }, [candles, determineBias, determineStructureTrend]);
 
-  // Detect market structure events and populate alerts when candles update
+  // Refresh market alerts when candles update
   useEffect(() => {
     if (candles.length > 0) {
       detectMarketAlerts();
@@ -5207,7 +5207,7 @@ useEffect(() => {
         fvgs={fvgsData}
         show={indicators.smc.showFVG}
         candles={candles}
-        activeTradeFVGTimes={new Set()}
+        activeTradeFVGTimes={new Set()} // Empty since trading features removed - only show unfilled FVGs
         isActiveFVG={isActiveFVG}
         getFVGFillTime={getFVGFillTime}
         showHighValueOnly={indicators.smc.showHighValueOnly}
