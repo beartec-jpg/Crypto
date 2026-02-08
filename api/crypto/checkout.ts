@@ -184,9 +184,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // UPGRADE/DOWNGRADE: Update existing subscription with proration
         try {
           // Get the current subscription to find the base tier item
-          const subscription = await stripe.subscriptions.retrieve(existingSub.stripe_subscription_id, {
-            expand: ['items.data.price.product'],
-          });
+         const subscription = await stripe.subscriptions.retrieve(existingSub.stripe_subscription_id, {
+  expand: ['items.data.price'],  // ✅
+});
           
           // Find the current base tier item (not Elliott addon)
           const baseTierItem = subscription.items.data.find((item: any) => {
