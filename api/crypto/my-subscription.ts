@@ -104,11 +104,11 @@ async function syncAllSubscriptionsFromStripe(customerId: string, userId: string
     }
 
     // Get ALL active subscriptions for this customer
-    const allSubs = await stripe.subscriptions.list({
-      customer: customerId,
-      status: 'active',
-      expand: ['data.items.data.price.product'],
-    });
+   const allSubs = await stripe.subscriptions.list({
+  customer: customerId,
+  status: 'active',
+  expand: ['data.items.data.price'],  // ✅
+});
 
     console.log(`📋 Customer ${customerId} has ${allSubs.data.length} active subscriptions`);
 
