@@ -106,14 +106,14 @@ export function FullscreenOscillatorPanel({
       lineWidth: 1, 
       lineStyle: LineStyle.Dashed 
     });
-    upperBand.setData(candles.map(c => ({ time: c.time, value: 70 })));
+    upperBand.setData(candles.map(c => ({ time: c.time as Time, value: 70 })));
 
     const lowerBand = chart.addSeries(LineSeries, { 
       color: '#64748b', 
       lineWidth: 1, 
       lineStyle: LineStyle.Dashed 
     });
-    lowerBand.setData(candles.map(c => ({ time: c.time, value: 30 })));
+    lowerBand.setData(candles.map(c => ({ time: c.time as Time, value: 30 })));
 
     chart.timeScale().fitContent();
 
