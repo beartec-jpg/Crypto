@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeries, Time } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
 
 interface FullscreenOscillatorPanelProps {
@@ -106,14 +106,14 @@ export function FullscreenOscillatorPanel({
       lineWidth: 1, 
       lineStyle: LineStyle.Dashed 
     });
-    upperBand.setData(candles.map(c => ({ time: c.time as any, value: 70 })));
+    upperBand.setData(candles.map(c => ({ time: c.time as Time, value: 70 })));
 
     const lowerBand = chart.addSeries(LineSeries, { 
       color: '#64748b', 
       lineWidth: 1, 
       lineStyle: LineStyle.Dashed 
     });
-    lowerBand.setData(candles.map(c => ({ time: c.time as any, value: 30 })));
+    lowerBand.setData(candles.map(c => ({ time: c.time as Time, value: 30 })));
 
     chart.timeScale().fitContent();
 
