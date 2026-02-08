@@ -72,13 +72,7 @@ import {
 
 // Trading Components
 import {
-  TradingPanel,
-  BacktestPanel,
-  BacktestResults as BacktestResultsComponent,
-  BotConfiguration,
   AlertsPanel,
-  StrategyGeneratorPanel,
-  BacktestResultsPanel,
   ReplayModeControls,
   VideoSequencePlayer,
   ActionButtonsToolbar,
@@ -101,11 +95,8 @@ import { SettingsPanel, SettingsDialog } from '@/components/settings';
 import { ConfirmationDialog } from '@/components/modals';
 import { useModalManager } from '@/hooks/useModalManager';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { useTradingState } from '@/hooks/useTradingState';
 import { useModalState } from '@/hooks/useModalState';
 import { 
-  useStrategySettings, 
-  useBacktestSettings, 
   useReplayMode, 
   useChartSettings, 
   useDrawingsPersistence, 
@@ -166,20 +157,9 @@ import { isActiveFVG } from '@/lib/smc/fvg';
 import { calculateSwings } from '@/lib/smc/pivots';
 import { detectTrendlines, Trendline } from '@/lib/smc/trendlineDetector';
 
-// Trading utilities
-import { calculatePositionSize } from '@/lib/trading/positionCalculator';
-import { calculateWeightedRR } from '@/lib/trading/riskCalculator';
-import { simulateTrade } from '@/lib/backtest/tradeSimulator';
-
-// Strategy utilities
+// Market structure utilities (for market alerts and visualization)
 import {
   calculateBOSandCHoCH,
-  generateLiquidityGrabSignal as generateLiquidityGrabSignalCore,
-  generateBOSTrendSignal as generateBOSTrendSignalCore,
-  generateChochFVGSignal as generateChochFVGSignalCore,
-  generateVWAPTradingSignal as generateVWAPTradingSignalCore,
-  generateEMATradingSignal as generateEMATradingSignalCore,
-  generateRSFlipSignal as generateRSFlipSignalCore,
 } from '@/lib/strategies';
 
 // Calculation utilities
@@ -231,18 +211,7 @@ import type {
 } from '@/types/drawings.types';
 
 import type { 
-  TradeSignal, 
-  Position, 
   MarketAlert,
-  BacktestTrade,
-  BacktestResults,
-  TPConfig,
-  SLConfig,
-  BotTPSLConfig,
-  AutoBacktestResult,
-  AutoBacktestTestParams,
-  TPType,
-  SLType
 } from '@/types/trading.types';
 
 // Utility imports
@@ -270,14 +239,7 @@ import {
   findPeaksAndTroughs 
 } from '@/lib/smc/pivots';
 
-// Backtest imports
-import {
-  runAutoBacktest as runAutoBacktestCore,
-  calculateTotalCombinations,
-  type AutoBacktestConfig as AutoBacktestConfigType,
-  type ParameterRanges,
-  type TestOptions
-} from '@/lib/backtest';
+
 
 const MA_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
 const MA_TIMEFRAMES = [
@@ -1152,60 +1114,13 @@ useEffect(() => {
   // BOS swing length: 5 for tighter swing detection, CHoCH swing length: 20 for broader trend changes
   // Chart settings moved to useChartSettings hook (Phase 2)
   
-  // Bot state
-  const [botEnabled, setBotEnabled] = useState(false);
   const [bias, setBias] = useState<'bullish' | 'bearish' | null>(null);
   const [structureTrend, setStructureTrend] = useState<'uptrend' | 'downtrend' | 'ranging' | null>(null);
-  // Trading state management - consolidated via useTradingState hook
-  const tradingState = useTradingState();
   
   // Phase 2: State Management Hooks
-  const strategySettings = useStrategySettings();
-  const backtestSettings = useBacktestSettings();
   const replayMode = useReplayMode();
   const chartSettings = useChartSettings();
   
-  // Strategy Generator handler
-  const handleGenerateStrategy = useCallback((type: 'scalping' | 'day-trading' | 'swing-trading') => {
-    toast({ 
-      title: `${type} strategy generated`, 
-      description: 'Strategy ready for backtesting' 
-    });
-    // Future: actual strategy generation logic
-  }, [toast]);
-  
-  // Backtest handler
-  const handleRunBacktest = useCallback(() => {
-    if (!candles || candles.length === 0) {
-      toast({ 
-        title: 'Error', 
-        description: 'No candle data available', 
-        variant: 'destructive' 
-      });
-      return;
-    }
-    tradingState.startBacktest();
-    // Simulate backtest completion after 2 seconds
-    setTimeout(() => {
-      // Mock results for now
-      const mockResults: BacktestResults = {
-        trades: [],
-        totalTrades: 10,
-        winners: 6,
-        losers: 4,
-        winRate: 60,
-        avgRR: 1.5,
-        totalPL: 150.50,
-        profitFactor: 1.5,
-        accountSize: 10000,
-        riskPerTrade: 1,
-        avgPositionSize: 100,
-        finalBalance: 10150.50,
-        returnPercent: 1.5,
-      };
-      tradingState.completeBacktest(mockResults);
-    }, 2000);
-  }, [candles, toast, tradingState]);
   
   const [cvdBullishThreshold, setCvdBullishThreshold] = useState(200); // % of average bullish delta
   const [cvdBullishThresholdInput, setCvdBullishThresholdInput] = useState('200');
@@ -1305,25 +1220,8 @@ useEffect(() => {
   // NOTE: bosSeriesRefs and chochSeriesRefs removed - now managed by BOSCHoCHMarkers component
   // NOTE: structureLabelsRef removed - label rendering removed in Phase 4G-3
   const swingPivotSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
-  const liquiditySweepSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
   const trendlineSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
   const tradeMarkerRefs = useRef<Array<any>>([]);
-
-  // Sync EMA Trading input values to numeric state
-  useEffect(() => {
-    const val = parseInt(strategySettings.emaTrading.singlePeriodInput);
-    if (!isNaN(val) && val >= 5 && val <= 500) {
-      strategySettings.emaTrading.setSinglePeriod(val);
-    }
-  }, [strategySettings.emaTrading.singlePeriodInput]);
-  
-  // Sync VWAP threshold input to numeric state
-  useEffect(() => {
-    const val = parseFloat(strategySettings.vwapTrading.thresholdInput);
-    if (!isNaN(val) && val >= 0.1 && val <= 5) {
-      strategySettings.vwapTrading.setThreshold(val);
-    }
-  }, [strategySettings.vwapTrading.thresholdInput]);
 
   useEffect(() => {
     const val = parseInt(indicators.bb.periodInput);
@@ -1338,70 +1236,6 @@ useEffect(() => {
       indicators.bb.setStdDev(val);
     }
   }, [indicators.bb.stdDevInput]);
-
-  useEffect(() => {
-    const val = parseInt(strategySettings.emaTrading.tpSwingLengthInput);
-    if (!isNaN(val) && val >= 5 && val <= 50) {
-      strategySettings.emaTrading.setTpSwingLength(val);
-    }
-  }, [strategySettings.emaTrading.tpSwingLengthInput]);
-
-  useEffect(() => {
-    const val = parseInt(strategySettings.emaTrading.slSwingLengthInput);
-    if (!isNaN(val) && val >= 3 && val <= 30) {
-      strategySettings.emaTrading.setSlSwingLength(val);
-    }
-  }, [strategySettings.emaTrading.slSwingLengthInput]);
-
-  // Calculate total combinations for auto-backtest using extracted utility
-  const totalCombinations = useMemo(() => {
-    if (!backtestSettings.autoTest.mode) return 0;
-
-    return calculateTotalCombinations(
-      backtestSettings.ranges as ParameterRanges,
-      {
-        trendFilters: backtestSettings.parameterTests.strategy.trendFilters,
-        directions: backtestSettings.parameterTests.strategy.directions,
-        useWickFilter: backtestSettings.parameterTests.strategy.useWickFilter,
-        useConfirmCandles: backtestSettings.parameterTests.strategy.useConfirmCandles,
-        tp1: backtestSettings.parameterTests.tp1,
-        tp2: backtestSettings.parameterTests.tp2,
-        tp3: backtestSettings.parameterTests.tp3,
-        sl: backtestSettings.parameterTests.sl,
-      } as TestOptions,
-      strategySettings.liquidityGrab.tpsl.numTPs
-    );
-  }, [
-    backtestSettings.autoTest.mode,
-    backtestSettings.parameterTests.strategy.trendFilters,
-    backtestSettings.parameterTests.strategy.directions,
-    backtestSettings.ranges,
-    backtestSettings.parameterTests.strategy.useWickFilter,
-    backtestSettings.parameterTests.strategy.useConfirmCandles,
-    strategySettings.liquidityGrab.tpsl.numTPs,
-    backtestSettings.parameterTests.tp1,
-    backtestSettings.parameterTests.tp2,
-    backtestSettings.parameterTests.tp3,
-    backtestSettings.parameterTests.sl,
-  ]);
-
-  // Calculate estimated completion time using actual performance data
-  const estimatedTime = useMemo(() => {
-    let msPerTest = 100; // Default fallback
-    
-    // If we have historical data, use average ms-per-test from last 5 runs
-    if (backtestSettings.autoTest.durations.length > 0) {
-      const recentRuns = backtestSettings.autoTest.durations.slice(-5);
-      // Calculate ms-per-test for each run, then average
-      const msPerTestValues = recentRuns.map(run => run.duration / run.combos);
-      msPerTest = msPerTestValues.reduce((sum, v) => sum + v, 0) / msPerTestValues.length;
-    }
-    
-    const seconds = Math.ceil((totalCombinations * msPerTest) / 1000);
-    if (seconds < 60) return `~${seconds}s`;
-    if (seconds < 3600) return `~${Math.ceil(seconds / 60)}min`;
-    return `~${Math.ceil(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}min`;
-  }, [totalCombinations, backtestSettings.autoTest.durations]);
 
   // Fetch multi-exchange orderflow data
   // Fetch AI Market Analysis
@@ -1632,17 +1466,6 @@ useEffect(() => {
     return trend;
   }, [chartSettings.bos.swingLength]);
 
-  // Wrap checkTrendFilter with current state
-  const checkTrendFilter = useCallback((trendFilter?: 'ema' | 'structure' | 'both' | 'none'): boolean => {
-    const filter = trendFilter ?? strategySettings.liquidityGrab.trendFilter;
-    return checkTrendFilterCalc(filter, bias, structureTrend);
-  }, [bias, structureTrend, strategySettings.liquidityGrab.trendFilter]);
-
-  // Wrap checkDirectionFilter
-  const checkDirectionFilter = useCallback((signalType: 'LONG' | 'SHORT', directionFilter: 'bull' | 'bear' | 'both' = strategySettings.liquidityGrab.directionFilter): boolean => {
-    return checkDirectionFilterCalc(directionFilter, signalType);
-  }, [strategySettings.liquidityGrab.directionFilter]);
-
   // Wrap calculateFVGs with footprintData dependency
   const calculateFVGsWrapper = useCallback((data: CandleData[], useAtrFilter: boolean = true, atrFactor: number = 1): FVG[] => {
     return calculateFVGs(data, footprintData, useAtrFilter, atrFactor, chartSettings.legacy.fvgVolumeThreshold);
@@ -1687,199 +1510,11 @@ useEffect(() => {
 
   // ====================================================================================
 
-
-
-  // Generate liquidity grab signal
-  // ==================== STRATEGY SIGNAL GENERATORS (Wrappers for extracted modules) ====================
-  
-  // Generate liquidity grab signal - wrapper for extracted core function
-  const generateLiquidityGrabSignal = useCallback((
-    data: CandleData[], 
-    bypassToggle = false,
-    overrideSettings?: {
-      swingLength?: number;
-      wickRatio?: number;
-      confirmCandles?: number;
-      useWickFilter?: boolean;
-      useConfirmCandles?: boolean;
-      trendFilter?: 'none' | 'ema' | 'structure' | 'both';
-      directionFilter?: 'both' | 'bull' | 'bear';
-      tpslConfig?: typeof strategySettings.liquidityGrab.tpsl;
-    }
-  ): TradeSignal | null => {
-    // Get VWAP values if needed
-    const vwapValues: number[] = [];
-    if (indicators.vwap.showDaily) {
-      const dailyVWAP = calculatePeriodicVWAP(candles, 'daily', true);
-      if (dailyVWAP.length > 0) vwapValues.push(dailyVWAP[dailyVWAP.length - 1].value);
-    }
-    if (indicators.vwap.showWeekly) {
-      const weeklyVWAP = calculatePeriodicVWAP(candles, 'weekly', true);
-      if (weeklyVWAP.length > 0) vwapValues.push(weeklyVWAP[weeklyVWAP.length - 1].value);
-    }
-    if (indicators.vwap.showRolling) {
-      const rolling = calculateRollingVWAP(candles, indicators.vwap.rollingPeriod);
-      if (rolling.length > 0) vwapValues.push(rolling[rolling.length - 1].value);
-    }
-
-    return generateLiquidityGrabSignalCore(data, {
-      enabled: bypassToggle || strategySettings.liquidityGrab.enabled,
-      swingLength: overrideSettings?.swingLength ?? strategySettings.liquidityGrab.swingLength,
-      trendFilter: overrideSettings?.trendFilter ?? strategySettings.liquidityGrab.trendFilter,
-      directionFilter: overrideSettings?.directionFilter ?? strategySettings.liquidityGrab.directionFilter,
-      tpslConfig: overrideSettings?.tpslConfig ?? strategySettings.liquidityGrab.tpsl,
-      tpSwingLength: strategySettings.liquidityGrab.tpSwingLength,
-      accountSize: strategySettings.risk.accountSize,
-      riskPercent: strategySettings.risk.riskPercent,
-      bias,
-      structureTrend,
-      vwapValues
-    }, bypassToggle);
-  }, [strategySettings.liquidityGrab.enabled, strategySettings.liquidityGrab.swingLength, strategySettings.liquidityGrab.directionFilter, strategySettings.liquidityGrab.trendFilter, bias, structureTrend, strategySettings.liquidityGrab.tpsl, strategySettings.liquidityGrab.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, candles, indicators.vwap, calculatePeriodicVWAP, calculateRollingVWAP]);
-
-  // Generate BOS Trend Follow signal - wrapper for extracted core function
-  const generateBOSTrendSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    const vwapValues: number[] = [];
-    if (indicators.vwap.showDaily) {
-      const dailyVWAP = calculatePeriodicVWAP(candles, 'daily', true);
-      if (dailyVWAP.length > 0) vwapValues.push(dailyVWAP[dailyVWAP.length - 1].value);
-    }
-    if (indicators.vwap.showWeekly) {
-      const weeklyVWAP = calculatePeriodicVWAP(candles, 'weekly', true);
-      if (weeklyVWAP.length > 0) vwapValues.push(weeklyVWAP[weeklyVWAP.length - 1].value);
-    }
-    if (indicators.vwap.showRolling) {
-      const rolling = calculateRollingVWAP(candles, indicators.vwap.rollingPeriod);
-      if (rolling.length > 0) vwapValues.push(rolling[rolling.length - 1].value);
-    }
-
-    return generateBOSTrendSignalCore(data, {
-      enabled: strategySettings.bosStructure.enabled,
-      swingLength: strategySettings.bosStructure.swingLength,
-      directionFilter: strategySettings.bosStructure.directionFilter,
-      trendFilter: strategySettings.bosStructure.trendFilter,
-      tpslConfig: strategySettings.bosStructure.tpsl,
-      slSwingLength: strategySettings.bosStructure.slSwingLength,
-      tpSwingLength: strategySettings.bosStructure.tpSwingLength,
-      accountSize: strategySettings.risk.accountSize,
-      riskPercent: strategySettings.risk.riskPercent,
-      bias,
-      structureTrend,
-      vwapValues
-    });
-  }, [strategySettings.bosStructure.enabled, strategySettings.bosStructure.swingLength, strategySettings.bosStructure.directionFilter, strategySettings.bosStructure.trendFilter, bias, structureTrend, strategySettings.bosStructure.tpsl, strategySettings.bosStructure.slSwingLength, strategySettings.bosStructure.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, candles, indicators.vwap, calculatePeriodicVWAP, calculateRollingVWAP]);
-
-  // Generate CHoCH + FVG signal - wrapper for extracted core function
-  const generateChochFVGSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    return generateChochFVGSignalCore(data, {
-      enabled: strategySettings.chochFvg.enabled,
-      volumeThreshold: strategySettings.chochFvg.fvgVolumeThreshold,
-      useFVGSizeFilter: strategySettings.chochFvg.useFVGSizeFilter,
-      fvgMinSizeATR: strategySettings.chochFvg.fvgMinSizeATR,
-      tpslConfig: strategySettings.chochFvg.tpsl,
-      slSwingLength: strategySettings.chochFvg.slSwingLength,
-      tpSwingLength: strategySettings.chochFvg.tpSwingLength,
-      accountSize: strategySettings.risk.accountSize,
-      riskPercent: strategySettings.risk.riskPercent,
-      footprintData: [],
-      fvgVolumeThreshold: strategySettings.chochFvg.fvgVolumeThreshold
-    });
-  }, [strategySettings.chochFvg.enabled, strategySettings.chochFvg.fvgVolumeThreshold, strategySettings.chochFvg.useFVGSizeFilter, strategySettings.chochFvg.fvgMinSizeATR, strategySettings.chochFvg.tpsl, strategySettings.chochFvg.slSwingLength, strategySettings.chochFvg.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent]);
-
-  // Generate VWAP Trading signal - wrapper for extracted core function
-  const generateVWAPTradingSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    // Skip if strategySettings.vwapTrading.type is 'session' as it's not supported by core function
-    if (strategySettings.vwapTrading.type === 'session') return null;
-    
-    return generateVWAPTradingSignalCore(data, {
-      enabled: strategySettings.vwapTrading.enabled,
-      vwapType: strategySettings.vwapTrading.type as 'daily' | 'weekly' | 'monthly' | 'rolling10' | 'rolling20' | 'rolling50',
-      threshold: strategySettings.vwapTrading.threshold,
-      entryCandles: strategySettings.vwapTrading.entryCandles,
-      tpslConfig: strategySettings.vwapTrading.tpsl,
-      tpSwingLength: strategySettings.vwapTrading.tpSwingLength,
-      accountSize: strategySettings.risk.accountSize,
-      riskPercent: strategySettings.risk.riskPercent,
-      directionFilter: (type: 'LONG' | 'SHORT') => checkDirectionFilter(type)
-    });
-  }, [strategySettings.vwapTrading.enabled, strategySettings.vwapTrading.type, strategySettings.vwapTrading.threshold, strategySettings.vwapTrading.entryCandles, strategySettings.vwapTrading.tpsl, strategySettings.vwapTrading.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, checkDirectionFilter]);
-
-  // Generate EMA Trading signal - wrapper for extracted core function
-  const generateEMATradingSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    // Map strategySettings.emaTrading.entryMode to the format expected by core function
-    const mappedEntryMode: 'bounce' | 'cross' | 'trend' = 
-      strategySettings.emaTrading.entryMode === 'trend_trade' ? 'trend' : strategySettings.emaTrading.entryMode;
-    
-    return generateEMATradingSignalCore(data, {
-      enabled: strategySettings.emaTrading.enabled,
-      entryMode: mappedEntryMode,
-      singlePeriod: strategySettings.emaTrading.singlePeriod,
-      fastPeriod: indicators.ema.fastPeriod,
-      slowPeriod: indicators.ema.slowPeriod,
-      threshold: strategySettings.emaTrading.threshold,
-      tpslConfig: strategySettings.emaTrading.tpsl,
-      slSwingLength: strategySettings.emaTrading.slSwingLength,
-      tpSwingLength: strategySettings.emaTrading.tpSwingLength,
-      accountSize: strategySettings.risk.accountSize,
-      riskPercent: strategySettings.risk.riskPercent,
-      directionFilter: (type: 'LONG' | 'SHORT') => checkDirectionFilter(type)
-    });
-  }, [strategySettings.emaTrading.enabled, strategySettings.emaTrading.entryMode, strategySettings.emaTrading.singlePeriod, indicators.ema.fastPeriod, indicators.ema.slowPeriod, strategySettings.emaTrading.threshold, strategySettings.emaTrading.tpsl, strategySettings.emaTrading.slSwingLength, strategySettings.emaTrading.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, checkDirectionFilter]);
-
-  // Generate R/S Flip signal - wrapper for extracted core function
-  const generateRSFlipSignal = useCallback((data: CandleData[]): TradeSignal | null => {
-    return generateRSFlipSignalCore(data, {
-      enabled: strategySettings.rsFlip.enabled,
-      retestCandles: strategySettings.rsFlip.retestCandles,
-      directionFilter: strategySettings.rsFlip.directionFilter,
-      trendFilter: strategySettings.rsFlip.trendFilter,
-      trendlineMinTouches: indicators.smc.trendlineMinTouches,
-      trendlineTolerance: indicators.smc.trendlineTolerance,
-      trendlinePivotLength: indicators.smc.trendlinePivotLength,
-      tpslConfig: strategySettings.rsFlip.tpsl,
-      tpSwingLength: strategySettings.rsFlip.tpSwingLength,
-      accountSize: strategySettings.risk.accountSize,
-      riskPercent: strategySettings.risk.riskPercent,
-      bias,
-      structureTrend
-    });
-  }, [strategySettings.rsFlip.enabled, strategySettings.rsFlip.retestCandles, strategySettings.rsFlip.directionFilter, strategySettings.rsFlip.trendFilter, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, strategySettings.rsFlip.tpsl, strategySettings.rsFlip.tpSwingLength, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, bias, structureTrend]);
-
-
-  // Master signal generator - checks all enabled strategies
-  const generateSignals = useCallback(() => {
-    if (!botEnabled || candles.length < 50 || !checkTrendFilter()) return;
-    
-    const newSignals: TradeSignal[] = [];
-    
-    // NOTE: Liquidity Grab is now visual-only (removed signal generation)
-    // Only show cyan markers on chart, no trade signals
-    
-    const chochFVGSignal = generateChochFVGSignal(candles);
-    if (chochFVGSignal) newSignals.push(chochFVGSignal);
-    
-    const vwapSignal = generateVWAPTradingSignal(candles);
-    if (vwapSignal) newSignals.push(vwapSignal);
-    
-    const bosTrendSignal = generateBOSTrendSignal(candles);
-    if (bosTrendSignal) newSignals.push(bosTrendSignal);
-    
-    if (newSignals.length > 0) {
-      tradingState.setTradeSignals(prev => {
-        // Remove duplicate signals for same strategy
-        const filtered = prev.filter(s => 
-          !newSignals.some(ns => ns.strategy === s.strategy && s.active)
-        );
-        return [...filtered, ...newSignals] as TradeSignal[];
-      });
-    }
-  }, [botEnabled, candles, checkTrendFilter, generateChochFVGSignal, generateVWAPTradingSignal, generateBOSTrendSignal]);
-
   // Detect market structure events and populate alerts
   const detectMarketAlerts = useCallback(() => {
     if (candles.length < 50) return;
     
-    const { bos, choch } = calculateBOSandCHoCH(candles, strategySettings.liquidityGrab.swingLength);
+    const { bos, choch } = calculateBOSandCHoCH(candles, chartSettings.bos.swingLength);
     
     const newAlerts: MarketAlert[] = [];
     
@@ -2050,15 +1685,16 @@ useEffect(() => {
         } else {
           // Only check for bounces if it's NOT a cross
           // VWAP Bounces: enters VWAP zone, close stays on same side (AND previous close was same side)
-          const vwapZone = vwapValue * (strategySettings.vwapTrading.threshold / 100);
+          const vwapThreshold = 0.3; // 0.3% zone around VWAP for bounce detection
+          const vwapZone = vwapValue * (vwapThreshold / 100);
           
           // Bullish bounce: wick enters VWAP zone from below, close above zone, previous close above zone
           const enteredZoneFromBelow = candle.low <= vwapValue + vwapZone && candle.low >= vwapValue - vwapZone;
           const closedAboveZone = candle.close > vwapValue + vwapZone;
-          const prevClosedAboveZone = prevCandle.close > prevVwapValue + (prevVwapValue * (strategySettings.vwapTrading.threshold / 100));
+          const prevClosedAboveZone = prevCandle.close > prevVwapValue + (prevVwapValue * (vwapThreshold / 100));
           
           if (enteredZoneFromBelow && closedAboveZone && prevClosedAboveZone) {
-            console.log(`🟢 VWAP Bullish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${strategySettings.vwapTrading.threshold}%`);
+            console.log(`🟢 VWAP Bullish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${vwapThreshold}%`);
             newAlerts.push({
               id: `alert_${candle.time}_VWAP_BOUNCE_BULL`,
               time: candle.time,
@@ -2072,10 +1708,10 @@ useEffect(() => {
           // Bearish bounce: wick enters VWAP zone from above, close below zone, previous close below zone
           const enteredZoneFromAbove = candle.high >= vwapValue - vwapZone && candle.high <= vwapValue + vwapZone;
           const closedBelowZone = candle.close < vwapValue - vwapZone;
-          const prevClosedBelowZone = prevCandle.close < prevVwapValue - (prevVwapValue * (strategySettings.vwapTrading.threshold / 100));
+          const prevClosedBelowZone = prevCandle.close < prevVwapValue - (prevVwapValue * (vwapThreshold / 100));
           
           if (enteredZoneFromAbove && closedBelowZone && prevClosedBelowZone) {
-            console.log(`🔴 VWAP Bearish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${strategySettings.vwapTrading.threshold}%`);
+            console.log(`🔴 VWAP Bearish Bounce at ${new Date(candle.time * 1000).toLocaleString()}, VWAP: ${vwapValue.toFixed(4)}, Zone: ±${vwapThreshold}%`);
             newAlerts.push({
               id: `alert_${candle.time}_VWAP_BOUNCE_BEAR`,
               time: candle.time,
@@ -2699,212 +2335,7 @@ useEffect(() => {
     // Sort by time descending (most recent first) and keep last 20
     const sortedAlerts = newAlerts.sort((a, b) => b.time - a.time).slice(0, 20);
     setMarketAlerts(sortedAlerts);
-  }, [candles, strategySettings.liquidityGrab.swingLength, calculateBOSandCHoCH, calculateFVGsWrapper, isActiveFVG, calculatePeriodicVWAP, strategySettings.vwapTrading.threshold, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergencesWrapper, cvdSettings.enabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
-
-  // Wrapper for simulateTrade to pass all necessary dependencies
-  const simulateTradeWrapper = useCallback((signal: TradeSignal, startIdx: number, data: CandleData[]): BacktestTrade | null => {
-    return simulateTrade(signal, startIdx, data, {
-      vwapType: strategySettings.vwapTrading.type,
-      commissionRate: 0.001,
-      slippageBps: 0.0005,
-      liqGrabTPSL: strategySettings.liquidityGrab.tpsl,
-      bosTPSL: strategySettings.bosStructure.tpsl,
-      chochTPSL: strategySettings.chochFvg.tpsl,
-      vwapTPSL: strategySettings.vwapTrading.tpsl,
-      rsFlipTPSL: strategySettings.rsFlip.tpsl,
-      emaTradingTPSL: strategySettings.emaTrading.tpsl,
-      chochTPSwingLength: strategySettings.chochFvg.tpSwingLength,
-      liqGrabTPSwingLength: strategySettings.liquidityGrab.tpSwingLength,
-    });
-  }, [strategySettings.vwapTrading.type, strategySettings.liquidityGrab.tpsl, strategySettings.bosStructure.tpsl, strategySettings.chochFvg.tpsl, strategySettings.vwapTrading.tpsl, strategySettings.rsFlip.tpsl, strategySettings.emaTrading.tpsl, strategySettings.chochFvg.tpSwingLength, strategySettings.liquidityGrab.tpSwingLength]);
-  // Generate all combinations of bot configurations for auto-backtest
-  // Run auto-backtest with all combinations using extracted backtest engine
-  const runAutoBacktest = useCallback(async () => {
-    if (candles.length < 100) {
-      alert('Need at least 100 candles for backtest');
-      return;
-    }
-    
-    backtestSettings.autoTest.setRunning(true);
-    backtestSettings.autoTest.setResults([]);
-    backtestSettings.autoTest.setProgress(0);
-    
-    try {
-      // Configure auto-backtest
-      const config: AutoBacktestConfigType = {
-        candles,
-        ranges: backtestSettings.ranges as ParameterRanges,
-        parameterTests: {
-          trendFilters: backtestSettings.parameterTests.strategy.trendFilters,
-          directions: backtestSettings.parameterTests.strategy.directions,
-          useWickFilter: backtestSettings.parameterTests.strategy.useWickFilter,
-          useConfirmCandles: backtestSettings.parameterTests.strategy.useConfirmCandles,
-          tp1: backtestSettings.parameterTests.tp1,
-          tp2: backtestSettings.parameterTests.tp2,
-          tp3: backtestSettings.parameterTests.tp3,
-          sl: backtestSettings.parameterTests.sl,
-        } as TestOptions,
-        strategySettings: {
-          numTPs: strategySettings.liquidityGrab.tpsl.numTPs,
-          tp1PositionPercent: strategySettings.liquidityGrab.tpsl.tp1.positionPercent,
-          tp2PositionPercent: strategySettings.liquidityGrab.tpsl.tp2?.positionPercent || 30,
-          tp3PositionPercent: strategySettings.liquidityGrab.tpsl.tp3?.positionPercent || 20,
-          accountSize: strategySettings.risk.accountSize,
-          riskPercent: strategySettings.risk.riskPercent,
-        },
-        generateSignal: generateLiquidityGrabSignal,
-        simulateTrade: simulateTradeWrapper,
-        onProgress: (progress) => {
-          backtestSettings.autoTest.setProgress(progress);
-        },
-      };
-      
-      // Run auto-backtest
-      const startTime = performance.now();
-      const results = await runAutoBacktestCore(config);
-      
-      // Track duration for future time estimates
-      const duration = performance.now() - startTime;
-      const updated = [...backtestSettings.autoTest.durations, { duration, combos: results.length }];
-      backtestSettings.autoTest.setDurations(updated.slice(-5)); // Keep only last 5
-      
-      // Update results
-      backtestSettings.autoTest.setResults(results);
-      backtestSettings.autoTest.setProgress(100);
-    } catch (error) {
-      console.error('Auto-backtest failed:', error);
-      alert('Auto-backtest failed. See console for details.');
-    } finally {
-      backtestSettings.autoTest.setRunning(false);
-    }
-  }, [
-    candles,
-    backtestSettings.ranges,
-    backtestSettings.parameterTests,
-    backtestSettings.autoTest,
-    strategySettings.liquidityGrab.tpsl,
-    strategySettings.risk.accountSize,
-    strategySettings.risk.riskPercent,
-    generateLiquidityGrabSignal,
-    simulateTradeWrapper
-  ]);
-
-  // Apply all settings from an auto-backtest result
-  const applyAutoBacktestConfig = useCallback((result: AutoBacktestResult) => {
-    // Apply TP/SL configuration
-    strategySettings.liquidityGrab.setTpsl(result.config);
-    
-    // Apply strategy parameters
-    strategySettings.liquidityGrab.setSwingLength(result.swingLength);
-    strategySettings.liquidityGrab.setSwingLengthInput(result.swingLength.toString());
-    strategySettings.liquidityGrab.setTrendFilter(result.trendFilter);
-    // Convert 'long'/'short' to 'bull'/'bear'
-    const directionFilter = result.allowedDirections === 'long' ? 'bull' : result.allowedDirections === 'short' ? 'bear' : 'both';
-    strategySettings.liquidityGrab.setDirectionFilter(directionFilter);
-    
-    // Apply TP/SL swing lengths from config if they're structure type
-    if (result.config.tp1.type === 'structure' && result.config.tp1.swingLength) {
-      strategySettings.liquidityGrab.setTpSwingLength(result.config.tp1.swingLength);
-      strategySettings.liquidityGrab.setTpSwingLengthInput(result.config.tp1.swingLength.toString());
-    }
-    if (result.config.sl.type === 'structure' && result.config.sl.swingLength) {
-      strategySettings.liquidityGrab.setSlSwingLength(result.config.sl.swingLength);
-      strategySettings.liquidityGrab.setSlSwingLengthInput(result.config.sl.swingLength.toString());
-    }
-    
-    // Show success notification
-    toast({
-      title: "✅ Settings Applied",
-      description: `Configuration applied: ${result.configDescription}`,
-      duration: 3000,
-    });
-    
-    console.log('✅ Applied auto-backtest configuration:', {
-      swingLength: result.swingLength,
-      trendFilter: result.trendFilter,
-      allowedDirections: result.allowedDirections,
-      tpsl: result.config
-    });
-  }, [toast]);
-
-  // Save current Liquidity Grab settings as default
-  const saveAsDefault = useCallback(() => {
-    const defaultSettings = {
-      swingLength: strategySettings.liquidityGrab.swingLength,
-      trendFilter: strategySettings.liquidityGrab.trendFilter,
-      directionFilter: strategySettings.liquidityGrab.directionFilter,
-      tpSwingLength: strategySettings.liquidityGrab.tpSwingLength,
-      slSwingLength: strategySettings.liquidityGrab.slSwingLength,
-      tpslConfig: strategySettings.liquidityGrab.tpsl
-    };
-    
-    localStorage.setItem('liqGrabDefaultSettings', JSON.stringify(defaultSettings));
-    
-    toast({
-      title: "💾 Saved as Default",
-      description: "Current settings saved as default configuration",
-      duration: 3000,
-    });
-    
-    console.log('💾 Saved default settings:', defaultSettings);
-  }, [strategySettings.liquidityGrab.swingLength, strategySettings.liquidityGrab.trendFilter, strategySettings.liquidityGrab.directionFilter, strategySettings.liquidityGrab.tpSwingLength, strategySettings.liquidityGrab.slSwingLength, strategySettings.liquidityGrab.tpsl, toast]);
-
-  // Load default settings from localStorage
-  const loadDefaultSettings = useCallback(() => {
-    try {
-      const saved = localStorage.getItem('liqGrabDefaultSettings');
-      if (saved) {
-        const defaultSettings = JSON.parse(saved);
-        
-        if (defaultSettings.swingLength !== undefined) {
-          strategySettings.liquidityGrab.setSwingLength(defaultSettings.swingLength);
-          strategySettings.liquidityGrab.setSwingLengthInput(defaultSettings.swingLength.toString());
-        }
-        if (defaultSettings.trendFilter !== undefined) {
-          strategySettings.liquidityGrab.setTrendFilter(defaultSettings.trendFilter);
-        }
-        if (defaultSettings.directionFilter !== undefined) {
-          strategySettings.liquidityGrab.setDirectionFilter(defaultSettings.directionFilter);
-        }
-        if (defaultSettings.tpSwingLength !== undefined) {
-          strategySettings.liquidityGrab.setTpSwingLength(defaultSettings.tpSwingLength);
-          strategySettings.liquidityGrab.setTpSwingLengthInput(defaultSettings.tpSwingLength.toString());
-        }
-        if (defaultSettings.slSwingLength !== undefined) {
-          strategySettings.liquidityGrab.setSlSwingLength(defaultSettings.slSwingLength);
-          strategySettings.liquidityGrab.setSlSwingLengthInput(defaultSettings.slSwingLength.toString());
-        }
-        if (defaultSettings.tpslConfig !== undefined) {
-          strategySettings.liquidityGrab.setTpsl(defaultSettings.tpslConfig);
-          console.log('✅ TP/SL configuration loaded:', defaultSettings.tpslConfig);
-          
-          // Sync SL swing length from tpslConfig (this takes priority over the separate slSwingLength field)
-          if (defaultSettings.tpslConfig.sl?.swingLength !== undefined) {
-            strategySettings.liquidityGrab.setSlSwingLength(defaultSettings.tpslConfig.sl.swingLength);
-            strategySettings.liquidityGrab.setSlSwingLengthInput(defaultSettings.tpslConfig.sl.swingLength.toString());
-            console.log('✅ Synced SL swing length from tpslConfig:', defaultSettings.tpslConfig.sl.swingLength);
-          }
-          // Sync TP trailing swing length from tpslConfig if it exists
-          if (defaultSettings.tpslConfig.tp1?.trailingSwingLength !== undefined) {
-            strategySettings.liquidityGrab.setTpSwingLength(defaultSettings.tpslConfig.tp1.trailingSwingLength);
-            strategySettings.liquidityGrab.setTpSwingLengthInput(defaultSettings.tpslConfig.tp1.trailingSwingLength.toString());
-            console.log('✅ Synced TP trailing swing length from tpslConfig:', defaultSettings.tpslConfig.tp1.trailingSwingLength);
-          }
-        }
-        
-        console.log('📂 Loaded default settings from localStorage');
-        return true;
-      }
-    } catch (error) {
-      console.error('Failed to load default settings:', error);
-    }
-    return false;
-  }, []);
-
-  // Load default settings on mount
-  useEffect(() => {
-    loadDefaultSettings();
-  }, [loadDefaultSettings]);
+  }, [candles, chartSettings.bos.swingLength, calculateBOSandCHoCH, calculateFVGsWrapper, isActiveFVG, calculatePeriodicVWAP, detectTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectDivergencesWrapper, cvdSettings.enabled, cvdBullishThreshold, cvdBearishThreshold, deltaHistory, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev]);
 
   // Save indicator defaults to localStorage (for current timeframe only)
   const saveToTimeframe = useCallback(() => {
@@ -3285,29 +2716,12 @@ useEffect(() => {
     };
   }, []);
 
-  // Sort auto-backtest results based on selected column
-  const sortedAutoBacktestResults = useMemo(() => {
-    const sorted = [...backtestSettings.autoTest.results];
-    switch (backtestSettings.autoTest.sortBy) {
-      case 'profit':
-        return sorted.sort((a, b) => b.results.totalPL - a.results.totalPL);
-      case 'winRate':
-        return sorted.sort((a, b) => b.results.winRate - a.results.winRate);
-      case 'trades':
-        return sorted.sort((a, b) => b.results.totalTrades - a.results.totalTrades);
-      case 'avgRR':
-        return sorted.sort((a, b) => b.results.avgRR - a.results.avgRR);
-      default:
-        return sorted;
-    }
-  }, [backtestSettings.autoTest.results, backtestSettings.autoTest.sortBy]);
-
   // Determine which indicators are currently active
   const activeIndicators = useMemo(() => {
     const active = new Set<string>();
     
     // SMC indicators
-    if (indicators.smc.showBOS || indicators.smc.showCHoCH || indicators.smc.showFVG || strategySettings.liquidityGrab.enabled || indicators.smc.showSwingPivots) {
+    if (indicators.smc.showBOS || indicators.smc.showCHoCH || indicators.smc.showFVG || indicators.smc.showSwingPivots) {
       active.add('smc');
     }
     
@@ -3334,205 +2748,9 @@ useEffect(() => {
     if (cvdSettings.enabled) active.add('cvd');
     
     return active;
-  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, strategySettings.liquidityGrab.enabled, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSettings.enabled]);
+  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSettings.enabled]);
 
   // Run backtest on historical data
-  // NEW: Only allow 1 trade at a time - no overlapping trades
-  const runBacktest = useCallback(async () => {
-    if (candles.length < 100) {
-      alert('Need at least 100 candles for backtest');
-      return;
-    }
-    
-    tradingState.setBacktesting(true);
-    
-    // Process candles sequentially and generate signals
-    const allSignals: TradeSignal[] = [];
-    const completedTrades: BacktestTrade[] = [];
-    let lastTradeExitTime = 0; // Track when last trade closed
-    
-    // Process in chunks to avoid freezing the UI
-    const chunkSize = 50;
-    const totalCandles = candles.length - 10;
-    
-    // Use first 50 candles for initialization, then start generating signals
-    for (let i = 50; i < totalCandles; i += chunkSize) {
-      // Process chunk
-      const chunkEnd = Math.min(i + chunkSize, totalCandles);
-      
-      for (let j = i; j < chunkEnd; j++) {
-        const currentTime = candles[j].time;
-        
-        // Skip if we have an open trade (current time is before last trade exit)
-        if (currentTime < lastTradeExitTime) {
-          continue;
-        }
-        
-        const dataSlice = candles.slice(0, j + 1);
-        
-        // Try to generate signals at this point in time (only if no trade is open)
-        // Pass current state values as override to ensure manual backtest matches auto-backtest behavior
-        const liqSignal = generateLiquidityGrabSignal(dataSlice, true, {
-          swingLength: strategySettings.liquidityGrab.swingLength,
-          trendFilter: strategySettings.liquidityGrab.trendFilter,
-          directionFilter: strategySettings.liquidityGrab.directionFilter,
-          tpslConfig: strategySettings.liquidityGrab.tpsl
-        });
-        if (liqSignal && !allSignals.some(s => s.id === liqSignal.id)) {
-          console.log('💰 Liquidity Grab trade signal at', new Date(candles[j].time * 1000).toLocaleString(), {
-            type: liqSignal.type,
-            entry: liqSignal.entry?.toFixed(4) || 'N/A',
-            stopLoss: liqSignal.stopLoss?.toFixed(4) || 'N/A',
-            reason: liqSignal.reason
-          });
-          allSignals.push(liqSignal);
-          const trade = simulateTradeWrapper(liqSignal, j, candles);
-          if (trade) {
-            completedTrades.push(trade);
-            lastTradeExitTime = trade.exitTime;
-            continue; // Skip other signals this candle - we took a trade
-          }
-        }
-        
-        const chochSignal = generateChochFVGSignal(dataSlice);
-        if (chochSignal && !allSignals.some(s => s.id === chochSignal.id)) {
-          allSignals.push(chochSignal);
-          const trade = simulateTradeWrapper(chochSignal, j, candles);
-          if (trade) {
-            completedTrades.push(trade);
-            lastTradeExitTime = trade.exitTime;
-            continue; // Skip other signals this candle - we took a trade
-          }
-        }
-        
-        const vwapSignal = generateVWAPTradingSignal(dataSlice);
-        if (vwapSignal && !allSignals.some(s => s.id === vwapSignal.id)) {
-          allSignals.push(vwapSignal);
-          const trade = simulateTradeWrapper(vwapSignal, j, candles);
-          if (trade) {
-            completedTrades.push(trade);
-            lastTradeExitTime = trade.exitTime;
-            continue; // Skip other signals this candle - we took a trade
-          }
-        }
-        
-        const emaSignal = generateEMATradingSignal(dataSlice);
-        if (emaSignal && !allSignals.some(s => s.id === emaSignal.id)) {
-          allSignals.push(emaSignal);
-          const trade = simulateTradeWrapper(emaSignal, j, candles);
-          if (trade) {
-            completedTrades.push(trade);
-            lastTradeExitTime = trade.exitTime;
-            continue; // Skip other signals this candle - we took a trade
-          }
-        }
-        
-        const rsFlipSignal = generateRSFlipSignal(dataSlice);
-        if (rsFlipSignal && !allSignals.some(s => s.id === rsFlipSignal.id)) {
-          allSignals.push(rsFlipSignal);
-          const trade = simulateTradeWrapper(rsFlipSignal, j, candles);
-          if (trade) {
-            completedTrades.push(trade);
-            lastTradeExitTime = trade.exitTime;
-            continue; // Skip other signals this candle - we took a trade
-          }
-        }
-        
-        const bosTrendSignal = generateBOSTrendSignal(dataSlice);
-        if (bosTrendSignal && !allSignals.some(s => s.id === bosTrendSignal.id)) {
-          allSignals.push(bosTrendSignal);
-          const trade = simulateTradeWrapper(bosTrendSignal, j, candles);
-          if (trade) {
-            completedTrades.push(trade);
-            lastTradeExitTime = trade.exitTime;
-            // No continue needed - this is the last strategy
-          }
-        }
-      }
-      
-      // Yield to browser to prevent freezing
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-    
-    // Calculate statistics
-    const winners = completedTrades.filter(t => t.winner);
-    const losers = completedTrades.filter(t => !t.winner);
-    const totalPL = completedTrades.reduce((sum, t) => sum + t.profitLoss, 0);
-    const grossWins = winners.reduce((sum, t) => sum + Math.abs(t.profitLoss), 0);
-    const grossLosses = Math.abs(losers.reduce((sum, t) => sum + t.profitLoss, 0));
-    const avgRR = completedTrades.length > 0 
-      ? completedTrades.reduce((sum, t) => sum + t.rr, 0) / completedTrades.length 
-      : 0;
-    
-    // Calculate position sizing metrics
-    const avgPositionSize = completedTrades.length > 0
-      ? allSignals.reduce((sum, s) => sum + s.quantity, 0) / allSignals.length
-      : 0;
-    const finalBalance = strategySettings.risk.accountSize + totalPL;
-    const returnPercent = (totalPL / strategySettings.risk.accountSize) * 100;
-    
-    const results: BacktestResults = {
-      trades: completedTrades,
-      totalTrades: completedTrades.length,
-      winners: winners.length,
-      losers: losers.length,
-      winRate: completedTrades.length > 0 ? (winners.length / completedTrades.length) * 100 : 0,
-      avgRR,
-      totalPL,
-      profitFactor: grossLosses > 0 ? grossWins / grossLosses : grossWins > 0 ? 999 : 0,
-      accountSize: strategySettings.risk.accountSize,
-      riskPerTrade: strategySettings.risk.riskPercent,
-      avgPositionSize,
-      finalBalance,
-      returnPercent,
-    };
-    
-    // Analyze sweep detection vs trade execution (only for Liquidity Grab strategy)
-    if (strategySettings.liquidityGrab.enabled) {
-      const { bos, choch } = calculateBOSandCHoCH(candles, strategySettings.liquidityGrab.swingLength);
-      const allSweeps = [...bos, ...choch].filter(e => e.isLiquidityGrab);
-      const liqGrabTrades = completedTrades.filter(t => t.strategy === 'liquidity_grab');
-      
-      console.log('📊 LIQUIDITY GRAB BACKTEST SUMMARY:', {
-        totalSweepsDetected: allSweeps.length,
-        tradesTaken: liqGrabTrades.length,
-        sweepsNotTraded: allSweeps.length - liqGrabTrades.length,
-        settings: {
-          swingLength: strategySettings.liquidityGrab.swingLength,
-          trendFilter: strategySettings.liquidityGrab.trendFilter,
-          directionFilter: strategySettings.liquidityGrab.directionFilter,
-          numTPs: strategySettings.liquidityGrab.tpsl.numTPs
-        }
-      });
-      
-      // Log why sweeps were not traded
-      const tradedSweepTimes = new Set(liqGrabTrades.map(t => t.entryTime));
-      const untradedSweeps = allSweeps.filter(sweep => !tradedSweepTimes.has(sweep.breakTime));
-      
-      if (untradedSweeps.length > 0) {
-        console.log(`⏭️ ${untradedSweeps.length} sweeps were NOT traded:`, 
-          untradedSweeps.map(s => ({
-            time: new Date(s.breakTime * 1000).toLocaleString(),
-            price: s.swingPrice.toFixed(4),
-            type: s.sweptLevel === 'low' ? 'LONG (swept low)' : 'SHORT (swept high)',
-            reason: 'Likely filtered by trend/direction or overlapping trade'
-          }))
-        );
-      }
-    }
-    
-    console.log('🎯 Backtest complete:', {
-      totalTrades: completedTrades.length,
-      signals: allSignals.length,
-      winners: winners.length,
-      losers: losers.length,
-      totalPL: totalPL.toFixed(2)
-    });
-    
-    tradingState.setBacktestResults(results);
-    tradingState.setBacktesting(false);
-  }, [candles, generateLiquidityGrabSignal, generateChochFVGSignal, generateVWAPTradingSignal, generateEMATradingSignal, generateRSFlipSignal, generateBOSTrendSignal, simulateTradeWrapper, strategySettings.risk.accountSize, strategySettings.risk.riskPercent, strategySettings.liquidityGrab.swingLength, strategySettings.liquidityGrab.trendFilter, strategySettings.liquidityGrab.directionFilter, strategySettings.liquidityGrab.enabled, calculateBOSandCHoCH, strategySettings.liquidityGrab.tpsl]);
-
   // Handle strategy generation
   // Fix chart when navigating back to page
   useEffect(() => {
@@ -4047,72 +3265,6 @@ useEffect(() => {
     }
   }, [chartControls.chartReady, candles, indicators.smc.showSwingPivots, indicators.smc.swingPivotLength, calculateSwings]);
 
-  // Draw cyan lines for liquidity sweeps (visual-only indicator)
-  useEffect(() => {
-    if (!chartControls.chartReady || !chartRef.current || candles.length === 0) {
-      return;
-    }
-
-    const chart = chartRef.current;
-    
-    // Extra safety check - ensure chart hasn't been disposed
-    try {
-      chart.timeScale();
-    } catch (e) {
-      return; // Chart is disposed, skip this update
-    }
-
-    // Remove old liquidity sweep lines with better error handling
-    if (liquiditySweepSeriesRefs.current.length > 0) {
-      liquiditySweepSeriesRefs.current.forEach(series => {
-        try {
-          if (series && chart) {
-            chart.removeSeries(series);
-          }
-        } catch (e) {
-          // Series already disposed, ignore
-        }
-      });
-      liquiditySweepSeriesRefs.current = [];
-    }
-    
-    // Show liquidity sweeps on chart when the indicator is toggled (independent of bot strategy)
-    if (!strategySettings.liquidityGrab.enabled) return;
-
-    try {
-      const { bos, choch} = calculateBOSandCHoCH(candles, chartSettings.liquiditySweep.swingLength);
-      
-      const allSweeps = [...bos, ...choch].filter(e => e.isLiquidityGrab);
-      
-      console.log(`📊 Chart Display: Found ${allSweeps.length} liquidity sweeps out of ${bos.length + choch.length} total BOS/CHoCH`, {
-        swingLength: chartSettings.liquiditySweep.swingLength
-      });
-      
-      allSweeps.forEach(sweep => {
-        const sweepSeries = chart.addSeries(LineSeries, {
-          color: '#22d3ee', // Cyan for liquidity sweeps
-          lineWidth: 2,
-          lineStyle: 0, // Solid line
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        
-        try {
-          sweepSeries.setData([
-            { time: sweep.swingTime as any, value: sweep.swingPrice },
-            { time: sweep.breakTime as any, value: sweep.swingPrice },
-          ]);
-          
-          liquiditySweepSeriesRefs.current.push(sweepSeries);
-        } catch (e) {
-          // Series might be disposed
-        }
-      });
-    } catch (e) {
-      console.error('Error drawing liquidity sweep lines:', e);
-    }
-  }, [chartControls.chartReady, candles, strategySettings.liquidityGrab.enabled, chartSettings.liquiditySweep.swingLength, calculateBOSandCHoCH]);
-
   // Draw auto trendlines on chart
   useEffect(() => {
     if (!chartControls.chartReady || !chartRef.current || candles.length < 50) {
@@ -4196,536 +3348,6 @@ useEffect(() => {
   // The "Chart Labels" toggle (indicators.smc.showChartLabels) is now non-functional
   // Future enhancement: Add label support to BOSCHoCHMarkers component or create separate LabelOverlay component
 
-  // Update backtest trade markers with price level lines and shaded zones
-  useEffect(() => {
-    // Only return early if chart isn't ready at all
-    if (!chartControls.chartReady || !chartRef.current) {
-      return;
-    }
-
-    const chart = chartRef.current;
-    
-    // Extra safety check
-    try {
-      chart.timeScale();
-    } catch (e) {
-      return;
-    }
-
-    // Clean up old trade markers
-    if (tradeMarkerRefs.current.length > 0) {
-      tradeMarkerRefs.current.forEach(series => {
-        try {
-          if (series && chart) {
-            chart.removeSeries(series);
-          }
-        } catch (e) {
-          // Already disposed
-        }
-      });
-      tradeMarkerRefs.current = [];
-    }
-
-    // Collect all markers
-    const allMarkers: any[] = [];
-    
-    // Filter trades for replay mode - only show trades that have opened by current replay time
-    const hasBacktestTrades = tradingState.backtestResults && tradingState.backtestResults.trades && tradingState.backtestResults.trades.length > 0;
-    const currentReplayTime = replayMode.isReplayMode && candles.length > 0 ? candles[candles.length - 1].time : Infinity;
-    const visibleTrades = (hasBacktestTrades && tradingState.backtestResults) 
-      ? tradingState.backtestResults.trades.filter(trade => !replayMode.isReplayMode || trade.entryTime <= currentReplayTime)
-      : [];
-
-    // Add shaded zones and horizontal lines for each visible trade
-    visibleTrades.forEach(trade => {
-      const { entryTime, exitTime, entry, exit, stopLoss, tp1, tp2, tp3, direction, strategy, outcome } = trade;
-      
-      // Determine numTPs based on strategy
-      let numTPs = 1; // Default to 1 TP to be safe
-      if (strategy === 'liquidity_grab') {
-        numTPs = strategySettings.liquidityGrab.tpsl.numTPs;
-      } else if (strategy === 'bos_trend') {
-        numTPs = strategySettings.bosStructure.tpsl.numTPs;
-      } else if (strategy === 'choch_fvg') {
-        numTPs = strategySettings.chochFvg.tpsl.numTPs;
-      } else if (strategy === 'vwap_rejection') {
-        numTPs = strategySettings.vwapTrading.tpsl.numTPs;
-      } else if (strategy === 'rs_flip') {
-        numTPs = strategySettings.rsFlip.tpsl.numTPs;
-      } else if (strategy === 'structure_break') {
-        numTPs = 2; // Structure break default
-      }
-      
-      const isLong = direction === 'long';
-      
-      // ========== SHADED ZONES ==========
-      // FIXED ISSUE 4: Risk zone (LOSS) should ALWAYS be RED, Profit zone (GAIN) should ALWAYS be GREEN
-      // For LONG: Red zone (Entry to SL - LOSS), Green zone (Entry to TPs - PROFIT)
-      // For SHORT: Red zone (Entry to SL - LOSS), Green zone (Entry to TPs - PROFIT)
-      
-      // Strategy: Draw semi-transparent rectangular zones using multiple close horizontal lines
-      // This creates a "filled" visual effect between price levels
-      
-      const riskColor = 'rgba(239, 68, 68, 0.15)';  // Always RED for risk/loss
-      const profitColor = 'rgba(16, 185, 129, 0.15)';  // Always GREEN for profit/gain
-      
-      // Determine highest TP based on numTPs OR use exit price for signal-based exits
-      let highestTP = tp1;
-      
-      // For signal-based exits (EMA Exit, VWAP Exit), use actual exit price if profitable
-      if (outcome === 'EMA Exit' || outcome === 'VWAP Exit') {
-        // Check if the trade was profitable
-        const isProfit = isLong ? exit > entry : exit < entry;
-        if (isProfit) {
-          highestTP = exit; // Use exit price for green zone
-        } else {
-          highestTP = entry; // No profit zone if exit was at a loss
-        }
-      } else {
-        // Regular TP-based exit: use configured TPs
-        if (numTPs >= 2 && tp2 !== undefined) highestTP = tp2;
-        if (numTPs >= 3 && tp3 !== undefined) highestTP = tp3;
-      }
-      
-      // Create filled zones by drawing many closely-spaced horizontal lines
-      // Risk zone (Entry to SL)
-      const riskLines = 20; // Number of lines to create filled effect
-      const riskStep = Math.abs(stopLoss - entry) / riskLines;
-      const riskStart = Math.min(entry, stopLoss);
-      
-      for (let i = 0; i <= riskLines; i++) {
-        const price = riskStart + (riskStep * i);
-        const riskLine = chart.addSeries(LineSeries, {
-          color: riskColor,
-          lineWidth: Math.max(1, Math.ceil(riskStep / (Math.abs(stopLoss - entry) / 100))) as any, // Dynamic width
-          lineStyle: 0,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        try {
-          riskLine.setData([
-            { time: entryTime as any, value: price },
-            { time: exitTime as any, value: price },
-          ]);
-          tradeMarkerRefs.current.push(riskLine);
-        } catch (e) {
-          // Series might be disposed
-        }
-      }
-      
-      // Profit zone (Entry to highest TP)
-      const profitLines = 20;
-      const profitStep = Math.abs(highestTP - entry) / profitLines;
-      const profitStart = Math.min(entry, highestTP);
-      
-      for (let i = 0; i <= profitLines; i++) {
-        const price = profitStart + (profitStep * i);
-        const profitLine = chart.addSeries(LineSeries, {
-          color: profitColor,
-          lineWidth: Math.max(1, Math.ceil(profitStep / (Math.abs(highestTP - entry) / 100))) as any,
-          lineStyle: 0,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        try {
-          profitLine.setData([
-            { time: entryTime as any, value: price },
-            { time: exitTime as any, value: price },
-          ]);
-          tradeMarkerRefs.current.push(profitLine);
-        } catch (e) {
-          // Series might be disposed
-        }
-      }
-      
-      // ========== HORIZONTAL LINES WITHOUT LABELS ==========
-      
-      // STOP LOSS LINE (Red, thick)
-      const slLine = chart.addSeries(LineSeries, {
-        color: '#ef4444',
-        lineWidth: 2,
-        lineStyle: 0, // Solid
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-      try {
-        slLine.setData([
-          { time: entryTime as any, value: stopLoss },
-          { time: exitTime as any, value: stopLoss },
-        ]);
-        slLine.applyOptions({
-          priceFormat: {
-            type: 'price',
-            precision: 6,
-            minMove: 0.000001,
-          },
-        });
-        tradeMarkerRefs.current.push(slLine);
-      } catch (e) {
-        // Series might be disposed
-      }
-      
-      // ENTRY LINE (White, dashed)
-      const entryLine = chart.addSeries(LineSeries, {
-        color: '#ffffff',
-        lineWidth: 2,
-        lineStyle: 2, // Dashed
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-      try {
-        entryLine.setData([
-          { time: entryTime as any, value: entry },
-          { time: exitTime as any, value: entry },
-        ]);
-        entryLine.applyOptions({
-          priceFormat: {
-            type: 'price',
-            precision: 6,
-            minMove: 0.000001,
-          },
-        });
-        tradeMarkerRefs.current.push(entryLine);
-      } catch (e) {
-        // Series might be disposed
-      }
-      
-      // TP1 LINE (Green, solid) - Always draw if numTPs >= 1
-      if (numTPs >= 1) {
-        const tp1Line = chart.addSeries(LineSeries, {
-          color: '#22c55e',
-          lineWidth: 2,
-          lineStyle: 0,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        try {
-          tp1Line.setData([
-            { time: entryTime as any, value: tp1 },
-            { time: exitTime as any, value: tp1 },
-          ]);
-          tp1Line.applyOptions({
-            priceFormat: {
-              type: 'price',
-              precision: 6,
-              minMove: 0.000001,
-            },
-          });
-          tradeMarkerRefs.current.push(tp1Line);
-        } catch (e) {
-          // Series might be disposed
-        }
-      }
-      
-      // TP2 LINE (Green, dashed) - Only draw if numTPs >= 2
-      if (numTPs >= 2 && tp2 !== undefined) {
-        const tp2Line = chart.addSeries(LineSeries, {
-          color: '#22c55e',
-          lineWidth: 2,
-          lineStyle: 2,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        try {
-          tp2Line.setData([
-            { time: entryTime as any, value: tp2 },
-            { time: exitTime as any, value: tp2 },
-          ]);
-          tp2Line.applyOptions({
-            priceFormat: {
-              type: 'price',
-              precision: 6,
-              minMove: 0.000001,
-            },
-          });
-          tradeMarkerRefs.current.push(tp2Line);
-        } catch (e) {
-          // Series might be disposed
-        }
-      }
-      
-      // TP3 LINE (Green, dotted) - Only draw if numTPs >= 3
-      if (numTPs >= 3 && tp3 !== undefined) {
-        const tp3Line = chart.addSeries(LineSeries, {
-          color: '#22c55e',
-          lineWidth: 2,
-          lineStyle: 3,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        try {
-          tp3Line.setData([
-            { time: entryTime as any, value: tp3 },
-            { time: exitTime as any, value: tp3 },
-          ]);
-          tp3Line.applyOptions({
-            priceFormat: {
-              type: 'price',
-              precision: 6,
-              minMove: 0.000001,
-            },
-          });
-          tradeMarkerRefs.current.push(tp3Line);
-        } catch (e) {
-          // Series might be disposed
-        }
-      }
-      
-      // ========== CHART-ANCHORED MARKERS (LABELS) ==========
-      // Add text markers at entry time for each price level
-      
-      // Entry marker (white)
-      allMarkers.push({
-        time: entryTime,
-        position: isLong ? 'belowBar' : 'aboveBar',
-        color: '#ffffff',
-        shape: 'square',
-        text: `Entry ${typeof entry === 'number' ? entry.toFixed(6) : entry}`
-      });
-      
-      // Stop Loss marker (red) - only show if we have a numeric stop loss
-      if (stopLoss !== undefined && stopLoss !== null && typeof stopLoss === 'number') {
-        allMarkers.push({
-          time: entryTime,
-          position: isLong ? 'belowBar' : 'aboveBar',
-          color: '#ef4444',
-          shape: 'square',
-          text: `SL ${stopLoss.toFixed(6)}`
-        });
-      }
-      
-      // TP markers (green)
-      if (numTPs >= 1 && tp1 !== undefined && tp1 !== null && typeof tp1 === 'number') {
-        allMarkers.push({
-          time: entryTime,
-          position: isLong ? 'aboveBar' : 'belowBar',
-          color: '#22c55e',
-          shape: 'square',
-          text: `TP1 ${tp1.toFixed(6)}`
-        });
-      }
-      
-      if (numTPs >= 2 && tp2 !== undefined && tp2 !== null && typeof tp2 === 'number') {
-        allMarkers.push({
-          time: entryTime,
-          position: isLong ? 'aboveBar' : 'belowBar',
-          color: '#22c55e',
-          shape: 'square',
-          text: `TP2 ${tp2.toFixed(6)}`
-        });
-      }
-      
-      if (numTPs >= 3 && tp3 !== undefined && tp3 !== null && typeof tp3 === 'number') {
-        allMarkers.push({
-          time: entryTime,
-          position: isLong ? 'aboveBar' : 'belowBar',
-          color: '#22c55e',
-          shape: 'square',
-          text: `TP3 ${tp3.toFixed(6)}`
-        });
-      }
-    });
-    
-    // Add CVD spike markers if enabled
-    console.log('📊 CVD Spike Check:', { cvdSpikeEnabled: cvdSettings.enabled, deltaHistoryLen: deltaHistory.length, candlesLen: candles.length });
-    if (cvdSettings.enabled && deltaHistory.length >= 10 && candles.length > 0) {
-      // Calculate average delta for bullish and bearish separately
-      const bullishDeltas = deltaHistory.filter(d => d.delta > 0).map(d => d.delta);
-      const bearishDeltas = deltaHistory.filter(d => d.delta < 0).map(d => Math.abs(d.delta));
-      
-      const avgBullishDelta = bullishDeltas.length > 0 
-        ? bullishDeltas.reduce((a, b) => a + b, 0) / bullishDeltas.length 
-        : 0;
-      const avgBearishDelta = bearishDeltas.length > 0 
-        ? bearishDeltas.reduce((a, b) => a + b, 0) / bearishDeltas.length 
-        : 0;
-      
-      let matchedCount = 0;
-      let spikeCount = 0;
-      
-      // Check each delta bar for spikes - use timestamp for matching
-      deltaHistory.forEach((bar) => {
-        // Match by Unix timestamp directly, with fallback to time string
-        const barTimestamp = bar.timestamp;
-        let candle;
-        if (barTimestamp) {
-          candle = candles.find(c => c.time === barTimestamp);
-        } else {
-          // Fallback: match by time string
-          candle = candles.find(c => new Date(c.time * 1000).toLocaleTimeString() === bar.time);
-        }
-        if (!candle) return;
-        matchedCount++;
-        
-        // Get exchange consensus count for direction-specific coloring
-        const bullishExchanges = bar.bullishExchanges || 0;
-        const bearishExchanges = bar.bearishExchanges || 0;
-        
-        // Bullish spike detection with configurable thresholds
-        const level1Mult = cvdSettings.level1 / 100; // e.g., 175% = 1.75x
-        const level2Mult = cvdSettings.level2 / 100; // e.g., 250% = 2.5x
-        const level3Mult = cvdSettings.level3 / 100; // e.g., 400% = 4.0x
-        
-        if (bar.delta > 0 && avgBullishDelta > 0) {
-          const multiple = bar.delta / avgBullishDelta;
-          if (multiple >= level1Mult) {
-            // Triangle count based on configurable levels
-            let triangleCount = 1;
-            if (multiple >= level3Mult) triangleCount = 3;
-            else if (multiple >= level2Mult) triangleCount = 2;
-            
-            // Color based on exchange consensus: 5-6=green, 3-4=blue, 1-2=grey
-            let color = '#22c55e'; // green (5-6 exchanges)
-            if (bullishExchanges <= 2) {
-              color = '#9ca3af'; // grey (1-2 exchanges - weak signal)
-            } else if (bullishExchanges <= 4) {
-              color = '#3b82f6'; // blue (3-4 exchanges - moderate)
-            }
-            
-            // Use number indicator for intensity: ▲ (1.5x), ▲² (2x), ▲³ (3x+)
-            const superscript = triangleCount === 1 ? '' : triangleCount === 2 ? '²' : '³';
-            spikeCount++;
-            allMarkers.push({
-              time: candle.time,
-              position: 'belowBar',
-              color,
-              shape: 'circle',
-              size: 0,
-              text: `▲${superscript}`
-            });
-          }
-        }
-        
-        // Bearish spike detection with configurable thresholds
-        if (bar.delta < 0 && avgBearishDelta > 0) {
-          const multiple = Math.abs(bar.delta) / avgBearishDelta;
-          if (multiple >= level1Mult) {
-            // Triangle count based on configurable levels
-            let triangleCount = 1;
-            if (multiple >= level3Mult) triangleCount = 3;
-            else if (multiple >= level2Mult) triangleCount = 2;
-            
-            // Color based on exchange consensus: 5-6=red, 3-4=yellow, 1-2=grey
-            let color = '#ef4444'; // red (5-6 exchanges)
-            if (bearishExchanges <= 2) {
-              color = '#9ca3af'; // grey (1-2 exchanges - weak signal)
-            } else if (bearishExchanges <= 4) {
-              color = '#eab308'; // yellow (3-4 exchanges - moderate)
-            }
-            
-            // Use number indicator for intensity: ▼ (1.5x), ▼² (2x), ▼³ (3x+)
-            const superscript = triangleCount === 1 ? '' : triangleCount === 2 ? '²' : '³';
-            spikeCount++;
-            allMarkers.push({
-              time: candle.time,
-              position: 'aboveBar',
-              color,
-              shape: 'circle',
-              size: 0,
-              text: `▼${superscript}`
-            });
-          }
-        }
-      });
-      
-      console.log('📊 CVD Spike Detection:', {
-        deltaHistoryLen: deltaHistory.length,
-        candlesLen: candles.length,
-        matchedCount,
-        spikeCount,
-        avgBullish: avgBullishDelta.toFixed(0),
-        avgBearish: avgBearishDelta.toFixed(0),
-        sampleTimestamps: deltaHistory.slice(0, 3).map(d => d.timestamp),
-        sampleCandleTimes: candles.slice(0, 3).map(c => c.time)
-      });
-    }
-    
-    // Sort markers by time (required by lightweight-charts)
-    allMarkers.sort((a, b) => (a.time as number) - (b.time as number));
-    
-    // Log marker count
-    console.log('📍 Setting chart markers:', {
-      totalMarkers: allMarkers.length,
-      cvdMarkers: allMarkers.filter(m => m.text && (m.text.includes('▲') || m.text.includes('▼'))).length,
-      hasCandleSeries: !!candleSeriesRef.current,
-      sampleMarkers: allMarkers.slice(-3).map(m => ({ time: m.time, text: m.text, color: m.color }))
-    });
-    
-    // Set all markers at once on the candlestick series using v5 API
-    if (candleSeriesRef.current) {
-      try {
-        // Use v5 createSeriesMarkers API
-        if (seriesMarkersRef.current) {
-          // Update existing markers primitive
-          seriesMarkersRef.current.setMarkers(allMarkers);
-          console.log('✅ Markers updated on chart:', allMarkers.length);
-        } else if (allMarkers.length > 0) {
-          // Create new markers primitive
-          seriesMarkersRef.current = createSeriesMarkers(candleSeriesRef.current, allMarkers);
-          console.log('✅ Markers primitive created with', allMarkers.length, 'markers');
-        }
-      } catch (e) {
-        console.error('Failed to set markers on candlestick series:', e);
-      }
-    } else {
-      console.warn('⚠️ candleSeriesRef.current is null');
-    }
-  }, [chartControls.chartReady, tradingState.backtestResults, candles, strategySettings.liquidityGrab.tpsl, strategySettings.bosStructure.tpsl, strategySettings.chochFvg.tpsl, strategySettings.vwapTrading.tpsl, replayMode.isReplayMode, cvdSettings.enabled, cvdSettings.level1, cvdSettings.level2, cvdSettings.level3, deltaHistory]);
-
-  // ========== DEBOUNCE EFFECTS FOR STRATEGY SETTINGS ==========
-  
-  // Liquidity Grab Strategy
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.liquidityGrab.swingLengthInput);
-      if (!isNaN(num) && num >= 5 && num <= 20) {
-        strategySettings.liquidityGrab.setSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.liquidityGrab.swingLengthInput]);
-
-  // BOS Structure Strategy
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.bosStructure.swingLengthInput);
-      if (!isNaN(num) && num >= 5 && num <= 20) {
-        strategySettings.bosStructure.setSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.bosStructure.swingLengthInput]);
-
-  // CHoCH + FVG Strategy
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.chochFvg.swingLengthInput);
-      if (!isNaN(num) && num >= 5 && num <= 20) {
-        strategySettings.chochFvg.setSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.chochFvg.swingLengthInput]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.chochFvg.tpSwingLengthInput);
-      if (!isNaN(num) && num >= 5 && num <= 50) {
-        strategySettings.chochFvg.setTpSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.chochFvg.tpSwingLengthInput]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const num = parseInt(strategySettings.chochFvg.slSwingLengthInput);
-      if (!isNaN(num) && num >= 3 && num <= 30) {
-        strategySettings.chochFvg.setSlSwingLength(num);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [strategySettings.chochFvg.slSwingLengthInput]);
 
   // Chart Liquidity Sweep Settings (separate from bot strategy)
   useEffect(() => {
@@ -4777,14 +3399,7 @@ useEffect(() => {
     }
   }, [candles, determineBias, determineStructureTrend]);
 
-  // Generate signals when candles update or bot settings change
-  useEffect(() => {
-    if (botEnabled && candles.length > 0) {
-      generateSignals();
-    }
-  }, [candles, botEnabled, generateSignals]);
-
-  // Detect market alerts when candles update
+  // Refresh market alerts when candles update
   useEffect(() => {
     if (candles.length > 0) {
       detectMarketAlerts();
@@ -5105,37 +3720,6 @@ useEffect(() => {
 
   // Mini divergence meter component for each oscillator
 
-  // Compute active trade FVG times for overlay highlighting
-  const activeTradeFVGTimes = useMemo(() => {
-    const times = new Set<number>();
-    
-    // Add FVG times from live trade signals
-    tradingState.tradeSignals
-      .filter(signal => signal.strategy === 'choch_fvg' && signal.active)
-      .forEach(signal => {
-        const parts = signal.id.split('_');
-        if (parts.length >= 4) {
-          const fvgTime = parseInt(parts[3]);
-          if (!isNaN(fvgTime)) times.add(fvgTime);
-        }
-      });
-    
-    // Add FVG times from backtest trades
-    if (tradingState.backtestResults && tradingState.backtestResults.trades.length > 0) {
-      tradingState.backtestResults.trades
-        .filter(trade => trade.strategy === 'choch_fvg')
-        .forEach(trade => {
-          const parts = trade.id.split('_');
-          if (parts.length >= 4) {
-            const fvgTime = parseInt(parts[3]);
-            if (!isNaN(fvgTime)) times.add(fvgTime);
-          }
-        });
-    }
-    
-    return times;
-  }, [tradingState.tradeSignals, tradingState.backtestResults]);
-
   // Compute overlay data for components
   const fvgsData = useMemo(() => calculateFVGsWrapper(candles, true), [candles, calculateFVGsWrapper]);
   const orderBlocksData = useMemo(() => 
@@ -5143,8 +3727,8 @@ useEffect(() => {
     [candles, indicators.smc.obSwingLength, indicators.smc.orderBlockLength]
   );
   const bosChochData = useMemo(() => 
-    calculateBOSandCHoCH(candles, strategySettings.bosStructure.swingLength),
-    [candles, strategySettings.bosStructure.swingLength, calculateBOSandCHoCH]
+    calculateBOSandCHoCH(candles, chartSettings.bos.swingLength),
+    [candles, chartSettings.bos.swingLength, calculateBOSandCHoCH]
   );
   const supertrendData = useMemo(() => 
     calculateSupertrend(candles, indicators.supertrend.period, indicators.supertrend.multiplier),
@@ -6269,8 +4853,6 @@ useEffect(() => {
                   setChartChochSwingLengthInput={chartSettings.choch.setSwingLengthInput}
                   chartChochSwingLength={chartSettings.choch.swingLength}
                   setChartChochSwingLength={chartSettings.choch.setSwingLength}
-                  stratLiquidityGrab={strategySettings.liquidityGrab.enabled}
-                  setStratLiquidityGrab={strategySettings.liquidityGrab.setEnabled}
                   chartLiquiditySweepSwingLengthInput={chartSettings.liquiditySweep.swingLengthInput}
                   setChartLiquiditySweepSwingLengthInput={chartSettings.liquiditySweep.setSwingLengthInput}
                   chartLiquiditySweepSwingLength={chartSettings.liquiditySweep.swingLength}
@@ -6383,22 +4965,6 @@ useEffect(() => {
 
         </div>
         {/* End of 2x2 Grid */}
-
-        {/* Strategy & Backtest Panels */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          <StrategyGeneratorPanel
-            onGenerateStrategy={handleGenerateStrategy}
-            candles={candles}
-            indicators={indicators}
-          />
-          
-          <BacktestResultsPanel
-            results={tradingState.backtestResults}
-            isRunning={tradingState.backtesting}
-            onRun={runBacktest}
-            onClear={() => tradingState.setBacktestResults(null)}
-          />
-        </div>
 
         {/* Unlock AI Analysis CTA */}
         <Card className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30 p-4 text-center">
@@ -6568,7 +5134,7 @@ useEffect(() => {
         fvgs={fvgsData}
         show={indicators.smc.showFVG}
         candles={candles}
-        activeTradeFVGTimes={activeTradeFVGTimes}
+        activeTradeFVGTimes={new Set()} // Empty since trading features removed - only show unfilled FVGs
         isActiveFVG={isActiveFVG}
         getFVGFillTime={getFVGFillTime}
         showHighValueOnly={indicators.smc.showHighValueOnly}
