@@ -6042,27 +6042,23 @@ useEffect(() => {
                   </button>
                   
                   {/* Fullscreen Toggle Button */}
-                  <button
-                    onClick={() => {
-                      setIsFullscreen(prev => !prev);
-                      // Resize chart after a short delay to allow DOM to update
-                      setTimeout(() => {
-                        if (chartRef.current && chartContainerRef.current) {
-                          chartRef.current.applyOptions({
-                            width: chartContainerRef.current.clientWidth,
-                            height: chartContainerRef.current.clientHeight
-                          });
-                        }
-                      }, 100);
-                    }}
-                    className={`p-2 rounded-lg transition-all ${
-                      isFullscreen 
-                        ? 'bg-purple-500 text-white' 
-                        : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
-                    }`}
-                    title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Fullscreen Mode'}
-                    data-testid="btn-fullscreen"
-                  >
+<button
+  onClick={() => {
+    setIsFullscreen(prev => !prev);
+    // Resize chart after a short delay to allow DOM to update
+    setTimeout(() => {
+      if (chartRef.current && chartContainerRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight
+        });
+        chartRef.current.timeScale().fitContent();
+      }
+    }, 100);
+  }}
+  className="p-2 rounded-lg bg-slate-800/90 text-gray-300 hover:bg-slate-700 transition-all"
+  title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+>
                     {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
                   </button>
                   
