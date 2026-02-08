@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeries, Time } from 'lightweight-charts';
+import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeries } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
 
 interface FullscreenOscillatorPanelProps {
