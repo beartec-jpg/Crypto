@@ -375,6 +375,11 @@ const handleAddTicker = useCallback((ticker: string) => {
 const handleRemoveTicker = useCallback((ticker: string) => {
   handleRemoveTickerBase(ticker, symbol, setSymbol);
 }, [handleRemoveTickerBase, symbol]);
+  // ADD THIS - Missing function for selecting tickers:
+const handleSelectTicker = useCallback((ticker: string) => {
+  setSymbol(ticker);
+  incrementTickerClick(ticker);
+}, []);
 
 // Handler for selecting a ticker from the table
 const handleSelectTicker = useCallback((ticker: string) => {
