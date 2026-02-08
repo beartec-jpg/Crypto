@@ -114,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else if (type === 'elliott_addon') {
           // Get subscription item ID for Elliott by product name
           const stripeSub = await stripe.subscriptions.retrieve(subscriptionId as string, {
-            expand: ['items.data.price.product'],
+expand: ['items.data.price'],  // ✅
           });
           const elliottItem = stripeSub.items.data.find((item: any) => {
             const productName = (item.price?.product as any)?.name || '';
@@ -202,7 +202,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const allSubs = await stripe.subscriptions.list({
               customer: customerId as string,
               status: 'active',
-              expand: ['data.items.data.price.product'],
+expand: ['data.items.data.price'],  // ✅
             });
             
             for (const sub of allSubs.data) {
