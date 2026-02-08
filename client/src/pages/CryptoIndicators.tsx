@@ -384,8 +384,6 @@ const handleSelectTicker = useCallback((ticker: string) => {
 
 // Indicator hook - manages all indicator state
 const indicators = useIndicatorState();
-// Indicator hook - manages all indicator state
-const indicators = useIndicatorState();
 
 // CVD Settings hook - manages CVD spike level state
 const cvdSettings = useCVDSettings();
