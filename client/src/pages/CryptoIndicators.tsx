@@ -580,7 +580,7 @@ useEffect(() => {
   }, [isFullscreen, symbol, interval, candles]);
     
   // Cooldown ref to prevent immediate placement after pickup (1 second delay)
-  const pointPstyleimeRef = useRef<number>(0);
+  const pointPickupTimeRef = useRef<number>(0);
   const EDIT_PLACEMENT_COOLDOWN_MS = 1000;
   
   // Handler to pick up a point (first click on green circle) - removes point visually
