@@ -77,6 +77,15 @@ export default function CryptoIndicatorsClean() {
         <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-sm border-t border-slate-800 z-40">
           <div className="container mx-auto px-2">
             <div className="grid grid-cols-4 md:grid-cols-8 gap-1 py-2">
+
+               {/* Wallet Button (NEW - 8th button) */}
+              <button
+                onClick={() => setLocation('/wallet')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <Wallet className="w-6 h-6 text-green-400" />
+                <span className="text-xs text-green-400 font-medium">Wallet</span>
+              </button>
               
               {/* Training Button */}
               <button
