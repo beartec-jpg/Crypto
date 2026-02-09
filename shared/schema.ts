@@ -426,6 +426,23 @@ export const insertCryptoSubscriptionSchema = z.object({
 export type InsertCryptoSubscription = z.infer<typeof insertCryptoSubscriptionSchema>;
 export type CryptoSubscription = typeof cryptoSubscriptions.$inferSelect;
 
+// User Watchlists - separate table for managing user's ticker watchlist
+export const userWatchlists = pgTable("user_watchlists", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }),
+  tickers: jsonb("tickers").notNull().default(sql`'[]'::jsonb`), // Array of ticker symbols
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserWatchlistSchema = z.object({
+  userId: z.string(),
+  tickers: z.array(z.string()).default([]),
+});
+
+export type InsertUserWatchlist = z.infer<typeof insertUserWatchlistSchema>;
+export type UserWatchlist = typeof userWatchlists.$inferSelect;
+
 // Cached AI analyses table - stores last analysis per user/symbol/interval
 export const cryptoAiAnalyses = pgTable("crypto_ai_analyses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
