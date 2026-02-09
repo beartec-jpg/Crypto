@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useLocation } from 'wouter';
-import { Activity, TrendingUp, Bell, Wallet } from 'lucide-react';
+import { GraduationCap, BarChart3, Sparkles, TrendingUp, CreditCard, UserCircle, Crown, Wallet } from 'lucide-react';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { VideoSequencePlayer } from '@/components/trading/VideoSequencePlayer';
@@ -12,7 +12,7 @@ export default function CryptoIndicatorsClean() {
   usePageViewTracking('Crypto Indicators');
   const [, setLocation] = useLocation();
   
-  // Video player state - simplified for now
+  // Video player state
   const [targetMarketState, setTargetMarketState] = useState<'bullish' | 'bearish'>('bearish');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
@@ -37,7 +37,7 @@ export default function CryptoIndicatorsClean() {
 
       {/* Main Content */}
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
-        <div className="container mx-auto px-4 pt-24 pb-12">
+        <div className="container mx-auto px-4 pt-24 pb-32">
           
           {/* Header with Logo and Bull/Bear Animation */}
           <div className="relative flex flex-col items-center mb-8">
@@ -61,61 +61,103 @@ export default function CryptoIndicatorsClean() {
           {/* Spacer */}
           <div className="h-8"></div>
 
-          {/* Mobile-Friendly Dashboard Buttons */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            {/* Indicators Button */}
-            <button
-              onClick={() => setLocation('/crypto/indicators')}
-              className="bg-gradient-to-br from-blue-600 to-blue-800 hover:from-blue-500 hover:to-blue-700 rounded-lg p-6 flex flex-col items-center justify-center gap-3 transition-all duration-200 shadow-lg hover:shadow-blue-500/50 hover:scale-105"
-            >
-              <Activity className="w-8 h-8" />
-              <span className="font-semibold">Indicators</span>
-            </button>
-
-            {/* Training Button */}
-            <button
-              onClick={() => setLocation('/crypto/training')}
-              className="bg-gradient-to-br from-purple-600 to-purple-800 hover:from-purple-500 hover:to-purple-700 rounded-lg p-6 flex flex-col items-center justify-center gap-3 transition-all duration-200 shadow-lg hover:shadow-purple-500/50 hover:scale-105"
-            >
-              <TrendingUp className="w-8 h-8" />
-              <span className="font-semibold">Training</span>
-            </button>
-
-            {/* Alerts Button */}
-            <button
-              onClick={() => setLocation('/crypto/alerts')}
-              className="bg-gradient-to-br from-amber-600 to-amber-800 hover:from-amber-500 hover:to-amber-700 rounded-lg p-6 flex flex-col items-center justify-center gap-3 transition-all duration-200 shadow-lg hover:shadow-amber-500/50 hover:scale-105"
-            >
-              <Bell className="w-8 h-8" />
-              <span className="font-semibold">Alerts</span>
-            </button>
-
-            {/* Wallet Button (NEW) */}
-            <button
-              onClick={() => setLocation('/crypto/wallet')}
-              className="bg-gradient-to-br from-green-600 to-green-800 hover:from-green-500 hover:to-green-700 rounded-lg p-6 flex flex-col items-center justify-center gap-3 transition-all duration-200 shadow-lg hover:shadow-green-500/50 hover:scale-105"
-            >
-              <Wallet className="w-8 h-8" />
-              <span className="font-semibold">Wallet</span>
-            </button>
-          </div>
-
           {/* Placeholder for future content */}
-          <div className="bg-slate-900/50 rounded-lg border border-blue-500/20 p-8 text-center">
-            <p className="text-2xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-600 text-transparent bg-clip-text">
+          <div className="bg-slate-900/50 rounded-lg border border-blue-500/20 p-12 text-center">
+            <p className="text-3xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-600 text-transparent bg-clip-text">
               Clean Slate
             </p>
-            <p className="text-gray-400">
+            <p className="text-gray-400 text-lg">
               Chart and indicators will be added back here incrementally
             </p>
           </div>
 
         </div>
 
-        {/* AI Analysis Button - Bottom Fixed */}
-        <div className="fixed bottom-6 right-6 z-50">
+        {/* Bottom Navigation Bar - Fixed (8 Buttons) */}
+        <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-sm border-t border-slate-800 z-40">
+          <div className="container mx-auto px-2">
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-1 py-2">
+              
+              {/* Training Button */}
+              <button
+                onClick={() => setLocation('/crypto/training')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <GraduationCap className="w-6 h-6 text-gray-400" />
+                <span className="text-xs text-gray-400 font-medium">Training</span>
+              </button>
+
+              {/* Charts Button (Current Page - Highlighted) */}
+              <button
+                onClick={() => setLocation('/cryptoindicators')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg bg-blue-600 transition-colors"
+              >
+                <BarChart3 className="w-6 h-6 text-white" />
+                <span className="text-xs text-white font-medium">Charts</span>
+              </button>
+
+              {/* AI Button */}
+              <button
+                onClick={() => setLocation('/cryptoai')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <Sparkles className="w-6 h-6 text-gray-400" />
+                <span className="text-xs text-gray-400 font-medium">AI</span>
+              </button>
+
+              {/* Elliott Waves Button */}
+              <button
+                onClick={() => setLocation('/cryptoelliottwave')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <TrendingUp className="w-6 h-6 text-gray-400" />
+                <span className="text-xs text-gray-400 font-medium">Waves</span>
+              </button>
+
+              {/* Plans Button */}
+              <button
+                onClick={() => setLocation('/crypto/subscribe')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <CreditCard className="w-6 h-6 text-gray-400" />
+                <span className="text-xs text-gray-400 font-medium">Plans</span>
+              </button>
+
+              {/* Account Button */}
+              <button
+                onClick={() => setLocation('/crypto/account')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <UserCircle className="w-6 h-6 text-gray-400" />
+                <span className="text-xs text-gray-400 font-medium">Account</span>
+              </button>
+
+              {/* Elite Button */}
+              <button
+                onClick={() => setLocation('/crypto/subscribe')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <Crown className="w-6 h-6 text-purple-400" />
+                <span className="text-xs text-purple-400 font-medium">Elite</span>
+              </button>
+
+              {/* Wallet Button (NEW) */}
+              <button
+                onClick={() => setLocation('/wallet')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <Wallet className="w-6 h-6 text-green-400" />
+                <span className="text-xs text-green-400 font-medium">Wallet</span>
+              </button>
+
+            </div>
+          </div>
+        </div>
+
+        {/* AI Analysis Button - Bottom Right Fixed (Above Nav Bar) */}
+        <div className="fixed bottom-20 right-6 z-50">
           <button
-            onClick={() => setLocation('/crypto/ai')}
+            onClick={() => setLocation('/cryptoai')}
             className="relative group"
             aria-label="AI Market Analysis"
           >
