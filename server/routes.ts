@@ -4900,89 +4900,6 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
         return res.status(400).json({ 
           error: 'No push subscription found. Please enable notifications first.',
           message: 'Click the bell icon and allow notifications, then try again.' 
-
-            // ========== WATCHLIST MANAGEMENT ==========
-  
-  // Get user's watchlist tickers
-  app.get("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
-    try {
-      const userId = (req as any).cryptoUser.id;
-      console.log('📥 GET /api/crypto/watchlist - userId:', userId);
-      
-      const { db } = await import("./db");
-      const { cryptoSubscriptions } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      
-      // Get subscription (which contains selectedTickers)
-      const [subscription] = await db
-        .select()
-        .from(cryptoSubscriptions)
-        .where(eq(cryptoSubscriptions.userId, userId))
-        .limit(1);
-      
-      if (!subscription) {
-        console.log('📝 No subscription found - creating default');
-        // Create default subscription with default tickers
-        const [newSub] = await db
-          .insert(cryptoSubscriptions)
-          .values({
-            userId,
-            tier: 'free',
-            selectedTickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
-          })
-          .returning();
-        
-        console.log('✅ Default watchlist created:', newSub.selectedTickers);
-        return res.json({ tickers: newSub.selectedTickers || [] });
-      }
-      
-      console.log('✅ Watchlist loaded:', subscription.selectedTickers);
-      res.json({ tickers: subscription.selectedTickers || [] });
-    } catch (error: any) {
-      console.error("❌ Failed to get watchlist:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Save user's watchlist tickers
-  app.post("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
-    try {
-      const userId = (req as any).cryptoUser.id;
-      const { tickers } = req.body;
-      
-      console.log('💾 POST /api/crypto/watchlist - userId:', userId, 'tickers:', tickers);
-      
-      if (!Array.isArray(tickers)) {
-        console.error('❌ Invalid tickers format - not an array');
-        return res.status(400).json({ error: "Tickers must be an array" });
-      }
-      
-      const { db } = await import("./db");
-      const { cryptoSubscriptions } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      
-      // Update selectedTickers in subscription
-      const [updated] = await db
-        .update(cryptoSubscriptions)
-        .set({
-          selectedTickers: tickers,
-          updatedAt: new Date(),
-        })
-        .where(eq(cryptoSubscriptions.userId, userId))
-        .returning();
-      
-      if (!updated) {
-        console.error('❌ No subscription found to update');
-        return res.status(404).json({ error: "Subscription not found" });
-      }
-      
-      console.log('✅ Watchlist saved successfully:', updated.selectedTickers);
-      res.json({ tickers: updated.selectedTickers || [] });
-    } catch (error: any) {
-      console.error("❌ Failed to save watchlist:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
         });
       }
       
@@ -5037,89 +4954,6 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
       });
     } catch (error: any) {
       console.error('❌ Error sending test notification:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // ========== WATCHLIST MANAGEMENT ==========
-  
-  // Get user's watchlist tickers
-  app.get("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
-    try {
-      const userId = (req as any).cryptoUser.id;
-      console.log('📥 GET /api/crypto/watchlist - userId:', userId);
-      
-      const { db } = await import("./db");
-      const { cryptoSubscriptions } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      
-      // Get subscription (which contains selectedTickers)
-      const [subscription] = await db
-        .select()
-        .from(cryptoSubscriptions)
-        .where(eq(cryptoSubscriptions.userId, userId))
-        .limit(1);
-      
-      if (!subscription) {
-        console.log('📝 No subscription found - creating default');
-        // Create default subscription with default tickers
-        const [newSub] = await db
-          .insert(cryptoSubscriptions)
-          .values({
-            userId,
-            tier: 'free',
-            selectedTickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
-          })
-          .returning();
-        
-        console.log('✅ Default watchlist created:', newSub.selectedTickers);
-        return res.json({ tickers: newSub.selectedTickers || [] });
-      }
-      
-      console.log('✅ Watchlist loaded:', subscription.selectedTickers);
-      res.json({ tickers: subscription.selectedTickers || [] });
-    } catch (error: any) {
-      console.error("❌ Failed to get watchlist:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Save user's watchlist tickers
-  app.post("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
-    try {
-      const userId = (req as any).cryptoUser.id;
-      const { tickers } = req.body;
-      
-      console.log('💾 POST /api/crypto/watchlist - userId:', userId, 'tickers:', tickers);
-      
-      if (!Array.isArray(tickers)) {
-        console.error('❌ Invalid tickers format - not an array');
-        return res.status(400).json({ error: "Tickers must be an array" });
-      }
-      
-      const { db } = await import("./db");
-      const { cryptoSubscriptions } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      
-      // Update selectedTickers in subscription
-      const [updated] = await db
-        .update(cryptoSubscriptions)
-        .set({
-          selectedTickers: tickers,
-          updatedAt: new Date(),
-        })
-        .where(eq(cryptoSubscriptions.userId, userId))
-        .returning();
-      
-      if (!updated) {
-        console.error('❌ No subscription found to update');
-        return res.status(404).json({ error: "Subscription not found" });
-      }
-      
-      console.log('✅ Watchlist saved successfully:', updated.selectedTickers);
-      res.json({ tickers: updated.selectedTickers || [] });
-    } catch (error: any) {
-      console.error("❌ Failed to save watchlist:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -6607,125 +6441,131 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
-   // ============ User Watchlist API ============
+  // ============================================
+  // WATCHLIST API - Single source of truth
+  // ============================================
   
-// OPTIONS handler for preflight requests
-app.options("/api/crypto/watchlist", (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.sendStatus(200);
-});
-
-// Get user's watchlist
-app.get("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
-  try {
-    // Add CORS headers
+  // OPTIONS handler for CORS preflight
+  app.options("/api/crypto/watchlist", (req, res) => {
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.header('Access-Control-Allow-Credentials', 'true');
-    
-    const userId = (req as any).cryptoUser?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-    
-    console.log(`📥 GET /api/crypto/watchlist - userId: ${userId}`);
-    
-    const { db } = await import("./db");
-    const { userWatchlists } = await import("@shared/schema");
-    const { eq } = await import("drizzle-orm");
-    
-    // Get or create watchlist
-    let [watchlist] = await db
-      .select()
-      .from(userWatchlists)
-      .where(eq(userWatchlists.userId, userId))
-      .limit(1);
-    
-    if (!watchlist) {
-      // Create default watchlist
-      console.log(`✅ Creating default watchlist for user ${userId}`);
-      [watchlist] = await db
-        .insert(userWatchlists)
-        .values({
-          userId,
-          tickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
-        })
-        .returning();
-    }
-    
-    console.log(`✅ Watchlist loaded for user ${userId}:`, watchlist.tickers);
-    res.json(watchlist);
-  } catch (error: any) {
-    console.error("❌ Failed to get watchlist:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+    res.sendStatus(200);
+  });
 
-// Save user's watchlist
-app.post("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
-  try {
-    // Add CORS headers
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    
-    const userId = (req as any).cryptoUser?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-    
-    const { tickers } = req.body;
-    
-    if (!Array.isArray(tickers)) {
-      return res.status(400).json({ error: "Tickers must be an array" });
-    }
-    
-    console.log(`💾 POST /api/crypto/watchlist - userId: ${userId}, tickers:`, tickers);
-    
-    const { db } = await import("./db");
-    const { userWatchlists } = await import("@shared/schema");
-    const { eq } = await import("drizzle-orm");
-    
-    // Check if watchlist exists
-    const [existing] = await db
-      .select()
-      .from(userWatchlists)
-      .where(eq(userWatchlists.userId, userId))
-      .limit(1);
-    
-    let watchlist;
-    if (existing) {
-      // Update existing
-      [watchlist] = await db
-        .update(userWatchlists)
-        .set({
-          tickers,
-          updatedAt: new Date(),
-        })
+  // GET - Fetch user's watchlist
+  app.get("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
+    try {
+      // CORS headers
+      res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      
+      const userId = (req as any).cryptoUser?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+      
+      console.log(`📥 GET /api/crypto/watchlist - userId: ${userId}`);
+      
+      const { db } = await import("./db");
+      const { userWatchlists } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      // Get or create watchlist
+      let [watchlist] = await db
+        .select()
+        .from(userWatchlists)
         .where(eq(userWatchlists.userId, userId))
-        .returning();
+        .limit(1);
       
-      console.log(`✅ Watchlist updated for user ${userId}`);
-    } else {
-      // Create new
-      [watchlist] = await db
-        .insert(userWatchlists)
-        .values({
-          userId,
-          tickers,
-        })
-        .returning();
+      if (!watchlist) {
+        // Create default watchlist
+        console.log(`✅ Creating default watchlist for user ${userId}`);
+        [watchlist] = await db
+          .insert(userWatchlists)
+          .values({
+            userId,
+            tickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
+          })
+          .returning();
+      }
       
-      console.log(`✅ Watchlist created for user ${userId}`);
+      console.log(`✅ Watchlist loaded for user ${userId}:`, watchlist.tickers);
+      
+      // Return in format expected by frontend: { tickers: [...] }
+      res.json({ tickers: watchlist.tickers || [] });
+    } catch (error: any) {
+      console.error("❌ Failed to get watchlist:", error);
+      res.status(500).json({ error: error.message || 'Failed to load watchlist' });
     }
-    
-    res.json(watchlist);
-  } catch (error: any) {
-    console.error("❌ Failed to save watchlist:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+  });
+
+  // POST - Save user's watchlist
+  app.post("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
+    try {
+      // CORS headers
+      res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      
+      const userId = (req as any).cryptoUser?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+      
+      const { tickers } = req.body;
+      
+      // Validate input
+      if (!Array.isArray(tickers)) {
+        return res.status(400).json({ error: "Tickers must be an array" });
+      }
+      
+      console.log(`💾 POST /api/crypto/watchlist - userId: ${userId}, tickers:`, tickers);
+      
+      const { db } = await import("./db");
+      const { userWatchlists } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      // Check if watchlist exists
+      const [existing] = await db
+        .select()
+        .from(userWatchlists)
+        .where(eq(userWatchlists.userId, userId))
+        .limit(1);
+      
+      let watchlist;
+      if (existing) {
+        // Update existing watchlist
+        [watchlist] = await db
+          .update(userWatchlists)
+          .set({
+            tickers,
+            updatedAt: new Date(),
+          })
+          .where(eq(userWatchlists.userId, userId))
+          .returning();
+        
+        console.log(`✅ Watchlist updated for user ${userId}`);
+      } else {
+        // Create new watchlist
+        [watchlist] = await db
+          .insert(userWatchlists)
+          .values({
+            userId,
+            tickers,
+          })
+          .returning();
+        
+        console.log(`✅ Watchlist created for user ${userId}`);
+      }
+      
+      // Return in format expected by frontend: { tickers: [...] }
+      res.json({ tickers: watchlist.tickers || [] });
+    } catch (error: any) {
+      console.error("❌ Failed to save watchlist:", error);
+      res.status(500).json({ error: error.message || 'Failed to save watchlist' });
+    }
+  });
 
 // Update a chart drawing (for settings changes or point moves)
   app.patch("/api/crypto/chart-drawings/:id", requireCryptoAuth, async (req, res) => {
