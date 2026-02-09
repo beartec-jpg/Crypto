@@ -15,7 +15,7 @@ const CryptoLanding = lazy(() => import('@/pages/CryptoLanding'));
 const CryptoLogin = lazy(() => import('@/pages/CryptoLogin'));
 const CryptoPrivacy = lazy(() => import('@/pages/CryptoPrivacy'));
 const CryptoTerms = lazy(() => import('@/pages/CryptoTerms'));
-const CryptoIndicators = lazy(() => import('@/pages/CryptoIndicators'));
+const CryptoIndicators = lazy(() => import('@/pages/CryptoIndicatorsClean'));
 const CryptoAI = lazy(() => import('@/pages/CryptoAI'));
 const CryptoElliottWave = lazy(() => import('@/pages/CryptoElliottWave'));
 const CryptoTraining = lazy(() => import('@/pages/CryptoTraining'));
