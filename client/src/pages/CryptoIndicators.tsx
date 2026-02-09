@@ -277,6 +277,24 @@ export default function CryptoIndicators() {
   const tier = subscription?.tier || 'free';
   const isPaidTier = tier !== 'free';
   
+  // Memoized tier check to prevent infinite loops
+  const hasMinimalTier = useMemo(() => {
+    const requiredTier = 'elite'; // This component requires elite tier
+    const currentTier = (user?.publicMetadata?.subscriptionTier as string)?.toLowerCase() || 'free';
+    
+    const tierHierarchy: Record<string, number> = {
+      'free': 0,
+      'basic': 1,
+      'professional': 2,
+      'elite': 3
+    };
+    
+    const currentLevel = tierHierarchy[currentTier] || 0;
+    const requiredLevel = tierHierarchy[requiredTier] || 0;
+    
+    return currentLevel >= requiredLevel;
+  }, [user?.publicMetadata?.subscriptionTier]);
+  
   // Free tier oscillators: only RSI and MACD, max 1 active at a time
   const FREE_OSCILLATORS = ['RSI', 'MACD'];
   const MAX_FREE_OSCILLATORS = 1;
