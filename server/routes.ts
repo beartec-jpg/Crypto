@@ -610,66 +610,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
                        process.env.VERCEL === '1' ||
                        process.env.NODE_ENV === 'production';
   
-  // Clerk authentication middleware for crypto routes
-  const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
-    // In development, allow open access
-    if (!isProduction) {
-      // Check if admin mode is requested via header
-      const isAdminMode = req.headers['x-dev-admin-mode'] === 'true';
-      req.cryptoUser = isAdminMode ? {
-        id: 'user_36jmTprDUlzK89xlpNgGGtcH2KJ',
-        email: 'beartec@beartec.uk',
-        firstName: 'BearTec',
-        lastName: 'Admin',
-      } : {
-        id: 'dev-open-access',
-        email: 'dev@open.access',
-        firstName: 'Dev',
-        lastName: 'User',
-      };
-      return next();
+// Clerk authentication middleware for crypto routes
+const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+  // In development, allow open access
+  if (!isProduction) {
+    // Check if admin mode is requested via header
+    const isAdminMode = req.headers['x-dev-admin-mode'] === 'true';
+    req.cryptoUser = isAdminMode ? {
+      id: 'user_36jmTprDUlzK89xlpNgGGtcH2KJ',
+      email: 'beartec@beartec.uk',
+      firstName: 'BearTec',
+      lastName: 'Admin',
+    } : {
+      id: 'dev-open-access',
+      email: 'dev@open.access',
+      firstName: 'Dev',
+      lastName: 'User',
+    };
+    return next();
+  }
+  
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
     }
+
+    const token = authHeader.substring(7);
     
-    try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
+    // Verify the JWT token with Clerk
+    const { createClerkClient, verifyToken } = await import('@clerk/backend');
+    const secretKey = process.env.CLERK_SECRET_KEY;
 
-      const token = authHeader.substring(7);
-      
-      // Verify the JWT token with Clerk
-      const { createClerkClient, verifyToken } = await import('@clerk/backend');
-      const secretKey = process.env.CLERK_SECRET_KEY;
-
-      if (!secretKey) {
-        console.error('CLERK_SECRET_KEY not configured');
-        return res.status(500).json({ error: 'Server configuration error' });
-      }
-
-      const payload = await verifyToken(token, { secretKey });
-
-      if (!payload?.sub) {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      // Get user details from Clerk
-      const clerk = createClerkClient({ secretKey });
-      const user = await clerk.users.getUser(payload.sub);
-      
-      req.cryptoUser = {
-        id: payload.sub,
-        email: user.emailAddresses[0]?.emailAddress || '',
-        firstName: user.firstName || undefined,
-        lastName: user.lastName || undefined,
-      };
-      
-      next();
-    } catch (error: any) {
-      console.error('Crypto auth error:', error.message);
-      return res.status(401).json({ error: 'Authentication failed' });
+    if (!secretKey) {
+      console.error('CLERK_SECRET_KEY not configured');
+      return res.status(500).json({ error: 'Server configuration error' });
     }
-  };
+
+    const payload = await verifyToken(token, { secretKey });
+
+    if (!payload?.sub) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Get user details from Clerk
+    const clerk = createClerkClient({ secretKey });
+    const user = await clerk.users.getUser(payload.sub);
+    
+    const userEmail = user.emailAddresses[0]?.emailAddress || '';
+    
+    // ===== NEW: Sync Clerk user to database =====
+    const { db } = await import('./db');
+    const { cryptoUsers, cryptoSubscriptions } = await import('@shared/schema');
+    const { eq } = await import('drizzle-orm');
+    
+    // Check if user exists in database
+    let [dbUser] = await db
+      .select()
+      .from(cryptoUsers)
+      .where(eq(cryptoUsers.id, payload.sub))
+      .limit(1);
+    
+    // If user doesn't exist, create them
+    if (!dbUser) {
+      console.log(`📝 Creating new crypto user: ${userEmail} (${payload.sub})`);
+      
+      [dbUser] = await db
+        .insert(cryptoUsers)
+        .values({
+          id: payload.sub,
+          email: userEmail,
+          firstName: user.firstName || undefined,
+          lastName: user.lastName || undefined,
+          profileImageUrl: user.imageUrl || undefined,
+        })
+        .returning();
+      
+      // Create default subscription with default watchlist
+      await db
+        .insert(cryptoSubscriptions)
+        .values({
+          userId: payload.sub,
+          tier: 'free',
+          selectedTickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
+        })
+        .onConflictDoNothing();
+      
+      console.log(`✅ User created with default watchlist: ${payload.sub}`);
+    }
+    // ===== END NEW CODE =====
+    
+    req.cryptoUser = {
+      id: payload.sub,
+      email: userEmail,
+      firstName: user.firstName || undefined,
+      lastName: user.lastName || undefined,
+    };
+    
+    next();
+  } catch (error: any) {
+    console.error('Crypto auth error:', error.message);
+    return res.status(401).json({ error: 'Authentication failed' });
+  }
+};
   
   // Pass-through middleware for calculator routes (kept for backward compatibility)
   const noAuth: RequestHandler = (req: Request, _res: Response, next: NextFunction) => {
