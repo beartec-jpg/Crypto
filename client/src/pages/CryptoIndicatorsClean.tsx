@@ -41,20 +41,19 @@ export default function CryptoIndicatorsClean() {
 
       {/* Main Content */}
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
-        <div className="container mx-auto px-4 pt-24 pb-32">
+        <div className="max-w-7xl mx-auto px-4 pt-8 pb-32">
           
-          {/* Header with Logo and Bull/Bear Animation */}
-          <div className="relative flex flex-col items-center mb-8">
-            {/* BearTec Logo */}
-            <div className="mb-4 md:absolute md:left-0 md:top-0 md:mb-0">
-              <img 
-                src={bearTecLogoNew} 
-                alt="BearTec Logo" 
-                className="h-[100px] md:h-[140px] w-auto object-contain"
-              />
-            </div>
-            
-            {/* Market Animation */}
+          {/* Logo - Top Left */}
+          <div className="mb-8">
+            <img 
+              src={bearTecLogoNew} 
+              alt="BearTec Logo" 
+              className="h-24 w-auto"
+            />
+          </div>
+
+          {/* Animation - Centered */}
+          <div className="flex justify-center mb-12">
             <VideoSequencePlayer
               targetMarketState={targetMarketState}
               isInitialLoad={isInitialLoad}
@@ -62,16 +61,16 @@ export default function CryptoIndicatorsClean() {
             />
           </div>
 
-          {/* Search Bar */}
-          <div className="flex justify-center mb-6">
+          {/* Search Bar - Centered */}
+          <div className="max-w-2xl mx-auto mb-8">
             <TickerSearch 
               onAddTicker={(ticker) => watchlist.handleAddTicker(ticker, setSelectedSymbol)}
               existingTickers={watchlist.watchlistTickers}
             />
           </div>
 
-          {/* Watchlist Table */}
-          <div className="mb-8">
+          {/* Watchlist Table - Full Width */}
+          <div className="w-full">
             <TickerTable
               tickers={watchlist.watchlistTickers}
               onRemoveTicker={(ticker) => watchlist.handleRemoveTicker(ticker, selectedSymbol, setSelectedSymbol)}
@@ -84,47 +83,79 @@ export default function CryptoIndicatorsClean() {
 
         </div>
 
-        {/* Bottom Navigation Bar (8 Buttons) */}
+        {/* Bottom Navigation Bar */}
         <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-sm border-t border-slate-800 z-40">
-          <div className="container mx-auto px-2">
+          <div className="max-w-7xl mx-auto px-2">
             <div className="grid grid-cols-4 md:grid-cols-8 gap-1 py-2">
               
-              <button onClick={() => setLocation('/crypto/training')} className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors">
+              {/* Training */}
+              <button
+                onClick={() => setLocation('/crypto/training')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
                 <GraduationCap className="w-6 h-6 text-gray-400" />
                 <span className="text-xs text-gray-400 font-medium">Training</span>
               </button>
 
-              <button onClick={() => setLocation('/cryptoindicators')} className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg bg-blue-600 transition-colors">
+              {/* Charts - Active */}
+              <button
+                onClick={() => setLocation('/cryptoindicators')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg bg-blue-600 transition-colors"
+              >
                 <BarChart3 className="w-6 h-6 text-white" />
                 <span className="text-xs text-white font-medium">Charts</span>
               </button>
 
-              <button onClick={() => setLocation('/cryptoai')} className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors">
+              {/* AI */}
+              <button
+                onClick={() => setLocation('/cryptoai')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
                 <Sparkles className="w-6 h-6 text-gray-400" />
                 <span className="text-xs text-gray-400 font-medium">AI</span>
               </button>
 
-              <button onClick={() => setLocation('/cryptoelliottwave')} className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors">
+              {/* Waves */}
+              <button
+                onClick={() => setLocation('/cryptoelliottwave')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
                 <TrendingUp className="w-6 h-6 text-gray-400" />
                 <span className="text-xs text-gray-400 font-medium">Waves</span>
               </button>
 
-              <button onClick={() => setLocation('/crypto/subscribe')} className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors">
+              {/* Plans */}
+              <button
+                onClick={() => setLocation('/crypto/subscribe')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
                 <CreditCard className="w-6 h-6 text-gray-400" />
                 <span className="text-xs text-gray-400 font-medium">Plans</span>
               </button>
 
-              <button onClick={() => setLocation('/crypto/account')} className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors">
+              {/* Account */}
+              <button
+                onClick={() => setLocation('/crypto/account')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
                 <UserCircle className="w-6 h-6 text-gray-400" />
                 <span className="text-xs text-gray-400 font-medium">Account</span>
               </button>
 
-              <button onClick={() => setLocation('/crypto/subscribe')} className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors">
+              {/* Elite */}
+              <button
+                onClick={() => setLocation('/crypto/subscribe')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
                 <Crown className="w-6 h-6 text-purple-400" />
                 <span className="text-xs text-purple-400 font-medium">Elite</span>
               </button>
 
-              <button onClick={() => setLocation('/wallet')} className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors">
+              {/* Wallet */}
+              <button
+                onClick={() => setLocation('/wallet')}
+                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
+              >
                 <Wallet className="w-6 h-6 text-green-400" />
                 <span className="text-xs text-green-400 font-medium">Wallet</span>
               </button>
@@ -133,10 +164,21 @@ export default function CryptoIndicatorsClean() {
           </div>
         </div>
 
-        {/* AI Button (Bottom Right) */}
+        {/* AI Button - Bottom Right */}
         <div className="fixed bottom-20 right-6 z-50">
-          <button onClick={() => setLocation('/cryptoai')} className="relative group" aria-label="AI Market Analysis">
-            <video src={aiButtonVideo} autoPlay loop muted playsInline className="w-20 h-20 rounded-full object-cover shadow-2xl shadow-purple-500/50 group-hover:scale-110 transition-transform duration-200" />
+          <button
+            onClick={() => setLocation('/cryptoai')}
+            className="relative group"
+            aria-label="AI Market Analysis"
+          >
+            <video
+              src={aiButtonVideo}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-20 h-20 rounded-full object-cover shadow-2xl shadow-purple-500/50 group-hover:scale-110 transition-transform duration-200"
+            />
             <div className="absolute inset-0 rounded-full bg-purple-500/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             <div className="absolute bottom-full right-0 mb-2 px-3 py-1 bg-slate-900 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
               AI Market Analysis
