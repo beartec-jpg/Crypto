@@ -42,38 +42,28 @@ export default function CryptoIndicatorsClean() {
       {/* Main Content */}
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
         
-        {/* HEADER SECTION */}
-        <div className="bg-slate-900/50 border-b border-slate-800">
-          <div className="max-w-7xl mx-auto px-4 py-6">
-            <div className="flex items-center justify-between">
-              {/* Logo - Left */}
-              <div>
-                <img 
-                  src={bearTecLogoNew} 
-                  alt="BearTec Logo" 
-                  className="h-16 w-auto"
-                />
-              </div>
-              
-              {/* Animation - Center */}
-              <div className="flex-1 flex justify-center">
-                <VideoSequencePlayer
-                  targetMarketState={targetMarketState}
-                  isInitialLoad={isInitialLoad}
-                  onInitialComplete={() => setIsInitialLoad(false)}
-                />
-              </div>
-              
-              {/* Spacer - Right (keeps animation centered) */}
-              <div className="w-16"></div>
-            </div>
-          </div>
-        </div>
-
-        {/* MAIN CONTENT SECTION */}
-        <div className="max-w-7xl mx-auto px-4 py-8 pb-32">
+        {/* Container for all content */}
+        <div className="max-w-7xl mx-auto px-4 py-6 pb-32">
           
-          {/* Search Bar - Full Width */}
+          {/* 1. LOGO - Top */}
+          <div className="mb-8">
+            <img 
+              src={bearTecLogoNew} 
+              alt="BearTec Logo" 
+              className="h-20 w-auto"
+            />
+          </div>
+
+          {/* 2. ANIMATION - Centered with proper spacing */}
+          <div className="flex justify-center mb-12">
+            <VideoSequencePlayer
+              targetMarketState={targetMarketState}
+              isInitialLoad={isInitialLoad}
+              onInitialComplete={() => setIsInitialLoad(false)}
+            />
+          </div>
+
+          {/* 3. SEARCH BAR - Full width */}
           <div className="mb-6">
             <TickerSearch 
               onAddTicker={(ticker) => watchlist.handleAddTicker(ticker, setSelectedSymbol)}
@@ -81,7 +71,7 @@ export default function CryptoIndicatorsClean() {
             />
           </div>
 
-          {/* Watchlist Table - Full Width */}
+          {/* 4. WATCHLIST TABLE - Full width */}
           <div>
             <TickerTable
               tickers={watchlist.watchlistTickers}
