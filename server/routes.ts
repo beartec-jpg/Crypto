@@ -4857,6 +4857,89 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
         return res.status(400).json({ 
           error: 'No push subscription found. Please enable notifications first.',
           message: 'Click the bell icon and allow notifications, then try again.' 
+
+            // ========== WATCHLIST MANAGEMENT ==========
+  
+  // Get user's watchlist tickers
+  app.get("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      console.log('📥 GET /api/crypto/watchlist - userId:', userId);
+      
+      const { db } = await import("./db");
+      const { cryptoSubscriptions } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      // Get subscription (which contains selectedTickers)
+      const [subscription] = await db
+        .select()
+        .from(cryptoSubscriptions)
+        .where(eq(cryptoSubscriptions.userId, userId))
+        .limit(1);
+      
+      if (!subscription) {
+        console.log('📝 No subscription found - creating default');
+        // Create default subscription with default tickers
+        const [newSub] = await db
+          .insert(cryptoSubscriptions)
+          .values({
+            userId,
+            tier: 'free',
+            selectedTickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
+          })
+          .returning();
+        
+        console.log('✅ Default watchlist created:', newSub.selectedTickers);
+        return res.json({ tickers: newSub.selectedTickers || [] });
+      }
+      
+      console.log('✅ Watchlist loaded:', subscription.selectedTickers);
+      res.json({ tickers: subscription.selectedTickers || [] });
+    } catch (error: any) {
+      console.error("❌ Failed to get watchlist:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Save user's watchlist tickers
+  app.post("/api/crypto/watchlist", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { tickers } = req.body;
+      
+      console.log('💾 POST /api/crypto/watchlist - userId:', userId, 'tickers:', tickers);
+      
+      if (!Array.isArray(tickers)) {
+        console.error('❌ Invalid tickers format - not an array');
+        return res.status(400).json({ error: "Tickers must be an array" });
+      }
+      
+      const { db } = await import("./db");
+      const { cryptoSubscriptions } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      // Update selectedTickers in subscription
+      const [updated] = await db
+        .update(cryptoSubscriptions)
+        .set({
+          selectedTickers: tickers,
+          updatedAt: new Date(),
+        })
+        .where(eq(cryptoSubscriptions.userId, userId))
+        .returning();
+      
+      if (!updated) {
+        console.error('❌ No subscription found to update');
+        return res.status(404).json({ error: "Subscription not found" });
+      }
+      
+      console.log('✅ Watchlist saved successfully:', updated.selectedTickers);
+      res.json({ tickers: updated.selectedTickers || [] });
+    } catch (error: any) {
+      console.error("❌ Failed to save watchlist:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
         });
       }
       
