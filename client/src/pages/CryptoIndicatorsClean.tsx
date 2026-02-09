@@ -3,7 +3,6 @@ import { Helmet } from 'react-helmet-async';
 import { useLocation } from 'wouter';
 import { GraduationCap, BarChart3, Sparkles, TrendingUp, CreditCard, UserCircle, Crown, Wallet } from 'lucide-react';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
-import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { VideoSequencePlayer } from '@/components/trading/VideoSequencePlayer';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
@@ -32,10 +31,7 @@ export default function CryptoIndicatorsClean() {
         <meta name="description" content="Professional crypto trading indicators and analysis" />
       </Helmet>
 
-      {/* Navigation */}
-      <CryptoNavigation />
-
-      {/* Main Content */}
+      {/* Main Content - NO CryptoNavigation component */}
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
         <div className="container mx-auto px-4 pt-24 pb-32">
           
@@ -58,18 +54,7 @@ export default function CryptoIndicatorsClean() {
             />
           </div>
 
-          {/* Spacer */}
-          <div className="h-8"></div>
-
-          {/* Placeholder for future content */}
-          <div className="bg-slate-900/50 rounded-lg border border-blue-500/20 p-12 text-center">
-            <p className="text-3xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-600 text-transparent bg-clip-text">
-              Clean Slate
-            </p>
-            <p className="text-gray-400 text-lg">
-              Chart and indicators will be added back here incrementally
-            </p>
-          </div>
+          {/* NO TEXT HERE - Removed completely */}
 
         </div>
 
@@ -77,15 +62,6 @@ export default function CryptoIndicatorsClean() {
         <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-sm border-t border-slate-800 z-40">
           <div className="container mx-auto px-2">
             <div className="grid grid-cols-4 md:grid-cols-8 gap-1 py-2">
-
-               {/* Wallet Button (NEW - 8th button) */}
-              <button
-                onClick={() => setLocation('/wallet')}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <Wallet className="w-6 h-6 text-green-400" />
-                <span className="text-xs text-green-400 font-medium">Wallet</span>
-              </button>
               
               {/* Training Button */}
               <button
@@ -150,7 +126,7 @@ export default function CryptoIndicatorsClean() {
                 <span className="text-xs text-purple-400 font-medium">Elite</span>
               </button>
 
-              {/* Wallet Button (NEW) */}
+              {/* Wallet Button (NEW - 8th button) */}
               <button
                 onClick={() => setLocation('/wallet')}
                 className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
