@@ -41,28 +41,40 @@ export default function CryptoIndicatorsClean() {
 
       {/* Main Content */}
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
-        <div className="max-w-7xl mx-auto px-4 pt-8 pb-32">
+        
+        {/* HEADER SECTION */}
+        <div className="bg-slate-900/50 border-b border-slate-800">
+          <div className="max-w-7xl mx-auto px-4 py-6">
+            <div className="flex items-center justify-between">
+              {/* Logo - Left */}
+              <div>
+                <img 
+                  src={bearTecLogoNew} 
+                  alt="BearTec Logo" 
+                  className="h-16 w-auto"
+                />
+              </div>
+              
+              {/* Animation - Center */}
+              <div className="flex-1 flex justify-center">
+                <VideoSequencePlayer
+                  targetMarketState={targetMarketState}
+                  isInitialLoad={isInitialLoad}
+                  onInitialComplete={() => setIsInitialLoad(false)}
+                />
+              </div>
+              
+              {/* Spacer - Right (keeps animation centered) */}
+              <div className="w-16"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* MAIN CONTENT SECTION */}
+        <div className="max-w-7xl mx-auto px-4 py-8 pb-32">
           
-          {/* Logo - Top Left */}
-          <div className="mb-8">
-            <img 
-              src={bearTecLogoNew} 
-              alt="BearTec Logo" 
-              className="h-24 w-auto"
-            />
-          </div>
-
-          {/* Animation - Centered */}
-          <div className="flex justify-center mb-12">
-            <VideoSequencePlayer
-              targetMarketState={targetMarketState}
-              isInitialLoad={isInitialLoad}
-              onInitialComplete={() => setIsInitialLoad(false)}
-            />
-          </div>
-
-          {/* Search Bar - Centered */}
-          <div className="max-w-2xl mx-auto mb-8">
+          {/* Search Bar - Full Width */}
+          <div className="mb-6">
             <TickerSearch 
               onAddTicker={(ticker) => watchlist.handleAddTicker(ticker, setSelectedSymbol)}
               existingTickers={watchlist.watchlistTickers}
@@ -70,7 +82,7 @@ export default function CryptoIndicatorsClean() {
           </div>
 
           {/* Watchlist Table - Full Width */}
-          <div className="w-full">
+          <div>
             <TickerTable
               tickers={watchlist.watchlistTickers}
               onRemoveTicker={(ticker) => watchlist.handleRemoveTicker(ticker, selectedSymbol, setSelectedSymbol)}
