@@ -23,6 +23,10 @@ interface TickerTableProps {
   selectedTicker: string;
   timeframe: string;
   onTimeframeChange: (timeframe: string) => void;
+
+  // NEW: global watchlist bias configuration (optional)
+  structurePivotLength?: number;
+  emaLengths?: number[]; // e.g. [21, 50, 200]
 }
 
 // Convert timeframe to Binance API format
@@ -38,8 +42,6 @@ const convertTimeframe = (tf: string): string => {
   return map[tf] || '1h';
 };
 
-
-
 /**
  * Watchlist table component showing ticker data
  * Columns: Ticker, Price, % Change, EMA Bias, Structure Bias, Remove
@@ -51,6 +53,8 @@ export function TickerTable({
   selectedTicker,
   timeframe,
   onTimeframeChange,
+  structurePivotLength, // NEW
+  emaLengths,           // NEW
 }: TickerTableProps) {
   const [tickerData, setTickerData] = useState<Record<string, TickerData>>({});
   const [loading, setLoading] = useState(false);
@@ -94,10 +98,12 @@ export function TickerTable({
               }));
               
               // Calculate EMA bias using utility
-              const emaBias = calculateEMABias(parsedCandles);
+              // NEW: pass optional emaLengths override if provided
+              const emaBias = calculateEMABias(parsedCandles, emaLengths);
               
               // Detect structure using utility
-              const structureBias = detectStructure(parsedCandles);
+              // NEW: pass optional structurePivotLength override if provided
+              const structureBias = detectStructure(parsedCandles, structurePivotLength);
               
               newTickerData[ticker] = {
                 symbol: ticker,
@@ -141,7 +147,13 @@ export function TickerTable({
     const interval = setInterval(fetchData, 10000);
 
     return () => clearInterval(interval);
-  }, [tickers, timeframe, toast]);
+  }, [
+    tickers,
+    timeframe,
+    toast,
+    structurePivotLength, // NEW: refetch when structure setting changes
+    emaLengths,           // NEW: refetch when EMA setting changes
+  ]);
 
   const formatPrice = (price: number) => {
     if (price === 0) return '-';
