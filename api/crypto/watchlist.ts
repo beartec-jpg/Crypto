@@ -64,7 +64,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     if (userResult.rows.length === 0) {
-      await pool.end();
       return res.status(404).json({ error: 'User not found' });
     }
 
@@ -97,8 +96,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       console.log(`✅ Watchlist loaded for user ${cryptoUserId}:`, tickers);
-      
-      await pool.end();
       return res.json({ tickers });
     }
 
@@ -107,7 +104,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       // Validate input
       if (!Array.isArray(tickers)) {
-        await pool.end();
         return res.status(400).json({ error: 'Tickers must be an array' });
       }
 
@@ -136,15 +132,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`✅ Watchlist updated for user ${cryptoUserId}`);
       }
 
-      await pool.end();
       return res.json({ tickers });
     }
 
-    await pool.end();
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
     console.error('❌ Error with watchlist:', error);
-    try { await pool.end(); } catch {}
     return res.status(500).json({ error: error.message || 'Failed to process watchlist' });
+  } finally {
+    try { 
+      await pool.end(); 
+    } catch (e) {
+      console.error('Failed to close pool:', e);
+    }
   }
 }
