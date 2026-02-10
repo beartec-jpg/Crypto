@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { calculateEMA } from '@/utils/emaCalculations';
+import { calculateEMABias } from '@/utils/emaBias';
 import { detectStructure } from '@/utils/structureDetection';
 import { BiasBadge } from '@/components/BiasBadge';
 import type { Bias } from '@/types/candle';
@@ -94,22 +94,7 @@ export function TickerTable({
               }));
               
               // Calculate EMA bias using utility
-              const closePrices = parsedCandles.map((c: any) => c.close);
-              const ema20 = calculateEMA(closePrices, 20);
-              const ema50 = calculateEMA(closePrices, 50);
-              const ema100 = calculateEMA(closePrices, 100);
-              
-              const lastEma20 = ema20[ema20.length - 1];
-              const lastEma50 = ema50[ema50.length - 1];
-              const lastEma100 = ema100[ema100.length - 1];
-              
-              // Determine EMA bias
-              let emaBias: Bias = 'neutral';
-              if (lastEma20 > lastEma50 && lastEma50 > lastEma100) {
-                emaBias = 'bullish';
-              } else if (lastEma20 < lastEma50 && lastEma50 < lastEma100) {
-                emaBias = 'bearish';
-              }
+              const emaBias = calculateEMABias(parsedCandles);
               
               // Detect structure using utility
               const structureBias = detectStructure(parsedCandles);
