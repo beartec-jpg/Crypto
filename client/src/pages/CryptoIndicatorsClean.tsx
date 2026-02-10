@@ -4,12 +4,14 @@ import { useLocation } from 'wouter';
 import { Sparkles } from 'lucide-react';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { VideoSequencePlayer } from '@/components/trading/VideoSequencePlayer';
-import { TickerSearch } from '@/components/TickerSearch';
-import { TickerTable } from '@/components/TickerTable';
-import { useWatchlistState } from '@/hooks/useWatchlistState';
+// REMOVED: direct TickerSearch / TickerTable / useWatchlistState imports
+// import { TickerSearch } from '@/components/TickerSearch';
+// import { TickerTable } from '@/components/TickerTable';
+// import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
+import { CleanWatchlist } from '@/components/watchlist/CleanWatchlist';
 
 export default function CryptoIndicatorsClean() {
   usePageViewTracking('Crypto Indicators');
@@ -19,10 +21,10 @@ export default function CryptoIndicatorsClean() {
   const [targetMarketState, setTargetMarketState] = useState<'bullish' | 'bearish'>('bearish');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // Watchlist state management
-  const watchlist = useWatchlistState();
-  const [selectedSymbol, setSelectedSymbol] = useState('XRPUSDT');
-  const [tableTimeframe, setTableTimeframe] = useState('1h');
+  // REMOVED: page-level watchlist state; moved into CleanWatchlist
+  // const watchlist = useWatchlistState();
+  // const [selectedSymbol, setSelectedSymbol] = useState('XRPUSDT');
+  // const [tableTimeframe, setTableTimeframe] = useState('1h');
 
   // Simulate market state change for demo
   useEffect(() => {
@@ -66,26 +68,8 @@ export default function CryptoIndicatorsClean() {
             </div>
           </div>
 
-          {/* 3. SEARCH BAR - Full width */}
-          <div className="mb-6">
-            <TickerSearch 
-              onAddTicker={(ticker) => watchlist.handleAddTicker(ticker, setSelectedSymbol)}
-              existingTickers={watchlist.watchlistTickers}
-            />
-          </div>
-
-          {/* 4. WATCHLIST TABLE - Full width */}
-          <div>
-            <TickerTable
-              tickers={watchlist.watchlistTickers}
-              onRemoveTicker={(ticker) => watchlist.handleRemoveTicker(ticker, selectedSymbol, setSelectedSymbol)}
-              onSelectTicker={setSelectedSymbol}
-              selectedTicker={selectedSymbol}
-              timeframe={tableTimeframe}
-              onTimeframeChange={setTableTimeframe}
-            />
-          </div>
-
+          {/* 3 & 4. WATCHLIST (Search + Table + Timeframe) */}
+          <CleanWatchlist />
         </div>
 
         {/* Shared Bottom Navigation */}
