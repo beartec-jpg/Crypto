@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { calculateEMA } from '@/utils/emaCalculations';
+import { detectStructure } from '@/utils/structureDetection';
+import { BiasBadge } from '@/components/BiasBadge';
+import type { Bias } from '@/utils/structureDetection';
 
 interface TickerData {
   symbol: string;
   price: number;
   priceChange: number;
-  emaBias: 'bullish' | 'bearish' | 'neutral';
-  structureBias: 'bullish' | 'bearish' | 'neutral';
+  emaBias: Bias;
+  structureBias: Bias;
 }
 
 interface TickerTableProps {
@@ -34,101 +38,7 @@ const convertTimeframe = (tf: string): string => {
   return map[tf] || '1h';
 };
 
-// Calculate EMA
-const calculateEMA = (prices: number[], period: number): number[] => {
-  const k = 2 / (period + 1);
-  const emaArray: number[] = [];
-  let ema = prices[0];
-  
-  for (let i = 0; i < prices.length; i++) {
-    if (i === 0) {
-      emaArray.push(prices[0]);
-    } else {
-      ema = prices[i] * k + ema * (1 - k);
-      emaArray.push(ema);
-    }
-  }
-  
-  return emaArray;
-};
 
-// Detect swing highs and lows
-const detectSwings = (candles: any[], lookback: number = 5) => {
-  const highs: number[] = [];
-  const lows: number[] = [];
-  
-  for (let i = lookback; i < candles.length - lookback; i++) {
-    const currentHigh = candles[i].high;
-    const currentLow = candles[i].low;
-    
-    let isSwingHigh = true;
-    let isSwingLow = true;
-    
-    for (let j = 1; j <= lookback; j++) {
-      if (candles[i - j].high >= currentHigh || candles[i + j].high >= currentHigh) {
-        isSwingHigh = false;
-      }
-      if (candles[i - j].low <= currentLow || candles[i + j].low <= currentLow) {
-        isSwingLow = false;
-      }
-    }
-    
-    if (isSwingHigh) highs.push(currentHigh);
-    if (isSwingLow) lows.push(currentLow);
-  }
-  
-  return { highs, lows };
-};
-
-// Detect structure (HH/HL for bull, LH/LL for bear)
-const detectStructure = (candles: any[]): 'bullish' | 'bearish' | 'neutral' => {
-  const { highs, lows } = detectSwings(candles, 5);
-  
-  if (highs.length < 2 || lows.length < 2) return 'neutral';
-  
-  const recentHighs = highs.slice(-3);
-  const recentLows = lows.slice(-3);
-  
-  // Check for Higher Highs (HH)
-  let hasHH = true;
-  for (let i = 1; i < recentHighs.length; i++) {
-    if (recentHighs[i] <= recentHighs[i - 1]) {
-      hasHH = false;
-      break;
-    }
-  }
-  
-  // Check for Higher Lows (HL)
-  let hasHL = true;
-  for (let i = 1; i < recentLows.length; i++) {
-    if (recentLows[i] <= recentLows[i - 1]) {
-      hasHL = false;
-      break;
-    }
-  }
-  
-  // Check for Lower Highs (LH)
-  let hasLH = true;
-  for (let i = 1; i < recentHighs.length; i++) {
-    if (recentHighs[i] >= recentHighs[i - 1]) {
-      hasLH = false;
-      break;
-    }
-  }
-  
-  // Check for Lower Lows (LL)
-  let hasLL = true;
-  for (let i = 1; i < recentLows.length; i++) {
-    if (recentLows[i] >= recentLows[i - 1]) {
-      hasLL = false;
-      break;
-    }
-  }
-  
-  if (hasHH && hasHL) return 'bullish';
-  if (hasLH && hasLL) return 'bearish';
-  return 'neutral';
-};
 
 /**
  * Watchlist table component showing ticker data
@@ -183,7 +93,7 @@ export function TickerTable({
                 volume: parseFloat(c[5]),
               }));
               
-              // Calculate EMAs
+              // Calculate EMA bias using utility
               const closePrices = parsedCandles.map((c: any) => c.close);
               const ema20 = calculateEMA(closePrices, 20);
               const ema50 = calculateEMA(closePrices, 50);
@@ -194,14 +104,14 @@ export function TickerTable({
               const lastEma100 = ema100[ema100.length - 1];
               
               // Determine EMA bias
-              let emaBias: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+              let emaBias: Bias = 'neutral';
               if (lastEma20 > lastEma50 && lastEma50 > lastEma100) {
                 emaBias = 'bullish';
               } else if (lastEma20 < lastEma50 && lastEma50 < lastEma100) {
                 emaBias = 'bearish';
               }
               
-              // Detect structure
+              // Detect structure using utility
               const structureBias = detectStructure(parsedCandles);
               
               newTickerData[ticker] = {
@@ -247,28 +157,6 @@ export function TickerTable({
 
     return () => clearInterval(interval);
   }, [tickers, timeframe, toast]);
-
-  const getBiasIcon = (bias: 'bullish' | 'bearish' | 'neutral') => {
-    switch (bias) {
-      case 'bullish':
-        return <TrendingUp className="h-4 w-4 text-green-500" />;
-      case 'bearish':
-        return <TrendingDown className="h-4 w-4 text-red-500" />;
-      case 'neutral':
-        return <Minus className="h-4 w-4 text-yellow-500" />;
-    }
-  };
-
-  const getBiasText = (bias: 'bullish' | 'bearish' | 'neutral') => {
-    switch (bias) {
-      case 'bullish':
-        return <span className="text-green-500 font-medium">BULL</span>;
-      case 'bearish':
-        return <span className="text-red-500 font-medium">BEAR</span>;
-      case 'neutral':
-        return <span className="text-yellow-500 font-medium">NEUT</span>;
-    }
-  };
 
   const formatPrice = (price: number) => {
     if (price === 0) return '-';
@@ -353,16 +241,10 @@ export function TickerTable({
                       {data ? formatChange(data.priceChange) : '-'}
                     </td>
                     <td className="px-2 sm:px-4 py-3">
-                      <div className="flex items-center justify-center gap-1 sm:gap-2">
-                        {data && getBiasIcon(data.emaBias)}
-                        <span className="hidden sm:inline">{data && getBiasText(data.emaBias)}</span>
-                      </div>
+                      {data && <BiasBadge bias={data.emaBias} />}
                     </td>
                     <td className="px-2 sm:px-4 py-3">
-                      <div className="flex items-center justify-center gap-1 sm:gap-2">
-                        {data && getBiasIcon(data.structureBias)}
-                        <span className="hidden sm:inline">{data && getBiasText(data.structureBias)}</span>
-                      </div>
+                      {data && <BiasBadge bias={data.structureBias} />}
                     </td>
                     <td className="px-2 sm:px-4 py-3 text-center">
                       <Button

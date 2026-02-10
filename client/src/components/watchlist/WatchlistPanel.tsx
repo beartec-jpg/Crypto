@@ -5,14 +5,20 @@ interface WatchlistPanelProps {
   tickers: string[];
   onAddTicker: (ticker: string) => void;
   onRemoveTicker: (ticker: string) => void;
+  onSelectTicker: (ticker: string) => void;
+  selectedTicker: string;
   timeframe: string;
+  onTimeframeChange: (timeframe: string) => void;
 }
 
 export function WatchlistPanel({ 
   tickers, 
   onAddTicker, 
-  onRemoveTicker, 
-  timeframe 
+  onRemoveTicker,
+  onSelectTicker,
+  selectedTicker,
+  timeframe,
+  onTimeframeChange
 }: WatchlistPanelProps) {
   return (
     <div className="space-y-4">
@@ -20,7 +26,10 @@ export function WatchlistPanel({
       <TickerTable 
         tickers={tickers}
         onRemoveTicker={onRemoveTicker}
+        onSelectTicker={onSelectTicker}
+        selectedTicker={selectedTicker}
         timeframe={timeframe}
+        onTimeframeChange={onTimeframeChange}
       />
     </div>
   );
