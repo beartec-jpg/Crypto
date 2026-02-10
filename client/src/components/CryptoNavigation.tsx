@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { BarChart3, Bot, GraduationCap, Waves, Crown, CreditCard, User } from 'lucide-react';
+import { BarChart3, Bot, GraduationCap, Waves, Crown, Wallet } from 'lucide-react';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useQuery } from '@tanstack/react-query';
 
@@ -10,12 +10,16 @@ interface SubscriptionData {
   canUseAI: boolean;
 }
 
+interface CryptoNavigationProps {
+  showWallet?: boolean;
+}
+
 const isDevelopment = typeof window !== 'undefined' && 
   (window.location.hostname.includes('replit') || 
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
-export function CryptoNavigation() {
+export function CryptoNavigation({ showWallet = false }: CryptoNavigationProps = {}) {
   const [location] = useLocation();
   const { tier: localTier, isAuthenticated, isLoading: authLoading } = useCryptoAuth();
   
@@ -72,31 +76,20 @@ export function CryptoNavigation() {
             );
           })}
           
-          <Link href="/crypto/subscribe" data-testid="link-subscribe">
-            <button
-              className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all ${
-                location === '/crypto/subscribe'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="text-[10px] sm:text-xs font-medium">Plans</span>
-            </button>
-          </Link>
-          
-          <Link href="/crypto/account" data-testid="link-account">
-            <button
-              className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all ${
-                location === '/crypto/account'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <User className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="text-[10px] sm:text-xs font-medium">Account</span>
-            </button>
-          </Link>
+          {showWallet && (
+            <Link href="/wallet" data-testid="link-wallet">
+              <button
+                className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all ${
+                  location === '/wallet'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <Wallet className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="text-[10px] sm:text-xs font-medium">Wallet</span>
+              </button>
+            </Link>
+          )}
           
           <Link href="/crypto/account" data-testid="tier-indicator" className="cursor-pointer">
             <button
