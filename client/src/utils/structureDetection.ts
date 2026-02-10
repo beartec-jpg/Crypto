@@ -10,6 +10,10 @@ import type { Candle, Bias } from '@/types/candle';
  * @param candles Array of candle data
  * @param lookback Number of candles to look back/forward (default: 5)
  * @returns Object with arrays of swing highs and lows
+ * 
+ * Note: The first and last `lookback` candles cannot be identified as swing points
+ * due to boundary constraints. For example, with lookback=5, candles at indices
+ * 0-4 and last 5 candles will not be evaluated.
  */
 export function detectSwings(candles: Candle[], lookback: number = 5): { highs: number[]; lows: number[] } {
   const highs: number[] = [];

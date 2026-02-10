@@ -8,17 +8,16 @@ import type { Bias } from '@/types/candle';
 
 interface BiasBadgeProps {
   bias: Bias;
-  showText?: boolean;
   className?: string;
 }
 
 /**
- * Badge component that displays market bias with icon and optional text
+ * Badge component that displays market bias with icon and text
+ * Text visibility is controlled via responsive CSS classes (hidden on small screens)
  * @param bias - Market bias: 'bullish', 'bearish', or 'neutral'
- * @param showText - Whether to show text label (default: true)
  * @param className - Additional CSS classes
  */
-export function BiasBadge({ bias, showText = true, className = '' }: BiasBadgeProps) {
+export function BiasBadge({ bias, className = '' }: BiasBadgeProps) {
   const getIcon = () => {
     switch (bias) {
       case 'bullish':
@@ -44,7 +43,7 @@ export function BiasBadge({ bias, showText = true, className = '' }: BiasBadgePr
   return (
     <div className={`flex items-center justify-center gap-1 sm:gap-2 ${className}`}>
       {getIcon()}
-      {showText && <span className="hidden sm:inline">{getText()}</span>}
+      <span className="hidden sm:inline">{getText()}</span>
     </div>
   );
 }
