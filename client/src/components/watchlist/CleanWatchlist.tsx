@@ -1,17 +1,20 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { TickerSearch } from '@/components/TickerSearch';
 import { TickerTable } from '@/components/TickerTable';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
+import { useWatchlistBiasSettings } from '@/hooks/useWatchlistBiasSettings';
+import { WatchlistSettingsPanel } from '@/components/watchlist/WatchlistSettingsPanel';
 
 /**
  * Clean-page watchlist wrapper:
  * - Owns selected ticker and timeframe state
- * - Owns global watchlist bias settings (pivot + EMA lengths) for now (local only)
+ * - Uses useWatchlistBiasSettings for global watchlist bias settings (pivot + EMA lengths) with persistence
  * - Uses useWatchlistState for tickers and add/remove
  * - Keeps CryptoIndicatorsClean free of inline handlers / watchlist logic
  */
 export function CleanWatchlist() {
   const watchlist = useWatchlistState();
+  const biasSettings = useWatchlistBiasSettings();
 
   // Which row in the table is selected
   const [selectedSymbol, setSelectedSymbol] = useState('XRPUSDT');
@@ -19,9 +22,15 @@ export function CleanWatchlist() {
   // Timeframe for watchlist bias calculations (drives TickerTable Select)
   const [tableTimeframe, setTableTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h' | '1d'>('1h');
 
-  // NEW: global watchlist bias settings (local version for now)
-  const [structurePivotLength, setStructurePivotLength] = useState<number>(5);
-  const [emaLengths, setEmaLengths] = useState<number[]>([21, 50, 200]);
+  // Local state for bias settings (synced with hook)
+  const [structurePivotLength, setStructurePivotLength] = useState<number>(biasSettings.settings.structurePivotLength);
+  const [emaLengths, setEmaLengths] = useState<number[]>(biasSettings.settings.emaLengths);
+
+  // Sync local state when hook settings change
+  useEffect(() => {
+    setStructurePivotLength(biasSettings.settings.structurePivotLength);
+    setEmaLengths(biasSettings.settings.emaLengths);
+  }, [biasSettings.settings]);
 
   // ----- Handlers (non-inline) -----
 
@@ -55,14 +64,23 @@ export function CleanWatchlist() {
     []
   );
 
-  // TEMP simple setters for bias settings (we will add UI + persistence later)
-  const setPivot = useCallback((pivot: number) => {
-    setStructurePivotLength(pivot);
-  }, []);
+  const handleChangeStructurePivot = useCallback(
+    (length: number) => {
+      setStructurePivotLength(length);
+      biasSettings.updateSettings({ structurePivotLength: length });
+    },
+    [biasSettings]
+  );
 
-  const setMainEma = useCallback((length: number) => {
-    setEmaLengths((prev) => [length, ...(prev.slice(1) || [])]);
-  }, []);
+  const handleChangeEmaLength = useCallback(
+    (index: number, length: number) => {
+      const newEmaLengths = [...emaLengths];
+      newEmaLengths[index] = length;
+      setEmaLengths(newEmaLengths);
+      biasSettings.updateSettings({ emaLengths: newEmaLengths });
+    },
+    [emaLengths, biasSettings]
+  );
 
   // ----- Render -----
 
@@ -74,7 +92,13 @@ export function CleanWatchlist() {
         existingTickers={watchlist.watchlistTickers}
       />
 
-      {/* TODO: next step – add a small UI to adjust pivot + EMA via setPivot/setMainEma */}
+      {/* Settings panel for bias configuration */}
+      <WatchlistSettingsPanel
+        structurePivotLength={structurePivotLength}
+        emaLengths={emaLengths}
+        onChangeStructurePivot={handleChangeStructurePivot}
+        onChangeEmaLength={handleChangeEmaLength}
+      />
 
       {/* Watchlist table + timeframe selector (inside TickerTable) */}
       <TickerTable
