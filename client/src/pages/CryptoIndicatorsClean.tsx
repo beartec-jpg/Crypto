@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useLocation } from 'wouter';
-import { GraduationCap, BarChart3, Sparkles, TrendingUp, CreditCard, UserCircle, Crown, Wallet } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { VideoSequencePlayer } from '@/components/trading/VideoSequencePlayer';
 import { TickerSearch } from '@/components/TickerSearch';
 import { TickerTable } from '@/components/TickerTable';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
+import { CryptoNavigation } from '@/components/CryptoNavigation';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
 
@@ -87,86 +88,8 @@ export default function CryptoIndicatorsClean() {
 
         </div>
 
-        {/* Bottom Navigation Bar */}
-        <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-sm border-t border-slate-800 z-40">
-          <div className="max-w-7xl mx-auto px-2">
-            <div className="grid grid-cols-4 md:grid-cols-8 gap-1 py-2">
-              
-              {/* Training */}
-              <button
-                onClick={() => setLocation('/crypto/training')}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <GraduationCap className="w-6 h-6 text-gray-400" />
-                <span className="text-xs text-gray-400 font-medium">Training</span>
-              </button>
-
-              {/* Charts - Active */}
-              <button
-                onClick={() => setLocation('/cryptoindicators')}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg bg-blue-600 transition-colors"
-              >
-                <BarChart3 className="w-6 h-6 text-white" />
-                <span className="text-xs text-white font-medium">Charts</span>
-              </button>
-
-              {/* AI */}
-              <button
-                onClick={() => setLocation('/cryptoai')}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <Sparkles className="w-6 h-6 text-gray-400" />
-                <span className="text-xs text-gray-400 font-medium">AI</span>
-              </button>
-
-              {/* Waves */}
-              <button
-                onClick={() => setLocation('/cryptoelliottwave')}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <TrendingUp className="w-6 h-6 text-gray-400" />
-                <span className="text-xs text-gray-400 font-medium">Waves</span>
-              </button>
-
-              {/* Plans */}
-              <button
-                onClick={() => setLocation('/crypto/subscribe')}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <CreditCard className="w-6 h-6 text-gray-400" />
-                <span className="text-xs text-gray-400 font-medium">Plans</span>
-              </button>
-
-              {/* Account */}
-              <button
-                onClick={() => setLocation('/crypto/account')}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <UserCircle className="w-6 h-6 text-gray-400" />
-                <span className="text-xs text-gray-400 font-medium">Account</span>
-              </button>
-
-              {/* Elite */}
-              <button
-                onClick={() => setLocation('/crypto/subscribe')}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <Crown className="w-6 h-6 text-purple-400" />
-                <span className="text-xs text-purple-400 font-medium">Elite</span>
-              </button>
-
-              {/* Wallet */}
-              <button
-                onClick={() => setLocation('/wallet')}
-                className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <Wallet className="w-6 h-6 text-green-400" />
-                <span className="text-xs text-green-400 font-medium">Wallet</span>
-              </button>
-
-            </div>
-          </div>
-        </div>
+        {/* Shared Bottom Navigation */}
+        <CryptoNavigation showWallet={true} />
 
         {/* AI Button - Bottom Right */}
         <div className="fixed bottom-20 right-6 z-50">
