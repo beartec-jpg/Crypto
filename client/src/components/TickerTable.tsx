@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { calculateEMA } from '@/utils/emaCalculations';
 import { detectStructure } from '@/utils/structureDetection';
 import { BiasBadge } from '@/components/BiasBadge';
-import type { Bias } from '@/utils/structureDetection';
+import type { Bias } from '@/types/candle';
 
 interface TickerData {
   symbol: string;

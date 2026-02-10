@@ -3,16 +3,7 @@
  * Extracted from TickerTable.tsx for reusability
  */
 
-export interface Candle {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-export type Bias = 'bullish' | 'bearish' | 'neutral';
+import type { Candle, Bias } from '@/types/candle';
 
 /**
  * Detect swing highs and lows in candle data

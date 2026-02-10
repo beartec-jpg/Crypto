@@ -5,16 +5,7 @@
 
 import { useMemo } from 'react';
 import { calculateEMA } from '@/utils/emaCalculations';
-import type { Bias } from '@/utils/structureDetection';
-
-export interface Candle {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
+import type { Candle, Bias } from '@/types/candle';
 
 /**
  * Calculate EMA bias based on EMA20, EMA50, and EMA100 alignment

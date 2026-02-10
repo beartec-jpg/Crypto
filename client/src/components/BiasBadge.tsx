@@ -4,7 +4,7 @@
  */
 
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import type { Bias } from '@/utils/structureDetection';
+import type { Bias } from '@/types/candle';
 
 interface BiasBadgeProps {
   bias: Bias;
