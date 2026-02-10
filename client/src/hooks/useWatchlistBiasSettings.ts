@@ -35,7 +35,8 @@ export function useWatchlistBiasSettings() {
         throw error;
       }
     },
-    staleTime: Infinity, // Settings don't change unless user explicitly updates
+    staleTime: 5 * 60 * 1000, // 5 minutes - refresh data periodically to stay in sync
+    refetchOnWindowFocus: true, // Refetch when user returns to tab
   });
 
   // Save settings mutation

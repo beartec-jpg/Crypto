@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { TickerSearch } from '@/components/TickerSearch';
 import { TickerTable } from '@/components/TickerTable';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
@@ -21,16 +21,6 @@ export function CleanWatchlist() {
 
   // Timeframe for watchlist bias calculations (drives TickerTable Select)
   const [tableTimeframe, setTableTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h' | '1d'>('1h');
-
-  // Local state for bias settings (synced with hook)
-  const [structurePivotLength, setStructurePivotLength] = useState<number>(biasSettings.settings.structurePivotLength);
-  const [emaLengths, setEmaLengths] = useState<number[]>(biasSettings.settings.emaLengths);
-
-  // Sync local state when hook settings change
-  useEffect(() => {
-    setStructurePivotLength(biasSettings.settings.structurePivotLength);
-    setEmaLengths(biasSettings.settings.emaLengths);
-  }, [biasSettings.settings]);
 
   // ----- Handlers (non-inline) -----
 
@@ -66,7 +56,6 @@ export function CleanWatchlist() {
 
   const handleChangeStructurePivot = useCallback(
     (length: number) => {
-      setStructurePivotLength(length);
       biasSettings.updateSettings({ structurePivotLength: length });
     },
     [biasSettings]
@@ -74,12 +63,11 @@ export function CleanWatchlist() {
 
   const handleChangeEmaLength = useCallback(
     (index: number, length: number) => {
-      const newEmaLengths = [...emaLengths];
+      const newEmaLengths = [...biasSettings.settings.emaLengths];
       newEmaLengths[index] = length;
-      setEmaLengths(newEmaLengths);
       biasSettings.updateSettings({ emaLengths: newEmaLengths });
     },
-    [emaLengths, biasSettings]
+    [biasSettings]
   );
 
   // ----- Render -----
@@ -94,8 +82,8 @@ export function CleanWatchlist() {
 
       {/* Settings panel for bias configuration */}
       <WatchlistSettingsPanel
-        structurePivotLength={structurePivotLength}
-        emaLengths={emaLengths}
+        structurePivotLength={biasSettings.settings.structurePivotLength}
+        emaLengths={biasSettings.settings.emaLengths}
         onChangeStructurePivot={handleChangeStructurePivot}
         onChangeEmaLength={handleChangeEmaLength}
       />
@@ -108,8 +96,8 @@ export function CleanWatchlist() {
         selectedTicker={selectedSymbol}
         timeframe={tableTimeframe}
         onTimeframeChange={handleTimeframeChange}
-        structurePivotLength={structurePivotLength}
-        emaLengths={emaLengths}
+        structurePivotLength={biasSettings.settings.structurePivotLength}
+        emaLengths={biasSettings.settings.emaLengths}
       />
     </div>
   );

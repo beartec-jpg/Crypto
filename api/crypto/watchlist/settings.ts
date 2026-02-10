@@ -32,11 +32,21 @@ async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: 
   }
 }
 
+// Singleton pool for connection reuse within the same function instance
+let poolInstance: any = null;
+
 async function getDb() {
+  if (poolInstance) {
+    return poolInstance;
+  }
+  
   const pg = await import('pg');
   const Pool = pg.default?.Pool || pg.Pool;
-  const pool = new (Pool as any)({ connectionString: process.env.DATABASE_URL });
-  return pool;
+  poolInstance = new (Pool as any)({ 
+    connectionString: process.env.DATABASE_URL,
+    max: 1, // Limit to 1 connection per serverless function instance
+  });
+  return poolInstance;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -136,11 +146,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: any) {
     console.error('❌ Error with watchlist bias settings:', error);
     return res.status(500).json({ error: error.message || 'Failed to process watchlist bias settings' });
-  } finally {
-    try { 
-      await pool.end(); 
-    } catch (e) {
-      console.error('Failed to close pool:', e);
-    }
   }
+  // Note: Do not close the pool in serverless functions - it will be reused across invocations
 }
