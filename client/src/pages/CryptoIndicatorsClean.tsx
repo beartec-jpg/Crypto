@@ -56,11 +56,13 @@ export default function CryptoIndicatorsClean() {
 
           {/* 2. ANIMATION - Centered with proper spacing */}
           <div className="flex justify-center mb-12">
-            <VideoSequencePlayer
-              targetMarketState={targetMarketState}
-              isInitialLoad={isInitialLoad}
-              onInitialComplete={() => setIsInitialLoad(false)}
-            />
+            <div className="relative" style={{ height: '240px', width: '100%', maxWidth: '800px' }}>
+              <VideoSequencePlayer
+                targetMarketState={targetMarketState}
+                isInitialLoad={isInitialLoad}
+                onInitialComplete={() => setIsInitialLoad(false)}
+              />
+            </div>
           </div>
 
           {/* 3. SEARCH BAR - Full width */}
