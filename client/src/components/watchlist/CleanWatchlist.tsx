@@ -6,6 +6,7 @@ import { useWatchlistState } from '@/hooks/useWatchlistState';
 /**
  * Clean-page watchlist wrapper:
  * - Owns selected ticker and timeframe state
+ * - Owns global watchlist bias settings (pivot + EMA lengths) for now (local only)
  * - Uses useWatchlistState for tickers and add/remove
  * - Keeps CryptoIndicatorsClean free of inline handlers / watchlist logic
  */
@@ -18,11 +19,14 @@ export function CleanWatchlist() {
   // Timeframe for watchlist bias calculations (drives TickerTable Select)
   const [tableTimeframe, setTableTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h' | '1d'>('1h');
 
+  // NEW: global watchlist bias settings (local version for now)
+  const [structurePivotLength, setStructurePivotLength] = useState<number>(5);
+  const [emaLengths, setEmaLengths] = useState<number[]>([21, 50, 200]);
+
   // ----- Handlers (non-inline) -----
 
   const handleAddTicker = useCallback(
     (ticker: string) => {
-      // useWatchlistState already handles persistence etc.
       watchlist.handleAddTicker(ticker, setSelectedSymbol);
     },
     [watchlist]
@@ -30,7 +34,6 @@ export function CleanWatchlist() {
 
   const handleRemoveTicker = useCallback(
     (ticker: string) => {
-      // Keeps selectedSymbol in sync when removing
       watchlist.handleRemoveTicker(ticker, selectedSymbol, setSelectedSymbol);
     },
     [watchlist, selectedSymbol]
@@ -52,6 +55,15 @@ export function CleanWatchlist() {
     []
   );
 
+  // TEMP simple setters for bias settings (we will add UI + persistence later)
+  const setPivot = useCallback((pivot: number) => {
+    setStructurePivotLength(pivot);
+  }, []);
+
+  const setMainEma = useCallback((length: number) => {
+    setEmaLengths((prev) => [length, ...(prev.slice(1) || [])]);
+  }, []);
+
   // ----- Render -----
 
   return (
@@ -62,6 +74,8 @@ export function CleanWatchlist() {
         existingTickers={watchlist.watchlistTickers}
       />
 
+      {/* TODO: next step – add a small UI to adjust pivot + EMA via setPivot/setMainEma */}
+
       {/* Watchlist table + timeframe selector (inside TickerTable) */}
       <TickerTable
         tickers={watchlist.watchlistTickers}
@@ -70,6 +84,8 @@ export function CleanWatchlist() {
         selectedTicker={selectedSymbol}
         timeframe={tableTimeframe}
         onTimeframeChange={handleTimeframeChange}
+        structurePivotLength={structurePivotLength}
+        emaLengths={emaLengths}
       />
     </div>
   );
