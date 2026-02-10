@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface WatchlistSettingsPanelProps {
   structurePivotLength: number;
@@ -21,6 +21,17 @@ export function WatchlistSettingsPanel({
   const [ema1Value, setEma1Value] = useState(emaLengths[0]?.toString() || '21');
   const [ema2Value, setEma2Value] = useState(emaLengths[1]?.toString() || '50');
   const [ema3Value, setEma3Value] = useState(emaLengths[2]?.toString() || '200');
+
+  // Sync local state when props change
+  useEffect(() => {
+    setPivotValue(structurePivotLength.toString());
+  }, [structurePivotLength]);
+
+  useEffect(() => {
+    setEma1Value(emaLengths[0]?.toString() || '21');
+    setEma2Value(emaLengths[1]?.toString() || '50');
+    setEma3Value(emaLengths[2]?.toString() || '200');
+  }, [emaLengths]);
 
   const handlePivotBlur = () => {
     const num = parseInt(pivotValue, 10);

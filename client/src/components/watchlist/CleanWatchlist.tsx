@@ -58,7 +58,7 @@ export function CleanWatchlist() {
     (length: number) => {
       biasSettings.updateSettings({ structurePivotLength: length });
     },
-    [biasSettings]
+    [biasSettings.updateSettings]
   );
 
   const handleChangeEmaLength = useCallback(
@@ -67,7 +67,7 @@ export function CleanWatchlist() {
       newEmaLengths[index] = length;
       biasSettings.updateSettings({ emaLengths: newEmaLengths });
     },
-    [biasSettings]
+    [biasSettings.updateSettings, biasSettings.settings.emaLengths]
   );
 
   // ----- Render -----

@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
+import type { Pool } from 'pg';
 
 async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
   try {
@@ -33,16 +34,16 @@ async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: 
 }
 
 // Singleton pool for connection reuse within the same function instance
-let poolInstance: any = null;
+let poolInstance: Pool | null = null;
 
-async function getDb() {
+async function getDb(): Promise<Pool> {
   if (poolInstance) {
     return poolInstance;
   }
   
   const pg = await import('pg');
-  const Pool = pg.default?.Pool || pg.Pool;
-  poolInstance = new (Pool as any)({ 
+  const PoolConstructor = pg.default?.Pool || pg.Pool;
+  poolInstance = new PoolConstructor({ 
     connectionString: process.env.DATABASE_URL,
     max: 1, // Limit to 1 connection per serverless function instance
   });
