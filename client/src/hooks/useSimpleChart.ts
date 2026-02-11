@@ -80,6 +80,12 @@ export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleCha
         const response = await fetch(
           `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceTimeframe}&limit=100`
         );
+        
+        if (!response.ok) {
+          console.error(`Failed to fetch chart data: ${response.status} ${response.statusText}`);
+          return;
+        }
+        
         const candles = await response.json();
 
         const chartData = candles.map((c: any) => ({
