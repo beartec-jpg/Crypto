@@ -209,12 +209,12 @@ export function TickerTable({
         <table className="w-full table-auto min-w-[600px]">
           <thead className="bg-slate-800">
             <tr>
-              <th className="px-1 sm:px-2 py-2 text-left text-xs sm:text-sm font-medium text-gray-300 w-0 whitespace-nowrap">Ticker</th>
-              <th className="px-1 sm:px-2 py-2 text-right text-xs sm:text-sm font-medium text-gray-300 w-0 whitespace-nowrap">Price</th>
-              <th className="px-1 sm:px-2 py-2 text-right text-xs sm:text-sm font-medium text-gray-300">% Chg</th>
-              <th className="px-1 sm:px-2 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-0">EMA</th>
-              <th className="px-1 sm:px-2 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-0">Structure</th>
-              <th className="px-1 sm:px-2 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-12 sm:w-16"></th>
+              <th className="px-1 sm:px-2 py-2 text-left text-xs sm:text-sm font-medium text-gray-300 w-[120px]">Ticker</th>
+              <th className="px-1 sm:px-2 py-2 text-right text-xs sm:text-sm font-medium text-gray-300 w-[100px]">Price</th>
+              <th className="px-1 sm:px-2 py-2 text-right text-xs sm:text-sm font-medium text-gray-300 w-[80px]">% Chg</th>
+              <th className="px-1 sm:px-2 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-[90px]">EMA</th>
+              <th className="px-1 sm:px-2 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-[90px]">Structure</th>
+              <th className="px-1 sm:px-2 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-[60px]"></th>
             </tr>
           </thead>
           <tbody>
@@ -243,22 +243,22 @@ export function TickerTable({
                     }`}
                     onClick={() => onSelectTicker(ticker)}
                   >
-                    <td className="px-1 sm:px-2 py-3 font-medium text-white text-xs sm:text-sm w-0 whitespace-nowrap">
+                    <td className="px-1 sm:px-2 py-3 font-medium text-white text-xs sm:text-sm w-[120px]">
                       {ticker.replace('USDT', '/USDT')}
                     </td>
-                    <td className="px-1 sm:px-2 py-3 text-right font-mono text-gray-300 text-xs sm:text-sm w-0 whitespace-nowrap">
+                    <td className="px-1 sm:px-2 py-3 text-right font-mono text-gray-300 text-xs sm:text-sm w-[100px]">
                       ${data ? formatPrice(data.price) : '-'}
                     </td>
-                    <td className="px-1 sm:px-2 py-3 text-right font-mono text-xs sm:text-sm">
+                    <td className="px-1 sm:px-2 py-3 text-right font-mono text-xs sm:text-sm w-[80px]">
                       {data ? formatChange(data.priceChange) : '-'}
                     </td>
-                    <td className="px-1 sm:px-2 py-3">
+                    <td className="px-1 sm:px-2 py-3 w-[90px]">
                       {data && <BiasBadge bias={data.emaBias} />}
                     </td>
-                    <td className="px-1 sm:px-2 py-3">
+                    <td className="px-1 sm:px-2 py-3 w-[90px]">
                       {data && <BiasBadge bias={data.structureBias} />}
                     </td>
-                    <td className="px-1 sm:px-2 py-3 text-center">
+                    <td className="px-1 sm:px-2 py-3 text-center w-[60px]">
                       <Button
                         variant="ghost"
                         size="sm"

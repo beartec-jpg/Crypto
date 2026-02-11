@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Maximize2 } from 'lucide-react';
+import { useSimpleChart } from '@/hooks/useSimpleChart';
 
 interface ChartPreviewProps {
   symbol: string;
@@ -25,6 +26,12 @@ export function ChartPreview({
   onExpand,
   chartContainerRef,
 }: ChartPreviewProps) {
+  // Use the simple chart hook for candlestick visualization
+  useSimpleChart({
+    containerRef: chartContainerRef,
+    symbol,
+    timeframe,
+  });
   return (
     <Card className="w-full">
       <CardContent className="p-4">
