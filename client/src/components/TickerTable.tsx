@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X } from 'lucide-react';
+import { X, Settings2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { calculateEMABias } from '@/utils/emaBias';
 import { detectStructure } from '@/utils/structureDetection';
@@ -24,9 +24,13 @@ interface TickerTableProps {
   timeframe: string;
   onTimeframeChange: (timeframe: string) => void;
 
-  // NEW: global watchlist bias configuration (optional)
+  // Bias configuration (UI exists, calculation implementation pending)
+  // These values are persisted but not yet applied to calculations
   structurePivotLength?: number;
   emaLengths?: number[]; // e.g. [21, 50, 200]
+  
+  // Settings button handler
+  onOpenSettings?: () => void;
 }
 
 // Convert timeframe to Binance API format
@@ -55,6 +59,7 @@ export function TickerTable({
   onTimeframeChange,
   structurePivotLength, // NEW
   emaLengths,           // NEW
+  onOpenSettings,       // NEW
 }: TickerTableProps) {
   const [tickerData, setTickerData] = useState<Record<string, TickerData>>({});
   const [loading, setLoading] = useState(false);
@@ -98,12 +103,12 @@ export function TickerTable({
               }));
               
               // Calculate EMA bias using utility
-              // NEW: pass optional emaLengths override if provided
-              const emaBias = calculateEMABias(parsedCandles, emaLengths);
+              // TODO: calculateEMABias currently uses fixed EMA lengths (20,50,100); emaLengths parameter not yet implemented
+              const emaBias = calculateEMABias(parsedCandles);
               
               // Detect structure using utility
-              // NEW: pass optional structurePivotLength override if provided
-              const structureBias = detectStructure(parsedCandles, structurePivotLength);
+              // TODO: detectStructure currently uses fixed lookback (5); structurePivotLength parameter not yet implemented
+              const structureBias = detectStructure(parsedCandles);
               
               newTickerData[ticker] = {
                 symbol: ticker,
@@ -168,10 +173,20 @@ export function TickerTable({
 
   return (
     <div className="w-full space-y-3">
-      {/* Header with timeframe selector */}
+      {/* Header with timeframe selector and settings button */}
       <div className="flex items-center justify-between bg-slate-900 p-3 rounded-lg">
         <h3 className="text-lg font-semibold text-white">WATCHLIST</h3>
         <div className="flex items-center gap-2">
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-slate-900/80 border border-slate-600 rounded-md hover:bg-slate-800 transition-colors text-slate-300 hover:text-white"
+              title="Configure bias settings"
+            >
+              <Settings2 className="h-3 w-3" />
+              <span className="hidden sm:inline">Bias</span>
+            </button>
+          )}
           <span className="text-sm text-white hidden sm:inline">Timeframe:</span>
           <Select value={timeframe} onValueChange={onTimeframeChange}>
             <SelectTrigger className="w-20 sm:w-24 bg-slate-800 text-white border-slate-700">
@@ -191,15 +206,15 @@ export function TickerTable({
       
       {/* Table */}
       <div className="border border-slate-700 rounded-lg overflow-x-auto bg-slate-900">
-        <table className="w-full min-w-[600px]">
+        <table className="w-full table-auto min-w-[600px]">
           <thead className="bg-slate-800">
             <tr>
-              <th className="px-2 sm:px-4 py-2 text-left text-xs sm:text-sm font-medium text-gray-300">Ticker</th>
-              <th className="px-2 sm:px-4 py-2 text-right text-xs sm:text-sm font-medium text-gray-300">Price</th>
-              <th className="px-2 sm:px-4 py-2 text-right text-xs sm:text-sm font-medium text-gray-300">% Chg</th>
-              <th className="px-2 sm:px-4 py-2 text-center text-xs sm:text-sm font-medium text-gray-300">EMA</th>
-              <th className="px-2 sm:px-4 py-2 text-center text-xs sm:text-sm font-medium text-gray-300">Structure</th>
-              <th className="px-2 sm:px-4 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-12 sm:w-16"></th>
+              <th className="px-1 sm:px-2 py-2 text-left text-xs sm:text-sm font-medium text-gray-300 w-0 whitespace-nowrap">Ticker</th>
+              <th className="px-1 sm:px-2 py-2 text-right text-xs sm:text-sm font-medium text-gray-300 w-0 whitespace-nowrap">Price</th>
+              <th className="px-1 sm:px-2 py-2 text-right text-xs sm:text-sm font-medium text-gray-300">% Chg</th>
+              <th className="px-1 sm:px-2 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-0">EMA</th>
+              <th className="px-1 sm:px-2 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-0">Structure</th>
+              <th className="px-1 sm:px-2 py-2 text-center text-xs sm:text-sm font-medium text-gray-300 w-12 sm:w-16"></th>
             </tr>
           </thead>
           <tbody>
@@ -228,22 +243,22 @@ export function TickerTable({
                     }`}
                     onClick={() => onSelectTicker(ticker)}
                   >
-                    <td className="px-2 sm:px-4 py-3 font-medium text-white text-xs sm:text-sm">
+                    <td className="px-1 sm:px-2 py-3 font-medium text-white text-xs sm:text-sm w-0 whitespace-nowrap">
                       {ticker.replace('USDT', '/USDT')}
                     </td>
-                    <td className="px-2 sm:px-4 py-3 text-right font-mono text-gray-300 text-xs sm:text-sm">
+                    <td className="px-1 sm:px-2 py-3 text-right font-mono text-gray-300 text-xs sm:text-sm w-0 whitespace-nowrap">
                       ${data ? formatPrice(data.price) : '-'}
                     </td>
-                    <td className="px-2 sm:px-4 py-3 text-right font-mono text-xs sm:text-sm">
+                    <td className="px-1 sm:px-2 py-3 text-right font-mono text-xs sm:text-sm">
                       {data ? formatChange(data.priceChange) : '-'}
                     </td>
-                    <td className="px-2 sm:px-4 py-3">
+                    <td className="px-1 sm:px-2 py-3">
                       {data && <BiasBadge bias={data.emaBias} />}
                     </td>
-                    <td className="px-2 sm:px-4 py-3">
+                    <td className="px-1 sm:px-2 py-3">
                       {data && <BiasBadge bias={data.structureBias} />}
                     </td>
-                    <td className="px-2 sm:px-4 py-3 text-center">
+                    <td className="px-1 sm:px-2 py-3 text-center">
                       <Button
                         variant="ghost"
                         size="sm"
