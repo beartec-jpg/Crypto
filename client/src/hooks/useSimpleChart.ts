@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createChart, IChartApi, ISeriesApi, ColorType } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries } from 'lightweight-charts';
 
 interface UseSimpleChartProps {
   containerRef: React.RefObject<HTMLDivElement>;
@@ -41,7 +41,7 @@ export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleCha
       height: 400,
     });
 
-    const candleSeries = chart.addCandlestickSeries({
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#22c55e',
       downColor: '#ef4444',
       borderUpColor: '#22c55e',
