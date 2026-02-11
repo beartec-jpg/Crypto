@@ -52,7 +52,7 @@ export function WatchlistSettingsPanel({
   };
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 mb-4">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-4">
         {/* Structure Pivot Length */}
         <div className="flex items-center gap-2">
@@ -66,7 +66,7 @@ export function WatchlistSettingsPanel({
             value={pivotValue}
             onChange={(e) => setPivotValue(e.target.value)}
             onBlur={handlePivotBlur}
-            className="w-16 px-2 py-1 text-sm bg-slate-900 border border-slate-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-16 px-2 py-1 text-sm bg-slate-800 border border-slate-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
@@ -81,7 +81,7 @@ export function WatchlistSettingsPanel({
             value={ema1Value}
             onChange={(e) => setEma1Value(e.target.value)}
             onBlur={() => handleEmaBlur(0, ema1Value, setEma1Value, emaLengths[0] || 21)}
-            className="w-16 px-2 py-1 text-sm bg-slate-900 border border-slate-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-16 px-2 py-1 text-sm bg-slate-800 border border-slate-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <input
             type="number"
@@ -89,7 +89,7 @@ export function WatchlistSettingsPanel({
             value={ema2Value}
             onChange={(e) => setEma2Value(e.target.value)}
             onBlur={() => handleEmaBlur(1, ema2Value, setEma2Value, emaLengths[1] || 50)}
-            className="w-16 px-2 py-1 text-sm bg-slate-900 border border-slate-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-16 px-2 py-1 text-sm bg-slate-800 border border-slate-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <input
             type="number"
@@ -97,7 +97,7 @@ export function WatchlistSettingsPanel({
             value={ema3Value}
             onChange={(e) => setEma3Value(e.target.value)}
             onBlur={() => handleEmaBlur(2, ema3Value, setEma3Value, emaLengths[2] || 200)}
-            className="w-16 px-2 py-1 text-sm bg-slate-900 border border-slate-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-16 px-2 py-1 text-sm bg-slate-800 border border-slate-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </div>

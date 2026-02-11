@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { X } from 'lucide-react';
 import { TickerSearch } from '@/components/TickerSearch';
 import { TickerTable } from '@/components/TickerTable';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
@@ -10,6 +11,7 @@ import { WatchlistSettingsPanel } from '@/components/watchlist/WatchlistSettings
  * - Owns selected ticker and timeframe state
  * - Uses useWatchlistBiasSettings for global watchlist bias settings (pivot + EMA lengths) with persistence
  * - Uses useWatchlistState for tickers and add/remove
+ * - Shows bias settings in a modal triggered from TickerTable header
  * - Keeps CryptoIndicatorsClean free of inline handlers / watchlist logic
  */
 export function CleanWatchlist() {
@@ -21,6 +23,9 @@ export function CleanWatchlist() {
 
   // Timeframe for watchlist bias calculations (drives TickerTable Select)
   const [tableTimeframe, setTableTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h' | '1d'>('1h');
+
+  // Modal state for settings
+  const [showSettings, setShowSettings] = useState(false);
 
   // ----- Handlers (non-inline) -----
 
@@ -70,6 +75,14 @@ export function CleanWatchlist() {
     [biasSettings.updateSettings, biasSettings.settings.emaLengths]
   );
 
+  const handleOpenSettings = useCallback(() => {
+    setShowSettings(true);
+  }, []);
+
+  const handleCloseSettings = useCallback(() => {
+    setShowSettings(false);
+  }, []);
+
   // ----- Render -----
 
   return (
@@ -78,14 +91,6 @@ export function CleanWatchlist() {
       <TickerSearch
         onAddTicker={handleAddTicker}
         existingTickers={watchlist.watchlistTickers}
-      />
-
-      {/* Settings panel for bias configuration */}
-      <WatchlistSettingsPanel
-        structurePivotLength={biasSettings.settings.structurePivotLength}
-        emaLengths={biasSettings.settings.emaLengths}
-        onChangeStructurePivot={handleChangeStructurePivot}
-        onChangeEmaLength={handleChangeEmaLength}
       />
 
       {/* Watchlist table + timeframe selector (inside TickerTable) */}
@@ -98,7 +103,41 @@ export function CleanWatchlist() {
         onTimeframeChange={handleTimeframeChange}
         structurePivotLength={biasSettings.settings.structurePivotLength}
         emaLengths={biasSettings.settings.emaLengths}
+        onOpenSettings={handleOpenSettings}
       />
+
+      {/* Settings modal */}
+      {showSettings && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+          onClick={handleCloseSettings}
+        >
+          <div 
+            className="bg-slate-900 border border-slate-700 rounded-lg shadow-xl max-w-sm w-full p-6 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={handleCloseSettings}
+              className="absolute top-3 right-3 text-slate-400 hover:text-white transition-colors"
+              aria-label="Close settings"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Title */}
+            <h3 className="text-lg font-semibold text-white mb-4">Bias Settings</h3>
+
+            {/* Settings panel */}
+            <WatchlistSettingsPanel
+              structurePivotLength={biasSettings.settings.structurePivotLength}
+              emaLengths={biasSettings.settings.emaLengths}
+              onChangeStructurePivot={handleChangeStructurePivot}
+              onChangeEmaLength={handleChangeEmaLength}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
