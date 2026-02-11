@@ -24,11 +24,12 @@ interface TickerTableProps {
   timeframe: string;
   onTimeframeChange: (timeframe: string) => void;
 
-  // NEW: global watchlist bias configuration (optional)
+  // Bias configuration (UI exists, calculation implementation pending)
+  // These values are persisted but not yet applied to calculations
   structurePivotLength?: number;
   emaLengths?: number[]; // e.g. [21, 50, 200]
   
-  // NEW: settings button handler
+  // Settings button handler
   onOpenSettings?: () => void;
 }
 

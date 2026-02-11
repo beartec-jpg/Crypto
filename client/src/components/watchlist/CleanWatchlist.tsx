@@ -126,7 +126,10 @@ export function CleanWatchlist() {
             </button>
 
             {/* Title */}
-            <h3 className="text-lg font-semibold text-white mb-4">Bias Settings</h3>
+            <h3 className="text-lg font-semibold text-white mb-2">Bias Settings</h3>
+            <p className="text-xs text-slate-400 mb-4">
+              Configure EMA lengths and structure pivot for bias calculations. Settings are saved automatically.
+            </p>
 
             {/* Settings panel */}
             <WatchlistSettingsPanel
