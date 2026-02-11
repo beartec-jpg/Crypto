@@ -431,6 +431,8 @@ export const userWatchlists = pgTable("user_watchlists", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }),
   tickers: jsonb("tickers").notNull().default(sql`'[]'::jsonb`), // Array of ticker symbols
+  structurePivotLength: integer("structure_pivot_length").notNull().default(5), // Pivot length for structure detection
+  emaLengths: integer("ema_lengths").array().notNull().default(sql`ARRAY[21, 50, 200]`), // EMA periods for bias calculation
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -438,10 +440,20 @@ export const userWatchlists = pgTable("user_watchlists", {
 export const insertUserWatchlistSchema = z.object({
   userId: z.string(),
   tickers: z.array(z.string()).default([]),
+  structurePivotLength: z.number().int().min(1).default(5),
+  emaLengths: z.array(z.number().int().min(1)).default([21, 50, 200]),
 });
 
 export type InsertUserWatchlist = z.infer<typeof insertUserWatchlistSchema>;
 export type UserWatchlist = typeof userWatchlists.$inferSelect;
+
+// Watchlist Bias Settings - DTO for GET/PUT /api/crypto/watchlist/settings
+export const watchlistBiasSettingsSchema = z.object({
+  structurePivotLength: z.number().int().min(1),
+  emaLengths: z.array(z.number().int().min(1)).length(3),
+});
+
+export type WatchlistBiasSettings = z.infer<typeof watchlistBiasSettingsSchema>;
 
 // Cached AI analyses table - stores last analysis per user/symbol/interval
 export const cryptoAiAnalyses = pgTable("crypto_ai_analyses", {
