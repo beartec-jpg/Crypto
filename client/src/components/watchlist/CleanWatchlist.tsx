@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { TickerSearch } from '@/components/TickerSearch';
 import { TickerTable } from '@/components/TickerTable';
+import { ChartPreview } from '@/components/ChartPreview';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { useWatchlistBiasSettings } from '@/hooks/useWatchlistBiasSettings';
 import { WatchlistSettingsPanel } from '@/components/watchlist/WatchlistSettingsPanel';
@@ -26,6 +27,15 @@ export function CleanWatchlist() {
 
   // Modal state for settings
   const [showSettings, setShowSettings] = useState(false);
+
+  // Chart state
+  const [chartTimeframe, setChartTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h' | '1d'>('1h');
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  // Sync chart timeframe with table timeframe
+  useEffect(() => {
+    setChartTimeframe(tableTimeframe);
+  }, [tableTimeframe]);
 
   // ----- Handlers (non-inline) -----
 
@@ -83,6 +93,19 @@ export function CleanWatchlist() {
     setShowSettings(false);
   }, []);
 
+  const handleChartTimeframeChange = useCallback(
+    (tf: string) => {
+      const allowed = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
+      if (!allowed.includes(tf as any)) return;
+      setChartTimeframe(tf as (typeof allowed)[number]);
+    },
+    []
+  );
+
+  const handleExpandChart = useCallback(() => {
+    console.log('Expand chart to fullscreen - to be implemented');
+  }, []);
+
   // ----- Render -----
 
   return (
@@ -105,6 +128,19 @@ export function CleanWatchlist() {
         emaLengths={biasSettings.settings.emaLengths}
         onOpenSettings={handleOpenSettings}
       />
+
+      {/* Chart Preview - only show when ticker selected and tickers exist */}
+      {watchlist.watchlistTickers.length > 0 && selectedSymbol && (
+        <div className="mt-4">
+          <ChartPreview
+            symbol={selectedSymbol}
+            timeframe={chartTimeframe}
+            onTimeframeChange={handleChartTimeframeChange}
+            onExpand={handleExpandChart}
+            chartContainerRef={chartContainerRef}
+          />
+        </div>
+      )}
 
       {/* Settings modal */}
       {showSettings && (
