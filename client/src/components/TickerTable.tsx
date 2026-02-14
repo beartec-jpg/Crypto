@@ -106,9 +106,8 @@ export function TickerTable({
               // TODO: calculateEMABias currently uses fixed EMA lengths (20,50,100); emaLengths parameter not yet implemented
               const emaBias = calculateEMABias(parsedCandles);
               
-              // Detect structure using utility
-              // TODO: detectStructure currently uses fixed lookback (5); structurePivotLength parameter not yet implemented
-              const structureBias = detectStructure(parsedCandles);
+              // Detect structure using utility with configurable lookback
+              const structureBias = detectStructure(parsedCandles, structurePivotLength || 5);
               
               newTickerData[ticker] = {
                 symbol: ticker,
