@@ -58,6 +58,14 @@ interface ADXData {
   minusDI: number;
 }
 
+// Binance API kline structure: [time, open, high, low, close, volume, closeTime, quoteVolume, trades, takerBuyBase, takerBuyQuote, ignored]
+type BinanceKline = [number, string, string, string, string, string, number, string, number, string, string, string];
+
+// Divergence meter constants
+const DIVERGENCE_MAX_STRENGTH = 3;
+const DIVERGENCE_MAX_OFFSET_PERCENT = 45;
+const DIVERGENCE_INDICATOR_RADIUS = 6;
+
 interface CVDDataItem {
   time: string;
   date?: string;
@@ -154,7 +162,7 @@ export function ChartPreview({
         }
         
         const klines = await response.json();
-        const candleData: Candle[] = klines.map((kline: any) => ({
+        const candleData: Candle[] = klines.map((kline: BinanceKline) => ({
           time: Math.floor(kline[0] / 1000),
           open: parseFloat(kline[1]),
           high: parseFloat(kline[2]),
@@ -320,10 +328,6 @@ export function ChartPreview({
 
   // Divergence Meter component (copied from OscillatorContainer.tsx)
   const DivergenceMeter = ({ indicator }: { indicator: string }) => {
-    const MAX_STRENGTH = 3;
-    const MAX_OFFSET_PERCENT = 45;
-    const INDICATOR_RADIUS = 6;
-    
     const { strength, type } = getOscillatorDivergence(indicator);
     return (
       <div className="mt-2 pt-2 border-t border-slate-600">
@@ -336,7 +340,7 @@ export function ChartPreview({
             <div 
               className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-white shadow transition-all duration-500"
               style={{
-                left: `calc(50% + ${(strength / MAX_STRENGTH) * MAX_OFFSET_PERCENT}% - ${INDICATOR_RADIUS}px)`,
+                left: `calc(50% + ${(strength / DIVERGENCE_MAX_STRENGTH) * DIVERGENCE_MAX_OFFSET_PERCENT}% - ${DIVERGENCE_INDICATOR_RADIUS}px)`,
                 background: strength === 0 
                   ? '#3b82f6' 
                   : strength > 0 
