@@ -562,10 +562,9 @@ export function ChartPreview({
                 </button>
               </div>
               <ADXPanel 
-                adxData={calculatedData.adx.map((d: any) => ({ time: d.time, value: d.adx }))}
-                plusDIData={calculatedData.adx.map((d: any) => ({ time: d.time, value: d.plusDI }))}
-                minusDIData={calculatedData.adx.map((d: any) => ({ time: d.time, value: d.minusDI }))}
+                data={calculatedData.adx}
                 period={14}
+                candles={candles}
               />
             </div>
           )}
