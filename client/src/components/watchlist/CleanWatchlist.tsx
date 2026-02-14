@@ -28,14 +28,8 @@ export function CleanWatchlist() {
   // Modal state for settings
   const [showSettings, setShowSettings] = useState(false);
 
-  // Chart state
-  const [chartTimeframe, setChartTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h' | '1d'>('1h');
+  // Chart container ref
   const chartContainerRef = useRef<HTMLDivElement>(null);
-
-  // Sync chart timeframe with table timeframe
-  useEffect(() => {
-    setChartTimeframe(tableTimeframe);
-  }, [tableTimeframe]);
 
   // ----- Handlers (non-inline) -----
 
@@ -93,15 +87,6 @@ export function CleanWatchlist() {
     setShowSettings(false);
   }, []);
 
-  const handleChartTimeframeChange = useCallback(
-    (tf: string) => {
-      const allowed = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
-      if (!allowed.includes(tf as any)) return;
-      setChartTimeframe(tf as (typeof allowed)[number]);
-    },
-    []
-  );
-
   const handleExpandChart = useCallback(() => {
     console.log('Expand chart to fullscreen - to be implemented');
   }, []);
@@ -134,8 +119,7 @@ export function CleanWatchlist() {
         <div className="mt-4">
           <ChartPreview
             symbol={selectedSymbol}
-            timeframe={chartTimeframe}
-            onTimeframeChange={handleChartTimeframeChange}
+            timeframe={tableTimeframe}
             onExpand={handleExpandChart}
             chartContainerRef={chartContainerRef}
           />

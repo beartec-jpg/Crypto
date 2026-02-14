@@ -39,6 +39,37 @@ export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleCha
       },
       width: containerRef.current.clientWidth,
       height: 400,
+      timeScale: {
+        rightOffset: 5,
+        barSpacing: 6,
+        fixLeftEdge: false,
+        fixRightEdge: false,
+        lockVisibleTimeRangeOnResize: false,
+        rightBarStaysOnScroll: true,
+        borderVisible: false,
+        visible: true,
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      rightPriceScale: {
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.1,
+        },
+        borderVisible: false,
+        autoScale: true, // Auto-fit to price range
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: false, // Disable vertical scroll
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false, // Disable zoom via scroll
+        pinch: false, // Disable pinch zoom
+      },
     });
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
@@ -48,6 +79,7 @@ export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleCha
       borderDownColor: '#ef4444',
       wickUpColor: '#22c55e',
       wickDownColor: '#ef4444',
+      priceScaleId: 'right',
     });
 
     chartRef.current = chart;
