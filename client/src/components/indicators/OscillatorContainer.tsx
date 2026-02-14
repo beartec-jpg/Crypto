@@ -396,10 +396,7 @@ export function OscillatorContainer({
           const report = isPaidTier && getIndicatorReport ? getIndicatorReport('WilliamsR') : null;
           const williamsRData = calculateWilliamsR(candles, indicators.williamsR.period);
           
-          console.log('[OscillatorContainer] Williams %R data calculated:', williamsRData?.length || 0, 'points');
-          
           if (!williamsRData || williamsRData.length === 0) {
-            console.warn('[OscillatorContainer] Williams %R calculation returned empty array');
             return (
               <Card key="williamsr-card" className="bg-slate-800 border-slate-700">
                 <CardHeader className="pb-1">
@@ -453,10 +450,7 @@ export function OscillatorContainer({
           const report = isPaidTier && getIndicatorReport ? getIndicatorReport('MFI') : null;
           const mfiData = calculateMFI(candles, indicators.mfi.period);
           
-          console.log('[OscillatorContainer] MFI data calculated:', mfiData?.length || 0, 'points');
-          
           if (!mfiData || mfiData.length === 0) {
-            console.warn('[OscillatorContainer] MFI calculation returned empty array');
             return (
               <Card key="mfi-card" className="bg-slate-800 border-slate-700">
                 <CardHeader className="pb-1">
@@ -510,10 +504,7 @@ export function OscillatorContainer({
           const report = isPaidTier && getIndicatorReport ? getIndicatorReport('CCI') : null;
           const cciData = calculateCCI(candles, indicators.cci.period);
           
-          console.log('[OscillatorContainer] CCI data calculated:', cciData?.length || 0, 'points');
-          
           if (!cciData || cciData.length === 0) {
-            console.warn('[OscillatorContainer] CCI calculation returned empty array');
             return (
               <Card key="cci-card" className="bg-slate-800 border-slate-700">
                 <CardHeader className="pb-1">

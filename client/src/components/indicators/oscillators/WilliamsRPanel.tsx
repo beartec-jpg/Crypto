@@ -22,24 +22,17 @@ export function WilliamsRPanel({
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    console.log('[WilliamsRPanel] Received data:', data?.length || 0, 'candles:', candles?.length || 0);
-    
     if (!containerRef.current) {
-      console.warn('[WilliamsRPanel] Container ref not available');
       return;
     }
     
     if (!candles || candles.length === 0) {
-      console.warn('[WilliamsRPanel] No candles data');
       return;
     }
     
     if (!data || data.length === 0) {
-      console.warn('[WilliamsRPanel] No Williams %R data to render');
       return;
     }
-    
-    console.log('[WilliamsRPanel] Creating chart with', containerRef.current.clientWidth, 'x 200px');
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
@@ -62,7 +55,6 @@ export function WilliamsRPanel({
     });
 
     chartRef.current = chart;
-    console.log('[WilliamsRPanel] Chart created successfully');
     
     // Notify parent about chart creation
     if (onChartCreated) {
