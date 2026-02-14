@@ -110,7 +110,7 @@ export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleCha
       try {
         const binanceTimeframe = convertTimeframe(timeframe);
         const response = await fetch(
-          `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceTimeframe}&limit=100`
+          `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceTimeframe}&limit=500`
         );
         
         if (!response.ok) {
