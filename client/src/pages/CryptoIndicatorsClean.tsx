@@ -40,6 +40,11 @@ export default function CryptoIndicatorsClean() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [deltaHistory, setDeltaHistory] = useState<CVDDataItem[]>([]);
 
+  // TODO: Connect to watchlist selection state
+  // For now, using default values for demonstration
+  const DEFAULT_SYMBOL = 'XRPUSDT';
+  const DEFAULT_TIMEFRAME = '1h';
+
   // Simulate market state change for demo
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -53,9 +58,9 @@ export default function CryptoIndicatorsClean() {
   useEffect(() => {
     const fetchCandles = async () => {
       try {
-        // Default symbol and timeframe - in a real implementation, these would come from selected state
-        const symbol = 'XRPUSDT';
-        const timeframe = '1h';
+        // TODO: Replace with actual selected symbol and timeframe from watchlist
+        const symbol = DEFAULT_SYMBOL;
+        const timeframe = DEFAULT_TIMEFRAME;
         
         const response = await fetch(
           `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${timeframe}&limit=500`
@@ -78,8 +83,10 @@ export default function CryptoIndicatorsClean() {
         
         setCandles(candleData);
         
-        // Generate mock CVD data from candles for demo
-        // In production, this would come from an actual CVD data source
+        // MOCK CVD DATA - For demonstration only
+        // TODO: Replace with actual CVD data source in production
+        // This generates random delta values based on candle volume
+        // In production, CVD should be calculated from real order book data
         let cumDelta = 0;
         const cvdData: CVDDataItem[] = candleData.map((candle) => {
           const delta = (Math.random() - 0.5) * candle.volume * 0.1;
