@@ -18,7 +18,7 @@ export function OBVPanel({
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || data.length === 0) return;
+    if (!containerRef.current || !data || data.length === 0) return;
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
