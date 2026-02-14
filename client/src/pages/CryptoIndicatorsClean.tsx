@@ -80,11 +80,10 @@ export default function CryptoIndicatorsClean() {
         
         // Generate mock CVD data from candles for demo
         // In production, this would come from an actual CVD data source
-        const cvdData: CVDDataItem[] = candleData.map((candle, index) => {
+        let cumDelta = 0;
+        const cvdData: CVDDataItem[] = candleData.map((candle) => {
           const delta = (Math.random() - 0.5) * candle.volume * 0.1;
-          const cumDelta = index > 0 
-            ? (deltaHistory[index - 1]?.cumDelta || 0) + delta
-            : delta;
+          cumDelta += delta;
           
           return {
             time: new Date(candle.time * 1000).toLocaleTimeString(),
@@ -106,7 +105,7 @@ export default function CryptoIndicatorsClean() {
     const interval = setInterval(fetchCandles, 10000); // Update every 10s
     
     return () => clearInterval(interval);
-  }, [deltaHistory]);
+  }, []); // Empty dependency array - only run on mount and then on interval
 
   return (
     <>
