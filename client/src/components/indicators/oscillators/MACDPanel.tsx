@@ -28,7 +28,7 @@ export function MACDPanel({
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || macdData.length === 0) return;
+    if (!containerRef.current || !macdData || macdData.length === 0 || !signalData || !histogramData) return;
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 

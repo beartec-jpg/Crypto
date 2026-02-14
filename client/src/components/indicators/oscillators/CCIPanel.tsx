@@ -22,7 +22,7 @@ export function CCIPanel({
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || candles.length === 0) return;
+    if (!containerRef.current || !candles || candles.length === 0 || !data || data.length === 0) return;
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 

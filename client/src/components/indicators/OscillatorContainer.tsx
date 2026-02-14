@@ -65,6 +65,19 @@ export function OscillatorContainer({
   getIndicatorReport,
   getOscillatorDivergence,
 }: OscillatorContainerProps) {
+  // Early return if no candle data available
+  if (!candles || candles.length === 0) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="flex items-center justify-center h-48">
+            <p className="text-gray-400 text-sm">Loading candle data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const DivergenceMeter = ({ indicator }: { indicator: string }) => {
     const { strength, type } = getOscillatorDivergence(indicator);
     return (
@@ -99,8 +112,17 @@ export function OscillatorContainer({
   };
 
   const TrendStrengthMeter = () => {
+    // Safety check: ensure candles array has data
+    if (!candles || candles.length === 0) {
+      return (
+        <div className="mt-2 pt-2 border-t border-slate-600">
+          <div className="flex items-center gap-2 text-gray-500 text-xs">Loading...</div>
+        </div>
+      );
+    }
+    
     const adxData = calculateADX(candles, indicators.adx.period);
-    const lastADX = adxData[adxData.length - 1];
+    const lastADX = adxData && adxData.length > 0 ? adxData[adxData.length - 1] : null;
     
     if (!lastADX) {
       return (
@@ -152,212 +174,437 @@ export function OscillatorContainer({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
       {indicators.rsi.show && (() => {
-        const report = isPaidTier && getIndicatorReport ? getIndicatorReport('RSI') : null;
-        const rsiData = calculateRSI(candles, indicators.rsi.period);
-        return (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-1">
-              <div className="flex items-center justify-between">
+        try {
+          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('RSI') : null;
+          const rsiData = calculateRSI(candles, indicators.rsi.period);
+          
+          // Safety check: ensure RSI data was calculated
+          if (!rsiData || rsiData.length === 0) {
+            return (
+              <Card key="rsi-card" className="bg-slate-800 border-slate-700">
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-white text-sm">RSI ({indicators.rsi.period})</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-48">
+                  <p className="text-gray-400 text-sm">Calculating RSI...</p>
+                </CardContent>
+              </Card>
+            );
+          }
+          
+          return (
+            <Card key="rsi-card" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-sm">RSI ({indicators.rsi.period})</CardTitle>
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <RSIPanel 
+                  data={rsiData}
+                  period={indicators.rsi.period}
+                  candles={candles}
+                  onChartCreated={(chart) => onOscillatorChartCreated('RSI', chart)}
+                  syncWithMainChart={indicators.syncOscillatorScale}
+                  mainChartVisibleRange={getMainChartVisibleRange()}
+                />
+                <DivergenceMeter indicator="RSI" />
+              </CardContent>
+            </Card>
+          );
+        } catch (error) {
+          console.error('Error calculating RSI:', error);
+          return (
+            <Card key="rsi-card-error" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
                 <CardTitle className="text-white text-sm">RSI ({indicators.rsi.period})</CardTitle>
-                {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <RSIPanel 
-                data={rsiData}
-                period={indicators.rsi.period}
-                candles={candles}
-                onChartCreated={(chart) => onOscillatorChartCreated('RSI', chart)}
-                syncWithMainChart={indicators.syncOscillatorScale}
-                mainChartVisibleRange={getMainChartVisibleRange()}
-              />
-              <DivergenceMeter indicator="RSI" />
-            </CardContent>
-          </Card>
-        );
+              </CardHeader>
+              <CardContent className="flex items-center justify-center h-48">
+                <p className="text-red-400 text-sm">Error loading RSI</p>
+              </CardContent>
+            </Card>
+          );
+        }
       })()}
       
       {indicators.stochRSI.show && (() => {
-        const report = isPaidTier && getIndicatorReport ? getIndicatorReport('StochRSI') : null;
-        const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
-        return (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-1">
-              <div className="flex items-center justify-between">
+        try {
+          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('StochRSI') : null;
+          const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
+          
+          if (!stochData || stochData.length === 0) {
+            return (
+              <Card key="stoch-card" className="bg-slate-800 border-slate-700">
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-white text-sm">Stochastic RSI ({indicators.stochRSI.period})</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-48">
+                  <p className="text-gray-400 text-sm">Calculating Stochastic RSI...</p>
+                </CardContent>
+              </Card>
+            );
+          }
+          
+          return (
+            <Card key="stoch-card" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-sm">Stochastic RSI ({indicators.stochRSI.period})</CardTitle>
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <StochasticPanel 
+                  data={stochData}
+                  period={indicators.stochRSI.period}
+                  candles={candles}
+                  onChartCreated={(chart) => onOscillatorChartCreated('StochRSI', chart)}
+                  syncWithMainChart={indicators.syncOscillatorScale}
+                  mainChartVisibleRange={getMainChartVisibleRange()}
+                />
+                <DivergenceMeter indicator="StochRSI" />
+              </CardContent>
+            </Card>
+          );
+        } catch (error) {
+          console.error('Error calculating Stochastic RSI:', error);
+          return (
+            <Card key="stoch-card-error" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
                 <CardTitle className="text-white text-sm">Stochastic RSI ({indicators.stochRSI.period})</CardTitle>
-                {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <StochasticPanel 
-                data={stochData}
-                period={indicators.stochRSI.period}
-                candles={candles}
-                onChartCreated={(chart) => onOscillatorChartCreated('StochRSI', chart)}
-                syncWithMainChart={indicators.syncOscillatorScale}
-                mainChartVisibleRange={getMainChartVisibleRange()}
-              />
-              <DivergenceMeter indicator="StochRSI" />
-            </CardContent>
-          </Card>
-        );
+              </CardHeader>
+              <CardContent className="flex items-center justify-center h-48">
+                <p className="text-red-400 text-sm">Error loading Stochastic RSI</p>
+              </CardContent>
+            </Card>
+          );
+        }
       })()}
       
       {indicators.macd.show && (() => {
-        const report = isPaidTier && getIndicatorReport ? getIndicatorReport('MACD') : null;
-        const { macd, signal, hist } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
-        return (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-1">
-              <div className="flex items-center justify-between">
+        try {
+          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('MACD') : null;
+          const { macd, signal, hist } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
+          
+          if (!macd || macd.length === 0 || !signal || !hist) {
+            return (
+              <Card key="macd-card" className="bg-slate-800 border-slate-700">
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-white text-sm">MACD ({indicators.macd.fast}, {indicators.macd.slow}, {indicators.macd.signal})</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-48">
+                  <p className="text-gray-400 text-sm">Calculating MACD...</p>
+                </CardContent>
+              </Card>
+            );
+          }
+          
+          return (
+            <Card key="macd-card" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-sm">MACD ({indicators.macd.fast}, {indicators.macd.slow}, {indicators.macd.signal})</CardTitle>
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <MACDPanel 
+                  macdData={macd}
+                  signalData={signal}
+                  histogramData={hist}
+                  fastPeriod={indicators.macd.fast}
+                  slowPeriod={indicators.macd.slow}
+                  signalPeriod={indicators.macd.signal}
+                  onChartCreated={(chart) => onOscillatorChartCreated('MACD', chart)}
+                  syncWithMainChart={indicators.syncOscillatorScale}
+                  mainChartVisibleRange={getMainChartVisibleRange()}
+                />
+                <DivergenceMeter indicator="MACD" />
+              </CardContent>
+            </Card>
+          );
+        } catch (error) {
+          console.error('Error calculating MACD:', error);
+          return (
+            <Card key="macd-card-error" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
                 <CardTitle className="text-white text-sm">MACD ({indicators.macd.fast}, {indicators.macd.slow}, {indicators.macd.signal})</CardTitle>
-                {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <MACDPanel 
-                macdData={macd}
-                signalData={signal}
-                histogramData={hist}
-                fastPeriod={indicators.macd.fast}
-                slowPeriod={indicators.macd.slow}
-                signalPeriod={indicators.macd.signal}
-                onChartCreated={(chart) => onOscillatorChartCreated('MACD', chart)}
-                syncWithMainChart={indicators.syncOscillatorScale}
-                mainChartVisibleRange={getMainChartVisibleRange()}
-              />
-              <DivergenceMeter indicator="MACD" />
-            </CardContent>
-          </Card>
-        );
+              </CardHeader>
+              <CardContent className="flex items-center justify-center h-48">
+                <p className="text-red-400 text-sm">Error loading MACD</p>
+              </CardContent>
+            </Card>
+          );
+        }
       })()}
       
       {indicators.obv.show && (() => {
-        const report = isPaidTier && getIndicatorReport ? getIndicatorReport('OBV') : null;
-        const obvData = calculateOBV(candles);
-        return (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-1">
-              <div className="flex items-center justify-between">
+        try {
+          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('OBV') : null;
+          const obvData = calculateOBV(candles);
+          
+          if (!obvData || obvData.length === 0) {
+            return (
+              <Card key="obv-card" className="bg-slate-800 border-slate-700">
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-48">
+                  <p className="text-gray-400 text-sm">Calculating OBV...</p>
+                </CardContent>
+              </Card>
+            );
+          }
+          
+          return (
+            <Card key="obv-card" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <OBVPanel 
+                  data={obvData}
+                  onChartCreated={(chart) => onOscillatorChartCreated('OBV', chart)}
+                  syncWithMainChart={indicators.syncOscillatorScale}
+                  mainChartVisibleRange={getMainChartVisibleRange()}
+                />
+                <DivergenceMeter indicator="OBV" />
+              </CardContent>
+            </Card>
+          );
+        } catch (error) {
+          console.error('Error calculating OBV:', error);
+          return (
+            <Card key="obv-card-error" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
                 <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
-                {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <OBVPanel 
-                data={obvData}
-                onChartCreated={(chart) => onOscillatorChartCreated('OBV', chart)}
-                syncWithMainChart={indicators.syncOscillatorScale}
-                mainChartVisibleRange={getMainChartVisibleRange()}
-              />
-              <DivergenceMeter indicator="OBV" />
-            </CardContent>
-          </Card>
-        );
+              </CardHeader>
+              <CardContent className="flex items-center justify-center h-48">
+                <p className="text-red-400 text-sm">Error loading OBV</p>
+              </CardContent>
+            </Card>
+          );
+        }
       })()}
       
       {indicators.williamsR.show && (() => {
-        const report = isPaidTier && getIndicatorReport ? getIndicatorReport('WilliamsR') : null;
-        const williamsRData = calculateWilliamsR(candles, indicators.williamsR.period);
-        return (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-1">
-              <div className="flex items-center justify-between">
+        try {
+          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('WilliamsR') : null;
+          const williamsRData = calculateWilliamsR(candles, indicators.williamsR.period);
+          
+          if (!williamsRData || williamsRData.length === 0) {
+            return (
+              <Card key="williamsr-card" className="bg-slate-800 border-slate-700">
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-white text-sm">Williams %R ({indicators.williamsR.period})</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-48">
+                  <p className="text-gray-400 text-sm">Calculating Williams %R...</p>
+                </CardContent>
+              </Card>
+            );
+          }
+          
+          return (
+            <Card key="williamsr-card" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-sm">Williams %R ({indicators.williamsR.period})</CardTitle>
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <WilliamsRPanel 
+                  data={williamsRData}
+                  period={indicators.williamsR.period}
+                  candles={candles}
+                  onChartCreated={(chart) => onOscillatorChartCreated('WilliamsR', chart)}
+                  syncWithMainChart={indicators.syncOscillatorScale}
+                  mainChartVisibleRange={getMainChartVisibleRange()}
+                />
+                <DivergenceMeter indicator="WilliamsR" />
+              </CardContent>
+            </Card>
+          );
+        } catch (error) {
+          console.error('Error calculating Williams %R:', error);
+          return (
+            <Card key="williamsr-card-error" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
                 <CardTitle className="text-white text-sm">Williams %R ({indicators.williamsR.period})</CardTitle>
-                {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <WilliamsRPanel 
-                data={williamsRData}
-                period={indicators.williamsR.period}
-                candles={candles}
-                onChartCreated={(chart) => onOscillatorChartCreated('WilliamsR', chart)}
-                syncWithMainChart={indicators.syncOscillatorScale}
-                mainChartVisibleRange={getMainChartVisibleRange()}
-              />
-              <DivergenceMeter indicator="WilliamsR" />
-            </CardContent>
-          </Card>
-        );
+              </CardHeader>
+              <CardContent className="flex items-center justify-center h-48">
+                <p className="text-red-400 text-sm">Error loading Williams %R</p>
+              </CardContent>
+            </Card>
+          );
+        }
       })()}
       
       {indicators.mfi.show && (() => {
-        const report = isPaidTier && getIndicatorReport ? getIndicatorReport('MFI') : null;
-        const mfiData = calculateMFI(candles, indicators.mfi.period);
-        return (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-1">
-              <div className="flex items-center justify-between">
+        try {
+          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('MFI') : null;
+          const mfiData = calculateMFI(candles, indicators.mfi.period);
+          
+          if (!mfiData || mfiData.length === 0) {
+            return (
+              <Card key="mfi-card" className="bg-slate-800 border-slate-700">
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-white text-sm">Money Flow Index ({indicators.mfi.period})</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-48">
+                  <p className="text-gray-400 text-sm">Calculating MFI...</p>
+                </CardContent>
+              </Card>
+            );
+          }
+          
+          return (
+            <Card key="mfi-card" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-sm">Money Flow Index ({indicators.mfi.period})</CardTitle>
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <MFIPanel 
+                  data={mfiData}
+                  period={indicators.mfi.period}
+                  candles={candles}
+                  onChartCreated={(chart) => onOscillatorChartCreated('MFI', chart)}
+                  syncWithMainChart={indicators.syncOscillatorScale}
+                  mainChartVisibleRange={getMainChartVisibleRange()}
+                />
+                <DivergenceMeter indicator="MFI" />
+              </CardContent>
+            </Card>
+          );
+        } catch (error) {
+          console.error('Error calculating MFI:', error);
+          return (
+            <Card key="mfi-card-error" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
                 <CardTitle className="text-white text-sm">Money Flow Index ({indicators.mfi.period})</CardTitle>
-                {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <MFIPanel 
-                data={mfiData}
-                period={indicators.mfi.period}
-                candles={candles}
-                onChartCreated={(chart) => onOscillatorChartCreated('MFI', chart)}
-                syncWithMainChart={indicators.syncOscillatorScale}
-                mainChartVisibleRange={getMainChartVisibleRange()}
-              />
-              <DivergenceMeter indicator="MFI" />
-            </CardContent>
-          </Card>
-        );
+              </CardHeader>
+              <CardContent className="flex items-center justify-center h-48">
+                <p className="text-red-400 text-sm">Error loading MFI</p>
+              </CardContent>
+            </Card>
+          );
+        }
       })()}
       
       {indicators.cci.show && (() => {
-        const report = isPaidTier && getIndicatorReport ? getIndicatorReport('CCI') : null;
-        const cciData = calculateCCI(candles, indicators.cci.period);
-        return (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-1">
-              <div className="flex items-center justify-between">
+        try {
+          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('CCI') : null;
+          const cciData = calculateCCI(candles, indicators.cci.period);
+          
+          if (!cciData || cciData.length === 0) {
+            return (
+              <Card key="cci-card" className="bg-slate-800 border-slate-700">
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-white text-sm">CCI ({indicators.cci.period})</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-48">
+                  <p className="text-gray-400 text-sm">Calculating CCI...</p>
+                </CardContent>
+              </Card>
+            );
+          }
+          
+          return (
+            <Card key="cci-card" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-sm">CCI ({indicators.cci.period})</CardTitle>
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <CCIPanel 
+                  data={cciData}
+                  period={indicators.cci.period}
+                  candles={candles}
+                  onChartCreated={(chart) => onOscillatorChartCreated('CCI', chart)}
+                  syncWithMainChart={indicators.syncOscillatorScale}
+                  mainChartVisibleRange={getMainChartVisibleRange()}
+                />
+                <DivergenceMeter indicator="CCI" />
+              </CardContent>
+            </Card>
+          );
+        } catch (error) {
+          console.error('Error calculating CCI:', error);
+          return (
+            <Card key="cci-card-error" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
                 <CardTitle className="text-white text-sm">CCI ({indicators.cci.period})</CardTitle>
-                {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CCIPanel 
-                data={cciData}
-                period={indicators.cci.period}
-                candles={candles}
-                onChartCreated={(chart) => onOscillatorChartCreated('CCI', chart)}
-                syncWithMainChart={indicators.syncOscillatorScale}
-                mainChartVisibleRange={getMainChartVisibleRange()}
-              />
-              <DivergenceMeter indicator="CCI" />
-            </CardContent>
-          </Card>
-        );
+              </CardHeader>
+              <CardContent className="flex items-center justify-center h-48">
+                <p className="text-red-400 text-sm">Error loading CCI</p>
+              </CardContent>
+            </Card>
+          );
+        }
       })()}
       
       {indicators.adx.show && (() => {
-        const report = isPaidTier && getIndicatorReport ? getIndicatorReport('ADX') : null;
-        const adxData = calculateADX(candles, indicators.adx.period);
-        return (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-1">
-              <div className="flex items-center justify-between">
+        try {
+          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('ADX') : null;
+          const adxData = calculateADX(candles, indicators.adx.period);
+          
+          if (!adxData || adxData.length === 0) {
+            return (
+              <Card key="adx-card" className="bg-slate-800 border-slate-700">
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-white text-sm">ADX ({indicators.adx.period})</CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-48">
+                  <p className="text-gray-400 text-sm">Calculating ADX...</p>
+                </CardContent>
+              </Card>
+            );
+          }
+          
+          return (
+            <Card key="adx-card" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white text-sm">ADX ({indicators.adx.period})</CardTitle>
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ADXPanel 
+                  data={adxData}
+                  period={indicators.adx.period}
+                  candles={candles}
+                  onChartCreated={(chart) => onOscillatorChartCreated('ADX', chart)}
+                  syncWithMainChart={indicators.syncOscillatorScale}
+                  mainChartVisibleRange={getMainChartVisibleRange()}
+                />
+                <TrendStrengthMeter />
+              </CardContent>
+            </Card>
+          );
+        } catch (error) {
+          console.error('Error calculating ADX:', error);
+          return (
+            <Card key="adx-card-error" className="bg-slate-800 border-slate-700">
+              <CardHeader className="pb-1">
                 <CardTitle className="text-white text-sm">ADX ({indicators.adx.period})</CardTitle>
-                {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ADXPanel 
-                data={adxData}
-                period={indicators.adx.period}
-                candles={candles}
-                onChartCreated={(chart) => onOscillatorChartCreated('ADX', chart)}
-                syncWithMainChart={indicators.syncOscillatorScale}
-                mainChartVisibleRange={getMainChartVisibleRange()}
-              />
-              <TrendStrengthMeter />
-            </CardContent>
-          </Card>
-        );
+              </CardHeader>
+              <CardContent className="flex items-center justify-center h-48">
+                <p className="text-red-400 text-sm">Error loading ADX</p>
+              </CardContent>
+            </Card>
+          );
+        }
       })()}
     </div>
   );
