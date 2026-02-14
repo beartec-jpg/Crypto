@@ -45,6 +45,10 @@ export default function CryptoIndicatorsClean() {
   const DEFAULT_SYMBOL = 'XRPUSDT';
   const DEFAULT_TIMEFRAME = '1h';
 
+  // Mock CVD data generation constants
+  // Used only for demonstration - replace with real CVD calculations in production
+  const MOCK_DELTA_VOLUME_MULTIPLIER = 0.1; // Simulates 10% of volume as delta range
+
   // Simulate market state change for demo
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -89,7 +93,8 @@ export default function CryptoIndicatorsClean() {
         // In production, CVD should be calculated from real order book data
         let cumDelta = 0;
         const cvdData: CVDDataItem[] = candleData.map((candle) => {
-          const delta = (Math.random() - 0.5) * candle.volume * 0.1;
+          // Generate mock delta: random value between -10% and +10% of volume
+          const delta = (Math.random() - 0.5) * candle.volume * MOCK_DELTA_VOLUME_MULTIPLIER;
           cumDelta += delta;
           
           return {
@@ -112,6 +117,8 @@ export default function CryptoIndicatorsClean() {
     const interval = setInterval(fetchCandles, 10000); // Update every 10s
     
     return () => clearInterval(interval);
+    // Note: DEFAULT_SYMBOL and DEFAULT_TIMEFRAME are intentionally static constants
+    // When connecting to watchlist state in the future, add those dependencies here
   }, []); // Empty dependency array - only run on mount and then on interval
 
   return (
