@@ -3678,7 +3678,7 @@ useEffect(() => {
           description = `RSI at ${lastRSI.toFixed(0)} (${trendText}) shows strong upward momentum approaching overbought territory. This is bullish, but watch for divergence or crosses below 70 as potential reversal warnings. Consider taking profits or tightening stops.`;
           color = 'text-red-400';
         } else if (lastRSI <= 30) {
-          description = `RSI at ${lastRSI.toFixed(0)} (${trendText}) indicates oversold conditions with weakening downward pressure. This is bearish but could signal a potential bounce if support holds. Watch for crosses above 30 as early reversal signals.`;
+          description = `RSI at ${lastRSI.toFixed(0)} (${trendText}) indicates oversold conditions suggesting the selling pressure may be exhausted. While currently bearish, this presents a potential buying opportunity if support holds. Watch for crosses above 30 as bullish reversal confirmation.`;
           color = 'text-green-400';
         } else {
           description = `RSI at ${lastRSI.toFixed(0)} (${trendText}) shows balanced momentum with no extreme conditions. This is neutral - the market is in a mid-range state. Wait for RSI to break above 70 or below 30 for stronger directional signals.`;
@@ -3796,7 +3796,7 @@ useEffect(() => {
           description = `Stochastic RSI at ${lastK.toFixed(0)} (${trendText}) shows extreme short-term momentum with overbought conditions. This is bullish but highly extended - expect potential consolidation or pullback. Watch for crosses below 80 as reversal signals.`;
           color = 'text-red-400';
         } else if (lastK <= 20) {
-          description = `Stochastic RSI at ${lastK.toFixed(0)} (${trendText}) shows extreme short-term weakness with oversold conditions. This is bearish but potentially oversold - watch for crosses above 20 as early bounce signals if support holds.`;
+          description = `Stochastic RSI at ${lastK.toFixed(0)} (${trendText}) shows extreme oversold conditions presenting a potential reversal opportunity. While momentum is weak, this level often precedes bounces. Watch for crosses above 20 as bullish reversal signals if support holds.`;
           color = 'text-green-400';
         } else {
           description = `Stochastic RSI at ${lastK.toFixed(0)} (${trendText}) shows balanced short-term momentum with no extreme conditions. This is neutral - wait for moves above 80 or below 20 for stronger directional signals.`;
@@ -3823,7 +3823,7 @@ useEffect(() => {
           description = `MFI at ${lastMFI.toFixed(0)} (${trendText}) shows strong buying pressure with heavy money flow into the asset. This is bullish momentum but nearing extreme overbought levels - watch for potential exhaustion or reversal signals. Consider taking profits or tightening stops.`;
           color = 'text-red-400';
         } else if (lastMFI <= 20) {
-          description = `MFI at ${lastMFI.toFixed(0)} (${trendText}) indicates weak buying pressure with money flowing out of the asset. This is bearish and shows selling pressure, but oversold conditions may present a bounce opportunity if support holds. Wait for signs of accumulation.`;
+          description = `MFI at ${lastMFI.toFixed(0)} (${trendText}) indicates oversold conditions with money flowing out, but this extreme level presents a potential buying opportunity. The selling pressure may be exhausted - wait for signs of accumulation and MFI crosses above 20 for entry signals.`;
           color = 'text-green-400';
         } else {
           description = `MFI at ${lastMFI.toFixed(0)} (${trendText}) shows balanced money flow with neither extreme buying nor selling pressure. This is neutral - the market is consolidating. Wait for MFI to break above 80 or below 20 for clearer directional signals.`;
