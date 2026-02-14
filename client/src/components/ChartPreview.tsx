@@ -25,6 +25,39 @@ import {
 // For divergence detection
 import { detectDivergence } from '@/lib/calculations';
 
+interface Candle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface TimeValuePair {
+  time: number;
+  value: number;
+}
+
+interface MACDData {
+  macd: TimeValuePair[];
+  signal: TimeValuePair[];
+  hist: Array<TimeValuePair & { color: string }>;
+}
+
+interface StochasticRSIData {
+  time: number;
+  k: number;
+  d: number;
+}
+
+interface ADXData {
+  time: number;
+  adx: number;
+  plusDI: number;
+  minusDI: number;
+}
+
 interface CVDDataItem {
   time: string;
   date?: string;
@@ -69,16 +102,16 @@ export function ChartPreview({
   const [showCVD, setShowCVD] = useState(false);
 
   // Candle data and calculated oscillators
-  const [candles, setCandles] = useState<any[]>([]);
+  const [candles, setCandles] = useState<Candle[]>([]);
   const [calculatedData, setCalculatedData] = useState<{
-    rsi: any[];
-    macd: any;
-    obv: any[];
-    stochRSI: any[];
-    mfi: any[];
-    williamsR: any[];
-    cci: any[];
-    adx: any[];
+    rsi: TimeValuePair[];
+    macd: MACDData;
+    obv: TimeValuePair[];
+    stochRSI: StochasticRSIData[];
+    mfi: TimeValuePair[];
+    williamsR: TimeValuePair[];
+    cci: TimeValuePair[];
+    adx: ADXData[];
   }>({
     rsi: [],
     macd: { macd: [], signal: [], hist: [] },
@@ -115,16 +148,19 @@ export function ChartPreview({
           `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceTimeframe}&limit=500`
         );
         
-        if (!response.ok) return;
+        if (!response.ok) {
+          console.error(`Failed to fetch candles: ${response.status} ${response.statusText}`);
+          return;
+        }
         
         const klines = await response.json();
-        const candleData = klines.map((k: any) => ({
-          time: Math.floor(k[0] / 1000),
-          open: parseFloat(k[1]),
-          high: parseFloat(k[2]),
-          low: parseFloat(k[3]),
-          close: parseFloat(k[4]),
-          volume: parseFloat(k[5]),
+        const candleData: Candle[] = klines.map((kline: any) => ({
+          time: Math.floor(kline[0] / 1000),
+          open: parseFloat(kline[1]),
+          high: parseFloat(kline[2]),
+          low: parseFloat(kline[3]),
+          close: parseFloat(kline[4]),
+          volume: parseFloat(kline[5]),
         }));
         
         setCandles(candleData);
@@ -188,7 +224,7 @@ export function ChartPreview({
         };
       }
       case 'macd': {
-        const histValues = calculatedData.macd.hist.map((d: any) => d.value);
+        const histValues = calculatedData.macd.hist.map((dataPoint) => dataPoint.value);
         if (histValues.length === 0) return { strength: 0, type: 'none' };
         const strength = detectDivergence(priceData.slice(-histValues.length), histValues);
         return {
@@ -284,6 +320,10 @@ export function ChartPreview({
 
   // Divergence Meter component (copied from OscillatorContainer.tsx)
   const DivergenceMeter = ({ indicator }: { indicator: string }) => {
+    const MAX_STRENGTH = 3;
+    const MAX_OFFSET_PERCENT = 45;
+    const INDICATOR_RADIUS = 6;
+    
     const { strength, type } = getOscillatorDivergence(indicator);
     return (
       <div className="mt-2 pt-2 border-t border-slate-600">
@@ -296,7 +336,7 @@ export function ChartPreview({
             <div 
               className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-white shadow transition-all duration-500"
               style={{
-                left: `calc(50% + ${(strength / 3) * 45}% - 6px)`,
+                left: `calc(50% + ${(strength / MAX_STRENGTH) * MAX_OFFSET_PERCENT}% - ${INDICATOR_RADIUS}px)`,
                 background: strength === 0 
                   ? '#3b82f6' 
                   : strength > 0 
