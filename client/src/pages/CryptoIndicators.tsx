@@ -3662,72 +3662,229 @@ useEffect(() => {
     switch (indicator) {
       case 'RSI': {
         const rsiData = calculateRSI(candles, indicators.rsi.period);
+        if (rsiData.length < 5) return { text: 'Insufficient data', color: 'text-gray-400' };
+        
         const lastRSI = rsiData[rsiData.length - 1]?.value;
         if (!lastRSI) return { text: '', color: '' };
-        if (lastRSI >= 70) return { text: `Overbought (${lastRSI.toFixed(0)})`, color: 'text-red-400' };
-        if (lastRSI <= 30) return { text: `Oversold (${lastRSI.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastRSI.toFixed(0)})`, color: 'text-gray-400' };
+        
+        const recent = rsiData.slice(-5).map(d => d.value);
+        const trend = recent[recent.length - 1] - recent[0];
+        const trendText = trend > 5 ? 'rising' : trend < -5 ? 'falling' : 'stable';
+        
+        let description = '';
+        let color = '';
+        
+        if (lastRSI >= 70) {
+          description = `RSI at ${lastRSI.toFixed(0)} (${trendText}) shows strong upward momentum approaching overbought territory. This is bullish, but watch for divergence or crosses below 70 as potential reversal warnings. Consider taking profits or tightening stops.`;
+          color = 'text-red-400';
+        } else if (lastRSI <= 30) {
+          description = `RSI at ${lastRSI.toFixed(0)} (${trendText}) indicates oversold conditions with weakening downward pressure. This is bearish but could signal a potential bounce if support holds. Watch for crosses above 30 as early reversal signals.`;
+          color = 'text-green-400';
+        } else {
+          description = `RSI at ${lastRSI.toFixed(0)} (${trendText}) shows balanced momentum with no extreme conditions. This is neutral - the market is in a mid-range state. Wait for RSI to break above 70 or below 30 for stronger directional signals.`;
+          color = 'text-gray-400';
+        }
+        
+        return { text: description, color };
       }
       case 'MACD': {
         const { macd, signal } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
+        if (macd.length < 5) return { text: 'Insufficient data', color: 'text-gray-400' };
+        
         const lastMACD = macd[macd.length - 1]?.value;
         const lastSignal = signal[signal.length - 1]?.value;
         const prevMACD = macd[macd.length - 2]?.value;
         const prevSignal = signal[signal.length - 2]?.value;
+        
         if (!lastMACD || !lastSignal) return { text: '', color: '' };
-        if (prevMACD < prevSignal && lastMACD > lastSignal) return { text: 'Bullish Cross', color: 'text-green-400' };
-        if (prevMACD > prevSignal && lastMACD < lastSignal) return { text: 'Bearish Cross', color: 'text-red-400' };
-        if (lastMACD > lastSignal) return { text: 'Bullish', color: 'text-green-400' };
-        return { text: 'Bearish', color: 'text-red-400' };
+        
+        const recent = macd.slice(-5).map(d => d.value);
+        const trend = recent[recent.length - 1] - recent[0];
+        const trendText = trend > 0 ? 'strengthening' : trend < 0 ? 'weakening' : 'stable';
+        
+        let description = '';
+        let color = '';
+        
+        if (prevMACD < prevSignal && lastMACD > lastSignal) {
+          description = `MACD just crossed above signal line (${trendText}), confirming a bullish crossover. This is a strong buy signal indicating upward momentum is building. Watch for continued separation above the signal line for trend confirmation.`;
+          color = 'text-green-400';
+        } else if (prevMACD > prevSignal && lastMACD < lastSignal) {
+          description = `MACD just crossed below signal line (${trendText}), confirming a bearish crossover. This is a strong sell signal indicating downward momentum is building. Watch for continued separation below the signal line for trend confirmation.`;
+          color = 'text-red-400';
+        } else if (lastMACD > lastSignal) {
+          description = `MACD above signal line (${trendText}) indicates bullish momentum is in control. This is bullish - the trend is positive. Watch for the lines converging as an early warning of potential momentum loss.`;
+          color = 'text-green-400';
+        } else {
+          description = `MACD below signal line (${trendText}) indicates bearish momentum is in control. This is bearish - the trend is negative. Watch for the lines converging as an early warning of potential momentum shift.`;
+          color = 'text-red-400';
+        }
+        
+        return { text: description, color };
       }
       case 'OBV': {
         const obvData = calculateOBV(candles);
-        if (obvData.length < 10) return { text: '', color: '' };
-        const recent = obvData.slice(-5).map(d => d.value);
-        const trend = recent[recent.length - 1] - recent[0];
-        if (trend > 0) return { text: 'Rising', color: 'text-green-400' };
-        if (trend < 0) return { text: 'Falling', color: 'text-red-400' };
-        return { text: 'Flat', color: 'text-gray-400' };
+        if (obvData.length < 10) return { text: 'Insufficient data', color: 'text-gray-400' };
+        
+        const recent = obvData.slice(-10).map(d => d.value);
+        const shortTrend = recent.slice(-5);
+        const trend = shortTrend[shortTrend.length - 1] - shortTrend[0];
+        const longerTrend = recent[recent.length - 1] - recent[0];
+        
+        let description = '';
+        let color = '';
+        
+        if (trend > 0 && longerTrend > 0) {
+          description = `OBV is rising steadily, indicating accumulation with buying volume outpacing selling volume. This is bullish - smart money is flowing into the asset. Watch for OBV divergence with price as an early warning of trend change.`;
+          color = 'text-green-400';
+        } else if (trend < 0 && longerTrend < 0) {
+          description = `OBV is falling steadily, indicating distribution with selling volume outpacing buying volume. This is bearish - smart money is flowing out of the asset. Watch for OBV divergence with price as an early warning of trend reversal.`;
+          color = 'text-red-400';
+        } else if (Math.abs(trend) < Math.abs(longerTrend) * 0.3) {
+          description = `OBV is flat or consolidating with balanced buying and selling volume. This is neutral - the market lacks clear directional conviction. Wait for OBV to establish a clear uptrend or downtrend for stronger signals.`;
+          color = 'text-gray-400';
+        } else {
+          description = `OBV shows mixed signals with recent volume changes not confirming a clear trend. This is neutral - monitor for consistent directional volume flow. Look for OBV to align with price movement for confirmation.`;
+          color = 'text-gray-400';
+        }
+        
+        return { text: description, color };
       }
       case 'ADX': {
         const adxData = calculateADX(candles, indicators.adx.period);
+        if (adxData.length < 5) return { text: 'Insufficient data', color: 'text-gray-400' };
+        
         const lastADX = adxData[adxData.length - 1];
         if (!lastADX) return { text: '', color: '' };
-        if (lastADX.adx >= 40) return { text: `Strong Trend (${lastADX.adx.toFixed(0)})`, color: 'text-blue-400' };
-        if (lastADX.adx >= 25) return { text: `Trending (${lastADX.adx.toFixed(0)})`, color: 'text-cyan-400' };
-        return { text: `Weak Trend (${lastADX.adx.toFixed(0)})`, color: 'text-gray-400' };
+        
+        const recent = adxData.slice(-5).map(d => d.adx);
+        const trend = recent[recent.length - 1] - recent[0];
+        const trendText = trend > 2 ? 'strengthening' : trend < -2 ? 'weakening' : 'stable';
+        const isBullish = lastADX.plusDI > lastADX.minusDI;
+        const direction = isBullish ? 'bullish' : 'bearish';
+        
+        let description = '';
+        let color = '';
+        
+        if (lastADX.adx >= 40) {
+          description = `ADX at ${lastADX.adx.toFixed(0)} (${trendText}) indicates a very strong ${direction} trend with high directional conviction. This suggests the current trend is powerful and likely to continue. Watch for ADX declining as an early warning of trend exhaustion.`;
+          color = isBullish ? 'text-green-400' : 'text-red-400';
+        } else if (lastADX.adx >= 25) {
+          description = `ADX at ${lastADX.adx.toFixed(0)} (${trendText}) shows a moderate ${direction} trend with decent directional movement. The trend has momentum but is not yet at strong levels. Watch for ADX rising above 40 for trend acceleration or falling below 25 for weakening.`;
+          color = isBullish ? 'text-cyan-400' : 'text-orange-400';
+        } else {
+          description = `ADX at ${lastADX.adx.toFixed(0)} (${trendText}) indicates a weak or absent trend with low directional conviction. This is neutral - the market is likely ranging or consolidating. Wait for ADX to rise above 25 for a clearer trend to emerge.`;
+          color = 'text-gray-400';
+        }
+        
+        return { text: description, color };
       }
       case 'StochRSI': {
         const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
+        if (stochData.length < 5) return { text: 'Insufficient data', color: 'text-gray-400' };
+        
         const lastK = stochData[stochData.length - 1]?.k;
         if (!lastK) return { text: '', color: '' };
-        if (lastK >= 80) return { text: `Overbought (${lastK.toFixed(0)})`, color: 'text-red-400' };
-        if (lastK <= 20) return { text: `Oversold (${lastK.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastK.toFixed(0)})`, color: 'text-gray-400' };
+        
+        const recent = stochData.slice(-5).map(d => d.k);
+        const trend = recent[recent.length - 1] - recent[0];
+        const trendText = trend > 10 ? 'rising' : trend < -10 ? 'falling' : 'stable';
+        
+        let description = '';
+        let color = '';
+        
+        if (lastK >= 80) {
+          description = `Stochastic RSI at ${lastK.toFixed(0)} (${trendText}) shows extreme short-term momentum with overbought conditions. This is bullish but highly extended - expect potential consolidation or pullback. Watch for crosses below 80 as reversal signals.`;
+          color = 'text-red-400';
+        } else if (lastK <= 20) {
+          description = `Stochastic RSI at ${lastK.toFixed(0)} (${trendText}) shows extreme short-term weakness with oversold conditions. This is bearish but potentially oversold - watch for crosses above 20 as early bounce signals if support holds.`;
+          color = 'text-green-400';
+        } else {
+          description = `Stochastic RSI at ${lastK.toFixed(0)} (${trendText}) shows balanced short-term momentum with no extreme conditions. This is neutral - wait for moves above 80 or below 20 for stronger directional signals.`;
+          color = 'text-gray-400';
+        }
+        
+        return { text: description, color };
       }
       case 'MFI': {
         const mfiData = calculateMFI(candles, indicators.mfi.period);
+        if (mfiData.length < 5) return { text: 'Insufficient data', color: 'text-gray-400' };
+        
         const lastMFI = mfiData[mfiData.length - 1]?.value;
         if (!lastMFI) return { text: '', color: '' };
-        if (lastMFI >= 80) return { text: `Overbought (${lastMFI.toFixed(0)})`, color: 'text-red-400' };
-        if (lastMFI <= 20) return { text: `Oversold (${lastMFI.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastMFI.toFixed(0)})`, color: 'text-gray-400' };
+        
+        const recent = mfiData.slice(-5).map(d => d.value);
+        const trend = recent[recent.length - 1] - recent[0];
+        const trendText = trend > 5 ? 'rising' : trend < -5 ? 'falling' : 'stable';
+        
+        let description = '';
+        let color = '';
+        
+        if (lastMFI >= 80) {
+          description = `MFI at ${lastMFI.toFixed(0)} (${trendText}) shows strong buying pressure with heavy money flow into the asset. This is bullish momentum but nearing extreme overbought levels - watch for potential exhaustion or reversal signals. Consider taking profits or tightening stops.`;
+          color = 'text-red-400';
+        } else if (lastMFI <= 20) {
+          description = `MFI at ${lastMFI.toFixed(0)} (${trendText}) indicates weak buying pressure with money flowing out of the asset. This is bearish and shows selling pressure, but oversold conditions may present a bounce opportunity if support holds. Wait for signs of accumulation.`;
+          color = 'text-green-400';
+        } else {
+          description = `MFI at ${lastMFI.toFixed(0)} (${trendText}) shows balanced money flow with neither extreme buying nor selling pressure. This is neutral - the market is consolidating. Wait for MFI to break above 80 or below 20 for clearer directional signals.`;
+          color = 'text-gray-400';
+        }
+        
+        return { text: description, color };
       }
       case 'WilliamsR': {
         const wrData = calculateWilliamsR(candles, indicators.williamsR.period);
+        if (wrData.length < 5) return { text: 'Insufficient data', color: 'text-gray-400' };
+        
         const lastWR = wrData[wrData.length - 1]?.value;
         if (!lastWR) return { text: '', color: '' };
-        if (lastWR >= -20) return { text: `Overbought (${lastWR.toFixed(0)})`, color: 'text-red-400' };
-        if (lastWR <= -80) return { text: `Oversold (${lastWR.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastWR.toFixed(0)})`, color: 'text-gray-400' };
+        
+        const recent = wrData.slice(-5).map(d => d.value);
+        const trend = recent[recent.length - 1] - recent[0];
+        const trendText = trend > 5 ? 'rising' : trend < -5 ? 'falling' : 'stable';
+        
+        let description = '';
+        let color = '';
+        
+        if (lastWR >= -20) {
+          description = `Williams %R at ${lastWR.toFixed(0)} (${trendText}) shows the price near its recent highs with overbought conditions. This is bullish momentum but approaching extreme levels - watch for potential pullback or consolidation. Consider reducing exposure or setting tighter stops.`;
+          color = 'text-red-400';
+        } else if (lastWR <= -80) {
+          description = `Williams %R at ${lastWR.toFixed(0)} (${trendText}) indicates the price is near its recent lows with oversold conditions. This is bearish in the short term but could signal a bounce opportunity if support holds. Watch for moves above -80 as early reversal signs.`;
+          color = 'text-green-400';
+        } else {
+          description = `Williams %R at ${lastWR.toFixed(0)} (${trendText}) shows the price trading in the middle of its recent range with no extreme conditions. This is neutral - wait for a clear directional move above -20 or below -80 for stronger signals.`;
+          color = 'text-gray-400';
+        }
+        
+        return { text: description, color };
       }
       case 'CCI': {
         const cciData = calculateCCI(candles, indicators.cci.period);
+        if (cciData.length < 5) return { text: 'Insufficient data', color: 'text-gray-400' };
+        
         const lastCCI = cciData[cciData.length - 1]?.value;
         if (!lastCCI) return { text: '', color: '' };
-        if (lastCCI >= 100) return { text: `Overbought (${lastCCI.toFixed(0)})`, color: 'text-red-400' };
-        if (lastCCI <= -100) return { text: `Oversold (${lastCCI.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastCCI.toFixed(0)})`, color: 'text-gray-400' };
+        
+        const recent = cciData.slice(-5).map(d => d.value);
+        const trend = recent[recent.length - 1] - recent[0];
+        const trendText = trend > 10 ? 'rising' : trend < -10 ? 'falling' : 'stable';
+        
+        let description = '';
+        let color = '';
+        
+        if (lastCCI >= 100) {
+          description = `CCI at ${lastCCI.toFixed(0)} (${trendText}) shows the price trading well above its average range with strong upward deviation. This is bullish with overbought conditions - watch for mean reversion or crosses back below 100 as potential reversal signals.`;
+          color = 'text-red-400';
+        } else if (lastCCI <= -100) {
+          description = `CCI at ${lastCCI.toFixed(0)} (${trendText}) shows the price trading well below its average range with strong downward deviation. This is bearish with oversold conditions - watch for mean reversion or crosses back above -100 as potential bounce signals.`;
+          color = 'text-green-400';
+        } else {
+          description = `CCI at ${lastCCI.toFixed(0)} (${trendText}) shows the price trading near its average range with no extreme conditions. This is neutral - wait for a clear directional move above 100 or below -100 for stronger signals.`;
+          color = 'text-gray-400';
+        }
+        
+        return { text: description, color };
       }
       default:
         return { text: '', color: '' };
