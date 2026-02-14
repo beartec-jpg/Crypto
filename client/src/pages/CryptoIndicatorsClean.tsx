@@ -2,13 +2,32 @@ import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { VideoSequencePlayer } from '@/components/trading/VideoSequencePlayer';
-// REMOVED: direct TickerSearch / TickerTable / useWatchlistState imports
-// import { TickerSearch } from '@/components/TickerSearch';
-// import { TickerTable } from '@/components/TickerTable';
-// import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import { CleanWatchlist } from '@/components/watchlist/CleanWatchlist';
+import { OscillatorsPanel } from '@/components/indicators/OscillatorsPanel';
+import { CVDTable } from '@/components/indicators/volume/CVDTable';
+
+// Binance API kline structure
+type BinanceKline = [number, string, string, string, string, string, number, string, number, string, string, string];
+
+interface Candle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface CVDDataItem {
+  time: string;
+  timestamp: number;
+  delta: number;
+  cumDelta: number;
+  isBull: boolean;
+  volume: number;
+}
 
 export default function CryptoIndicatorsClean() {
   usePageViewTracking('Crypto Indicators');
@@ -17,10 +36,9 @@ export default function CryptoIndicatorsClean() {
   const [targetMarketState, setTargetMarketState] = useState<'bullish' | 'bearish'>('bearish');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // REMOVED: page-level watchlist state; moved into CleanWatchlist
-  // const watchlist = useWatchlistState();
-  // const [selectedSymbol, setSelectedSymbol] = useState('XRPUSDT');
-  // const [tableTimeframe, setTableTimeframe] = useState('1h');
+  // State for oscillators and CVD data
+  const [candles, setCandles] = useState<Candle[]>([]);
+  const [deltaHistory, setDeltaHistory] = useState<CVDDataItem[]>([]);
 
   // Simulate market state change for demo
   useEffect(() => {
@@ -30,6 +48,65 @@ export default function CryptoIndicatorsClean() {
     }, 5000);
     return () => clearTimeout(timer);
   }, []);
+
+  // Fetch candle data for oscillators
+  useEffect(() => {
+    const fetchCandles = async () => {
+      try {
+        // Default symbol and timeframe - in a real implementation, these would come from selected state
+        const symbol = 'XRPUSDT';
+        const timeframe = '1h';
+        
+        const response = await fetch(
+          `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${timeframe}&limit=500`
+        );
+        
+        if (!response.ok) {
+          console.error(`Failed to fetch candles: ${response.status} ${response.statusText}`);
+          return;
+        }
+        
+        const klines = await response.json();
+        const candleData: Candle[] = klines.map((kline: BinanceKline) => ({
+          time: Math.floor(kline[0] / 1000),
+          open: parseFloat(kline[1]),
+          high: parseFloat(kline[2]),
+          low: parseFloat(kline[3]),
+          close: parseFloat(kline[4]),
+          volume: parseFloat(kline[5]),
+        }));
+        
+        setCandles(candleData);
+        
+        // Generate mock CVD data from candles for demo
+        // In production, this would come from an actual CVD data source
+        const cvdData: CVDDataItem[] = candleData.map((candle, index) => {
+          const delta = (Math.random() - 0.5) * candle.volume * 0.1;
+          const cumDelta = index > 0 
+            ? (deltaHistory[index - 1]?.cumDelta || 0) + delta
+            : delta;
+          
+          return {
+            time: new Date(candle.time * 1000).toLocaleTimeString(),
+            timestamp: candle.time,
+            delta,
+            cumDelta,
+            isBull: delta > 0,
+            volume: candle.volume,
+          };
+        });
+        
+        setDeltaHistory(cvdData);
+      } catch (error) {
+        console.error('Failed to fetch candle data:', error);
+      }
+    };
+    
+    fetchCandles();
+    const interval = setInterval(fetchCandles, 10000); // Update every 10s
+    
+    return () => clearInterval(interval);
+  }, [deltaHistory]);
 
   return (
     <>
@@ -64,8 +141,29 @@ export default function CryptoIndicatorsClean() {
             </div>
           </div>
 
-          {/* 3 & 4. WATCHLIST (Search + Table + Timeframe) */}
+          {/* 3 & 4. WATCHLIST (Search + Table + Timeframe + Chart) */}
           <CleanWatchlist />
+
+          {/* 5. OSCILLATORS SECTION */}
+          {candles.length > 0 && (
+            <div className="mt-6 bg-slate-900 border border-slate-700 rounded-lg p-4">
+              <OscillatorsPanel candles={candles} />
+            </div>
+          )}
+
+          {/* 6. CVD TABLE SECTION */}
+          {deltaHistory.length > 0 && (
+            <div className="mt-6 bg-slate-900 border border-slate-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-lg font-semibold text-white">📈 Delta vs CVD</h4>
+              </div>
+              <CVDTable 
+                data={deltaHistory}
+                useMultiExchange={false}
+                tableLimit={20}
+              />
+            </div>
+          )}
         </div>
 
         {/* Shared Bottom Navigation */}
