@@ -536,7 +536,7 @@ export function ChartPreview({
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <MFIPanel data={calculatedData.mfi} period={14} />
+              <MFIPanel data={calculatedData.mfi} period={14} candles={candles} />
             </div>
           )}
 
@@ -559,7 +559,7 @@ export function ChartPreview({
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <WilliamsRPanel data={calculatedData.williamsR} period={14} />
+              <WilliamsRPanel data={calculatedData.williamsR} period={14} candles={candles} />
             </div>
           )}
 
@@ -582,7 +582,7 @@ export function ChartPreview({
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <CCIPanel data={calculatedData.cci} period={20} />
+              <CCIPanel data={calculatedData.cci} period={20} candles={candles} />
             </div>
           )}
 

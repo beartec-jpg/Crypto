@@ -22,7 +22,17 @@ export function CCIPanel({
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || !candles || candles.length === 0 || !data || data.length === 0) return;
+    if (!containerRef.current) {
+      return;
+    }
+    
+    if (!candles || candles.length === 0) {
+      return;
+    }
+    
+    if (!data || data.length === 0) {
+      return;
+    }
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
@@ -73,5 +83,5 @@ export function CCIPanel({
     };
   }, [data, candles, period, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" data-testid="chart-cci" />;
+  return <div ref={containerRef} className="w-full" data-testid="chart-cci" style={{ minHeight: '200px' }} />;
 }
