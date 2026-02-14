@@ -2,12 +2,29 @@ import { useState } from 'react';
 import { Maximize2, X } from 'lucide-react';
 import { useSimpleChart } from '@/hooks/useSimpleChart';
 
+interface CVDDataItem {
+  time: string;
+  date?: string;
+  timestamp: number;
+  delta: number;
+  cumDelta: number;
+  isBull: boolean;
+  volume: number;
+  exchanges?: number;
+  bullishExchanges?: number;
+  bearishExchanges?: number;
+  confidence?: number;
+  divergence?: boolean;
+  highValueDivergence?: boolean;
+  volumeMultiple?: number;
+}
+
 interface ChartPreviewProps {
   symbol: string;
   timeframe: string;
   onExpand: () => void;
   chartContainerRef: React.RefObject<HTMLDivElement>;
-  cvdData?: any[]; // Optional for future CVD integration
+  cvdData?: CVDDataItem[]; // Optional for future CVD integration
 }
 
 /**
@@ -117,7 +134,7 @@ export function ChartPreview({
                 </button>
               </div>
               <div className="h-32 bg-slate-900 rounded flex items-center justify-center text-gray-400 text-sm">
-                {oscId.toUpperCase()} Chart Placeholder
+                {oscillatorOptions.find(o => o.id === oscId)?.name} Chart Placeholder
                 {/* TODO: Integrate actual oscillator chart from existing components */}
               </div>
             </div>
