@@ -42,9 +42,6 @@ export function IntegrationExample() {
   // NEW STATE: Chart mode (preview or fullscreen)
   const [chartMode, setChartMode] = useState<'preview' | 'fullscreen'>('preview');
   
-  // NEW STATE: Chart-specific timeframe (independent from table timeframe)
-  const [chartTimeframe, setChartTimeframe] = useState(interval);
-  
   // NEW STATE: Active drawing tool
   const [activeDrawingTool, setActiveDrawingTool] = useState<string | null>(null);
   
@@ -116,16 +113,15 @@ export function IntegrationExample() {
       {chartMode === 'preview' ? (
         <ChartPreview
           symbol={symbol}
-          timeframe={chartTimeframe}
-          onTimeframeChange={setChartTimeframe}
+          timeframe={tableTimeframe}
           onExpand={handleExpandChart}
           chartContainerRef={null as any} // Use actual chartContainerRef
         />
       ) : (
         <ChartFullscreen
           symbol={symbol}
-          timeframe={chartTimeframe}
-          onTimeframeChange={setChartTimeframe}
+          timeframe={interval}
+          onTimeframeChange={setTimeframeInterval}
           onClose={handleCloseFullscreen}
           chartContainerRef={null as any} // Use actual chartContainerRef
           activeTool={activeDrawingTool}
