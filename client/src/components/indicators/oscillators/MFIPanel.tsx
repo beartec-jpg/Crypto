@@ -22,7 +22,24 @@ export function MFIPanel({
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || !candles || candles.length === 0 || !data || data.length === 0) return;
+    console.log('[MFIPanel] Received data:', data?.length || 0, 'candles:', candles?.length || 0);
+    
+    if (!containerRef.current) {
+      console.warn('[MFIPanel] Container ref not available');
+      return;
+    }
+    
+    if (!candles || candles.length === 0) {
+      console.warn('[MFIPanel] No candles data');
+      return;
+    }
+    
+    if (!data || data.length === 0) {
+      console.warn('[MFIPanel] No MFI data to render');
+      return;
+    }
+    
+    console.log('[MFIPanel] Creating chart with', containerRef.current.clientWidth, 'x 200px');
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
@@ -45,6 +62,7 @@ export function MFIPanel({
     });
 
     chartRef.current = chart;
+    console.log('[MFIPanel] Chart created successfully');
     
     // Notify parent about chart creation
     if (onChartCreated) {
@@ -72,5 +90,5 @@ export function MFIPanel({
     };
   }, [data, candles, period, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" data-testid="chart-mfi" />;
+  return <div ref={containerRef} className="w-full" data-testid="chart-mfi" style={{ minHeight: '200px' }} />;
 }

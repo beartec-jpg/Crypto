@@ -22,7 +22,24 @@ export function CCIPanel({
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || !candles || candles.length === 0 || !data || data.length === 0) return;
+    console.log('[CCIPanel] Received data:', data?.length || 0, 'candles:', candles?.length || 0);
+    
+    if (!containerRef.current) {
+      console.warn('[CCIPanel] Container ref not available');
+      return;
+    }
+    
+    if (!candles || candles.length === 0) {
+      console.warn('[CCIPanel] No candles data');
+      return;
+    }
+    
+    if (!data || data.length === 0) {
+      console.warn('[CCIPanel] No CCI data to render');
+      return;
+    }
+    
+    console.log('[CCIPanel] Creating chart with', containerRef.current.clientWidth, 'x 200px');
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
@@ -45,6 +62,7 @@ export function CCIPanel({
     });
 
     chartRef.current = chart;
+    console.log('[CCIPanel] Chart created successfully');
     
     // Notify parent about chart creation
     if (onChartCreated) {
@@ -73,5 +91,5 @@ export function CCIPanel({
     };
   }, [data, candles, period, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" data-testid="chart-cci" />;
+  return <div ref={containerRef} className="w-full" data-testid="chart-cci" style={{ minHeight: '200px' }} />;
 }
