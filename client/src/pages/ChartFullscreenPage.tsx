@@ -177,7 +177,7 @@ export function ChartFullscreenPage({
   }, [selectedDrawingId, drawingsPersistence]);
   
   // Handler to update drawing
-  const handleUpdateDrawing = useCallback((updates: any) => {
+  const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
     if (!selectedDrawingId) return;
     
     // Update locally first
@@ -249,22 +249,21 @@ export function ChartFullscreenPage({
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     
+    // Capture ref value for cleanup
+    const chartContainer = chartContainerRef.current;
+    
     // Handle clicks on chart when not in drawing mode
     const handleChartClick = (e: MouseEvent) => {
       // Only handle clicks when no tool is active (not in drawing mode)
       if (activeTool) return;
       
-      // Simple implementation: for now, show quick menu at click position
-      // In a more sophisticated implementation, we would detect which drawing was clicked
-      if (drawings.length > 0) {
-        // Select first drawing for demo purposes
-        // TODO: Implement proper hit detection
-        const firstDrawingId = drawings[0].id;
-        handleDrawingClick(firstDrawingId, e.clientX, e.clientY);
-      }
+      // Note: This is a simplified implementation
+      // TODO: Implement proper hit detection to determine which drawing was clicked
+      // For now, this is disabled to avoid confusing UX
+      // Users can access drawing settings through a different mechanism (e.g., keyboard shortcut or toolbar)
     };
     
-    chartContainerRef.current?.addEventListener('click', handleChartClick);
+    chartContainer?.addEventListener('click', handleChartClick);
 
     // Handle resize
     const handleResize = () => {
@@ -279,13 +278,13 @@ export function ChartFullscreenPage({
     window.addEventListener('resize', handleResize);
 
     return () => {
-      chartContainerRef.current?.removeEventListener('click', handleChartClick);
+      chartContainer?.removeEventListener('click', handleChartClick);
       window.removeEventListener('resize', handleResize);
       if (chartRef.current) {
         chartRef.current.remove();
       }
     };
-  }, [activeTool, drawings, handleDrawingClick]);
+  }, [activeTool]);
 
   // Fetch candles data
   useEffect(() => {
@@ -613,24 +612,27 @@ export function ChartFullscreenPage({
       </div>
       
       {/* Settings Modal */}
-      {selectedDrawingId && (
-        <DrawingSettingsModal
-          isOpen={settingsModalOpen}
-          onClose={handleCloseSettings}
-          drawing={
-            drawings.find(d => d.id === selectedDrawingId) 
-              ? {
-                  ...drawings.find(d => d.id === selectedDrawingId)!,
-                  points: drawings.find(d => d.id === selectedDrawingId)!.points.map(p => ({ 
-                    time: p.time, 
-                    value: p.price 
-                  })),
-                }
-              : null
-          }
-          onUpdate={handleUpdateDrawing}
-        />
-      )}
+      {selectedDrawingId && (() => {
+        const selectedDrawing = drawings.find(d => d.id === selectedDrawingId);
+        return (
+          <DrawingSettingsModal
+            isOpen={settingsModalOpen}
+            onClose={handleCloseSettings}
+            drawing={
+              selectedDrawing 
+                ? {
+                    ...selectedDrawing,
+                    points: selectedDrawing.points.map(p => ({ 
+                      time: p.time, 
+                      value: p.price 
+                    })),
+                  }
+                : null
+            }
+            onUpdate={handleUpdateDrawing}
+          />
+        );
+      })()}
     </div>
   );
 }
