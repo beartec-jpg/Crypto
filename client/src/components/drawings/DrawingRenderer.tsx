@@ -71,9 +71,12 @@ export function DrawingRenderer({
           points: newPoints,
           style: { color, lineWidth: 2, ...savedDefaults, ...channelStyle }
         };
+        
+        console.log('[Renderer] Creating new drawing:', newDrawing);
         setDrawings(d => [...d, newDrawing]);
         
         // Save to database
+        console.log('[Renderer] Calling saveDrawingMutation.mutate');
         saveDrawingMutation.mutate(newDrawing);
         toast({ title: 'Drawing Saved', description: `${currentTool.replace('_', ' ')} added to chart` });
         
