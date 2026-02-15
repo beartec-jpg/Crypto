@@ -1,4 +1,4 @@
-import { Minus, TrendingUp, Square, Divide, GitBranch, type LucideIcon } from 'lucide-react';
+import { Minus, TrendingUp, Square, Divide, GitBranch, Activity, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -43,7 +43,7 @@ const TOOLS: ToolConfig[] = [
   },
   {
     id: 'trend_fib',
-    icon: TrendingUp,
+    icon: Activity,
     label: 'Trend Fib',
     description: 'Fibonacci extension from trend',
   },
