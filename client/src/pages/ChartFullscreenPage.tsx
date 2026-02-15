@@ -127,8 +127,13 @@ export function ChartFullscreenPage({
   
   // Selection modal state
   const [showSelectionModal, setShowSelectionModal] = useState(false);
-  const [nearbyDrawings, setNearbyDrawings] = useState<Array<{ id: string; type: string }>>([]);
-
+const [nearbyDrawings, setNearbyDrawings] = useState<Array<{ 
+  id: string; 
+  type: string; 
+  color?: string;
+  points?: { time: number; price: number }[];
+}>>([]);
+  
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -152,35 +157,75 @@ export function ChartFullscreenPage({
     activeToolRef.current = tool;
   }, []);
   
-  // Handler for chart clicks (radial selection)
-  const handleChartClick = useCallback((event: MouseEvent) => {
-    // Only handle clicks when no tool is active (not in drawing mode)
-    if (activeTool) return;
-    
-    const chartElement = chartContainerRef.current;
-    if (!chartElement || !chartRef.current || !candleSeriesRef.current) return;
-    
-    const rect = chartElement.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const clickY = event.clientY - rect.top;
-    
-    // Find all drawings within click radius
-    const hits = findDrawingsNearClick(clickX, clickY, drawings, chartRef.current, candleSeriesRef.current);
-    
-    if (hits.length === 0) {
-      // Clicked empty space - deselect
-      setSelectedDrawingId(null);
-      setQuickMenuPosition(null);
-    } else if (hits.length === 1) {
-      // Single drawing found - select directly
-      setSelectedDrawingId(hits[0].drawingId);
-      setQuickMenuPosition({ x: event.clientX, y: event.clientY });
-    } else {
-      // Multiple drawings found - show selection modal
-      setNearbyDrawings(hits.map(h => ({ id: h.drawingId, type: h.drawingType })));
-      setShowSelectionModal(true);
-    }
-  }, [activeTool, drawings]);
+// Handler for chart clicks (radial selection)
+const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
+  console.log('[ChartClick] Event fired, type:', event.type);
+  console.log('[ChartClick] activeTool:', activeTool);
+  
+  // Only handle clicks when no tool is active (not in drawing mode)
+  if (activeTool) {
+    console.log('[ChartClick] Tool is active, ignoring click');
+    return;
+  }
+  
+  const chartElement = chartContainerRef.current;
+  if (!chartElement || !chartRef.current || !candleSeriesRef.current) {
+    console.log('[ChartClick] Missing refs');
+    return;
+  }
+  
+  const rect = chartElement.getBoundingClientRect();
+  
+  // Handle both mouse and touch events
+  let clientX: number;
+  let clientY: number;
+  
+  if ('touches' in event && event.touches.length > 0) {
+    // Touch event
+    clientX = event.touches[0].clientX;
+    clientY = event.touches[0].clientY;
+  } else if ('clientX' in event) {
+    // Mouse event
+    clientX = event.clientX;
+    clientY = event.clientY;
+  } else {
+    return;
+  }
+  
+  const clickX = clientX - rect.left;
+  const clickY = clientY - rect.top;
+  
+  console.log('[ChartClick] Coordinates:', { clickX, clickY });
+  console.log('[ChartClick] Available drawings:', drawings.length);
+  
+  // Find all drawings within click radius
+  const hits = findDrawingsNearClick(clickX, clickY, drawings, chartRef.current, candleSeriesRef.current);
+  
+  console.log('[ChartClick] Hits found:', hits.length);
+  
+  if (hits.length === 0) {
+    console.log('[ChartClick] No hits - deselecting');
+    setSelectedDrawingId(null);
+    setQuickMenuPosition(null);
+  } else if (hits.length === 1) {
+    console.log('[ChartClick] Single hit - selecting:', hits[0].drawingId);
+    setSelectedDrawingId(hits[0].drawingId);
+    setQuickMenuPosition({ x: clientX, y: clientY });
+  } else {
+    console.log('[ChartClick] Multiple hits - showing modal');
+    // Map hits to include drawing details for preview
+    setNearbyDrawings(hits.map(h => {
+      const drawing = drawings.find(d => d.id === h.drawingId);
+      return {
+        id: h.drawingId,
+        type: h.drawingType,
+        color: drawing?.style?.color || '#3b82f6',
+        points: drawing?.points,
+      };
+    }));
+    setShowSelectionModal(true);
+  }
+}, [activeTool, drawings]);
   
   // Handler to close quick menu
   const handleCloseQuickMenu = useCallback(() => {
@@ -326,14 +371,19 @@ export function ChartFullscreenPage({
     };
   }, []);
   
-  // Attach click handler to chart
-  useEffect(() => {
-    const chartElement = chartContainerRef.current;
-    if (!chartElement) return;
-    
-    chartElement.addEventListener('click', handleChartClick);
-    return () => chartElement.removeEventListener('click', handleChartClick);
-  }, [handleChartClick]);
+ // Attach click handler to chart
+useEffect(() => {
+  const chartElement = chartContainerRef.current;
+  if (!chartElement) return;
+  
+  chartElement.addEventListener('click', handleChartClick as EventListener);
+  chartElement.addEventListener('touchstart', handleChartClick as EventListener);
+  
+  return () => {
+    chartElement.removeEventListener('click', handleChartClick as EventListener);
+    chartElement.removeEventListener('touchstart', handleChartClick as EventListener);
+  };
+}, [handleChartClick]);
 
   // Fetch candles data
   useEffect(() => {
