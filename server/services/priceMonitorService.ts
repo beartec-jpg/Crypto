@@ -20,13 +20,13 @@ class PriceMonitorService {
     this.monitorInterval = setInterval(() => {
       this.checkAllTrackedTrades();
       this.checkAllIndicatorAlerts();
-      this.checkAllHorizontalLineAlerts();
+      this.checkAllDrawingAlerts(); // Replaces checkAllHorizontalLineAlerts with universal drawing alerts
     }, this.CHECK_INTERVAL);
 
     // Run initial checks
     await this.checkAllTrackedTrades();
     await this.checkAllIndicatorAlerts();
-    await this.checkAllHorizontalLineAlerts();
+    await this.checkAllDrawingAlerts();
   }
 
   stop() {
@@ -591,6 +591,600 @@ class PriceMonitorService {
       }
     } catch (error) {
       console.error("Error checking horizontal line alerts:", error);
+    }
+  }
+
+  // ============ UNIVERSAL DRAWING ALERTS ============
+
+  /**
+   * Calculate trendline price at current time using slope formula
+   */
+  private getTrendlinePrice(p1: { time: number; price: number }, p2: { time: number; price: number }, currentTime: number): number {
+    const slope = (p2.price - p1.price) / (p2.time - p1.time);
+    return p1.price + slope * (currentTime - p1.time);
+  }
+
+  /**
+   * Calculate level price for channel, fib, or rectangle
+   */
+  private getLevelPrice(points: { time: number; price: number }[], level: number): number {
+    if (points.length < 2) return 0;
+    const p1 = points[0];
+    const p2 = points[1];
+    const priceDiff = Math.abs(p2.price - p1.price);
+    const basePrice = Math.min(p1.price, p2.price);
+    return basePrice + priceDiff * level;
+  }
+
+  /**
+   * Calculate trend fib level price (wave-based projection)
+   */
+  private getTrendFibPrice(points: { time: number; price: number }[], level: number): number {
+    if (points.length < 3) return 0;
+    const [p1, p2, p3] = points;
+    
+    // Calculate the wave height (p1 to p2)
+    const waveHeight = Math.abs(p2.price - p1.price);
+    
+    // Project from p3 using the level
+    const direction = p2.price > p1.price ? 1 : -1;
+    return p3.price + (direction * waveHeight * level);
+  }
+
+  /**
+   * Detect price crossing with directional support
+   */
+  private detectCrossing(
+    lastPrice: number | undefined,
+    currentPrice: number,
+    linePrice: number,
+    crossUpEnabled: boolean,
+    crossDownEnabled: boolean
+  ): 'up' | 'down' | null {
+    if (!lastPrice || !Number.isFinite(lastPrice)) return null;
+    
+    if (crossUpEnabled && lastPrice < linePrice && currentPrice >= linePrice) {
+      return 'up';
+    }
+    if (crossDownEnabled && lastPrice > linePrice && currentPrice <= linePrice) {
+      return 'down';
+    }
+    return null;
+  }
+
+  /**
+   * Check all drawing alerts (trendlines, channels, fibs, etc.)
+   */
+  private async checkAllDrawingAlerts() {
+    try {
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      // Get all drawings with alerts enabled
+      const activeAlerts = await db
+        .select()
+        .from(chartDrawings)
+        .where(sql`
+          (${chartDrawings.drawingType} = 'horizontal' AND (${chartDrawings.style}->>'alertActive')::boolean = true AND ((${chartDrawings.style}->>'alertTriggered')::boolean IS NULL OR (${chartDrawings.style}->>'alertTriggered')::boolean = false))
+          OR (${chartDrawings.style}->>'alertsEnabled')::boolean = true
+          OR (${chartDrawings.style}->'trendlineAlert'->>'enabled')::boolean = true
+          OR jsonb_typeof(${chartDrawings.style}->'levelAlerts') = 'object'
+        `);
+
+      if (activeAlerts.length === 0) {
+        return;
+      }
+
+      console.log(`Checking ${activeAlerts.length} drawing alerts...`);
+
+      // Get unique symbols
+      const symbolSet = new Set(activeAlerts.map(d => d.symbol));
+      const symbols = Array.from(symbolSet);
+
+      // Fetch current prices for all symbols
+      const prices = await this.fetchPrices(symbols);
+      
+      // Get current time in seconds
+      const currentTime = Math.floor(Date.now() / 1000);
+
+      for (const drawing of activeAlerts) {
+        const currentPrice = prices.find(p => p.symbol === drawing.symbol)?.price;
+        if (!currentPrice) {
+          console.log(`⚠️ No price found for ${drawing.symbol} (drawing ${drawing.id})`);
+          continue;
+        }
+
+        const currentStyle = drawing.style || {};
+        
+        // Check based on drawing type
+        try {
+          switch (drawing.drawingType) {
+            case 'horizontal':
+              await this.checkHorizontalAlert(drawing, currentPrice, currentStyle);
+              break;
+            case 'trendline':
+              await this.checkTrendlineAlert(drawing, currentPrice, currentTime, currentStyle);
+              break;
+            case 'channel':
+              await this.checkChannelAlert(drawing, currentPrice, currentStyle);
+              break;
+            case 'fib_retracement':
+              await this.checkFibRetracementAlert(drawing, currentPrice, currentStyle);
+              break;
+            case 'trend_fib':
+              await this.checkTrendFibAlert(drawing, currentPrice, currentStyle);
+              break;
+            case 'rectangle':
+              await this.checkRectangleAlert(drawing, currentPrice, currentStyle);
+              break;
+          }
+        } catch (error) {
+          console.error(`Error checking alert for drawing ${drawing.id}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking drawing alerts:", error);
+    }
+  }
+
+  private async checkHorizontalAlert(drawing: any, currentPrice: number, currentStyle: any) {
+    const linePrice = drawing.coordinates?.points?.[0]?.price;
+    if (!linePrice) return;
+
+    // Support both legacy and new alert system
+    const alertConfig = currentStyle.trendlineAlert || {
+      enabled: currentStyle.alertActive,
+      crossUpEnabled: true,
+      crossDownEnabled: true,
+      lastCheckedPrice: currentStyle.lastCheckedPrice,
+      triggered: currentStyle.alertTriggered,
+    };
+
+    if (!alertConfig.enabled && !currentStyle.alertActive) return;
+
+    const lastCheckedPrice = alertConfig.lastCheckedPrice;
+    const lineName = currentStyle.label || 'H-Line';
+
+    console.log(`🔍 Checking H-Line: ${drawing.symbol} | Line: ${linePrice} | Current: ${currentPrice}`);
+
+    const crossDirection = this.detectCrossing(
+      lastCheckedPrice,
+      currentPrice,
+      linePrice,
+      alertConfig.crossUpEnabled !== false, // Default to true for legacy
+      alertConfig.crossDownEnabled !== false
+    );
+
+    if (crossDirection) {
+      console.log(`✅ Price crossed ${lineName} ${crossDirection} for ${drawing.symbol}`);
+      
+      await this.sendCryptoNotification(drawing.userId, {
+        title: `📈 Price Crossing: ${drawing.symbol}`,
+        body: `Price crossed ${crossDirection} '${lineName}' at $${linePrice.toFixed(4)}. Current: $${currentPrice.toFixed(4)}`,
+        tag: `hline-${drawing.id}`,
+      });
+
+      // Update style based on which system is being used
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      if (currentStyle.trendlineAlert) {
+        await db.update(chartDrawings).set({
+          style: {
+            ...currentStyle,
+            trendlineAlert: {
+              ...alertConfig,
+              triggered: true,
+              triggerTime: Date.now(),
+              lastCheckedPrice: currentPrice,
+            },
+          },
+          updatedAt: new Date(),
+        }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+      } else {
+        // Legacy system
+        await db.update(chartDrawings).set({
+          style: {
+            ...currentStyle,
+            alertTriggered: true,
+            lastCheckedPrice: currentPrice,
+          },
+          updatedAt: new Date(),
+        }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+      }
+    } else {
+      // Update last checked price
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      if (currentStyle.trendlineAlert) {
+        await db.update(chartDrawings).set({
+          style: {
+            ...currentStyle,
+            trendlineAlert: {
+              ...alertConfig,
+              lastCheckedPrice: currentPrice,
+            },
+          },
+        }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+      } else {
+        await db.update(chartDrawings).set({
+          style: {
+            ...currentStyle,
+            lastCheckedPrice: currentPrice,
+          },
+        }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+      }
+    }
+  }
+
+  private async checkTrendlineAlert(drawing: any, currentPrice: number, currentTime: number, currentStyle: any) {
+    const alertConfig = currentStyle.trendlineAlert;
+    if (!alertConfig?.enabled) return;
+
+    const points = drawing.coordinates?.points;
+    if (!points || points.length < 2) return;
+
+    const linePrice = this.getTrendlinePrice(points[0], points[1], currentTime);
+    const lineName = currentStyle.label || 'Trendline';
+
+    console.log(`🔍 Checking Trendline: ${drawing.symbol} | Line: ${linePrice.toFixed(4)} | Current: ${currentPrice}`);
+
+    const crossDirection = this.detectCrossing(
+      alertConfig.lastCheckedPrice,
+      currentPrice,
+      linePrice,
+      alertConfig.crossUpEnabled,
+      alertConfig.crossDownEnabled
+    );
+
+    if (crossDirection) {
+      console.log(`✅ Price crossed ${lineName} ${crossDirection} for ${drawing.symbol}`);
+      
+      await this.sendCryptoNotification(drawing.userId, {
+        title: `📈 Trendline Cross: ${drawing.symbol}`,
+        body: `Price crossed ${crossDirection} '${lineName}' at $${linePrice.toFixed(4)}. Current: $${currentPrice.toFixed(4)}`,
+        tag: `trendline-${drawing.id}`,
+      });
+
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      await db.update(chartDrawings).set({
+        style: {
+          ...currentStyle,
+          trendlineAlert: {
+            ...alertConfig,
+            triggered: true,
+            triggerTime: Date.now(),
+            lastCheckedPrice: currentPrice,
+          },
+        },
+        updatedAt: new Date(),
+      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+    } else {
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      await db.update(chartDrawings).set({
+        style: {
+          ...currentStyle,
+          trendlineAlert: {
+            ...alertConfig,
+            lastCheckedPrice: currentPrice,
+          },
+        },
+      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+    }
+  }
+
+  private async checkChannelAlert(drawing: any, currentPrice: number, currentStyle: any) {
+    const levelAlerts = currentStyle.levelAlerts;
+    if (!levelAlerts) return;
+
+    const points = drawing.coordinates?.points;
+    if (!points || points.length < 2) return;
+
+    // Check each configured level
+    const levelMap: Record<string, number> = {
+      'top': 1.0,
+      '0.75': 0.75,
+      '0.5': 0.5,
+      '0.25': 0.25,
+      'bottom': 0.0,
+    };
+
+    let needsUpdate = false;
+    const updatedLevelAlerts = { ...levelAlerts };
+
+    for (const [levelKey, alertConfig] of Object.entries(levelAlerts)) {
+      if (!alertConfig.enabled || alertConfig.triggered) continue;
+
+      const levelValue = levelMap[levelKey];
+      if (levelValue === undefined) continue;
+
+      const levelPrice = this.getLevelPrice(points, levelValue);
+      const levelName = levelKey === 'top' ? 'Top' : levelKey === 'bottom' ? 'Bottom' : `${Math.round(levelValue * 100)}%`;
+
+      const crossDirection = this.detectCrossing(
+        alertConfig.lastCheckedPrice,
+        currentPrice,
+        levelPrice,
+        alertConfig.crossUpEnabled,
+        alertConfig.crossDownEnabled
+      );
+
+      if (crossDirection) {
+        console.log(`✅ Channel ${levelName} crossed ${crossDirection} for ${drawing.symbol}`);
+        
+        await this.sendCryptoNotification(drawing.userId, {
+          title: `📊 Channel Alert: ${drawing.symbol}`,
+          body: `Price crossed ${crossDirection} channel ${levelName} at $${levelPrice.toFixed(4)}`,
+          tag: `channel-${drawing.id}-${levelKey}`,
+        });
+
+        updatedLevelAlerts[levelKey] = {
+          ...alertConfig,
+          triggered: true,
+          triggerTime: Date.now(),
+          lastCheckedPrice: currentPrice,
+        };
+        needsUpdate = true;
+      } else {
+        updatedLevelAlerts[levelKey] = {
+          ...alertConfig,
+          lastCheckedPrice: currentPrice,
+        };
+      }
+    }
+
+    if (needsUpdate || Object.keys(levelAlerts).length > 0) {
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      await db.update(chartDrawings).set({
+        style: {
+          ...currentStyle,
+          levelAlerts: updatedLevelAlerts,
+        },
+        updatedAt: needsUpdate ? new Date() : undefined,
+      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+    }
+  }
+
+  private async checkFibRetracementAlert(drawing: any, currentPrice: number, currentStyle: any) {
+    const levelAlerts = currentStyle.levelAlerts;
+    if (!levelAlerts) return;
+
+    const points = drawing.coordinates?.points;
+    if (!points || points.length < 2) return;
+
+    // Fib levels
+    const fibLevels: Record<string, number> = {
+      '0': 0,
+      '0.236': 0.236,
+      '0.382': 0.382,
+      '0.5': 0.5,
+      '0.618': 0.618,
+      '0.786': 0.786,
+      '1.0': 1.0,
+      '1.272': 1.272,
+      '1.618': 1.618,
+    };
+
+    let needsUpdate = false;
+    const updatedLevelAlerts = { ...levelAlerts };
+
+    for (const [levelKey, alertConfig] of Object.entries(levelAlerts)) {
+      if (!alertConfig.enabled || alertConfig.triggered) continue;
+
+      const levelValue = fibLevels[levelKey];
+      if (levelValue === undefined) continue;
+
+      const levelPrice = this.getLevelPrice(points, levelValue);
+
+      const crossDirection = this.detectCrossing(
+        alertConfig.lastCheckedPrice,
+        currentPrice,
+        levelPrice,
+        alertConfig.crossUpEnabled,
+        alertConfig.crossDownEnabled
+      );
+
+      if (crossDirection) {
+        console.log(`✅ Fib ${levelKey} crossed ${crossDirection} for ${drawing.symbol}`);
+        
+        await this.sendCryptoNotification(drawing.userId, {
+          title: `📐 Fib Alert: ${drawing.symbol}`,
+          body: `Price crossed ${crossDirection} Fib ${levelKey} at $${levelPrice.toFixed(4)}`,
+          tag: `fib-${drawing.id}-${levelKey}`,
+        });
+
+        updatedLevelAlerts[levelKey] = {
+          ...alertConfig,
+          triggered: true,
+          triggerTime: Date.now(),
+          lastCheckedPrice: currentPrice,
+        };
+        needsUpdate = true;
+      } else {
+        updatedLevelAlerts[levelKey] = {
+          ...alertConfig,
+          lastCheckedPrice: currentPrice,
+        };
+      }
+    }
+
+    if (needsUpdate || Object.keys(levelAlerts).length > 0) {
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      await db.update(chartDrawings).set({
+        style: {
+          ...currentStyle,
+          levelAlerts: updatedLevelAlerts,
+        },
+        updatedAt: needsUpdate ? new Date() : undefined,
+      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+    }
+  }
+
+  private async checkTrendFibAlert(drawing: any, currentPrice: number, currentStyle: any) {
+    const levelAlerts = currentStyle.levelAlerts;
+    if (!levelAlerts) return;
+
+    const points = drawing.coordinates?.points;
+    if (!points || points.length < 3) return;
+
+    // Trend fib levels
+    const trendFibLevels: Record<string, number> = {
+      '0.382': 0.382,
+      '0.5': 0.5,
+      '0.618': 0.618,
+      '0.786': 0.786,
+      '1.0': 1.0,
+      '1.272': 1.272,
+      '1.618': 1.618,
+      '2.0': 2.0,
+      '2.618': 2.618,
+      '3.618': 3.618,
+      '4.236': 4.236,
+    };
+
+    let needsUpdate = false;
+    const updatedLevelAlerts = { ...levelAlerts };
+
+    for (const [levelKey, alertConfig] of Object.entries(levelAlerts)) {
+      if (!alertConfig.enabled || alertConfig.triggered) continue;
+
+      const levelValue = trendFibLevels[levelKey];
+      if (levelValue === undefined) continue;
+
+      const levelPrice = this.getTrendFibPrice(points, levelValue);
+
+      const crossDirection = this.detectCrossing(
+        alertConfig.lastCheckedPrice,
+        currentPrice,
+        levelPrice,
+        alertConfig.crossUpEnabled,
+        alertConfig.crossDownEnabled
+      );
+
+      if (crossDirection) {
+        console.log(`✅ Trend Fib ${levelKey} crossed ${crossDirection} for ${drawing.symbol}`);
+        
+        await this.sendCryptoNotification(drawing.userId, {
+          title: `📈 Trend Fib Alert: ${drawing.symbol}`,
+          body: `Price crossed ${crossDirection} Trend Fib ${levelKey} at $${levelPrice.toFixed(4)}`,
+          tag: `trendfib-${drawing.id}-${levelKey}`,
+        });
+
+        updatedLevelAlerts[levelKey] = {
+          ...alertConfig,
+          triggered: true,
+          triggerTime: Date.now(),
+          lastCheckedPrice: currentPrice,
+        };
+        needsUpdate = true;
+      } else {
+        updatedLevelAlerts[levelKey] = {
+          ...alertConfig,
+          lastCheckedPrice: currentPrice,
+        };
+      }
+    }
+
+    if (needsUpdate || Object.keys(levelAlerts).length > 0) {
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      await db.update(chartDrawings).set({
+        style: {
+          ...currentStyle,
+          levelAlerts: updatedLevelAlerts,
+        },
+        updatedAt: needsUpdate ? new Date() : undefined,
+      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+    }
+  }
+
+  private async checkRectangleAlert(drawing: any, currentPrice: number, currentStyle: any) {
+    const levelAlerts = currentStyle.levelAlerts;
+    if (!levelAlerts) return;
+
+    const points = drawing.coordinates?.points;
+    if (!points || points.length < 2) return;
+
+    // Rectangle has top and bottom levels
+    const levelMap: Record<string, number> = {
+      'top': 1.0,
+      'bottom': 0.0,
+    };
+
+    let needsUpdate = false;
+    const updatedLevelAlerts = { ...levelAlerts };
+
+    for (const [levelKey, alertConfig] of Object.entries(levelAlerts)) {
+      if (!alertConfig.enabled || alertConfig.triggered) continue;
+
+      const levelValue = levelMap[levelKey];
+      if (levelValue === undefined) continue;
+
+      const levelPrice = this.getLevelPrice(points, levelValue);
+      const levelName = levelKey === 'top' ? 'Top' : 'Bottom';
+
+      const crossDirection = this.detectCrossing(
+        alertConfig.lastCheckedPrice,
+        currentPrice,
+        levelPrice,
+        alertConfig.crossUpEnabled,
+        alertConfig.crossDownEnabled
+      );
+
+      if (crossDirection) {
+        console.log(`✅ Rectangle ${levelName} crossed ${crossDirection} for ${drawing.symbol}`);
+        
+        await this.sendCryptoNotification(drawing.userId, {
+          title: `📦 Rectangle Alert: ${drawing.symbol}`,
+          body: `Price broke ${crossDirection} rectangle ${levelName} at $${levelPrice.toFixed(4)}`,
+          tag: `rectangle-${drawing.id}-${levelKey}`,
+        });
+
+        updatedLevelAlerts[levelKey] = {
+          ...alertConfig,
+          triggered: true,
+          triggerTime: Date.now(),
+          lastCheckedPrice: currentPrice,
+        };
+        needsUpdate = true;
+      } else {
+        updatedLevelAlerts[levelKey] = {
+          ...alertConfig,
+          lastCheckedPrice: currentPrice,
+        };
+      }
+    }
+
+    if (needsUpdate || Object.keys(levelAlerts).length > 0) {
+      const { db } = await import("../db");
+      const { chartDrawings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+
+      await db.update(chartDrawings).set({
+        style: {
+          ...currentStyle,
+          levelAlerts: updatedLevelAlerts,
+        },
+        updatedAt: needsUpdate ? new Date() : undefined,
+      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
     }
   }
 
