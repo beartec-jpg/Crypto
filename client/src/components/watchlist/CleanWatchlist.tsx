@@ -23,7 +23,7 @@ interface CleanWatchlistProps {
  * - Shows bias settings in a modal triggered from TickerTable header
  * - Keeps CryptoIndicatorsClean free of inline handlers / watchlist logic
  */
-export function CleanWatchlist({ onExpandChart }: CleanWatchlistProps = {}) {
+export function CleanWatchlist({ onExpandChart }: CleanWatchlistProps = { onExpandChart: undefined }) {
   const watchlist = useWatchlistState();
   const biasSettings = useWatchlistBiasSettings();
 
