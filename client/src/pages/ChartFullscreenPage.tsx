@@ -158,55 +158,6 @@ export function ChartFullscreenPage({
     autoColorEnabledRef.current = autoColorEnabled;
   }, [autoColorEnabled]);
 
-  // Save drawing mutation
-  const saveDrawingMutation = useMutation({
-    mutationFn: async (drawing: Drawing) => {
-      console.log('[SaveMutation] Saving drawing with temp ID:', drawing.id);
-      
-      const response = await authenticatedApiRequest('POST', '/api/crypto/chart-drawings', {
-        symbol,
-        timeframe,
-        drawingType: drawing.type,
-        coordinates: { points: drawing.points },
-        style: drawing.style,
-      });
-      
-      const serverDrawing = await response.json();
-      console.log('[SaveMutation] Server returned:', serverDrawing);
-      
-      // CRITICAL: Attach the temp ID to track which drawing to update
-      return { 
-        serverDrawing,          // Server response (has server ID)
-        tempId: drawing.id      // Original temp ID from client
-      };
-    },
-    onSuccess: (data) => {
-      const { serverDrawing, tempId } = data;
-      console.log('[SaveMutation] onSuccess - tempId:', tempId, 'serverID:', serverDrawing.id);
-      
-      // Update the drawing in state: replace temp ID with server ID
-      setDrawings(prev => {
-        const updated = prev.map(d => {
-          if (d.id === tempId) {
-            console.log('[SaveMutation] Replacing temp ID with server ID:', tempId, '→', serverDrawing.id);
-            return {
-              id: serverDrawing.id,
-              type: serverDrawing.drawing_type || serverDrawing.drawingType || d.type,
-              points: serverDrawing.coordinates?.points || d.points,
-              style: serverDrawing.style || d.style,
-            };
-          }
-          return d;
-        });
-        
-        console.log('[SaveMutation] Updated drawings array:', updated.length, 'drawings');
-        return updated;
-      });
-      
-      // Refetch to ensure DB sync (but drawing already in state from optimistic update)
-      drawingsPersistence.refetchDrawings();
-    },
-  });
 
   // Initialize gesture controller
   const gestureController = useChartGestures({
@@ -561,7 +512,7 @@ export function ChartFullscreenPage({
           tempDrawing={tempDrawing}
           setTempDrawing={setTempDrawing}
           setDrawings={setDrawings}
-          saveDrawingMutation={saveDrawingMutation}
+          saveDrawingMutation={{ mutate: drawingsPersistence.saveDrawing }}
           onPointCommitRef={onPointCommitRef}
         />
         
