@@ -127,13 +127,13 @@ export function ChartFullscreenPage({
   
   // Selection modal state
   const [showSelectionModal, setShowSelectionModal] = useState(false);
-const [nearbyDrawings, setNearbyDrawings] = useState<Array<{ 
-  id: string; 
-  type: string; 
-  color?: string;
-  points?: { time: number; price: number }[];
-}>>([]);
-  
+  const [nearbyDrawings, setNearbyDrawings] = useState<Array<{ 
+    id: string; 
+    type: string; 
+    color?: string;
+    points?: { time: number; price: number }[];
+  }>>([]);
+
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -157,75 +157,75 @@ const [nearbyDrawings, setNearbyDrawings] = useState<Array<{
     activeToolRef.current = tool;
   }, []);
   
-// Handler for chart clicks (radial selection)
-const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
-  console.log('[ChartClick] Event fired, type:', event.type);
-  console.log('[ChartClick] activeTool:', activeTool);
-  
-  // Only handle clicks when no tool is active (not in drawing mode)
-  if (activeTool) {
-    console.log('[ChartClick] Tool is active, ignoring click');
-    return;
-  }
-  
-  const chartElement = chartContainerRef.current;
-  if (!chartElement || !chartRef.current || !candleSeriesRef.current) {
-    console.log('[ChartClick] Missing refs');
-    return;
-  }
-  
-  const rect = chartElement.getBoundingClientRect();
-  
-  // Handle both mouse and touch events
-  let clientX: number;
-  let clientY: number;
-  
-  if ('touches' in event && event.touches.length > 0) {
-    // Touch event
-    clientX = event.touches[0].clientX;
-    clientY = event.touches[0].clientY;
-  } else if ('clientX' in event) {
-    // Mouse event
-    clientX = event.clientX;
-    clientY = event.clientY;
-  } else {
-    return;
-  }
-  
-  const clickX = clientX - rect.left;
-  const clickY = clientY - rect.top;
-  
-  console.log('[ChartClick] Coordinates:', { clickX, clickY });
-  console.log('[ChartClick] Available drawings:', drawings.length);
-  
-  // Find all drawings within click radius
-  const hits = findDrawingsNearClick(clickX, clickY, drawings, chartRef.current, candleSeriesRef.current);
-  
-  console.log('[ChartClick] Hits found:', hits.length);
-  
-  if (hits.length === 0) {
-    console.log('[ChartClick] No hits - deselecting');
-    setSelectedDrawingId(null);
-    setQuickMenuPosition(null);
-  } else if (hits.length === 1) {
-    console.log('[ChartClick] Single hit - selecting:', hits[0].drawingId);
-    setSelectedDrawingId(hits[0].drawingId);
-    setQuickMenuPosition({ x: clientX, y: clientY });
-  } else {
-    console.log('[ChartClick] Multiple hits - showing modal');
-    // Map hits to include drawing details for preview
-    setNearbyDrawings(hits.map(h => {
-      const drawing = drawings.find(d => d.id === h.drawingId);
-      return {
-        id: h.drawingId,
-        type: h.drawingType,
-        color: drawing?.style?.color || '#3b82f6',
-        points: drawing?.points,
-      };
-    }));
-    setShowSelectionModal(true);
-  }
-}, [activeTool, drawings]);
+  // Handler for chart clicks (radial selection)
+  const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
+    console.log('[ChartClick] Event fired, type:', event.type);
+    console.log('[ChartClick] activeTool:', activeTool);
+    
+    // Only handle clicks when no tool is active (not in drawing mode)
+    if (activeTool) {
+      console.log('[ChartClick] Tool is active, ignoring click');
+      return;
+    }
+    
+    const chartElement = chartContainerRef.current;
+    if (!chartElement || !chartRef.current || !candleSeriesRef.current) {
+      console.log('[ChartClick] Missing refs');
+      return;
+    }
+    
+    const rect = chartElement.getBoundingClientRect();
+    
+    // Handle both mouse and touch events
+    let clientX: number;
+    let clientY: number;
+    
+    if ('touches' in event && event.touches.length > 0) {
+      // Touch event
+      clientX = event.touches[0].clientX;
+      clientY = event.touches[0].clientY;
+    } else if ('clientX' in event) {
+      // Mouse event
+      clientX = event.clientX;
+      clientY = event.clientY;
+    } else {
+      return;
+    }
+    
+    const clickX = clientX - rect.left;
+    const clickY = clientY - rect.top;
+    
+    console.log('[ChartClick] Coordinates:', { clickX, clickY });
+    console.log('[ChartClick] Available drawings:', drawings.length);
+    
+    // Find all drawings within click radius
+    const hits = findDrawingsNearClick(clickX, clickY, drawings, chartRef.current, candleSeriesRef.current);
+    
+    console.log('[ChartClick] Hits found:', hits.length);
+    
+    if (hits.length === 0) {
+      console.log('[ChartClick] No hits - deselecting');
+      setSelectedDrawingId(null);
+      setQuickMenuPosition(null);
+    } else if (hits.length === 1) {
+      console.log('[ChartClick] Single hit - selecting:', hits[0].drawingId);
+      setSelectedDrawingId(hits[0].drawingId);
+      setQuickMenuPosition({ x: clientX, y: clientY });
+    } else {
+      console.log('[ChartClick] Multiple hits - showing modal');
+      // Map hits to include drawing details for preview
+      setNearbyDrawings(hits.map(h => {
+        const drawing = drawings.find(d => d.id === h.drawingId);
+        return {
+          id: h.drawingId,
+          type: h.drawingType,
+          color: drawing?.style?.color || '#3b82f6',
+          points: drawing?.points,
+        };
+      }));
+      setShowSelectionModal(true);
+    }
+  }, [activeTool, drawings]);
   
   // Handler to close quick menu
   const handleCloseQuickMenu = useCallback(() => {
@@ -255,6 +255,21 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
   const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
     if (!selectedDrawingId) return;
     
+    // Validate drawing exists and has server ID
+    const drawing = drawings.find(d => d.id === selectedDrawingId);
+    if (!drawing) {
+      console.error('[Update] Drawing not found:', selectedDrawingId);
+      return;
+    }
+    
+    if (selectedDrawingId.startsWith('drawing-')) {
+      console.error('[Update] Cannot update drawing with temp ID:', selectedDrawingId);
+      // Wait for server ID to be assigned
+      return;
+    }
+    
+    console.log('[Update] Updating drawing:', selectedDrawingId, 'with:', updates);
+    
     // Update locally first
     setDrawings(prev => prev.map(d => 
       d.id === selectedDrawingId 
@@ -267,7 +282,7 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
       id: selectedDrawingId, 
       updates: { style: updates.style } 
     });
-  }, [selectedDrawingId, drawingsPersistence]);
+  }, [selectedDrawingId, drawings, drawingsPersistence]);
   
   // Handler for selection from modal
   const handleSelectFromModal = useCallback((drawingId: string) => {
@@ -347,9 +362,6 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
-    
-    // Capture ref value for cleanup
-    const chartContainer = chartContainerRef.current;
 
     // Handle resize
     const handleResize = () => {
@@ -371,19 +383,19 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
     };
   }, []);
   
- // Attach click handler to chart
-useEffect(() => {
-  const chartElement = chartContainerRef.current;
-  if (!chartElement) return;
-  
-  chartElement.addEventListener('click', handleChartClick as EventListener);
-  chartElement.addEventListener('touchstart', handleChartClick as EventListener);
-  
-  return () => {
-    chartElement.removeEventListener('click', handleChartClick as EventListener);
-    chartElement.removeEventListener('touchstart', handleChartClick as EventListener);
-  };
-}, [handleChartClick]);
+  // Attach click handler to chart
+  useEffect(() => {
+    const chartElement = chartContainerRef.current;
+    if (!chartElement) return;
+    
+    chartElement.addEventListener('click', handleChartClick as EventListener);
+    chartElement.addEventListener('touchstart', handleChartClick as EventListener);
+    
+    return () => {
+      chartElement.removeEventListener('click', handleChartClick as EventListener);
+      chartElement.removeEventListener('touchstart', handleChartClick as EventListener);
+    };
+  }, [handleChartClick]);
 
   // Fetch candles data
   useEffect(() => {
@@ -433,8 +445,15 @@ useEffect(() => {
       const loadedDrawings = drawingsPersistence.drawings
         .map((d: any): Drawing | null => {
           try {
+            // Always use server ID if available
+            const serverId = d.id;
+            if (!serverId) {
+              console.warn('[Persistence] Drawing missing server ID:', d);
+              return null;
+            }
+            
             return {
-              id: d.id || `drawing-${Date.now()}`,
+              id: serverId, // Use server ID directly, no fallback
               type: d.drawingType || d.drawing_type || d.tool || 'trendline',
               points: d.coordinates?.points || d.points || [],
               style: {
@@ -450,16 +469,10 @@ useEffect(() => {
         })
         .filter((d): d is Drawing => d !== null && d.points.length > 0);
       
-      console.log('[Persistence] Parsed drawings:', loadedDrawings.length);
+      console.log('[Persistence] Parsed drawings with server IDs:', loadedDrawings.map(d => d.id));
       
-      setDrawings(prev => {
-        const hasTempIds = prev.some(d => d.id.startsWith('drawing-'));
-        if (hasTempIds && loadedDrawings.length === prev.length) {
-          console.log('[Persistence] Skipping update - waiting for server IDs');
-          return prev;
-        }
-        return loadedDrawings;
-      });
+      // Always sync with server data
+      setDrawings(loadedDrawings);
     }
   }, [drawingsPersistence.drawings]);
 
