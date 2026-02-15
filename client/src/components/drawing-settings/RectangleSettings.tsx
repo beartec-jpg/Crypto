@@ -16,6 +16,12 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
   const showLabel = drawing.style?.showLabel !== false;
   const labelPosition = drawing.style?.labelPosition || 'right';
 
+  // Helper to wrap updates in { style: { ... } } format
+  const handleUpdate = (styleUpdates: any) => {
+    console.log('[RectangleSettings] Updating with:', styleUpdates);
+    onUpdate({ style: { ...drawing.style, ...styleUpdates } });
+  };
+
   return (
     <div className="space-y-4 p-4 bg-slate-900 rounded-lg">
       {/* Color */}
@@ -23,21 +29,21 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
         <span className="text-xs text-slate-400 w-16">Color:</span>
         <ColorPicker
           color={color}
-          onChange={(c) => onUpdate({ color: c })}
+          onChange={(c) => handleUpdate({ color: c })}
         />
       </div>
 
       {/* Opacity */}
       <OpacitySlider
         value={opacity}
-        onChange={(val) => onUpdate({ opacity: val })}
+        onChange={(val) => handleUpdate({ opacity: val })}
         label="Opacity"
       />
 
       {/* Line Width */}
       <LineWidthSelector
         value={lineWidth}
-        onChange={(w) => onUpdate({ lineWidth: w })}
+        onChange={(w) => handleUpdate({ lineWidth: w })}
       />
 
       {/* Fill Opacity */}
@@ -49,7 +55,7 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
             min="0"
             max="100"
             value={Math.round(fillOpacity * 100)}
-            onChange={(e) => onUpdate({ fillOpacity: parseInt(e.target.value) / 100 })}
+            onChange={(e) => handleUpdate({ fillOpacity: parseInt(e.target.value) / 100 })}
             className="flex-1 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-500"
           />
           <span className="text-xs text-slate-300 w-10 text-right">{Math.round(fillOpacity * 100)}%</span>
@@ -62,7 +68,7 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
         <input
           type="text"
           value={label}
-          onChange={(e) => onUpdate({ label: e.target.value })}
+          onChange={(e) => handleUpdate({ label: e.target.value })}
           placeholder="Enter label..."
           className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500"
         />
@@ -73,7 +79,7 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">Show Label</span>
           <button
-            onClick={() => onUpdate({ showLabel: !showLabel })}
+            onClick={() => handleUpdate({ showLabel: !showLabel })}
             className={`relative w-11 h-6 rounded-full transition-colors ${
               showLabel ? 'bg-cyan-600' : 'bg-slate-600'
             }`}
@@ -94,7 +100,7 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
           <div className="text-xs text-slate-400 mb-2">Label Position</div>
           <div className="flex gap-2">
             <button
-              onClick={() => onUpdate({ labelPosition: 'left' })}
+              onClick={() => handleUpdate({ labelPosition: 'left' })}
               className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
                 labelPosition === 'left'
                   ? 'bg-cyan-600 text-white'
@@ -105,7 +111,7 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
               Left
             </button>
             <button
-              onClick={() => onUpdate({ labelPosition: 'right' })}
+              onClick={() => handleUpdate({ labelPosition: 'right' })}
               className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
                 labelPosition === 'right'
                   ? 'bg-cyan-600 text-white'
