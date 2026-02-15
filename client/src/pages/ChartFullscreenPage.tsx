@@ -6,6 +6,17 @@ import { Button } from '@/components/ui/button';
 import { DrawingToolbar } from '@/components/drawings/DrawingToolbar';
 import { useDrawingState } from '@/hooks/useDrawingState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
+import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
+import { 
+  createDrawingPrimitive, 
+  DrawingPrimitive,
+  TrendLinePrimitive,
+  HorizontalLinePrimitive,
+  RectanglePrimitive,
+  FibRetracementPrimitive,
+  ChannelPrimitive
+} from '@/lib/chartPrimitives';
+import { getAutoColor } from '@/lib/chart/colorUtils';
 
 type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
 
@@ -54,18 +65,34 @@ export function ChartFullscreenPage({
   const [tempDrawing, setTempDrawing] = useState<{
     points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[]
   } | null>(null);
+  
+  // Drawing state
+  const [drawings, setDrawings] = useState<any[]>([]);
+  const [drawingsVisible, setDrawingsVisible] = useState(true);
+  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [activeEdit, setActiveEdit] = useState<{ drawingId: string; pointIndex: number; originalDrawing: any } | null>(null);
+  const [autoColorEnabled, setAutoColorEnabled] = useState(true);
 
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
+  
+  // Refs for drawing logic (to avoid recreating callbacks)
+  const activeToolRef = useRef<DrawingTool>(null);
+  const autoColorEnabledRef = useRef(autoColorEnabled);
 
   // Drawing state - independent from parent
   const drawingState = useDrawingState();
+  
+  // Drawing persistence hook
+  const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
 
   // Tool selection handler
   const handleSelectTool = useCallback((tool: DrawingTool) => {
     setActiveTool(tool);
+    activeToolRef.current = tool;
     setShowToolPicker(false); // Auto-close picker after tool selection
   }, []);
 
@@ -73,10 +100,20 @@ export function ChartFullscreenPage({
   const handleToggleToolPicker = useCallback(() => {
     setShowToolPicker(prev => !prev);
   }, []);
+  
+  // Update refs when values change
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+  
+  useEffect(() => {
+    autoColorEnabledRef.current = autoColorEnabled;
+  }, [autoColorEnabled]);
 
   // Handle point commit from gesture system
   const handlePointCommit = useCallback((point: GesturePoint) => {
-    if (!activeTool) return;
+    const currentTool = activeToolRef.current;
+    if (!currentTool) return;
     
     setTempDrawing(prev => {
       if (!prev) return { points: [{ 
@@ -91,26 +128,54 @@ export function ChartFullscreenPage({
         snapType: point.snapType 
       }];
       
-      const requiredPoints = activeTool === 'horizontal' ? 1 : 2;
+      // Fix requiredPoints logic: horizontal=1, trend_fib=3, others=2
+      const requiredPoints = currentTool === 'horizontal' ? 1 : currentTool === 'trend_fib' ? 3 : 2;
       
       // Save drawing when enough points are collected
       if (newPoints.length >= requiredPoints) {
+        // Determine color based on auto-color setting and snap types
+        const color = autoColorEnabledRef.current ? getAutoColor(newPoints, candles) : '#3b82f6';
+        
+        // Load saved defaults for fib and channel tools
+        let savedDefaults: any = {};
+        if (currentTool === 'fib_retracement' || currentTool === 'trend_fib' || currentTool === 'channel') {
+          try {
+            const defaultKey = currentTool === 'channel' ? 'channelDefaults' : `fibDefaults_${currentTool}`;
+            const stored = localStorage.getItem(defaultKey);
+            if (stored) savedDefaults = JSON.parse(stored);
+          } catch (e) {}
+        }
+        
+        // For channels, set autoColor based on global setting and default extendRight to true
+        const channelStyle = currentTool === 'channel' 
+          ? { autoColor: autoColorEnabledRef.current, labelPosition: 'right' as const, extendRight: true }
+          : {};
+        
         const newDrawing = {
           id: `drawing-${Date.now()}`,
-          type: activeTool,
+          type: currentTool,
           points: newPoints,
-          style: { color: '#3b82f6', lineWidth: 2 }
+          style: { color, lineWidth: 2, ...savedDefaults, ...channelStyle }
         };
         
-        // Save to drawings state (will be implemented with drawing persistence)
-        console.log('Drawing complete:', newDrawing);
+        // Add to local state immediately for instant feedback
+        setDrawings(d => [...d, newDrawing]);
+        
+        // Save to database
+        drawingsPersistence.saveDrawing({
+          symbol,
+          interval: timeframe,
+          tool: currentTool,
+          points: newPoints,
+          style: newDrawing.style,
+        });
         
         return { points: [] }; // Reset for next drawing
       }
       
       return { points: newPoints };
     });
-  }, [activeTool]);
+  }, [candles, symbol, timeframe, drawingsPersistence]);
 
   // Initialize gesture controller
   const gestureController = useChartGestures({
@@ -216,6 +281,18 @@ export function ChartFullscreenPage({
 
     fetchCandles();
   }, [symbol, timeframe]);
+  
+  // Load saved drawings from database
+  useEffect(() => {
+    if (drawingsPersistence.drawings) {
+      setDrawings(drawingsPersistence.drawings.map((d: any) => ({
+        id: d.id,
+        type: d.drawingType || d.drawing_type || d.tool,
+        points: d.coordinates?.points || d.points || [],
+        style: d.style || { color: '#3b82f6', lineWidth: 2 },
+      })).filter((d: any) => d.points.length > 0));
+    }
+  }, [drawingsPersistence.drawings]);
 
   // Attach gesture controller to chart
   useEffect(() => {
@@ -231,6 +308,93 @@ export function ChartFullscreenPage({
       gestureController.detachFromChart();
     };
   }, [gestureController]);
+  
+  // Attach/detach native primitives for high-performance rendering
+  useEffect(() => {
+    if (!chartRef.current || !candleSeriesRef.current) return;
+    
+    const candleSeries = candleSeriesRef.current;
+    const currentPrimitives = drawingPrimitivesRef.current;
+    const currentDrawingIds = new Set(drawings.map(d => d.id));
+    
+    // If drawings are hidden, detach all primitives
+    if (!drawingsVisible) {
+      currentPrimitives.forEach((primitive) => {
+        try {
+          candleSeries.detachPrimitive(primitive);
+        } catch (e) {
+          // Already detached
+        }
+      });
+      currentPrimitives.clear();
+      return;
+    }
+    
+    // Remove primitives for deleted drawings OR drawings being edited
+    currentPrimitives.forEach((primitive, id) => {
+      const isBeingEdited = activeEdit && activeEdit.drawingId === id;
+      if (!currentDrawingIds.has(id) || isBeingEdited) {
+        try {
+          candleSeries.detachPrimitive(primitive);
+        } catch (e) {
+          // Already detached
+        }
+        currentPrimitives.delete(id);
+      }
+    });
+    
+    // Add or update primitives for current drawings (skip if being edited)
+    drawings.forEach(drawing => {
+      const isBeingEdited = activeEdit && activeEdit.drawingId === drawing.id;
+      if (isBeingEdited) return; // Don't render primitive while editing
+      
+      const existingPrimitive = currentPrimitives.get(drawing.id);
+      
+      if (existingPrimitive) {
+        // Update existing primitive
+        existingPrimitive.setSelected(selectedDrawingId === drawing.id);
+        
+        // Update points if they changed
+        if ('updatePoints' in existingPrimitive) {
+          (existingPrimitive as TrendLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | ChannelPrimitive).updatePoints(drawing.points);
+        } else if ('updatePoint' in existingPrimitive) {
+          (existingPrimitive as HorizontalLinePrimitive).updatePoint(drawing.points[0]);
+        }
+        
+        // Update style
+        existingPrimitive.updateStyle(drawing.style);
+      } else {
+        // Create and attach new primitive
+        const primitive = createDrawingPrimitive(
+          drawing.id,
+          drawing.type,
+          drawing.points,
+          drawing.style
+        );
+        
+        if (primitive) {
+          try {
+            candleSeries.attachPrimitive(primitive);
+            currentPrimitives.set(drawing.id, primitive);
+          } catch (e) {
+            console.error('Failed to attach primitive:', e);
+          }
+        }
+      }
+    });
+    
+    // Cleanup on unmount
+    return () => {
+      currentPrimitives.forEach((primitive) => {
+        try {
+          candleSeries.detachPrimitive(primitive);
+        } catch (e) {
+          // Already detached or chart disposed
+        }
+      });
+      currentPrimitives.clear();
+    };
+  }, [drawings, selectedDrawingId, activeEdit, drawingsVisible]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
@@ -327,13 +491,21 @@ export function ChartFullscreenPage({
             tempDrawing.points.map((point, i) => {
               const x = chartRef.current?.timeScale().timeToCoordinate(point.time as Time);
               const y = candleSeriesRef.current?.priceToCoordinate(point.price);
+              
+              // Determine color based on snap type when auto-color is enabled
+              let fillColor = '#3b82f6'; // Default blue
+              if (autoColorEnabled && point.snapType) {
+                if (point.snapType === 'high') fillColor = '#ef4444'; // Red for resistance
+                else if (point.snapType === 'low') fillColor = '#22c55e'; // Green for support
+              }
+              
               return (
                 <circle 
                   key={i} 
                   cx={x ?? 0} 
                   cy={y ?? 0} 
                   r={6} 
-                  fill="#3b82f6" 
+                  fill={fillColor} 
                   stroke="#fff" 
                   strokeWidth={2}
                 />
