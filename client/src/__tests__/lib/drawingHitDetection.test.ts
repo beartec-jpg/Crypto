@@ -166,7 +166,7 @@ describe('drawingHitDetection', () => {
       };
 
       // Fib levels range from 0% (200) to 161.8% (38.2)
-      // Click far from any fib level (> CLICK_RADIUS=20 away from lowest level at ~38)
+      // Click far from any fib level (> CLICK_RADIUS=20 away from lowest level at 38.2)
       const hits = findDrawingsNearClick(150, 0, [drawing], chart, series);
       expect(hits).toHaveLength(0);
     });

@@ -125,6 +125,8 @@ function distanceToHorizontalLine(
 /**
  * Calculate distance from a point to a line parallel to a base line
  * Used for trend-based fibonacci extensions
+ * NOTE: Currently unused as trend fibs use horizontal lines, but kept for potential future use
+ * with diagonal/sloped trend fib extensions.
  */
 function distanceToParallelLine(
   clickX: number,
