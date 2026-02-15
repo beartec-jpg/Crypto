@@ -94,7 +94,9 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
   };
 
   // Oscillator selector modal options and toggle logic
-  const oscillatorOptions = [
+  type OscillatorId = 'rsi' | 'macd' | 'stochRSI' | 'obv' | 'mfi' | 'williamsR' | 'cci' | 'adx';
+  
+  const oscillatorOptions: Array<{ id: OscillatorId; name: string; icon: string }> = [
     { id: 'rsi', name: 'RSI', icon: '📈' },
     { id: 'macd', name: 'MACD', icon: '📊' },
     { id: 'stochRSI', name: 'Stochastic RSI', icon: '🎯' },
@@ -508,7 +510,7 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
                 <h4 className="text-sm font-medium text-gray-400 mb-2">⭐ Your Favorites</h4>
                 <div className="grid grid-cols-2 gap-2">
                   {oscillatorOptions
-                    .filter(osc => favoriteOscillators.includes(osc.id as any))
+                    .filter(osc => favoriteOscillators.includes(osc.id))
                     .map(osc => (
                       <button
                         key={`fav-${osc.id}`}
@@ -524,7 +526,7 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggleFavorite(osc.id as any);
+                            toggleFavorite(osc.id);
                           }}
                           className="absolute top-1.5 right-1.5 p-0.5 hover:scale-110 transition-transform"
                           disabled={isSaving}
@@ -556,14 +558,14 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      toggleFavorite(osc.id as any);
+                      toggleFavorite(osc.id);
                     }}
                     className="absolute top-1.5 right-1.5 p-0.5 hover:scale-110 transition-transform"
                     disabled={isSaving}
                   >
                     <Star 
                       className={`h-3 w-3 transition-colors ${
-                        isFavorite(osc.id as any)
+                        isFavorite(osc.id)
                           ? 'fill-yellow-400 text-yellow-400'
                           : 'fill-none text-gray-500 hover:text-gray-300'
                       }`}
