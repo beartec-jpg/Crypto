@@ -32,7 +32,8 @@ export function DrawingToolbar({
     onSelectTool(toolId as DrawingTool);
     toast({ 
       title: `${tools.find(t => t.id === toolId)?.name} Selected`, 
-      description: 'Click on chart to place points' 
+      description: 'Tap chart to place points',
+      duration: 2000,
     });
   };
 

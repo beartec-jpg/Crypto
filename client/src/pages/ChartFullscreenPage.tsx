@@ -256,12 +256,16 @@ export function ChartFullscreenPage({
 
         {/* Ticker selector */}
         <Select value={symbol} onValueChange={setSymbol}>
-          <SelectTrigger className="w-40 bg-slate-800 text-white hover:bg-slate-700 border-slate-600">
+          <SelectTrigger className="w-40 bg-slate-800 text-white border-slate-600 hover:bg-slate-700 focus:ring-slate-500">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="bg-slate-800 text-white border-slate-600">
+          <SelectContent className="bg-slate-800 border-slate-600">
             {watchlistTickers.map((ticker) => (
-              <SelectItem key={ticker} value={ticker}>
+              <SelectItem 
+                key={ticker} 
+                value={ticker}
+                className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer"
+              >
                 {formatSymbol(ticker)}
               </SelectItem>
             ))}
@@ -270,16 +274,16 @@ export function ChartFullscreenPage({
 
         {/* Timeframe selector */}
         <Select value={timeframe} onValueChange={setTimeframe}>
-          <SelectTrigger className="w-24 bg-slate-800 text-white hover:bg-slate-700 border-slate-600">
+          <SelectTrigger className="w-24 bg-slate-800 text-white border-slate-600 hover:bg-slate-700 focus:ring-slate-500">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="bg-slate-800 text-white border-slate-600">
-            <SelectItem value="1m">1m</SelectItem>
-            <SelectItem value="5m">5m</SelectItem>
-            <SelectItem value="15m">15m</SelectItem>
-            <SelectItem value="1h">1h</SelectItem>
-            <SelectItem value="4h">4h</SelectItem>
-            <SelectItem value="1d">1d</SelectItem>
+          <SelectContent className="bg-slate-800 border-slate-600">
+            <SelectItem value="1m" className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer">1m</SelectItem>
+            <SelectItem value="5m" className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer">5m</SelectItem>
+            <SelectItem value="15m" className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer">15m</SelectItem>
+            <SelectItem value="1h" className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer">1h</SelectItem>
+            <SelectItem value="4h" className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer">4h</SelectItem>
+            <SelectItem value="1d" className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer">1d</SelectItem>
           </SelectContent>
         </Select>
       </div>
