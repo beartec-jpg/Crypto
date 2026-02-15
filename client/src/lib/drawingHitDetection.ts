@@ -21,6 +21,15 @@ const TREND_FIB_LEVELS = [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.61
 const CHANNEL_LEVELS = [0.25, 0.5, 0.75];
 
 /**
+ * Check if a level is hidden in the hiddenLevels array
+ * Uses rounding to avoid floating-point comparison issues
+ */
+function isLevelHidden(level: number, hiddenLevels: number[]): boolean {
+  const roundedLevel = Math.round(level * 10000) / 10000;
+  return hiddenLevels.some((h: number) => Math.round(h * 10000) / 10000 === roundedLevel);
+}
+
+/**
  * Calculate distance from a point to an infinite line
  * Uses perpendicular distance formula
  */
@@ -253,8 +262,7 @@ function getDistanceToDrawing(
       
       for (const level of FIB_LEVELS) {
         // Skip hidden levels
-        const roundedLevel = Math.round(level * 10000) / 10000;
-        if (hiddenLevels.some((h: number) => Math.round(h * 10000) / 10000 === roundedLevel)) {
+        if (isLevelHidden(level, hiddenLevels)) {
           continue;
         }
         
@@ -295,8 +303,7 @@ function getDistanceToDrawing(
       
       for (const level of TREND_FIB_LEVELS) {
         // Skip hidden levels
-        const roundedLevel = Math.round(level * 10000) / 10000;
-        if (hiddenLevels.some((h: number) => Math.round(h * 10000) / 10000 === roundedLevel)) {
+        if (isLevelHidden(level, hiddenLevels)) {
           continue;
         }
         
@@ -348,8 +355,7 @@ function getDistanceToDrawing(
       const priceDiff = topPrice - bottomPrice;
       for (const level of CHANNEL_LEVELS) {
         // Skip hidden levels
-        const roundedLevel = Math.round(level * 10000) / 10000;
-        if (hiddenLevels.some((h: number) => Math.round(h * 10000) / 10000 === roundedLevel)) {
+        if (isLevelHidden(level, hiddenLevels)) {
           continue;
         }
         
