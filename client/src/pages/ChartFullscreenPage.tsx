@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries, Time } from 'lightweight-charts';
 import { X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -193,6 +193,21 @@ export function ChartFullscreenPage({
       updates: { style: updates.style } 
     });
   }, [selectedDrawingId, drawingsPersistence]);
+  
+  // Memoize selected drawing to avoid redundant searches and transformations
+  const selectedDrawingForModal = useMemo(() => {
+    if (!selectedDrawingId) return null;
+    const drawing = drawings.find(d => d.id === selectedDrawingId);
+    if (!drawing) return null;
+    
+    return {
+      ...drawing,
+      points: drawing.points.map(p => ({ 
+        time: p.time, 
+        value: p.price 
+      })),
+    };
+  }, [selectedDrawingId, drawings]);
   
   // Update refs when values change
   useEffect(() => {
@@ -617,27 +632,14 @@ export function ChartFullscreenPage({
       </div>
       
       {/* Settings Modal */}
-      {selectedDrawingId && (() => {
-        const selectedDrawing = drawings.find(d => d.id === selectedDrawingId);
-        return (
-          <DrawingSettingsModal
-            isOpen={settingsModalOpen}
-            onClose={handleCloseSettings}
-            drawing={
-              selectedDrawing 
-                ? {
-                    ...selectedDrawing,
-                    points: selectedDrawing.points.map(p => ({ 
-                      time: p.time, 
-                      value: p.price 
-                    })),
-                  }
-                : null
-            }
-            onUpdate={handleUpdateDrawing}
-          />
-        );
-      })()}
+      {selectedDrawingId && (
+        <DrawingSettingsModal
+          isOpen={settingsModalOpen}
+          onClose={handleCloseSettings}
+          drawing={selectedDrawingForModal}
+          onUpdate={handleUpdateDrawing}
+        />
+      )}
     </div>
   );
 }
