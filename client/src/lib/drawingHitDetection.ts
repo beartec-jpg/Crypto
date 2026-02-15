@@ -108,14 +108,14 @@ function getDistanceToDrawing(
       const x2 = timeScale.timeToCoordinate(drawing.points[1].time as Time);
       const y2 = series.priceToCoordinate(drawing.points[1].price);
       
-      // If 3 points available, use point3 for horizontal extent
+      if (x1 === null || y1 === null || x2 === null || y2 === null) return null;
+      
+      // If 3 points available, use point3 for horizontal extent, otherwise use x2
       let x3 = x2;
       if (drawing.points.length >= 3) {
         const x3Raw = timeScale.timeToCoordinate(drawing.points[2].time as Time);
         if (x3Raw !== null) x3 = x3Raw;
       }
-      
-      if (x1 === null || y1 === null || x2 === null || y2 === null) return null;
       
       // Bounding box uses min(x1,x2) to x3 for horizontal extent
       const left = Math.min(x1, x2);
