@@ -5328,7 +5328,7 @@ useEffect(() => {
             symbol: symbol,
             timeframe: interval,
             style: drawings.find(d => d.id === selectedDrawingId)?.style,
-          } : null as any}
+          } : null}
           onUpdate={(updates) => {
             const selectedDrawing = drawings.find(d => d.id === selectedDrawingId);
             if (!selectedDrawing) return;

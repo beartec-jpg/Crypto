@@ -943,19 +943,23 @@ class PriceMonitorService {
       }
     }
 
-    if (needsUpdate || Object.keys(levelAlerts).length > 0) {
-      const { db } = await import("../db");
-      const { chartDrawings } = await import("@shared/schema");
-      const { sql } = await import("drizzle-orm");
+    // Always update lastCheckedPrice, but only update updatedAt when alerts trigger
+    const { db } = await import("../db");
+    const { chartDrawings } = await import("@shared/schema");
+    const { sql } = await import("drizzle-orm");
 
-      await db.update(chartDrawings).set({
-        style: {
-          ...currentStyle,
-          levelAlerts: updatedLevelAlerts,
-        },
-        updatedAt: needsUpdate ? new Date() : undefined,
-      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+    const updatePayload: any = {
+      style: {
+        ...currentStyle,
+        levelAlerts: updatedLevelAlerts,
+      },
+    };
+    
+    if (needsUpdate) {
+      updatePayload.updatedAt = new Date();
     }
+
+    await db.update(chartDrawings).set(updatePayload).where(sql`${chartDrawings.id} = ${drawing.id}`);
   }
 
   private async checkFibRetracementAlert(drawing: any, currentPrice: number, currentStyle: any) {
@@ -1021,19 +1025,23 @@ class PriceMonitorService {
       }
     }
 
-    if (needsUpdate || Object.keys(levelAlerts).length > 0) {
-      const { db } = await import("../db");
-      const { chartDrawings } = await import("@shared/schema");
-      const { sql } = await import("drizzle-orm");
+    // Always update lastCheckedPrice, but only update updatedAt when alerts trigger
+    const { db } = await import("../db");
+    const { chartDrawings } = await import("@shared/schema");
+    const { sql } = await import("drizzle-orm");
 
-      await db.update(chartDrawings).set({
-        style: {
-          ...currentStyle,
-          levelAlerts: updatedLevelAlerts,
-        },
-        updatedAt: needsUpdate ? new Date() : undefined,
-      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+    const updatePayload: any = {
+      style: {
+        ...currentStyle,
+        levelAlerts: updatedLevelAlerts,
+      },
+    };
+    
+    if (needsUpdate) {
+      updatePayload.updatedAt = new Date();
     }
+
+    await db.update(chartDrawings).set(updatePayload).where(sql`${chartDrawings.id} = ${drawing.id}`);
   }
 
   private async checkTrendFibAlert(drawing: any, currentPrice: number, currentStyle: any) {
@@ -1101,19 +1109,23 @@ class PriceMonitorService {
       }
     }
 
-    if (needsUpdate || Object.keys(levelAlerts).length > 0) {
-      const { db } = await import("../db");
-      const { chartDrawings } = await import("@shared/schema");
-      const { sql } = await import("drizzle-orm");
+    // Always update lastCheckedPrice, but only update updatedAt when alerts trigger
+    const { db } = await import("../db");
+    const { chartDrawings } = await import("@shared/schema");
+    const { sql } = await import("drizzle-orm");
 
-      await db.update(chartDrawings).set({
-        style: {
-          ...currentStyle,
-          levelAlerts: updatedLevelAlerts,
-        },
-        updatedAt: needsUpdate ? new Date() : undefined,
-      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+    const updatePayload: any = {
+      style: {
+        ...currentStyle,
+        levelAlerts: updatedLevelAlerts,
+      },
+    };
+    
+    if (needsUpdate) {
+      updatePayload.updatedAt = new Date();
     }
+
+    await db.update(chartDrawings).set(updatePayload).where(sql`${chartDrawings.id} = ${drawing.id}`);
   }
 
   private async checkRectangleAlert(drawing: any, currentPrice: number, currentStyle: any) {
@@ -1173,18 +1185,23 @@ class PriceMonitorService {
       }
     }
 
-    if (needsUpdate || Object.keys(levelAlerts).length > 0) {
-      const { db } = await import("../db");
-      const { chartDrawings } = await import("@shared/schema");
-      const { sql } = await import("drizzle-orm");
+    // Always update lastCheckedPrice, but only update updatedAt when alerts trigger
+    const { db } = await import("../db");
+    const { chartDrawings } = await import("@shared/schema");
+    const { sql } = await import("drizzle-orm");
 
-      await db.update(chartDrawings).set({
-        style: {
-          ...currentStyle,
-          levelAlerts: updatedLevelAlerts,
-        },
-        updatedAt: needsUpdate ? new Date() : undefined,
-      }).where(sql`${chartDrawings.id} = ${drawing.id}`);
+    const updatePayload: any = {
+      style: {
+        ...currentStyle,
+        levelAlerts: updatedLevelAlerts,
+      },
+    };
+    
+    if (needsUpdate) {
+      updatePayload.updatedAt = new Date();
+    }
+
+    await db.update(chartDrawings).set(updatePayload).where(sql`${chartDrawings.id} = ${drawing.id}`);
     }
   }
 

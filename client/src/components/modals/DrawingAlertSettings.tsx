@@ -34,7 +34,7 @@ interface DrawingAlertSettingsProps {
         };
       };
     };
-  };
+  } | null;
   onUpdate: (updates: { style: any }) => void;
 }
 
