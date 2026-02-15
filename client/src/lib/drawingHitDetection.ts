@@ -49,7 +49,7 @@ function getDistanceToDrawing(
   const timeScale = chart.timeScale();
   
   switch (drawing.type) {
-    case 'trendline':
+    case 'trendline': {
       if (drawing.points.length < 2) return null;
       const x1 = timeScale.timeToCoordinate(drawing.points[0].time as Time);
       const y1 = series.priceToCoordinate(drawing.points[0].price);
@@ -70,13 +70,15 @@ function getDistanceToDrawing(
       const projY = y1 + t * dy;
       
       return Math.sqrt((clickX - projX) ** 2 + (clickY - projY) ** 2);
+    }
     
-    case 'horizontal':
+    case 'horizontal': {
       if (drawing.points.length < 1) return null;
       const lineY = series.priceToCoordinate(drawing.points[0].price);
       return lineY === null ? null : Math.abs(clickY - lineY);
+    }
     
-    case 'rectangle':
+    case 'rectangle': {
       if (drawing.points.length < 2) return null;
       const rx1 = timeScale.timeToCoordinate(drawing.points[0].time as Time);
       const ry1 = series.priceToCoordinate(drawing.points[0].price);
@@ -92,9 +94,36 @@ function getDistanceToDrawing(
       
       if (clickX >= left && clickX <= right && clickY >= top && clickY <= bottom) return 0;
       
-      const dx = Math.max(left - clickX, 0, clickX - right);
-      const dy = Math.max(top - clickY, 0, clickY - bottom);
-      return Math.sqrt(dx * dx + dy * dy);
+      const rectDx = Math.max(left - clickX, 0, clickX - right);
+      const rectDy = Math.max(top - clickY, 0, clickY - bottom);
+      return Math.sqrt(rectDx * rectDx + rectDy * rectDy);
+    }
+    
+    case 'fib_retracement':
+    case 'trend_fib':
+    case 'channel': {
+      // For fib/channel tools, check distance to any of the level lines
+      if (drawing.points.length < 2) return null;
+      
+      const x1 = timeScale.timeToCoordinate(drawing.points[0].time as Time);
+      const y1 = series.priceToCoordinate(drawing.points[0].price);
+      const x2 = timeScale.timeToCoordinate(drawing.points[1].time as Time);
+      const y2 = series.priceToCoordinate(drawing.points[1].price);
+      
+      if (x1 === null || y1 === null || x2 === null || y2 === null) return null;
+      
+      // Simple approximation: distance to bounding box
+      const left = Math.min(x1, x2);
+      const right = Math.max(x1, x2);
+      const top = Math.min(y1, y2);
+      const bottom = Math.max(y1, y2);
+      
+      if (clickX >= left && clickX <= right && clickY >= top && clickY <= bottom) return 0;
+      
+      const fibDx = Math.max(left - clickX, 0, clickX - right);
+      const fibDy = Math.max(top - clickY, 0, clickY - bottom);
+      return Math.sqrt(fibDx * fibDx + fibDy * fibDy);
+    }
     
     default:
       return null;
