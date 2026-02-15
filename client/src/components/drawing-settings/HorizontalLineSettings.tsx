@@ -14,6 +14,12 @@ export function HorizontalLineSettings({ drawing, onUpdate }: HorizontalLineSett
   const lineWidth = drawing.style?.lineWidth || 2;
   const lineStyle = drawing.style?.lineStyle || 'solid';
 
+  // Helper to wrap updates in { style: { ... } } format
+  const handleUpdate = (styleUpdates: any) => {
+    console.log('[HorizontalLineSettings] Updating with:', styleUpdates);
+    onUpdate({ style: { ...drawing.style, ...styleUpdates } });
+  };
+
   return (
     <div className="space-y-4 p-4 bg-slate-900 rounded-lg">
       {/* Color */}
@@ -21,27 +27,27 @@ export function HorizontalLineSettings({ drawing, onUpdate }: HorizontalLineSett
         <span className="text-xs text-slate-400 w-16">Color:</span>
         <ColorPicker
           color={color}
-          onChange={(c) => onUpdate({ color: c })}
+          onChange={(c) => handleUpdate({ color: c })}
         />
       </div>
 
       {/* Opacity */}
       <OpacitySlider
         value={opacity}
-        onChange={(val) => onUpdate({ opacity: val })}
+        onChange={(val) => handleUpdate({ opacity: val })}
         label="Opacity"
       />
 
       {/* Line Width */}
       <LineWidthSelector
         value={lineWidth}
-        onChange={(w) => onUpdate({ lineWidth: w })}
+        onChange={(w) => handleUpdate({ lineWidth: w })}
       />
 
       {/* Line Style */}
       <LineStyleSelector
         value={lineStyle}
-        onChange={(style) => onUpdate({ lineStyle: style })}
+        onChange={(style) => handleUpdate({ lineStyle: style })}
       />
     </div>
   );
