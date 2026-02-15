@@ -4,9 +4,12 @@ import { X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { DrawingToolbar } from '@/components/drawings/DrawingToolbar';
+import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { useDrawingState } from '@/hooks/useDrawingState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
+import { useMutation } from '@tanstack/react-query';
+import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { 
   createDrawingPrimitive, 
   DrawingPrimitive,
@@ -126,6 +129,7 @@ export function ChartFullscreenPage({
   // Refs for drawing logic (to avoid recreating callbacks)
   const activeToolRef = useRef<DrawingTool>(null);
   const autoColorEnabledRef = useRef(autoColorEnabled);
+  const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
 
   // Drawing state - independent from parent
   const drawingState = useDrawingState();
@@ -154,80 +158,25 @@ export function ChartFullscreenPage({
     autoColorEnabledRef.current = autoColorEnabled;
   }, [autoColorEnabled]);
 
-  // Handle point commit from gesture system
-  const handlePointCommit = useCallback((point: GesturePoint) => {
-    const currentTool = activeToolRef.current;
-    if (!currentTool) return;
-    
-    setTempDrawing(prev => {
-      if (!prev) return { points: [{ 
-        time: point.time as number, 
-        price: point.price, 
-        snapType: point.snapType 
-      }] };
-      
-      const newPoints = [...prev.points, { 
-        time: point.time as number, 
-        price: point.price, 
-        snapType: point.snapType 
-      }];
-      
-      // Fix requiredPoints logic: horizontal=1, trend_fib=3, others=2
-      const requiredPoints = currentTool === 'horizontal' ? 1 : currentTool === 'trend_fib' ? 3 : 2;
-      
-      // Save drawing when enough points are collected
-      if (newPoints.length >= requiredPoints) {
-        // Determine color based on auto-color setting and snap types
-        const color = autoColorEnabledRef.current ? getAutoColor(newPoints, candles) : '#3b82f6';
-        
-        // Load saved defaults for fib and channel tools
-        let savedDefaults: DrawingDefaults = {};
-        if (currentTool === 'fib_retracement' || currentTool === 'trend_fib' || currentTool === 'channel') {
-          try {
-            const defaultKey = currentTool === 'channel' ? 'channelDefaults' : `fibDefaults_${currentTool}`;
-            const stored = localStorage.getItem(defaultKey);
-            if (stored) savedDefaults = JSON.parse(stored);
-          } catch (e) {
-            console.warn(`Failed to load ${currentTool} defaults:`, e);
-          }
-        }
-        
-        // For channels, set autoColor based on global setting and default extendRight to true
-        const channelStyle = currentTool === 'channel' 
-          ? { autoColor: autoColorEnabledRef.current, labelPosition: 'right' as const, extendRight: true }
-          : {};
-        
-        const newDrawing = {
-          id: `drawing-${Date.now()}`,
-          type: currentTool,
-          points: newPoints,
-          style: { color, lineWidth: 2, ...savedDefaults, ...channelStyle }
-        };
-        
-        // Add to local state immediately for instant feedback
-        setDrawings(d => [...d, newDrawing]);
-        
-        // Save to database
-        drawingsPersistence.saveDrawing({
-          symbol,
-          interval: timeframe,
-          tool: currentTool,
-          points: newPoints,
-          style: newDrawing.style,
-        });
-        
-        return { points: [] }; // Reset for next drawing
-      }
-      
-      return { points: newPoints };
-    });
-  }, [candles, symbol, timeframe, drawingsPersistence]);
+  // Save drawing mutation
+  const saveDrawingMutation = useMutation({
+    mutationFn: async (drawing: Drawing) => {
+      const response = await authenticatedApiRequest('POST', '/api/crypto/chart-drawings', {
+        symbol,
+        timeframe,
+        drawingType: drawing.type,
+        coordinates: { points: drawing.points },
+        style: drawing.style,
+      });
+      return response.json();
+    },
+  });
 
   // Initialize gesture controller
   const gestureController = useChartGestures({
     enabled: activeTool !== null,
     data: candles as unknown as { time: Time; open: number; high: number; low: number; close: number }[],
-    onPointCommit: handlePointCommit,
+    onPointCommit: (point) => onPointCommitRef.current?.(point), // Call through ref set by DrawingRenderer
     onCrosshairModeChange: () => {}, // Not needed for fullscreen
     autoSnapEnabled: true,
   });
@@ -543,6 +492,20 @@ export function ChartFullscreenPage({
         )}
         <div ref={chartContainerRef} className="absolute inset-0" />
         
+        {/* DrawingRenderer component handles point commit logic */}
+        <DrawingRenderer
+          drawingMode={activeTool ? 'draw' : 'off'}
+          activeTool={activeTool}
+          activeToolRef={activeToolRef}
+          autoColorEnabledRef={autoColorEnabledRef}
+          candles={candles}
+          tempDrawing={tempDrawing}
+          setTempDrawing={setTempDrawing}
+          setDrawings={setDrawings}
+          saveDrawingMutation={saveDrawingMutation}
+          onPointCommitRef={onPointCommitRef}
+        />
+        
         {/* SVG Overlay for temp drawing points */}
         <svg 
           className="absolute top-0 left-0 pointer-events-none"
@@ -553,20 +516,13 @@ export function ChartFullscreenPage({
               const x = chartRef.current?.timeScale().timeToCoordinate(point.time as Time);
               const y = candleSeriesRef.current?.priceToCoordinate(point.price);
               
-              // Determine color based on snap type when auto-color is enabled
-              let fillColor = '#3b82f6'; // Default blue
-              if (autoColorEnabled && point.snapType) {
-                if (point.snapType === 'high') fillColor = '#ef4444'; // Red for resistance
-                else if (point.snapType === 'low') fillColor = '#22c55e'; // Green for support
-              }
-              
               return (
                 <circle 
                   key={i} 
                   cx={x ?? 0} 
                   cy={y ?? 0} 
                   r={6} 
-                  fill={fillColor} 
+                  fill={point.snapType === 'high' ? '#ef4444' : point.snapType === 'low' ? '#22c55e' : '#3b82f6'} 
                   stroke="#fff" 
                   strokeWidth={2}
                 />

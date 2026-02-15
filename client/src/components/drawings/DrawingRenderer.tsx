@@ -17,6 +17,7 @@ interface DrawingRendererProps {
   setTempDrawing: React.Dispatch<React.SetStateAction<{ points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null>>;
   setDrawings: React.Dispatch<React.SetStateAction<any[]>>;
   saveDrawingMutation: any;
+  onPointCommitRef?: React.MutableRefObject<((point: GesturePoint) => void) | null>;
 }
 
 export function DrawingRenderer({
@@ -29,6 +30,7 @@ export function DrawingRenderer({
   setTempDrawing,
   setDrawings,
   saveDrawingMutation,
+  onPointCommitRef,
 }: DrawingRendererProps) {
   const { toast } = useToast();
 
@@ -82,6 +84,13 @@ export function DrawingRenderer({
       return { points: newPoints };
     });
   }, [drawingMode, activeToolRef, autoColorEnabledRef, candles, setTempDrawing, setDrawings, saveDrawingMutation, toast]);
+
+  // Expose handlePointCommit through ref if provided
+  useEffect(() => {
+    if (onPointCommitRef) {
+      onPointCommitRef.current = handlePointCommit;
+    }
+  }, [handlePointCommit, onPointCommitRef]);
 
   return null; // This component manages rendering logic, doesn't render UI
 }
