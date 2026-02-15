@@ -137,30 +137,6 @@ describe('drawingHitDetection', () => {
       expect(hits[0].drawingId).toBe('fib1');
     });
 
-    it('should not detect click on hidden fib level', () => {
-      const drawing: Drawing = {
-        id: 'fib2',
-        type: 'fib_retracement',
-        points: [
-          { time: 100, price: 100 },
-          { time: 200, price: 200 },
-        ],
-        style: { hiddenLevels: [0.5] }, // Hide 50% level
-      };
-
-      // Click at 50% level (price 150) should not detect the hidden level
-      const hits = findDrawingsNearClick(150, 150, [drawing], chart, series);
-      // If there are hits, ensure they are not at the 50% level (Y coordinate 150)
-      // With our simple mock, Y = price, so we check if any hit is very close to Y=150
-      const hitAt50Percent = hits.some(hit => {
-        // In a real scenario, we'd need to calculate the actual Y coordinate
-        // For this test with mocked series, we can't perfectly validate this
-        // So we just verify that we get fewer hits than all levels (9 levels total)
-        return false;
-      });
-      expect(hitAt50Percent).toBe(false);
-    });
-
     it('should detect click on 0% level', () => {
       const drawing: Drawing = {
         id: 'fib3',
@@ -176,6 +152,23 @@ describe('drawingHitDetection', () => {
       const hits = findDrawingsNearClick(150, 200, [drawing], chart, series);
       expect(hits).toHaveLength(1);
       expect(hits[0].drawingId).toBe('fib3');
+    });
+
+    it('should not detect click far from all fib levels', () => {
+      const drawing: Drawing = {
+        id: 'fib4',
+        type: 'fib_retracement',
+        points: [
+          { time: 100, price: 100 },
+          { time: 200, price: 200 },
+        ],
+        style: {},
+      };
+
+      // Fib levels range from 0% (200) to 161.8% (38.2)
+      // Click far from any fib level (> CLICK_RADIUS=20 away from lowest level at ~38)
+      const hits = findDrawingsNearClick(150, 0, [drawing], chart, series);
+      expect(hits).toHaveLength(0);
     });
   });
 
@@ -198,7 +191,7 @@ describe('drawingHitDetection', () => {
       expect(hits[0].drawingId).toBe('tfib1');
     });
 
-    it('should not detect click on hidden trend fib level', () => {
+    it('should not detect click far from all trend fib levels', () => {
       const drawing: Drawing = {
         id: 'tfib2',
         type: 'trend_fib',
@@ -207,17 +200,12 @@ describe('drawingHitDetection', () => {
           { time: 200, price: 200 },
           { time: 300, price: 180 },
         ],
-        style: { hiddenLevels: [1.0] }, // Hide 100% level
+        style: {},
       };
 
-      // Click at 100% level (price 180 + 100 = 280) should not detect the hidden level
-      const hits = findDrawingsNearClick(350, 280, [drawing], chart, series);
-      // If there are hits, they should be at other levels, not 100%
-      const hitAt100Percent = hits.some(hit => {
-        // With simple mocks, we verify the hidden level doesn't produce a close hit
-        return false;
-      });
-      expect(hitAt100Percent).toBe(false);
+      // Click far from any trend fib level
+      const hits = findDrawingsNearClick(350, 50, [drawing], chart, series);
+      expect(hits).toHaveLength(0);
     });
   });
 
