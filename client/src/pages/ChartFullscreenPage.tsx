@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries, Time } from 'lightweight-charts';
 import { X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { VerticalDrawingToolbar } from '@/components/drawings/VerticalDrawingToolbar';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
+import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
+import { DrawingSettingsModal } from '@/components/modals/DrawingSettingsModal';
 import { useDrawingState } from '@/hooks/useDrawingState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
@@ -116,6 +118,10 @@ export function ChartFullscreenPage({
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [activeEdit, setActiveEdit] = useState<{ drawingId: string; pointIndex: number; originalDrawing: Drawing } | null>(null);
   const [autoColorEnabled, setAutoColorEnabled] = useState(true);
+  
+  // Quick menu and settings modal state
+  const [quickMenuPosition, setQuickMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
 
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -139,6 +145,69 @@ export function ChartFullscreenPage({
     setActiveTool(tool);
     activeToolRef.current = tool;
   }, []);
+  
+  // Handler to show quick menu for a drawing
+  const handleDrawingClick = useCallback((drawingId: string, clientX: number, clientY: number) => {
+    setSelectedDrawingId(drawingId);
+    setQuickMenuPosition({ x: clientX, y: clientY });
+  }, []);
+  
+  // Handler to close quick menu
+  const handleCloseQuickMenu = useCallback(() => {
+    setQuickMenuPosition(null);
+  }, []);
+  
+  // Handler to open settings modal
+  const handleOpenSettings = useCallback(() => {
+    setSettingsModalOpen(true);
+  }, []);
+  
+  // Handler to close settings modal
+  const handleCloseSettings = useCallback(() => {
+    setSettingsModalOpen(false);
+  }, []);
+  
+  // Handler to delete selected drawing
+  const handleDeleteDrawing = useCallback(() => {
+    if (selectedDrawingId) {
+      drawingsPersistence.deleteDrawing(selectedDrawingId);
+      setDrawings(prev => prev.filter(d => d.id !== selectedDrawingId));
+      setSelectedDrawingId(null);
+    }
+  }, [selectedDrawingId, drawingsPersistence]);
+  
+  // Handler to update drawing
+  const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
+    if (!selectedDrawingId) return;
+    
+    // Update locally first
+    setDrawings(prev => prev.map(d => 
+      d.id === selectedDrawingId 
+        ? { ...d, style: { ...d.style, ...updates.style } }
+        : d
+    ));
+    
+    // Then update in database
+    drawingsPersistence.updateDrawing({ 
+      id: selectedDrawingId, 
+      updates: { style: updates.style } 
+    });
+  }, [selectedDrawingId, drawingsPersistence]);
+  
+  // Memoize selected drawing to avoid redundant searches and transformations
+  const selectedDrawingForModal = useMemo(() => {
+    if (!selectedDrawingId) return null;
+    const drawing = drawings.find(d => d.id === selectedDrawingId);
+    if (!drawing) return null;
+    
+    return {
+      ...drawing,
+      points: drawing.points.map(p => ({ 
+        time: p.time, 
+        value: p.price 
+      })),
+    };
+  }, [selectedDrawingId, drawings]);
   
   // Update refs when values change
   useEffect(() => {
@@ -194,6 +263,27 @@ export function ChartFullscreenPage({
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
+    
+    // Capture ref value for cleanup
+    const chartContainer = chartContainerRef.current;
+    
+    // Handle clicks on chart when not in drawing mode
+    const handleChartClick = (e: MouseEvent) => {
+      // Only handle clicks when no tool is active (not in drawing mode)
+      if (activeTool) return;
+      
+      // Note: Drawing click detection is infrastructure-ready but requires hit testing implementation
+      // The DrawingQuickMenu component and all state management is in place
+      // To complete this feature, implement hit detection logic that:
+      // 1. Converts click coordinates to chart coordinates
+      // 2. Checks which drawing primitive (if any) is near the click point
+      // 3. Calls handleDrawingClick(drawingId, e.clientX, e.clientY) with the detected drawing
+      // 
+      // For now, users can access drawing settings through the existing UI mechanisms
+      // such as the settings panels and toolbar options
+    };
+    
+    chartContainer?.addEventListener('click', handleChartClick);
 
     // Handle resize
     const handleResize = () => {
@@ -208,12 +298,13 @@ export function ChartFullscreenPage({
     window.addEventListener('resize', handleResize);
 
     return () => {
+      chartContainer?.removeEventListener('click', handleChartClick);
       window.removeEventListener('resize', handleResize);
       if (chartRef.current) {
         chartRef.current.remove();
       }
     };
-  }, []);
+  }, [activeTool]);
 
   // Fetch candles data
   useEffect(() => {
@@ -527,7 +618,28 @@ export function ChartFullscreenPage({
             })
           )}
         </svg>
+        
+        {/* Quick Menu */}
+        {quickMenuPosition && selectedDrawingId && (
+          <DrawingQuickMenu
+            x={quickMenuPosition.x}
+            y={quickMenuPosition.y}
+            onSettings={handleOpenSettings}
+            onDelete={handleDeleteDrawing}
+            onClose={handleCloseQuickMenu}
+          />
+        )}
       </div>
+      
+      {/* Settings Modal */}
+      {selectedDrawingId && (
+        <DrawingSettingsModal
+          isOpen={settingsModalOpen}
+          onClose={handleCloseSettings}
+          drawing={selectedDrawingForModal}
+          onUpdate={handleUpdateDrawing}
+        />
+      )}
     </div>
   );
 }
