@@ -7,6 +7,14 @@ import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { useWatchlistBiasSettings } from '@/hooks/useWatchlistBiasSettings';
 import { WatchlistSettingsPanel } from '@/components/watchlist/WatchlistSettingsPanel';
 
+interface CleanWatchlistProps {
+  onExpandChart?: (context: {
+    symbol: string;
+    timeframe: string;
+    watchlist: string[];
+  }) => void;
+}
+
 /**
  * Clean-page watchlist wrapper:
  * - Owns selected ticker and timeframe state
@@ -15,7 +23,7 @@ import { WatchlistSettingsPanel } from '@/components/watchlist/WatchlistSettings
  * - Shows bias settings in a modal triggered from TickerTable header
  * - Keeps CryptoIndicatorsClean free of inline handlers / watchlist logic
  */
-export function CleanWatchlist() {
+export function CleanWatchlist({ onExpandChart }: CleanWatchlistProps = {}) {
   const watchlist = useWatchlistState();
   const biasSettings = useWatchlistBiasSettings();
 
@@ -88,8 +96,12 @@ export function CleanWatchlist() {
   }, []);
 
   const handleExpandChart = useCallback(() => {
-    console.log('Expand chart to fullscreen - to be implemented');
-  }, []);
+    onExpandChart?.({
+      symbol: selectedSymbol,
+      timeframe: tableTimeframe,
+      watchlist: watchlist.watchlistTickers
+    });
+  }, [selectedSymbol, tableTimeframe, watchlist.watchlistTickers, onExpandChart]);
 
   // ----- Render -----
 
