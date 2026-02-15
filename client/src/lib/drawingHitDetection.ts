@@ -99,10 +99,40 @@ function getDistanceToDrawing(
       return Math.sqrt(rectDx * rectDx + rectDy * rectDy);
     }
     
-    case 'fib_retracement':
+    case 'fib_retracement': {
+      // For fib retracement, use all 3 points if available (point3 defines horizontal extent)
+      if (drawing.points.length < 2) return null;
+      
+      const x1 = timeScale.timeToCoordinate(drawing.points[0].time as Time);
+      const y1 = series.priceToCoordinate(drawing.points[0].price);
+      const x2 = timeScale.timeToCoordinate(drawing.points[1].time as Time);
+      const y2 = series.priceToCoordinate(drawing.points[1].price);
+      
+      // If 3 points available, use point3 for horizontal extent
+      let x3 = x2;
+      if (drawing.points.length >= 3) {
+        const x3Raw = timeScale.timeToCoordinate(drawing.points[2].time as Time);
+        if (x3Raw !== null) x3 = x3Raw;
+      }
+      
+      if (x1 === null || y1 === null || x2 === null || y2 === null) return null;
+      
+      // Bounding box uses min(x1,x2) to x3 for horizontal extent
+      const left = Math.min(x1, x2);
+      const right = x3;
+      const top = Math.min(y1, y2);
+      const bottom = Math.max(y1, y2);
+      
+      if (clickX >= left && clickX <= right && clickY >= top && clickY <= bottom) return 0;
+      
+      const fibDx = Math.max(left - clickX, 0, clickX - right);
+      const fibDy = Math.max(top - clickY, 0, clickY - bottom);
+      return Math.sqrt(fibDx * fibDx + fibDy * fibDy);
+    }
+    
     case 'trend_fib':
     case 'channel': {
-      // For fib/channel tools, check distance to any of the level lines
+      // For trend_fib/channel tools, check distance to any of the level lines
       if (drawing.points.length < 2) return null;
       
       const x1 = timeScale.timeToCoordinate(drawing.points[0].time as Time);

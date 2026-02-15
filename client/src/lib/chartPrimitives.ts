@@ -1450,8 +1450,13 @@ export function createDrawingPrimitive(
       }
       break;
     case 'fib_retracement':
-      if (points.length >= 3) {
-        return new FibRetracementPrimitive(id, points, style);
+      if (points.length >= 2) {
+        // For backward compatibility, if only 2 points exist, duplicate point2 as point3
+        // so the lines extend to the same position as point2
+        const fibPoints = points.length === 2 
+          ? [...points, points[1]] 
+          : points;
+        return new FibRetracementPrimitive(id, fibPoints, style);
       }
       break;
     case 'trend_fib':
