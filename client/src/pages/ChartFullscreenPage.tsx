@@ -7,6 +7,8 @@ import { VerticalDrawingToolbar } from '@/components/drawings/VerticalDrawingToo
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
 import { DrawingSettingsModal } from '@/components/modals/DrawingSettingsModal';
+import { DrawingSelectionModal } from '@/components/drawings/DrawingSelectionModal';
+import { findDrawingsNearClick } from '@/lib/drawingHitDetection';
 import { useDrawingState } from '@/hooks/useDrawingState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
@@ -69,9 +71,9 @@ type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' 
 
 interface ChartFullscreenPageProps {
   onClose: () => void;
-  initialSymbol: string;        // e.g., 'XRPUSDT'
-  initialTimeframe: string;     // e.g., '1h'
-  watchlistTickers: string[];   // e.g., ['XRPUSDT', 'BTCUSDT', 'ETHUSDT']
+  initialSymbol: string;
+  initialTimeframe: string;
+  watchlistTickers: string[];
 }
 
 // Convert timeframe to Binance API format
@@ -122,6 +124,10 @@ export function ChartFullscreenPage({
   // Quick menu and settings modal state
   const [quickMenuPosition, setQuickMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  
+  // Selection modal state
+  const [showSelectionModal, setShowSelectionModal] = useState(false);
+  const [nearbyDrawings, setNearbyDrawings] = useState<Array<{ id: string; type: string }>>([]);
 
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -146,11 +152,35 @@ export function ChartFullscreenPage({
     activeToolRef.current = tool;
   }, []);
   
-  // Handler to show quick menu for a drawing
-  const handleDrawingClick = useCallback((drawingId: string, clientX: number, clientY: number) => {
-    setSelectedDrawingId(drawingId);
-    setQuickMenuPosition({ x: clientX, y: clientY });
-  }, []);
+  // Handler for chart clicks (radial selection)
+  const handleChartClick = useCallback((event: MouseEvent) => {
+    // Only handle clicks when no tool is active (not in drawing mode)
+    if (activeTool) return;
+    
+    const chartElement = chartContainerRef.current;
+    if (!chartElement || !chartRef.current || !candleSeriesRef.current) return;
+    
+    const rect = chartElement.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const clickY = event.clientY - rect.top;
+    
+    // Find all drawings within click radius
+    const hits = findDrawingsNearClick(clickX, clickY, drawings, chartRef.current, candleSeriesRef.current);
+    
+    if (hits.length === 0) {
+      // Clicked empty space - deselect
+      setSelectedDrawingId(null);
+      setQuickMenuPosition(null);
+    } else if (hits.length === 1) {
+      // Single drawing found - select directly
+      setSelectedDrawingId(hits[0].drawingId);
+      setQuickMenuPosition({ x: event.clientX, y: event.clientY });
+    } else {
+      // Multiple drawings found - show selection modal
+      setNearbyDrawings(hits.map(h => ({ id: h.drawingId, type: h.drawingType })));
+      setShowSelectionModal(true);
+    }
+  }, [activeTool, drawings]);
   
   // Handler to close quick menu
   const handleCloseQuickMenu = useCallback(() => {
@@ -194,6 +224,16 @@ export function ChartFullscreenPage({
     });
   }, [selectedDrawingId, drawingsPersistence]);
   
+  // Handler for selection from modal
+  const handleSelectFromModal = useCallback((drawingId: string) => {
+    setSelectedDrawingId(drawingId);
+    // Position quick menu in center of screen
+    setQuickMenuPosition({ 
+      x: window.innerWidth / 2, 
+      y: window.innerHeight / 2 
+    });
+  }, []);
+  
   // Memoize selected drawing to avoid redundant searches and transformations
   const selectedDrawingForModal = useMemo(() => {
     if (!selectedDrawingId) return null;
@@ -218,13 +258,12 @@ export function ChartFullscreenPage({
     autoColorEnabledRef.current = autoColorEnabled;
   }, [autoColorEnabled]);
 
-
   // Initialize gesture controller
   const gestureController = useChartGestures({
     enabled: activeTool !== null,
     data: candles as unknown as { time: Time; open: number; high: number; low: number; close: number }[],
-    onPointCommit: (point) => onPointCommitRef.current?.(point), // Call through ref set by DrawingRenderer
-    onCrosshairModeChange: () => {}, // Not needed for fullscreen
+    onPointCommit: (point) => onPointCommitRef.current?.(point),
+    onCrosshairModeChange: () => {},
     autoSnapEnabled: true,
   });
 
@@ -266,24 +305,6 @@ export function ChartFullscreenPage({
     
     // Capture ref value for cleanup
     const chartContainer = chartContainerRef.current;
-    
-    // Handle clicks on chart when not in drawing mode
-    const handleChartClick = (e: MouseEvent) => {
-      // Only handle clicks when no tool is active (not in drawing mode)
-      if (activeTool) return;
-      
-      // Note: Drawing click detection is infrastructure-ready but requires hit testing implementation
-      // The DrawingQuickMenu component and all state management is in place
-      // To complete this feature, implement hit detection logic that:
-      // 1. Converts click coordinates to chart coordinates
-      // 2. Checks which drawing primitive (if any) is near the click point
-      // 3. Calls handleDrawingClick(drawingId, e.clientX, e.clientY) with the detected drawing
-      // 
-      // For now, users can access drawing settings through the existing UI mechanisms
-      // such as the settings panels and toolbar options
-    };
-    
-    chartContainer?.addEventListener('click', handleChartClick);
 
     // Handle resize
     const handleResize = () => {
@@ -298,13 +319,21 @@ export function ChartFullscreenPage({
     window.addEventListener('resize', handleResize);
 
     return () => {
-      chartContainer?.removeEventListener('click', handleChartClick);
       window.removeEventListener('resize', handleResize);
       if (chartRef.current) {
         chartRef.current.remove();
       }
     };
-  }, [activeTool]);
+  }, []);
+  
+  // Attach click handler to chart
+  useEffect(() => {
+    const chartElement = chartContainerRef.current;
+    if (!chartElement) return;
+    
+    chartElement.addEventListener('click', handleChartClick);
+    return () => chartElement.removeEventListener('click', handleChartClick);
+  }, [handleChartClick]);
 
   // Fetch candles data
   useEffect(() => {
@@ -373,9 +402,7 @@ export function ChartFullscreenPage({
       
       console.log('[Persistence] Parsed drawings:', loadedDrawings.length);
       
-      // ONLY update if different from current state (prevent overwriting optimistic updates)
       setDrawings(prev => {
-        // If we have temp IDs (optimistic), keep them until server IDs arrive
         const hasTempIds = prev.some(d => d.id.startsWith('drawing-'));
         if (hasTempIds && loadedDrawings.length === prev.length) {
           console.log('[Persistence] Skipping update - waiting for server IDs');
@@ -415,54 +442,43 @@ export function ChartFullscreenPage({
     const currentPrimitives = drawingPrimitivesRef.current;
     const currentDrawingIds = new Set(drawings.map(d => d.id));
     
-    // If drawings are hidden, detach all primitives
     if (!drawingsVisible) {
       currentPrimitives.forEach((primitive) => {
         try {
           candleSeries.detachPrimitive(primitive);
-        } catch (e) {
-          // Already detached
-        }
+        } catch (e) {}
       });
       currentPrimitives.clear();
       return;
     }
     
-    // Remove primitives for deleted drawings OR drawings being edited
     currentPrimitives.forEach((primitive, id) => {
       const isBeingEdited = activeEdit && activeEdit.drawingId === id;
       if (!currentDrawingIds.has(id) || isBeingEdited) {
         try {
           candleSeries.detachPrimitive(primitive);
-        } catch (e) {
-          // Already detached
-        }
+        } catch (e) {}
         currentPrimitives.delete(id);
       }
     });
     
-    // Add or update primitives for current drawings (skip if being edited)
     drawings.forEach(drawing => {
       const isBeingEdited = activeEdit && activeEdit.drawingId === drawing.id;
-      if (isBeingEdited) return; // Don't render primitive while editing
+      if (isBeingEdited) return;
       
       const existingPrimitive = currentPrimitives.get(drawing.id);
       
       if (existingPrimitive) {
-        // Update existing primitive
         existingPrimitive.setSelected(selectedDrawingId === drawing.id);
         
-        // Update points if they changed
         if ('updatePoints' in existingPrimitive) {
           (existingPrimitive as TrendLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | ChannelPrimitive).updatePoints(drawing.points);
         } else if ('updatePoint' in existingPrimitive) {
           (existingPrimitive as HorizontalLinePrimitive).updatePoint(drawing.points[0]);
         }
         
-        // Update style
         existingPrimitive.updateStyle(drawing.style);
       } else {
-        // Create and attach new primitive
         console.log('[Primitives] Creating new primitive for drawing:', drawing.id, 'type:', drawing.type);
         const primitive = createDrawingPrimitive(
           drawing.id,
@@ -485,14 +501,11 @@ export function ChartFullscreenPage({
       }
     });
     
-    // Cleanup on unmount
     return () => {
       currentPrimitives.forEach((primitive) => {
         try {
           candleSeries.detachPrimitive(primitive);
-        } catch (e) {
-          // Already detached or chart disposed
-        }
+        } catch (e) {}
       });
       currentPrimitives.clear();
     };
@@ -502,43 +515,28 @@ export function ChartFullscreenPage({
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
       {/* Top Toolbar */}
       <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 flex items-center justify-between gap-4">
-        {/* Close button */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onClose}
-          className="gap-2"
-        >
+        <Button variant="outline" size="sm" onClick={onClose} className="gap-2">
           <X className="h-4 w-4" />
           Close
         </Button>
 
-        {/* Symbol display */}
         <div className="flex-1 text-center">
-          <span className="text-lg font-semibold text-white">
-            {formatSymbol(symbol)}
-          </span>
+          <span className="text-lg font-semibold text-white">{formatSymbol(symbol)}</span>
         </div>
 
-        {/* Ticker selector */}
         <Select value={symbol} onValueChange={setSymbol}>
           <SelectTrigger className="w-40 bg-slate-800 text-white border-slate-600 hover:bg-slate-700 focus:ring-slate-500">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="bg-slate-800 border-slate-600">
             {watchlistTickers.map((ticker) => (
-              <SelectItem 
-                key={ticker} 
-                value={ticker}
-                className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer"
-              >
+              <SelectItem key={ticker} value={ticker} className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer">
                 {formatSymbol(ticker)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        {/* Timeframe selector */}
         <Select value={timeframe} onValueChange={setTimeframe}>
           <SelectTrigger className="w-24 bg-slate-800 text-white border-slate-600 hover:bg-slate-700 focus:ring-slate-500">
             <SelectValue />
@@ -556,11 +554,7 @@ export function ChartFullscreenPage({
 
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Vertical Drawing Toolbar - LEFT SIDE */}
-        <VerticalDrawingToolbar
-          activeTool={activeTool}
-          onSelectTool={handleSelectTool}
-        />
+        <VerticalDrawingToolbar activeTool={activeTool} onSelectTool={handleSelectTool} />
         
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50 z-10">
@@ -570,6 +564,7 @@ export function ChartFullscreenPage({
             </div>
           </div>
         )}
+        
         {error && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50 z-10">
             <div className="text-center text-red-400">
@@ -578,9 +573,9 @@ export function ChartFullscreenPage({
             </div>
           </div>
         )}
+        
         <div ref={chartContainerRef} className="absolute inset-0" />
         
-        {/* DrawingRenderer component handles point commit logic */}
         <DrawingRenderer
           drawingMode={activeTool ? 'draw' : 'off'}
           activeTool={activeTool}
@@ -594,11 +589,7 @@ export function ChartFullscreenPage({
           onPointCommitRef={onPointCommitRef}
         />
         
-        {/* SVG Overlay for temp drawing points */}
-        <svg 
-          className="absolute top-0 left-0 pointer-events-none"
-          style={{ width: '100%', height: '100%', zIndex: 10 }}
-        >
+        <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', zIndex: 10 }}>
           {tempDrawing && tempDrawing.points.length > 0 && chartRef.current && (
             tempDrawing.points.map((point, i) => {
               const x = chartRef.current?.timeScale().timeToCoordinate(point.time as Time);
@@ -619,7 +610,6 @@ export function ChartFullscreenPage({
           )}
         </svg>
         
-        {/* Quick Menu */}
         {quickMenuPosition && selectedDrawingId && (
           <DrawingQuickMenu
             x={quickMenuPosition.x}
@@ -631,13 +621,21 @@ export function ChartFullscreenPage({
         )}
       </div>
       
-      {/* Settings Modal */}
       {selectedDrawingId && (
         <DrawingSettingsModal
           isOpen={settingsModalOpen}
           onClose={handleCloseSettings}
           drawing={selectedDrawingForModal}
           onUpdate={handleUpdateDrawing}
+        />
+      )}
+      
+      {showSelectionModal && (
+        <DrawingSelectionModal
+          open={showSelectionModal}
+          drawings={nearbyDrawings}
+          onSelect={handleSelectFromModal}
+          onClose={() => setShowSelectionModal(false)}
         />
       )}
     </div>
