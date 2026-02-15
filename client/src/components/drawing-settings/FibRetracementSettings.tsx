@@ -15,6 +15,12 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
   const opacity = drawing.style?.opacity ?? 1;
   const hideLabels = drawing.style?.hideLabels || false;
 
+  // Helper to wrap updates in { style: { ... } } format
+  const handleUpdate = (styleUpdates: any) => {
+    console.log('[FibRetracementSettings] Updating with:', styleUpdates);
+    onUpdate({ style: { ...drawing.style, ...styleUpdates } });
+  };
+
   const roundLevel = (n: number) => Math.round(n * 10000) / 10000;
   const isLevelHidden = (level: number) => 
     hiddenLevels.some((h: number) => roundLevel(h) === roundLevel(level));
@@ -39,7 +45,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
                     const newHidden = isVisible 
                       ? [...hiddenLevels, level]
                       : hiddenLevels.filter((l: number) => roundLevel(l) !== roundLevel(level));
-                    onUpdate({ hiddenLevels: newHidden });
+                    handleUpdate({ hiddenLevels: newHidden });
                   }}
                   className="rounded border-slate-600 w-4 h-4"
                 />
@@ -49,7 +55,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
                   color={levelColor}
                   onChange={(c) => {
                     const newColors = { ...levelColors, [level]: c };
-                    onUpdate({ levelColors: newColors });
+                    handleUpdate({ levelColors: newColors });
                   }}
                 />
                 
@@ -58,7 +64,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
                   value={customLabel}
                   onChange={(e) => {
                     const newLabels = { ...customLabels, [level]: e.target.value };
-                    onUpdate({ customLabels: newLabels });
+                    handleUpdate({ customLabels: newLabels });
                   }}
                   placeholder="Custom label..."
                   className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white placeholder-gray-500"
@@ -74,7 +80,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
         <div className="text-xs text-slate-400 mb-2">Label Position</div>
         <div className="flex gap-2">
           <button
-            onClick={() => onUpdate({ labelPosition: 'left' })}
+            onClick={() => handleUpdate({ labelPosition: 'left' })}
             className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
               (drawing.style?.labelPosition || 'right') === 'left'
                 ? 'bg-cyan-600 text-white' 
@@ -85,7 +91,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
             Left
           </button>
           <button
-            onClick={() => onUpdate({ labelPosition: 'right' })}
+            onClick={() => handleUpdate({ labelPosition: 'right' })}
             className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
               (drawing.style?.labelPosition || 'right') === 'right'
                 ? 'bg-cyan-600 text-white' 
@@ -101,7 +107,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
       {/* Global Opacity */}
       <OpacitySlider
         value={opacity}
-        onChange={(val) => onUpdate({ opacity: val })}
+        onChange={(val) => handleUpdate({ opacity: val })}
         label="Line Opacity"
       />
 
@@ -110,7 +116,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
         <input
           type="checkbox"
           checked={hideLabels}
-          onChange={(e) => onUpdate({ hideLabels: e.target.checked })}
+          onChange={(e) => handleUpdate({ hideLabels: e.target.checked })}
           className="rounded border-slate-600 w-4 h-4"
         />
         <span className="text-gray-300">Hide All Labels</span>
