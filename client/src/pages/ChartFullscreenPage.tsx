@@ -18,6 +18,25 @@ import {
 } from '@/lib/chartPrimitives';
 import { getAutoColor } from '@/lib/chart/colorUtils';
 
+interface Drawing {
+  id: string;
+  type: string;
+  points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[];
+  style: {
+    color: string;
+    lineWidth: number;
+    [key: string]: any;
+  };
+}
+
+interface FibDefaults {
+  [key: string]: any;
+}
+
+interface ChannelDefaults {
+  [key: string]: any;
+}
+
 type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
 
 interface ChartFullscreenPageProps {
@@ -67,10 +86,10 @@ export function ChartFullscreenPage({
   } | null>(null);
   
   // Drawing state
-  const [drawings, setDrawings] = useState<any[]>([]);
+  const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [drawingsVisible, setDrawingsVisible] = useState(true);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
-  const [activeEdit, setActiveEdit] = useState<{ drawingId: string; pointIndex: number; originalDrawing: any } | null>(null);
+  const [activeEdit, setActiveEdit] = useState<{ drawingId: string; pointIndex: number; originalDrawing: Drawing } | null>(null);
   const [autoColorEnabled, setAutoColorEnabled] = useState(true);
 
   // Chart refs
@@ -137,7 +156,7 @@ export function ChartFullscreenPage({
         const color = autoColorEnabledRef.current ? getAutoColor(newPoints, candles) : '#3b82f6';
         
         // Load saved defaults for fib and channel tools
-        let savedDefaults: any = {};
+        let savedDefaults: FibDefaults | ChannelDefaults = {};
         if (currentTool === 'fib_retracement' || currentTool === 'trend_fib' || currentTool === 'channel') {
           try {
             const defaultKey = currentTool === 'channel' ? 'channelDefaults' : `fibDefaults_${currentTool}`;
@@ -290,7 +309,7 @@ export function ChartFullscreenPage({
         type: d.drawingType || d.drawing_type || d.tool,
         points: d.coordinates?.points || d.points || [],
         style: d.style || { color: '#3b82f6', lineWidth: 2 },
-      })).filter((d: any) => d.points.length > 0));
+      } as Drawing)).filter((d: Drawing) => d.points.length > 0));
     }
   }, [drawingsPersistence.drawings]);
 
@@ -367,7 +386,7 @@ export function ChartFullscreenPage({
         // Create and attach new primitive
         const primitive = createDrawingPrimitive(
           drawing.id,
-          drawing.type,
+          drawing.type as 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
           drawing.points,
           drawing.style
         );
