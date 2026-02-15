@@ -23,6 +23,7 @@ interface DrawingSettingsModalProps {
 /**
  * Modal wrapper for drawing settings
  * Extracted from CryptoIndicators.tsx for Phase 4G-10
+ * Auto-centers on screen and stays within viewport
  */
 export function DrawingSettingsModal({
   isOpen,
@@ -34,7 +35,9 @@ export function DrawingSettingsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md bg-slate-900 border-slate-700">
+      <DialogContent 
+        className="w-[90vw] max-w-md max-h-[90vh] overflow-y-auto bg-slate-900 border-slate-700 fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%]"
+      >
         <DialogHeader>
           <DialogTitle className="text-white">
             Drawing Settings
