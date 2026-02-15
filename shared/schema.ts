@@ -455,6 +455,30 @@ export const watchlistBiasSettingsSchema = z.object({
 
 export type WatchlistBiasSettings = z.infer<typeof watchlistBiasSettingsSchema>;
 
+// User Oscillator Preferences - separate table for managing user's favorite oscillators
+export const userOscillatorPreferences = pgTable("user_oscillator_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }),
+  favoriteOscillators: jsonb("favorite_oscillators").notNull().default(sql`'[]'::jsonb`), // Array of oscillator IDs
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserOscillatorPreferencesSchema = z.object({
+  userId: z.string(),
+  favoriteOscillators: z.array(z.enum(['rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx'])).default([]),
+});
+
+export type InsertUserOscillatorPreferences = z.infer<typeof insertUserOscillatorPreferencesSchema>;
+export type UserOscillatorPreferences = typeof userOscillatorPreferences.$inferSelect;
+
+// Oscillator Preferences - DTO for GET/PUT /api/crypto/oscillator-preferences
+export const oscillatorPreferencesSchema = z.object({
+  favoriteOscillators: z.array(z.enum(['rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx'])),
+});
+
+export type OscillatorPreferences = z.infer<typeof oscillatorPreferencesSchema>;
+
 // Cached AI analyses table - stores last analysis per user/symbol/interval
 export const cryptoAiAnalyses = pgTable("crypto_ai_analyses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
