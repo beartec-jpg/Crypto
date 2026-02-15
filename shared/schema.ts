@@ -842,9 +842,34 @@ export const chartDrawings = pgTable("chart_drawings", {
     label?: string;
     labelPosition?: 'left' | 'right';
     hiddenLevels?: number[];
-    alertActive?: boolean;  // For horizontal line price alerts
-    alertTriggered?: boolean;  // Track if alert has been triggered
-    lastCheckedPrice?: number;  // Track last price to detect crossings
+    alertActive?: boolean;  // For horizontal line price alerts (legacy)
+    alertTriggered?: boolean;  // Track if alert has been triggered (legacy)
+    lastCheckedPrice?: number;  // Track last price to detect crossings (legacy)
+    
+    // UNIVERSAL ALERT FIELDS (all drawing types)
+    alertsEnabled?: boolean;  // Master toggle for alerts
+    
+    // LEVEL-BASED ALERTS (fibs, channels, trend fibs, rectangles)
+    levelAlerts?: {
+      [level: string]: {  // e.g., "0.618", "0.5", "top", "bottom"
+        enabled: boolean;
+        crossUpEnabled: boolean;  // Alert on price crossing up
+        crossDownEnabled: boolean;  // Alert on price crossing down
+        lastCheckedPrice?: number;  // Track last price for crossing detection
+        triggered?: boolean;  // Has alert fired?
+        triggerTime?: number;  // When it fired (timestamp)
+      };
+    };
+    
+    // TRENDLINE ALERTS (single line)
+    trendlineAlert?: {
+      enabled: boolean;
+      crossUpEnabled: boolean;
+      crossDownEnabled: boolean;
+      lastCheckedPrice?: number;
+      triggered?: boolean;
+      triggerTime?: number;
+    };
   }>(),
   isLocked: boolean("is_locked").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
@@ -877,6 +902,29 @@ export const insertChartDrawingSchema = z.object({
     alertActive: z.boolean().optional(),
     alertTriggered: z.boolean().optional(),
     lastCheckedPrice: z.number().optional(),
+    
+    // Universal alert fields
+    alertsEnabled: z.boolean().optional(),
+    
+    // Level-based alerts
+    levelAlerts: z.record(z.string(), z.object({
+      enabled: z.boolean(),
+      crossUpEnabled: z.boolean(),
+      crossDownEnabled: z.boolean(),
+      lastCheckedPrice: z.number().optional(),
+      triggered: z.boolean().optional(),
+      triggerTime: z.number().optional(),
+    })).optional(),
+    
+    // Trendline alerts
+    trendlineAlert: z.object({
+      enabled: z.boolean(),
+      crossUpEnabled: z.boolean(),
+      crossDownEnabled: z.boolean(),
+      lastCheckedPrice: z.number().optional(),
+      triggered: z.boolean().optional(),
+      triggerTime: z.number().optional(),
+    }).optional(),
   }).optional(),
   isLocked: z.boolean().optional().default(false),
 });

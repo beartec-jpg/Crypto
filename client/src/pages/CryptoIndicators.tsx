@@ -93,9 +93,11 @@ import { WatchlistPanel } from '@/components/watchlist';
 // Settings Components
 import { SettingsPanel, SettingsDialog } from '@/components/settings';
 import { ConfirmationDialog } from '@/components/modals';
+import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
 import { useModalManager } from '@/hooks/useModalManager';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useModalState } from '@/hooks/useModalState';
+import { getAlertPrefix } from '@/utils/drawingAlerts';
 import { 
   useReplayMode, 
   useChartSettings, 
@@ -424,6 +426,7 @@ const handleAIMarketReview = () => {
   const [drawingsVisible, setDrawingsVisible] = useState(true); // Toggle to hide/show all drawings
   const [tempDrawing, setTempDrawing] = useState<{points: {time: number; price: number; snapType?: 'high' | 'low' | 'none'}[]} | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
   
   // Drawings persistence hook - replaces inline mutations
   const drawingsPersistence = useDrawingsPersistence(symbol, interval);
@@ -2835,13 +2838,12 @@ useEffect(() => {
         }
         // Use custom label if set, otherwise default to "H-Line"
         const customLabel = drawing.style?.label || 'H-Line';
-        // Add alarm icon if alert is active
-        const alertPrefix = drawing.style?.alertActive ? '🔔 ' : '';
-        const triggeredPrefix = drawing.style?.alertTriggered ? '✅ ' : '';
+        // Add alert icon using utility function
+        const alertPrefix = getAlertPrefix('horizontal', drawing.style);
         const editPrefix = drawing.id === selectedDrawingId ? '✎ ' : '';
         // Only show label if showLabel is not explicitly false
         const showLabel = drawing.style?.showLabel !== false;
-        const displayLabel = showLabel ? `${alertPrefix}${triggeredPrefix}${editPrefix}${customLabel}` : '';
+        const displayLabel = showLabel ? `${alertPrefix}${editPrefix}${customLabel}` : '';
         const line = candleSeries.createPriceLine({
           price: drawing.points[0].price,
           color: drawing.style?.color || '#3b82f6',
@@ -4751,6 +4753,20 @@ useEffect(() => {
                     </button>
                   )}
                   
+                  {/* Alert Settings Button - only show when a drawing is selected */}
+                  {selectedDrawingId && (
+                    <button
+                      onClick={() => setAlertSettingsOpen(true)}
+                      className={`p-2 rounded-lg transition-all ${alertSettingsOpen ? 'bg-amber-500 text-white' : 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'}`}
+                      title="Alert Settings"
+                      data-testid="btn-alert-settings"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                      </svg>
+                    </button>
+                  )}
+                  
                   {/* Delete Selected Button - only show when a drawing is selected */}
                   {selectedDrawingId && (
                     <button
@@ -5300,6 +5316,44 @@ useEffect(() => {
           title="Delete Drawing"
           description="Are you sure you want to delete this drawing? This action cannot be undone."
           variant="destructive"
+        />
+
+        {/* Drawing Alert Settings Modal */}
+        <DrawingAlertSettings
+          isOpen={alertSettingsOpen}
+          onClose={() => setAlertSettingsOpen(false)}
+          drawing={selectedDrawingId ? {
+            id: selectedDrawingId,
+            drawingType: drawings.find(d => d.id === selectedDrawingId)?.type || 'horizontal',
+            symbol: symbol,
+            timeframe: interval,
+            style: drawings.find(d => d.id === selectedDrawingId)?.style,
+          } : null}
+          onUpdate={(updates) => {
+            const selectedDrawing = drawings.find(d => d.id === selectedDrawingId);
+            if (!selectedDrawing) return;
+            
+            // Update local state
+            setDrawings(prev => prev.map(d =>
+              d.id === selectedDrawingId
+              ? { ...d, style: updates.style }
+              : d
+            ));
+            
+            // Update primitive for immediate visual feedback
+            const primitive = drawingPrimitivesRef.current.get(selectedDrawingId);
+            if (primitive && typeof primitive.updateStyle === 'function') {
+              primitive.updateStyle(updates.style);
+            }
+
+            // Save to database
+            drawingsPersistence.updateDrawing({ id: selectedDrawingId, style: updates.style });
+            
+            toast({
+              title: 'Alert settings saved',
+              description: 'Your alert configuration has been updated.',
+            });
+          }}
         />
 
       </div>
