@@ -30,7 +30,7 @@ export default function CryptoIndicatorsClean() {
 
   // Fetch candle and CVD data
   // TODO: Connect to watchlist selection state
-  const { candles, cvdData, isLoading, error } = useIndicatorsData({
+  const { candles, cvdData } = useIndicatorsData({
     symbol: DEFAULT_SYMBOL,
     timeframe: DEFAULT_TIMEFRAME,
   });

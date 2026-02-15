@@ -65,6 +65,8 @@ export function useCandleData({
     const interval = setInterval(fetchCandles, refreshInterval);
 
     return () => clearInterval(interval);
+    // Note: refreshInterval is intentionally in deps to allow dynamic updates
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe, enabled, refreshInterval]);
 
   return {
