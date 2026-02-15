@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { VideoSequencePlayer } from '@/components/trading/VideoSequencePlayer';
@@ -67,11 +67,12 @@ export default function CryptoIndicatorsClean() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Handle chart expand
-  const handleExpandChart = (context: { symbol: string; timeframe: string; watchlist: string[] }) => {
+  // Handler to expand chart to fullscreen
+  const handleExpandChart = useCallback((context: { symbol: string; timeframe: string; watchlist: string[] }) => {
+    console.log('📊 Expanding chart to fullscreen with context:', context);
     setFullscreenContext(context);
     setShowFullscreen(true);
-  };
+  }, []);
 
   // Fetch candle data for oscillators
   useEffect(() => {
@@ -173,35 +174,28 @@ export default function CryptoIndicatorsClean() {
             </div>
 
           {/* 3 & 4. WATCHLIST (Search + Table + Timeframe + Chart) */}
-          <CleanWatchlist />
+          <CleanWatchlist onExpandChart={handleExpandChart} />
 
           {/* 5. OSCILLATORS SECTION */}
           {candles.length > 0 && (
             <div className="mt-2.5 bg-slate-900 border border-slate-700 rounded-lg p-4">
               <OscillatorsPanel candles={candles} />
             </div>
+          )}
 
           {/* 6. CVD TABLE SECTION */}
           {deltaHistory.length > 0 && (
-            <div className="mt-2.5 bg-slate-900 border border-slate-700 rounded-lg p-4">
+            <div className="mt-6 bg-slate-900 border border-slate-700 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-lg font-semibold text-white">📈 Delta vs CVD</h4>
               </div>
-            )}
-
-            {/* 6. CVD TABLE SECTION */}
-            {deltaHistory.length > 0 && (
-              <div className="mt-6 bg-slate-900 border border-slate-700 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-lg font-semibold text-white">📈 Delta vs CVD</h4>
-                </div>
-                <CVDTable 
-                  data={deltaHistory}
-                  useMultiExchange={false}
-                  tableLimit={20}
-                />
-              </div>
-            )}
+              <CVDTable 
+                data={deltaHistory}
+                useMultiExchange={false}
+                tableLimit={20}
+              />
+            </div>
+          )}
           </div>
 
           {/* Shared Bottom Navigation */}
