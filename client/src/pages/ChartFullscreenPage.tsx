@@ -617,7 +617,17 @@ export function ChartFullscreenPage({
         <DrawingSettingsModal
           isOpen={settingsModalOpen}
           onClose={handleCloseSettings}
-          drawing={drawings.find(d => d.id === selectedDrawingId) || null}
+          drawing={
+            drawings.find(d => d.id === selectedDrawingId) 
+              ? {
+                  ...drawings.find(d => d.id === selectedDrawingId)!,
+                  points: drawings.find(d => d.id === selectedDrawingId)!.points.map(p => ({ 
+                    time: p.time, 
+                    value: p.price 
+                  })),
+                }
+              : null
+          }
           onUpdate={handleUpdateDrawing}
         />
       )}
