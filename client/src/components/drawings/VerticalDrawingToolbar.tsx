@@ -114,15 +114,6 @@ export function VerticalDrawingToolbar({
             </Tooltip>
           );
         })}
-        
-        {/* Active indicator */}
-        {activeTool && (
-          <div className="mt-2 pt-2 border-t border-slate-700">
-            <div className="text-xs text-center text-slate-400 px-1">
-              Drawing mode
-            </div>
-          </div>
-        )}
       </div>
     </TooltipProvider>
   );
