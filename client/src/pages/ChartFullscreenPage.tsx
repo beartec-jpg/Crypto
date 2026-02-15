@@ -25,16 +25,41 @@ interface Drawing {
   style: {
     color: string;
     lineWidth: number;
-    [key: string]: any;
+    opacity?: number;
+    lineStyle?: 'solid' | 'dashed' | 'dotted';
+    internalLineStyle?: 'solid' | 'dashed' | 'dotted';
+    extendLeft?: boolean;
+    extendRight?: boolean;
+    labelPosition?: 'left' | 'right';
+    hiddenLevels?: number[];
+    customLabels?: Record<number | string, string>;
+    customValues?: Record<number, number>;
+    label?: string;
+    autoColor?: boolean;
+    hideLabels?: boolean;
+    levelColors?: Record<number, string>;
+    boundaryColors?: Record<string, string>;
+    fillOpacity?: number;
+    __openColorPicker?: string | null;
   };
 }
 
-interface FibDefaults {
-  [key: string]: any;
-}
-
-interface ChannelDefaults {
-  [key: string]: any;
+interface DrawingDefaults {
+  opacity?: number;
+  lineStyle?: 'solid' | 'dashed' | 'dotted';
+  internalLineStyle?: 'solid' | 'dashed' | 'dotted';
+  extendLeft?: boolean;
+  extendRight?: boolean;
+  labelPosition?: 'left' | 'right';
+  hiddenLevels?: number[];
+  customLabels?: Record<number | string, string>;
+  customValues?: Record<number, number>;
+  label?: string;
+  autoColor?: boolean;
+  hideLabels?: boolean;
+  levelColors?: Record<number, string>;
+  boundaryColors?: Record<string, string>;
+  fillOpacity?: number;
 }
 
 type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
@@ -156,13 +181,15 @@ export function ChartFullscreenPage({
         const color = autoColorEnabledRef.current ? getAutoColor(newPoints, candles) : '#3b82f6';
         
         // Load saved defaults for fib and channel tools
-        let savedDefaults: FibDefaults | ChannelDefaults = {};
+        let savedDefaults: DrawingDefaults = {};
         if (currentTool === 'fib_retracement' || currentTool === 'trend_fib' || currentTool === 'channel') {
           try {
             const defaultKey = currentTool === 'channel' ? 'channelDefaults' : `fibDefaults_${currentTool}`;
             const stored = localStorage.getItem(defaultKey);
             if (stored) savedDefaults = JSON.parse(stored);
-          } catch (e) {}
+          } catch (e) {
+            console.warn(`Failed to load ${currentTool} defaults:`, e);
+          }
         }
         
         // For channels, set autoColor based on global setting and default extendRight to true
@@ -304,12 +331,27 @@ export function ChartFullscreenPage({
   // Load saved drawings from database
   useEffect(() => {
     if (drawingsPersistence.drawings) {
-      setDrawings(drawingsPersistence.drawings.map((d: any) => ({
-        id: d.id,
-        type: d.drawingType || d.drawing_type || d.tool,
-        points: d.coordinates?.points || d.points || [],
-        style: d.style || { color: '#3b82f6', lineWidth: 2 },
-      } as Drawing)).filter((d: Drawing) => d.points.length > 0));
+      const loadedDrawings = drawingsPersistence.drawings
+        .map((d: any): Drawing | null => {
+          try {
+            return {
+              id: d.id || `drawing-${Date.now()}`,
+              type: d.drawingType || d.drawing_type || d.tool || 'trendline',
+              points: d.coordinates?.points || d.points || [],
+              style: {
+                color: d.style?.color || '#3b82f6',
+                lineWidth: d.style?.lineWidth || 2,
+                ...d.style,
+              },
+            };
+          } catch (e) {
+            console.warn('Failed to parse drawing:', d, e);
+            return null;
+          }
+        })
+        .filter((d): d is Drawing => d !== null && d.points.length > 0);
+      
+      setDrawings(loadedDrawings);
     }
   }, [drawingsPersistence.drawings]);
 
