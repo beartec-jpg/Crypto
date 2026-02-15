@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries, Time } from 'lightweight-charts';
 import { X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { DrawingToolbar } from '@/components/drawings/DrawingToolbar';
 import { useDrawingState } from '@/hooks/useDrawingState';
+import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 
 type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
 
@@ -50,6 +51,9 @@ export function ChartFullscreenPage({
   const [candles, setCandles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tempDrawing, setTempDrawing] = useState<{
+    points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[]
+  } | null>(null);
 
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -62,12 +66,60 @@ export function ChartFullscreenPage({
   // Tool selection handler
   const handleSelectTool = useCallback((tool: DrawingTool) => {
     setActiveTool(tool);
+    setShowToolPicker(false); // Auto-close picker after tool selection
   }, []);
 
   // Toggle tool picker
   const handleToggleToolPicker = useCallback(() => {
     setShowToolPicker(prev => !prev);
   }, []);
+
+  // Handle point commit from gesture system
+  const handlePointCommit = useCallback((point: GesturePoint) => {
+    if (!activeTool) return;
+    
+    setTempDrawing(prev => {
+      if (!prev) return { points: [{ 
+        time: point.time as number, 
+        price: point.price, 
+        snapType: point.snapType 
+      }] };
+      
+      const newPoints = [...prev.points, { 
+        time: point.time as number, 
+        price: point.price, 
+        snapType: point.snapType 
+      }];
+      
+      const requiredPoints = activeTool === 'horizontal' ? 1 : 2;
+      
+      // Save drawing when enough points are collected
+      if (newPoints.length >= requiredPoints) {
+        const newDrawing = {
+          id: `drawing-${Date.now()}`,
+          type: activeTool,
+          points: newPoints,
+          style: { color: '#3b82f6', lineWidth: 2 }
+        };
+        
+        // Save to drawings state (will be implemented with drawing persistence)
+        console.log('Drawing complete:', newDrawing);
+        
+        return { points: [] }; // Reset for next drawing
+      }
+      
+      return { points: newPoints };
+    });
+  }, [activeTool]);
+
+  // Initialize gesture controller
+  const gestureController = useChartGestures({
+    enabled: activeTool !== null,
+    data: candles as unknown as { time: Time; open: number; high: number; low: number; close: number }[],
+    onPointCommit: handlePointCommit,
+    onCrosshairModeChange: () => {}, // Not needed for fullscreen
+    autoSnapEnabled: true,
+  });
 
   // Initialize chart
   useEffect(() => {
@@ -165,6 +217,21 @@ export function ChartFullscreenPage({
     fetchCandles();
   }, [symbol, timeframe]);
 
+  // Attach gesture controller to chart
+  useEffect(() => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+    const container = chartContainerRef.current;
+    
+    if (!chart || !candleSeries || !container) return;
+    
+    gestureController.attachToChart(chart, candleSeries, container);
+    
+    return () => {
+      gestureController.detachFromChart();
+    };
+  }, [chartRef.current, candleSeriesRef.current, gestureController]);
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
       {/* Top Toolbar */}
@@ -189,10 +256,10 @@ export function ChartFullscreenPage({
 
         {/* Ticker selector */}
         <Select value={symbol} onValueChange={setSymbol}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40 bg-slate-800 text-white hover:bg-slate-700 border-slate-600">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-slate-800 text-white border-slate-600">
             {watchlistTickers.map((ticker) => (
               <SelectItem key={ticker} value={ticker}>
                 {formatSymbol(ticker)}
@@ -203,10 +270,10 @@ export function ChartFullscreenPage({
 
         {/* Timeframe selector */}
         <Select value={timeframe} onValueChange={setTimeframe}>
-          <SelectTrigger className="w-24">
+          <SelectTrigger className="w-24 bg-slate-800 text-white hover:bg-slate-700 border-slate-600">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-slate-800 text-white border-slate-600">
             <SelectItem value="1m">1m</SelectItem>
             <SelectItem value="5m">5m</SelectItem>
             <SelectItem value="15m">15m</SelectItem>
@@ -246,6 +313,30 @@ export function ChartFullscreenPage({
           </div>
         )}
         <div ref={chartContainerRef} className="absolute inset-0" />
+        
+        {/* SVG Overlay for temp drawing points */}
+        <svg 
+          className="absolute top-0 left-0 pointer-events-none"
+          style={{ width: '100%', height: '100%', zIndex: 10 }}
+        >
+          {tempDrawing && tempDrawing.points.length > 0 && chartRef.current && (
+            tempDrawing.points.map((point, i) => {
+              const x = chartRef.current?.timeScale().timeToCoordinate(point.time as any);
+              const y = candleSeriesRef.current?.priceToCoordinate(point.price);
+              return (
+                <circle 
+                  key={i} 
+                  cx={x ?? 0} 
+                  cy={y ?? 0} 
+                  r={6} 
+                  fill="#3b82f6" 
+                  stroke="#fff" 
+                  strokeWidth={2}
+                />
+              );
+            })
+          )}
+        </svg>
       </div>
     </div>
   );
