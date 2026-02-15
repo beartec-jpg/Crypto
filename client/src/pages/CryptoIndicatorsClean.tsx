@@ -172,24 +172,20 @@ export default function CryptoIndicatorsClean() {
               />
             </div>
 
-            {/* 2. ANIMATION - Centered with proper spacing */}
-            <div className="flex justify-center mb-12">
-              <div className="relative" style={{ height: '240px', width: '100%', maxWidth: '800px' }}>
-                <VideoSequencePlayer
-                  targetMarketState={targetMarketState}
-                  isInitialLoad={isInitialLoad}
-                  onInitialComplete={() => setIsInitialLoad(false)}
-                />
-              </div>
+          {/* 3 & 4. WATCHLIST (Search + Table + Timeframe + Chart) */}
+          <CleanWatchlist />
+
+          {/* 5. OSCILLATORS SECTION */}
+          {candles.length > 0 && (
+            <div className="mt-2.5 bg-slate-900 border border-slate-700 rounded-lg p-4">
+              <OscillatorsPanel candles={candles} />
             </div>
 
-            {/* 3 & 4. WATCHLIST (Search + Table + Timeframe + Chart) */}
-            <CleanWatchlist onExpandChart={handleExpandChart} />
-
-            {/* 5. OSCILLATORS SECTION */}
-            {candles.length > 0 && (
-              <div className="mt-6 bg-slate-900 border border-slate-700 rounded-lg p-4">
-                <OscillatorsPanel candles={candles} />
+          {/* 6. CVD TABLE SECTION */}
+          {deltaHistory.length > 0 && (
+            <div className="mt-2.5 bg-slate-900 border border-slate-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-lg font-semibold text-white">📈 Delta vs CVD</h4>
               </div>
             )}
 
