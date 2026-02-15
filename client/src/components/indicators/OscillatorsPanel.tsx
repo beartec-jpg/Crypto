@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Star } from 'lucide-react';
+import { useOscillatorPreferences } from '@/hooks/useOscillatorPreferences';
 
 // Existing oscillator panel components
 import { RSIPanel } from '@/components/indicators/oscillators/RSIPanel';
@@ -76,6 +77,9 @@ const DIVERGENCE_INDICATOR_RADIUS = 6;
 export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
   const [showOscillatorModal, setShowOscillatorModal] = useState(false);
   const [activeOscillators, setActiveOscillators] = useState<string[]>([]);
+  
+  // Hook for managing favorite oscillators
+  const { favoriteOscillators, isSaving, toggleFavorite, isFavorite } = useOscillatorPreferences();
 
   // Calculate all oscillators from candles
   const calculatedData = {
@@ -498,12 +502,50 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
               </button>
             </div>
             
+            {/* Show favorites section if user has any favorites */}
+            {favoriteOscillators.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-400 mb-2">⭐ Your Favorites</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {oscillatorOptions
+                    .filter(osc => favoriteOscillators.includes(osc.id as any))
+                    .map(osc => (
+                      <button
+                        key={`fav-${osc.id}`}
+                        onClick={() => toggleOscillator(osc.id)}
+                        className={`relative flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                          activeOscillators.includes(osc.id)
+                            ? 'bg-purple-600 text-white shadow-lg scale-105'
+                            : 'bg-slate-800 text-gray-300 hover:bg-slate-700'
+                        }`}
+                      >
+                        <span>{osc.icon}</span>
+                        <span>{osc.name}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavorite(osc.id as any);
+                          }}
+                          className="absolute top-1.5 right-1.5 p-0.5 hover:scale-110 transition-transform"
+                          disabled={isSaving}
+                        >
+                          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                        </button>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+            
+            <h4 className="text-sm font-medium text-gray-400 mb-2">
+              {favoriteOscillators.length > 0 ? 'All Oscillators' : 'Select Oscillators'}
+            </h4>
             <div className="grid grid-cols-2 gap-2">
               {oscillatorOptions.map(osc => (
                 <button
                   key={osc.id}
                   onClick={() => toggleOscillator(osc.id)}
-                  className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                  className={`relative flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
                     activeOscillators.includes(osc.id)
                       ? 'bg-purple-600 text-white shadow-lg scale-105'
                       : 'bg-slate-800 text-gray-300 hover:bg-slate-700'
@@ -511,6 +553,22 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
                 >
                   <span>{osc.icon}</span>
                   <span>{osc.name}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite(osc.id as any);
+                    }}
+                    className="absolute top-1.5 right-1.5 p-0.5 hover:scale-110 transition-transform"
+                    disabled={isSaving}
+                  >
+                    <Star 
+                      className={`h-3 w-3 transition-colors ${
+                        isFavorite(osc.id as any)
+                          ? 'fill-yellow-400 text-yellow-400'
+                          : 'fill-none text-gray-500 hover:text-gray-300'
+                      }`}
+                    />
+                  </button>
                 </button>
               ))}
             </div>
