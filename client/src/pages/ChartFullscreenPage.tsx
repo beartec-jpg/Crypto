@@ -8,8 +8,6 @@ import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { useDrawingState } from '@/hooks/useDrawingState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
-import { useMutation } from '@tanstack/react-query';
-import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { 
   createDrawingPrimitive, 
   DrawingPrimitive,
