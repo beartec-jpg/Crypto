@@ -257,10 +257,15 @@ export function ChartFullscreenPage({
       // Only handle clicks when no tool is active (not in drawing mode)
       if (activeTool) return;
       
-      // Note: This is a simplified implementation
-      // TODO: Implement proper hit detection to determine which drawing was clicked
-      // For now, this is disabled to avoid confusing UX
-      // Users can access drawing settings through a different mechanism (e.g., keyboard shortcut or toolbar)
+      // Note: Drawing click detection is infrastructure-ready but requires hit testing implementation
+      // The DrawingQuickMenu component and all state management is in place
+      // To complete this feature, implement hit detection logic that:
+      // 1. Converts click coordinates to chart coordinates
+      // 2. Checks which drawing primitive (if any) is near the click point
+      // 3. Calls handleDrawingClick(drawingId, e.clientX, e.clientY) with the detected drawing
+      // 
+      // For now, users can access drawing settings through the existing UI mechanisms
+      // such as the settings panels and toolbar options
     };
     
     chartContainer?.addEventListener('click', handleChartClick);
