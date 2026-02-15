@@ -161,6 +161,8 @@ export function ChartFullscreenPage({
   // Save drawing mutation
   const saveDrawingMutation = useMutation({
     mutationFn: async (drawing: Drawing) => {
+      console.log('[SaveMutation] Saving drawing with temp ID:', drawing.id);
+      
       const response = await authenticatedApiRequest('POST', '/api/crypto/chart-drawings', {
         symbol,
         timeframe,
@@ -168,16 +170,41 @@ export function ChartFullscreenPage({
         coordinates: { points: drawing.points },
         style: drawing.style,
       });
-      return { ...(await response.json()), localId: drawing.id };
+      
+      const serverDrawing = await response.json();
+      console.log('[SaveMutation] Server returned:', serverDrawing);
+      
+      // CRITICAL: Attach the temp ID to track which drawing to update
+      return { 
+        serverDrawing,          // Server response (has server ID)
+        tempId: drawing.id      // Original temp ID from client
+      };
     },
     onSuccess: (data) => {
-      // Refetch to load the saved drawing with server ID
-      drawingsPersistence.refetchDrawings();
+      const { serverDrawing, tempId } = data;
+      console.log('[SaveMutation] onSuccess - tempId:', tempId, 'serverID:', serverDrawing.id);
       
-      // Optimistic update: immediately add to local state with server ID
-      setDrawings(prev => prev.map(d => 
-        d.id === data.localId ? { ...d, id: data.id } : d
-      ));
+      // Update the drawing in state: replace temp ID with server ID
+      setDrawings(prev => {
+        const updated = prev.map(d => {
+          if (d.id === tempId) {
+            console.log('[SaveMutation] Replacing temp ID with server ID:', tempId, '→', serverDrawing.id);
+            return {
+              id: serverDrawing.id,
+              type: serverDrawing.drawing_type || serverDrawing.drawingType || d.type,
+              points: serverDrawing.coordinates?.points || d.points,
+              style: serverDrawing.style || d.style,
+            };
+          }
+          return d;
+        });
+        
+        console.log('[SaveMutation] Updated drawings array:', updated.length, 'drawings');
+        return updated;
+      });
+      
+      // Refetch to ensure DB sync (but drawing already in state from optimistic update)
+      drawingsPersistence.refetchDrawings();
     },
   });
 
@@ -289,6 +316,8 @@ export function ChartFullscreenPage({
   // Load saved drawings from database
   useEffect(() => {
     if (drawingsPersistence.drawings) {
+      console.log('[Persistence] Loaded from DB:', drawingsPersistence.drawings.length, 'drawings');
+      
       const loadedDrawings = drawingsPersistence.drawings
         .map((d: any): Drawing | null => {
           try {
@@ -309,7 +338,18 @@ export function ChartFullscreenPage({
         })
         .filter((d): d is Drawing => d !== null && d.points.length > 0);
       
-      setDrawings(loadedDrawings);
+      console.log('[Persistence] Parsed drawings:', loadedDrawings.length);
+      
+      // ONLY update if different from current state (prevent overwriting optimistic updates)
+      setDrawings(prev => {
+        // If we have temp IDs (optimistic), keep them until server IDs arrive
+        const hasTempIds = prev.some(d => d.id.startsWith('drawing-'));
+        if (hasTempIds && loadedDrawings.length === prev.length) {
+          console.log('[Persistence] Skipping update - waiting for server IDs');
+          return prev;
+        }
+        return loadedDrawings;
+      });
     }
   }, [drawingsPersistence.drawings]);
 
@@ -330,6 +370,12 @@ export function ChartFullscreenPage({
   
   // Attach/detach native primitives for high-performance rendering
   useEffect(() => {
+    console.log('[Primitives] Effect triggered');
+    console.log('[Primitives] - chartReady:', !!chartRef.current);
+    console.log('[Primitives] - candleSeriesReady:', !!candleSeriesRef.current);
+    console.log('[Primitives] - drawings.length:', drawings.length);
+    console.log('[Primitives] - drawings:', drawings.map(d => ({ id: d.id, type: d.type })));
+    
     if (!chartRef.current || !candleSeriesRef.current) return;
     
     const candleSeries = candleSeriesRef.current;
@@ -384,6 +430,7 @@ export function ChartFullscreenPage({
         existingPrimitive.updateStyle(drawing.style);
       } else {
         // Create and attach new primitive
+        console.log('[Primitives] Creating new primitive for drawing:', drawing.id, 'type:', drawing.type);
         const primitive = createDrawingPrimitive(
           drawing.id,
           drawing.type as 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
@@ -393,11 +440,14 @@ export function ChartFullscreenPage({
         
         if (primitive) {
           try {
+            console.log('[Primitives] Attaching primitive for:', drawing.id);
             candleSeries.attachPrimitive(primitive);
             currentPrimitives.set(drawing.id, primitive);
           } catch (e) {
             console.error('Failed to attach primitive:', e);
           }
+        } else {
+          console.warn('[Primitives] Failed to create primitive for:', drawing.id);
         }
       }
     });
