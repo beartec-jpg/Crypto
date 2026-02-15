@@ -16,7 +16,7 @@ interface DrawingRendererProps {
   tempDrawing: { points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null;
   setTempDrawing: React.Dispatch<React.SetStateAction<{ points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null>>;
   setDrawings: React.Dispatch<React.SetStateAction<any[]>>;
-  saveDrawingMutation: any;
+  saveDrawingMutation: { mutate: (drawing: any) => void };
   onPointCommitRef?: React.MutableRefObject<((point: GesturePoint) => void) | null>;
 }
 
