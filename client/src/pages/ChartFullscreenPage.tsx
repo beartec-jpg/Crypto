@@ -230,7 +230,7 @@ export function ChartFullscreenPage({
     return () => {
       gestureController.detachFromChart();
     };
-  }, [chartRef.current, candleSeriesRef.current, gestureController]);
+  }, [gestureController]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
@@ -321,7 +321,7 @@ export function ChartFullscreenPage({
         >
           {tempDrawing && tempDrawing.points.length > 0 && chartRef.current && (
             tempDrawing.points.map((point, i) => {
-              const x = chartRef.current?.timeScale().timeToCoordinate(point.time as any);
+              const x = chartRef.current?.timeScale().timeToCoordinate(point.time as Time);
               const y = candleSeriesRef.current?.priceToCoordinate(point.price);
               return (
                 <circle 
