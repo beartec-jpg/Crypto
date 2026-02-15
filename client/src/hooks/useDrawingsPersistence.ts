@@ -20,8 +20,8 @@ export function useDrawingsPersistence(symbol: string, interval: string) {
   const { data: drawings = [], isLoading, refetch: refetchDrawings } = useQuery<Drawing[]>({
     queryKey: ['/api/crypto/chart-drawings', symbol, interval],
     queryFn: async () => {
-      const response = await authenticatedApiRequest('GET', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${interval}`) as unknown;
-      return response as Drawing[];
+      const response = await authenticatedApiRequest('GET', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${interval}`);
+      return response.json();
     },
   });
 
@@ -46,9 +46,10 @@ export function useDrawingsPersistence(symbol: string, interval: string) {
       console.log('[Persistence] Request body:', requestBody);
       
       const response = await authenticatedApiRequest('POST', '/api/crypto/chart-drawings', requestBody);
+      const data = await response.json();
       
-      console.log('[Persistence] API response:', response);
-      return response;
+      console.log('[Persistence] API response:', data);
+      return data;
     },
     onSuccess: (data: any) => {
       console.log('[Persistence] Save successful, drawing ID:', data?.id);
