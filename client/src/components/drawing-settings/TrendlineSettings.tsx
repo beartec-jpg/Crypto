@@ -16,6 +16,12 @@ export function TrendlineSettings({ drawing, onUpdate }: TrendlineSettingsProps)
   const extendLeft = drawing.style?.extendLeft || false;
   const extendRight = drawing.style?.extendRight || false;
 
+  // Helper to wrap updates in { style: { ... } } format
+  const handleUpdate = (styleUpdates: any) => {
+    console.log('[TrendlineSettings] Updating with:', styleUpdates);
+    onUpdate({ style: { ...drawing.style, ...styleUpdates } });
+  };
+
   return (
     <div className="space-y-4 p-4 bg-slate-900 rounded-lg">
       {/* Color */}
@@ -23,27 +29,27 @@ export function TrendlineSettings({ drawing, onUpdate }: TrendlineSettingsProps)
         <span className="text-xs text-slate-400 w-16">Color:</span>
         <ColorPicker
           color={color}
-          onChange={(c) => onUpdate({ color: c })}
+          onChange={(c) => handleUpdate({ color: c })}
         />
       </div>
 
       {/* Opacity */}
       <OpacitySlider
         value={opacity}
-        onChange={(val) => onUpdate({ opacity: val })}
+        onChange={(val) => handleUpdate({ opacity: val })}
         label="Opacity"
       />
 
       {/* Line Width */}
       <LineWidthSelector
         value={lineWidth}
-        onChange={(w) => onUpdate({ lineWidth: w })}
+        onChange={(w) => handleUpdate({ lineWidth: w })}
       />
 
       {/* Line Style */}
       <LineStyleSelector
         value={lineStyle}
-        onChange={(style) => onUpdate({ lineStyle: style })}
+        onChange={(style) => handleUpdate({ lineStyle: style })}
       />
 
       {/* Extension Toggles */}
@@ -53,21 +59,21 @@ export function TrendlineSettings({ drawing, onUpdate }: TrendlineSettingsProps)
           <input
             type="checkbox"
             checked={extendLeft}
-            onChange={(e) => onUpdate({ extendLeft: e.target.checked })}
-            className="rounded border-slate-600 w-4 h-4"
+            onChange={(e) => handleUpdate({ extendLeft: e.target.checked })}
+            className="rounded border-slate-600 w-4 h-4 cursor-pointer"
             id="extend-left"
           />
-          <label htmlFor="extend-left" className="text-xs text-gray-300">Extend Left</label>
+          <label htmlFor="extend-left" className="text-xs text-gray-300 cursor-pointer">Extend Left</label>
         </div>
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
             checked={extendRight}
-            onChange={(e) => onUpdate({ extendRight: e.target.checked })}
-            className="rounded border-slate-600 w-4 h-4"
+            onChange={(e) => handleUpdate({ extendRight: e.target.checked })}
+            className="rounded border-slate-600 w-4 h-4 cursor-pointer"
             id="extend-right"
           />
-          <label htmlFor="extend-right" className="text-xs text-gray-300">Extend Right</label>
+          <label htmlFor="extend-right" className="text-xs text-gray-300 cursor-pointer">Extend Right</label>
         </div>
       </div>
     </div>
