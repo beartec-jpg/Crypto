@@ -13,6 +13,8 @@ interface Drawing {
   [key: string]: any;
 }
 
+const DEFAULT_DRAWING_STYLE = { color: '#3b82f6', lineWidth: 2 };
+
 export function useDrawingsPersistence(symbol: string, interval: string) {
   const { toast } = useToast();
 
@@ -40,7 +42,7 @@ export function useDrawingsPersistence(symbol: string, interval: string) {
         timeframe: interval,  // Map interval → timeframe for API
         drawingType: drawing.type,
         coordinates: { points: drawing.points },
-        style: drawing.style || { color: '#3b82f6', lineWidth: 2 },
+        style: drawing.style || DEFAULT_DRAWING_STYLE,
       };
       
       console.log('[Persistence] Request body:', requestBody);
