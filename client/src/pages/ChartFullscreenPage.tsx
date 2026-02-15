@@ -3,7 +3,7 @@ import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries, Time 
 import { X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { DrawingToolbar } from '@/components/drawings/DrawingToolbar';
+import { VerticalDrawingToolbar } from '@/components/drawings/VerticalDrawingToolbar';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { useDrawingState } from '@/hooks/useDrawingState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
@@ -103,7 +103,6 @@ export function ChartFullscreenPage({
   const [symbol, setSymbol] = useState(initialSymbol);
   const [timeframe, setTimeframe] = useState(initialTimeframe);
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
-  const [showToolPicker, setShowToolPicker] = useState(false);
   const [candles, setCandles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,12 +138,6 @@ export function ChartFullscreenPage({
   const handleSelectTool = useCallback((tool: DrawingTool) => {
     setActiveTool(tool);
     activeToolRef.current = tool;
-    setShowToolPicker(false); // Auto-close picker after tool selection
-  }, []);
-
-  // Toggle tool picker
-  const handleToggleToolPicker = useCallback(() => {
-    setShowToolPicker(prev => !prev);
   }, []);
   
   // Update refs when values change
@@ -470,18 +463,14 @@ export function ChartFullscreenPage({
         </Select>
       </div>
 
-      {/* Drawing Tools Toolbar */}
-      <div className="bg-slate-800 border-b border-slate-700 px-4 py-2 relative">
-        <DrawingToolbar
-          activeTool={activeTool}
-          onSelectTool={handleSelectTool}
-          showToolPicker={showToolPicker}
-          onToggleToolPicker={handleToggleToolPicker}
-        />
-      </div>
-
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden">
+        {/* Vertical Drawing Toolbar - LEFT SIDE */}
+        <VerticalDrawingToolbar
+          activeTool={activeTool}
+          onSelectTool={handleSelectTool}
+        />
+        
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50 z-10">
             <div className="text-center">
