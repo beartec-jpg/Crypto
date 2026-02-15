@@ -3,7 +3,7 @@ import { OpacitySlider } from './shared/OpacitySlider';
 import { LineStyleSelector } from './shared/LineStyleSelector';
 
 interface ChannelSettingsProps {
-  drawing: any; // Replace with proper type
+  drawing: any;
   onUpdate: (updates: any) => void;
 }
 
@@ -20,6 +20,12 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
   const lineStyle = drawing.style?.lineStyle || 'solid';
   const internalLineStyle = drawing.style?.internalLineStyle || 'dashed';
 
+  // Helper to wrap updates in { style: { ... } } format
+  const handleUpdate = (styleUpdates: any) => {
+    console.log('[ChannelSettings] Updating with:', styleUpdates);
+    onUpdate({ style: { ...drawing.style, ...styleUpdates } });
+  };
+
   const roundLevel = (n: number) => Math.round(n * 10000) / 10000;
   const isLevelHidden = (level: number) => 
     hiddenLevels.some((h: number) => roundLevel(h) === roundLevel(level));
@@ -29,21 +35,21 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
       {/* Boundary Line Style */}
       <LineStyleSelector
         value={lineStyle}
-        onChange={(style) => onUpdate({ lineStyle: style })}
+        onChange={(style) => handleUpdate({ lineStyle: style })}
         label="Boundary Line Style"
       />
 
       {/* Internal Line Style */}
       <LineStyleSelector
         value={internalLineStyle}
-        onChange={(style) => onUpdate({ internalLineStyle: style })}
+        onChange={(style) => handleUpdate({ internalLineStyle: style })}
         label="Internal Line Style"
       />
 
       {/* Opacity */}
       <OpacitySlider
         value={opacity}
-        onChange={(val) => onUpdate({ opacity: val })}
+        onChange={(val) => handleUpdate({ opacity: val })}
         label="Line Opacity"
       />
 
@@ -65,7 +71,7 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
                     const newHidden = isVisible 
                       ? [...hiddenLevels, level]
                       : hiddenLevels.filter((l: number) => roundLevel(l) !== roundLevel(level));
-                    onUpdate({ hiddenLevels: newHidden });
+                    handleUpdate({ hiddenLevels: newHidden });
                   }}
                   className="rounded border-slate-600 w-4 h-4"
                 />
@@ -75,7 +81,7 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
                   color={levelColor}
                   onChange={(c) => {
                     const newColors = { ...levelColors, [level]: c };
-                    onUpdate({ levelColors: newColors });
+                    handleUpdate({ levelColors: newColors });
                   }}
                 />
                 
@@ -84,7 +90,7 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
                   value={customLabel}
                   onChange={(e) => {
                     const newLabels = { ...customLabels, [level]: e.target.value };
-                    onUpdate({ customLabels: newLabels });
+                    handleUpdate({ customLabels: newLabels });
                   }}
                   placeholder="Custom label..."
                   className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white placeholder-gray-500"
@@ -104,14 +110,14 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
             <ColorPicker
               color={boundaryColors.top || '#ef4444'}
               onChange={(c) => {
-                onUpdate({ boundaryColors: { ...boundaryColors, top: c } });
+                handleUpdate({ boundaryColors: { ...boundaryColors, top: c } });
               }}
             />
             <input
               type="text"
               value={customLabels['top'] || ''}
               onChange={(e) => {
-                onUpdate({ customLabels: { ...customLabels, top: e.target.value } });
+                handleUpdate({ customLabels: { ...customLabels, top: e.target.value } });
               }}
               placeholder="Top label..."
               className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white placeholder-gray-500"
@@ -123,14 +129,14 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
             <ColorPicker
               color={boundaryColors.bottom || '#22c55e'}
               onChange={(c) => {
-                onUpdate({ boundaryColors: { ...boundaryColors, bottom: c } });
+                handleUpdate({ boundaryColors: { ...boundaryColors, bottom: c } });
               }}
             />
             <input
               type="text"
               value={customLabels['bottom'] || ''}
               onChange={(e) => {
-                onUpdate({ customLabels: { ...customLabels, bottom: e.target.value } });
+                handleUpdate({ customLabels: { ...customLabels, bottom: e.target.value } });
               }}
               placeholder="Bottom label..."
               className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white placeholder-gray-500"
@@ -144,7 +150,7 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
         <input
           type="checkbox"
           checked={hideLabels}
-          onChange={(e) => onUpdate({ hideLabels: e.target.checked })}
+          onChange={(e) => handleUpdate({ hideLabels: e.target.checked })}
           className="rounded border-slate-600 w-4 h-4"
         />
         <span className="text-gray-300">Hide Labels</span>
@@ -153,7 +159,7 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
       {/* Fill Opacity */}
       <OpacitySlider
         value={fillOpacity}
-        onChange={(val) => onUpdate({ fillOpacity: val })}
+        onChange={(val) => handleUpdate({ fillOpacity: val })}
         label="Fill Opacity"
       />
     </div>
