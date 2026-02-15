@@ -168,7 +168,16 @@ export function ChartFullscreenPage({
         coordinates: { points: drawing.points },
         style: drawing.style,
       });
-      return response.json();
+      return { ...(await response.json()), localId: drawing.id };
+    },
+    onSuccess: (data) => {
+      // Refetch to load the saved drawing with server ID
+      drawingsPersistence.refetchDrawings();
+      
+      // Optimistic update: immediately add to local state with server ID
+      setDrawings(prev => prev.map(d => 
+        d.id === data.localId ? { ...d, id: data.id } : d
+      ));
     },
   });
 
