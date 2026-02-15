@@ -160,10 +160,10 @@ export function ChartFullscreenPage({
 
   // Save drawing mutation
   const saveDrawingMutation = useMutation({
-    mutationFn: async (drawing: any) => {
+    mutationFn: async (drawing: Drawing) => {
       const response = await authenticatedApiRequest('POST', '/api/crypto/chart-drawings', {
         symbol,
-        timeframe: timeframe,
+        timeframe,
         drawingType: drawing.type,
         coordinates: { points: drawing.points },
         style: drawing.style,
