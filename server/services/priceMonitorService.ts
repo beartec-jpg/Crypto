@@ -1202,7 +1202,6 @@ class PriceMonitorService {
     }
 
     await db.update(chartDrawings).set(updatePayload).where(sql`${chartDrawings.id} = ${drawing.id}`);
-    }
   }
 
   private async fetchCandleData(symbol: string, timeframe: string): Promise<any[]> {
