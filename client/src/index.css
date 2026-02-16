@@ -149,7 +149,7 @@ html, body {
 
 /* Prevent default touch behaviors */
 body {
-  touch-action: pan-x pan-y;
+  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -165,26 +165,14 @@ body {
   overflow: hidden;
   width: 100%;
   height: 100%;
-}
-
-/* Prevent address bar show/hide on scroll */
-.chart-container, 
-[class*="ChartFullscreen"],
-[class*="CryptoIndicators"] {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
-  touch-action: none; /* Disable all native touch gestures */
+  touch-action: none;
 }
 
 /* Allow scrolling only in specific components (like settings panels) */
 .settings-panel,
 .modal-content,
 [role="dialog"] {
-  touch-action: auto;
+  touch-action: pan-y;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }

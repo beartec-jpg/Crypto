@@ -399,6 +399,9 @@ export function ChartFullscreenPage({
 
   // Prevent native browser gestures on chart
   useEffect(() => {
+    const chartElement = chartContainerRef.current;
+    if (!chartElement) return;
+    
     const preventDefault = (e: TouchEvent) => {
       // Allow touch on modals and settings panels
       const target = e.target as HTMLElement;
@@ -420,16 +423,13 @@ export function ChartFullscreenPage({
       }
     };
 
-    // Add passive: false to allow preventDefault
-    document.addEventListener('touchmove', preventDefault, { passive: false });
-    document.addEventListener('touchstart', preventZoom, { passive: false });
-    
-    // Prevent pull-to-refresh on the document
-    document.body.style.overscrollBehavior = 'none';
+    // Add passive: false to allow preventDefault on chart container only
+    chartElement.addEventListener('touchmove', preventDefault, { passive: false });
+    chartElement.addEventListener('touchstart', preventZoom, { passive: false });
 
     return () => {
-      document.removeEventListener('touchmove', preventDefault);
-      document.removeEventListener('touchstart', preventZoom);
+      chartElement.removeEventListener('touchmove', preventDefault);
+      chartElement.removeEventListener('touchstart', preventZoom);
     };
   }, []);
 
