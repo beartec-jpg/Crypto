@@ -184,6 +184,7 @@ const emaHTFDataCache = useRef<Record<string, any[]>>({});
 const [activeOscillator, setActiveOscillator] = useState<'rsi' | 'macd' | 'volume' | null>(null);
 
 // Oscillator panel height constant
+// Includes: tabs section (py-2 ≈ 16px) + oscillator area (h-40 = 160px) + borders ≈ 180px total
 const OSCILLATOR_PANEL_HEIGHT = 180; // Height in pixels when oscillator is visible
 
 /**
