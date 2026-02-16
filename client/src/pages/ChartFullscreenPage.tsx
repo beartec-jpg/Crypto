@@ -12,6 +12,8 @@ import { findDrawingsNearClick } from '@/lib/drawingHitDetection';
 import { useDrawingState } from '@/hooks/useDrawingState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
+import { useIndicatorState } from '@/hooks/useIndicatorState';
+import { IndicatorToolbar, EmaSmaModal } from '@/components/indicators';
 import { 
   createDrawingPrimitive, 
   DrawingPrimitive,
@@ -133,6 +135,12 @@ export function ChartFullscreenPage({
     color?: string;
     points?: { time: number; price: number }[];
   }>>([]);
+  
+  // Indicator state
+  const indicators = useIndicatorState();
+  
+  // EMA/SMA modal state
+  const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
 
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -665,7 +673,17 @@ export function ChartFullscreenPage({
 
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden">
-        <VerticalDrawingToolbar activeTool={activeTool} onSelectTool={handleSelectTool} />
+        {/* Indicator Toolbar - Top */}
+        <IndicatorToolbar 
+          onOpenEmaSma={() => setShowEmaSmaModal(true)} 
+        />
+
+        {/* Drawing Toolbar - Bottom (updated position) */}
+        <VerticalDrawingToolbar 
+          activeTool={activeTool} 
+          onSelectTool={handleSelectTool}
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-row gap-2 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl"
+        />
         
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50 z-10">
@@ -749,6 +767,22 @@ export function ChartFullscreenPage({
           onClose={() => setShowSelectionModal(false)}
         />
       )}
+      
+      {/* EMA/SMA Modal */}
+      <EmaSmaModal
+        isOpen={showEmaSmaModal}
+        onClose={() => setShowEmaSmaModal(false)}
+        emaShow={indicators.ema.show}
+        emaConfigs={indicators.ema.configs}
+        emaInputs={indicators.ema.inputs}
+        onEmaToggle={indicators.ema.setShow}
+        onEmaConfigsChange={indicators.ema.setConfigs}
+        onEmaInputsChange={indicators.ema.setInputs}
+        smaShow={indicators.sma.show}
+        smaConfigs={indicators.sma.configs}
+        onSmaToggle={indicators.sma.setShow}
+        onSmaConfigsChange={indicators.sma.setConfigs}
+      />
     </div>
   );
 }

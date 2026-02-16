@@ -58,11 +58,13 @@ const TOOLS: ToolConfig[] = [
 interface VerticalDrawingToolbarProps {
   activeTool: DrawingTool;
   onSelectTool: (tool: DrawingTool) => void;
+  className?: string; // NEW: Allow custom positioning
 }
 
 export function VerticalDrawingToolbar({
   activeTool,
   onSelectTool,
+  className, // NEW
 }: VerticalDrawingToolbarProps) {
   const handleToolClick = (toolId: DrawingTool) => {
     // Toggle behavior: if already active, deselect it
@@ -75,7 +77,10 @@ export function VerticalDrawingToolbar({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl">
+      <div className={
+        className || 
+        "absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl"
+      }>
         {TOOLS.map((tool) => {
           const Icon = tool.icon;
           const isActive = activeTool === tool.id;
