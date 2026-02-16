@@ -247,6 +247,8 @@ function getDistanceToDrawing(
     }
     
     case 'fib_retracement': {
+      // For fib retracement: requires at least 2 points (for backward compatibility with old drawings)
+      // If 3 points available, point3 defines horizontal extent
       if (drawing.points.length < 2) return null;
       
       const x1 = timeScale.timeToCoordinate(drawing.points[0].time as Time);

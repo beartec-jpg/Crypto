@@ -483,13 +483,19 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
 
       // Apply opacity to fill
       const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
-      ctx.fillStyle = this._style.color.replace(')', ', 0.2)').replace('rgb', 'rgba').replace('hsl', 'hsla');
+      const fillOpacity = this._style.fillOpacity !== undefined ? this._style.fillOpacity : 0.1;
+      
       if (this._style.color.startsWith('#')) {
         const hex = this._style.color;
         const r = parseInt(hex.slice(1, 3), 16);
         const g = parseInt(hex.slice(3, 5), 16);
         const b = parseInt(hex.slice(5, 7), 16);
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.2 * opacity})`;
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${fillOpacity * opacity})`;
+      } else {
+        // For non-hex colors (rgb, rgba, hsl, etc.), use string replacement
+        ctx.fillStyle = this._style.color.replace(')', `, ${fillOpacity})`)
+          .replace('rgb', 'rgba')
+          .replace('hsl', 'hsla');
       }
       ctx.fillRect(rectLeft, top, width, height);
 
@@ -644,6 +650,7 @@ const FIB_COLORS: Record<number, string> = {
 class FibRetracementRenderer implements IPrimitivePaneRenderer {
   private _point1: DrawingPoint;
   private _point2: DrawingPoint;
+  private _point3: DrawingPoint;
   private _style: DrawingStyle;
   private _series: ISeriesApi<SeriesType> | null;
   private _chart: IChartApi | null;
@@ -652,6 +659,7 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
   constructor(
     point1: DrawingPoint,
     point2: DrawingPoint,
+    point3: DrawingPoint,
     style: DrawingStyle,
     series: ISeriesApi<SeriesType> | null,
     chart: IChartApi | null,
@@ -659,6 +667,7 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
   ) {
     this._point1 = point1;
     this._point2 = point2;
+    this._point3 = point3;
     this._style = style;
     this._series = series;
     this._chart = chart;
@@ -671,9 +680,10 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
     const timeScale = this._chart.timeScale();
     const x1Raw = timeScale.timeToCoordinate(this._point1.time as Time);
     const x2Raw = timeScale.timeToCoordinate(this._point2.time as Time);
+    const x3Raw = timeScale.timeToCoordinate(this._point3.time as Time);
 
     // Need at least one valid x coordinate to render
-    if (x1Raw === null && x2Raw === null) return;
+    if (x1Raw === null && x2Raw === null && x3Raw === null) return;
 
     const priceDiff = this._point2.price - this._point1.price;
 
@@ -688,10 +698,12 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       // Calculate base coordinates
       const x1 = x1Raw ?? 0;
       const x2 = x2Raw ?? chartWidth;
+      const x3 = x3Raw ?? chartWidth;
       
-      // Determine drawing bounds based on extension
+      // Determine drawing bounds based on extension and 3 points
+      // Lines draw from min(point1.time, point2.time) to point3.time
       const anchorLeft = Math.min(x1, x2);
-      const anchorRight = Math.max(x1, x2);
+      const anchorRight = x3;
       const lineLeft = extendLeft ? 0 : anchorLeft;
       const lineRight = extendRight ? chartWidth : anchorRight;
       const isRightLabel = this._style.labelPosition === 'right';
@@ -767,6 +779,7 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       // Draw the diagonal anchor line (very transparent when not selected)
       const y1 = this._series!.priceToCoordinate(this._point1.price);
       const y2 = this._series!.priceToCoordinate(this._point2.price);
+      const y3 = this._series!.priceToCoordinate(this._point3.price);
       if (y1 !== null && y2 !== null && x1Raw !== null && x2Raw !== null) {
         ctx.beginPath();
         ctx.strokeStyle = this._isSelected ? '#22c55e' : 'rgba(136, 136, 136, 0.15)';
@@ -778,8 +791,8 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         ctx.setLineDash([]);
       }
 
-      // Draw selection handles
-      if (this._isSelected && y1 !== null && y2 !== null) {
+      // Draw selection handles for all three points
+      if (this._isSelected && y1 !== null && y2 !== null && y3 !== null) {
         ctx.fillStyle = '#22c55e';
         if (x1Raw !== null) {
           ctx.beginPath();
@@ -789,6 +802,11 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         if (x2Raw !== null) {
           ctx.beginPath();
           ctx.arc(x2Raw, y2, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (x3Raw !== null) {
+          ctx.beginPath();
+          ctx.arc(x3Raw, y3, 6, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -819,6 +837,7 @@ class FibRetracementPaneView implements IPrimitivePaneView {
     return new FibRetracementRenderer(
       points[0],
       points[1],
+      points[2],
       this._primitive.getStyle(),
       this._series,
       this._chart,
@@ -1432,7 +1451,12 @@ export function createDrawingPrimitive(
       break;
     case 'fib_retracement':
       if (points.length >= 2) {
-        return new FibRetracementPrimitive(id, points, style);
+        // For backward compatibility, if only 2 points exist, duplicate point2 as point3
+        // so the lines extend to the same position as point2
+        const fibPoints = points.length === 2 
+          ? [...points, points[1]] 
+          : points;
+        return new FibRetracementPrimitive(id, fibPoints, style);
       }
       break;
     case 'trend_fib':
