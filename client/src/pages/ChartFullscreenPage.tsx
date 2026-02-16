@@ -143,44 +143,44 @@ export function ChartFullscreenPage({
   
   // Indicator state
   const indicators = useIndicatorState();
-  
-  // EMA/SMA modal state
-  const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
 
-  // Chart refs
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
-  
-  // Refs for drawing logic (to avoid recreating callbacks)
-  const activeToolRef = useRef<DrawingTool>(null);
-  const autoColorEnabledRef = useRef(autoColorEnabled);
-  const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
-  
-  // Touch gesture detection refs
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+// Chart refs
+const chartContainerRef = useRef<HTMLDivElement>(null);
+const chartRef = useRef<IChartApi | null>(null);
+const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
 
-  // Drawing state - independent from parent
-  const drawingState = useDrawingState();
-  
-  // Drawing persistence hook
-  const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
+// Refs for drawing logic (to avoid recreating callbacks)
+const activeToolRef = useRef<DrawingTool>(null);
+const autoColorEnabledRef = useRef(autoColorEnabled);
+const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
 
-  // Tool selection handler
-  const handleSelectTool = useCallback((tool: DrawingTool) => {
-    setActiveTool(tool);
-    activeToolRef.current = tool;
-  }, []);
+// Touch gesture detection refs
+const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+// Drawing state - independent from parent
+const drawingState = useDrawingState();
+
+// Drawing persistence hook
+const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
+
+// EMA/SMA modal state
+const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
+
+// Tool selection handler
+const handleSelectTool = useCallback((tool: DrawingTool) => {
+  setActiveTool(tool);
+  activeToolRef.current = tool;
+}, []);
+
+// Handler for chart clicks (radial selection)
+const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
+  console.log('[ChartClick] Event fired, type:', event.type);
+  console.log('[ChartClick] activeTool:', activeTool);
   
-  // Handler for chart clicks (radial selection)
-  const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
-    console.log('[ChartClick] Event fired, type:', event.type);
-    console.log('[ChartClick] activeTool:', activeTool);
-    
-    // Only handle clicks when no tool is active (not in drawing mode)
-    if (activeTool) {
-      console.log('[ChartClick] Tool is active, ignoring click');
+  // Only handle clicks when no tool is active (not in drawing mode)
+  if (activeTool) {
+    console.log('[ChartClick] Tool is active, ignoring click');
       return;
     }
     
