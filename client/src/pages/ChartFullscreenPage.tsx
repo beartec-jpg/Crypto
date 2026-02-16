@@ -98,6 +98,10 @@ const formatSymbol = (symbol: string): string => {
   return symbol;
 };
 
+// Touch gesture detection thresholds
+const TOUCH_TAP_THRESHOLD = 150; // ms - max duration for a tap
+const TOUCH_MOVE_THRESHOLD = 10; // pixels - max movement for a tap
+
 export function ChartFullscreenPage({
   onClose,
   initialSymbol,
@@ -148,8 +152,6 @@ export function ChartFullscreenPage({
   
   // Touch gesture detection refs
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const TOUCH_TAP_THRESHOLD = 150; // ms - max duration for a tap
-  const TOUCH_MOVE_THRESHOLD = 10; // pixels - max movement for a tap
 
   // Drawing state - independent from parent
   const drawingState = useDrawingState();
@@ -521,6 +523,7 @@ export function ChartFullscreenPage({
     if (!candleSeriesRef.current) return;
 
     let mounted = true;
+    let timeoutId: NodeJS.Timeout | null = null;
 
     const fetchCandles = async () => {
       setIsLoading(true);
@@ -541,7 +544,7 @@ export function ChartFullscreenPage({
         }
         
         // Background load more history (up to 5000)
-        const timeoutId = setTimeout(async () => {
+        timeoutId = setTimeout(async () => {
           const fullData = await historicalDataCache.getHistoricalData(
             symbol,
             timeframe,
@@ -554,10 +557,6 @@ export function ChartFullscreenPage({
             console.log(`[Cache] Loaded ${fullData.length} candles`);
           }
         }, 100);
-        
-        return () => {
-          clearTimeout(timeoutId);
-        };
         
       } catch (err) {
         console.error('Failed to fetch candle data:', err);
@@ -572,6 +571,9 @@ export function ChartFullscreenPage({
     
     return () => {
       mounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [symbol, timeframe]);
   

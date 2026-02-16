@@ -25,6 +25,7 @@ class HistoricalDataCache {
   private readonly MAX_CANDLES_PER_REQUEST = 1000; // Binance limit
   private readonly DESIRED_HISTORY = 5000;
   private readonly MAX_RETRIES = 3; // Maximum retry attempts per request
+  private readonly DEFAULT_TIMEFRAME_MS = 60 * 1000; // 1 minute default for unknown timeframes
   
   constructor() {
     this.cache = new Map();
@@ -82,6 +83,12 @@ class HistoricalDataCache {
     
     for (let i = 0; i < requestsNeeded; i++) {
       const startTime = currentEndTime - (this.MAX_CANDLES_PER_REQUEST * interval);
+      
+      // Prevent negative timestamps (before Unix epoch)
+      if (startTime < 0) {
+        console.warn('[HistoricalCache] Reached minimum historical time, stopping pagination');
+        break;
+      }
       
       this.requestQueue.push({
         symbol,
@@ -184,13 +191,19 @@ class HistoricalDataCache {
       combinedData = [...filtered, ...existing.data].sort((a, b) => a.time - b.time);
     }
     
+    // Skip caching if no data available
+    if (combinedData.length === 0) {
+      console.warn('[HistoricalCache] No data to cache, skipping update');
+      return;
+    }
+    
     this.cache.set(cacheKey, {
       symbol,
       timeframe,
       data: combinedData,
       timestamp: Date.now(),
-      oldestTime: combinedData[0]?.time * 1000 || Date.now(),
-      newestTime: combinedData[combinedData.length - 1]?.time * 1000 || Date.now(),
+      oldestTime: combinedData[0].time * 1000,
+      newestTime: combinedData[combinedData.length - 1].time * 1000,
     });
   }
   
@@ -203,7 +216,7 @@ class HistoricalDataCache {
       '4h': 4 * 60 * 60 * 1000,
       '1d': 24 * 60 * 60 * 1000,
     };
-    return map[timeframe] || 60000;
+    return map[timeframe] || this.DEFAULT_TIMEFRAME_MS;
   }
   
   private convertTimeframe(tf: string): string {
