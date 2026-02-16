@@ -22,6 +22,7 @@ import {
   ChannelPrimitive
 } from '@/lib/chartPrimitives';
 import { getAutoColor } from '@/lib/chart/colorUtils';
+import { historicalDataCache } from '@/lib/chart/historicalDataCache';
 
 interface Drawing {
   id: string;
@@ -144,6 +145,11 @@ export function ChartFullscreenPage({
   const activeToolRef = useRef<DrawingTool>(null);
   const autoColorEnabledRef = useRef(autoColorEnabled);
   const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
+  
+  // Touch gesture detection refs
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const TOUCH_TAP_THRESHOLD = 150; // ms - max duration for a tap
+  const TOUCH_MOVE_THRESHOLD = 10; // pixels - max movement for a tap
 
   // Drawing state - independent from parent
   const drawingState = useDrawingState();
@@ -168,64 +174,127 @@ export function ChartFullscreenPage({
       return;
     }
     
-    const chartElement = chartContainerRef.current;
-    if (!chartElement || !chartRef.current || !candleSeriesRef.current) {
-      console.log('[ChartClick] Missing refs');
+    // Handle mouse clicks immediately
+    if (event.type === 'click') {
+      const chartElement = chartContainerRef.current;
+      if (!chartElement || !chartRef.current || !candleSeriesRef.current) {
+        console.log('[ChartClick] Missing refs');
+        return;
+      }
+      
+      const rect = chartElement.getBoundingClientRect();
+      const mouseEvent = event as MouseEvent;
+      const clickX = mouseEvent.clientX - rect.left;
+      const clickY = mouseEvent.clientY - rect.top;
+      
+      console.log('[ChartClick] Coordinates:', { clickX, clickY });
+      console.log('[ChartClick] Available drawings:', drawings.length);
+      
+      // Find all drawings within click radius
+      const hits = findDrawingsNearClick(clickX, clickY, drawings, chartRef.current, candleSeriesRef.current);
+      
+      console.log('[ChartClick] Hits found:', hits.length);
+      
+      if (hits.length === 0) {
+        console.log('[ChartClick] No hits - deselecting');
+        setSelectedDrawingId(null);
+        setQuickMenuPosition(null);
+      } else if (hits.length === 1) {
+        console.log('[ChartClick] Single hit - selecting:', hits[0].drawingId);
+        setSelectedDrawingId(hits[0].drawingId);
+        setQuickMenuPosition({ x: mouseEvent.clientX, y: mouseEvent.clientY });
+      } else {
+        console.log('[ChartClick] Multiple hits - showing modal');
+        // Map hits to include drawing details for preview
+        setNearbyDrawings(hits.map(h => {
+          const drawing = drawings.find(d => d.id === h.drawingId);
+          return {
+            id: h.drawingId,
+            type: h.drawingType,
+            color: drawing?.style?.color || '#3b82f6',
+            points: drawing?.points,
+          };
+        }));
+        setShowSelectionModal(true);
+      }
       return;
     }
     
-    const rect = chartElement.getBoundingClientRect();
-    
-    // Handle both mouse and touch events
-    let clientX: number;
-    let clientY: number;
-    
-    if ('touches' in event && event.touches.length > 0) {
-      // Touch event
-      clientX = event.touches[0].clientX;
-      clientY = event.touches[0].clientY;
-    } else if ('clientX' in event) {
-      // Mouse event
-      clientX = event.clientX;
-      clientY = event.clientY;
-    } else {
+    // For touch events, just record the start position
+    if (event.type === 'touchstart') {
+      const touch = (event as TouchEvent).touches[0];
+      touchStartRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now()
+      };
+      // Don't process yet - wait for touchend
       return;
-    }
-    
-    const clickX = clientX - rect.left;
-    const clickY = clientY - rect.top;
-    
-    console.log('[ChartClick] Coordinates:', { clickX, clickY });
-    console.log('[ChartClick] Available drawings:', drawings.length);
-    
-    // Find all drawings within click radius
-    const hits = findDrawingsNearClick(clickX, clickY, drawings, chartRef.current, candleSeriesRef.current);
-    
-    console.log('[ChartClick] Hits found:', hits.length);
-    
-    if (hits.length === 0) {
-      console.log('[ChartClick] No hits - deselecting');
-      setSelectedDrawingId(null);
-      setQuickMenuPosition(null);
-    } else if (hits.length === 1) {
-      console.log('[ChartClick] Single hit - selecting:', hits[0].drawingId);
-      setSelectedDrawingId(hits[0].drawingId);
-      setQuickMenuPosition({ x: clientX, y: clientY });
-    } else {
-      console.log('[ChartClick] Multiple hits - showing modal');
-      // Map hits to include drawing details for preview
-      setNearbyDrawings(hits.map(h => {
-        const drawing = drawings.find(d => d.id === h.drawingId);
-        return {
-          id: h.drawingId,
-          type: h.drawingType,
-          color: drawing?.style?.color || '#3b82f6',
-          points: drawing?.points,
-        };
-      }));
-      setShowSelectionModal(true);
     }
   }, [activeTool, drawings]);
+  
+  // Handler for touch end - differentiate taps from swipes
+  const handleTouchEnd = useCallback((event: TouchEvent) => {
+    if (!touchStartRef.current) return;
+    
+    // Only process when no tool is active (not in drawing mode)
+    if (activeTool) {
+      touchStartRef.current = null;
+      return;
+    }
+    
+    const touch = event.changedTouches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartRef.current.x);
+    const deltaY = Math.abs(touch.clientY - touchStartRef.current.y);
+    const deltaTime = Date.now() - touchStartRef.current.time;
+    
+    // Only treat as tap if movement was minimal and quick
+    const isTap = deltaTime < TOUCH_TAP_THRESHOLD && 
+                  deltaX < TOUCH_MOVE_THRESHOLD && 
+                  deltaY < TOUCH_MOVE_THRESHOLD;
+    
+    if (isTap) {
+      // This was a tap - check for drawing hits
+      const rect = chartContainerRef.current?.getBoundingClientRect();
+      if (!rect || !chartRef.current || !candleSeriesRef.current) {
+        touchStartRef.current = null;
+        return;
+      }
+      
+      const clickX = touchStartRef.current.x - rect.left;
+      const clickY = touchStartRef.current.y - rect.top;
+      
+      const hits = findDrawingsNearClick(
+        clickX,
+        clickY,
+        drawings,
+        chartRef.current,
+        candleSeriesRef.current
+      );
+      
+      if (hits.length === 0) {
+        setSelectedDrawingId(null);
+        setQuickMenuPosition(null);
+      } else if (hits.length === 1) {
+        setSelectedDrawingId(hits[0].drawingId);
+        setQuickMenuPosition({ x: touchStartRef.current.x, y: touchStartRef.current.y });
+      } else {
+        // Map hits to include drawing details for preview
+        setNearbyDrawings(hits.map(h => {
+          const drawing = drawings.find(d => d.id === h.drawingId);
+          return {
+            id: h.drawingId,
+            type: h.drawingType,
+            color: drawing?.style?.color || '#3b82f6',
+            points: drawing?.points,
+          };
+        }));
+        setShowSelectionModal(true);
+      }
+    }
+    
+    touchStartRef.current = null;
+  }, [activeTool, drawings, TOUCH_TAP_THRESHOLD, TOUCH_MOVE_THRESHOLD]);
   
   // Handler to close quick menu
   const handleCloseQuickMenu = useCallback(() => {
@@ -389,13 +458,15 @@ export function ChartFullscreenPage({
     if (!chartElement) return;
     
     chartElement.addEventListener('click', handleChartClick as EventListener);
-    chartElement.addEventListener('touchstart', handleChartClick as EventListener);
+    chartElement.addEventListener('touchstart', handleChartClick as EventListener, { passive: true });
+    chartElement.addEventListener('touchend', handleTouchEnd as EventListener);
     
     return () => {
       chartElement.removeEventListener('click', handleChartClick as EventListener);
       chartElement.removeEventListener('touchstart', handleChartClick as EventListener);
+      chartElement.removeEventListener('touchend', handleTouchEnd as EventListener);
     };
-  }, [handleChartClick]);
+  }, [handleChartClick, handleTouchEnd]);
 
   // Prevent native browser gestures on chart
   useEffect(() => {
@@ -445,7 +516,7 @@ export function ChartFullscreenPage({
     };
   }, []);
 
-  // Fetch candles data
+  // Fetch candles data with caching
   useEffect(() => {
     if (!candleSeriesRef.current) return;
 
@@ -454,27 +525,34 @@ export function ChartFullscreenPage({
       setError(null);
 
       try {
-        const binanceTimeframe = convertTimeframe(timeframe);
-        const response = await fetch(
-          `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceTimeframe}&limit=500`
+        // Quick initial load (500 candles)
+        const initialData = await historicalDataCache.getHistoricalData(
+          symbol, 
+          timeframe, 
+          500
         );
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch candles: ${response.status} ${response.statusText}`);
+        
+        if (initialData.length > 0) {
+          setCandles(initialData);
+          candleSeriesRef.current?.setData(initialData);
+          setIsLoading(false);
         }
-
-        const klines = await response.json();
-        const candleData = klines.map((kline: any) => ({
-          time: Math.floor(kline[0] / 1000),
-          open: parseFloat(kline[1]),
-          high: parseFloat(kline[2]),
-          low: parseFloat(kline[3]),
-          close: parseFloat(kline[4]),
-        }));
-
-        setCandles(candleData);
-        candleSeriesRef.current?.setData(candleData);
-        setIsLoading(false);
+        
+        // Background load more history (up to 5000)
+        setTimeout(async () => {
+          const fullData = await historicalDataCache.getHistoricalData(
+            symbol,
+            timeframe,
+            5000
+          );
+          
+          if (fullData.length > initialData.length) {
+            setCandles(fullData);
+            candleSeriesRef.current?.setData(fullData);
+            console.log(`[Cache] Loaded ${fullData.length} candles`);
+          }
+        }, 100);
+        
       } catch (err) {
         console.error('Failed to fetch candle data:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch candle data');
