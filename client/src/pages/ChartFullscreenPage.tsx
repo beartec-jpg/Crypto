@@ -397,6 +397,42 @@ export function ChartFullscreenPage({
     };
   }, [handleChartClick]);
 
+  // Prevent native browser gestures on chart
+  useEffect(() => {
+    const preventDefault = (e: TouchEvent) => {
+      // Allow touch on modals and settings panels
+      const target = e.target as HTMLElement;
+      if (target.closest('[role="dialog"]') || 
+          target.closest('.settings-panel') ||
+          target.closest('.modal-content')) {
+        return; // Allow normal scrolling in these elements
+      }
+      
+      // Prevent all other touch move events
+      if (e.touches.length === 1) {
+        e.preventDefault();
+      }
+    };
+
+    const preventZoom = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    // Add passive: false to allow preventDefault
+    document.addEventListener('touchmove', preventDefault, { passive: false });
+    document.addEventListener('touchstart', preventZoom, { passive: false });
+    
+    // Prevent pull-to-refresh on the document
+    document.body.style.overscrollBehavior = 'none';
+
+    return () => {
+      document.removeEventListener('touchmove', preventDefault);
+      document.removeEventListener('touchstart', preventZoom);
+    };
+  }, []);
+
   // Fetch candles data
   useEffect(() => {
     if (!candleSeriesRef.current) return;
@@ -575,7 +611,16 @@ export function ChartFullscreenPage({
   }, [drawings, selectedDrawingId, activeEdit, drawingsVisible]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
+    <div 
+      className="fixed inset-0 z-50 bg-slate-950 flex flex-col"
+      style={{
+        touchAction: 'none',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+        overscrollBehavior: 'none',
+        height: '100vh',
+      }}
+    >
       {/* Top Toolbar */}
       <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 flex items-center justify-between gap-4">
         <Button variant="outline" size="sm" onClick={onClose} className="gap-2">
