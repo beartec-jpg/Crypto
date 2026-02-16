@@ -626,8 +626,6 @@ export function ChartFullscreenPage({
     <div 
       className="fixed inset-0 z-50 bg-slate-950 flex flex-col"
       style={{
-        WebkitUserSelect: 'none',
-        userSelect: 'none',
         height: '100vh',
       }}
     >
