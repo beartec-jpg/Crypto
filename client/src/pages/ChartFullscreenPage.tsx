@@ -765,8 +765,7 @@ useEffect(() => {
           </div>
         )}
         
-        <div ref={chartContainerRef} className="absolute inset-0" />
-        
+<div ref={chartContainerRef} className="absolute inset-0 w-full h-full" />        
         <DrawingRenderer
           drawingMode={activeTool ? 'draw' : 'off'}
           activeTool={activeTool}
