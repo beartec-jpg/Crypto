@@ -104,6 +104,9 @@ const formatSymbol = (symbol: string): string => {
 const TOUCH_TAP_THRESHOLD = 150; // ms - max duration for a tap
 const TOUCH_MOVE_THRESHOLD = 10; // pixels - max movement for a tap
 
+// Chart resize debounce delay
+const RESIZE_DEBOUNCE_MS = 100; // ms - debounce delay for resize events
+
 export function ChartFullscreenPage({
   onClose,
   initialSymbol,
@@ -117,7 +120,7 @@ export function ChartFullscreenPage({
   const [candles, setCandles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [chartInitTrigger, setChartInitTrigger] = useState(0); // Trigger for chart initialization retry
+  const [chartInitRetryCount, setChartInitRetryCount] = useState(0); // Triggers chart initialization retry
   const [tempDrawing, setTempDrawing] = useState<{
     points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[]
   } | null>(null);
@@ -431,7 +434,7 @@ useEffect(() => {
           console.log('[Chart] Container dimensions now valid, triggering initialization:', { width: newWidth, height: newHeight });
           resizeObserver.disconnect();
           // Trigger re-initialization by updating state
-          setChartInitTrigger(prev => prev + 1);
+          setChartInitRetryCount(prev => prev + 1);
         }
       }
     });
@@ -497,23 +500,23 @@ useEffect(() => {
           });
         }
       }
-    }, 100); // Debounce resize by 100ms
+    }, RESIZE_DEBOUNCE_MS);
   };
 
-  // Use ResizeObserver for more reliable resize detection
+  // Use ResizeObserver for reliable resize detection
+  // Note: ResizeObserver handles all container resize scenarios, including window resize
   const resizeObserver = new ResizeObserver(() => {
     handleResize();
   });
   
   resizeObserver.observe(container);
-  window.addEventListener('resize', handleResize);
 
   return () => {
     if (resizeTimeoutRef.current) {
       clearTimeout(resizeTimeoutRef.current);
+      resizeTimeoutRef.current = null;
     }
     resizeObserver.disconnect();
-    window.removeEventListener('resize', handleResize);
     if (chartRef.current) {
       console.log('[Chart] Cleaning up chart');
       chartRef.current.remove();
@@ -521,7 +524,7 @@ useEffect(() => {
       candleSeriesRef.current = null;
     }
   };
-}, [chartInitTrigger]);
+}, [chartInitRetryCount]);
 
 // Attach click handler to chart
 useEffect(() => {
