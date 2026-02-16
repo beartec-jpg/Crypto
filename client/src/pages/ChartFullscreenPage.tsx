@@ -514,11 +514,13 @@ useEffect(() => {
           500
         );
         
-        if (mounted && initialData.length > 0) {
-          setCandles(initialData);
-          candleSeriesRef.current?.setData(initialData);
-          setIsLoading(false);
+        if (mounted) {
+        if (initialData.length > 0) {
+        setCandles(initialData);
+        candleSeriesRef.current?.setData(initialData);
         }
+      setIsLoading(false); // Always set loading to false, even if no data
+      }
         
         // Background load more history (up to 5000)
         timeoutId = setTimeout(async () => {
