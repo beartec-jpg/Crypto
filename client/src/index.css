@@ -149,13 +149,12 @@ html, body {
 
 /* Prevent default touch behaviors */
 body {
-  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Main app container should fill screen */
+/* Main app container should fill screen and prevent all native gestures */
 #root {
   position: fixed;
   top: 0;
@@ -165,7 +164,7 @@ body {
   overflow: hidden;
   width: 100%;
   height: 100%;
-  touch-action: none;
+  touch-action: none; /* Disable all native touch gestures */
 }
 
 /* Allow scrolling only in specific components (like settings panels) */

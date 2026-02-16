@@ -411,13 +411,20 @@ export function ChartFullscreenPage({
         return; // Allow normal scrolling in these elements
       }
       
-      // Prevent all other touch move events
-      if (e.touches.length === 1) {
-        e.preventDefault();
-      }
+      // Prevent all touch move events on chart
+      e.preventDefault();
     };
 
     const preventZoom = (e: TouchEvent) => {
+      // Allow touch on modals and settings panels
+      const target = e.target as HTMLElement;
+      if (target.closest('[role="dialog"]') || 
+          target.closest('.settings-panel') ||
+          target.closest('.modal-content')) {
+        return; // Allow normal interactions in these elements
+      }
+      
+      // Prevent multi-touch zoom gestures
       if (e.touches.length > 1) {
         e.preventDefault();
       }
