@@ -38,16 +38,18 @@ export function useIndicatorState() {
   const emaFastPeriod = emaConfigs[0]?.period || 21;
   const emaSlowPeriod = emaConfigs[1]?.period || 50;
   const [emaFastInput, setEmaFastInput] = useState('10');
-  const [emaSlowInput, setEmaSlowInput] = useState('40')
+  const [emaSlowInput, setEmaSlowInput] = useState('40');
 
   // SMA settings - dynamic list with multi-timeframe support
-const [showSMA, setShowSMA] = useState(false);
-const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
-  { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
-]);
-// Legacy state for backwards compatibility
-const smaFastPeriod = smaConfigs[0]?.period || 20;
-const smaSlowPeriod = smaConfigs[1]?.period || 50;
+  const [showSMA, setShowSMA] = useState(false);
+  const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
+    { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
+  ]);
+  const [smaFastInput, setSmaFastInput] = useState('20');
+  const [smaSlowInput, setSmaSlowInput] = useState('50');
+  // Legacy state for backwards compatibility
+  const smaFastPeriod = smaConfigs[0]?.period || 20;
+  const smaSlowPeriod = smaConfigs[1]?.period || 50;
   
   // Oscillator indicators - RSI
   const [showRSI, setShowRSI] = useState(false);
@@ -91,16 +93,16 @@ const smaSlowPeriod = smaConfigs[1]?.period || 50;
   const [pdLookback, setPdLookback] = useState(50);
   const [pdLookbackInput, setPdLookbackInput] = useState('50');
   
+  // DELETE THIS ENTIRE SECTION (lines 93-98) - IT'S A DUPLICATE
   // Trend Tools - SMA with dynamic list and multi-timeframe support
-  const [showSMA, setShowSMA] = useState(false);
-  const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
-    { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
-  ]);
-  // Legacy state for backwards compatibility
-  const smaFastPeriod = smaConfigs[0]?.period || 20;
-  const smaSlowPeriod = smaConfigs[1]?.period || 50;
-  const [smaFastInput, setSmaFastInput] = useState('20');
-  const [smaSlowInput, setSmaSlowInput] = useState('50');
+  // const [showSMA, setShowSMA] = useState(false);
+  // const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
+  //   { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
+  // ]);
+  // const smaFastPeriod = smaConfigs[0]?.period || 20;
+  // const smaSlowPeriod = smaConfigs[1]?.period || 50;
+  // const [smaFastInput, setSmaFastInput] = useState('20');
+  // const [smaSlowInput, setSmaSlowInput] = useState('50');
   
   // Supertrend
   const [showSupertrend, setShowSupertrend] = useState(false);
@@ -227,15 +229,19 @@ const smaSlowPeriod = smaConfigs[1]?.period || 50;
       setSlowInput: setEmaSlowInput
     },
 
-    // SMA
+    // SMA (KEEP ONLY ONE - DELETE THE DUPLICATE BELOW)
     sma: {
-  show: showSMA,
-  setShow: setShowSMA,
-  configs: smaConfigs,
-  setConfigs: setSmaConfigs,
-  fastPeriod: smaFastPeriod,
-  slowPeriod: smaSlowPeriod,
-},
+      show: showSMA,
+      setShow: setShowSMA,
+      configs: smaConfigs,
+      setConfigs: setSmaConfigs,
+      fastPeriod: smaFastPeriod,
+      slowPeriod: smaSlowPeriod,
+      fastInput: smaFastInput,
+      setFastInput: setSmaFastInput,
+      slowInput: smaSlowInput,
+      setSlowInput: setSmaSlowInput
+    },
     
     // RSI
     rsi: {
@@ -335,19 +341,19 @@ const smaSlowPeriod = smaConfigs[1]?.period || 50;
       setStdDevInput: setBbStdDevInput
     },
     
-    // SMA
-    sma: {
-      show: showSMA,
-      setShow: setShowSMA,
-      configs: smaConfigs,
-      setConfigs: setSmaConfigs,
-      fastPeriod: smaFastPeriod,
-      slowPeriod: smaSlowPeriod,
-      fastInput: smaFastInput,
-      setFastInput: setSmaFastInput,
-      slowInput: smaSlowInput,
-      setSlowInput: setSmaSlowInput
-    },
+    // DELETE THIS DUPLICATE SMA SECTION (lines 361-371)
+    // sma: {
+    //   show: showSMA,
+    //   setShow: setShowSMA,
+    //   configs: smaConfigs,
+    //   setConfigs: setSmaConfigs,
+    //   fastPeriod: smaFastPeriod,
+    //   slowPeriod: smaSlowPeriod,
+    //   fastInput: smaFastInput,
+    //   setFastInput: setSmaFastInput,
+    //   slowInput: smaSlowInput,
+    //   setSlowInput: setSmaSlowInput
+    // },
     
     // Supertrend
     supertrend: {
