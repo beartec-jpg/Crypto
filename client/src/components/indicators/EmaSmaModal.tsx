@@ -3,13 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Plus, X } from 'lucide-react';
-
-interface MAConfig {
-  id: string;
-  period: number;
-  timeframe: string;
-  color: string;
-}
+import type { MAConfig } from '@/types/chart.types';
 
 interface EmaSmaModalProps {
   isOpen: boolean;
