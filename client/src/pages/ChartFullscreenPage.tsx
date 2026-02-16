@@ -117,6 +117,7 @@ export function ChartFullscreenPage({
   const [candles, setCandles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chartInitTrigger, setChartInitTrigger] = useState(0); // Trigger for chart initialization retry
   const [tempDrawing, setTempDrawing] = useState<{
     points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[]
   } | null>(null);
@@ -426,10 +427,10 @@ useEffect(() => {
       for (const entry of entries) {
         const { width: newWidth, height: newHeight } = entry.contentRect;
         if (newWidth > 0 && newHeight > 0 && !chartRef.current) {
-          console.log('[Chart] Container dimensions now valid, retrying initialization:', { width: newWidth, height: newHeight });
-          // Trigger re-render by forcing effect cleanup and re-run
+          console.log('[Chart] Container dimensions now valid, triggering initialization:', { width: newWidth, height: newHeight });
           resizeObserver.disconnect();
-          // The cleanup will be called and effect will re-run
+          // Trigger re-initialization by updating state
+          setChartInitTrigger(prev => prev + 1);
         }
       }
     });
@@ -477,19 +478,26 @@ useEffect(() => {
   
   console.log('[Chart] Chart initialized successfully');
 
-  // Handle resize
+  // Handle resize with debouncing
+  let resizeTimeout: NodeJS.Timeout | null = null;
   const handleResize = () => {
-    if (chartContainerRef.current && chartRef.current) {
-      const newWidth = chartContainerRef.current.clientWidth;
-      const newHeight = chartContainerRef.current.clientHeight;
-      
-      if (newWidth > 0 && newHeight > 0) {
-        chartRef.current.applyOptions({
-          width: newWidth,
-          height: newHeight,
-        });
-      }
+    if (resizeTimeout) {
+      clearTimeout(resizeTimeout);
     }
+    
+    resizeTimeout = setTimeout(() => {
+      if (chartContainerRef.current && chartRef.current) {
+        const newWidth = chartContainerRef.current.clientWidth;
+        const newHeight = chartContainerRef.current.clientHeight;
+        
+        if (newWidth > 0 && newHeight > 0) {
+          chartRef.current.applyOptions({
+            width: newWidth,
+            height: newHeight,
+          });
+        }
+      }
+    }, 100); // Debounce resize by 100ms
   };
 
   // Use ResizeObserver for more reliable resize detection
@@ -501,6 +509,9 @@ useEffect(() => {
   window.addEventListener('resize', handleResize);
 
   return () => {
+    if (resizeTimeout) {
+      clearTimeout(resizeTimeout);
+    }
     resizeObserver.disconnect();
     window.removeEventListener('resize', handleResize);
     if (chartRef.current) {
@@ -510,7 +521,7 @@ useEffect(() => {
       candleSeriesRef.current = null;
     }
   };
-}, []);
+}, [chartInitTrigger]);
 
 // Attach click handler to chart
 useEffect(() => {
