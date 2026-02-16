@@ -26,6 +26,12 @@ import {
 import { getAutoColor } from '@/lib/chart/colorUtils';
 import { MovingAverages } from '@/components/chart/MovingAverages';
 import { calculateEMA } from '@/lib/indicators';
+import { calculateRSI, calculateMACD } from '@/lib/indicators/momentum';
+import { RSIPanel } from '@/components/indicators/oscillators/RSIPanel';
+import { MACDPanel } from '@/components/indicators/oscillators/MACDPanel';
+import { VolumePanel } from '@/components/indicators/oscillators/VolumePanel';
+import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
+import { OscillatorStatusBar } from '@/components/indicators/OscillatorStatusBar';
 
 interface Drawing {
   id: string;
@@ -180,11 +186,20 @@ const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
 const emaHTFDataCache = useRef<Record<string, any[]>>({});
 
 // Oscillator state
-const [activeOscillator, setActiveOscillator] = useState<'rsi' | 'macd' | 'volume' | null>(null);
+const [selectedOscillators, setSelectedOscillators] = useState<Set<string>>(new Set());
+const [showOscillatorSelector, setShowOscillatorSelector] = useState(false);
+const [oscillatorPopout, setOscillatorPopout] = useState(false);
 
 // Oscillator panel height constant
-// Includes: tabs section (py-2 ≈ 16px) + oscillator area (h-40 = 160px) + borders ≈ 180px total
-const OSCILLATOR_PANEL_HEIGHT = 180; // Height in pixels when oscillator is visible
+// 120px per oscillator (panel + padding)
+const OSCILLATOR_PANEL_HEIGHT_PER = 120; // Height per oscillator in pixels
+const OSCILLATOR_TAB_HEIGHT = 48; // Height of tabs section
+const OSCILLATOR_STATUS_BAR_HEIGHT = 36; // Height of status bar
+
+// Calculate total oscillator panel height
+const totalOscillatorHeight = selectedOscillators.size > 0 
+  ? OSCILLATOR_TAB_HEIGHT + (selectedOscillators.size * OSCILLATOR_PANEL_HEIGHT_PER) + OSCILLATOR_STATUS_BAR_HEIGHT
+  : 0;
 
 /**
  * Helper function to fit chart content to visible data range
@@ -408,6 +423,19 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
     });
   }, []);
   
+  // Oscillator toggle handler
+  const handleToggleOscillator = useCallback((oscillator: string) => {
+    setSelectedOscillators(prev => {
+      const next = new Set(prev);
+      if (next.has(oscillator)) {
+        next.delete(oscillator);
+      } else {
+        next.add(oscillator);
+      }
+      return next;
+    });
+  }, []);
+  
   // Memoize selected drawing to avoid redundant searches and transformations
   const selectedDrawingForModal = useMemo(() => {
     if (!selectedDrawingId) return null;
@@ -440,6 +468,64 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
     onCrosshairModeChange: () => {},
     autoSnapEnabled: true,
   });
+
+  // Calculate oscillator data
+  const oscillatorData = useMemo(() => {
+    if (candles.length === 0) {
+      return {
+        rsi: [],
+        macd: { macd: [], signal: [], hist: [] },
+        volume: [],
+        avgVolume: 0,
+      };
+    }
+
+    // Calculate RSI
+    const rsiData = calculateRSI(candles, 14);
+
+    // Calculate MACD
+    const macdData = calculateMACD(candles, 12, 26, 9);
+
+    // Calculate average volume for percentage
+    const avgVolume = candles.slice(-20).reduce((sum, c) => sum + c.volume, 0) / 20;
+
+    // Format volume data
+    const volumeData = candles.map((c) => ({
+      time: c.time,
+      value: c.volume,
+      color: c.close >= c.open ? '#26a69a' : '#ef5350',
+    }));
+
+    return {
+      rsi: rsiData,
+      macd: macdData,
+      volume: volumeData,
+      avgVolume,
+    };
+  }, [candles]);
+
+  // Get latest oscillator values for status bar
+  const latestOscillatorValues = useMemo(() => {
+    if (candles.length === 0) return {};
+
+    const result: any = {};
+
+    if (oscillatorData.rsi.length > 0) {
+      result.rsiValue = oscillatorData.rsi[oscillatorData.rsi.length - 1].value;
+    }
+
+    if (oscillatorData.macd.macd.length > 1) {
+      result.macdValue = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 1].value;
+      result.macdPrevValue = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 2].value;
+    }
+
+    if (oscillatorData.volume.length > 0 && oscillatorData.avgVolume > 0) {
+      const latestVolume = oscillatorData.volume[oscillatorData.volume.length - 1].value;
+      result.volumePercent = (latestVolume / oscillatorData.avgVolume) * 100;
+    }
+
+    return result;
+  }, [oscillatorData, candles.length]);
 
 // Initialize chart
 useEffect(() => {
@@ -894,7 +980,7 @@ useEffect(() => {
       </div>
 
       {/* Chart Area */}
-      <div className="flex-1 relative overflow-hidden" style={{ height: activeOscillator ? `calc(100% - ${OSCILLATOR_PANEL_HEIGHT}px)` : '100%' }}>
+      <div className="flex-1 relative overflow-hidden" style={{ height: selectedOscillators.size > 0 ? `calc(100% - ${totalOscillatorHeight}px)` : '100%' }}>
         {/* Indicator Toolbar - Top Center */}
         <IndicatorToolbar 
           onOpenEmaSma={() => setShowEmaSmaModal(true)}
@@ -982,48 +1068,92 @@ useEffect(() => {
         )}
       </div>
       
-      {/* Oscillator tabs */}
-      <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">Oscillators:</span>
+      {/* Oscillator Section */}
+      {selectedOscillators.size > 0 && !oscillatorPopout && (
+        <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          {/* Oscillator tabs */}
+          <div className="flex items-center justify-between gap-2 px-4 py-2 border-b">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Oscillators:</span>
+              <Button 
+                variant="outline"
+                size="sm" 
+                className="text-xs"
+                onClick={() => setShowOscillatorSelector(true)}
+              >
+                Select ({selectedOscillators.size})
+              </Button>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={() => setOscillatorPopout(!oscillatorPopout)}
+            >
+              {oscillatorPopout ? 'Dock' : 'Popout'}
+            </Button>
+          </div>
+          
+          {/* Oscillator panels */}
+          <div className="bg-slate-900">
+            {selectedOscillators.has('rsi') && (
+              <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="border-b border-slate-700 p-2">
+                <div className="text-xs text-slate-400 mb-1">RSI (14)</div>
+                <RSIPanel 
+                  data={oscillatorData.rsi}
+                  period={14}
+                  candles={candles}
+                />
+              </div>
+            )}
+            
+            {selectedOscillators.has('macd') && (
+              <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="border-b border-slate-700 p-2">
+                <div className="text-xs text-slate-400 mb-1">MACD (12, 26, 9)</div>
+                <MACDPanel 
+                  macdData={oscillatorData.macd.macd}
+                  signalData={oscillatorData.macd.signal}
+                  histogramData={oscillatorData.macd.hist}
+                  fastPeriod={12}
+                  slowPeriod={26}
+                  signalPeriod={9}
+                />
+              </div>
+            )}
+            
+            {selectedOscillators.has('volume') && (
+              <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="border-b border-slate-700 p-2">
+                <div className="text-xs text-slate-400 mb-1">Volume</div>
+                <VolumePanel 
+                  data={oscillatorData.volume}
+                />
+              </div>
+            )}
+          </div>
+          
+          {/* Status Bar */}
+          <OscillatorStatusBar
+            rsiValue={selectedOscillators.has('rsi') ? latestOscillatorValues.rsiValue : undefined}
+            macdValue={selectedOscillators.has('macd') ? latestOscillatorValues.macdValue : undefined}
+            macdPrevValue={selectedOscillators.has('macd') ? latestOscillatorValues.macdPrevValue : undefined}
+            volumePercent={selectedOscillators.has('volume') ? latestOscillatorValues.volumePercent : undefined}
+          />
+        </div>
+      )}
+      
+      {/* Show selector button when no oscillators selected */}
+      {selectedOscillators.size === 0 && (
+        <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-2">
           <Button 
-            variant={activeOscillator === 'rsi' ? 'default' : 'outline'} 
+            variant="outline"
             size="sm" 
             className="text-xs"
-            onClick={() => setActiveOscillator(activeOscillator === 'rsi' ? null : 'rsi')}
+            onClick={() => setShowOscillatorSelector(true)}
           >
-            RSI
-          </Button>
-          <Button 
-            variant={activeOscillator === 'macd' ? 'default' : 'outline'} 
-            size="sm" 
-            className="text-xs"
-            onClick={() => setActiveOscillator(activeOscillator === 'macd' ? null : 'macd')}
-          >
-            MACD
-          </Button>
-          <Button 
-            variant={activeOscillator === 'volume' ? 'default' : 'outline'} 
-            size="sm" 
-            className="text-xs"
-            onClick={() => setActiveOscillator(activeOscillator === 'volume' ? null : 'volume')}
-          >
-            Volume
+            + Add Oscillators
           </Button>
         </div>
-        
-        {/* Oscillator rendering area */}
-        {activeOscillator && (
-          <div className="h-40 border-t bg-slate-900 px-4 py-2">
-            <div className="text-sm text-slate-400">
-              📊 {activeOscillator.toUpperCase()} Oscillator Placeholder
-            </div>
-            <div className="text-xs text-slate-500 mt-1">
-              Oscillator will render here. Chart should resize above.
-            </div>
-          </div>
-        )}
-      </div>
+      )}
       
       {selectedDrawingId && (
         <DrawingSettingsModal
@@ -1057,6 +1187,14 @@ useEffect(() => {
         smaConfigs={indicators.sma.configs}
         onSmaToggle={indicators.sma.setShow}
         onSmaConfigsChange={indicators.sma.setConfigs}
+      />
+      
+      {/* Oscillator Selector Modal */}
+      <OscillatorSelectorModal
+        isOpen={showOscillatorSelector}
+        onClose={() => setShowOscillatorSelector(false)}
+        selectedOscillators={selectedOscillators}
+        onToggleOscillator={handleToggleOscillator}
       />
     </div>
   );
