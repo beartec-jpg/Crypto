@@ -13,16 +13,18 @@ interface RequestQueue {
   startTime?: number;
   endTime?: number;
   priority: number;
+  retryCount?: number;
 }
 
 class HistoricalDataCache {
   private cache: Map<string, CacheEntry>;
   private requestQueue: RequestQueue[];
   private isProcessing: boolean;
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes - data may be stale for up to 5 minutes
   private readonly REQUEST_DELAY = 100; // 100ms between requests
   private readonly MAX_CANDLES_PER_REQUEST = 1000; // Binance limit
   private readonly DESIRED_HISTORY = 5000;
+  private readonly MAX_RETRIES = 3; // Maximum retry attempts per request
   
   constructor() {
     this.cache = new Map();
@@ -54,7 +56,8 @@ class HistoricalDataCache {
     const needMore = limit - existingData.length;
     
     if (needMore > 0) {
-      await this.queueHistoricalRequests(
+      // Queue requests but don't wait - let them load in background
+      this.queueHistoricalRequests(
         symbol, 
         timeframe, 
         needMore,
@@ -62,15 +65,17 @@ class HistoricalDataCache {
       );
     }
     
-    return existingData.slice(-limit);
+    // Return what we have now (may be updated by background requests)
+    const currentCache = this.cache.get(cacheKey);
+    return (currentCache?.data || existingData).slice(-limit);
   }
   
-  private async queueHistoricalRequests(
+  private queueHistoricalRequests(
     symbol: string,
     timeframe: string,
     needCount: number,
     oldestTime?: number
-  ): Promise<void> {
+  ): void {
     const requestsNeeded = Math.ceil(needCount / this.MAX_CANDLES_PER_REQUEST);
     const interval = this.timeframeToMs(timeframe);
     let currentEndTime = oldestTime || Date.now();
@@ -83,7 +88,8 @@ class HistoricalDataCache {
         timeframe,
         startTime,
         endTime: currentEndTime,
-        priority: i
+        priority: i,
+        retryCount: 0
       });
       
       currentEndTime = startTime;
@@ -120,8 +126,16 @@ class HistoricalDataCache {
         await new Promise(resolve => setTimeout(resolve, this.REQUEST_DELAY));
       } catch (error) {
         console.error('[HistoricalCache] Request failed:', error);
-        request.priority += 100;
-        this.requestQueue.push(request);
+        
+        // Retry with exponential backoff if under max retries
+        if ((request.retryCount || 0) < this.MAX_RETRIES) {
+          request.retryCount = (request.retryCount || 0) + 1;
+          request.priority += 100; // Lower priority for retries
+          this.requestQueue.push(request);
+          console.log(`[HistoricalCache] Retrying request (${request.retryCount}/${this.MAX_RETRIES})`);
+        } else {
+          console.error('[HistoricalCache] Max retries exceeded, dropping request');
+        }
       }
     }
     

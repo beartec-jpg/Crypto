@@ -294,7 +294,7 @@ export function ChartFullscreenPage({
     }
     
     touchStartRef.current = null;
-  }, [activeTool, drawings, TOUCH_TAP_THRESHOLD, TOUCH_MOVE_THRESHOLD]);
+  }, [activeTool, drawings]);
   
   // Handler to close quick menu
   const handleCloseQuickMenu = useCallback(() => {
@@ -520,6 +520,8 @@ export function ChartFullscreenPage({
   useEffect(() => {
     if (!candleSeriesRef.current) return;
 
+    let mounted = true;
+
     const fetchCandles = async () => {
       setIsLoading(true);
       setError(null);
@@ -532,35 +534,45 @@ export function ChartFullscreenPage({
           500
         );
         
-        if (initialData.length > 0) {
+        if (mounted && initialData.length > 0) {
           setCandles(initialData);
           candleSeriesRef.current?.setData(initialData);
           setIsLoading(false);
         }
         
         // Background load more history (up to 5000)
-        setTimeout(async () => {
+        const timeoutId = setTimeout(async () => {
           const fullData = await historicalDataCache.getHistoricalData(
             symbol,
             timeframe,
             5000
           );
           
-          if (fullData.length > initialData.length) {
+          if (mounted && fullData.length > initialData.length) {
             setCandles(fullData);
             candleSeriesRef.current?.setData(fullData);
             console.log(`[Cache] Loaded ${fullData.length} candles`);
           }
         }, 100);
         
+        return () => {
+          clearTimeout(timeoutId);
+        };
+        
       } catch (err) {
         console.error('Failed to fetch candle data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch candle data');
-        setIsLoading(false);
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Failed to fetch candle data');
+          setIsLoading(false);
+        }
       }
     };
 
     fetchCandles();
+    
+    return () => {
+      mounted = false;
+    };
   }, [symbol, timeframe]);
   
   // Load saved drawings from database
