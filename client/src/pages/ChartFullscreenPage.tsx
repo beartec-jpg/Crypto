@@ -174,7 +174,10 @@ const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
 // EMA/SMA modal state
 const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
 
-// Helper to fit chart content to visible data
+/**
+ * Helper function to fit chart content to visible data range
+ * @param candleCount - Optional number of candles loaded, for logging purposes
+ */
 const fitChartContent = useCallback((candleCount?: number) => {
   if (chartRef.current) {
     chartRef.current.timeScale().fitContent();
@@ -442,8 +445,13 @@ useEffect(() => {
     const retryObserver = new ResizeObserver((entries) => {
       const [entry] = entries;
       const { width: newWidth, height: newHeight } = entry.contentRect;
-      // Prevent multiple retry attempts
-      if (newWidth > 0 && newHeight > 0 && !chartRef.current && !isRetryingInitRef.current) {
+      
+      const hasValidDimensions = newWidth > 0 && newHeight > 0;
+      const chartNotInitialized = !chartRef.current;
+      const notCurrentlyRetrying = !isRetryingInitRef.current;
+      const shouldRetryInitialization = hasValidDimensions && chartNotInitialized && notCurrentlyRetrying;
+      
+      if (shouldRetryInitialization) {
         console.log('[Chart] Container dimensions now valid, triggering initialization:', { width: newWidth, height: newHeight });
         isRetryingInitRef.current = true;
         retryObserver.disconnect();
@@ -600,9 +608,6 @@ useEffect(() => {
           } else {
             console.warn('[Chart] No initial data received');
           }
-          
-          // Always set loading to false, even if no data
-          setIsLoading(false);
         }
         
         // Background load more history (up to 5000)
@@ -627,6 +632,10 @@ useEffect(() => {
         console.error('[Chart] Failed to fetch candle data:', err);
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to fetch candle data');
+        }
+      } finally {
+        // Always set loading to false when initial fetch completes
+        if (mounted) {
           setIsLoading(false);
         }
       }
