@@ -411,7 +411,7 @@ export function ChartFullscreenPage({
       );
     };
     
-    const preventDefault = (e: TouchEvent) => {
+    const handleChartTouchMove = (e: TouchEvent) => {
       // Allow touch on modals and settings panels
       const target = e.target as HTMLElement;
       if (isInScrollableElement(target)) {
@@ -422,7 +422,7 @@ export function ChartFullscreenPage({
       e.preventDefault();
     };
 
-    const preventZoom = (e: TouchEvent) => {
+    const handleMultiTouchGesture = (e: TouchEvent) => {
       // Allow touch on modals and settings panels
       const target = e.target as HTMLElement;
       if (isInScrollableElement(target)) {
@@ -436,12 +436,12 @@ export function ChartFullscreenPage({
     };
 
     // Add passive: false to allow preventDefault on chart container only
-    chartElement.addEventListener('touchmove', preventDefault, { passive: false });
-    chartElement.addEventListener('touchstart', preventZoom, { passive: false });
+    chartElement.addEventListener('touchmove', handleChartTouchMove, { passive: false });
+    chartElement.addEventListener('touchstart', handleMultiTouchGesture, { passive: false });
 
     return () => {
-      chartElement.removeEventListener('touchmove', preventDefault);
-      chartElement.removeEventListener('touchstart', preventZoom);
+      chartElement.removeEventListener('touchmove', handleChartTouchMove);
+      chartElement.removeEventListener('touchstart', handleMultiTouchGesture);
     };
   }, []);
 
