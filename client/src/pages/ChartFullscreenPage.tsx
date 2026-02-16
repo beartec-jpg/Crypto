@@ -437,21 +437,27 @@ useEffect(() => {
     console.warn('[Chart] Container has invalid dimensions:', { width, height });
     
     // Use ResizeObserver to retry when dimensions become valid
-    const resizeObserver = new ResizeObserver((entries) => {
+    let retryObserver: ResizeObserver | null = new ResizeObserver((entries) => {
       const [entry] = entries;
       const { width: newWidth, height: newHeight } = entry.contentRect;
       if (newWidth > 0 && newHeight > 0 && !chartRef.current) {
         console.log('[Chart] Container dimensions now valid, triggering initialization:', { width: newWidth, height: newHeight });
-        resizeObserver.disconnect();
+        if (retryObserver) {
+          retryObserver.disconnect();
+          retryObserver = null;
+        }
         // Trigger re-initialization by updating state
         setReinitializeChartKey(prev => prev + 1);
       }
     });
     
-    resizeObserver.observe(container);
+    retryObserver.observe(container);
     
     return () => {
-      resizeObserver.disconnect();
+      if (retryObserver) {
+        retryObserver.disconnect();
+        retryObserver = null;
+      }
     };
   }
 
@@ -492,7 +498,14 @@ useEffect(() => {
   console.log('[Chart] Chart initialized successfully');
 
   // Handle resize with debouncing
+  let isFirstResize = true;
   const handleResize = () => {
+    // Skip the initial resize event that fires immediately when observation starts
+    if (isFirstResize) {
+      isFirstResize = false;
+      return;
+    }
+    
     if (resizeTimeoutRef.current) {
       clearTimeout(resizeTimeoutRef.current);
     }
