@@ -1,5 +1,6 @@
 import { Minus, TrendingUp, Square, Divide, GitBranch, Activity, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Tooltip,
   TooltipContent,
@@ -77,10 +78,11 @@ export function VerticalDrawingToolbar({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className={
-        className || 
-        "absolute left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl"
-      }>
+      <div className={cn(
+        "flex flex-row gap-2",
+        "bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl",
+        className
+      )}>
         {TOOLS.map((tool) => {
           const Icon = tool.icon;
           const isActive = activeTool === tool.id;

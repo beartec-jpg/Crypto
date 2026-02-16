@@ -1,5 +1,6 @@
 import { TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Tooltip,
   TooltipContent,
@@ -9,12 +10,17 @@ import {
 
 interface IndicatorToolbarProps {
   onOpenEmaSma: () => void;
+  className?: string;
 }
 
-export function IndicatorToolbar({ onOpenEmaSma }: IndicatorToolbarProps) {
+export function IndicatorToolbar({ onOpenEmaSma, className }: IndicatorToolbarProps) {
   return (
-    <TooltipProvider delayDuration={200}>
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex flex-row gap-2 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl">
+    <div className={cn(
+      "flex flex-row gap-2",
+      "bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl",
+      className
+    )}>
+      <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -34,7 +40,7 @@ export function IndicatorToolbar({ onOpenEmaSma }: IndicatorToolbarProps) {
             </div>
           </TooltipContent>
         </Tooltip>
-      </div>
-    </TooltipProvider>
+      </TooltipProvider>
+    </div>
   );
 }
