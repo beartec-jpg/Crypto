@@ -121,6 +121,7 @@ export function ChartFullscreenPage({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reinitializeChartKey, setReinitializeChartKey] = useState(0); // Key to trigger chart re-initialization
+  const [chartReady, setChartReady] = useState(false); // Track when chart is initialized and ready for data
   const [tempDrawing, setTempDrawing] = useState<{
     points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[]
   } | null>(null);
@@ -506,6 +507,7 @@ useEffect(() => {
 
   chartRef.current = chart;
   candleSeriesRef.current = candleSeries;
+  setChartReady(true); // Signal that chart is ready for data
   
   console.log('[Chart] Chart initialized successfully');
   
@@ -546,6 +548,7 @@ useEffect(() => {
   resizeObserver.observe(container);
 
   return () => {
+    setChartReady(false); // Reset chart ready state
     if (resizeTimeoutRef.current) {
       clearTimeout(resizeTimeoutRef.current);
       resizeTimeoutRef.current = null;
@@ -580,7 +583,7 @@ useEffect(() => {
 
   // Fetch candles data with caching
   useEffect(() => {
-    if (!candleSeriesRef.current) return;
+    if (!chartReady || !candleSeriesRef.current) return;
 
     let mounted = true;
     let timeoutId: NodeJS.Timeout | null = null;
@@ -650,7 +653,7 @@ useEffect(() => {
     };
     // fitChartContent is stable (useCallback with empty deps) and doesn't need to be in dependencies
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, timeframe]);
+  }, [symbol, timeframe, chartReady]);
   
   // Load saved drawings from database
   useEffect(() => {
