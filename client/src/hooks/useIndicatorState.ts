@@ -38,7 +38,16 @@ export function useIndicatorState() {
   const emaFastPeriod = emaConfigs[0]?.period || 21;
   const emaSlowPeriod = emaConfigs[1]?.period || 50;
   const [emaFastInput, setEmaFastInput] = useState('10');
-  const [emaSlowInput, setEmaSlowInput] = useState('40');
+  const [emaSlowInput, setEmaSlowInput] = useState('40')
+
+  // SMA settings - dynamic list with multi-timeframe support
+const [showSMA, setShowSMA] = useState(false);
+const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
+  { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
+]);
+// Legacy state for backwards compatibility
+const smaFastPeriod = smaConfigs[0]?.period || 20;
+const smaSlowPeriod = smaConfigs[1]?.period || 50;
   
   // Oscillator indicators - RSI
   const [showRSI, setShowRSI] = useState(false);
