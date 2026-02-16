@@ -24,7 +24,6 @@ import {
   ChannelPrimitive
 } from '@/lib/chartPrimitives';
 import { getAutoColor } from '@/lib/chart/colorUtils';
-import { historicalDataCache } from '@/lib/chart/historicalDataCache';
 import { MovingAverages } from '@/components/chart/MovingAverages';
 import { calculateEMA } from '@/lib/indicators';
 
@@ -593,62 +592,61 @@ useEffect(() => {
 // The lightweight-charts library handles touch interactions properly on its own
 // This was blocking scroll on the main page when the fullscreen chart was closed
 
-  // Fetch candles data with caching
+  // Fetch candles data directly from Binance API
   useEffect(() => {
     if (!chartReady || !candleSeriesRef.current) return;
 
     let mounted = true;
-    let timeoutId: NodeJS.Timeout | null = null;
 
     const fetchCandles = async () => {
       setIsLoading(true);
       setError(null);
 
       try {
-        // Quick initial load (500 candles)
-        const initialData = await historicalDataCache.getHistoricalData(
-          symbol, 
-          timeframe, 
-          500
+        const binanceInterval = convertTimeframe(timeframe);
+        
+        // Direct Binance API call (works perfectly - confirmed via testing)
+        const response = await fetch(
+          `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceInterval}&limit=1000`
         );
         
+        if (!response.ok) {
+          throw new Error(`Binance API error: ${response.status}`);
+        }
+        
+        const klines = await response.json();
+        
+        // Transform Binance kline format to CandleData
+        // Binance format: [openTime, open, high, low, close, volume, closeTime, ...]
+        const transformedCandles = klines.map((kline: any[]) => ({
+          time: Math.floor(kline[0] / 1000), // Convert ms to seconds
+          open: parseFloat(kline[1]),
+          high: parseFloat(kline[2]),
+          low: parseFloat(kline[3]),
+          close: parseFloat(kline[4]),
+          volume: parseFloat(kline[5])
+        }));
+        
         if (mounted) {
-          if (initialData.length > 0) {
-            setCandles(initialData);
-            candleSeriesRef.current?.setData(initialData);
+          setCandles(transformedCandles);
+          
+          // Update chart with data
+          if (candleSeriesRef.current && transformedCandles.length > 0) {
+            candleSeriesRef.current.setData(transformedCandles);
             
             // Fit content after data is loaded
-            fitChartContent(initialData.length);
-          } else {
-            console.warn('[Chart] No initial data received');
+            fitChartContent(transformedCandles.length);
+            
+            console.log(`✅ [Chart] Loaded ${transformedCandles.length} candles from Binance`);
           }
         }
-        
-        // Background load more history (up to 5000)
-        timeoutId = setTimeout(async () => {
-          const fullData = await historicalDataCache.getHistoricalData(
-            symbol,
-            timeframe,
-            5000
-          );
-          
-          if (mounted && fullData.length > initialData.length) {
-            setCandles(fullData);
-            candleSeriesRef.current?.setData(fullData);
-            
-            // Fit content after loading more data
-            fitChartContent();
-            console.log(`[Cache] Loaded ${fullData.length} candles`);
-          }
-        }, 100);
-        
       } catch (err) {
-        console.error('[Chart] Failed to fetch candle data:', err);
+        const message = err instanceof Error ? err.message : 'Failed to fetch data';
+        console.error('❌ [Chart] Data fetch failed:', message);
         if (mounted) {
-          setError(err instanceof Error ? err.message : 'Failed to fetch candle data');
+          setError(message);
         }
       } finally {
-        // Always set loading to false when initial fetch completes
         if (mounted) {
           setIsLoading(false);
         }
@@ -659,9 +657,6 @@ useEffect(() => {
     
     return () => {
       mounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
     };
     // fitChartContent is stable (useCallback with empty deps) and doesn't need to be in dependencies
     // eslint-disable-next-line react-hooks/exhaustive-deps
