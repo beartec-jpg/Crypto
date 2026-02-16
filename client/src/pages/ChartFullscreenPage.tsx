@@ -483,34 +483,54 @@ useEffect(() => {
   const chartElement = chartContainerRef.current;
   if (!chartElement) return;
   
+// Prevent native browser gestures ONLY on the actual chart canvas, not UI elements
+useEffect(() => {
+  const chartElement = chartContainerRef.current;
+  if (!chartElement) return;
+  
   const handleChartTouchMove = (e: TouchEvent) => {
     const target = e.target as HTMLElement;
     
-    // Allow scrolling in dialogs, selects, and any scrollable UI
-    if (target.closest('[role="dialog"]') || 
-        target.closest('[role="listbox"]') ||  // Select dropdowns
-        target.closest('[data-radix-select-viewport]') || // Radix Select content
-        target.closest('[data-radix-popper-content-wrapper]') || // Radix poppers
-        target.closest('.settings-panel') ||
-        target.closest('.modal-content')) {
-      return; // Allow normal scrolling/interaction
+    // CRITICAL: Allow ALL scrolling on UI elements - check FIRST before any prevention
+    if (
+      // Radix UI components (Select dropdowns, modals, popovers)
+      target.closest('[role="dialog"]') || 
+      target.closest('[role="listbox"]') ||
+      target.closest('[data-radix-select-viewport]') ||
+      target.closest('[data-radix-select-content]') ||
+      target.closest('[data-radix-popper-content-wrapper]') ||
+      // Custom scrollable elements
+      target.closest('.settings-panel') ||
+      target.closest('.modal-content') ||
+      // Any element with scrollable overflow
+      target.closest('[style*="overflow"]') ||
+      // Check if element itself is scrollable
+      (target.scrollHeight > target.clientHeight) ||
+      // Parent chain check for scrollable
+      Array.from(document.querySelectorAll('[data-radix-select-content]')).some(el => el.contains(target))
+    ) {
+      return; // ALLOW normal scrolling - do NOT preventDefault
     }
     
-    // Only prevent default on the chart element itself
+    // Only prevent default on the chart canvas itself (not toolbar buttons, etc)
+    // This allows chart panning with touch but blocks browser scroll
     e.preventDefault();
   };
 
   const handleMultiTouchGesture = (e: TouchEvent) => {
     const target = e.target as HTMLElement;
     
-    // Allow multi-touch in UI elements
-    if (target.closest('[role="dialog"]') || 
-        target.closest('[role="listbox"]') ||
-        target.closest('[data-radix-select-viewport]') ||
-        target.closest('[data-radix-popper-content-wrapper]') ||
-        target.closest('.settings-panel') ||
-        target.closest('.modal-content')) {
-      return;
+    // Allow multi-touch in UI elements (same checks as above)
+    if (
+      target.closest('[role="dialog"]') || 
+      target.closest('[role="listbox"]') ||
+      target.closest('[data-radix-select-viewport]') ||
+      target.closest('[data-radix-select-content]') ||
+      target.closest('[data-radix-popper-content-wrapper]') ||
+      target.closest('.settings-panel') ||
+      target.closest('.modal-content')
+    ) {
+      return; // ALLOW normal interactions
     }
     
     // Prevent pinch-zoom only on chart
@@ -519,11 +539,12 @@ useEffect(() => {
     }
   };
 
-  // Add listeners ONLY to the chart element
+  // Add listeners to chart container
   chartElement.addEventListener('touchmove', handleChartTouchMove, { passive: false });
   chartElement.addEventListener('touchstart', handleMultiTouchGesture, { passive: false });
 
   return () => {
+    // Clean up listeners
     chartElement.removeEventListener('touchmove', handleChartTouchMove);
     chartElement.removeEventListener('touchstart', handleMultiTouchGesture);
   };
