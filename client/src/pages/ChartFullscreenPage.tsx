@@ -150,6 +150,7 @@ const chartContainerRef = useRef<HTMLDivElement>(null);
 const chartRef = useRef<IChartApi | null>(null);
 const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
 const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
+const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 // Refs for drawing logic (to avoid recreating callbacks)
 const activeToolRef = useRef<DrawingTool>(null);
@@ -479,13 +480,12 @@ useEffect(() => {
   console.log('[Chart] Chart initialized successfully');
 
   // Handle resize with debouncing
-  let resizeTimeout: NodeJS.Timeout | null = null;
   const handleResize = () => {
-    if (resizeTimeout) {
-      clearTimeout(resizeTimeout);
+    if (resizeTimeoutRef.current) {
+      clearTimeout(resizeTimeoutRef.current);
     }
     
-    resizeTimeout = setTimeout(() => {
+    resizeTimeoutRef.current = setTimeout(() => {
       if (chartContainerRef.current && chartRef.current) {
         const newWidth = chartContainerRef.current.clientWidth;
         const newHeight = chartContainerRef.current.clientHeight;
@@ -509,8 +509,8 @@ useEffect(() => {
   window.addEventListener('resize', handleResize);
 
   return () => {
-    if (resizeTimeout) {
-      clearTimeout(resizeTimeout);
+    if (resizeTimeoutRef.current) {
+      clearTimeout(resizeTimeoutRef.current);
     }
     resizeObserver.disconnect();
     window.removeEventListener('resize', handleResize);
@@ -575,7 +575,9 @@ useEffect(() => {
           } else {
             console.warn('[Chart] No initial data received');
           }
-          setIsLoading(false); // Always set loading to false, even if no data
+          
+          // Always set loading to false, even if no data
+          setIsLoading(false);
         }
         
         // Background load more history (up to 5000)
