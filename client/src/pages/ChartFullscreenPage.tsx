@@ -402,12 +402,19 @@ export function ChartFullscreenPage({
     const chartElement = chartContainerRef.current;
     if (!chartElement) return;
     
+    // Helper to check if target is in a scrollable modal/dialog
+    const isInScrollableElement = (target: HTMLElement): boolean => {
+      return Boolean(
+        target.closest('[role="dialog"]') || 
+        target.closest('.settings-panel') ||
+        target.closest('.modal-content')
+      );
+    };
+    
     const preventDefault = (e: TouchEvent) => {
       // Allow touch on modals and settings panels
       const target = e.target as HTMLElement;
-      if (target.closest('[role="dialog"]') || 
-          target.closest('.settings-panel') ||
-          target.closest('.modal-content')) {
+      if (isInScrollableElement(target)) {
         return; // Allow normal scrolling in these elements
       }
       
@@ -418,9 +425,7 @@ export function ChartFullscreenPage({
     const preventZoom = (e: TouchEvent) => {
       // Allow touch on modals and settings panels
       const target = e.target as HTMLElement;
-      if (target.closest('[role="dialog"]') || 
-          target.closest('.settings-panel') ||
-          target.closest('.modal-content')) {
+      if (isInScrollableElement(target)) {
         return; // Allow normal interactions in these elements
       }
       
@@ -621,10 +626,8 @@ export function ChartFullscreenPage({
     <div 
       className="fixed inset-0 z-50 bg-slate-950 flex flex-col"
       style={{
-        touchAction: 'none',
         WebkitUserSelect: 'none',
         userSelect: 'none',
-        overscrollBehavior: 'none',
         height: '100vh',
       }}
     >
