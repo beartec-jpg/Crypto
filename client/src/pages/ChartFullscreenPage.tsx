@@ -406,19 +406,6 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
     autoSnapEnabled: true,
   });
 
-    // Prevent body scrolling ONLY when fullscreen chart is mounted
-  useEffect(() => {
-    // Add class to body and root when component mounts
-    document.body.classList.add('fullscreen-chart-active');
-    document.getElementById('root')?.classList.add('fullscreen-chart-active');
-    
-    // Remove class when component unmounts
-    return () => {
-      document.body.classList.remove('fullscreen-chart-active');
-      document.getElementById('root')?.classList.remove('fullscreen-chart-active');
-    };
-  }, []);
-
 // Initialize chart
 useEffect(() => {
   if (!chartContainerRef.current) return;

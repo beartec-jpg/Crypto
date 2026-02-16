@@ -159,18 +159,7 @@ body {
   overflow-x: hidden;
 }
 
-/* ONLY prevent scrolling when fullscreen chart is active */
-body.fullscreen-chart-active {
-  overflow: hidden !important;
-  height: 100vh !important;
-}
-
-#root.fullscreen-chart-active {
-  overflow: hidden !important;
-  height: 100vh !important;
-}
-
-/* Allow scrolling in modals/dialogs even when fullscreen is active */
+/* Allow scrolling in modals/dialogs */
 .settings-panel,
 .modal-content,
 [role="dialog"] {

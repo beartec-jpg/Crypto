@@ -1,11 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { VideoSequencePlayer } from '@/components/trading/VideoSequencePlayer';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import { CleanWatchlist } from '@/components/watchlist/CleanWatchlist';
-import { ChartFullscreenPage } from './ChartFullscreenPage';
 import { IndicatorsSection } from '@/components/indicators/IndicatorsSection';
 import { useMarketStateDemo } from '@/hooks/useMarketStateDemo';
 import { useIndicatorsData } from '@/hooks/useIndicatorsData';
@@ -20,14 +19,6 @@ export default function CryptoIndicatorsClean() {
   // Video player demo state
   const { targetMarketState, isInitialLoad, setIsInitialLoad } = useMarketStateDemo();
 
-  // Fullscreen chart state
-  const [showFullscreen, setShowFullscreen] = useState(false);
-  const [fullscreenContext, setFullscreenContext] = useState<{
-    symbol: string;
-    timeframe: string;
-    watchlist: string[];
-  } | null>(null);
-
   // Fetch candle and CVD data
   // TODO: Connect to watchlist selection state
   const { candles, cvdData } = useIndicatorsData({
@@ -35,15 +26,19 @@ export default function CryptoIndicatorsClean() {
     timeframe: DEFAULT_TIMEFRAME,
   });
 
-  // Handler to expand chart to fullscreen
+  // Handler to expand chart to fullscreen - navigate to chart page
   const handleExpandChart = useCallback((context: { 
     symbol: string; 
     timeframe: string; 
     watchlist: string[] 
   }) => {
-    console.log('📊 Expanding chart to fullscreen with context:', context);
-    setFullscreenContext(context);
-    setShowFullscreen(true);
+    console.log('📊 Navigating to chart page with context:', context);
+    
+    // Save watchlist to localStorage so ChartPage can access it
+    localStorage.setItem('watchlistTickers', JSON.stringify(context.watchlist));
+    
+    // Navigate to chart page with URL params
+    window.location.href = `/chart?symbol=${context.symbol}&timeframe=${context.timeframe}`;
   }, []);
 
   return (
@@ -53,22 +48,8 @@ export default function CryptoIndicatorsClean() {
         <meta name="description" content="Professional crypto trading indicators and analysis" />
       </Helmet>
 
-      {/* Fullscreen overlay - rendered on top when active */}
-      {showFullscreen && fullscreenContext && (
-        <ChartFullscreenPage
-          onClose={() => {
-            setShowFullscreen(false);
-            setFullscreenContext(null);
-          }}
-          initialSymbol={fullscreenContext.symbol}
-          initialTimeframe={fullscreenContext.timeframe}
-          watchlistTickers={fullscreenContext.watchlist}
-        />
-      )}
-
-      {/* Main Content - only visible when not in fullscreen */}
-      {!showFullscreen && (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
+      {/* Main Content */}
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
           
           {/* Container for all content */}
           <div className="max-w-7xl mx-auto px-4 py-6 pb-32">
@@ -103,7 +84,6 @@ export default function CryptoIndicatorsClean() {
           {/* Bottom Navigation */}
           <CryptoNavigation showWallet={true} />
         </div>
-      )}
     </>
   );
 }

@@ -28,6 +28,7 @@ const CryptoSandbox = lazy(() => import('@/pages/CryptoSandbox'));
 const NotFound = lazy(() => import('@/pages/not-found'));
 // 1. Add with other lazy imports (around line 22)
 const Wallet = lazy(() => import('@/pages/Wallet'));
+const ChartPage = lazy(() => import('@/pages/ChartPage'));
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   return (
@@ -75,6 +76,9 @@ function App() {
             {/* Protected routes - require authentication */}
             <Route path="/cryptoindicators">
               <ProtectedRoute component={CryptoIndicators} />
+            </Route>
+            <Route path="/chart">
+              <ProtectedRoute component={ChartPage} />
             </Route>
             <Route path="/cryptoai">
               <ProtectedRoute component={CryptoAI} />
