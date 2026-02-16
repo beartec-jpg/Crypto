@@ -478,53 +478,66 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
     };
   }, [handleChartClick, handleTouchEnd]);
 
-  // Prevent native browser gestures on chart
-  useEffect(() => {
-    const chartElement = chartContainerRef.current;
-    if (!chartElement) return;
+  // Prevent native browser gestures on chart ONLY
+useEffect(() => {
+  const chartElement = chartContainerRef.current;
+  if (!chartElement) return;
+  
+  // Helper to check if target is in a scrollable modal/dialog
+  const isInScrollableElement = (target: HTMLElement): boolean => {
+    return Boolean(
+      target.closest('[role="dialog"]') || 
+      target.closest('.settings-panel') ||
+      target.closest('.modal-content')
+    );
+  };
+  
+  const handleChartTouchMove = (e: TouchEvent) => {
+    const target = e.target as HTMLElement;
     
-    // Helper to check if target is in a scrollable modal/dialog
-    const isInScrollableElement = (target: HTMLElement): boolean => {
-      return Boolean(
-        target.closest('[role="dialog"]') || 
-        target.closest('.settings-panel') ||
-        target.closest('.modal-content')
-      );
-    };
+    // ONLY prevent if touch is directly on the chart container
+    if (!chartElement.contains(target)) {
+      return; // Allow normal behavior outside chart
+    }
     
-    const handleChartTouchMove = (e: TouchEvent) => {
-      // Allow touch on modals and settings panels
-      const target = e.target as HTMLElement;
-      if (isInScrollableElement(target)) {
-        return; // Allow normal scrolling in these elements
-      }
-      
-      // Prevent all touch move events on chart
+    // Allow touch on modals and settings panels
+    if (isInScrollableElement(target)) {
+      return; // Allow normal scrolling in these elements
+    }
+    
+    // Prevent touch move events ONLY on chart
+    e.preventDefault();
+  };
+
+  const handleMultiTouchGesture = (e: TouchEvent) => {
+    const target = e.target as HTMLElement;
+    
+    // ONLY prevent if touch is directly on the chart container
+    if (!chartElement.contains(target)) {
+      return; // Allow normal behavior outside chart
+    }
+    
+    // Allow touch on modals and settings panels
+    if (isInScrollableElement(target)) {
+      return; // Allow normal interactions in these elements
+    }
+    
+    // Prevent multi-touch zoom gestures
+    if (e.touches.length > 1) {
       e.preventDefault();
-    };
+    }
+  };
 
-    const handleMultiTouchGesture = (e: TouchEvent) => {
-      // Allow touch on modals and settings panels
-      const target = e.target as HTMLElement;
-      if (isInScrollableElement(target)) {
-        return; // Allow normal interactions in these elements
-      }
-      
-      // Prevent multi-touch zoom gestures
-      if (e.touches.length > 1) {
-        e.preventDefault();
-      }
-    };
+  // Add listeners ONLY to the chart element, not document
+  chartElement.addEventListener('touchmove', handleChartTouchMove, { passive: false });
+  chartElement.addEventListener('touchstart', handleMultiTouchGesture, { passive: false });
 
-    // Add passive: false to allow preventDefault on chart container only
-    chartElement.addEventListener('touchmove', handleChartTouchMove, { passive: false });
-    chartElement.addEventListener('touchstart', handleMultiTouchGesture, { passive: false });
-
-    return () => {
-      chartElement.removeEventListener('touchmove', handleChartTouchMove);
-      chartElement.removeEventListener('touchstart', handleMultiTouchGesture);
-    };
-  }, []);
+  return () => {
+    // Clean up listeners from chart element
+    chartElement.removeEventListener('touchmove', handleChartTouchMove);
+    chartElement.removeEventListener('touchstart', handleMultiTouchGesture);
+  };
+}, []); // Empty array is fine - chart element doesn't change
 
   // Fetch candles data with caching
   useEffect(() => {
