@@ -120,7 +120,7 @@ export function ChartFullscreenPage({
   const [candles, setCandles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [chartInitRetryCount, setChartInitRetryCount] = useState(0); // Triggers chart initialization retry
+  const [reinitializeChartKey, setReinitializeChartKey] = useState(0); // Key to trigger chart re-initialization
   const [tempDrawing, setTempDrawing] = useState<{
     points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[]
   } | null>(null);
@@ -171,6 +171,16 @@ const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
 
 // EMA/SMA modal state
 const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
+
+// Helper to fit chart content to visible data
+const fitChartContent = useCallback((candleCount?: number) => {
+  if (chartRef.current) {
+    chartRef.current.timeScale().fitContent();
+    if (candleCount !== undefined) {
+      console.log('[Chart] Fit content with', candleCount, 'candles');
+    }
+  }
+}, []);
 
 // Tool selection handler
 const handleSelectTool = useCallback((tool: DrawingTool) => {
@@ -428,14 +438,13 @@ useEffect(() => {
     
     // Use ResizeObserver to retry when dimensions become valid
     const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width: newWidth, height: newHeight } = entry.contentRect;
-        if (newWidth > 0 && newHeight > 0 && !chartRef.current) {
-          console.log('[Chart] Container dimensions now valid, triggering initialization:', { width: newWidth, height: newHeight });
-          resizeObserver.disconnect();
-          // Trigger re-initialization by updating state
-          setChartInitRetryCount(prev => prev + 1);
-        }
+      const [entry] = entries;
+      const { width: newWidth, height: newHeight } = entry.contentRect;
+      if (newWidth > 0 && newHeight > 0 && !chartRef.current) {
+        console.log('[Chart] Container dimensions now valid, triggering initialization:', { width: newWidth, height: newHeight });
+        resizeObserver.disconnect();
+        // Trigger re-initialization by updating state
+        setReinitializeChartKey(prev => prev + 1);
       }
     });
     
@@ -524,7 +533,7 @@ useEffect(() => {
       candleSeriesRef.current = null;
     }
   };
-}, [chartInitRetryCount]);
+}, [reinitializeChartKey]);
 
 // Attach click handler to chart
 useEffect(() => {
@@ -571,10 +580,7 @@ useEffect(() => {
             candleSeriesRef.current?.setData(initialData);
             
             // Fit content after data is loaded
-            if (chartRef.current) {
-              chartRef.current.timeScale().fitContent();
-              console.log('[Chart] Fitted content with', initialData.length, 'candles');
-            }
+            fitChartContent(initialData.length);
           } else {
             console.warn('[Chart] No initial data received');
           }
@@ -596,9 +602,7 @@ useEffect(() => {
             candleSeriesRef.current?.setData(fullData);
             
             // Fit content after loading more data
-            if (chartRef.current) {
-              chartRef.current.timeScale().fitContent();
-            }
+            fitChartContent();
             console.log(`[Cache] Loaded ${fullData.length} candles`);
           }
         }, 100);
@@ -620,7 +624,7 @@ useEffect(() => {
         clearTimeout(timeoutId);
       }
     };
-  }, [symbol, timeframe]);
+  }, [symbol, timeframe, fitChartContent]);
   
   // Load saved drawings from database
   useEffect(() => {
