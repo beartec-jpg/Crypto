@@ -25,6 +25,8 @@ import {
 } from '@/lib/chartPrimitives';
 import { getAutoColor } from '@/lib/chart/colorUtils';
 import { historicalDataCache } from '@/lib/chart/historicalDataCache';
+import { MovingAverages } from '@/components/chart/MovingAverages';
+import { calculateEMA } from '@/lib/indicators';
 
 interface Drawing {
   id: string;
@@ -174,6 +176,16 @@ const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
 
 // EMA/SMA modal state
 const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
+
+// EMA HTF data cache for higher-timeframe data
+const emaHTFDataCache = useRef<Record<string, any[]>>({});
+
+// Oscillator state
+const [activeOscillator, setActiveOscillator] = useState<'rsi' | 'macd' | 'volume' | null>(null);
+
+// Oscillator panel height constant
+// Includes: tabs section (py-2 ≈ 16px) + oscillator area (h-40 = 160px) + borders ≈ 180px total
+const OSCILLATOR_PANEL_HEIGHT = 180; // Height in pixels when oscillator is visible
 
 /**
  * Helper function to fit chart content to visible data range
@@ -834,7 +846,7 @@ useEffect(() => {
       </div>
 
       {/* Chart Area */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden" style={{ height: activeOscillator ? `calc(100% - ${OSCILLATOR_PANEL_HEIGHT}px)` : '100%' }}>
         {/* Indicator Toolbar - Top Center */}
         <IndicatorToolbar 
           onOpenEmaSma={() => setShowEmaSmaModal(true)}
@@ -867,6 +879,16 @@ useEffect(() => {
         )}
         
 <div ref={chartContainerRef} className="absolute inset-0 w-full h-full" />        
+        <MovingAverages
+          chart={chartRef.current}
+          maConfigs={indicators.ema.configs}
+          show={indicators.ema.show}
+          candles={candles}
+          calculateEMA={calculateEMA}
+          emaHTFDataCache={emaHTFDataCache}
+          symbol={symbol}
+          interval={timeframe}
+        />
         <DrawingRenderer
           drawingMode={activeTool ? 'draw' : 'off'}
           activeTool={activeTool}
@@ -909,6 +931,49 @@ useEffect(() => {
             onDelete={handleDeleteDrawing}
             onClose={handleCloseQuickMenu}
           />
+        )}
+      </div>
+      
+      {/* Oscillator tabs */}
+      <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Oscillators:</span>
+          <Button 
+            variant={activeOscillator === 'rsi' ? 'default' : 'outline'} 
+            size="sm" 
+            className="text-xs"
+            onClick={() => setActiveOscillator(activeOscillator === 'rsi' ? null : 'rsi')}
+          >
+            RSI
+          </Button>
+          <Button 
+            variant={activeOscillator === 'macd' ? 'default' : 'outline'} 
+            size="sm" 
+            className="text-xs"
+            onClick={() => setActiveOscillator(activeOscillator === 'macd' ? null : 'macd')}
+          >
+            MACD
+          </Button>
+          <Button 
+            variant={activeOscillator === 'volume' ? 'default' : 'outline'} 
+            size="sm" 
+            className="text-xs"
+            onClick={() => setActiveOscillator(activeOscillator === 'volume' ? null : 'volume')}
+          >
+            Volume
+          </Button>
+        </div>
+        
+        {/* Oscillator rendering area */}
+        {activeOscillator && (
+          <div className="h-40 border-t bg-slate-900 px-4 py-2">
+            <div className="text-sm text-slate-400">
+              📊 {activeOscillator.toUpperCase()} Oscillator Placeholder
+            </div>
+            <div className="text-xs text-slate-500 mt-1">
+              Oscillator will render here. Chart should resize above.
+            </div>
+          </div>
         )}
       </div>
       
