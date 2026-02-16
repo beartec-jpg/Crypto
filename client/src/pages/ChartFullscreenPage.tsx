@@ -183,6 +183,9 @@ const emaHTFDataCache = useRef<Record<string, any[]>>({});
 // Oscillator state
 const [activeOscillator, setActiveOscillator] = useState<'rsi' | 'macd' | 'volume' | null>(null);
 
+// Oscillator panel height constant
+const OSCILLATOR_PANEL_HEIGHT = 180; // Height in pixels when oscillator is visible
+
 /**
  * Helper function to fit chart content to visible data range
  * @param candleCount - Optional number of candles loaded, for logging purposes
@@ -842,7 +845,7 @@ useEffect(() => {
       </div>
 
       {/* Chart Area */}
-      <div className="flex-1 relative overflow-hidden" style={{ height: activeOscillator ? 'calc(100% - 160px)' : '100%' }}>
+      <div className="flex-1 relative overflow-hidden" style={{ height: activeOscillator ? `calc(100% - ${OSCILLATOR_PANEL_HEIGHT}px)` : '100%' }}>
         {/* Indicator Toolbar - Top Center */}
         <IndicatorToolbar 
           onOpenEmaSma={() => setShowEmaSmaModal(true)}
@@ -962,7 +965,7 @@ useEffect(() => {
         
         {/* Oscillator rendering area */}
         {activeOscillator && (
-          <div className="h-32 border-t bg-slate-900 px-4 py-2">
+          <div className="h-40 border-t bg-slate-900 px-4 py-2">
             <div className="text-sm text-slate-400">
               📊 {activeOscillator.toUpperCase()} Oscillator Placeholder
             </div>
