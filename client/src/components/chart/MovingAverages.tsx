@@ -74,9 +74,14 @@ export function MovingAverages({
         // Use current chart candles
         const closes = candles.map(c => c.close);
         const emaValues = calculateEMA(closes, config.period);
+        
+        // EMA calculation returns array starting at index period-1
+        // Pad with undefined to align with candle array
+        const paddedEmaValues = new Array(config.period - 1).fill(undefined).concat(emaValues);
+        
         emaData = candles.map((c, i) => ({
           time: c.time as any,
-          value: emaValues[i]
+          value: paddedEmaValues[i]
         })).filter(d => d.value !== undefined);
       } else {
         // Use higher timeframe data and map to current chart
@@ -87,10 +92,14 @@ export function MovingAverages({
           const htfCloses = htfCandles.map(c => c.close);
           const htfEmaValues = calculateEMA(htfCloses, config.period);
           
+          // EMA calculation returns array starting at index period-1
+          // Pad with undefined to align with candle array
+          const paddedEmaValues = new Array(config.period - 1).fill(undefined).concat(htfEmaValues);
+          
           // Map HTF EMA to current chart timeframe
           emaData = htfCandles.map((c, i) => ({
             time: c.time as any,
-            value: htfEmaValues[i]
+            value: paddedEmaValues[i]
           })).filter(d => d.value !== undefined);
         }
       }

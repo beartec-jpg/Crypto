@@ -662,6 +662,59 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe, chartReady]);
   
+  // Clear HTF cache when symbol changes (but not timeframe)
+  const prevSymbolRef = useRef<string>(symbol);
+  useEffect(() => {
+    if (prevSymbolRef.current !== symbol) {
+      emaHTFDataCache.current = {};
+      prevSymbolRef.current = symbol;
+      console.log('[EMA HTF] Cache cleared due to symbol change');
+    }
+  }, [symbol]);
+  
+  // Fetch higher timeframe data for EMA calculations
+  useEffect(() => {
+    const fetchHTFData = async () => {
+      const htfTimeframes = indicators.ema.configs
+        .filter(c => c.timeframe !== 'current' && c.timeframe !== timeframe)
+        .map(c => c.timeframe);
+      
+      const uniqueTimeframes = [...new Set(htfTimeframes)];
+      
+      for (const tf of uniqueTimeframes) {
+        const cacheKey = `${symbol}_${tf}`;
+        if (emaHTFDataCache.current[cacheKey]) continue; // Already cached
+        
+        try {
+          const binanceInterval = convertTimeframe(tf);
+          const response = await fetch(
+            `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceInterval}&limit=500`
+          );
+          
+          if (response.ok) {
+            const klines = await response.json();
+            const transformedCandles = klines.map((kline: any[]) => ({
+              time: Math.floor(kline[0] / 1000),
+              open: parseFloat(kline[1]),
+              high: parseFloat(kline[2]),
+              low: parseFloat(kline[3]),
+              close: parseFloat(kline[4]),
+              volume: parseFloat(kline[5])
+            }));
+            emaHTFDataCache.current[cacheKey] = transformedCandles;
+            console.log(`[EMA HTF] Fetched ${tf} data for ${symbol}: ${transformedCandles.length} candles`);
+          }
+        } catch (e) {
+          console.error(`[EMA HTF] Failed to fetch ${tf} data:`, e);
+        }
+      }
+    };
+    
+    if (indicators.ema.show && symbol) {
+      fetchHTFData();
+    }
+  }, [indicators.ema.show, indicators.ema.configs, symbol, timeframe]);
+  
   // Load saved drawings from database
   useEffect(() => {
     if (drawingsPersistence.drawings) {
