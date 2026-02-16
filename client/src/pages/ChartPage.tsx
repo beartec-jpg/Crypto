@@ -10,9 +10,15 @@ export default function ChartPage() {
   const timeframe = params.get('timeframe') || '1h';
   
   // Get watchlist from localStorage or default
-  const watchlistTickers = JSON.parse(
-    localStorage.getItem('watchlistTickers') || '["XRPUSDT", "BTCUSDT", "ETHUSDT"]'
-  );
+  let watchlistTickers: string[];
+  try {
+    watchlistTickers = JSON.parse(
+      localStorage.getItem('watchlistTickers') || '["XRPUSDT", "BTCUSDT", "ETHUSDT"]'
+    );
+  } catch (error) {
+    // Fall back to default if localStorage contains malformed JSON
+    watchlistTickers = ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'];
+  }
   
   const handleClose = () => {
     navigate('/cryptoindicators'); // Go back to main page

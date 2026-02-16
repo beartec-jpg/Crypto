@@ -8,6 +8,7 @@ import { CleanWatchlist } from '@/components/watchlist/CleanWatchlist';
 import { IndicatorsSection } from '@/components/indicators/IndicatorsSection';
 import { useMarketStateDemo } from '@/hooks/useMarketStateDemo';
 import { useIndicatorsData } from '@/hooks/useIndicatorsData';
+import { useLocation } from 'wouter';
 
 // Default symbol and timeframe for demo
 const DEFAULT_SYMBOL = 'XRPUSDT';
@@ -15,6 +16,8 @@ const DEFAULT_TIMEFRAME = '1h';
 
 export default function CryptoIndicatorsClean() {
   usePageViewTracking('Crypto Indicators');
+  
+  const [, navigate] = useLocation();
   
   // Video player demo state
   const { targetMarketState, isInitialLoad, setIsInitialLoad } = useMarketStateDemo();
@@ -37,9 +40,9 @@ export default function CryptoIndicatorsClean() {
     // Save watchlist to localStorage so ChartPage can access it
     localStorage.setItem('watchlistTickers', JSON.stringify(context.watchlist));
     
-    // Navigate to chart page with URL params
-    window.location.href = `/chart?symbol=${context.symbol}&timeframe=${context.timeframe}`;
-  }, []);
+    // Navigate to chart page with URL params (client-side navigation)
+    navigate(`/chart?symbol=${context.symbol}&timeframe=${context.timeframe}`);
+  }, [navigate]);
 
   return (
     <>
