@@ -13,6 +13,7 @@ export function HorizontalLineSettings({ drawing, onUpdate }: HorizontalLineSett
   const opacity = drawing.style?.opacity ?? 1;
   const lineWidth = drawing.style?.lineWidth || 2;
   const lineStyle = drawing.style?.lineStyle || 'solid';
+  const fillOpacity = drawing.style?.fillOpacity ?? 0.1;
 
   // Helper to wrap updates in { style: { ... } } format
   const handleUpdate = (styleUpdates: any) => {
@@ -48,6 +49,13 @@ export function HorizontalLineSettings({ drawing, onUpdate }: HorizontalLineSett
       <LineStyleSelector
         value={lineStyle}
         onChange={(style) => handleUpdate({ lineStyle: style })}
+      />
+
+      {/* Fill Opacity */}
+      <OpacitySlider
+        value={fillOpacity}
+        onChange={(val) => handleUpdate({ fillOpacity: val })}
+        label="Fill Opacity"
       />
     </div>
   );
