@@ -508,15 +508,21 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
   const latestOscillatorValues = useMemo(() => {
     if (candles.length === 0) return {};
 
-    const result: any = {};
+    const result: {
+      rsiValue?: number;
+      macdValue?: number;
+      macdPrevValue?: number;
+      volumePercent?: number;
+    } = {};
 
     if (oscillatorData.rsi.length > 0) {
       result.rsiValue = oscillatorData.rsi[oscillatorData.rsi.length - 1].value;
     }
 
     if (oscillatorData.macd.macd.length > 1) {
-      result.macdValue = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 1].value;
-      result.macdPrevValue = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 2].value;
+      const macdArray = oscillatorData.macd.macd;
+      result.macdValue = macdArray[macdArray.length - 1].value;
+      result.macdPrevValue = macdArray[macdArray.length - 2].value;
     }
 
     if (oscillatorData.volume.length > 0 && oscillatorData.avgVolume > 0) {

@@ -51,7 +51,9 @@ export function VolumePanel({
     if (syncWithMainChart && mainChartVisibleRange) {
       try {
         chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch (e) { /* ignore */ }
+      } catch (e) { 
+        console.warn('Failed to sync volume chart with main chart:', e);
+      }
     }
     
     const volumeSeries = chart.addSeries(HistogramSeries, { 
