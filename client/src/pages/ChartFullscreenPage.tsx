@@ -104,6 +104,9 @@ const formatSymbol = (symbol: string): string => {
 const TOUCH_TAP_THRESHOLD = 150; // ms - max duration for a tap
 const TOUCH_MOVE_THRESHOLD = 10; // pixels - max movement for a tap
 
+// Chart resize debounce delay
+const RESIZE_DEBOUNCE_MS = 100; // ms - debounce delay for resize events
+
 export function ChartFullscreenPage({
   onClose,
   initialSymbol,
@@ -117,6 +120,7 @@ export function ChartFullscreenPage({
   const [candles, setCandles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reinitializeChartKey, setReinitializeChartKey] = useState(0); // Key to trigger chart re-initialization
   const [tempDrawing, setTempDrawing] = useState<{
     points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[]
   } | null>(null);
@@ -149,6 +153,9 @@ const chartContainerRef = useRef<HTMLDivElement>(null);
 const chartRef = useRef<IChartApi | null>(null);
 const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
 const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
+const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+const isFirstResizeRef = useRef(true); // Track if this is the first resize event
+const isRetryingInitRef = useRef(false); // Prevent multiple retry attempts
 
 // Refs for drawing logic (to avoid recreating callbacks)
 const activeToolRef = useRef<DrawingTool>(null);
@@ -166,6 +173,22 @@ const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
 
 // EMA/SMA modal state
 const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
+
+/**
+ * Helper function to fit chart content to visible data range
+ * @param candleCount - Optional number of candles loaded, for logging purposes
+ * 
+ * Note: chartRef is intentionally not in the dependency array as refs don't trigger re-renders
+ * and the ref object itself is stable across renders
+ */
+const fitChartContent = useCallback((candleCount?: number) => {
+  if (chartRef.current) {
+    chartRef.current.timeScale().fitContent();
+    if (candleCount !== undefined) {
+      console.log('[Chart] Fit content with', candleCount, 'candles');
+    }
+  }
+}, []);
 
 // Tool selection handler
 const handleSelectTool = useCallback((tool: DrawingTool) => {
@@ -408,9 +431,51 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
 
 // Initialize chart
 useEffect(() => {
-  if (!chartContainerRef.current) return;
+  if (!chartContainerRef.current) {
+    console.warn('[Chart] Container ref not available');
+    return;
+  }
 
-  const chart = createChart(chartContainerRef.current, {
+  const container = chartContainerRef.current;
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  // Validate dimensions before initializing chart
+  if (width === 0 || height === 0) {
+    console.warn('[Chart] Container has invalid dimensions:', { width, height });
+    
+    // Use ResizeObserver to retry when dimensions become valid
+    const retryObserver = new ResizeObserver((entries) => {
+      const [entry] = entries;
+      const { width: newWidth, height: newHeight } = entry.contentRect;
+      
+      const hasValidDimensions = newWidth > 0 && newHeight > 0;
+      const chartNotInitialized = !chartRef.current;
+      const notCurrentlyRetrying = !isRetryingInitRef.current;
+      const shouldRetryInitialization = hasValidDimensions && chartNotInitialized && notCurrentlyRetrying;
+      
+      if (shouldRetryInitialization) {
+        console.log('[Chart] Container dimensions now valid, triggering initialization:', { width: newWidth, height: newHeight });
+        isRetryingInitRef.current = true;
+        retryObserver.disconnect();
+        // Trigger re-initialization by updating state
+        setReinitializeChartKey(prev => prev + 1);
+      }
+    });
+    
+    retryObserver.observe(container);
+    
+    return () => {
+      retryObserver.disconnect();
+    };
+  }
+
+  // Reset retry flag when we successfully initialize
+  isRetryingInitRef.current = false;
+  
+  console.log('[Chart] Initializing chart with dimensions:', { width, height });
+
+  const chart = createChart(container, {
     layout: {
       background: { type: ColorType.Solid, color: '#0f172a' },
       textColor: '#cbd5e1',
@@ -419,8 +484,8 @@ useEffect(() => {
       vertLines: { color: '#1e293b' },
       horzLines: { color: '#1e293b' },
     },
-    width: chartContainerRef.current.clientWidth,
-    height: chartContainerRef.current.clientHeight,
+    width,
+    height,
     timeScale: {
       timeVisible: true,
       secondsVisible: false,
@@ -441,28 +506,57 @@ useEffect(() => {
 
   chartRef.current = chart;
   candleSeriesRef.current = candleSeries;
-  // Force chart to fit content after creation
-chart.timeScale().fitContent();  // ← ADD THIS LINE
+  
+  console.log('[Chart] Chart initialized successfully');
+  
+  // Reset first resize flag when chart is initialized
+  isFirstResizeRef.current = true;
 
-  // Handle resize
+  // Handle resize with debouncing
   const handleResize = () => {
-    if (chartContainerRef.current && chartRef.current) {
-      chartRef.current.applyOptions({
-        width: chartContainerRef.current.clientWidth,
-        height: chartContainerRef.current.clientHeight,
-      });
+    // Skip the initial resize event that fires immediately when observation starts
+    if (isFirstResizeRef.current) {
+      isFirstResizeRef.current = false;
+      return;
     }
+    
+    if (resizeTimeoutRef.current) {
+      clearTimeout(resizeTimeoutRef.current);
+    }
+    
+    resizeTimeoutRef.current = setTimeout(() => {
+      if (chartContainerRef.current && chartRef.current) {
+        const newWidth = chartContainerRef.current.clientWidth;
+        const newHeight = chartContainerRef.current.clientHeight;
+        
+        if (newWidth > 0 && newHeight > 0) {
+          chartRef.current.applyOptions({
+            width: newWidth,
+            height: newHeight,
+          });
+        }
+      }
+    }, RESIZE_DEBOUNCE_MS);
   };
 
-  window.addEventListener('resize', handleResize);
+  // Use ResizeObserver for reliable resize detection
+  // Note: ResizeObserver handles all container resize scenarios, including window resize
+  const resizeObserver = new ResizeObserver(handleResize);
+  
+  resizeObserver.observe(container);
 
   return () => {
-    window.removeEventListener('resize', handleResize);
+    if (resizeTimeoutRef.current) {
+      clearTimeout(resizeTimeoutRef.current);
+      resizeTimeoutRef.current = null;
+    }
+    resizeObserver.disconnect();
     if (chartRef.current) {
+      console.log('[Chart] Cleaning up chart');
       chartRef.current.remove();
     }
   };
-}, []);
+}, [reinitializeChartKey]);
 
 // Attach click handler to chart
 useEffect(() => {
@@ -504,12 +598,16 @@ useEffect(() => {
         );
         
         if (mounted) {
-        if (initialData.length > 0) {
-        setCandles(initialData);
-        candleSeriesRef.current?.setData(initialData);
+          if (initialData.length > 0) {
+            setCandles(initialData);
+            candleSeriesRef.current?.setData(initialData);
+            
+            // Fit content after data is loaded
+            fitChartContent(initialData.length);
+          } else {
+            console.warn('[Chart] No initial data received');
+          }
         }
-      setIsLoading(false); // Always set loading to false, even if no data
-      }
         
         // Background load more history (up to 5000)
         timeoutId = setTimeout(async () => {
@@ -522,14 +620,21 @@ useEffect(() => {
           if (mounted && fullData.length > initialData.length) {
             setCandles(fullData);
             candleSeriesRef.current?.setData(fullData);
+            
+            // Fit content after loading more data
+            fitChartContent();
             console.log(`[Cache] Loaded ${fullData.length} candles`);
           }
         }, 100);
         
       } catch (err) {
-        console.error('Failed to fetch candle data:', err);
+        console.error('[Chart] Failed to fetch candle data:', err);
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to fetch candle data');
+        }
+      } finally {
+        // Always set loading to false when initial fetch completes
+        if (mounted) {
           setIsLoading(false);
         }
       }
@@ -543,6 +648,8 @@ useEffect(() => {
         clearTimeout(timeoutId);
       }
     };
+    // fitChartContent is stable (useCallback with empty deps) and doesn't need to be in dependencies
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe]);
   
   // Load saved drawings from database
