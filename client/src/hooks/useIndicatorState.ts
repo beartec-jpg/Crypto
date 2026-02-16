@@ -226,6 +226,16 @@ const smaSlowPeriod = smaConfigs[1]?.period || 50;
       slowInput: emaSlowInput,
       setSlowInput: setEmaSlowInput
     },
+
+    // SMA
+    sma: {
+  show: showSMA,
+  setShow: setShowSMA,
+  configs: smaConfigs,
+  setConfigs: setSmaConfigs,
+  fastPeriod: smaFastPeriod,
+  slowPeriod: smaSlowPeriod,
+},
     
     // RSI
     rsi: {
