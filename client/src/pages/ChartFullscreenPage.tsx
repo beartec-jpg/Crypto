@@ -765,16 +765,17 @@ export function ChartFullscreenPage({
 
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Indicator Toolbar - Top */}
+        {/* Indicator Toolbar - Top Center */}
         <IndicatorToolbar 
-          onOpenEmaSma={() => setShowEmaSmaModal(true)} 
+          onOpenEmaSma={() => setShowEmaSmaModal(true)}
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-20"
         />
 
-        {/* Drawing Toolbar - Bottom (updated position) */}
+        {/* Drawing Toolbar - Bottom Center */}
         <VerticalDrawingToolbar 
           activeTool={activeTool} 
           onSelectTool={handleSelectTool}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-row gap-2 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20"
         />
         
         {isLoading && (

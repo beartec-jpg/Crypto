@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -99,6 +99,9 @@ export function EmaSmaModal({
       <DialogContent className="bg-slate-900 text-white border-slate-700 max-w-md max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>EMA / SMA Settings</DialogTitle>
+          <DialogDescription className="text-slate-400">
+            Configure moving average indicators
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
