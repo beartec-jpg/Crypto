@@ -397,6 +397,54 @@ export function ChartFullscreenPage({
     };
   }, [handleChartClick]);
 
+  // Prevent native browser gestures on chart
+  useEffect(() => {
+    const chartElement = chartContainerRef.current;
+    if (!chartElement) return;
+    
+    // Helper to check if target is in a scrollable modal/dialog
+    const isInScrollableElement = (target: HTMLElement): boolean => {
+      return Boolean(
+        target.closest('[role="dialog"]') || 
+        target.closest('.settings-panel') ||
+        target.closest('.modal-content')
+      );
+    };
+    
+    const handleChartTouchMove = (e: TouchEvent) => {
+      // Allow touch on modals and settings panels
+      const target = e.target as HTMLElement;
+      if (isInScrollableElement(target)) {
+        return; // Allow normal scrolling in these elements
+      }
+      
+      // Prevent all touch move events on chart
+      e.preventDefault();
+    };
+
+    const handleMultiTouchGesture = (e: TouchEvent) => {
+      // Allow touch on modals and settings panels
+      const target = e.target as HTMLElement;
+      if (isInScrollableElement(target)) {
+        return; // Allow normal interactions in these elements
+      }
+      
+      // Prevent multi-touch zoom gestures
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    // Add passive: false to allow preventDefault on chart container only
+    chartElement.addEventListener('touchmove', handleChartTouchMove, { passive: false });
+    chartElement.addEventListener('touchstart', handleMultiTouchGesture, { passive: false });
+
+    return () => {
+      chartElement.removeEventListener('touchmove', handleChartTouchMove);
+      chartElement.removeEventListener('touchstart', handleMultiTouchGesture);
+    };
+  }, []);
+
   // Fetch candles data
   useEffect(() => {
     if (!candleSeriesRef.current) return;
