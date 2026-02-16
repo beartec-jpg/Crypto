@@ -137,31 +137,40 @@
   }
 }
 
-/* Prevent pull-to-refresh and overscroll */
-html, body {
-  overscroll-behavior: none;
-  overflow: hidden;
-  width: 100%;
+/* Allow normal scrolling everywhere by default */
+html {
+  overscroll-behavior: none; /* Prevent pull-to-refresh */
   height: 100%;
+}
+
+body {
+  overscroll-behavior: none;
+  overflow-y: auto; /* ENABLE scrolling */
+  overflow-x: hidden;
+  width: 100%;
+  min-height: 100%;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Prevent default touch behaviors */
-body {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* Main app container should fill screen and prevent all native gestures */
 #root {
   width: 100%;
-  height: 100%;
-  overflow: hidden;
-  touch-action: none; /* Disable all native touch gestures */
+  min-height: 100%;
+  overflow-y: auto; /* ENABLE scrolling */
+  overflow-x: hidden;
 }
 
-/* Allow scrolling only in specific components (like settings panels) */
+/* ONLY prevent scrolling when fullscreen chart is active */
+body.fullscreen-chart-active {
+  overflow: hidden !important;
+  height: 100vh !important;
+}
+
+#root.fullscreen-chart-active {
+  overflow: hidden !important;
+  height: 100vh !important;
+}
+
+/* Allow scrolling in modals/dialogs even when fullscreen is active */
 .settings-panel,
 .modal-content,
 [role="dialog"] {
@@ -170,7 +179,7 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* iOS safe area insets for notched devices */
+/* iOS safe area insets */
 @supports (padding: env(safe-area-inset-top)) {
   body {
     padding-top: env(safe-area-inset-top);
