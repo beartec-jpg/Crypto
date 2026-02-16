@@ -177,6 +177,9 @@ const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
 /**
  * Helper function to fit chart content to visible data range
  * @param candleCount - Optional number of candles loaded, for logging purposes
+ * 
+ * Note: chartRef is intentionally not in the dependency array as refs don't trigger re-renders
+ * and the ref object itself is stable across renders
  */
 const fitChartContent = useCallback((candleCount?: number) => {
   if (chartRef.current) {
@@ -538,9 +541,7 @@ useEffect(() => {
 
   // Use ResizeObserver for reliable resize detection
   // Note: ResizeObserver handles all container resize scenarios, including window resize
-  const resizeObserver = new ResizeObserver(() => {
-    handleResize();
-  });
+  const resizeObserver = new ResizeObserver(handleResize);
   
   resizeObserver.observe(container);
 
@@ -553,8 +554,6 @@ useEffect(() => {
     if (chartRef.current) {
       console.log('[Chart] Cleaning up chart');
       chartRef.current.remove();
-      chartRef.current = null;
-      candleSeriesRef.current = null;
     }
   };
 }, [reinitializeChartKey]);
@@ -649,7 +648,9 @@ useEffect(() => {
         clearTimeout(timeoutId);
       }
     };
-  }, [symbol, timeframe, fitChartContent]);
+    // fitChartContent is stable (useCallback with empty deps) and doesn't need to be in dependencies
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, timeframe]);
   
   // Load saved drawings from database
   useEffect(() => {
