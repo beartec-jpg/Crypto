@@ -154,6 +154,8 @@ const chartRef = useRef<IChartApi | null>(null);
 const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
 const drawingPrimitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
 const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+const isFirstResizeRef = useRef(true); // Track if this is the first resize event
+const isRetryingInitRef = useRef(false); // Prevent multiple retry attempts
 
 // Refs for drawing logic (to avoid recreating callbacks)
 const activeToolRef = useRef<DrawingTool>(null);
@@ -437,15 +439,14 @@ useEffect(() => {
     console.warn('[Chart] Container has invalid dimensions:', { width, height });
     
     // Use ResizeObserver to retry when dimensions become valid
-    let retryObserver: ResizeObserver | null = new ResizeObserver((entries) => {
+    const retryObserver = new ResizeObserver((entries) => {
       const [entry] = entries;
       const { width: newWidth, height: newHeight } = entry.contentRect;
-      if (newWidth > 0 && newHeight > 0 && !chartRef.current) {
+      // Prevent multiple retry attempts
+      if (newWidth > 0 && newHeight > 0 && !chartRef.current && !isRetryingInitRef.current) {
         console.log('[Chart] Container dimensions now valid, triggering initialization:', { width: newWidth, height: newHeight });
-        if (retryObserver) {
-          retryObserver.disconnect();
-          retryObserver = null;
-        }
+        isRetryingInitRef.current = true;
+        retryObserver.disconnect();
         // Trigger re-initialization by updating state
         setReinitializeChartKey(prev => prev + 1);
       }
@@ -454,13 +455,13 @@ useEffect(() => {
     retryObserver.observe(container);
     
     return () => {
-      if (retryObserver) {
-        retryObserver.disconnect();
-        retryObserver = null;
-      }
+      retryObserver.disconnect();
     };
   }
 
+  // Reset retry flag when we successfully initialize
+  isRetryingInitRef.current = false;
+  
   console.log('[Chart] Initializing chart with dimensions:', { width, height });
 
   const chart = createChart(container, {
@@ -496,13 +497,15 @@ useEffect(() => {
   candleSeriesRef.current = candleSeries;
   
   console.log('[Chart] Chart initialized successfully');
+  
+  // Reset first resize flag when chart is initialized
+  isFirstResizeRef.current = true;
 
   // Handle resize with debouncing
-  let isFirstResize = true;
   const handleResize = () => {
     // Skip the initial resize event that fires immediately when observation starts
-    if (isFirstResize) {
-      isFirstResize = false;
+    if (isFirstResizeRef.current) {
+      isFirstResizeRef.current = false;
       return;
     }
     
