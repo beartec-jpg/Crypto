@@ -454,6 +454,8 @@ useEffect(() => {
 
   chartRef.current = chart;
   candleSeriesRef.current = candleSeries;
+  // Force chart to fit content after creation
+chart.timeScale().fitContent();  // ← ADD THIS LINE
 
   // Handle resize
   const handleResize = () => {
