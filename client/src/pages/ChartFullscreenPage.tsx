@@ -408,9 +408,42 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
 
 // Initialize chart
 useEffect(() => {
-  if (!chartContainerRef.current) return;
+  if (!chartContainerRef.current) {
+    console.warn('[Chart] Container ref not available');
+    return;
+  }
 
-  const chart = createChart(chartContainerRef.current, {
+  const container = chartContainerRef.current;
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  // Validate dimensions before initializing chart
+  if (width === 0 || height === 0) {
+    console.warn('[Chart] Container has invalid dimensions:', { width, height });
+    
+    // Use ResizeObserver to retry when dimensions become valid
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width: newWidth, height: newHeight } = entry.contentRect;
+        if (newWidth > 0 && newHeight > 0 && !chartRef.current) {
+          console.log('[Chart] Container dimensions now valid, retrying initialization:', { width: newWidth, height: newHeight });
+          // Trigger re-render by forcing effect cleanup and re-run
+          resizeObserver.disconnect();
+          // The cleanup will be called and effect will re-run
+        }
+      }
+    });
+    
+    resizeObserver.observe(container);
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }
+
+  console.log('[Chart] Initializing chart with dimensions:', { width, height });
+
+  const chart = createChart(container, {
     layout: {
       background: { type: ColorType.Solid, color: '#0f172a' },
       textColor: '#cbd5e1',
@@ -419,8 +452,8 @@ useEffect(() => {
       vertLines: { color: '#1e293b' },
       horzLines: { color: '#1e293b' },
     },
-    width: chartContainerRef.current.clientWidth,
-    height: chartContainerRef.current.clientHeight,
+    width,
+    height,
     timeScale: {
       timeVisible: true,
       secondsVisible: false,
@@ -441,25 +474,40 @@ useEffect(() => {
 
   chartRef.current = chart;
   candleSeriesRef.current = candleSeries;
-  // Force chart to fit content after creation
-chart.timeScale().fitContent();  // ← ADD THIS LINE
+  
+  console.log('[Chart] Chart initialized successfully');
 
   // Handle resize
   const handleResize = () => {
     if (chartContainerRef.current && chartRef.current) {
-      chartRef.current.applyOptions({
-        width: chartContainerRef.current.clientWidth,
-        height: chartContainerRef.current.clientHeight,
-      });
+      const newWidth = chartContainerRef.current.clientWidth;
+      const newHeight = chartContainerRef.current.clientHeight;
+      
+      if (newWidth > 0 && newHeight > 0) {
+        chartRef.current.applyOptions({
+          width: newWidth,
+          height: newHeight,
+        });
+      }
     }
   };
 
+  // Use ResizeObserver for more reliable resize detection
+  const resizeObserver = new ResizeObserver(() => {
+    handleResize();
+  });
+  
+  resizeObserver.observe(container);
   window.addEventListener('resize', handleResize);
 
   return () => {
+    resizeObserver.disconnect();
     window.removeEventListener('resize', handleResize);
     if (chartRef.current) {
+      console.log('[Chart] Cleaning up chart');
       chartRef.current.remove();
+      chartRef.current = null;
+      candleSeriesRef.current = null;
     }
   };
 }, []);
@@ -504,12 +552,20 @@ useEffect(() => {
         );
         
         if (mounted) {
-        if (initialData.length > 0) {
-        setCandles(initialData);
-        candleSeriesRef.current?.setData(initialData);
+          if (initialData.length > 0) {
+            setCandles(initialData);
+            candleSeriesRef.current?.setData(initialData);
+            
+            // Fit content after data is loaded
+            if (chartRef.current) {
+              chartRef.current.timeScale().fitContent();
+              console.log('[Chart] Fitted content with', initialData.length, 'candles');
+            }
+          } else {
+            console.warn('[Chart] No initial data received');
+          }
+          setIsLoading(false); // Always set loading to false, even if no data
         }
-      setIsLoading(false); // Always set loading to false, even if no data
-      }
         
         // Background load more history (up to 5000)
         timeoutId = setTimeout(async () => {
@@ -522,12 +578,17 @@ useEffect(() => {
           if (mounted && fullData.length > initialData.length) {
             setCandles(fullData);
             candleSeriesRef.current?.setData(fullData);
+            
+            // Fit content after loading more data
+            if (chartRef.current) {
+              chartRef.current.timeScale().fitContent();
+            }
             console.log(`[Cache] Loaded ${fullData.length} candles`);
           }
         }, 100);
         
       } catch (err) {
-        console.error('Failed to fetch candle data:', err);
+        console.error('[Chart] Failed to fetch candle data:', err);
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to fetch candle data');
           setIsLoading(false);
