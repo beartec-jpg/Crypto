@@ -406,149 +406,81 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
     autoSnapEnabled: true,
   });
 
-  // Initialize chart
-  useEffect(() => {
-    if (!chartContainerRef.current) return;
-
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: '#0f172a' },
-        textColor: '#cbd5e1',
-      },
-      grid: {
-        vertLines: { color: '#1e293b' },
-        horzLines: { color: '#1e293b' },
-      },
-      width: chartContainerRef.current.clientWidth,
-      height: chartContainerRef.current.clientHeight,
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      rightPriceScale: {
-        borderVisible: false,
-      },
-    });
-
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
-    });
-
-    chartRef.current = chart;
-    candleSeriesRef.current = candleSeries;
-
-    // Handle resize
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-      }
-    };
-  }, []);
-  
-  // Attach click handler to chart
-  useEffect(() => {
-    const chartElement = chartContainerRef.current;
-    if (!chartElement) return;
-    
-    chartElement.addEventListener('click', handleChartClick as EventListener);
-    chartElement.addEventListener('touchstart', handleChartClick as EventListener, { passive: true });
-    chartElement.addEventListener('touchend', handleTouchEnd as EventListener);
-    
-    return () => {
-      chartElement.removeEventListener('click', handleChartClick as EventListener);
-      chartElement.removeEventListener('touchstart', handleChartClick as EventListener);
-      chartElement.removeEventListener('touchend', handleTouchEnd as EventListener);
-    };
-  }, [handleChartClick, handleTouchEnd]);
-
- // Prevent native browser gestures on chart ONLY (not on UI elements)
+// Initialize chart
 useEffect(() => {
-  const chartElement = chartContainerRef.current;
-  if (!chartElement) return;
-  
-// Prevent native browser gestures ONLY on the actual chart canvas, not UI elements
-useEffect(() => {
-  const chartElement = chartContainerRef.current;
-  if (!chartElement) return;
-  
-  const handleChartTouchMove = (e: TouchEvent) => {
-    const target = e.target as HTMLElement;
-    
-    // CRITICAL: Allow ALL scrolling on UI elements - check FIRST before any prevention
-    if (
-      // Radix UI components (Select dropdowns, modals, popovers)
-      target.closest('[role="dialog"]') || 
-      target.closest('[role="listbox"]') ||
-      target.closest('[data-radix-select-viewport]') ||
-      target.closest('[data-radix-select-content]') ||
-      target.closest('[data-radix-popper-content-wrapper]') ||
-      // Custom scrollable elements
-      target.closest('.settings-panel') ||
-      target.closest('.modal-content') ||
-      // Any element with scrollable overflow
-      target.closest('[style*="overflow"]') ||
-      // Check if element itself is scrollable
-      (target.scrollHeight > target.clientHeight) ||
-      // Parent chain check for scrollable
-      Array.from(document.querySelectorAll('[data-radix-select-content]')).some(el => el.contains(target))
-    ) {
-      return; // ALLOW normal scrolling - do NOT preventDefault
-    }
-    
-    // Only prevent default on the chart canvas itself (not toolbar buttons, etc)
-    // This allows chart panning with touch but blocks browser scroll
-    e.preventDefault();
-  };
+  if (!chartContainerRef.current) return;
 
-  const handleMultiTouchGesture = (e: TouchEvent) => {
-    const target = e.target as HTMLElement;
-    
-    // Allow multi-touch in UI elements (same checks as above)
-    if (
-      target.closest('[role="dialog"]') || 
-      target.closest('[role="listbox"]') ||
-      target.closest('[data-radix-select-viewport]') ||
-      target.closest('[data-radix-select-content]') ||
-      target.closest('[data-radix-popper-content-wrapper]') ||
-      target.closest('.settings-panel') ||
-      target.closest('.modal-content')
-    ) {
-      return; // ALLOW normal interactions
-    }
-    
-    // Prevent pinch-zoom only on chart
-    if (e.touches.length > 1) {
-      e.preventDefault();
+  const chart = createChart(chartContainerRef.current, {
+    layout: {
+      background: { type: ColorType.Solid, color: '#0f172a' },
+      textColor: '#cbd5e1',
+    },
+    grid: {
+      vertLines: { color: '#1e293b' },
+      horzLines: { color: '#1e293b' },
+    },
+    width: chartContainerRef.current.clientWidth,
+    height: chartContainerRef.current.clientHeight,
+    timeScale: {
+      timeVisible: true,
+      secondsVisible: false,
+    },
+    rightPriceScale: {
+      borderVisible: false,
+    },
+  });
+
+  const candleSeries = chart.addSeries(CandlestickSeries, {
+    upColor: '#22c55e',
+    downColor: '#ef4444',
+    borderUpColor: '#22c55e',
+    borderDownColor: '#ef4444',
+    wickUpColor: '#22c55e',
+    wickDownColor: '#ef4444',
+  });
+
+  chartRef.current = chart;
+  candleSeriesRef.current = candleSeries;
+
+  // Handle resize
+  const handleResize = () => {
+    if (chartContainerRef.current && chartRef.current) {
+      chartRef.current.applyOptions({
+        width: chartContainerRef.current.clientWidth,
+        height: chartContainerRef.current.clientHeight,
+      });
     }
   };
 
-  // Add listeners to chart container
-  chartElement.addEventListener('touchmove', handleChartTouchMove, { passive: false });
-  chartElement.addEventListener('touchstart', handleMultiTouchGesture, { passive: false });
+  window.addEventListener('resize', handleResize);
 
   return () => {
-    // Clean up listeners
-    chartElement.removeEventListener('touchmove', handleChartTouchMove);
-    chartElement.removeEventListener('touchstart', handleMultiTouchGesture);
+    window.removeEventListener('resize', handleResize);
+    if (chartRef.current) {
+      chartRef.current.remove();
+    }
   };
 }, []);
+
+// Attach click handler to chart
+useEffect(() => {
+  const chartElement = chartContainerRef.current;
+  if (!chartElement) return;
+  
+  chartElement.addEventListener('click', handleChartClick as EventListener);
+  chartElement.addEventListener('touchstart', handleChartClick as EventListener, { passive: true });
+  chartElement.addEventListener('touchend', handleTouchEnd as EventListener);
+  
+  return () => {
+    chartElement.removeEventListener('click', handleChartClick as EventListener);
+    chartElement.removeEventListener('touchstart', handleChartClick as EventListener);
+    chartElement.removeEventListener('touchend', handleTouchEnd as EventListener);
+  };
+}, [handleChartClick, handleTouchEnd]);
+
+// REMOVED: The "Prevent native browser gestures" useEffect has been deleted
+// The lightweight-charts library handles touch interactions properly on its own
+// This was blocking scroll on the main page when the fullscreen chart was closed
 
   // Fetch candles data with caching
   useEffect(() => {
