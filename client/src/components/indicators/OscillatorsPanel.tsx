@@ -76,7 +76,8 @@ const DIVERGENCE_INDICATOR_RADIUS = 6;
  */
 export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
   const [showOscillatorModal, setShowOscillatorModal] = useState(false);
-  const [activeOscillators, setActiveOscillators] = useState<string[]>([]);
+  // Show RSI and MACD by default
+  const [activeOscillators, setActiveOscillators] = useState<string[]>(['rsi', 'macd']);
   
   // Hook for managing favorite oscillators
   const { favoriteOscillators, isSaving, toggleFavorite, isFavorite } = useOscillatorPreferences();
@@ -262,17 +263,6 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
 
   return (
     <>
-      {/* Oscillator Toggle Button */}
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="text-lg font-semibold text-white">📊 Oscillators</h4>
-        <button
-          onClick={() => setShowOscillatorModal(true)}
-          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          {activeOscillators.length > 0 ? `${activeOscillators.length} Active` : 'Select Oscillators'}
-        </button>
-      </div>
-
       {/* Active Oscillators Display */}
       {activeOscillators.length > 0 && candles.length > 0 && (
         <div className="space-y-3">
