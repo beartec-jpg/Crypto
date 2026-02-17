@@ -480,8 +480,9 @@ function decodeCurrencyCode(currency: string): string {
         .replace(/\0/g, '')
         .trim();
       
-      // Return decoded string if it's non-empty and printable
-      if (decoded && /^[\x20-\x7E]+$/.test(decoded)) {
+      // Return decoded string if it's non-empty and contains valid characters
+      // Allow most printable characters including Unicode, but reject control chars
+      if (decoded && decoded.length > 0 && !/[\x00-\x1F\x7F]/.test(decoded)) {
         return decoded;
       }
     } catch (error) {

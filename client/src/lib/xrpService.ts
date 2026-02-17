@@ -73,6 +73,12 @@ class XRPLService {
         await this.connectionPromise;
         
         console.log(`✅ Connected to XRP ${useMainnet ? 'MAINNET' : 'TESTNET'} at ${currentUrl}`);
+        
+        // Reset to primary URL on successful connection
+        if (useMainnet) {
+          this.currentMainnetUrlIndex = 0;
+        }
+        
         return this.client;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
