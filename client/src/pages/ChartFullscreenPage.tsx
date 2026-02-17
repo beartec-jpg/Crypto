@@ -1274,20 +1274,6 @@ useEffect(() => {
         </DraggableOscillatorWindow>
       )}
       
-      {/* Show selector button when no oscillators selected */}
-      {selectedOscillators.size === 0 && (
-        <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-2">
-          <Button 
-            variant="outline"
-            size="sm" 
-            className="text-xs"
-            onClick={() => setShowOscillatorSelector(true)}
-          >
-            + Add Oscillators
-          </Button>
-        </div>
-      )}
-      
       {selectedDrawingId && (
         <DrawingSettingsModal
           isOpen={settingsModalOpen}
