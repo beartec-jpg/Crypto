@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useMemo } from 'react';
 import { GripHorizontal, X, Maximize2, Minimize2 } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import { Button } from '@/components/ui/button';
@@ -51,8 +51,10 @@ export function OscillatorPopoutWindow({
 
   if (!isOpen) return null;
   
-  // Calculate width based on toggle state
-  const actualWidth = isFullWidth ? window.innerWidth * FULL_WIDTH_PERCENTAGE : defaultSize.width;
+  // Memoize width calculation to avoid unnecessary recalculations
+  const actualWidth = useMemo(() => {
+    return isFullWidth ? window.innerWidth * FULL_WIDTH_PERCENTAGE : defaultSize.width;
+  }, [isFullWidth, defaultSize.width]);
 
   return (
     <div
