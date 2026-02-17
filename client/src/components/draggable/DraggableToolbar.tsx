@@ -6,18 +6,21 @@ import { cn } from '@/lib/utils';
 interface DraggableToolbarProps {
   children: ReactNode;
   storageKey?: string;
-  defaultPosition?: { x: number; y: number };
+  defaultPosition?: () => { x: number; y: number };
   className?: string;
 }
 
 export function DraggableToolbar({
   children,
   storageKey = 'draggable-toolbar-position',
-  defaultPosition = { x: window.innerWidth / 2 - 30, y: window.innerHeight - 150 },
+  defaultPosition = () => ({ 
+    x: typeof window !== 'undefined' ? window.innerWidth / 2 - 30 : 0, 
+    y: typeof window !== 'undefined' ? window.innerHeight - 150 : 0 
+  }),
   className,
 }: DraggableToolbarProps) {
   const { position, isDragging, dragHandleProps } = useDraggable({
-    initialPosition: defaultPosition,
+    initialPosition: defaultPosition(),
     bounds: 'parent',
     storageKey,
   });

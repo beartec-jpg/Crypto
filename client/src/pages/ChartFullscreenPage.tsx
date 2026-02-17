@@ -998,7 +998,10 @@ useEffect(() => {
         {/* Drawing Toolbar - Draggable */}
         <DraggableToolbar 
           storageKey="fullscreen-drawing-toolbar"
-          defaultPosition={{ x: window.innerWidth / 2 - 40, y: window.innerHeight - 150 }}
+          defaultPosition={() => ({ 
+            x: window.innerWidth / 2 - 40, 
+            y: window.innerHeight - 150 
+          })}
         >
           <VerticalDrawingToolbar 
             activeTool={activeTool} 

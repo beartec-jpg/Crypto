@@ -36,7 +36,12 @@ export function useDraggable(options: UseDraggableOptions = {}): UseDraggableRet
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-            return parsed;
+            // Validate that positions are within reasonable bounds
+            const maxX = typeof window !== 'undefined' ? window.innerWidth : 2000;
+            const maxY = typeof window !== 'undefined' ? window.innerHeight : 2000;
+            const validX = Math.max(0, Math.min(parsed.x, maxX - 100)); // Allow 100px for visibility
+            const validY = Math.max(0, Math.min(parsed.y, maxY - 100));
+            return { x: validX, y: validY };
           }
         }
       } catch (e) {
@@ -140,7 +145,7 @@ export function useDraggable(options: UseDraggableOptions = {}): UseDraggableRet
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
-      document.addEventListener('touchmove', handleTouchMove);
+      document.addEventListener('touchmove', handleTouchMove, { passive: false });
       document.addEventListener('touchend', handleTouchEnd);
 
       return () => {
