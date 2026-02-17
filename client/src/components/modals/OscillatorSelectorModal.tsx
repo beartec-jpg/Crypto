@@ -29,7 +29,19 @@ export function OscillatorSelectorModal({
         </DialogHeader>
         <div className="space-y-4 py-4">
           {OSCILLATORS.map((osc) => (
-            <div key={osc.id} className="flex items-start space-x-3 p-3 rounded-lg hover:bg-slate-800/50 transition-colors cursor-pointer" onClick={() => onToggleOscillator(osc.id)}>
+            <div 
+              key={osc.id} 
+              className="flex items-start space-x-3 p-3 rounded-lg hover:bg-slate-800/50 transition-colors cursor-pointer" 
+              onClick={() => onToggleOscillator(osc.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onToggleOscillator(osc.id);
+                }
+              }}
+            >
               <Checkbox
                 id={osc.id}
                 checked={selectedOscillators.has(osc.id)}
