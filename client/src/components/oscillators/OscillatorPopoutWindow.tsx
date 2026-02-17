@@ -61,7 +61,7 @@ export function OscillatorPopoutWindow({
       {/* Draggable Title Bar */}
       <div
         {...dragHandleProps}
-        className="flex items-center justify-between bg-slate-800/95 backdrop-blur-sm border border-slate-700 border-b-0 rounded-t-lg px-3 py-2"
+        className="flex items-center justify-between bg-slate-800/95 backdrop-blur-sm border border-slate-700 border-b-0 rounded-t-lg px-3 py-2 cursor-grab active:cursor-grabbing"
       >
         <div className="flex items-center gap-2">
           <GripHorizontal className="h-4 w-4 text-slate-400" />
