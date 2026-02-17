@@ -33,6 +33,7 @@ import { VolumePanel } from '@/components/indicators/oscillators/VolumePanel';
 import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
 import { OscillatorStatusBar } from '@/components/indicators/OscillatorStatusBar';
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
+import { DraggableOscillatorWindow } from '@/components/draggable/DraggableOscillatorWindow';
 import { OscillatorPopoutWindow } from '@/components/oscillators/OscillatorPopoutWindow';
 
 interface Drawing {
@@ -191,6 +192,7 @@ const emaHTFDataCache = useRef<Record<string, any[]>>({});
 const [selectedOscillators, setSelectedOscillators] = useState<Set<string>>(new Set());
 const [showOscillatorSelector, setShowOscillatorSelector] = useState(false);
 const [oscillatorPopout, setOscillatorPopout] = useState(false);
+const [poppedOutOscillators, setPoppedOutOscillators] = useState<Set<string>>(new Set());
 
 // Oscillator panel height constant
 // 120px per oscillator (panel + padding)
@@ -201,10 +203,12 @@ const OSCILLATOR_STATUS_BAR_HEIGHT = 36; // Height of status bar
 // Drawing toolbar positioning constants
 const DRAWING_TOOLBAR_BOTTOM_MARGIN = 16; // Margin above oscillators when active
 const DRAWING_TOOLBAR_DEFAULT_BOTTOM = 80; // Default bottom position (5rem = 80px)
+const DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH = 150; // Approximate half-width for centering
 
-// Calculate total oscillator panel height
-const totalOscillatorHeight = selectedOscillators.size > 0 
-  ? OSCILLATOR_TAB_HEIGHT + (selectedOscillators.size * OSCILLATOR_PANEL_HEIGHT_PER) + OSCILLATOR_STATUS_BAR_HEIGHT
+// Calculate total oscillator panel height - only count docked oscillators
+const dockedOscillatorsCount = Array.from(selectedOscillators).filter(osc => !poppedOutOscillators.has(osc)).length;
+const totalOscillatorHeight = dockedOscillatorsCount > 0 
+  ? OSCILLATOR_TAB_HEIGHT + (dockedOscillatorsCount * OSCILLATOR_PANEL_HEIGHT_PER) + OSCILLATOR_STATUS_BAR_HEIGHT
   : 0;
 
 /**
@@ -227,6 +231,19 @@ const fitChartContent = useCallback((candleCount?: number) => {
 const handleSelectTool = useCallback((tool: DrawingTool) => {
   setActiveTool(tool);
   activeToolRef.current = tool;
+}, []);
+
+// Handler for oscillator popout/dock
+const handleOscillatorPopout = useCallback((oscillatorId: string) => {
+  setPoppedOutOscillators(prev => {
+    const next = new Set(prev);
+    if (next.has(oscillatorId)) {
+      next.delete(oscillatorId);
+    } else {
+      next.add(oscillatorId);
+    }
+    return next;
+  });
 }, []);
 
 // Handler for chart clicks (radial selection)
@@ -1010,10 +1027,12 @@ useEffect(() => {
 
         {/* Drawing Toolbar - Draggable */}
         <DraggableToolbar 
-          storageKey="fullscreen-drawing-toolbar"
-          defaultPosition={() => ({ 
-            x: window.innerWidth / 2 - 40, 
-            y: window.innerHeight - 150 
+          storageKey="chart-drawing-toolbar-position"
+          initialPosition={() => ({
+            x: window.innerWidth / 2 - DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
+            y: window.innerHeight - (selectedOscillators.size > 0 
+              ? totalOscillatorHeight + DRAWING_TOOLBAR_BOTTOM_MARGIN 
+              : DRAWING_TOOLBAR_DEFAULT_BOTTOM)
           })}
         >
           <VerticalDrawingToolbar 
@@ -1096,8 +1115,8 @@ useEffect(() => {
         )}
       </div>
       
-      {/* Oscillator Section */}
-      {selectedOscillators.size > 0 && !oscillatorPopout && (
+      {/* Oscillator Section - Docked */}
+      {dockedOscillatorsCount > 0 && !oscillatorPopout && (
         <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           {/* Oscillator tabs */}
           <div className="flex items-center justify-between gap-2 px-4 py-2 border-b">
@@ -1122,11 +1141,21 @@ useEffect(() => {
             </Button>
           </div>
           
-          {/* Oscillator panels */}
+          {/* Oscillator panels - Only show non-popped-out oscillators */}
           <div className="bg-slate-900">
-            {selectedOscillators.has('rsi') && (
+            {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && (
               <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="border-b border-slate-700 p-2">
-                <div className="text-xs text-slate-400 mb-1">RSI (14)</div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-xs text-slate-400">RSI (14)</div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-xs px-2"
+                    onClick={() => handleOscillatorPopout('rsi')}
+                  >
+                    Popout
+                  </Button>
+                </div>
                 <RSIPanel 
                   data={oscillatorData.rsi}
                   period={14}
@@ -1135,9 +1164,19 @@ useEffect(() => {
               </div>
             )}
             
-            {selectedOscillators.has('macd') && (
+            {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && (
               <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="border-b border-slate-700 p-2">
-                <div className="text-xs text-slate-400 mb-1">MACD (12, 26, 9)</div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-xs text-slate-400">MACD (12, 26, 9)</div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-xs px-2"
+                    onClick={() => handleOscillatorPopout('macd')}
+                  >
+                    Popout
+                  </Button>
+                </div>
                 <MACDPanel 
                   macdData={oscillatorData.macd.macd}
                   signalData={oscillatorData.macd.signal}
@@ -1149,9 +1188,19 @@ useEffect(() => {
               </div>
             )}
             
-            {selectedOscillators.has('volume') && (
+            {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && (
               <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="border-b border-slate-700 p-2">
-                <div className="text-xs text-slate-400 mb-1">Volume</div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-xs text-slate-400">Volume</div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-xs px-2"
+                    onClick={() => handleOscillatorPopout('volume')}
+                  >
+                    Popout
+                  </Button>
+                </div>
                 <VolumePanel 
                   data={oscillatorData.volume}
                 />
@@ -1167,6 +1216,62 @@ useEffect(() => {
             volumePercent={selectedOscillators.has('volume') ? latestOscillatorValues.volumePercent : undefined}
           />
         </div>
+      )}
+      
+      {/* Popped Out Oscillator Windows */}
+      {poppedOutOscillators.has('rsi') && selectedOscillators.has('rsi') && (
+        <DraggableOscillatorWindow
+          title="RSI (14)"
+          onClose={() => handleOscillatorPopout('rsi')}
+          onDock={() => handleOscillatorPopout('rsi')}
+          storageKey="oscillator-rsi-position"
+          initialPosition={{ x: 100, y: 100 }}
+          width={500}
+          height={200}
+        >
+          <RSIPanel 
+            data={oscillatorData.rsi}
+            period={14}
+            candles={candles}
+          />
+        </DraggableOscillatorWindow>
+      )}
+      
+      {poppedOutOscillators.has('macd') && selectedOscillators.has('macd') && (
+        <DraggableOscillatorWindow
+          title="MACD (12, 26, 9)"
+          onClose={() => handleOscillatorPopout('macd')}
+          onDock={() => handleOscillatorPopout('macd')}
+          storageKey="oscillator-macd-position"
+          initialPosition={{ x: 150, y: 150 }}
+          width={500}
+          height={200}
+        >
+          <MACDPanel 
+            macdData={oscillatorData.macd.macd}
+            signalData={oscillatorData.macd.signal}
+            histogramData={oscillatorData.macd.hist}
+            fastPeriod={12}
+            slowPeriod={26}
+            signalPeriod={9}
+          />
+        </DraggableOscillatorWindow>
+      )}
+      
+      {poppedOutOscillators.has('volume') && selectedOscillators.has('volume') && (
+        <DraggableOscillatorWindow
+          title="Volume"
+          onClose={() => handleOscillatorPopout('volume')}
+          onDock={() => handleOscillatorPopout('volume')}
+          storageKey="oscillator-volume-position"
+          initialPosition={{ x: 200, y: 200 }}
+          width={500}
+          height={200}
+        >
+          <VolumePanel 
+            data={oscillatorData.volume}
+          />
+        </DraggableOscillatorWindow>
       )}
       
       {/* Show selector button when no oscillators selected */}
