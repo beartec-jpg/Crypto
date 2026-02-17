@@ -460,8 +460,20 @@ async function detectBEP20Tokens(address: string): Promise<Token[]> {
 }
 
 /**
- * Decode XRPL currency code
- * XRPL tokens with names longer than 3 characters are hex-encoded as 40-char strings
+ * Decode XRPL currency code from hex encoding
+ * 
+ * XRPL standard currency codes (3 chars or fewer) are returned as-is.
+ * Longer token names are hex-encoded as 40-character strings and need decoding.
+ * 
+ * @param currency - The currency code to decode (e.g., "USD", "534F4C4F00...")
+ * @returns Decoded currency string or original if:
+ *          - 3 characters or fewer (standard codes like "USD", "BTC")
+ *          - 40-char hex that decodes successfully (e.g., "SOLO")
+ *          - Original hex string if decoding fails (fallback)
+ * 
+ * @example
+ * decodeCurrencyCode("USD") // Returns "USD"
+ * decodeCurrencyCode("534F4C4F00000000000000000000000000000000") // Returns "SOLO"
  */
 function decodeCurrencyCode(currency: string): string {
   // Return as-is if 3 characters or fewer (standard currency codes)

@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useBalance } from 'wagmi';
 import { useUser } from '@clerk/clerk-react';
 import { ArrowUpRight, ArrowDownLeft, RefreshCw, Clock, Loader2, Copy, Share2, ExternalLink, Check } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { 
   fetchAllBalances, 
   fetchBlockNumber,
@@ -64,6 +65,7 @@ export default function WalletDashboard({
 }: WalletDashboardProps) {
   const { user } = useUser();
   const userId = user?.id || '';
+  const { toast } = useToast();
   
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [copiedTxHash, setCopiedTxHash] = useState<string | null>(null);
@@ -205,6 +207,11 @@ export default function WalletDashboard({
           setTokens(updatedTokens);
         } else if (result.error) {
           console.error('Failed to refresh XRPL tokens:', result.error);
+          toast({
+            title: '⚠️ XRPL Token Refresh Failed',
+            description: result.error,
+            variant: 'destructive',
+          });
         }
       }
       
