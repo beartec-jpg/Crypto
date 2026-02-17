@@ -198,6 +198,10 @@ const OSCILLATOR_PANEL_HEIGHT_PER = 120; // Height per oscillator in pixels
 const OSCILLATOR_TAB_HEIGHT = 48; // Height of tabs section
 const OSCILLATOR_STATUS_BAR_HEIGHT = 36; // Height of status bar
 
+// Drawing toolbar positioning constants
+const DRAWING_TOOLBAR_BOTTOM_MARGIN = 16; // Margin above oscillators when active
+const DRAWING_TOOLBAR_DEFAULT_BOTTOM = 80; // Default bottom position (5rem = 80px)
+
 // Calculate total oscillator panel height
 const totalOscillatorHeight = selectedOscillators.size > 0 
   ? OSCILLATOR_TAB_HEIGHT + (selectedOscillators.size * OSCILLATOR_PANEL_HEIGHT_PER) + OSCILLATOR_STATUS_BAR_HEIGHT
@@ -989,11 +993,20 @@ useEffect(() => {
 
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden" style={{ height: selectedOscillators.size > 0 ? `calc(100% - ${totalOscillatorHeight}px)` : '100%' }}>
-        {/* Indicator Toolbar - Top Center */}
-        <IndicatorToolbar 
-          onOpenEmaSma={() => setShowEmaSmaModal(true)}
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-20"
-        />
+        {/* Combined Toolbar - Top Left */}
+        <div className="absolute top-2 left-2 z-20 flex gap-2">
+          <IndicatorToolbar 
+            onOpenEmaSma={() => setShowEmaSmaModal(true)}
+          />
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowOscillatorSelector(true)}
+            className="bg-slate-900/95 backdrop-blur-sm border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+          >
+            Oscillators {selectedOscillators.size > 0 && `(${selectedOscillators.size})`}
+          </Button>
+        </div>
 
         {/* Drawing Toolbar - Draggable */}
         <DraggableToolbar 
