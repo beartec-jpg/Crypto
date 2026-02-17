@@ -22,6 +22,7 @@ import {
   removeTokenFromWallet,
   autoDetectTokens,
   addTokenToWallet,
+  refreshXRPLTokenBalances,
   type Token,
 } from '@/lib/tokenService';
 import { setXRPLTrustline, calculateXRPReserve } from '@/lib/xrpReserveService';
@@ -179,7 +180,7 @@ export default function WalletDashboard({
       const balances = await fetchAllBalances(sovereignWallet.addresses);
       setChainBalances(balances);
       
-      // Update token balances
+      // Update native token balances
       balances.forEach(async (chainBal) => {
         const nativeToken = tokens.find(t => t.chain === chainBal.chain && t.isNative);
         if (nativeToken) {
@@ -191,6 +192,21 @@ export default function WalletDashboard({
           );
         }
       });
+      
+      // Refresh XRPL token balances (trust lines)
+      if (sovereignWallet.addresses.xrp) {
+        const result = await refreshXRPLTokenBalances(
+          sovereignWallet.id,
+          sovereignWallet.addresses.xrp
+        );
+        if (result.success) {
+          // Reload tokens to show updated balances
+          const updatedTokens = await getWalletTokens(sovereignWallet.id);
+          setTokens(updatedTokens);
+        } else if (result.error) {
+          console.error('Failed to refresh XRPL tokens:', result.error);
+        }
+      }
       
       const block = await fetchBlockNumber(selectedChain);
       setBlockNumber(block);
@@ -282,19 +298,11 @@ export default function WalletDashboard({
   const handleSetTrustline = async (currency: string, issuer: string) => {
     if (!sovereignWallet?.id) throw new Error('No wallet found');
 
-    // Get private key (need to unlock wallet)
-    const { unlockWallet } = await import('@/lib/walletService');
     const password = prompt('Enter your wallet password to set trustline:');
     if (!password) throw new Error('Password required');
 
-    const unlockedWallet = await unlockWallet(sovereignWallet.id, password);
-    const xrpPrivateKey = unlockedWallet.privateKeys.xrp;
-
-    if (!xrpPrivateKey) throw new Error('XRP private key not found');
-
-    // Pass the actual XRP address from the wallet
-    const xrpAddress = sovereignWallet.addresses.xrp;
-    const result = await setXRPLTrustline(xrpPrivateKey, xrpAddress, currency, issuer);
+    // Pass walletId and password - setXRPLTrustline handles key derivation internally
+    const result = await setXRPLTrustline(sovereignWallet.id, password, currency, issuer);
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to set trustline');

@@ -457,6 +457,40 @@ async function detectBEP20Tokens(address: string): Promise<Token[]> {
 }
 
 /**
+ * Decode XRPL currency code
+ * XRPL tokens with names longer than 3 characters are hex-encoded as 40-char strings
+ */
+function decodeCurrencyCode(currency: string): string {
+  // Return as-is if 3 characters or fewer (standard currency codes)
+  if (currency.length <= 3) {
+    return currency;
+  }
+  
+  // If it's a 40-character hex string, decode it
+  if (currency.length === 40 && /^[0-9A-F]+$/i.test(currency)) {
+    try {
+      // Convert hex to UTF-8, stripping null bytes
+      const decoded = currency
+        .match(/.{1,2}/g)
+        ?.map(byte => String.fromCharCode(parseInt(byte, 16)))
+        .join('')
+        .replace(/\0/g, '')
+        .trim();
+      
+      // Return decoded string if it's non-empty and printable
+      if (decoded && /^[\x20-\x7E]+$/.test(decoded)) {
+        return decoded;
+      }
+    } catch (error) {
+      console.error('Failed to decode currency code:', error);
+    }
+  }
+  
+  // Fallback to raw hex if decoding fails
+  return currency;
+}
+
+/**
  * Detect XRPL trustlines
  */
 async function detectXRPLTrustlines(address: string): Promise<Token[]> {
@@ -471,24 +505,84 @@ async function detectXRPLTrustlines(address: string): Promise<Token[]> {
     
     if (!response.result.lines) return [];
     
-    return response.result.lines.map((line: any) => ({
-      id: `xrpl-${line.currency}-${line.account}`,
-      chain: 'xrp' as Chain,
-      standard: 'XRPL' as TokenStandard,
-      currencyCode: line.currency,
-      issuer: line.account,
-      symbol: line.currency,
-      name: `${line.currency} (${line.account.slice(0, 8)}...)`,
-      decimals: 6,
-      balance: line.balance || '0',
-      isVisible: true,
-      isNative: false,
-      addedAt: new Date(),
-      trustlineLimit: line.limit,
-    }));
+    return response.result.lines.map((line: any) => {
+      const decodedCurrency = decodeCurrencyCode(line.currency);
+      return {
+        id: `xrpl-${line.currency}-${line.account}`,
+        chain: 'xrp' as Chain,
+        standard: 'XRPL' as TokenStandard,
+        currencyCode: line.currency,
+        issuer: line.account,
+        symbol: decodedCurrency,
+        name: `${decodedCurrency} (${line.account.slice(0, 8)}...)`,
+        decimals: 6,
+        balance: line.balance || '0',
+        isVisible: true,
+        isNative: false,
+        addedAt: new Date(),
+        trustlineLimit: line.limit,
+      };
+    });
   } catch (error) {
     console.error('Failed to detect XRPL trustlines:', error);
     return [];
+  }
+}
+
+/**
+ * Refresh XRPL token balances by querying the ledger
+ * Merges current on-chain data with stored tokens
+ */
+export async function refreshXRPLTokenBalances(
+  walletId: string,
+  xrpAddress: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log('🔄 Refreshing XRPL token balances...');
+    
+    // Get current stored tokens
+    const storedTokens = await getWalletTokens(walletId);
+    const xrpTokens = storedTokens.filter(t => t.chain === 'xrp' && !t.isNative);
+    
+    // Detect current on-chain trust lines
+    const detectedTokens = await detectXRPLTrustlines(xrpAddress);
+    
+    // Merge: update balances for existing tokens, add newly detected ones
+    const tokenMap = new Map<string, Token>();
+    
+    // Start with stored tokens (preserves user settings like isVisible)
+    xrpTokens.forEach(token => {
+      tokenMap.set(token.id, token);
+    });
+    
+    // Update with detected data (fresher balances and new trustlines)
+    detectedTokens.forEach(detected => {
+      const existing = tokenMap.get(detected.id);
+      if (existing) {
+        // Update balance and trustline limit for existing tokens
+        existing.balance = detected.balance;
+        existing.trustlineLimit = detected.trustlineLimit;
+      } else {
+        // Add newly detected token
+        tokenMap.set(detected.id, detected);
+      }
+    });
+    
+    // Rebuild token list with updated XRPL tokens
+    const updatedTokens = [
+      ...storedTokens.filter(t => t.chain !== 'xrp' || t.isNative),
+      ...Array.from(tokenMap.values()),
+    ];
+    
+    // Save back to IndexedDB
+    await saveWalletTokens(walletId, updatedTokens);
+    
+    console.log('✅ XRPL token balances refreshed');
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Failed to refresh XRPL token balances:', error);
+    return { success: false, error: errorMessage };
   }
 }
 
