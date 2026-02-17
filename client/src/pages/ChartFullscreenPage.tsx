@@ -1006,9 +1006,8 @@ useEffect(() => {
         <VerticalDrawingToolbar 
           activeTool={activeTool} 
           onSelectTool={handleSelectTool}
-          className={`fixed left-1/2 -translate-x-1/2 z-20 ${
-            selectedOscillators.size > 0 ? 'bottom-[200px]' : 'bottom-20'
-          }`}
+          className="fixed left-1/2 -translate-x-1/2 z-20"
+          style={selectedOscillators.size > 0 ? { bottom: `${totalOscillatorHeight + 16}px` } : { bottom: '5rem' }}
         />
         
         {isLoading && (
