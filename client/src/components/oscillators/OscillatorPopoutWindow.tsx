@@ -1,5 +1,5 @@
-import { ReactNode } from 'react';
-import { GripHorizontal, X } from 'lucide-react';
+import { ReactNode, useState } from 'react';
+import { GripHorizontal, X, Maximize2, Minimize2 } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -23,6 +23,9 @@ export function OscillatorPopoutWindow({
   storageKey = `oscillator-${oscillatorType}-position`,
   defaultSize = { width: 400, height: 200 },
 }: OscillatorPopoutWindowProps) {
+  // Width toggle state - half-width or full-width
+  const [isFullWidth, setIsFullWidth] = useState(false);
+  
   // Calculate default position - offset each oscillator type
   const getDefaultPosition = () => {
     const baseX = window.innerWidth / 2 - defaultSize.width / 2;
@@ -43,6 +46,9 @@ export function OscillatorPopoutWindow({
   });
 
   if (!isOpen) return null;
+  
+  // Calculate width based on toggle state
+  const actualWidth = isFullWidth ? window.innerWidth * 0.9 : defaultSize.width;
 
   return (
     <div
@@ -52,9 +58,9 @@ export function OscillatorPopoutWindow({
         isDragging && "opacity-90"
       )}
       style={{
-        left: `${position.x}px`,
+        left: isFullWidth ? '5%' : `${position.x}px`,
         top: `${position.y}px`,
-        width: `${defaultSize.width}px`,
+        width: `${actualWidth}px`,
       }}
     >
       {/* Draggable Title Bar */}
@@ -67,6 +73,15 @@ export function OscillatorPopoutWindow({
           <span className="text-sm font-semibold text-white">{title}</span>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsFullWidth(!isFullWidth)}
+            className="h-6 px-2 text-xs text-slate-300 hover:text-white hover:bg-slate-700"
+            title={isFullWidth ? "Half Width" : "Full Width"}
+          >
+            {isFullWidth ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+          </Button>
           <Button
             variant="ghost"
             size="sm"

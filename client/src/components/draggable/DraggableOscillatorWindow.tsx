@@ -30,7 +30,7 @@ export function DraggableOscillatorWindow({
 
   return (
     <div
-      className="fixed z-40 bg-slate-900 rounded-lg shadow-xl border border-slate-600 overflow-hidden"
+      className="fixed z-40 bg-slate-900 rounded-lg shadow-xl overflow-hidden"
       style={{
         left: position.x,
         top: position.y,
