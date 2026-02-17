@@ -202,6 +202,7 @@ const OSCILLATOR_STATUS_BAR_HEIGHT = 36; // Height of status bar
 // Drawing toolbar positioning constants
 const DRAWING_TOOLBAR_BOTTOM_MARGIN = 16; // Margin above oscillators when active
 const DRAWING_TOOLBAR_DEFAULT_BOTTOM = 80; // Default bottom position (5rem = 80px)
+const DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH = 150; // Approximate half-width for centering
 
 // Calculate total oscillator panel height - only count docked oscillators
 const dockedOscillatorsCount = Array.from(selectedOscillators).filter(osc => !poppedOutOscillators.has(osc)).length;
@@ -229,6 +230,19 @@ const fitChartContent = useCallback((candleCount?: number) => {
 const handleSelectTool = useCallback((tool: DrawingTool) => {
   setActiveTool(tool);
   activeToolRef.current = tool;
+}, []);
+
+// Handler for oscillator popout/dock
+const handleOscillatorPopout = useCallback((oscillatorId: string) => {
+  setPoppedOutOscillators(prev => {
+    const next = new Set(prev);
+    if (next.has(oscillatorId)) {
+      next.delete(oscillatorId);
+    } else {
+      next.add(oscillatorId);
+    }
+    return next;
+  });
 }, []);
 
 // Handler for chart clicks (radial selection)
@@ -1014,7 +1028,7 @@ useEffect(() => {
         <DraggableToolbar 
           storageKey="chart-drawing-toolbar-position"
           initialPosition={() => ({
-            x: window.innerWidth / 2 - 150,
+            x: window.innerWidth / 2 - DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
             y: window.innerHeight - (selectedOscillators.size > 0 
               ? totalOscillatorHeight + DRAWING_TOOLBAR_BOTTOM_MARGIN 
               : DRAWING_TOOLBAR_DEFAULT_BOTTOM)
@@ -1136,7 +1150,7 @@ useEffect(() => {
                     variant="ghost"
                     size="sm"
                     className="h-5 text-xs px-2"
-                    onClick={() => setPoppedOutOscillators(prev => new Set([...prev, 'rsi']))}
+                    onClick={() => handleOscillatorPopout('rsi')}
                   >
                     Popout
                   </Button>
@@ -1157,7 +1171,7 @@ useEffect(() => {
                     variant="ghost"
                     size="sm"
                     className="h-5 text-xs px-2"
-                    onClick={() => setPoppedOutOscillators(prev => new Set([...prev, 'macd']))}
+                    onClick={() => handleOscillatorPopout('macd')}
                   >
                     Popout
                   </Button>
@@ -1181,7 +1195,7 @@ useEffect(() => {
                     variant="ghost"
                     size="sm"
                     className="h-5 text-xs px-2"
-                    onClick={() => setPoppedOutOscillators(prev => new Set([...prev, 'volume']))}
+                    onClick={() => handleOscillatorPopout('volume')}
                   >
                     Popout
                   </Button>
@@ -1207,20 +1221,8 @@ useEffect(() => {
       {poppedOutOscillators.has('rsi') && selectedOscillators.has('rsi') && (
         <DraggableOscillatorWindow
           title="RSI (14)"
-          onClose={() => {
-            setPoppedOutOscillators(prev => {
-              const next = new Set(prev);
-              next.delete('rsi');
-              return next;
-            });
-          }}
-          onDock={() => {
-            setPoppedOutOscillators(prev => {
-              const next = new Set(prev);
-              next.delete('rsi');
-              return next;
-            });
-          }}
+          onClose={() => handleOscillatorPopout('rsi')}
+          onDock={() => handleOscillatorPopout('rsi')}
           storageKey="oscillator-rsi-position"
           initialPosition={{ x: 100, y: 100 }}
           width={500}
@@ -1237,20 +1239,8 @@ useEffect(() => {
       {poppedOutOscillators.has('macd') && selectedOscillators.has('macd') && (
         <DraggableOscillatorWindow
           title="MACD (12, 26, 9)"
-          onClose={() => {
-            setPoppedOutOscillators(prev => {
-              const next = new Set(prev);
-              next.delete('macd');
-              return next;
-            });
-          }}
-          onDock={() => {
-            setPoppedOutOscillators(prev => {
-              const next = new Set(prev);
-              next.delete('macd');
-              return next;
-            });
-          }}
+          onClose={() => handleOscillatorPopout('macd')}
+          onDock={() => handleOscillatorPopout('macd')}
           storageKey="oscillator-macd-position"
           initialPosition={{ x: 150, y: 150 }}
           width={500}
@@ -1270,20 +1260,8 @@ useEffect(() => {
       {poppedOutOscillators.has('volume') && selectedOscillators.has('volume') && (
         <DraggableOscillatorWindow
           title="Volume"
-          onClose={() => {
-            setPoppedOutOscillators(prev => {
-              const next = new Set(prev);
-              next.delete('volume');
-              return next;
-            });
-          }}
-          onDock={() => {
-            setPoppedOutOscillators(prev => {
-              const next = new Set(prev);
-              next.delete('volume');
-              return next;
-            });
-          }}
+          onClose={() => handleOscillatorPopout('volume')}
+          onDock={() => handleOscillatorPopout('volume')}
           storageKey="oscillator-volume-position"
           initialPosition={{ x: 200, y: 200 }}
           width={500}

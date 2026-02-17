@@ -30,9 +30,12 @@ export function useDraggable(options: UseDraggableOptions = {}) {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     
+    // Minimum visible area to keep element accessible (in pixels)
+    const MIN_VISIBLE_AREA = 100;
+    
     // Ensure position is within viewport
-    const validX = Math.max(0, Math.min(pos.x, viewportWidth - 100));
-    const validY = Math.max(0, Math.min(pos.y, viewportHeight - 100));
+    const validX = Math.max(0, Math.min(pos.x, viewportWidth - MIN_VISIBLE_AREA));
+    const validY = Math.max(0, Math.min(pos.y, viewportHeight - MIN_VISIBLE_AREA));
     
     return { x: validX, y: validY };
   }, []);
