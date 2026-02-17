@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { X, Star } from 'lucide-react';
-import { useOscillatorPreferences } from '@/hooks/useOscillatorPreferences';
+import { X } from 'lucide-react';
 
 // Existing oscillator panel components
 import { RSIPanel } from '@/components/indicators/oscillators/RSIPanel';
@@ -69,18 +68,14 @@ const DIVERGENCE_INDICATOR_RADIUS = 6;
 
 /**
  * Standalone oscillators panel component
- * - Manages its own state for active oscillators
+ * - Manages display of active oscillators (RSI and MACD by default)
  * - Calculates all oscillator data from candles prop
- * - Renders oscillator picker modal and panels
+ * - Renders oscillator panels with close buttons
  * - Includes divergence detection for RSI, MACD, OBV
  */
 export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
-  const [showOscillatorModal, setShowOscillatorModal] = useState(false);
   // Show RSI and MACD by default
   const [activeOscillators, setActiveOscillators] = useState<string[]>(['rsi', 'macd']);
-  
-  // Hook for managing favorite oscillators
-  const { favoriteOscillators, isSaving, toggleFavorite, isFavorite } = useOscillatorPreferences();
 
   // Calculate all oscillators from candles
   const calculatedData = {
@@ -93,20 +88,6 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
     cci: candles.length > 0 ? calculateCCI(candles, 20) : [],
     adx: candles.length > 0 ? calculateADX(candles, 14) : [],
   };
-
-  // Oscillator selector modal options and toggle logic
-  type OscillatorId = 'rsi' | 'macd' | 'stochRSI' | 'obv' | 'mfi' | 'williamsR' | 'cci' | 'adx';
-  
-  const oscillatorOptions: Array<{ id: OscillatorId; name: string; icon: string }> = [
-    { id: 'rsi', name: 'RSI', icon: '📈' },
-    { id: 'macd', name: 'MACD', icon: '📊' },
-    { id: 'stochRSI', name: 'Stochastic RSI', icon: '🎯' },
-    { id: 'obv', name: 'OBV', icon: '📉' },
-    { id: 'mfi', name: 'MFI', icon: '💰' },
-    { id: 'williamsR', name: 'Williams %R', icon: '🔄' },
-    { id: 'cci', name: 'CCI', icon: '🌊' },
-    { id: 'adx', name: 'ADX', icon: '💪' },
-  ];
 
   const toggleOscillator = (id: string) => {
     setActiveOscillators(prev => 
@@ -471,115 +452,6 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
               />
             </div>
           )}
-        </div>
-      )}
-
-      {/* Oscillator Selector Modal */}
-      {showOscillatorModal && (
-        <div 
-          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowOscillatorModal(false)}
-        >
-          <div 
-            className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-md w-full p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Select Oscillators</h3>
-              <button
-                onClick={() => setShowOscillatorModal(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            {/* Show favorites section if user has any favorites */}
-            {favoriteOscillators.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-sm font-medium text-gray-400 mb-2">⭐ Your Favorites</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {oscillatorOptions
-                    .filter(osc => favoriteOscillators.includes(osc.id))
-                    .map(osc => (
-                      <button
-                        key={`fav-${osc.id}`}
-                        onClick={() => toggleOscillator(osc.id)}
-                        className={`relative flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                          activeOscillators.includes(osc.id)
-                            ? 'bg-purple-600 text-white shadow-lg scale-105'
-                            : 'bg-slate-800 text-gray-300 hover:bg-slate-700'
-                        }`}
-                      >
-                        <span>{osc.icon}</span>
-                        <span>{osc.name}</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleFavorite(osc.id);
-                          }}
-                          className="absolute top-1.5 right-1.5 p-0.5 hover:scale-110 transition-transform"
-                          disabled={isSaving}
-                        >
-                          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                        </button>
-                      </button>
-                    ))}
-                </div>
-              </div>
-            )}
-            
-            <h4 className="text-sm font-medium text-gray-400 mb-2">
-              {favoriteOscillators.length > 0 ? 'All Oscillators' : 'Select Oscillators'}
-            </h4>
-            <div className="grid grid-cols-2 gap-2">
-              {oscillatorOptions.map(osc => (
-                <button
-                  key={osc.id}
-                  onClick={() => toggleOscillator(osc.id)}
-                  className={`relative flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeOscillators.includes(osc.id)
-                      ? 'bg-purple-600 text-white shadow-lg scale-105'
-                      : 'bg-slate-800 text-gray-300 hover:bg-slate-700'
-                  }`}
-                >
-                  <span>{osc.icon}</span>
-                  <span>{osc.name}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFavorite(osc.id);
-                    }}
-                    className="absolute top-1.5 right-1.5 p-0.5 hover:scale-110 transition-transform"
-                    disabled={isSaving}
-                  >
-                    <Star 
-                      className={`h-3 w-3 transition-colors ${
-                        isFavorite(osc.id)
-                          ? 'fill-yellow-400 text-yellow-400'
-                          : 'fill-none text-gray-500 hover:text-gray-300'
-                      }`}
-                    />
-                  </button>
-                </button>
-              ))}
-            </div>
-            
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => setActiveOscillators([])}
-                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg"
-              >
-                Clear All
-              </button>
-              <button
-                onClick={() => setShowOscillatorModal(false)}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg"
-              >
-                Done
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </>
