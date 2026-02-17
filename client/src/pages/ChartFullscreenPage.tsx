@@ -34,6 +34,7 @@ import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorM
 import { OscillatorStatusBar } from '@/components/indicators/OscillatorStatusBar';
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { DraggableOscillatorWindow } from '@/components/draggable/DraggableOscillatorWindow';
+import { OscillatorPopoutWindow } from '@/components/oscillators/OscillatorPopoutWindow';
 
 interface Drawing {
   id: string;
@@ -1328,6 +1329,65 @@ useEffect(() => {
         selectedOscillators={selectedOscillators}
         onToggleOscillator={handleToggleOscillator}
       />
+
+      {/* Popout Oscillator Windows */}
+      {oscillatorPopout && selectedOscillators.has('rsi') && (
+        <OscillatorPopoutWindow
+          oscillatorType="rsi"
+          title="RSI (14)"
+          isOpen={true}
+          onClose={() => handleToggleOscillator('rsi')}
+          storageKey="oscillator-rsi-position"
+          defaultSize={{ width: 500, height: 240 }}
+        >
+          <div className="p-2 h-full">
+            <RSIPanel 
+              data={oscillatorData.rsi}
+              period={14}
+              candles={candles}
+            />
+          </div>
+        </OscillatorPopoutWindow>
+      )}
+
+      {oscillatorPopout && selectedOscillators.has('macd') && (
+        <OscillatorPopoutWindow
+          oscillatorType="macd"
+          title="MACD (12, 26, 9)"
+          isOpen={true}
+          onClose={() => handleToggleOscillator('macd')}
+          storageKey="oscillator-macd-position"
+          defaultSize={{ width: 500, height: 240 }}
+        >
+          <div className="p-2 h-full">
+            <MACDPanel 
+              macdData={oscillatorData.macd.macd}
+              signalData={oscillatorData.macd.signal}
+              histogramData={oscillatorData.macd.hist}
+              fastPeriod={12}
+              slowPeriod={26}
+              signalPeriod={9}
+            />
+          </div>
+        </OscillatorPopoutWindow>
+      )}
+
+      {oscillatorPopout && selectedOscillators.has('volume') && (
+        <OscillatorPopoutWindow
+          oscillatorType="volume"
+          title="Volume"
+          isOpen={true}
+          onClose={() => handleToggleOscillator('volume')}
+          storageKey="oscillator-volume-position"
+          defaultSize={{ width: 500, height: 180 }}
+        >
+          <div className="p-2 h-full">
+            <VolumePanel 
+              data={oscillatorData.volume}
+            />
+          </div>
+        </OscillatorPopoutWindow>
+      )}
     </div>
   );
 }
