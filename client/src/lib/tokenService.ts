@@ -473,16 +473,16 @@ function decodeCurrencyCode(currency: string): string {
   if (currency.length === 40 && /^[0-9A-F]+$/i.test(currency)) {
     try {
       // Convert hex to UTF-8, stripping null bytes
-      const decoded = currency
-        .match(/.{1,2}/g)
-        ?.map(byte => String.fromCharCode(parseInt(byte, 16)))
+      const hexBytes = currency.match(/.{1,2}/g) || [];
+      const decoded = hexBytes
+        .map(byte => String.fromCharCode(parseInt(byte, 16)))
         .join('')
         .replace(/\0/g, '')
         .trim();
       
       // Return decoded string if it's non-empty and contains valid characters
       // Allow most printable characters including Unicode, but reject control chars
-      if (decoded && decoded.length > 0 && !/[\x00-\x1F\x7F]/.test(decoded)) {
+      if (decoded && !/[\x00-\x1F\x7F]/.test(decoded)) {
         return decoded;
       }
     } catch (error) {
