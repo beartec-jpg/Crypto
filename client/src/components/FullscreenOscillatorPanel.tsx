@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeries } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
+import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
+import { X } from 'lucide-react';
 
 interface FullscreenOscillatorPanelProps {
   isVisible: boolean;
@@ -330,25 +332,42 @@ export function FullscreenOscillatorPanel({
     <>
       {/* Oscillator Picker Dropdown */}
       {showPicker && (
-        <div className="fixed top-20 left-4 z-[999] bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl min-w-[180px]">
-          <div className="text-xs text-gray-400 mb-2 px-2">Select Oscillator</div>
-          {oscillators.map(osc => (
-            <button
-              key={osc.id}
-              onClick={() => {
-                console.log('🎯 Toggling oscillator:', osc.name, 'from', osc.enabled, 'to', !osc.enabled);
-                osc.setter(!osc.enabled);
-                setShowPicker(false);
-              }}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded hover:bg-slate-700 transition-all text-left ${
-                osc.enabled ? 'bg-blue-500/30 text-blue-300' : 'text-gray-300'
-              }`}
-            >
-              <span className="text-sm">{osc.name}</span>
-              {osc.enabled && <span className="text-green-400">✓</span>}
-            </button>
-          ))}
-        </div>
+        <DraggableToolbar
+          storageKey="oscillator-picker-position"
+          defaultPosition={() => ({
+            x: typeof window !== 'undefined' ? window.innerWidth - 320 : 0,
+            y: typeof window !== 'undefined' ? 100 : 0
+          })}
+          className="z-[999]"
+        >
+          <div className="bg-slate-800/95 backdrop-blur-sm border border-slate-700 rounded-lg rounded-t-none p-4 shadow-2xl min-w-[280px]">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-medium">Select Oscillators</h3>
+              <button
+                onClick={() => setShowPicker(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {oscillators.map(osc => (
+              <button
+                key={osc.id}
+                onClick={() => {
+                  console.log('🎯 Toggling oscillator:', osc.name, 'from', osc.enabled, 'to', !osc.enabled);
+                  osc.setter(!osc.enabled);
+                  setShowPicker(false);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded hover:bg-slate-700 transition-all text-left ${
+                  osc.enabled ? 'bg-blue-500/30 text-blue-300' : 'text-gray-300'
+                }`}
+              >
+                <span className="text-sm">{osc.name}</span>
+                {osc.enabled && <span className="text-green-400">✓</span>}
+              </button>
+            ))}
+          </div>
+        </DraggableToolbar>
       )}
 
       {/* Fullscreen Oscillator Panel - Bottom 20% */}
