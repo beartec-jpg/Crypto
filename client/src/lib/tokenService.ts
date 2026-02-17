@@ -429,8 +429,11 @@ export async function autoDetectTokens(addresses: Record<Chain, string>): Promis
   }
   
   try {
-    const xrpTokens = await detectXRPLTrustlines(addresses.xrp);
-    detectedTokens.push(...xrpTokens);
+    const result = await detectXRPLTrustlines(addresses.xrp);
+    detectedTokens.push(...result.tokens);
+    if (result.error) {
+      console.error('Failed to detect XRP trustlines:', result.error);
+    }
   } catch (error) {
     console.error('Failed to detect XRP trustlines:', error);
   }
@@ -493,7 +496,9 @@ function decodeCurrencyCode(currency: string): string {
 /**
  * Detect XRPL trustlines
  */
-async function detectXRPLTrustlines(address: string): Promise<Token[]> {
+async function detectXRPLTrustlines(
+  address: string
+): Promise<{ tokens: Token[]; error?: string }> {
   try {
     const client = await xrplService.getClient(true);
     
@@ -503,9 +508,9 @@ async function detectXRPLTrustlines(address: string): Promise<Token[]> {
       ledger_index: 'validated',
     });
     
-    if (!response.result.lines) return [];
+    if (!response.result.lines) return { tokens: [] };
     
-    return response.result.lines.map((line: any) => {
+    const tokens = response.result.lines.map((line: any) => {
       const decodedCurrency = decodeCurrencyCode(line.currency);
       return {
         id: `xrpl-${line.currency}-${line.account}`,
@@ -523,9 +528,12 @@ async function detectXRPLTrustlines(address: string): Promise<Token[]> {
         trustlineLimit: line.limit,
       };
     });
+    
+    return { tokens };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Failed to detect XRPL trustlines:', error);
-    return [];
+    return { tokens: [], error: errorMessage };
   }
 }
 
@@ -545,7 +553,15 @@ export async function refreshXRPLTokenBalances(
     const xrpTokens = storedTokens.filter(t => t.chain === 'xrp' && !t.isNative);
     
     // Detect current on-chain trust lines
-    const detectedTokens = await detectXRPLTrustlines(xrpAddress);
+    const result = await detectXRPLTrustlines(xrpAddress);
+    
+    // If there was an error, return it
+    if (result.error) {
+      console.error('Failed to detect XRPL trustlines:', result.error);
+      return { success: false, error: result.error };
+    }
+    
+    const detectedTokens = result.tokens;
     
     // Merge: update balances for existing tokens, add newly detected ones
     const tokenMap = new Map<string, Token>();
