@@ -14,23 +14,31 @@ class XRPLService {
   private client: Client | null = null;
   private isConnecting: boolean = false;
   private connectionPromise: Promise<void> | null = null;
-  private readonly mainnetUrl = 'wss://xrplcluster.com/'; // Public cluster
+  private readonly mainnetUrls = [
+    'wss://xrplcluster.com/',
+    'wss://s1.ripple.com/',
+    'wss://s2.ripple.com/',
+    'wss://xrpl.ws/'
+  ];
   private readonly testnetUrl = 'wss://s.altnet.rippletest.net:51233/';
+  private currentMainnetUrlIndex = 0;
   
   /**
-   * Get or create WebSocket client connection
+   * Get or create WebSocket client connection with fallback support
    * Made public to allow access from xrpReserveService and tokenService
    * which need to interact directly with the XRPL client for trustlines and token queries
    */
   async getClient(useMainnet: boolean): Promise<Client> {
-    const wsUrl = useMainnet ? this.mainnetUrl : this.testnetUrl;
+    const wsUrl = useMainnet 
+      ? this.mainnetUrls[this.currentMainnetUrlIndex] 
+      : this.testnetUrl;
     
-    // Return existing connected client if same network
+    // Return existing connected client if same network and URL
     if (this.client && this.client.url === wsUrl && this.client.isConnected()) {
       return this.client;
     }
     
-    // Disconnect old client if switching networks
+    // Disconnect old client if switching networks or URLs
     if (this.client && this.client.isConnected()) {
       await this.client.disconnect();
     }
@@ -43,25 +51,52 @@ class XRPLService {
       }
     }
     
-    // Create new connection
-    this.isConnecting = true;
-    this.client = new Client(wsUrl, {
-      connectionTimeout: 10000,
-    });
+    // Try connecting with fallback URLs
+    let lastError: Error | null = null;
+    const maxAttempts = useMainnet ? this.mainnetUrls.length : 1;
     
-    this.connectionPromise = this.client.connect();
-    
-    try {
-      await this.connectionPromise;
-      console.log(`✅ Connected to XRP ${useMainnet ? 'MAINNET' : 'TESTNET'}`);
-      return this.client;
-    } catch (error) {
-      console.error('❌ Failed to connect to XRPL:', error);
-      throw error;
-    } finally {
-      this.isConnecting = false;
-      this.connectionPromise = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const currentUrl = useMainnet 
+        ? this.mainnetUrls[this.currentMainnetUrlIndex]
+        : this.testnetUrl;
+      
+      try {
+        console.log(`🔌 Attempting to connect to XRPL at ${currentUrl}...`);
+        
+        // Create new connection
+        this.isConnecting = true;
+        this.client = new Client(currentUrl, {
+          connectionTimeout: 10000,
+        });
+        
+        this.connectionPromise = this.client.connect();
+        await this.connectionPromise;
+        
+        console.log(`✅ Connected to XRP ${useMainnet ? 'MAINNET' : 'TESTNET'} at ${currentUrl}`);
+        
+        // Reset to primary URL on successful connection
+        if (useMainnet) {
+          this.currentMainnetUrlIndex = 0;
+        }
+        
+        return this.client;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`❌ Failed to connect to ${currentUrl}:`, error);
+        
+        // Try next URL on mainnet
+        if (useMainnet && attempt < maxAttempts - 1) {
+          this.currentMainnetUrlIndex = (this.currentMainnetUrlIndex + 1) % this.mainnetUrls.length;
+          console.log(`🔄 Trying fallback URL: ${this.mainnetUrls[this.currentMainnetUrlIndex]}`);
+        }
+      } finally {
+        this.isConnecting = false;
+        this.connectionPromise = null;
+      }
     }
+    
+    // All attempts failed
+    throw lastError || new Error('Failed to connect to XRPL');
   }
   
   /**
