@@ -16,7 +16,6 @@ interface IndicatorToolbarProps {
 export function IndicatorToolbar({ onOpenEmaSma, className }: IndicatorToolbarProps) {
   return (
     <div className={cn(
-      "absolute top-4 left-1/2 -translate-x-1/2 z-20",
       "flex flex-row gap-2 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl",
       className
     )}>

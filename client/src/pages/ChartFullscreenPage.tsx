@@ -987,17 +987,28 @@ useEffect(() => {
 
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden" style={{ height: selectedOscillators.size > 0 ? `calc(100% - ${totalOscillatorHeight}px)` : '100%' }}>
-        {/* Indicator Toolbar - Top Center */}
-        <IndicatorToolbar 
-          onOpenEmaSma={() => setShowEmaSmaModal(true)}
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-20"
-        />
+        {/* Combined Toolbar - Top Left */}
+        <div className="absolute top-2 left-2 z-20 flex gap-2">
+          <IndicatorToolbar 
+            onOpenEmaSma={() => setShowEmaSmaModal(true)}
+          />
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowOscillatorSelector(true)}
+            className="bg-slate-900/95 backdrop-blur-sm border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+          >
+            Oscillators {selectedOscillators.size > 0 && `(${selectedOscillators.size})`}
+          </Button>
+        </div>
 
         {/* Drawing Toolbar - Bottom Center */}
         <VerticalDrawingToolbar 
           activeTool={activeTool} 
           onSelectTool={handleSelectTool}
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20"
+          className={`fixed left-1/2 -translate-x-1/2 z-20 ${
+            selectedOscillators.size > 0 ? 'bottom-[200px]' : 'bottom-20'
+          }`}
         />
         
         {isLoading && (
