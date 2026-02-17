@@ -14,6 +14,10 @@ interface OscillatorPopoutWindowProps {
   defaultSize?: { width: number; height: number };
 }
 
+// Full-width mode constants
+const FULL_WIDTH_PERCENTAGE = 0.9; // 90% of screen width
+const FULL_WIDTH_LEFT_MARGIN = '5%'; // Center with 5% margin on each side
+
 export function OscillatorPopoutWindow({
   oscillatorType,
   title,
@@ -48,7 +52,7 @@ export function OscillatorPopoutWindow({
   if (!isOpen) return null;
   
   // Calculate width based on toggle state
-  const actualWidth = isFullWidth ? window.innerWidth * 0.9 : defaultSize.width;
+  const actualWidth = isFullWidth ? window.innerWidth * FULL_WIDTH_PERCENTAGE : defaultSize.width;
 
   return (
     <div
@@ -58,7 +62,7 @@ export function OscillatorPopoutWindow({
         isDragging && "opacity-90"
       )}
       style={{
-        left: isFullWidth ? '5%' : `${position.x}px`,
+        left: isFullWidth ? FULL_WIDTH_LEFT_MARGIN : `${position.x}px`,
         top: `${position.y}px`,
         width: `${actualWidth}px`,
       }}
