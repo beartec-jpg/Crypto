@@ -39,7 +39,6 @@ export function OscillatorPopoutWindow({
 
   const { position, isDragging, dragHandleProps } = useDraggable({
     initialPosition: getDefaultPosition(),
-    bounds: 'parent',
     storageKey,
   });
 
