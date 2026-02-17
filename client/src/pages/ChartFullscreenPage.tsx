@@ -1028,7 +1028,7 @@ useEffect(() => {
         {/* Drawing Toolbar - Draggable */}
         <DraggableToolbar 
           storageKey="chart-drawing-toolbar-position"
-          initialPosition={() => ({
+          defaultPosition={() => ({
             x: window.innerWidth / 2 - DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
             y: window.innerHeight - (selectedOscillators.size > 0 
               ? totalOscillatorHeight + DRAWING_TOOLBAR_BOTTOM_MARGIN 

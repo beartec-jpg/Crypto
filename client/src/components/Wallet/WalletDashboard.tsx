@@ -205,10 +205,15 @@ export default function WalletDashboard({
           // Reload tokens to show updated balances
           const updatedTokens = await getWalletTokens(sovereignWallet.id);
           setTokens(updatedTokens);
+          
+          toast({
+            title: "XRPL Tokens Refreshed",
+            description: "Token balances updated from ledger",
+          });
         } else if (result.error) {
           console.error('Failed to refresh XRPL tokens:', result.error);
           toast({
-            title: '⚠️ XRPL Token Refresh Failed',
+            title: 'XRPL Refresh Warning',
             description: result.error,
             variant: 'destructive',
           });
@@ -303,16 +308,48 @@ export default function WalletDashboard({
 
   // Handle XRPL trustline
   const handleSetTrustline = async (currency: string, issuer: string) => {
-    if (!sovereignWallet?.id) throw new Error('No wallet found');
+    if (!sovereignWallet?.id) {
+      toast({
+        title: "Error",
+        description: "No wallet found",
+        variant: "destructive",
+      });
+      throw new Error('No wallet found');
+    }
 
     const password = prompt('Enter your wallet password to set trustline:');
-    if (!password) throw new Error('Password required');
+    if (!password) {
+      toast({
+        title: "Cancelled",
+        description: "Password required to set trustline",
+      });
+      throw new Error('Password required');
+    }
 
-    // Pass walletId and password - setXRPLTrustline handles key derivation internally
-    const result = await setXRPLTrustline(sovereignWallet.id, password, currency, issuer);
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to set trustline');
+    try {
+      // Pass walletId and password - setXRPLTrustline handles key derivation internally
+      const result = await setXRPLTrustline(sovereignWallet.id, password, currency, issuer);
+      
+      if (!result.success) {
+        toast({
+          title: "Trustline Failed",
+          description: result.error || 'Failed to set trustline',
+          variant: "destructive",
+        });
+        throw new Error(result.error || 'Failed to set trustline');
+      }
+      
+      toast({
+        title: "Trustline Created",
+        description: `Successfully added ${currency} token`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || 'Unknown error',
+        variant: "destructive",
+      });
+      throw error;
     }
   };
 
