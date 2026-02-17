@@ -196,6 +196,10 @@ const OSCILLATOR_PANEL_HEIGHT_PER = 120; // Height per oscillator in pixels
 const OSCILLATOR_TAB_HEIGHT = 48; // Height of tabs section
 const OSCILLATOR_STATUS_BAR_HEIGHT = 36; // Height of status bar
 
+// Drawing toolbar positioning constants
+const DRAWING_TOOLBAR_BOTTOM_MARGIN = 16; // Margin above oscillators when active
+const DRAWING_TOOLBAR_DEFAULT_BOTTOM = 80; // Default bottom position (5rem = 80px)
+
 // Calculate total oscillator panel height
 const totalOscillatorHeight = selectedOscillators.size > 0 
   ? OSCILLATOR_TAB_HEIGHT + (selectedOscillators.size * OSCILLATOR_PANEL_HEIGHT_PER) + OSCILLATOR_STATUS_BAR_HEIGHT
@@ -1007,7 +1011,11 @@ useEffect(() => {
           activeTool={activeTool} 
           onSelectTool={handleSelectTool}
           className="fixed left-1/2 -translate-x-1/2 z-20"
-          style={selectedOscillators.size > 0 ? { bottom: `${totalOscillatorHeight + 16}px` } : { bottom: '5rem' }}
+          style={{ 
+            bottom: selectedOscillators.size > 0 
+              ? `${totalOscillatorHeight + DRAWING_TOOLBAR_BOTTOM_MARGIN}px` 
+              : `${DRAWING_TOOLBAR_DEFAULT_BOTTOM}px` 
+          }}
         />
         
         {isLoading && (
