@@ -197,7 +197,6 @@ const [poppedOutOscillators, setPoppedOutOscillators] = useState<Set<string>>(ne
 // Oscillator panel height constant
 // 120px per oscillator (panel + padding)
 const OSCILLATOR_PANEL_HEIGHT_PER = 120; // Height per oscillator in pixels
-const OSCILLATOR_TAB_HEIGHT = 48; // Height of tabs section
 const OSCILLATOR_STATUS_BAR_HEIGHT = 36; // Height of status bar
 
 // Drawing toolbar positioning constants
@@ -208,7 +207,7 @@ const DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH = 150; // Approximate half-width for 
 // Calculate total oscillator panel height - only count docked oscillators
 const dockedOscillatorsCount = Array.from(selectedOscillators).filter(osc => !poppedOutOscillators.has(osc)).length;
 const totalOscillatorHeight = dockedOscillatorsCount > 0 
-  ? OSCILLATOR_TAB_HEIGHT + (dockedOscillatorsCount * OSCILLATOR_PANEL_HEIGHT_PER) + OSCILLATOR_STATUS_BAR_HEIGHT
+  ? (dockedOscillatorsCount * OSCILLATOR_PANEL_HEIGHT_PER) + OSCILLATOR_STATUS_BAR_HEIGHT
   : 0;
 
 /**
@@ -1118,33 +1117,10 @@ useEffect(() => {
       {/* Oscillator Section - Docked */}
       {dockedOscillatorsCount > 0 && !oscillatorPopout && (
         <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          {/* Oscillator tabs */}
-          <div className="flex items-center justify-between gap-2 px-4 py-2 border-b">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground whitespace-nowrap">Oscillators:</span>
-              <Button 
-                variant="outline"
-                size="sm" 
-                className="text-xs"
-                onClick={() => setShowOscillatorSelector(true)}
-              >
-                Select ({selectedOscillators.size})
-              </Button>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs"
-              onClick={() => setOscillatorPopout(!oscillatorPopout)}
-            >
-              {oscillatorPopout ? 'Dock' : 'Popout'}
-            </Button>
-          </div>
-          
           {/* Oscillator panels - Only show non-popped-out oscillators */}
           <div className="bg-slate-900">
             {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && (
-              <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="border-b border-slate-700 p-2">
+              <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
                 <div className="flex items-center justify-between mb-1">
                   <div className="text-xs text-slate-400">RSI (14)</div>
                   <Button
@@ -1165,7 +1141,7 @@ useEffect(() => {
             )}
             
             {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && (
-              <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="border-b border-slate-700 p-2">
+              <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
                 <div className="flex items-center justify-between mb-1">
                   <div className="text-xs text-slate-400">MACD (12, 26, 9)</div>
                   <Button
@@ -1189,7 +1165,7 @@ useEffect(() => {
             )}
             
             {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && (
-              <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="border-b border-slate-700 p-2">
+              <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
                 <div className="flex items-center justify-between mb-1">
                   <div className="text-xs text-slate-400">Volume</div>
                   <Button

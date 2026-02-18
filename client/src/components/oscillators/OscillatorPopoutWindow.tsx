@@ -1,5 +1,5 @@
-import { ReactNode } from 'react';
-import { GripHorizontal, X } from 'lucide-react';
+import { ReactNode, useState, useMemo } from 'react';
+import { GripHorizontal, X, Maximize2, Minimize2 } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,10 @@ interface OscillatorPopoutWindowProps {
   defaultSize?: { width: number; height: number };
 }
 
+// Full-width mode constants
+const FULL_WIDTH_PERCENTAGE = 0.9; // 90% of screen width
+const FULL_WIDTH_LEFT_MARGIN = '5%'; // Center with 5% margin on each side
+
 export function OscillatorPopoutWindow({
   oscillatorType,
   title,
@@ -23,6 +27,9 @@ export function OscillatorPopoutWindow({
   storageKey = `oscillator-${oscillatorType}-position`,
   defaultSize = { width: 400, height: 200 },
 }: OscillatorPopoutWindowProps) {
+  // Width toggle state - half-width or full-width
+  const [isFullWidth, setIsFullWidth] = useState(false);
+  
   // Calculate default position - offset each oscillator type
   const getDefaultPosition = () => {
     const baseX = window.innerWidth / 2 - defaultSize.width / 2;
@@ -43,6 +50,11 @@ export function OscillatorPopoutWindow({
   });
 
   if (!isOpen) return null;
+  
+  // Memoize width calculation to avoid unnecessary recalculations
+  const actualWidth = useMemo(() => {
+    return isFullWidth ? window.innerWidth * FULL_WIDTH_PERCENTAGE : defaultSize.width;
+  }, [isFullWidth, defaultSize.width]);
 
   return (
     <div
@@ -52,9 +64,9 @@ export function OscillatorPopoutWindow({
         isDragging && "opacity-90"
       )}
       style={{
-        left: `${position.x}px`,
+        left: isFullWidth ? FULL_WIDTH_LEFT_MARGIN : `${position.x}px`,
         top: `${position.y}px`,
-        width: `${defaultSize.width}px`,
+        width: `${actualWidth}px`,
       }}
     >
       {/* Draggable Title Bar */}
@@ -67,6 +79,15 @@ export function OscillatorPopoutWindow({
           <span className="text-sm font-semibold text-white">{title}</span>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsFullWidth(!isFullWidth)}
+            className="h-6 px-2 text-xs text-slate-300 hover:text-white hover:bg-slate-700"
+            title={isFullWidth ? "Half Width" : "Full Width"}
+          >
+            {isFullWidth ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+          </Button>
           <Button
             variant="ghost"
             size="sm"
