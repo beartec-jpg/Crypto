@@ -78,7 +78,7 @@ export function OscillatorPopoutWindow({
 
   return (
     <div
-      data-draggable
+      data-draggable // Marker for useDraggable hook to find the draggable element
       className={cn(
         "fixed z-50 select-none shadow-2xl",
         isDragging && "opacity-90"

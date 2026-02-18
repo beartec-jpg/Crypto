@@ -64,7 +64,7 @@ export function DraggableOscillatorWindow({
 
   return (
     <div
-      data-draggable
+      data-draggable // Marker for useDraggable hook to find the draggable element
       className="fixed z-40 bg-slate-900 rounded-lg shadow-xl overflow-hidden"
       style={{
         left: isFullWidth ? FULL_WIDTH_LEFT_MARGIN : position.x,
