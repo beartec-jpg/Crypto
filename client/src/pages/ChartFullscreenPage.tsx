@@ -639,8 +639,10 @@ useEffect(() => {
   
   console.log('[Chart] Chart initialized successfully');
   
-  // Fit content after initialization
-  chart.timeScale().fitContent();
+  // Fit content after initialization with requestAnimationFrame to ensure chart is ready
+  requestAnimationFrame(() => {
+    chart.timeScale().fitContent();
+  });
   
   // Reset first resize flag when chart is initialized
   isFirstResizeRef.current = true;
@@ -668,8 +670,10 @@ useEffect(() => {
             width: newWidth,
             height: newHeight,
           });
-          // Fit content after resizing
-          chartRef.current.timeScale().fitContent();
+          // Fit content after resizing with requestAnimationFrame to ensure resize has completed
+          requestAnimationFrame(() => {
+            chartRef.current?.timeScale().fitContent();
+          });
         }
       }
     }, RESIZE_DEBOUNCE_MS);
