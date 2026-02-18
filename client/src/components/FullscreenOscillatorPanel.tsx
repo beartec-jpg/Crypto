@@ -4,6 +4,9 @@ import type { CandleData } from '@/types/chart.types';
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { X } from 'lucide-react';
 
+// Height of the mobile navigation bar at the bottom of the screen
+const MOBILE_NAV_HEIGHT = 65; // px
+
 interface FullscreenOscillatorPanelProps {
   isVisible: boolean;
   onClose: () => void;
@@ -370,18 +373,19 @@ export function FullscreenOscillatorPanel({
         </DraggableToolbar>
       )}
 
-      {/* Fullscreen Oscillator Panel - Bottom 20% */}
+      {/* Fullscreen Oscillator Panel - Bottom panel above navigation */}
       <div 
-        className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t-2 border-slate-600 overflow-y-auto"
+        className="fixed left-0 right-0 bg-slate-900 border-t border-slate-700 overflow-y-auto"
         style={{ 
-          height: '20vh',
-          minHeight: '200px',
-          maxHeight: '20vh',
+          bottom: MOBILE_NAV_HEIGHT, // Space for mobile navigation bar
+          height: '30vh',
+          minHeight: '250px',
+          maxHeight: '40vh',
           zIndex: 50
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between bg-slate-800 px-3 py-2 border-b border-slate-600">
+        <div className="flex items-center justify-between bg-slate-800 px-3 py-2">
           <h3 className="text-white font-semibold text-sm">Oscillators</h3>
           <div className="flex items-center gap-2">
             <button
@@ -415,7 +419,7 @@ export function FullscreenOscillatorPanel({
         </div>
         
         {/* Content */}
-        <div className="p-3 overflow-y-auto" style={{ maxHeight: 'calc(20vh - 45px)' }}>
+        <div className="p-3 overflow-y-auto" style={{ maxHeight: 'calc(30vh - 45px)' }}>
           {!hasAnyEnabled && (
             <div className="flex items-center justify-center h-[120px] text-gray-400 text-sm">
               Click + to add an oscillator

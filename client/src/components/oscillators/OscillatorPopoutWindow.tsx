@@ -109,7 +109,7 @@ export function OscillatorPopoutWindow({
 
       {/* Window Content */}
       <div
-        className="bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-b-lg overflow-hidden"
+        className="bg-slate-900/95 backdrop-blur-sm border-l border-r border-b border-slate-700 rounded-b-lg overflow-hidden"
         style={{ height: `${defaultSize.height}px` }}
       >
         {children}

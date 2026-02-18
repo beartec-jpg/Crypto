@@ -21,7 +21,6 @@ export function DraggableToolbar({
 }: DraggableToolbarProps) {
   const { position, isDragging, dragHandleProps } = useDraggable({
     initialPosition: defaultPosition(),
-    bounds: 'parent',
     storageKey,
   });
 
