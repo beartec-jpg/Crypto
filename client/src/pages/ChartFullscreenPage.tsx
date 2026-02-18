@@ -1010,7 +1010,7 @@ useEffect(() => {
       </div>
 
       {/* Chart Area */}
-      <div className="flex-1 relative overflow-hidden" style={{ height: `calc(100% - ${MOBILE_NAV_HEIGHT}px)` }}>
+      <div className="flex-1 relative overflow-hidden">
         {/* Combined Toolbar - Top Left */}
         <div className="absolute top-2 left-2 z-20 flex gap-2">
           <IndicatorToolbar 
