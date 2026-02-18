@@ -377,7 +377,7 @@ export function FullscreenOscillatorPanel({
       <div 
         className="fixed left-0 right-0 bg-slate-900 border-t border-slate-700 overflow-y-auto"
         style={{ 
-          bottom: `${MOBILE_NAV_HEIGHT}px`, // Space for mobile navigation bar
+          bottom: MOBILE_NAV_HEIGHT, // Space for mobile navigation bar
           height: '30vh',
           minHeight: '250px',
           maxHeight: '40vh',
