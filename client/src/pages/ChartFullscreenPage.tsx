@@ -198,6 +198,7 @@ const [poppedOutOscillators, setPoppedOutOscillators] = useState<Set<string>>(ne
 // 120px per oscillator (panel + padding)
 const OSCILLATOR_PANEL_HEIGHT_PER = 120; // Height per oscillator in pixels
 const OSCILLATOR_STATUS_BAR_HEIGHT = 36; // Height of status bar
+const MOBILE_NAV_HEIGHT = 65; // Height of mobile navigation bar at bottom
 
 // Drawing toolbar positioning constants
 const DRAWING_TOOLBAR_BOTTOM_MARGIN = 16; // Margin above oscillators when active
@@ -1008,7 +1009,7 @@ useEffect(() => {
       </div>
 
       {/* Chart Area */}
-      <div className="flex-1 relative overflow-hidden" style={{ height: selectedOscillators.size > 0 ? `calc(100% - ${totalOscillatorHeight}px)` : '100%' }}>
+      <div className="flex-1 relative overflow-hidden" style={{ height: selectedOscillators.size > 0 ? `calc(100% - ${totalOscillatorHeight + MOBILE_NAV_HEIGHT}px)` : `calc(100% - ${MOBILE_NAV_HEIGHT}px)` }}>
         {/* Combined Toolbar - Top Left */}
         <div className="absolute top-2 left-2 z-20 flex gap-2">
           <IndicatorToolbar 
@@ -1030,8 +1031,8 @@ useEffect(() => {
           defaultPosition={() => ({
             x: window.innerWidth / 2 - DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
             y: window.innerHeight - (selectedOscillators.size > 0 
-              ? totalOscillatorHeight + DRAWING_TOOLBAR_BOTTOM_MARGIN 
-              : DRAWING_TOOLBAR_DEFAULT_BOTTOM)
+              ? totalOscillatorHeight + MOBILE_NAV_HEIGHT + DRAWING_TOOLBAR_BOTTOM_MARGIN 
+              : MOBILE_NAV_HEIGHT + DRAWING_TOOLBAR_BOTTOM_MARGIN)
           })}
         >
           <VerticalDrawingToolbar 
@@ -1116,9 +1117,16 @@ useEffect(() => {
       
       {/* Oscillator Section - Docked */}
       {dockedOscillatorsCount > 0 && !oscillatorPopout && (
-        <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div 
+          className="fixed left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40" 
+          style={{ 
+            bottom: `${MOBILE_NAV_HEIGHT}px`,
+            height: `${totalOscillatorHeight}px`,
+            maxHeight: `calc(100vh - ${MOBILE_NAV_HEIGHT}px - 80px)` // 80px for top toolbar
+          }}
+        >
           {/* Oscillator panels - Only show non-popped-out oscillators */}
-          <div className="bg-slate-900">
+          <div className="bg-slate-900 overflow-y-auto" style={{ maxHeight: `calc(100% - ${OSCILLATOR_STATUS_BAR_HEIGHT}px)` }}>
             {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && (
               <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
                 <div className="flex items-center justify-between mb-1">
