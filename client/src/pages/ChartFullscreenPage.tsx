@@ -199,6 +199,7 @@ const [poppedOutOscillators, setPoppedOutOscillators] = useState<Set<string>>(ne
 const OSCILLATOR_PANEL_HEIGHT_PER = 120; // Height per oscillator in pixels
 const OSCILLATOR_STATUS_BAR_HEIGHT = 36; // Height of status bar
 const MOBILE_NAV_HEIGHT = 65; // Height of mobile navigation bar at bottom
+const TOP_TOOLBAR_HEIGHT = 80; // Approximate height of top toolbar (includes border and padding)
 
 // Drawing toolbar positioning constants
 const DRAWING_TOOLBAR_BOTTOM_MARGIN = 16; // Margin above oscillators when active
@@ -1009,7 +1010,7 @@ useEffect(() => {
       </div>
 
       {/* Chart Area */}
-      <div className="flex-1 relative overflow-hidden" style={{ height: selectedOscillators.size > 0 ? `calc(100% - ${totalOscillatorHeight + MOBILE_NAV_HEIGHT}px)` : `calc(100% - ${MOBILE_NAV_HEIGHT}px)` }}>
+      <div className="flex-1 relative overflow-hidden" style={{ height: `calc(100% - ${MOBILE_NAV_HEIGHT}px)` }}>
         {/* Combined Toolbar - Top Left */}
         <div className="absolute top-2 left-2 z-20 flex gap-2">
           <IndicatorToolbar 
@@ -1122,7 +1123,7 @@ useEffect(() => {
           style={{ 
             bottom: `${MOBILE_NAV_HEIGHT}px`,
             height: `${totalOscillatorHeight}px`,
-            maxHeight: `calc(100vh - ${MOBILE_NAV_HEIGHT}px - 80px)` // 80px for top toolbar
+            maxHeight: `calc(100vh - ${MOBILE_NAV_HEIGHT}px - ${TOP_TOOLBAR_HEIGHT}px)`
           }}
         >
           {/* Oscillator panels - Only show non-popped-out oscillators */}
