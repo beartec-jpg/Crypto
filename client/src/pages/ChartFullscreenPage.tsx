@@ -566,7 +566,8 @@ useEffect(() => {
 
   const container = chartContainerRef.current;
   const width = container.clientWidth;
-  const height = container.clientHeight;
+  // Calculate height accounting for oscillators and mobile nav
+  const height = window.innerHeight - TOP_TOOLBAR_HEIGHT - MOBILE_NAV_HEIGHT - totalOscillatorHeight;
 
   // Validate dimensions before initializing chart
   if (width === 0 || height === 0) {
@@ -638,6 +639,9 @@ useEffect(() => {
   
   console.log('[Chart] Chart initialized successfully');
   
+  // Fit content after initialization
+  chart.timeScale().fitContent();
+  
   // Reset first resize flag when chart is initialized
   isFirstResizeRef.current = true;
 
@@ -656,13 +660,16 @@ useEffect(() => {
     resizeTimeoutRef.current = setTimeout(() => {
       if (chartContainerRef.current && chartRef.current) {
         const newWidth = chartContainerRef.current.clientWidth;
-        const newHeight = chartContainerRef.current.clientHeight;
+        // Calculate height accounting for oscillators and mobile nav
+        const newHeight = window.innerHeight - TOP_TOOLBAR_HEIGHT - MOBILE_NAV_HEIGHT - totalOscillatorHeight;
         
         if (newWidth > 0 && newHeight > 0) {
           chartRef.current.applyOptions({
             width: newWidth,
             height: newHeight,
           });
+          // Fit content after resizing
+          chartRef.current.timeScale().fitContent();
         }
       }
     }, RESIZE_DEBOUNCE_MS);
@@ -686,7 +693,7 @@ useEffect(() => {
       chartRef.current.remove();
     }
   };
-}, [reinitializeChartKey]);
+}, [reinitializeChartKey, totalOscillatorHeight]);
 
 // Attach click handler to chart
 useEffect(() => {
@@ -1063,7 +1070,13 @@ useEffect(() => {
           </div>
         )}
         
-<div ref={chartContainerRef} className="absolute inset-0 w-full h-full" />        
+        <div 
+          ref={chartContainerRef} 
+          className="absolute inset-x-0 top-0 w-full" 
+          style={{ 
+            height: `calc(100vh - ${TOP_TOOLBAR_HEIGHT}px - ${MOBILE_NAV_HEIGHT}px - ${totalOscillatorHeight}px)` 
+          }}
+        />        
         <MovingAverages
           chart={chartRef.current}
           maConfigs={indicators.ema.configs}
