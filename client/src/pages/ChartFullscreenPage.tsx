@@ -1029,12 +1029,15 @@ useEffect(() => {
         {/* Drawing Toolbar - Draggable */}
         <DraggableToolbar 
           storageKey="chart-drawing-toolbar-position"
-          defaultPosition={() => ({
-            x: window.innerWidth / 2 - DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
-            y: window.innerHeight - (selectedOscillators.size > 0 
-              ? totalOscillatorHeight + MOBILE_NAV_HEIGHT + DRAWING_TOOLBAR_BOTTOM_MARGIN 
-              : MOBILE_NAV_HEIGHT + DRAWING_TOOLBAR_BOTTOM_MARGIN)
-          })}
+          defaultPosition={() => {
+            const baseBottom = MOBILE_NAV_HEIGHT + DRAWING_TOOLBAR_BOTTOM_MARGIN;
+            return {
+              x: window.innerWidth / 2 - DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
+              y: window.innerHeight - (selectedOscillators.size > 0 
+                ? totalOscillatorHeight + baseBottom
+                : baseBottom)
+            };
+          }}
         >
           <VerticalDrawingToolbar 
             activeTool={activeTool} 
