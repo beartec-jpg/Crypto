@@ -28,7 +28,27 @@ export function OscillatorPopoutWindow({
   defaultSize = { width: 400, height: 200 },
 }: OscillatorPopoutWindowProps) {
   // Width toggle state - half-width or full-width
-  const [isFullWidth, setIsFullWidth] = useState(false);
+  // Load from localStorage if available
+  const widthStorageKey = `oscillator-${oscillatorType}-width`;
+  const [isFullWidth, setIsFullWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem(widthStorageKey);
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
+  
+  // Save width preference to localStorage
+  const toggleWidth = () => {
+    const newValue = !isFullWidth;
+    setIsFullWidth(newValue);
+    try {
+      localStorage.setItem(widthStorageKey, JSON.stringify(newValue));
+    } catch (e) {
+      console.warn('Failed to save width preference:', e);
+    }
+  };
   
   // Calculate default position - offset each oscillator type
   const getDefaultPosition = () => {
@@ -82,7 +102,7 @@ export function OscillatorPopoutWindow({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setIsFullWidth(!isFullWidth)}
+            onClick={toggleWidth}
             className="h-6 px-2 text-xs text-slate-300 hover:text-white hover:bg-slate-700"
             title={isFullWidth ? "Half Width" : "Full Width"}
           >

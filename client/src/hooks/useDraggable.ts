@@ -78,13 +78,26 @@ export function useDraggable(options: UseDraggableOptions = {}): UseDraggableRet
     let { x, y } = pos;
 
     if (bounds === 'parent') {
-      const parent = element.parentElement;
-      if (parent) {
-        const parentRect = parent.getBoundingClientRect();
+      // Check if element has position: fixed
+      const computedStyle = window.getComputedStyle(element);
+      const isFixed = computedStyle.position === 'fixed';
+      
+      if (isFixed) {
+        // For fixed position elements, constrain to viewport bounds
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
         
-        // Constrain to parent bounds
-        x = Math.max(0, Math.min(x, parentRect.width - rect.width));
-        y = Math.max(0, Math.min(y, parentRect.height - rect.height));
+        x = Math.max(0, Math.min(x, viewportWidth - rect.width));
+        y = Math.max(0, Math.min(y, viewportHeight - rect.height));
+      } else {
+        // For non-fixed elements, constrain to parent bounds
+        const parent = element.parentElement;
+        if (parent) {
+          const parentRect = parent.getBoundingClientRect();
+          
+          x = Math.max(0, Math.min(x, parentRect.width - rect.width));
+          y = Math.max(0, Math.min(y, parentRect.height - rect.height));
+        }
       }
     } else {
       // Custom bounds
