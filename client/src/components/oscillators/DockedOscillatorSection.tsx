@@ -43,7 +43,9 @@ export function DockedOscillatorSection({
       style={{ 
         bottom: isFullscreen ? 0 : `${MOBILE_NAV_HEIGHT}px`,
         height: usePercentage ? `${totalPercentage}vh` : `${totalOscillatorHeight}px`,
-        maxHeight: `calc(100vh - ${isFullscreen ? 0 : MOBILE_NAV_HEIGHT}px - ${TOP_TOOLBAR_HEIGHT}px)`
+        maxHeight: usePercentage 
+          ? `${totalPercentage}vh`
+          : `calc(100vh - ${isFullscreen ? 0 : MOBILE_NAV_HEIGHT}px - ${TOP_TOOLBAR_HEIGHT}px)`
       }}
     >
       <div className="bg-slate-900 overflow-y-auto h-full">
