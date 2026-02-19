@@ -13,6 +13,10 @@ interface DockedOscillatorSectionProps {
   totalOscillatorHeight: number;
   onPopout: (oscillatorId: string) => void;
   isFullscreen?: boolean;
+  // NEW:
+  usePercentage?: boolean;
+  totalPercentage?: number;
+  perOscillatorPercentage?: number;
 }
 
 export function DockedOscillatorSection({
@@ -23,6 +27,9 @@ export function DockedOscillatorSection({
   totalOscillatorHeight,
   onPopout,
   isFullscreen = false,
+  usePercentage = false,
+  totalPercentage = 0,
+  perOscillatorPercentage = 0,
 }: DockedOscillatorSectionProps) {
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
     osc => !poppedOutOscillators.has(osc)
@@ -35,13 +42,15 @@ export function DockedOscillatorSection({
       className="fixed left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40" 
       style={{ 
         bottom: isFullscreen ? 0 : `${MOBILE_NAV_HEIGHT}px`,
-        height: `${totalOscillatorHeight}px`,
-        maxHeight: `calc(100vh - ${isFullscreen ? 0 : MOBILE_NAV_HEIGHT}px - ${TOP_TOOLBAR_HEIGHT}px)`
+        height: usePercentage ? `${totalPercentage}vh` : `${totalOscillatorHeight}px`,
+        maxHeight: usePercentage 
+          ? `${totalPercentage}vh`
+          : `calc(100vh - ${isFullscreen ? 0 : MOBILE_NAV_HEIGHT}px - ${TOP_TOOLBAR_HEIGHT}px)`
       }}
     >
       <div className="bg-slate-900 overflow-y-auto h-full">
         {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && (
-          <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
             <div className="flex items-center justify-between mb-1">
               <div className="text-xs text-slate-400">RSI (14)</div>
               <Button
@@ -58,7 +67,7 @@ export function DockedOscillatorSection({
         )}
         
         {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && (
-          <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
             <div className="flex items-center justify-between mb-1">
               <div className="text-xs text-slate-400">MACD (12, 26, 9)</div>
               <Button
@@ -82,7 +91,7 @@ export function DockedOscillatorSection({
         )}
         
         {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && (
-          <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
             <div className="flex items-center justify-between mb-1">
               <div className="text-xs text-slate-400">Volume</div>
               <Button
