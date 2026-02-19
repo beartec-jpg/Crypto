@@ -13,6 +13,12 @@ export const RESIZE_DEBOUNCE_MS = 100; // ms - debounce delay for resize events
 // Oscillator panel height constant
 export const OSCILLATOR_PANEL_HEIGHT_PER = 120; // Height per oscillator in pixels
 
+// Percentage-based oscillator sizing
+export const SINGLE_OSCILLATOR_PERCENT = 30; // Chart 70%, Oscillator 30%
+export const MULTI_OSCILLATOR_PERCENT_EACH = 20; // Each oscillator gets 20%
+export const MAX_OSCILLATOR_TOTAL_PERCENT = 60; // Never more than 60% for oscillators
+export const MIN_CHART_PERCENT = 40; // Chart always at least 40%
+
 // Navigation and toolbar heights
 export const MOBILE_NAV_HEIGHT = 65; // Height of mobile navigation bar at bottom
 export const TOP_TOOLBAR_HEIGHT = 80; // Approximate height of top toolbar

@@ -272,7 +272,11 @@ export function ChartFullscreenPage({
         <div 
           ref={chartContainerRef} 
           className="absolute inset-x-0 top-0 w-full" 
-          style={{ height: `calc(100vh - ${TOP_TOOLBAR_HEIGHT}px - ${oscillatorPanel.totalHeight}px)` }}
+          style={{ 
+            height: oscillatorPanel.dockedCount > 0 
+              ? `${oscillatorPanel.chartPercentage}vh` 
+              : `calc(100vh - ${TOP_TOOLBAR_HEIGHT}px)` 
+          }}
         />
         
         {/* Moving Averages */}
@@ -341,6 +345,9 @@ export function ChartFullscreenPage({
         totalOscillatorHeight={oscillatorPanel.totalHeight}
         onPopout={oscillatorPanel.popoutOscillator}
         isFullscreen={true}
+        usePercentage={true}
+        totalPercentage={oscillatorPanel.totalPercentage}
+        perOscillatorPercentage={oscillatorPanel.perOscillatorPercentage}
       />
       
       {/* Popped Out Oscillators */}
