@@ -158,7 +158,7 @@ export default function ShareManager({ onShareLoaded }: ShareManagerProps) {
             <textarea
               value={share}
               onChange={(e) => setShare(e.target.value)}
-              placeholder="Paste your base64-encoded share here"
+              placeholder="Paste your hex-encoded share here"
               rows={4}
               className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-sm"
             />

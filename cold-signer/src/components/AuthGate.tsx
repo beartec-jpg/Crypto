@@ -37,6 +37,9 @@ export default function AuthGate({ onAuthenticated, onCancel }: AuthGateProps) {
     setIsLoading(true);
 
     try {
+      // PIN is used for rate limiting / user verification
+      // In a production system, PIN could be hashed and stored for additional verification
+      // For now, the password is the main authentication factor
       await onAuthenticated(password);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed');

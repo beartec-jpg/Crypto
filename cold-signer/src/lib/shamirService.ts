@@ -26,8 +26,12 @@ export function splitMnemonic(
   // Trim and normalize the mnemonic
   const normalizedMnemonic = mnemonic.trim().toLowerCase();
   
-  // Convert mnemonic string to hex for secrets.js
-  const hexMnemonic = Buffer.from(normalizedMnemonic, 'utf8').toString('hex');
+  // Convert mnemonic string to hex using TextEncoder (browser-compatible)
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(normalizedMnemonic);
+  const hexMnemonic = Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
   
   // Generate shares using secrets.js
   // secrets.js returns shares as hex strings - keep them as hex
@@ -50,8 +54,13 @@ export function reconstructMnemonic(shares: string[]): string {
     // Reconstruct the secret (hex shares to hex mnemonic)
     const hexMnemonic = secrets.combine(shares);
     
-    // Convert hex back to mnemonic string
-    const mnemonic = Buffer.from(hexMnemonic, 'hex').toString('utf8');
+    // Convert hex back to mnemonic string using TextDecoder (browser-compatible)
+    const bytes = new Uint8Array(hexMnemonic.length / 2);
+    for (let i = 0; i < hexMnemonic.length; i += 2) {
+      bytes[i / 2] = parseInt(hexMnemonic.substring(i, i + 2), 16);
+    }
+    const decoder = new TextDecoder();
+    const mnemonic = decoder.decode(bytes);
     
     return mnemonic;
   } catch (error) {

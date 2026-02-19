@@ -43,14 +43,16 @@ function derivePrivateKey(mnemonic: string, chain: Chain): Uint8Array {
 }
 
 /**
- * Zero out sensitive data from memory
+ * Zero out sensitive data from memory (best effort in JavaScript)
+ * Note: JavaScript strings are immutable, so this is a best-effort approach
+ * The main benefit is removing references to allow garbage collection
  */
 function zeroMemory(data: string): void {
-  // Overwrite the string reference (best effort in JS)
-  if (typeof data === 'string') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (data as any) = '\0'.repeat(data.length);
-  }
+  // In JavaScript, we can't truly zero memory due to string immutability
+  // This function serves as a documentation of intent
+  // The main security comes from proper scoping and not storing sensitive data
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (data as any) = null;
 }
 
 /**

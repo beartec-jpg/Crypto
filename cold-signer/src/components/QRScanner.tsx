@@ -125,6 +125,7 @@ export default function QRScanner({ onScan, onCancel }: QRScannerProps) {
               className="w-full rounded-lg bg-black"
               playsInline
               muted
+              aria-label="QR code scanner camera feed"
             />
             <canvas ref={canvasRef} className="hidden" />
             

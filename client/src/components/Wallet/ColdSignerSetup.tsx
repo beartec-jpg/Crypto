@@ -157,6 +157,7 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
             <button
               onClick={() => handleCopy(share, index)}
               className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+              aria-label={`Copy share ${index + 1}`}
             >
               {copiedIndex === index ? (
                 <CheckCircle className="w-5 h-5 text-emerald-500" />

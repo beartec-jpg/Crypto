@@ -236,7 +236,7 @@ function App() {
               ⚠️ CRITICAL SECURITY WARNING
             </p>
             <p className="text-red-500 text-xs">
-              Never connect this device to the internet after setup. Keep it offline permanently. Losing 2+ shares = permanent loss of funds.
+              Never connect this device to the internet after setup. Keep it offline permanently. Losing 2 or more shares means permanent loss of funds.
             </p>
           </div>
         </div>
