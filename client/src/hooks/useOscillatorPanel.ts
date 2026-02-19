@@ -1,5 +1,11 @@
 import { useState, useCallback, useMemo } from 'react';
-import { OSCILLATOR_PANEL_HEIGHT_PER } from '@/lib/constants/layout';
+import { 
+  OSCILLATOR_PANEL_HEIGHT_PER,
+  SINGLE_OSCILLATOR_PERCENT,
+  MULTI_OSCILLATOR_PERCENT_EACH,
+  MAX_OSCILLATOR_TOTAL_PERCENT,
+  MIN_CHART_PERCENT
+} from '@/lib/constants/layout';
 
 type OscillatorDisplayMode = 'bottom' | 'mini' | 'popout' | 'off';
 
@@ -15,6 +21,10 @@ interface UseOscillatorPanelReturn {
   toggleMini: (id: string) => void;
   showSelector: boolean;
   setShowSelector: (show: boolean) => void;
+  // NEW percentage-based values:
+  totalPercentage: number;
+  chartPercentage: number;
+  perOscillatorPercentage: number;
 }
 
 export function useOscillatorPanel(): UseOscillatorPanelReturn {
@@ -34,6 +44,22 @@ export function useOscillatorPanel(): UseOscillatorPanelReturn {
   const totalHeight = useMemo(() => {
     return dockedCount > 0 ? dockedCount * OSCILLATOR_PANEL_HEIGHT_PER : 0;
   }, [dockedCount]);
+
+  const totalPercentage = useMemo(() => {
+    if (dockedCount === 0) return 0;
+    if (dockedCount === 1) return SINGLE_OSCILLATOR_PERCENT;
+    const multiPercent = dockedCount * MULTI_OSCILLATOR_PERCENT_EACH;
+    return Math.min(multiPercent, MAX_OSCILLATOR_TOTAL_PERCENT);
+  }, [dockedCount]);
+
+  const chartPercentage = useMemo(() => {
+    return Math.max(100 - totalPercentage, MIN_CHART_PERCENT);
+  }, [totalPercentage]);
+
+  const perOscillatorPercentage = useMemo(() => {
+    if (dockedCount === 0) return 0;
+    return totalPercentage / dockedCount;
+  }, [totalPercentage, dockedCount]);
 
   const popoutOscillator = useCallback((oscillatorId: string) => {
     setPoppedOutOscillators(prev => {
@@ -109,5 +135,8 @@ export function useOscillatorPanel(): UseOscillatorPanelReturn {
     toggleMini,
     showSelector,
     setShowSelector,
+    totalPercentage,
+    chartPercentage,
+    perOscillatorPercentage,
   };
 }
