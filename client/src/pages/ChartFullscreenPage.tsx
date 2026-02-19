@@ -272,6 +272,7 @@ export function ChartFullscreenPage({
               drawingsVisible ? 'text-white' : 'text-slate-500'
             }`}
             title={drawingsVisible ? 'Hide drawings' : 'Show drawings'}
+            aria-label={drawingsVisible ? 'Hide drawings' : 'Show drawings'}
           >
             {drawingsVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
@@ -285,6 +286,7 @@ export function ChartFullscreenPage({
               autoColorEnabled ? 'text-green-400' : 'text-slate-500'
             }`}
             title={autoColorEnabled ? 'Auto color: ON' : 'Auto color: OFF'}
+            aria-label={autoColorEnabled ? 'Disable auto color for drawings' : 'Enable auto color for drawings'}
           >
             <Palette className="h-4 w-4" />
           </Button>
@@ -343,7 +345,11 @@ export function ChartFullscreenPage({
         
         {/* Visual feedback when drawings are hidden */}
         {!drawingsVisible && drawings.length > 0 && (
-          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-slate-800/90 text-slate-400 text-xs px-3 py-1 rounded-full">
+          <div 
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-slate-800/90 text-slate-400 text-xs px-3 py-1 rounded-full"
+            role="status"
+            aria-live="polite"
+          >
             {drawings.length} drawing{drawings.length !== 1 ? 's' : ''} hidden
           </div>
         )}
