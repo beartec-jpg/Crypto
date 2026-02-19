@@ -7,11 +7,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-
-type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
+import type { ChartDrawingTool } from '@/types/drawing';
 
 interface ToolConfig {
-  id: DrawingTool;
+  id: ChartDrawingTool;
   icon: LucideIcon;
   label: string;
   description: string;
@@ -57,8 +56,8 @@ const TOOLS: ToolConfig[] = [
 ];
 
 interface VerticalDrawingToolbarProps {
-  activeTool: DrawingTool;
-  onSelectTool: (tool: DrawingTool) => void;
+  activeTool: ChartDrawingTool;
+  onSelectTool: (tool: ChartDrawingTool) => void;
   className?: string; // NEW: Allow custom positioning
   style?: React.CSSProperties; // Allow inline styles
 }
@@ -69,7 +68,7 @@ export function VerticalDrawingToolbar({
   className, // NEW
   style, // NEW
 }: VerticalDrawingToolbarProps) {
-  const handleToolClick = (toolId: DrawingTool) => {
+  const handleToolClick = (toolId: ChartDrawingTool) => {
     // Toggle behavior: if already active, deselect it
     if (activeTool === toolId) {
       onSelectTool(null);

@@ -3,14 +3,12 @@ import { Time } from 'lightweight-charts';
 import { useToast } from '@/hooks/use-toast';
 import { getAutoColor } from '@/lib/chart/colorUtils';
 import { GesturePoint } from '@/hooks/useChartGestures';
-
-// Local DrawingTool type matching CryptoIndicators.tsx
-type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
+import type { ChartDrawingTool } from '@/types/drawing';
 
 interface DrawingRendererProps {
   drawingMode: 'off' | 'draw' | 'select';
-  activeTool: DrawingTool | null;
-  activeToolRef: React.MutableRefObject<DrawingTool | null>;
+  activeTool: ChartDrawingTool | null;
+  activeToolRef: React.MutableRefObject<ChartDrawingTool | null>;
   autoColorEnabledRef: React.MutableRefObject<boolean>;
   candles: any[];
   tempDrawing: { points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null;

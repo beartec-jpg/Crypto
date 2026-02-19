@@ -20,6 +20,19 @@ export type DrawingTool =
   | 'elliottwave' 
   | null;
 
+/**
+ * Limited DrawingTool type for ChartFullscreenPage
+ * Subset of DrawingTool with simplified tool names
+ */
+export type ChartDrawingTool = 
+  | 'trendline' 
+  | 'horizontal' 
+  | 'rectangle' 
+  | 'fib_retracement' 
+  | 'trend_fib' 
+  | 'channel' 
+  | null;
+
 export type LineStyle = 'solid' | 'dashed' | 'dotted';
 
 export type TrendlineMode = 'magnet' | 'free' | null;

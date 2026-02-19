@@ -35,7 +35,7 @@ import { DraggableOscillatorWindow } from '@/components/draggable/DraggableOscil
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
 import { convertTimeframe } from '@/lib/utils/binance';
 import { useOscillatorData } from '@/hooks/useOscillatorData';
-import type { Drawing, DrawingDefaults, DrawingTool } from '@/types/drawing';
+import type { Drawing, DrawingDefaults, ChartDrawingTool } from '@/types/drawing';
 import {
   TOUCH_TAP_THRESHOLD,
   TOUCH_MOVE_THRESHOLD,
@@ -64,7 +64,7 @@ export function ChartFullscreenPage({
   // Independent state - not controlled by parent
   const [symbol, setSymbol] = useState(initialSymbol);
   const [timeframe, setTimeframe] = useState(initialTimeframe);
-  const [activeTool, setActiveTool] = useState<DrawingTool>(null);
+  const [activeTool, setActiveTool] = useState<ChartDrawingTool>(null);
   const [candles, setCandles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +107,7 @@ const isFirstResizeRef = useRef(true); // Track if this is the first resize even
 const isRetryingInitRef = useRef(false); // Prevent multiple retry attempts
 
 // Refs for drawing logic (to avoid recreating callbacks)
-const activeToolRef = useRef<DrawingTool>(null);
+const activeToolRef = useRef<ChartDrawingTool>(null);
 const autoColorEnabledRef = useRef(autoColorEnabled);
 const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
 
@@ -154,7 +154,7 @@ const fitChartContent = useCallback((candleCount?: number) => {
 }, []);
 
 // Tool selection handler
-const handleSelectTool = useCallback((tool: DrawingTool) => {
+const handleSelectTool = useCallback((tool: ChartDrawingTool) => {
   setActiveTool(tool);
   activeToolRef.current = tool;
 }, []);
@@ -1078,7 +1078,7 @@ useEffect(() => {
       </div>
       
       {/* Oscillator Section - Docked */}
-      {dockedOscillatorsCount > 0 && !oscillatorPopout && (
+      {dockedOscillatorsCount > 0 && (
         <div 
           className="fixed left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40" 
           style={{ 
