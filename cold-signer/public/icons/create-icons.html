@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Icon Generator</title>
+</head>
+<body>
+    <canvas id="canvas192" width="192" height="192"></canvas>
+    <canvas id="canvas512" width="512" height="512"></canvas>
+    <script>
+        function drawIcon(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            
+            // Background
+            ctx.fillStyle = '#10b981';
+            ctx.fillRect(0, 0, size, size);
+            
+            // Shield shape
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            const cx = size / 2;
+            const cy = size / 2;
+            const w = size * 0.5;
+            const h = size * 0.6;
+            ctx.moveTo(cx, cy - h/2);
+            ctx.lineTo(cx + w/2, cy - h/4);
+            ctx.lineTo(cx + w/2, cy + h/4);
+            ctx.lineTo(cx, cy + h/2);
+            ctx.lineTo(cx - w/2, cy + h/4);
+            ctx.lineTo(cx - w/2, cy - h/4);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Lock symbol
+            ctx.fillStyle = '#10b981';
+            const lockW = size * 0.15;
+            const lockH = size * 0.2;
+            ctx.fillRect(cx - lockW/2, cy - lockH/4, lockW, lockH/2);
+            
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = size * 0.04;
+            ctx.beginPath();
+            ctx.arc(cx, cy - lockH/4, lockW/2.5, Math.PI, 0, true);
+            ctx.stroke();
+        }
+        
+        drawIcon(document.getElementById('canvas192'), 192);
+        drawIcon(document.getElementById('canvas512'), 512);
+        
+        console.log('Icons drawn. Right-click to save as PNG.');
+    </script>
+</body>
+</html>
