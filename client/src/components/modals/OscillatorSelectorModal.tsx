@@ -1,12 +1,14 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+
+type OscillatorDisplayMode = 'bottom' | 'mini' | 'popout' | 'off';
 
 interface OscillatorSelectorModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedOscillators: Set<string>;
-  onToggleOscillator: (oscillator: string) => void;
+  poppedOutOscillators: Set<string>;
+  onToggleOscillator: (oscillator: string, mode: OscillatorDisplayMode) => void;
 }
 
 const OSCILLATORS = [
@@ -19,50 +21,83 @@ export function OscillatorSelectorModal({
   isOpen,
   onClose,
   selectedOscillators,
+  poppedOutOscillators,
   onToggleOscillator,
 }: OscillatorSelectorModalProps) {
+  const getOscillatorMode = (oscId: string): OscillatorDisplayMode => {
+    const isSelected = selectedOscillators.has(oscId);
+    const isPoppedOut = poppedOutOscillators.has(oscId);
+    
+    if (!isSelected) {
+      return 'off';
+    } else if (isPoppedOut) {
+      return 'mini'; // For now, treat all popped out as mini
+    } else {
+      return 'bottom';
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px] bg-slate-900 border-slate-700 text-white">
+      <DialogContent className="sm:max-w-[500px] bg-slate-900 border-slate-700 text-white">
         <DialogHeader>
           <DialogTitle className="text-white">Select Oscillators</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
-          {OSCILLATORS.map((osc) => (
-            <div 
-              key={osc.id} 
-              className="flex items-start space-x-3 p-3 rounded-lg hover:bg-slate-800/50 transition-colors cursor-pointer" 
-              onClick={() => onToggleOscillator(osc.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onToggleOscillator(osc.id);
-                }
-              }}
-            >
-              <Checkbox
-                id={osc.id}
-                checked={selectedOscillators.has(osc.id)}
-                onCheckedChange={() => onToggleOscillator(osc.id)}
-                className="border-slate-600 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-              />
-              <div className="grid gap-1.5 leading-none flex-1">
-                <Label
-                  htmlFor={osc.id}
-                  className="text-sm font-medium leading-none text-white cursor-pointer"
-                >
-                  {osc.name}
-                </Label>
-                <p className="text-sm text-slate-400">
-                  {osc.description}
-                </p>
+          {OSCILLATORS.map((osc) => {
+            const mode = getOscillatorMode(osc.id);
+            
+            return (
+              <div 
+                key={osc.id} 
+                className="p-4 rounded-lg border border-slate-700 hover:bg-slate-800/50 transition-colors"
+              >
+                <div className="mb-3">
+                  <div className="text-sm font-medium text-white mb-1">{osc.name}</div>
+                  <p className="text-xs text-slate-400">{osc.description}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant={mode === 'bottom' ? 'default' : 'outline'}
+                    onClick={() => onToggleOscillator(osc.id, 'bottom')}
+                    className={mode === 'bottom' 
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                      : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
+                    }
+                  >
+                    Bottom
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={mode === 'mini' ? 'default' : 'outline'}
+                    onClick={() => onToggleOscillator(osc.id, 'mini')}
+                    className={mode === 'mini' 
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                      : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
+                    }
+                  >
+                    Mini
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={mode === 'popout' ? 'default' : 'outline'}
+                    onClick={() => onToggleOscillator(osc.id, 'popout')}
+                    className={mode === 'popout' 
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                      : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
+                    }
+                  >
+                    Popout
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </DialogContent>
     </Dialog>
   );
 }
+
+export type { OscillatorDisplayMode };

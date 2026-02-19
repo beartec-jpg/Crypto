@@ -31,7 +31,6 @@ import { RSIPanel } from '@/components/indicators/oscillators/RSIPanel';
 import { MACDPanel } from '@/components/indicators/oscillators/MACDPanel';
 import { VolumePanel } from '@/components/indicators/oscillators/VolumePanel';
 import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
-import { OscillatorStatusBar } from '@/components/indicators/OscillatorStatusBar';
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { DraggableOscillatorWindow } from '@/components/draggable/DraggableOscillatorWindow';
 import { OscillatorPopoutWindow } from '@/components/oscillators/OscillatorPopoutWindow';
@@ -197,7 +196,6 @@ const [poppedOutOscillators, setPoppedOutOscillators] = useState<Set<string>>(ne
 // Oscillator panel height constant
 // 120px per oscillator (panel + padding)
 const OSCILLATOR_PANEL_HEIGHT_PER = 120; // Height per oscillator in pixels
-const OSCILLATOR_STATUS_BAR_HEIGHT = 36; // Height of status bar
 const MOBILE_NAV_HEIGHT = 65; // Height of mobile navigation bar at bottom
 const TOP_TOOLBAR_HEIGHT = 80; // Approximate height of top toolbar (includes border and padding)
 
@@ -209,7 +207,7 @@ const DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH = 150; // Approximate half-width for 
 // Calculate total oscillator panel height - only count docked oscillators
 const dockedOscillatorsCount = Array.from(selectedOscillators).filter(osc => !poppedOutOscillators.has(osc)).length;
 const totalOscillatorHeight = dockedOscillatorsCount > 0 
-  ? (dockedOscillatorsCount * OSCILLATOR_PANEL_HEIGHT_PER) + OSCILLATOR_STATUS_BAR_HEIGHT
+  ? (dockedOscillatorsCount * OSCILLATOR_PANEL_HEIGHT_PER)
   : 0;
 
 /**
@@ -447,17 +445,60 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
     });
   }, []);
   
-  // Oscillator toggle handler
-  const handleToggleOscillator = useCallback((oscillator: string) => {
-    setSelectedOscillators(prev => {
-      const next = new Set(prev);
-      if (next.has(oscillator)) {
+  // Oscillator toggle handler - Updated to handle display modes
+  const handleToggleOscillator = useCallback((oscillator: string, mode?: 'bottom' | 'mini' | 'popout' | 'off') => {
+    // If no mode specified, toggle between off and bottom (for backward compatibility)
+    if (!mode) {
+      setSelectedOscillators(prev => {
+        const next = new Set(prev);
+        if (next.has(oscillator)) {
+          next.delete(oscillator);
+        } else {
+          next.add(oscillator);
+        }
+        return next;
+      });
+      return;
+    }
+
+    // Handle different display modes
+    if (mode === 'off') {
+      // Remove from both sets
+      setSelectedOscillators(prev => {
+        const next = new Set(prev);
         next.delete(oscillator);
-      } else {
+        return next;
+      });
+      setPoppedOutOscillators(prev => {
+        const next = new Set(prev);
+        next.delete(oscillator);
+        return next;
+      });
+    } else if (mode === 'bottom') {
+      // Add to selected, remove from popped out (docked at bottom)
+      setSelectedOscillators(prev => {
+        const next = new Set(prev);
         next.add(oscillator);
-      }
-      return next;
-    });
+        return next;
+      });
+      setPoppedOutOscillators(prev => {
+        const next = new Set(prev);
+        next.delete(oscillator);
+        return next;
+      });
+    } else if (mode === 'mini' || mode === 'popout') {
+      // Add to both sets (floating window)
+      setSelectedOscillators(prev => {
+        const next = new Set(prev);
+        next.add(oscillator);
+        return next;
+      });
+      setPoppedOutOscillators(prev => {
+        const next = new Set(prev);
+        next.add(oscillator);
+        return next;
+      });
+    }
   }, []);
   
   // Memoize selected drawing to avoid redundant searches and transformations
@@ -1147,7 +1188,7 @@ useEffect(() => {
           }}
         >
           {/* Oscillator panels - Only show non-popped-out oscillators */}
-          <div className="bg-slate-900 overflow-y-auto" style={{ maxHeight: `calc(100% - ${OSCILLATOR_STATUS_BAR_HEIGHT}px)` }}>
+          <div className="bg-slate-900 overflow-y-auto h-full">
             {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && (
               <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
                 <div className="flex items-center justify-between mb-1">
@@ -1212,14 +1253,6 @@ useEffect(() => {
               </div>
             )}
           </div>
-          
-          {/* Status Bar */}
-          <OscillatorStatusBar
-            rsiValue={selectedOscillators.has('rsi') ? latestOscillatorValues.rsiValue : undefined}
-            macdValue={selectedOscillators.has('macd') ? latestOscillatorValues.macdValue : undefined}
-            macdPrevValue={selectedOscillators.has('macd') ? latestOscillatorValues.macdPrevValue : undefined}
-            volumePercent={selectedOscillators.has('volume') ? latestOscillatorValues.volumePercent : undefined}
-          />
         </div>
       )}
       
@@ -1318,6 +1351,7 @@ useEffect(() => {
         isOpen={showOscillatorSelector}
         onClose={() => setShowOscillatorSelector(false)}
         selectedOscillators={selectedOscillators}
+        poppedOutOscillators={poppedOutOscillators}
         onToggleOscillator={handleToggleOscillator}
       />
 
