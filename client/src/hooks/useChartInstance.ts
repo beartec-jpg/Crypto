@@ -1,0 +1,165 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries } from 'lightweight-charts';
+import {
+  RESIZE_DEBOUNCE_MS,
+  MOBILE_NAV_HEIGHT,
+  TOP_TOOLBAR_HEIGHT,
+} from '@/lib/constants/layout';
+
+interface UseChartInstanceOptions {
+  containerRef: React.RefObject<HTMLDivElement>;
+  totalOscillatorHeight: number;
+  topToolbarHeight?: number;
+  mobileNavHeight?: number;
+}
+
+interface UseChartInstanceReturn {
+  chartRef: React.MutableRefObject<IChartApi | null>;
+  candleSeriesRef: React.MutableRefObject<ISeriesApi<'Candlestick'> | null>;
+  isReady: boolean;
+  fitContent: (candleCount?: number) => void;
+}
+
+export function useChartInstance({
+  containerRef,
+  totalOscillatorHeight,
+  topToolbarHeight = TOP_TOOLBAR_HEIGHT,
+  mobileNavHeight = MOBILE_NAV_HEIGHT,
+}: UseChartInstanceOptions): UseChartInstanceReturn {
+  const [isReady, setIsReady] = useState(false);
+  const [reinitializeKey, setReinitializeKey] = useState(0);
+  
+  const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isFirstResizeRef = useRef(true);
+  const isRetryingInitRef = useRef(false);
+
+  const fitContent = useCallback((candleCount?: number) => {
+    if (chartRef.current) {
+      chartRef.current.timeScale().fitContent();
+      if (candleCount !== undefined) {
+        console.log('[Chart] Fit content with', candleCount, 'candles');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!containerRef.current) {
+      console.warn('[Chart] Container ref not available');
+      return;
+    }
+
+    const container = containerRef.current;
+    const width = container.clientWidth;
+    const height = window.innerHeight - topToolbarHeight - mobileNavHeight - totalOscillatorHeight;
+
+    // Validate dimensions before initializing chart
+    if (width === 0 || height === 0) {
+      console.warn('[Chart] Container has invalid dimensions:', { width, height });
+      
+      const retryObserver = new ResizeObserver((entries) => {
+        const [entry] = entries;
+        const { width: newWidth, height: newHeight } = entry.contentRect;
+        
+        if (newWidth > 0 && newHeight > 0 && !chartRef.current && !isRetryingInitRef.current) {
+          console.log('[Chart] Container dimensions now valid, triggering initialization');
+          isRetryingInitRef.current = true;
+          retryObserver.disconnect();
+          setReinitializeKey(prev => prev + 1);
+        }
+      });
+      
+      retryObserver.observe(container);
+      return () => retryObserver.disconnect();
+    }
+
+    isRetryingInitRef.current = false;
+    console.log('[Chart] Initializing chart with dimensions:', { width, height });
+
+    const chart = createChart(container, {
+      layout: {
+        background: { type: ColorType.Solid, color: '#0f172a' },
+        textColor: '#cbd5e1',
+      },
+      grid: {
+        vertLines: { color: '#1e293b' },
+        horzLines: { color: '#1e293b' },
+      },
+      width,
+      height,
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      rightPriceScale: {
+        borderVisible: false,
+      },
+    });
+
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: '#22c55e',
+      downColor: '#ef4444',
+      borderUpColor: '#22c55e',
+      borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e',
+      wickDownColor: '#ef4444',
+    });
+
+    chartRef.current = chart;
+    candleSeriesRef.current = candleSeries;
+    setIsReady(true);
+    
+    console.log('[Chart] Chart initialized successfully');
+    
+    requestAnimationFrame(() => {
+      chart.timeScale().fitContent();
+    });
+    
+    isFirstResizeRef.current = true;
+
+    const handleResize = () => {
+      if (isFirstResizeRef.current) {
+        isFirstResizeRef.current = false;
+        return;
+      }
+      
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+      
+      resizeTimeoutRef.current = setTimeout(() => {
+        if (containerRef.current && chartRef.current) {
+          const newWidth = containerRef.current.clientWidth;
+          const newHeight = window.innerHeight - topToolbarHeight - mobileNavHeight - totalOscillatorHeight;
+          
+          if (newWidth > 0 && newHeight > 0) {
+            chartRef.current.applyOptions({ width: newWidth, height: newHeight });
+            requestAnimationFrame(() => {
+              chartRef.current?.timeScale().fitContent();
+            });
+          }
+        }
+      }, RESIZE_DEBOUNCE_MS);
+    };
+
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
+
+    return () => {
+      setIsReady(false);
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+      resizeObserver.disconnect();
+      if (chartRef.current) {
+        console.log('[Chart] Cleaning up chart');
+        chartRef.current.remove();
+        chartRef.current = null;
+        candleSeriesRef.current = null;
+      }
+    };
+  }, [reinitializeKey, totalOscillatorHeight, topToolbarHeight, mobileNavHeight, containerRef]);
+
+  return { chartRef, candleSeriesRef, isReady, fitContent };
+}
