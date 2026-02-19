@@ -532,7 +532,8 @@ async function detectXRPLTrustlines(
         const issuerInfo = await fetchXRPLIssuerInfo(issuer);
         issuerFlagsMap.set(issuer, issuerInfo.flags);
       } catch (e) {
-        // Ignore errors fetching issuer info
+        // Log error but continue with other issuers
+        console.warn(`Failed to fetch issuer info for ${issuer}:`, e);
       }
     }));
     
