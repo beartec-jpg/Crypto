@@ -81,6 +81,7 @@ export function ChartFullscreenPage({
   const { chartRef, candleSeriesRef, isReady: chartReady, fitContent } = useChartInstance({
     containerRef: chartContainerRef,
     totalOscillatorHeight: oscillatorPanel.totalHeight,
+    mobileNavHeight: 0, // No mobile nav in fullscreen mode
   });
 
   // Hooks - Data fetching
@@ -257,8 +258,8 @@ export function ChartFullscreenPage({
           defaultPosition={() => ({
             x: window.innerWidth / 2 - DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
             y: window.innerHeight - (oscillatorPanel.selectedOscillators.size > 0 
-              ? oscillatorPanel.totalHeight + MOBILE_NAV_HEIGHT + DRAWING_TOOLBAR_BOTTOM_MARGIN
-              : MOBILE_NAV_HEIGHT + DRAWING_TOOLBAR_BOTTOM_MARGIN)
+              ? oscillatorPanel.totalHeight + DRAWING_TOOLBAR_BOTTOM_MARGIN
+              : DRAWING_TOOLBAR_BOTTOM_MARGIN)
           })}
         >
           <VerticalDrawingToolbar activeTool={activeTool} onSelectTool={handleSelectTool} />
@@ -271,7 +272,7 @@ export function ChartFullscreenPage({
         <div 
           ref={chartContainerRef} 
           className="absolute inset-x-0 top-0 w-full" 
-          style={{ height: `calc(100vh - ${TOP_TOOLBAR_HEIGHT}px - ${MOBILE_NAV_HEIGHT}px - ${oscillatorPanel.totalHeight}px)` }}
+          style={{ height: `calc(100vh - ${TOP_TOOLBAR_HEIGHT}px - ${oscillatorPanel.totalHeight}px)` }}
         />
         
         {/* Moving Averages */}
@@ -339,6 +340,7 @@ export function ChartFullscreenPage({
         candles={candles}
         totalOscillatorHeight={oscillatorPanel.totalHeight}
         onPopout={oscillatorPanel.popoutOscillator}
+        isFullscreen={true}
       />
       
       {/* Popped Out Oscillators */}

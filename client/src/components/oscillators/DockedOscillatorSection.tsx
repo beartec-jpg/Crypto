@@ -12,6 +12,7 @@ interface DockedOscillatorSectionProps {
   candles: { time: number }[];
   totalOscillatorHeight: number;
   onPopout: (oscillatorId: string) => void;
+  isFullscreen?: boolean;
 }
 
 export function DockedOscillatorSection({
@@ -21,6 +22,7 @@ export function DockedOscillatorSection({
   candles,
   totalOscillatorHeight,
   onPopout,
+  isFullscreen = false,
 }: DockedOscillatorSectionProps) {
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
     osc => !poppedOutOscillators.has(osc)
@@ -32,9 +34,9 @@ export function DockedOscillatorSection({
     <div 
       className="fixed left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40" 
       style={{ 
-        bottom: `${MOBILE_NAV_HEIGHT}px`,
+        bottom: isFullscreen ? 0 : `${MOBILE_NAV_HEIGHT}px`,
         height: `${totalOscillatorHeight}px`,
-        maxHeight: `calc(100vh - ${MOBILE_NAV_HEIGHT}px - ${TOP_TOOLBAR_HEIGHT}px)`
+        maxHeight: `calc(100vh - ${isFullscreen ? 0 : MOBILE_NAV_HEIGHT}px - ${TOP_TOOLBAR_HEIGHT}px)`
       }}
     >
       <div className="bg-slate-900 overflow-y-auto h-full">
