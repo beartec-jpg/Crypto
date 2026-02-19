@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { calculateEMABias } from '@/utils/emaBias';
 import { detectStructure } from '@/utils/structureDetection';
 import { BiasBadge } from '@/components/BiasBadge';
+import { convertTimeframe } from '@/lib/utils/binance';
 import type { Bias } from '@/types/candle';
 
 interface TickerData {
@@ -32,19 +33,6 @@ interface TickerTableProps {
   // Settings button handler
   onOpenSettings?: () => void;
 }
-
-// Convert timeframe to Binance API format
-const convertTimeframe = (tf: string): string => {
-  const map: Record<string, string> = {
-    '1m': '1m',
-    '5m': '5m',
-    '15m': '15m',
-    '1h': '1h',
-    '4h': '4h',
-    '1d': '1d',
-  };
-  return map[tf] || '1h';
-};
 
 /**
  * Watchlist table component showing ticker data

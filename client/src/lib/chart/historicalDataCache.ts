@@ -1,3 +1,5 @@
+import { convertTimeframe } from '@/lib/utils/binance';
+
 interface CacheEntry {
   symbol: string;
   timeframe: string;
@@ -155,7 +157,7 @@ class HistoricalDataCache {
     startTime?: number,
     endTime?: number
   ): Promise<any[]> {
-    const binanceTimeframe = this.convertTimeframe(timeframe);
+    const binanceTimeframe = convertTimeframe(timeframe);
     let url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceTimeframe}&limit=${this.MAX_CANDLES_PER_REQUEST}`;
     
     if (startTime) url += `&startTime=${startTime}`;
@@ -217,18 +219,6 @@ class HistoricalDataCache {
       '1d': 24 * 60 * 60 * 1000,
     };
     return map[timeframe] || this.DEFAULT_TIMEFRAME_MS;
-  }
-  
-  private convertTimeframe(tf: string): string {
-    const map: Record<string, string> = {
-      '1m': '1m',
-      '5m': '5m',
-      '15m': '15m',
-      '1h': '1h',
-      '4h': '4h',
-      '1d': '1d',
-    };
-    return map[tf] || '1h';
   }
   
   clearCache(): void {

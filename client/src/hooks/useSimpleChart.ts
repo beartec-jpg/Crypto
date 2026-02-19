@@ -1,24 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries } from 'lightweight-charts';
+import { convertTimeframe } from '@/lib/utils/binance';
 
 interface UseSimpleChartProps {
   containerRef: React.RefObject<HTMLDivElement>;
   symbol: string;
   timeframe: string;
 }
-
-// Convert timeframe to Binance API format
-const convertTimeframe = (tf: string): string => {
-  const map: Record<string, string> = {
-    '1m': '1m',
-    '5m': '5m',
-    '15m': '15m',
-    '1h': '1h',
-    '4h': '4h',
-    '1d': '1d',
-  };
-  return map[tf] || '1h';
-};
 
 export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleChartProps) {
   const chartRef = useRef<IChartApi | null>(null);
