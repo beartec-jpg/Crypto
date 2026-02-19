@@ -2,10 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
-
-const formatTickerDisplay = (ticker: string) => {
-  return ticker.replace('USDT', '/USDT');
-};
+import { formatTickerDisplay } from '@/lib/chart/priceUtils';
 
 export function useWatchlistState() {
   const { toast } = useToast();
