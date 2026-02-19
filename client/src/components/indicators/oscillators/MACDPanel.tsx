@@ -34,7 +34,7 @@ export function MACDPanel({
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
-      height, 
+      height: containerRef.current.clientHeight || height, 
       layout: {
         background: { type: ColorType.Solid, color: '#1e293b' },
         textColor: '#94a3b8',
@@ -70,7 +70,19 @@ export function MACDPanel({
     chart.addSeries(LineSeries, { color: '#ef5350', lineWidth: 2 }).setData(signalData.map(d => ({ ...d, time: d.time as Time })));
     chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(histogramData.map(d => ({ ...d, time: d.time as Time })));
     
+    // Observe container size changes and resize chart accordingly
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height: newHeight } = entry.contentRect;
+        if (chartRef.current && width > 0 && newHeight > 0) {
+          chartRef.current.applyOptions({ width, height: newHeight });
+        }
+      }
+    });
+    resizeObserver.observe(containerRef.current);
+    
     return () => {
+      resizeObserver.disconnect();
       chart.remove();
     };
   }, [macdData, signalData, histogramData, fastPeriod, slowPeriod, signalPeriod, onChartCreated]);
@@ -84,5 +96,5 @@ export function MACDPanel({
     }
   }, [mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" style={{ height }} data-testid="chart-macd" />;
+  return <div ref={containerRef} className="w-full h-full" data-testid="chart-macd" />;
 }

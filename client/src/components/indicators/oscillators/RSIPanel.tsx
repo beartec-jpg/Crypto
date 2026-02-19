@@ -28,7 +28,7 @@ export function RSIPanel({
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
-      height, 
+      height: containerRef.current.clientHeight || height, 
       layout: {
         background: { type: ColorType.Solid, color: '#1e293b' },
         textColor: '#94a3b8',
@@ -69,7 +69,19 @@ export function RSIPanel({
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 70 })));
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 30 })));
     
+    // Observe container size changes and resize chart accordingly
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height: newHeight } = entry.contentRect;
+        if (chartRef.current && width > 0 && newHeight > 0) {
+          chartRef.current.applyOptions({ width, height: newHeight });
+        }
+      }
+    });
+    resizeObserver.observe(containerRef.current);
+    
     return () => {
+      resizeObserver.disconnect();
       chart.remove();
     };
   }, [data, candles, period, onChartCreated]);
@@ -83,5 +95,5 @@ export function RSIPanel({
     }
   }, [mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" style={{ height }} data-testid="chart-rsi" />;
+  return <div ref={containerRef} className="w-full h-full" data-testid="chart-rsi" />;
 }

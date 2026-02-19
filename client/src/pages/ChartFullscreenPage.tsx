@@ -74,6 +74,7 @@ export function ChartFullscreenPage({
   const activeToolRef = useRef<ChartDrawingTool>(null);
   const autoColorEnabledRef = useRef(autoColorEnabled);
   const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
+  const isInitialDataLoad = useRef(true);
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
@@ -155,8 +156,21 @@ export function ChartFullscreenPage({
   // Update chart with candle data
   useEffect(() => {
     if (candleSeriesRef.current && candles.length > 0) {
-      candleSeriesRef.current.setData(candles);
-      fitContent(candles.length);
+      if (isInitialDataLoad.current) {
+        // First load: set data and fit content
+        candleSeriesRef.current.setData(candles);
+        fitContent(candles.length);
+        isInitialDataLoad.current = false;
+      } else {
+        // Subsequent updates: preserve the visible range
+        const currentRange = chartRef.current?.timeScale().getVisibleRange();
+        candleSeriesRef.current.setData(candles);
+        if (currentRange) {
+          try {
+            chartRef.current?.timeScale().setVisibleRange(currentRange);
+          } catch (e) { /* ignore if range is now invalid */ }
+        }
+      }
     }
   }, [candles, candleSeriesRef, fitContent]);
 
@@ -202,6 +216,11 @@ export function ChartFullscreenPage({
       setDrawings(loadedDrawings);
     }
   }, [drawingsPersistence.drawings]);
+
+  // Reset initial load flag when symbol/timeframe changes
+  useEffect(() => {
+    isInitialDataLoad.current = true;
+  }, [symbol, timeframe]);
 
   // Update refs
   useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
