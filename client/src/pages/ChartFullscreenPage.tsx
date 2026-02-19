@@ -290,7 +290,7 @@ export function ChartFullscreenPage({
         <MiniOscillatorSection
           miniOscillators={oscillatorPanel.miniOscillators}
           oscillatorData={oscillatorData}
-          onToggleMode={oscillatorPanel.toggleMini}
+          onCycleMode={oscillatorPanel.cycleMode}
         />
 
         {/* Drawing Toolbar */}
@@ -384,6 +384,7 @@ export function ChartFullscreenPage({
         candles={candles}
         totalOscillatorHeight={oscillatorPanel.totalHeight}
         onPopout={oscillatorPanel.popoutOscillator}
+        onCycleMode={oscillatorPanel.cycleMode}
         isFullscreen={true}
         usePercentage={true}
         totalPercentage={oscillatorPanel.totalPercentage}
@@ -398,6 +399,7 @@ export function ChartFullscreenPage({
         oscillatorData={oscillatorData}
         candles={candles}
         onPopout={oscillatorPanel.popoutOscillator}
+        onCycleMode={oscillatorPanel.cycleMode}
         mainChartVisibleRange={mainChartVisibleRange}
       />
       
@@ -439,8 +441,6 @@ export function ChartFullscreenPage({
         isOpen={oscillatorPanel.showSelector}
         onClose={() => oscillatorPanel.setShowSelector(false)}
         selectedOscillators={oscillatorPanel.selectedOscillators}
-        poppedOutOscillators={oscillatorPanel.poppedOutOscillators}
-        miniOscillators={oscillatorPanel.miniOscillators}
         onToggleOscillator={oscillatorPanel.toggleOscillator}
       />
     </div>

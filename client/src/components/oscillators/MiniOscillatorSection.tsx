@@ -4,7 +4,7 @@ import type { OscillatorData } from '@/hooks/useOscillatorData';
 interface MiniOscillatorSectionProps {
   miniOscillators: Set<string>;
   oscillatorData: OscillatorData;
-  onToggleMode: (id: string) => void;
+  onCycleMode: (id: string) => void;
 }
 
 // Helper to get RSI status
@@ -33,7 +33,7 @@ function getVolumeStatus(current: number, data: { value: number }[]): { label: s
 export function MiniOscillatorSection({
   miniOscillators,
   oscillatorData,
-  onToggleMode,
+  onCycleMode,
 }: MiniOscillatorSectionProps) {
   if (miniOscillators.size === 0) return null;
 
@@ -91,7 +91,7 @@ export function MiniOscillatorSection({
       {miniItems.map(({ id, label, value, status }) => (
         <div
           key={id}
-          onClick={() => onToggleMode(id)}
+          onClick={() => onCycleMode(id)}
           className="bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-800 transition-colors min-w-[80px]"
         >
           <div className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</div>

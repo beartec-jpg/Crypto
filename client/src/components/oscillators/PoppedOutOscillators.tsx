@@ -19,6 +19,7 @@ interface PoppedOutOscillatorsProps {
   oscillatorData: OscillatorData;
   candles: CandleData[];
   onPopout: (id: string) => void;
+  onCycleMode?: (id: string) => void;
   mainChartVisibleRange?: any;
 }
 
@@ -34,6 +35,7 @@ export function PoppedOutOscillators({
   oscillatorData,
   candles,
   onPopout,
+  onCycleMode,
   mainChartVisibleRange,
 }: PoppedOutOscillatorsProps) {
   const renderOscillatorContent = (id: string) => {
@@ -70,6 +72,7 @@ export function PoppedOutOscillators({
             title={title}
             storageKey={storageKey}
             initialPosition={defaultPos}
+            onTap={onCycleMode ? () => onCycleMode(id) : undefined}
           >
             {renderOscillatorContent(id)}
           </DraggableOscillatorWindow>

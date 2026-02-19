@@ -12,6 +12,7 @@ interface DockedOscillatorSectionProps {
   candles: { time: number }[];
   totalOscillatorHeight: number;
   onPopout: (oscillatorId: string) => void;
+  onCycleMode?: (oscillatorId: string) => void;
   isFullscreen?: boolean;
   // NEW:
   usePercentage?: boolean;
@@ -28,6 +29,7 @@ export function DockedOscillatorSection({
   candles,
   totalOscillatorHeight,
   onPopout,
+  onCycleMode,
   isFullscreen = false,
   usePercentage = false,
   totalPercentage = 0,
@@ -54,14 +56,26 @@ export function DockedOscillatorSection({
       <div className="bg-slate-900 overflow-y-auto h-full">
         {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div className="text-xs text-slate-400 mb-1">RSI (14)</div>
+            <div
+              onClick={() => onCycleMode?.('rsi')}
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+            >
+              <span>RSI (14)</span>
+              <span className="text-slate-600 ml-2">tap to cycle</span>
+            </div>
             <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
         
         {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && !miniOscillators?.has('macd') && (
           <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div className="text-xs text-slate-400 mb-1">MACD (12, 26, 9)</div>
+            <div
+              onClick={() => onCycleMode?.('macd')}
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+            >
+              <span>MACD (12, 26, 9)</span>
+              <span className="text-slate-600 ml-2">tap to cycle</span>
+            </div>
             <MACDPanel 
               macdData={oscillatorData.macd.macd}
               signalData={oscillatorData.macd.signal}
@@ -76,7 +90,13 @@ export function DockedOscillatorSection({
         
         {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && !miniOscillators?.has('volume') && (
           <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div className="text-xs text-slate-400 mb-1">Volume</div>
+            <div
+              onClick={() => onCycleMode?.('volume')}
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+            >
+              <span>Volume</span>
+              <span className="text-slate-600 ml-2">tap to cycle</span>
+            </div>
             <VolumePanel data={oscillatorData.volume} mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
