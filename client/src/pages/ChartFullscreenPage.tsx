@@ -22,6 +22,7 @@ import { ChartLoadingOverlay } from '@/components/chart/ChartLoadingOverlay';
 
 // Existing components
 import { Button } from '@/components/ui/button';
+import { Eye, EyeOff, Palette } from 'lucide-react';
 import { VerticalDrawingToolbar } from '@/components/drawings/VerticalDrawingToolbar';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
@@ -216,6 +217,14 @@ export function ChartFullscreenPage({
     drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: updates.style } });
   }, [drawingInteraction.selectedDrawingId, drawingsPersistence]);
 
+  const handleToggleDrawingsVisible = useCallback(() => {
+    setDrawingsVisible(prev => !prev);
+  }, []);
+
+  const handleToggleAutoColor = useCallback(() => {
+    setAutoColorEnabled(prev => !prev);
+  }, []);
+
   // Memoized values
   const selectedDrawingForModal = useMemo(() => {
     const id = drawingInteraction.selectedDrawingId;
@@ -249,6 +258,35 @@ export function ChartFullscreenPage({
             className="bg-slate-900/95 backdrop-blur-sm border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
           >
             Oscillators {oscillatorPanel.selectedOscillators.size > 0 && `(${oscillatorPanel.selectedOscillators.size})`}
+          </Button>
+        </div>
+
+        {/* Drawing Controls */}
+        <div className="absolute top-2 right-2 z-20 flex gap-2">
+          {/* Toggle drawings visibility */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleToggleDrawingsVisible}
+            className={`bg-slate-900/95 backdrop-blur-sm border-slate-700 hover:bg-slate-800 ${
+              drawingsVisible ? 'text-white' : 'text-slate-500'
+            }`}
+            title={drawingsVisible ? 'Hide drawings' : 'Show drawings'}
+          >
+            {drawingsVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </Button>
+          
+          {/* Toggle auto color for drawings */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleToggleAutoColor}
+            className={`bg-slate-900/95 backdrop-blur-sm border-slate-700 hover:bg-slate-800 ${
+              autoColorEnabled ? 'text-green-400' : 'text-slate-500'
+            }`}
+            title={autoColorEnabled ? 'Auto color: ON' : 'Auto color: OFF'}
+          >
+            <Palette className="h-4 w-4" />
           </Button>
         </div>
 
@@ -302,6 +340,13 @@ export function ChartFullscreenPage({
           saveDrawingMutation={{ mutate: drawingsPersistence.saveDrawing }}
           onPointCommitRef={onPointCommitRef}
         />
+        
+        {/* Visual feedback when drawings are hidden */}
+        {!drawingsVisible && drawings.length > 0 && (
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-slate-800/90 text-slate-400 text-xs px-3 py-1 rounded-full">
+            {drawings.length} drawing{drawings.length !== 1 ? 's' : ''} hidden
+          </div>
+        )}
         
         {/* Temp Drawing Points SVG */}
         <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', zIndex: 10 }}>
