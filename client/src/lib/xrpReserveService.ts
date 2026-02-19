@@ -161,14 +161,15 @@ export async function calculateXRPReserve(address: string): Promise<XRPReserveIn
     
     const totalBalance = parseFloat(accountInfo.balance);
     const available = parseFloat(accountInfo.available);
+    const PER_OBJECT_RESERVE = 2; // Per-object reserve (constant on XRPL)
     
     return {
       totalBalance,
       baseReserve: accountInfo.reserves.base,
-      ownerReserve: 2, // Per-object reserve (constant on XRPL)
+      ownerReserve: PER_OBJECT_RESERVE,
       currentReserve: accountInfo.reserves.total,
       totalReserve: accountInfo.reserves.total,  // Alias for TrustlineWarningModal
-      newReserve: accountInfo.reserves.total + 2, // Adding trustline adds 2 XRP to reserve
+      newReserve: accountInfo.reserves.total + PER_OBJECT_RESERVE, // Adding trustline adds reserve
       available,
       availableBalance: available,  // Alias for TrustlineWarningModal
       currentObjects: accountInfo.ownerCount,  // Number of objects (trustlines, offers, etc)
