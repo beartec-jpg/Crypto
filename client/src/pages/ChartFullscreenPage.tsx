@@ -265,7 +265,7 @@ export function ChartFullscreenPage({
         </DraggableToolbar>
         
         {/* Loading/Error Overlay */}
-        <ChartLoadingOverlay isLoading={isLoading} error={error ? error.message : null} />
+        <ChartLoadingOverlay isLoading={isLoading} error={error?.message || null} />
         
         {/* Chart Container */}
         <div 
