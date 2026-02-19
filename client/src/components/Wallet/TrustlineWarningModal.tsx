@@ -118,6 +118,10 @@ export default function TrustlineWarningModal({
                     {(reserveInfo.availableBalance - 2).toFixed(6)} XRP
                   </strong>
                 </div>
+                <div className="flex justify-between text-sm mt-2 pt-2 border-t border-gray-700">
+                  <span className="text-gray-400">Estimated Transaction Fee:</span>
+                  <span className="text-gray-300">~0.000012 XRP</span>
+                </div>
               </div>
 
               {!canAffordReserve && (
@@ -227,6 +231,18 @@ export default function TrustlineWarningModal({
                       Issuer can revoke your trustline access at any time
                     </p>
                   )}
+                  
+                  <div className="flex items-center justify-between">
+                    <span>Default Ripple:</span>
+                    <span className={issuerFlags.defaultRipple ? 'text-blue-400 font-semibold' : 'text-gray-400'}>
+                      {issuerFlags.defaultRipple ? 'ℹ️ ENABLED' : 'Disabled'}
+                    </span>
+                  </div>
+                  {issuerFlags.defaultRipple && (
+                    <p className="text-xs text-blue-300 ml-4">
+                      Rippling enabled - your balance may be used to facilitate payments between other users
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -238,6 +254,10 @@ export default function TrustlineWarningModal({
                 <li className="flex items-start gap-2">
                   <span className="text-purple-400">•</span>
                   <span><strong>RequireAuth:</strong> Revoke your ability to hold/trade tokens</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-purple-400">•</span>
+                  <span><strong>DefaultRipple:</strong> Allow tokens to be used as bridge for payments (total balance preserved)</span>
                 </li>
               </ul>
               <p className="text-yellow-400 text-xs mt-2">
@@ -257,6 +277,31 @@ export default function TrustlineWarningModal({
               </span>
             </label>
           </div>
+
+          {/* Authorization Required Warning */}
+          {issuerFlags?.requireAuth && (
+            <div className="bg-orange-500/10 border border-orange-500 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-orange-400 font-semibold">Authorization Required</p>
+                  <p className="text-sm text-orange-300 mt-1">
+                    This issuer requires explicit authorization for trustlines. After setting this trustline, you will NOT be able to receive tokens until the issuer approves your account. This may never happen for some issuers.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Rippling Warning */}
+          {issuerFlags?.defaultRipple && (
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <p className="text-blue-400 text-sm font-semibold">ℹ️ Rippling Enabled</p>
+              <p className="text-xs text-blue-300 mt-1">
+                This issuer has rippling enabled. Your token balance may be used to facilitate payments between other users, though your total balance is preserved.
+              </p>
+            </div>
+          )}
 
           {/* Removal Info */}
           <div className="bg-blue-500/10 border border-blue-500 rounded-lg p-4">

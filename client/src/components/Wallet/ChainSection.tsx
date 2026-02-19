@@ -168,7 +168,7 @@ export default function ChainSection({
                 <p className="text-sm text-gray-400">
                   {hideBalances ? '••••' : formatUsd(nativeUsdValue)}
                 </p>
-                {nativePriceChange24h !== undefined && (
+                {typeof nativePriceChange24h === 'number' && (
                   <span
                     className={`text-xs ${
                       nativePriceChange24h >= 0 ? 'text-green-400' : 'text-red-400'
@@ -285,7 +285,7 @@ export default function ChainSection({
                           <p className="text-xs text-gray-400">
                             {hideBalances ? '••••' : formatUsd(token.usdValue)}
                           </p>
-                          {token.priceChange24h !== undefined && (
+                          {typeof token.priceChange24h === 'number' && (
                             <span
                               className={`text-xs ${
                                 token.priceChange24h >= 0 ? 'text-green-400' : 'text-red-400'
@@ -332,6 +332,11 @@ export default function ChainSection({
                           {token.issuerFlags.requireAuth && (
                             <span className="text-xs text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded">
                               ⚠️ Require Auth
+                            </span>
+                          )}
+                          {token.issuerFlags.defaultRipple && (
+                            <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
+                              ℹ️ Rippling Enabled
                             </span>
                           )}
                         </div>

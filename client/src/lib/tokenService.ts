@@ -523,6 +523,19 @@ async function detectXRPLTrustlines(
     
     if (!response.result.lines) return { tokens: [] };
     
+    // Fetch issuer flags for each unique issuer (batch to avoid too many requests)
+    const uniqueIssuers = [...new Set(response.result.lines.map((line: any) => line.account))];
+    const issuerFlagsMap = new Map<string, any>();
+    
+    await Promise.all(uniqueIssuers.map(async (issuer) => {
+      try {
+        const issuerInfo = await fetchXRPLIssuerInfo(issuer);
+        issuerFlagsMap.set(issuer, issuerInfo.flags);
+      } catch (e) {
+        // Ignore errors fetching issuer info
+      }
+    }));
+    
     const tokens = response.result.lines.map((line: any) => {
       const decodedCurrency = decodeCurrencyCode(line.currency);
       return {
@@ -539,6 +552,7 @@ async function detectXRPLTrustlines(
         isNative: false,
         addedAt: new Date(),
         trustlineLimit: line.limit,
+        issuerFlags: issuerFlagsMap.get(line.account),  // Add issuer flags
       };
     });
     
