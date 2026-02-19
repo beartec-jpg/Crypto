@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
+// Reserved for future use: 'mini' mode will be used for smaller floating windows
 type OscillatorDisplayMode = 'bottom' | 'mini' | 'popout' | 'off';
 
 interface OscillatorSelectorModalProps {
@@ -72,9 +73,9 @@ export function OscillatorSelectorModal({
                   </Button>
                   <Button
                     size="sm"
-                    variant={mode === 'mini' ? 'default' : 'outline'}
+                    variant={(mode === 'mini' || mode === 'popout') ? 'default' : 'outline'}
                     onClick={() => onToggleOscillator(osc.id, 'mini')}
-                    className={mode === 'mini' 
+                    className={(mode === 'mini' || mode === 'popout')
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
                     }
@@ -83,9 +84,9 @@ export function OscillatorSelectorModal({
                   </Button>
                   <Button
                     size="sm"
-                    variant={mode === 'popout' ? 'default' : 'outline'}
+                    variant={(mode === 'mini' || mode === 'popout') ? 'default' : 'outline'}
                     onClick={() => onToggleOscillator(osc.id, 'popout')}
-                    className={mode === 'popout' 
+                    className={(mode === 'mini' || mode === 'popout')
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
                     }
