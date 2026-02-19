@@ -15,7 +15,7 @@ export interface UnsignedTransaction {
     destinationTag?: number;
     sequence?: number;
   };
-  hotShare: string; // base64-encoded Shamir share
+  hotShare: string; // hex-encoded Shamir share
 }
 
 export interface EncryptedShare {
