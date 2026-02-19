@@ -1,4 +1,4 @@
-import { Minus, TrendingUp, Square, Divide, GitBranch, Activity, type LucideIcon } from 'lucide-react';
+import { Square, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -11,7 +11,8 @@ import type { ChartDrawingTool } from '@/types/drawing';
 
 interface ToolConfig {
   id: ChartDrawingTool;
-  icon: LucideIcon;
+  icon?: LucideIcon;
+  imageSrc?: string;
   label: string;
   description: string;
 }
@@ -19,13 +20,13 @@ interface ToolConfig {
 const TOOLS: ToolConfig[] = [
   {
     id: 'trendline',
-    icon: TrendingUp,
+    imageSrc: '/grok_image_1771520120762.jpg',
     label: 'Trendline',
     description: 'Draw diagonal trendline',
   },
   {
     id: 'horizontal',
-    icon: Minus,
+    imageSrc: '/grok_image_1771520273030.jpg',
     label: 'Horizontal Line',
     description: 'Draw horizontal support/resistance',
   },
@@ -37,19 +38,19 @@ const TOOLS: ToolConfig[] = [
   },
   {
     id: 'fib_retracement',
-    icon: Divide,
+    imageSrc: '/grok_image_1771521978179.jpg',
     label: 'Fib Retracement',
     description: 'Fibonacci retracement levels',
   },
   {
     id: 'trend_fib',
-    icon: Activity,
+    imageSrc: '/grok_image_1771522020838.jpg',
     label: 'Trend Fib',
     description: 'Fibonacci extension from trend',
   },
   {
     id: 'channel',
-    icon: GitBranch,
+    imageSrc: '/grok_image_1771520978164.jpg',
     label: 'Channel',
     description: 'Parallel price channel',
   },
@@ -109,9 +110,14 @@ export function VerticalDrawingToolbar({
                     }
                   `}
                   aria-label={tool.label}
+                  title={tool.label}
                   aria-pressed={isActive}
                 >
-                  <Icon className="h-5 w-5" />
+                  {tool.imageSrc ? (
+                    <img src={tool.imageSrc} alt={tool.label} className="h-5 w-5 object-contain" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                  ) : Icon ? (
+                    <Icon className="h-5 w-5" />
+                  ) : null}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right" className="bg-slate-800 text-white border-slate-600">
@@ -137,7 +143,7 @@ export function VerticalDrawingToolbar({
 export function DrawingToolbarPreview() {
   return (
     <div className="h-10 w-10 flex items-center justify-center text-slate-400 opacity-60">
-      <TrendingUp className="h-5 w-5" />
+      <img src="/grok_image_1771520120762.jpg" alt="Trendline" className="h-5 w-5 object-contain" />
     </div>
   );
 }
