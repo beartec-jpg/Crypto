@@ -2,6 +2,12 @@ import { DraggableOscillatorWindow } from '@/components/draggable/DraggableOscil
 import { RSIPanel } from '@/components/indicators/oscillators/RSIPanel';
 import { MACDPanel } from '@/components/indicators/oscillators/MACDPanel';
 import { VolumePanel } from '@/components/indicators/oscillators/VolumePanel';
+import { StochasticPanel } from '@/components/indicators/oscillators/StochasticPanel';
+import { WilliamsRPanel } from '@/components/indicators/oscillators/WilliamsRPanel';
+import { CCIPanel } from '@/components/indicators/oscillators/CCIPanel';
+import { ADXPanel } from '@/components/indicators/oscillators/ADXPanel';
+import { OBVPanel } from '@/components/indicators/oscillators/OBVPanel';
+import { MFIPanel } from '@/components/indicators/oscillators/MFIPanel';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 
 interface CandleData {
@@ -27,6 +33,12 @@ const OSCILLATOR_CONFIG = [
   { id: 'rsi', title: 'RSI (14)', storageKey: 'oscillator-rsi', defaultPos: { x: 10, y: 80 } },
   { id: 'macd', title: 'MACD', storageKey: 'oscillator-macd', defaultPos: { x: 10, y: 220 } },
   { id: 'volume', title: 'Volume', storageKey: 'oscillator-volume', defaultPos: { x: 10, y: 360 } },
+  { id: 'stochRsi', title: 'Stoch RSI (14,14,3,3)', storageKey: 'oscillator-stochrsi', defaultPos: { x: 10, y: 500 } },
+  { id: 'williamsR', title: 'Williams %R (14)', storageKey: 'oscillator-williamsr', defaultPos: { x: 10, y: 640 } },
+  { id: 'cci', title: 'CCI (20)', storageKey: 'oscillator-cci', defaultPos: { x: 10, y: 780 } },
+  { id: 'adx', title: 'ADX (14)', storageKey: 'oscillator-adx', defaultPos: { x: 10, y: 920 } },
+  { id: 'obv', title: 'OBV', storageKey: 'oscillator-obv', defaultPos: { x: 10, y: 1060 } },
+  { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi', defaultPos: { x: 10, y: 1200 } },
 ];
 
 export function PoppedOutOscillators({
@@ -56,6 +68,18 @@ export function PoppedOutOscillators({
         );
       case 'volume':
         return <VolumePanel data={oscillatorData.volume} mainChartVisibleRange={mainChartVisibleRange} />;
+      case 'stochRsi':
+        return <StochasticPanel data={oscillatorData.stochRsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+      case 'williamsR':
+        return <WilliamsRPanel data={oscillatorData.williamsR} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+      case 'cci':
+        return <CCIPanel data={oscillatorData.cci} period={20} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+      case 'adx':
+        return <ADXPanel data={oscillatorData.adx} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+      case 'obv':
+        return <OBVPanel data={oscillatorData.obv} mainChartVisibleRange={mainChartVisibleRange} />;
+      case 'mfi':
+        return <MFIPanel data={oscillatorData.mfi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
       default:
         return null;
     }

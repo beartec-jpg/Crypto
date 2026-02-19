@@ -9,9 +9,15 @@ interface OscillatorSelectorModalProps {
 }
 
 const OSCILLATORS = [
-  { id: 'rsi', name: 'RSI', description: 'Relative Strength Index' },
+  { id: 'rsi', name: 'RSI', description: 'Relative Strength Index (14)' },
   { id: 'macd', name: 'MACD', description: 'Moving Average Convergence Divergence' },
-  { id: 'volume', name: 'Volume', description: 'Trading Volume' },
+  { id: 'volume', name: 'Volume', description: 'Trading Volume vs Average' },
+  { id: 'stochRsi', name: 'Stoch RSI', description: 'Stochastic RSI (14,14,3,3)' },
+  { id: 'williamsR', name: 'Williams %R', description: 'Williams Percent Range (14)' },
+  { id: 'cci', name: 'CCI', description: 'Commodity Channel Index (20)' },
+  { id: 'adx', name: 'ADX', description: 'Average Directional Index (14)' },
+  { id: 'obv', name: 'OBV', description: 'On Balance Volume' },
+  { id: 'mfi', name: 'MFI', description: 'Money Flow Index (14)' },
 ];
 
 export function OscillatorSelectorModal({
