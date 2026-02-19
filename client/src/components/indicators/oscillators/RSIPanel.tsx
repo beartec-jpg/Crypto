@@ -72,7 +72,16 @@ export function RSIPanel({
     return () => {
       chart.remove();
     };
-  }, [data, candles, period, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
+  }, [data, candles, period, onChartCreated]);
+
+  // Sync time axis with main chart when visible range changes
+  useEffect(() => {
+    if (chartRef.current && mainChartVisibleRange) {
+      try {
+        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+      } catch (e) { /* ignore if range invalid */ }
+    }
+  }, [mainChartVisibleRange]);
 
   return <div ref={containerRef} className="w-full" style={{ height }} data-testid="chart-rsi" />;
 }

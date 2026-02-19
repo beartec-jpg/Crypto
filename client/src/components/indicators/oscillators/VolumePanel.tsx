@@ -74,7 +74,16 @@ export function VolumePanel({
     return () => {
       chart.remove();
     };
-  }, [data, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
+  }, [data, onChartCreated]);
+
+  // Sync time axis with main chart when visible range changes
+  useEffect(() => {
+    if (chartRef.current && mainChartVisibleRange) {
+      try {
+        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+      } catch (e) { /* ignore if range invalid */ }
+    }
+  }, [mainChartVisibleRange]);
 
   return <div ref={containerRef} className="w-full" style={{ height }} data-testid="chart-volume" />;
 }

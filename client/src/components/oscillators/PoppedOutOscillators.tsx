@@ -19,6 +19,7 @@ interface PoppedOutOscillatorsProps {
   oscillatorData: OscillatorData;
   candles: CandleData[];
   onPopout: (id: string) => void;
+  mainChartVisibleRange?: any;
 }
 
 const OSCILLATOR_CONFIG = [
@@ -33,11 +34,12 @@ export function PoppedOutOscillators({
   oscillatorData,
   candles,
   onPopout,
+  mainChartVisibleRange,
 }: PoppedOutOscillatorsProps) {
   const renderOscillatorContent = (id: string) => {
     switch (id) {
       case 'rsi':
-        return <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} />;
+        return <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
       case 'macd':
         return (
           <MACDPanel 
@@ -47,10 +49,11 @@ export function PoppedOutOscillators({
             fastPeriod={12}
             slowPeriod={26}
             signalPeriod={9}
+            mainChartVisibleRange={mainChartVisibleRange}
           />
         );
       case 'volume':
-        return <VolumePanel data={oscillatorData.volume} />;
+        return <VolumePanel data={oscillatorData.volume} mainChartVisibleRange={mainChartVisibleRange} />;
       default:
         return null;
     }
@@ -65,11 +68,8 @@ export function PoppedOutOscillators({
           <DraggableOscillatorWindow
             key={id}
             title={title}
-            onClose={() => onPopout(id)}
-            onDock={() => onPopout(id)}
             storageKey={storageKey}
             initialPosition={defaultPos}
-            width={500}
             height={200}
           >
             {renderOscillatorContent(id)}
