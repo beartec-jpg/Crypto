@@ -16,7 +16,9 @@
     "test:ui": "vitest --ui",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "build:cold": "cd cold-signer && npm run build",
+    "dev:cold": "cd cold-signer && npm run dev"
   },
   "dependencies": {
     "@clerk/backend": "^2.25.1",
@@ -109,6 +111,7 @@
     "react-resizable-panels": "^3.0.6",
     "recharts": "^3.5.1",
     "ripple-keypairs": "^2.0.0",
+    "secrets.js-grempe": "^2.0.0",
     "stripe": "^14.0.0",
     "stripe-replit-sync": "^1.0.0",
     "tailwind-merge": "^3.4.0",
