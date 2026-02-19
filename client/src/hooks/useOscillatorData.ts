@@ -26,6 +26,9 @@ export interface OscillatorData {
   avgVolume: number;
 }
 
+// Number of candles to use for volume average calculation
+const VOLUME_AVERAGE_PERIOD = 20;
+
 /**
  * Calculate oscillator data from candle data
  * @param candles - Array of candlestick data
@@ -49,7 +52,7 @@ export function useOscillatorData(candles: CandleData[]): OscillatorData {
     const macdData = calculateMACD(candles, 12, 26, 9);
 
     // Calculate average volume for percentage
-    const avgVolume = candles.slice(-20).reduce((sum, c) => sum + c.volume, 0) / 20;
+    const avgVolume = candles.slice(-VOLUME_AVERAGE_PERIOD).reduce((sum, c) => sum + c.volume, 0) / VOLUME_AVERAGE_PERIOD;
 
     // Format volume data
     const volumeData = candles.map((c) => ({
