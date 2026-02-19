@@ -66,7 +66,7 @@ export function OscillatorSelectorModal({
                   <Button
                     size="sm"
                     variant={mode === 'bottom' ? 'default' : 'outline'}
-                    onClick={() => onToggleOscillator(osc.id, 'bottom')}
+                    onClick={() => onToggleOscillator(osc.id, mode === 'bottom' ? 'off' : 'bottom')}
                     className={mode === 'bottom' 
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
@@ -77,7 +77,7 @@ export function OscillatorSelectorModal({
                   <Button
                     size="sm"
                     variant={mode === 'mini' ? 'default' : 'outline'}
-                    onClick={() => onToggleOscillator(osc.id, 'mini')}
+                    onClick={() => onToggleOscillator(osc.id, mode === 'mini' ? 'off' : 'mini')}
                     className={mode === 'mini'
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
@@ -88,13 +88,24 @@ export function OscillatorSelectorModal({
                   <Button
                     size="sm"
                     variant={mode === 'popout' ? 'default' : 'outline'}
-                    onClick={() => onToggleOscillator(osc.id, 'popout')}
+                    onClick={() => onToggleOscillator(osc.id, mode === 'popout' ? 'off' : 'popout')}
                     className={mode === 'popout'
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
                     }
                   >
                     Popout
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={mode === 'off' ? 'default' : 'outline'}
+                    onClick={() => onToggleOscillator(osc.id, 'off')}
+                    className={mode === 'off'
+                      ? 'bg-slate-600 hover:bg-slate-700 text-white'
+                      : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
+                    }
+                  >
+                    Off
                   </Button>
                 </div>
               </div>

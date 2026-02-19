@@ -1,95 +1,195 @@
-import { ReactNode, useState, useMemo } from 'react';
-import { useDraggable } from '@/hooks/useDraggable';
-import { Minimize2, Maximize2 } from 'lucide-react';
+import { ReactNode, useState, useRef, useCallback, useEffect } from 'react';
+import { GripVertical } from 'lucide-react';
 
 interface DraggableOscillatorWindowProps {
   title: string;
   children: ReactNode;
   storageKey?: string;
   initialPosition?: { x: number; y: number };
-  height?: number;
+  initialSize?: { width: number; height: number };
 }
 
-// Width mode constants
-const FULL_WIDTH_PERCENTAGE = 0.9; // 90% of screen width
-const FULL_WIDTH_LEFT_MARGIN = '5%'; // Center with 5% margin on each side
-const HALF_WIDTH_PERCENTAGE = 0.48; // 48% so two can fit side by side
+const MIN_WIDTH = 150;
+const MIN_HEIGHT = 80;
+const DEFAULT_WIDTH = 200;
+const DEFAULT_HEIGHT = 120;
+const TITLE_BAR_HEIGHT = 28;
 
 export function DraggableOscillatorWindow({
   title,
   children,
   storageKey,
-  initialPosition = { x: 100, y: 100 },
-  height = 200,
+  initialPosition = { x: 20, y: 100 },
+  initialSize = { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT },
 }: DraggableOscillatorWindowProps) {
-  // Width toggle state - load from localStorage
-  const widthStorageKey = storageKey ? `${storageKey}-width` : undefined;
-  const [isFullWidth, setIsFullWidth] = useState(() => {
-    if (!widthStorageKey) return false;
-    try {
-      const saved = localStorage.getItem(widthStorageKey);
-      return saved ? JSON.parse(saved) : false;
-    } catch {
-      return false;
-    }
-  });
-  
-  // Save width preference to localStorage
-  const toggleWidth = () => {
-    const newValue = !isFullWidth;
-    setIsFullWidth(newValue);
-    if (widthStorageKey) {
+  // Load position from localStorage
+  const [position, setPosition] = useState(() => {
+    if (storageKey) {
       try {
-        localStorage.setItem(widthStorageKey, JSON.stringify(newValue));
-      } catch (e) {
-        console.warn('Failed to save width preference:', e);
-      }
+        const saved = localStorage.getItem(`${storageKey}-pos`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
     }
+    return initialPosition;
+  });
+
+  // Load size from localStorage
+  const [size, setSize] = useState(() => {
+    if (storageKey) {
+      try {
+        const saved = localStorage.getItem(`${storageKey}-size`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return initialSize;
+  });
+
+  const isDragging = useRef(false);
+  const isResizing = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const resizeStart = useRef({ width: 0, height: 0, x: 0, y: 0 });
+
+  // Save position to localStorage
+  useEffect(() => {
+    if (storageKey) {
+      localStorage.setItem(`${storageKey}-pos`, JSON.stringify(position));
+    }
+  }, [position, storageKey]);
+
+  // Save size to localStorage
+  useEffect(() => {
+    if (storageKey) {
+      localStorage.setItem(`${storageKey}-size`, JSON.stringify(size));
+    }
+  }, [size, storageKey]);
+
+  // Drag handlers
+  const handleDragStart = useCallback((clientX: number, clientY: number) => {
+    isDragging.current = true;
+    dragStart.current = { x: clientX - position.x, y: clientY - position.y };
+  }, [position]);
+
+  const handleDragMove = useCallback((clientX: number, clientY: number) => {
+    if (!isDragging.current) return;
+    const newX = Math.max(0, Math.min(window.innerWidth - size.width, clientX - dragStart.current.x));
+    const newY = Math.max(0, Math.min(window.innerHeight - size.height, clientY - dragStart.current.y));
+    setPosition({ x: newX, y: newY });
+  }, [size]);
+
+  const handleDragEnd = useCallback(() => {
+    isDragging.current = false;
+  }, []);
+
+  // Resize handlers
+  const handleResizeStart = useCallback((clientX: number, clientY: number) => {
+    isResizing.current = true;
+    resizeStart.current = { width: size.width, height: size.height, x: clientX, y: clientY };
+  }, [size]);
+
+  const handleResizeMove = useCallback((clientX: number, clientY: number) => {
+    if (!isResizing.current) return;
+    const deltaX = clientX - resizeStart.current.x;
+    const deltaY = clientY - resizeStart.current.y;
+    const newWidth = Math.max(MIN_WIDTH, resizeStart.current.width + deltaX);
+    const newHeight = Math.max(MIN_HEIGHT, resizeStart.current.height + deltaY);
+    setSize({ width: newWidth, height: newHeight });
+  }, []);
+
+  const handleResizeEnd = useCallback(() => {
+    isResizing.current = false;
+  }, []);
+
+  // Mouse event handlers
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    handleDragStart(e.clientX, e.clientY);
   };
 
-  const { position, isDragging, dragHandleProps } = useDraggable({
-    storageKey,
-    initialPosition,
-  });
-  
-  // Memoize width calculation
-  const actualWidth = useMemo(() => {
-    return isFullWidth
-      ? window.innerWidth * FULL_WIDTH_PERCENTAGE
-      : window.innerWidth * HALF_WIDTH_PERCENTAGE;
-  }, [isFullWidth]);
+  const onResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleResizeStart(e.clientX, e.clientY);
+  };
+
+  // Touch event handlers
+  const onTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    handleDragStart(touch.clientX, touch.clientY);
+  };
+
+  const onResizeTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    handleResizeStart(touch.clientX, touch.clientY);
+  };
+
+  // Global mouse/touch move and end
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      handleDragMove(e.clientX, e.clientY);
+      handleResizeMove(e.clientX, e.clientY);
+    };
+    const onMouseUp = () => {
+      handleDragEnd();
+      handleResizeEnd();
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      handleDragMove(touch.clientX, touch.clientY);
+      handleResizeMove(touch.clientX, touch.clientY);
+    };
+    const onTouchEnd = () => {
+      handleDragEnd();
+      handleResizeEnd();
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('touchmove', onTouchMove);
+    window.addEventListener('touchend', onTouchEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [handleDragMove, handleDragEnd, handleResizeMove, handleResizeEnd]);
 
   return (
     <div
-      data-draggable // Marker for useDraggable hook to find the draggable element
-      className="fixed z-40 bg-slate-900 rounded-lg shadow-xl overflow-hidden"
+      className="fixed z-50 bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden"
       style={{
-        left: isFullWidth ? FULL_WIDTH_LEFT_MARGIN : position.x,
+        left: position.x,
         top: position.y,
-        width: actualWidth,
-        minHeight: height,
+        width: size.width,
+        height: size.height,
       }}
     >
-      {/* Title Bar / Drag Handle */}
+      {/* Title Bar - Drag Handle */}
       <div
-        {...dragHandleProps}
-        className="flex items-center justify-between px-3 py-2 bg-slate-800 cursor-grab active:cursor-grabbing"
+        onMouseDown={onMouseDown}
+        onTouchStart={onTouchStart}
+        className="flex items-center gap-2 px-2 py-1 bg-slate-800 cursor-grab active:cursor-grabbing select-none"
       >
-        <span className="text-sm font-medium text-white">{title}</span>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={toggleWidth}
-            className="p-1 hover:bg-slate-700 rounded"
-            title={isFullWidth ? "Half Width" : "Full Width"}
-          >
-            {isFullWidth ? <Minimize2 className="h-3 w-3 text-slate-400" /> : <Maximize2 className="h-3 w-3 text-slate-400" />}
-          </button>
-        </div>
+        <GripVertical className="h-3 w-3 text-slate-500" />
+        <span className="text-xs font-medium text-white truncate flex-1">{title}</span>
       </div>
-      {/* Content */}
-      <div className="p-2">
+
+      {/* Content - chart will fill this and scale with size */}
+      <div className="relative" style={{ height: size.height - TITLE_BAR_HEIGHT }}>
         {children}
       </div>
+
+      {/* Resize Handle - Bottom Right Corner */}
+      <div
+        onMouseDown={onResizeMouseDown}
+        onTouchStart={onResizeTouchStart}
+        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+        style={{
+          background: 'linear-gradient(135deg, transparent 50%, #475569 50%)',
+        }}
+      />
     </div>
   );
 }

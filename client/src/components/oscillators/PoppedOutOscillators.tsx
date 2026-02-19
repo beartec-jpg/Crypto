@@ -23,9 +23,9 @@ interface PoppedOutOscillatorsProps {
 }
 
 const OSCILLATOR_CONFIG = [
-  { id: 'rsi', title: 'RSI (14)', storageKey: 'oscillator-rsi-position', defaultPos: { x: 100, y: 100 } },
-  { id: 'macd', title: 'MACD (12, 26, 9)', storageKey: 'oscillator-macd-position', defaultPos: { x: 150, y: 150 } },
-  { id: 'volume', title: 'Volume', storageKey: 'oscillator-volume-position', defaultPos: { x: 200, y: 200 } },
+  { id: 'rsi', title: 'RSI (14)', storageKey: 'oscillator-rsi', defaultPos: { x: 10, y: 80 } },
+  { id: 'macd', title: 'MACD', storageKey: 'oscillator-macd', defaultPos: { x: 10, y: 220 } },
+  { id: 'volume', title: 'Volume', storageKey: 'oscillator-volume', defaultPos: { x: 10, y: 360 } },
 ];
 
 export function PoppedOutOscillators({
@@ -70,7 +70,6 @@ export function PoppedOutOscillators({
             title={title}
             storageKey={storageKey}
             initialPosition={defaultPos}
-            height={200}
           >
             {renderOscillatorContent(id)}
           </DraggableOscillatorWindow>
