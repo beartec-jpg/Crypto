@@ -50,7 +50,8 @@ export function OscillatorSelectorModal({
           {OSCILLATORS.map((osc) => {
             const mode = getOscillatorMode(osc.id);
             // Both mini and popout buttons are highlighted when oscillator is popped out
-            // until the modes are distinguished in a future update
+            // This is intentional: both modes currently behave identically (floating window)
+            // Future enhancement: Distinguish between mini (smaller) and popout (larger) windows
             const isFloating = mode === 'mini' || mode === 'popout';
             
             return (
