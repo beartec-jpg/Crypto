@@ -84,9 +84,9 @@ export function VerticalDrawingToolbar({
     <TooltipProvider delayDuration={200}>
       <div 
         className={cn(
-          "flex gap-2",
+          "flex gap-0",
           isVertical ? "flex-col" : "flex-row",
-          "bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl",
+          "bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-0 shadow-xl",
           className
         )}
         style={style}
@@ -103,7 +103,7 @@ export function VerticalDrawingToolbar({
                   size="icon"
                   onClick={() => handleToolClick(tool.id)}
                   className={`
-                    h-20 w-20 transition-all
+                    h-10 w-10 p-0 transition-all
                     ${isActive 
                       ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/50' 
                       : 'text-slate-300 hover:text-white hover:bg-slate-800'
@@ -114,9 +114,9 @@ export function VerticalDrawingToolbar({
                   aria-pressed={isActive}
                 >
                   {tool.imageSrc ? (
-                    <img src={tool.imageSrc} alt={tool.label} className="h-10 w-10 object-contain" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                    <img src={tool.imageSrc} alt={tool.label} className="h-full w-full object-contain" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                   ) : Icon ? (
-                    <Icon className="h-10 w-10" />
+                    <Icon className="h-full w-full" />
                   ) : null}
                 </Button>
               </TooltipTrigger>
