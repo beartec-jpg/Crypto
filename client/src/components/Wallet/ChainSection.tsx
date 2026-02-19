@@ -334,7 +334,7 @@ export default function ChainSection({
                               ⚠️ Require Auth
                             </span>
                           )}
-                          {token.issuerFlags.defaultRipple && (
+                          {token.issuerFlags?.defaultRipple && (
                             <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
                               ℹ️ Rippling Enabled
                             </span>

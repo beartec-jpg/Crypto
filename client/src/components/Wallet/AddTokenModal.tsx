@@ -222,7 +222,7 @@ const handleVerify = async () => {
       // Check if trustline already exists
       const existingTrustlines = await getXRPLTrustlines(walletAddress);
       const alreadyExists = existingTrustlines.some(
-        tl => tl.currency.toUpperCase() === verifiedToken.currencyCode?.toUpperCase() && 
+        tl => tl.currency.toUpperCase() === verifiedToken.currencyCode && 
               tl.issuer === verifiedToken.issuer
       );
       
