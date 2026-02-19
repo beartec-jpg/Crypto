@@ -1,0 +1,71 @@
+/**
+ * Hook for calculating oscillator data
+ * Extracted from ChartFullscreenPage.tsx for reusability
+ */
+
+import { useMemo } from 'react';
+import { calculateRSI, calculateMACD } from '@/lib/indicators/momentum';
+
+interface CandleData {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface OscillatorData {
+  rsi: Array<{ time: number; value: number }>;
+  macd: {
+    macd: Array<{ time: number; value: number }>;
+    signal: Array<{ time: number; value: number }>;
+    hist: Array<{ time: number; value: number; color: string }>;
+  };
+  volume: Array<{ time: number; value: number; color: string }>;
+  avgVolume: number;
+}
+
+// Number of candles to use for volume average calculation
+const VOLUME_AVERAGE_PERIOD = 20;
+
+/**
+ * Calculate oscillator data from candle data
+ * @param candles - Array of candlestick data
+ * @returns Calculated oscillator data (RSI, MACD, Volume)
+ */
+export function useOscillatorData(candles: CandleData[]): OscillatorData {
+  return useMemo(() => {
+    if (candles.length === 0) {
+      return {
+        rsi: [],
+        macd: { macd: [], signal: [], hist: [] },
+        volume: [],
+        avgVolume: 0,
+      };
+    }
+
+    // Calculate RSI
+    const rsiData = calculateRSI(candles, 14);
+
+    // Calculate MACD
+    const macdData = calculateMACD(candles, 12, 26, 9);
+
+    // Calculate average volume for percentage
+    const avgVolume = candles.slice(-VOLUME_AVERAGE_PERIOD).reduce((sum, c) => sum + c.volume, 0) / VOLUME_AVERAGE_PERIOD;
+
+    // Format volume data
+    const volumeData = candles.map((c) => ({
+      time: c.time,
+      value: c.volume,
+      color: c.close >= c.open ? '#26a69a' : '#ef5350',
+    }));
+
+    return {
+      rsi: rsiData,
+      macd: macdData,
+      volume: volumeData,
+      avgVolume,
+    };
+  }, [candles]);
+}

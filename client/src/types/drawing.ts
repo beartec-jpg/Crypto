@@ -20,6 +20,19 @@ export type DrawingTool =
   | 'elliottwave' 
   | null;
 
+/**
+ * Limited DrawingTool type for ChartFullscreenPage
+ * Subset of DrawingTool with simplified tool names
+ */
+export type ChartDrawingTool = 
+  | 'trendline' 
+  | 'horizontal' 
+  | 'rectangle' 
+  | 'fib_retracement' 
+  | 'trend_fib' 
+  | 'channel' 
+  | null;
+
 export type LineStyle = 'solid' | 'dashed' | 'dotted';
 
 export type TrendlineMode = 'magnet' | 'free' | null;
@@ -230,3 +243,54 @@ export type SelectionCandidate = {
   id: string; 
   type: 'trendline' | 'horizontal' | 'channel' | 'hchannel' | 'schannel' | 'fib' | 'trendfib' | 'label' 
 };
+
+/**
+ * Generic Drawing interface used in ChartFullscreenPage
+ * Provides a flexible structure for all drawing types
+ */
+export interface Drawing {
+  id: string;
+  type: string;
+  points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[];
+  style: {
+    color: string;
+    lineWidth: number;
+    opacity?: number;
+    lineStyle?: 'solid' | 'dashed' | 'dotted';
+    internalLineStyle?: 'solid' | 'dashed' | 'dotted';
+    extendLeft?: boolean;
+    extendRight?: boolean;
+    labelPosition?: 'left' | 'right';
+    hiddenLevels?: number[];
+    customLabels?: Record<number | string, string>;
+    customValues?: Record<number, number>;
+    label?: string;
+    autoColor?: boolean;
+    hideLabels?: boolean;
+    levelColors?: Record<number, string>;
+    boundaryColors?: Record<string, string>;
+    fillOpacity?: number;
+    __openColorPicker?: string | null;
+  };
+}
+
+/**
+ * Default style properties for drawings
+ */
+export interface DrawingDefaults {
+  opacity?: number;
+  lineStyle?: 'solid' | 'dashed' | 'dotted';
+  internalLineStyle?: 'solid' | 'dashed' | 'dotted';
+  extendLeft?: boolean;
+  extendRight?: boolean;
+  labelPosition?: 'left' | 'right';
+  hiddenLevels?: number[];
+  customLabels?: Record<number | string, string>;
+  customValues?: Record<number, number>;
+  label?: string;
+  autoColor?: boolean;
+  hideLabels?: boolean;
+  levelColors?: Record<number, string>;
+  boundaryColors?: Record<string, string>;
+  fillOpacity?: number;
+}

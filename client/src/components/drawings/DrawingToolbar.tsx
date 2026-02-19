@@ -1,12 +1,10 @@
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-
-// Local DrawingTool type matching CryptoIndicators.tsx
-type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
+import type { ChartDrawingTool } from '@/types/drawing';
 
 interface DrawingToolbarProps {
-  activeTool: DrawingTool | null;
-  onSelectTool: (tool: DrawingTool) => void;
+  activeTool: ChartDrawingTool | null;
+  onSelectTool: (tool: ChartDrawingTool) => void;
   showToolPicker: boolean;
   onToggleToolPicker: () => void;
 }
@@ -29,7 +27,7 @@ export function DrawingToolbar({
   ];
 
   const handleToolSelect = (toolId: string) => {
-    onSelectTool(toolId as DrawingTool);
+    onSelectTool(toolId as ChartDrawingTool);
     toast({ 
       title: `${tools.find(t => t.id === toolId)?.name} Selected`, 
       description: 'Tap chart to place points',
