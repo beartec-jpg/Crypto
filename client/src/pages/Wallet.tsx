@@ -131,13 +131,6 @@ export default function WalletPage() {
       
       const requirements = getSecurityRequirements(userId, 'openWallet');
       
-      if (requirements.length === 0) {
-        setSovereignWallet(wallet);
-        setIsWalletUnlocked(true);
-        setIsPasskeyAuthenticated(true);
-        return;
-      }
-      
       setPendingWallet(wallet);
       
       if (requirements.includes('pin')) {
