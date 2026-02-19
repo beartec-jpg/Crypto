@@ -9,7 +9,7 @@ interface OscillatorSelectorModalProps {
   onClose: () => void;
   selectedOscillators: Set<string>;
   poppedOutOscillators: Set<string>;
-  onToggleOscillator: (oscillator: string, mode: OscillatorDisplayMode) => void;
+  onToggleOscillator: (oscillator: string, mode?: OscillatorDisplayMode) => void;
 }
 
 const OSCILLATORS = [
@@ -49,6 +49,9 @@ export function OscillatorSelectorModal({
         <div className="space-y-4 py-4">
           {OSCILLATORS.map((osc) => {
             const mode = getOscillatorMode(osc.id);
+            // Both mini and popout buttons are highlighted when oscillator is popped out
+            // until the modes are distinguished in a future update
+            const isFloating = mode === 'mini' || mode === 'popout';
             
             return (
               <div 
@@ -73,9 +76,9 @@ export function OscillatorSelectorModal({
                   </Button>
                   <Button
                     size="sm"
-                    variant={(mode === 'mini' || mode === 'popout') ? 'default' : 'outline'}
+                    variant={isFloating ? 'default' : 'outline'}
                     onClick={() => onToggleOscillator(osc.id, 'mini')}
-                    className={(mode === 'mini' || mode === 'popout')
+                    className={isFloating
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
                     }
@@ -84,9 +87,9 @@ export function OscillatorSelectorModal({
                   </Button>
                   <Button
                     size="sm"
-                    variant={(mode === 'mini' || mode === 'popout') ? 'default' : 'outline'}
+                    variant={isFloating ? 'default' : 'outline'}
                     onClick={() => onToggleOscillator(osc.id, 'popout')}
-                    className={(mode === 'mini' || mode === 'popout')
+                    className={isFloating
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
                     }
