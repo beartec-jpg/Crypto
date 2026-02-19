@@ -8,6 +8,7 @@ interface RSIPanelProps {
   onChartCreated?: (chart: IChartApi) => void;
   syncWithMainChart?: boolean;
   mainChartVisibleRange?: any;
+  height?: number;
 }
 
 export function RSIPanel({ 
@@ -16,7 +17,8 @@ export function RSIPanel({
   candles, 
   onChartCreated,
   syncWithMainChart,
-  mainChartVisibleRange 
+  mainChartVisibleRange,
+  height = 200,
 }: RSIPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -26,7 +28,7 @@ export function RSIPanel({
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
-      height: 200, 
+      height: height, 
       layout: {
         background: { type: ColorType.Solid, color: '#1e293b' },
         textColor: '#94a3b8',
@@ -72,5 +74,5 @@ export function RSIPanel({
     };
   }, [data, candles, period, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" data-testid="chart-rsi" />;
+  return <div ref={containerRef} className="w-full" style={{ height }} data-testid="chart-rsi" />;
 }

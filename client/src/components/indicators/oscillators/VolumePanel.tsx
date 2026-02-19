@@ -6,13 +6,15 @@ interface VolumePanelProps {
   onChartCreated?: (chart: IChartApi) => void;
   syncWithMainChart?: boolean;
   mainChartVisibleRange?: any;
+  height?: number;
 }
 
 export function VolumePanel({ 
   data, 
   onChartCreated,
   syncWithMainChart,
-  mainChartVisibleRange 
+  mainChartVisibleRange,
+  height = 120,
 }: VolumePanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -22,7 +24,7 @@ export function VolumePanel({
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
-      height: 120, 
+      height: height, 
       layout: {
         background: { type: ColorType.Solid, color: '#1e293b' },
         textColor: '#94a3b8',
@@ -74,5 +76,5 @@ export function VolumePanel({
     };
   }, [data, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" data-testid="chart-volume" />;
+  return <div ref={containerRef} className="w-full" style={{ height }} data-testid="chart-volume" />;
 }
