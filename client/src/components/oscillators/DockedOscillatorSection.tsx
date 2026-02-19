@@ -9,7 +9,7 @@ interface DockedOscillatorSectionProps {
   selectedOscillators: Set<string>;
   poppedOutOscillators: Set<string>;
   oscillatorData: OscillatorData;
-  candles: any[];
+  candles: { time: number }[];
   totalOscillatorHeight: number;
   onPopout: (oscillatorId: string) => void;
 }
