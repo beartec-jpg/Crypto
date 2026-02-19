@@ -19,6 +19,7 @@ import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import { FullscreenChartToolbar } from '@/components/chart/FullscreenChartToolbar';
 import { PoppedOutOscillators } from '@/components/oscillators/PoppedOutOscillators';
 import { ChartLoadingOverlay } from '@/components/chart/ChartLoadingOverlay';
+import { MiniOscillatorSection } from '@/components/oscillators/MiniOscillatorSection';
 
 // Existing components
 import { Button } from '@/components/ui/button';
@@ -252,6 +253,13 @@ export function ChartFullscreenPage({
           </Button>
         </div>
 
+        {/* Mini Oscillator Indicators */}
+        <MiniOscillatorSection
+          miniOscillators={oscillatorPanel.miniOscillators}
+          oscillatorData={oscillatorData}
+          onToggleMode={oscillatorPanel.toggleMini}
+        />
+
         {/* Drawing Toolbar */}
         <DraggableToolbar 
           storageKey="chart-drawing-toolbar-position"
@@ -338,6 +346,7 @@ export function ChartFullscreenPage({
       <DockedOscillatorSection
         selectedOscillators={oscillatorPanel.selectedOscillators}
         poppedOutOscillators={oscillatorPanel.poppedOutOscillators}
+        miniOscillators={oscillatorPanel.miniOscillators}
         oscillatorData={oscillatorData}
         candles={candles}
         totalOscillatorHeight={oscillatorPanel.totalHeight}
@@ -396,6 +405,7 @@ export function ChartFullscreenPage({
         onClose={() => oscillatorPanel.setShowSelector(false)}
         selectedOscillators={oscillatorPanel.selectedOscillators}
         poppedOutOscillators={oscillatorPanel.poppedOutOscillators}
+        miniOscillators={oscillatorPanel.miniOscillators}
         onToggleOscillator={oscillatorPanel.toggleOscillator}
       />
     </div>

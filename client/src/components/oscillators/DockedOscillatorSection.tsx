@@ -8,6 +8,7 @@ import type { OscillatorData } from '@/hooks/useOscillatorData';
 interface DockedOscillatorSectionProps {
   selectedOscillators: Set<string>;
   poppedOutOscillators: Set<string>;
+  miniOscillators?: Set<string>;
   oscillatorData: OscillatorData;
   candles: { time: number }[];
   totalOscillatorHeight: number;
@@ -22,6 +23,7 @@ interface DockedOscillatorSectionProps {
 export function DockedOscillatorSection({
   selectedOscillators,
   poppedOutOscillators,
+  miniOscillators,
   oscillatorData,
   candles,
   totalOscillatorHeight,
@@ -32,7 +34,7 @@ export function DockedOscillatorSection({
   perOscillatorPercentage = 0,
 }: DockedOscillatorSectionProps) {
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
-    osc => !poppedOutOscillators.has(osc)
+    osc => !poppedOutOscillators.has(osc) && !miniOscillators?.has(osc)
   ).length;
 
   if (dockedOscillatorsCount === 0) return null;
@@ -66,8 +68,8 @@ export function DockedOscillatorSection({
           </div>
         )}
         
-        {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && (
-          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+        {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && !miniOscillators?.has('macd') && (
+          <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
             <div className="flex items-center justify-between mb-1">
               <div className="text-xs text-slate-400">MACD (12, 26, 9)</div>
               <Button
@@ -90,8 +92,8 @@ export function DockedOscillatorSection({
           </div>
         )}
         
-        {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && (
-          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+        {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && !miniOscillators?.has('volume') && (
+          <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
             <div className="flex items-center justify-between mb-1">
               <div className="text-xs text-slate-400">Volume</div>
               <Button
