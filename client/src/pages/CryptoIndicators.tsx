@@ -56,7 +56,6 @@ import {
 
 // Drawing Components
 import { 
-  DrawingToolbar, 
   DrawingManager, 
   DrawingRenderer 
 } from '@/components/drawings';

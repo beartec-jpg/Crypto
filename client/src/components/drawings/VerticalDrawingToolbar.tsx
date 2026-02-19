@@ -114,9 +114,9 @@ export function VerticalDrawingToolbar({
                   aria-pressed={isActive}
                 >
                   {tool.imageSrc ? (
-                    <img src={tool.imageSrc} alt={tool.label} className="h-5 w-5 object-contain" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                    <img src={tool.imageSrc} alt={tool.label} className="h-10 w-10 object-contain" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                   ) : Icon ? (
-                    <Icon className="h-5 w-5" />
+                    <Icon className="h-10 w-10" />
                   ) : null}
                 </Button>
               </TooltipTrigger>
@@ -142,8 +142,8 @@ export function VerticalDrawingToolbar({
 /** Preview component for minimized state - shows first tool icon */
 export function DrawingToolbarPreview() {
   return (
-    <div className="h-10 w-10 flex items-center justify-center text-slate-400 opacity-60">
-      <img src="/grok_image_1771520120762.jpg" alt="Trendline" className="h-5 w-5 object-contain" />
+    <div className="h-10 w-10 flex items-center justify-center text-slate-400 opacity-60 overflow-hidden">
+      <img src="/grok_image_1771520120762.jpg" alt="Trendline" className="h-10 w-10 object-contain" />
     </div>
   );
 }
