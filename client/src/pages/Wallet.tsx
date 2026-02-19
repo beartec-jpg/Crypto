@@ -138,14 +138,6 @@ export default function WalletPage() {
         return;
       }
       
-      const sessionUnlocked = sessionStorage.getItem('wallet_unlocked') === 'true';
-      if (sessionUnlocked && !securityManager.isWalletLocked()) {
-        setSovereignWallet(wallet);
-        setIsWalletUnlocked(true);
-        setIsPasskeyAuthenticated(true);
-        return;
-      }
-      
       setPendingWallet(wallet);
       
       if (requirements.includes('pin')) {
@@ -226,10 +218,13 @@ export default function WalletPage() {
     } else {
       securityManager.lockWallet();
       sessionStorage.removeItem('wallet_unlocked');
+      sessionStorage.removeItem('pendingTokenSelection');
       setSovereignWallet(null);
       setIsPasskeyAuthenticated(false);
       setIsWalletUnlocked(false);
       setPendingWallet(null);
+      setTokens([]);
+      setAuthStep('none');
     }
   };
 
