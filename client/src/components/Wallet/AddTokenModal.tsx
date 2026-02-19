@@ -140,7 +140,7 @@ const handleVerify = async () => {
       const reserve = await calculateXRPReserve(walletAddress);
       
       const token: Partial<Token> = {
-        id: `xrpl-${currencyCode}-${issuerAddress}`,
+        id: `xrpl-${currencyCode.toUpperCase()}-${issuerAddress}`,
         chain: 'xrp',
         standard: 'XRPL',
         currencyCode: currencyCode.toUpperCase(),
