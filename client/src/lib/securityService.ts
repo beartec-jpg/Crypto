@@ -26,7 +26,7 @@ export interface SecuritySettings {
 // Security requirements by tier and action
 export const SECURITY_REQUIREMENTS: Record<SecurityTier, Record<SecurityAction, AuthMethod[]>> = {
   standard: {
-    openWallet: [],
+    openWallet: ['passkey'],
     viewBalance: [],
     receive: [],
     send: ['passkey'], // Passkey only
