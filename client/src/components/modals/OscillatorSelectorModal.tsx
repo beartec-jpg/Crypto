@@ -31,7 +31,9 @@ export function OscillatorSelectorModal({
     if (!isSelected) {
       return 'off';
     } else if (isPoppedOut) {
-      return 'mini'; // For now, treat all popped out as mini
+      // TODO: In the future, distinguish between 'mini' and 'popout' based on window size or additional state
+      // For now, default to 'popout' for all popped out oscillators (both mini and popout buttons will behave the same)
+      return 'popout';
     } else {
       return 'bottom';
     }

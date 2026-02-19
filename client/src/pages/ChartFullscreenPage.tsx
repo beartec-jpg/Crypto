@@ -446,8 +446,10 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
   }, []);
   
   // Oscillator toggle handler - Updated to handle display modes
+  // When called without mode (backward compatibility), toggles between off and bottom
+  // When called with mode from modal, sets specific display mode
   const handleToggleOscillator = useCallback((oscillator: string, mode?: 'bottom' | 'mini' | 'popout' | 'off') => {
-    // If no mode specified, toggle between off and bottom (for backward compatibility)
+    // If no mode specified, toggle between off and bottom (for backward compatibility with close buttons)
     if (!mode) {
       setSelectedOscillators(prev => {
         const next = new Set(prev);
@@ -487,7 +489,10 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
         return next;
       });
     } else if (mode === 'mini' || mode === 'popout') {
-      // Add to both sets (floating window)
+      // TODO: Distinguish between 'mini' and 'popout' modes in the future
+      // Current implementation: Both modes create a floating DraggableOscillatorWindow
+      // Future enhancement: 'mini' could create a smaller window, 'popout' a larger window with more controls
+      // For now, add to both sets (floating window)
       setSelectedOscillators(prev => {
         const next = new Set(prev);
         next.add(oscillator);
