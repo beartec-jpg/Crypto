@@ -1,4 +1,4 @@
-import { Square, type LucideIcon } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -32,7 +32,7 @@ const TOOLS: ToolConfig[] = [
   },
   {
     id: 'rectangle',
-    icon: Square,
+    imageSrc: '/grok_image_1771526019906.jpg',
     label: 'Rectangle',
     description: 'Draw price range box',
   },
