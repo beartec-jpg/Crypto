@@ -26,60 +26,27 @@ import {
 import { getAutoColor } from '@/lib/chart/colorUtils';
 import { MovingAverages } from '@/components/chart/MovingAverages';
 import { calculateEMA } from '@/lib/indicators';
-import { calculateRSI, calculateMACD } from '@/lib/indicators/momentum';
 import { RSIPanel } from '@/components/indicators/oscillators/RSIPanel';
 import { MACDPanel } from '@/components/indicators/oscillators/MACDPanel';
 import { VolumePanel } from '@/components/indicators/oscillators/VolumePanel';
 import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { DraggableOscillatorWindow } from '@/components/draggable/DraggableOscillatorWindow';
-import { OscillatorPopoutWindow } from '@/components/oscillators/OscillatorPopoutWindow';
-
-interface Drawing {
-  id: string;
-  type: string;
-  points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[];
-  style: {
-    color: string;
-    lineWidth: number;
-    opacity?: number;
-    lineStyle?: 'solid' | 'dashed' | 'dotted';
-    internalLineStyle?: 'solid' | 'dashed' | 'dotted';
-    extendLeft?: boolean;
-    extendRight?: boolean;
-    labelPosition?: 'left' | 'right';
-    hiddenLevels?: number[];
-    customLabels?: Record<number | string, string>;
-    customValues?: Record<number, number>;
-    label?: string;
-    autoColor?: boolean;
-    hideLabels?: boolean;
-    levelColors?: Record<number, string>;
-    boundaryColors?: Record<string, string>;
-    fillOpacity?: number;
-    __openColorPicker?: string | null;
-  };
-}
-
-interface DrawingDefaults {
-  opacity?: number;
-  lineStyle?: 'solid' | 'dashed' | 'dotted';
-  internalLineStyle?: 'solid' | 'dashed' | 'dotted';
-  extendLeft?: boolean;
-  extendRight?: boolean;
-  labelPosition?: 'left' | 'right';
-  hiddenLevels?: number[];
-  customLabels?: Record<number | string, string>;
-  customValues?: Record<number, number>;
-  label?: string;
-  autoColor?: boolean;
-  hideLabels?: boolean;
-  levelColors?: Record<number, string>;
-  boundaryColors?: Record<string, string>;
-  fillOpacity?: number;
-}
-
-type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
+import { formatTickerDisplay } from '@/lib/chart/priceUtils';
+import { convertTimeframe } from '@/lib/utils/binance';
+import { useOscillatorData } from '@/hooks/useOscillatorData';
+import type { Drawing, DrawingDefaults, DrawingTool } from '@/types/drawing';
+import {
+  TOUCH_TAP_THRESHOLD,
+  TOUCH_MOVE_THRESHOLD,
+  RESIZE_DEBOUNCE_MS,
+  OSCILLATOR_PANEL_HEIGHT_PER,
+  MOBILE_NAV_HEIGHT,
+  TOP_TOOLBAR_HEIGHT,
+  DRAWING_TOOLBAR_BOTTOM_MARGIN,
+  DRAWING_TOOLBAR_DEFAULT_BOTTOM,
+  DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
+} from '@/lib/constants/layout';
 
 interface ChartFullscreenPageProps {
   onClose: () => void;
@@ -87,34 +54,6 @@ interface ChartFullscreenPageProps {
   initialTimeframe: string;
   watchlistTickers: string[];
 }
-
-// Convert timeframe to Binance API format
-const convertTimeframe = (tf: string): string => {
-  const map: Record<string, string> = {
-    '1m': '1m',
-    '5m': '5m',
-    '15m': '15m',
-    '1h': '1h',
-    '4h': '4h',
-    '1d': '1d',
-  };
-  return map[tf] || '1h';
-};
-
-// Format symbol for display (e.g., 'XRPUSDT' -> 'XRP/USDT')
-const formatSymbol = (symbol: string): string => {
-  if (symbol.endsWith('USDT')) {
-    return symbol.replace('USDT', '/USDT');
-  }
-  return symbol;
-};
-
-// Touch gesture detection thresholds
-const TOUCH_TAP_THRESHOLD = 150; // ms - max duration for a tap
-const TOUCH_MOVE_THRESHOLD = 10; // pixels - max movement for a tap
-
-// Chart resize debounce delay
-const RESIZE_DEBOUNCE_MS = 100; // ms - debounce delay for resize events
 
 export function ChartFullscreenPage({
   onClose,
@@ -190,19 +129,7 @@ const emaHTFDataCache = useRef<Record<string, any[]>>({});
 // Oscillator state
 const [selectedOscillators, setSelectedOscillators] = useState<Set<string>>(new Set());
 const [showOscillatorSelector, setShowOscillatorSelector] = useState(false);
-const [oscillatorPopout, setOscillatorPopout] = useState(false);
 const [poppedOutOscillators, setPoppedOutOscillators] = useState<Set<string>>(new Set());
-
-// Oscillator panel height constant
-// 120px per oscillator (panel + padding)
-const OSCILLATOR_PANEL_HEIGHT_PER = 120; // Height per oscillator in pixels
-const MOBILE_NAV_HEIGHT = 65; // Height of mobile navigation bar at bottom
-const TOP_TOOLBAR_HEIGHT = 80; // Approximate height of top toolbar (includes border and padding)
-
-// Drawing toolbar positioning constants
-const DRAWING_TOOLBAR_BOTTOM_MARGIN = 16; // Margin above oscillators when active
-const DRAWING_TOOLBAR_DEFAULT_BOTTOM = 80; // Default bottom position (5rem = 80px)
-const DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH = 150; // Approximate half-width for centering
 
 // Calculate total oscillator panel height - only count docked oscillators
 const dockedOscillatorsCount = Array.from(selectedOscillators).filter(osc => !poppedOutOscillators.has(osc)).length;
@@ -539,40 +466,8 @@ const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
     autoSnapEnabled: true,
   });
 
-  // Calculate oscillator data
-  const oscillatorData = useMemo(() => {
-    if (candles.length === 0) {
-      return {
-        rsi: [],
-        macd: { macd: [], signal: [], hist: [] },
-        volume: [],
-        avgVolume: 0,
-      };
-    }
-
-    // Calculate RSI
-    const rsiData = calculateRSI(candles, 14);
-
-    // Calculate MACD
-    const macdData = calculateMACD(candles, 12, 26, 9);
-
-    // Calculate average volume for percentage
-    const avgVolume = candles.slice(-20).reduce((sum, c) => sum + c.volume, 0) / 20;
-
-    // Format volume data
-    const volumeData = candles.map((c) => ({
-      time: c.time,
-      value: c.volume,
-      color: c.close >= c.open ? '#26a69a' : '#ef5350',
-    }));
-
-    return {
-      rsi: rsiData,
-      macd: macdData,
-      volume: volumeData,
-      avgVolume,
-    };
-  }, [candles]);
+  // Calculate oscillator data using hook
+  const oscillatorData = useOscillatorData(candles);
 
   // Get latest oscillator values for status bar
   const latestOscillatorValues = useMemo(() => {
@@ -1035,7 +930,7 @@ useEffect(() => {
         </Button>
 
         <div className="flex-1 text-center">
-          <span className="text-lg font-semibold text-white">{formatSymbol(symbol)}</span>
+          <span className="text-lg font-semibold text-white">{formatTickerDisplay(symbol)}</span>
         </div>
 
         <Select value={symbol} onValueChange={setSymbol}>
@@ -1045,7 +940,7 @@ useEffect(() => {
           <SelectContent className="bg-slate-800 border-slate-600">
             {watchlistTickers.map((ticker) => (
               <SelectItem key={ticker} value={ticker} className="text-white hover:bg-slate-700 focus:bg-slate-700 cursor-pointer">
-                {formatSymbol(ticker)}
+                {formatTickerDisplay(ticker)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -1359,65 +1254,6 @@ useEffect(() => {
         poppedOutOscillators={poppedOutOscillators}
         onToggleOscillator={handleToggleOscillator}
       />
-
-      {/* Popout Oscillator Windows */}
-      {oscillatorPopout && selectedOscillators.has('rsi') && (
-        <OscillatorPopoutWindow
-          oscillatorType="rsi"
-          title="RSI (14)"
-          isOpen={true}
-          onClose={() => handleToggleOscillator('rsi')}
-          storageKey="oscillator-rsi-position"
-          defaultSize={{ width: 500, height: 240 }}
-        >
-          <div className="p-2 h-full">
-            <RSIPanel 
-              data={oscillatorData.rsi}
-              period={14}
-              candles={candles}
-            />
-          </div>
-        </OscillatorPopoutWindow>
-      )}
-
-      {oscillatorPopout && selectedOscillators.has('macd') && (
-        <OscillatorPopoutWindow
-          oscillatorType="macd"
-          title="MACD (12, 26, 9)"
-          isOpen={true}
-          onClose={() => handleToggleOscillator('macd')}
-          storageKey="oscillator-macd-position"
-          defaultSize={{ width: 500, height: 240 }}
-        >
-          <div className="p-2 h-full">
-            <MACDPanel 
-              macdData={oscillatorData.macd.macd}
-              signalData={oscillatorData.macd.signal}
-              histogramData={oscillatorData.macd.hist}
-              fastPeriod={12}
-              slowPeriod={26}
-              signalPeriod={9}
-            />
-          </div>
-        </OscillatorPopoutWindow>
-      )}
-
-      {oscillatorPopout && selectedOscillators.has('volume') && (
-        <OscillatorPopoutWindow
-          oscillatorType="volume"
-          title="Volume"
-          isOpen={true}
-          onClose={() => handleToggleOscillator('volume')}
-          storageKey="oscillator-volume-position"
-          defaultSize={{ width: 500, height: 180 }}
-        >
-          <div className="p-2 h-full">
-            <VolumePanel 
-              data={oscillatorData.volume}
-            />
-          </div>
-        </OscillatorPopoutWindow>
-      )}
     </div>
   );
 }
