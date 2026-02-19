@@ -5,6 +5,13 @@
 
 import { useMemo } from 'react';
 import { calculateRSI, calculateMACD } from '@/lib/indicators/momentum';
+import { calculateOBV, calculateMFI } from '@/lib/indicators/volume';
+import {
+  calculateStochasticRSI,
+  calculateWilliamsR,
+  calculateCCI,
+  calculateADX,
+} from '@/lib/indicators';
 
 interface CandleData {
   time: number;
@@ -24,6 +31,12 @@ export interface OscillatorData {
   };
   volume: Array<{ time: number; value: number; color: string }>;
   avgVolume: number;
+  stochRsi: Array<{ time: number; k: number; d: number }>;
+  williamsR: Array<{ time: number; value: number }>;
+  cci: Array<{ time: number; value: number }>;
+  adx: Array<{ time: number; adx: number; plusDI: number; minusDI: number }>;
+  obv: Array<{ time: number; value: number }>;
+  mfi: Array<{ time: number; value: number }>;
 }
 
 // Number of candles to use for volume average calculation
@@ -32,7 +45,7 @@ const VOLUME_AVERAGE_PERIOD = 20;
 /**
  * Calculate oscillator data from candle data
  * @param candles - Array of candlestick data
- * @returns Calculated oscillator data (RSI, MACD, Volume)
+ * @returns Calculated oscillator data (RSI, MACD, Volume, and more)
  */
 export function useOscillatorData(candles: CandleData[]): OscillatorData {
   return useMemo(() => {
@@ -42,6 +55,12 @@ export function useOscillatorData(candles: CandleData[]): OscillatorData {
         macd: { macd: [], signal: [], hist: [] },
         volume: [],
         avgVolume: 0,
+        stochRsi: [],
+        williamsR: [],
+        cci: [],
+        adx: [],
+        obv: [],
+        mfi: [],
       };
     }
 
@@ -66,6 +85,12 @@ export function useOscillatorData(candles: CandleData[]): OscillatorData {
       macd: macdData,
       volume: volumeData,
       avgVolume,
+      stochRsi: calculateStochasticRSI(candles, 14, 14, 3, 3),
+      williamsR: calculateWilliamsR(candles, 14),
+      cci: calculateCCI(candles, 20),
+      adx: calculateADX(candles, 14),
+      obv: calculateOBV(candles),
+      mfi: calculateMFI(candles, 14),
     };
   }, [candles]);
 }

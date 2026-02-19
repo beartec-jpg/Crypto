@@ -1,6 +1,8 @@
 import { TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 
+const VOLUME_UP_COLOR = '#26a69a';
+
 interface MiniOscillatorSectionProps {
   miniOscillators: Set<string>;
   oscillatorData: OscillatorData;
@@ -30,6 +32,52 @@ function getVolumeStatus(current: number, data: { value: number }[]): { label: s
   return { label: 'Normal', color: 'text-slate-400', icon: 'up' };
 }
 
+// Helper to get StochRSI status
+function getStochRSIStatus(k: number, d: number): { label: string; value: string; color: string; zone: string } {
+  const direction = k > d ? '↑' : '↓';
+  if (k <= 20) return { label: 'StochRSI', value: `${k.toFixed(0)} ${direction}`, color: 'text-green-400', zone: 'OS' };
+  if (k >= 80) return { label: 'StochRSI', value: `${k.toFixed(0)} ${direction}`, color: 'text-red-400', zone: 'OB' };
+  return { label: 'StochRSI', value: `${k.toFixed(0)} ${direction}`, color: 'text-yellow-400', zone: 'NEU' };
+}
+
+// Helper to get Williams %R status
+function getWilliamsRStatus(value: number): { label: string; value: string; color: string; zone: string } {
+  if (value <= -80) return { label: 'W%R', value: `${value.toFixed(0)}`, color: 'text-green-400', zone: 'OS' };
+  if (value >= -20) return { label: 'W%R', value: `${value.toFixed(0)}`, color: 'text-red-400', zone: 'OB' };
+  return { label: 'W%R', value: `${value.toFixed(0)}`, color: 'text-yellow-400', zone: 'NEU' };
+}
+
+// Helper to get CCI status
+function getCCIStatus(value: number): { label: string; value: string; color: string; zone: string } {
+  const sign = value >= 0 ? '+' : '';
+  if (value <= -100) return { label: 'CCI', value: `${sign}${value.toFixed(0)}`, color: 'text-green-400', zone: 'OS' };
+  if (value >= 100) return { label: 'CCI', value: `${sign}${value.toFixed(0)}`, color: 'text-red-400', zone: 'OB' };
+  return { label: 'CCI', value: `${sign}${value.toFixed(0)}`, color: 'text-yellow-400', zone: 'NEU' };
+}
+
+// Helper to get ADX status
+function getADXStatus(adx: number, plusDI: number, minusDI: number): { label: string; value: string; color: string; zone: string } {
+  const direction = plusDI > minusDI ? '↑' : '↓';
+  if (adx < 20) return { label: 'ADX', value: `${adx.toFixed(0)} ${direction}`, color: 'text-yellow-400', zone: 'Weak' };
+  if (adx <= 40) return { label: 'ADX', value: `${adx.toFixed(0)} ${direction}`, color: 'text-green-400', zone: 'Strong' };
+  return { label: 'ADX', value: `${adx.toFixed(0)} ${direction}`, color: 'text-blue-400', zone: 'V.Strong' };
+}
+
+// Helper to get OBV status
+function getOBVStatus(current: number, previous: number, priceUp: boolean): { label: string; value: string; color: string; zone: string } {
+  const obvUp = current > previous;
+  if (obvUp && priceUp) return { label: 'OBV', value: '↑', color: 'text-green-400', zone: 'Acc' };
+  if (!obvUp && !priceUp) return { label: 'OBV', value: '↓', color: 'text-red-400', zone: 'Dist' };
+  return { label: 'OBV', value: obvUp ? '↑' : '↓', color: 'text-yellow-400', zone: 'Div' };
+}
+
+// Helper to get MFI status
+function getMFIStatus(value: number): { label: string; value: string; color: string; zone: string } {
+  if (value <= 20) return { label: 'MFI', value: `${value.toFixed(0)}`, color: 'text-green-400', zone: 'OS' };
+  if (value >= 80) return { label: 'MFI', value: `${value.toFixed(0)}`, color: 'text-red-400', zone: 'OB' };
+  return { label: 'MFI', value: `${value.toFixed(0)}`, color: 'text-yellow-400', zone: 'NEU' };
+}
+
 export function MiniOscillatorSection({
   miniOscillators,
   oscillatorData,
@@ -46,6 +94,7 @@ export function MiniOscillatorSection({
   };
 
   const miniItems: Array<{ id: string; label: string; value: string; status: { label: string; color: string; icon: 'up' | 'down' | 'warning' } }> = [];
+  const newMiniItems: Array<{ id: string; label: string; value: string; color: string; zone: string }> = [];
 
   if (miniOscillators.has('rsi') && oscillatorData.rsi.length > 0) {
     const lastRSI = oscillatorData.rsi[oscillatorData.rsi.length - 1].value;
@@ -86,6 +135,46 @@ export function MiniOscillatorSection({
     });
   }
 
+  if (miniOscillators.has('stochRsi') && oscillatorData.stochRsi.length > 0) {
+    const last = oscillatorData.stochRsi[oscillatorData.stochRsi.length - 1];
+    const s = getStochRSIStatus(last.k, last.d);
+    newMiniItems.push({ id: 'stochRsi', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('williamsR') && oscillatorData.williamsR.length > 0) {
+    const last = oscillatorData.williamsR[oscillatorData.williamsR.length - 1].value;
+    const s = getWilliamsRStatus(last);
+    newMiniItems.push({ id: 'williamsR', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('cci') && oscillatorData.cci.length > 0) {
+    const last = oscillatorData.cci[oscillatorData.cci.length - 1].value;
+    const s = getCCIStatus(last);
+    newMiniItems.push({ id: 'cci', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('adx') && oscillatorData.adx.length > 0) {
+    const last = oscillatorData.adx[oscillatorData.adx.length - 1];
+    const s = getADXStatus(last.adx, last.plusDI, last.minusDI);
+    newMiniItems.push({ id: 'adx', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('obv') && oscillatorData.obv.length >= 2) {
+    const len = oscillatorData.obv.length;
+    const current = oscillatorData.obv[len - 1].value;
+    const previous = oscillatorData.obv[len - 2].value;
+    const lastVolumeEntry = oscillatorData.volume[oscillatorData.volume.length - 1];
+    const priceUp = lastVolumeEntry ? lastVolumeEntry.color === VOLUME_UP_COLOR : current > previous;
+    const s = getOBVStatus(current, previous, priceUp);
+    newMiniItems.push({ id: 'obv', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('mfi') && oscillatorData.mfi.length > 0) {
+    const last = oscillatorData.mfi[oscillatorData.mfi.length - 1].value;
+    const s = getMFIStatus(last);
+    newMiniItems.push({ id: 'mfi', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
   return (
     <div className="absolute left-2 top-1/2 -translate-y-1/2 z-30 flex flex-col gap-2">
       {miniItems.map(({ id, label, value, status }) => (
@@ -100,6 +189,17 @@ export function MiniOscillatorSection({
             {renderIcon(status.icon)}
             <span>{status.label}</span>
           </div>
+        </div>
+      ))}
+      {newMiniItems.map(({ id, label, value, color, zone }) => (
+        <div
+          key={id}
+          onClick={() => onCycleMode(id)}
+          className="bg-slate-800/90 backdrop-blur-sm rounded px-2 py-1.5 cursor-pointer hover:bg-slate-700/90 transition-colors min-w-[56px]"
+        >
+          <div className="text-[10px] text-slate-400 truncate">{label}</div>
+          <div className={`text-xs font-medium ${color}`}>{value}</div>
+          <div className={`text-[10px] ${color}`}>{zone}</div>
         </div>
       ))}
     </div>
