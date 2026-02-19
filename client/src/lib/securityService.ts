@@ -193,8 +193,7 @@ class SecurityManager {
    * Check if wallet is currently locked
    */
   public isWalletLocked(): boolean {
-    const sessionUnlocked = sessionStorage.getItem('wallet_unlocked') === 'true';
-    return this.isLocked || !sessionUnlocked;
+    return this.isLocked;
   }
 
   /**
