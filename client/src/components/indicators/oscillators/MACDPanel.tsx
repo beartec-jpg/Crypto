@@ -11,6 +11,7 @@ interface MACDPanelProps {
   onChartCreated?: (chart: IChartApi) => void;
   syncWithMainChart?: boolean;
   mainChartVisibleRange?: any;
+  height?: number;
 }
 
 export function MACDPanel({ 
@@ -22,7 +23,8 @@ export function MACDPanel({
   signalPeriod,
   onChartCreated,
   syncWithMainChart,
-  mainChartVisibleRange 
+  mainChartVisibleRange,
+  height = 200,
 }: MACDPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -32,7 +34,7 @@ export function MACDPanel({
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
-      height: 200, 
+      height, 
       layout: {
         background: { type: ColorType.Solid, color: '#1e293b' },
         textColor: '#94a3b8',
@@ -73,5 +75,5 @@ export function MACDPanel({
     };
   }, [macdData, signalData, histogramData, fastPeriod, slowPeriod, signalPeriod, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" data-testid="chart-macd" />;
+  return <div ref={containerRef} className="w-full" style={{ height }} data-testid="chart-macd" />;
 }
