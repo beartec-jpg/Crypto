@@ -23,7 +23,7 @@ import { MiniOscillatorSection } from '@/components/oscillators/MiniOscillatorSe
 
 import { EmaSmaModal } from '@/components/indicators';
 import { SmcModal } from '@/components/modals/SmcModal';
-import { VerticalDrawingToolbar } from '@/components/drawings/VerticalDrawingToolbar';
+import { VerticalDrawingToolbar, DrawingToolbarPreview } from '@/components/drawings/VerticalDrawingToolbar';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
 import { DrawingSettingsModal } from '@/components/modals/DrawingSettingsModal';
@@ -33,6 +33,7 @@ import { calculateEMA } from '@/lib/indicators';
 import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillatorSection';
+import { IndicatorIconToolbar, IndicatorIconToolbarPreview } from '@/components/indicators/IndicatorIconToolbar';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -273,52 +274,20 @@ export function ChartFullscreenPage({
 
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Chart Control Buttons - evenly spaced across top */}
-        <div className="absolute top-2 left-0 right-0 z-20 flex justify-evenly px-4">
-          {/* Oscillator Button */}
-          <button
-            onClick={() => oscillatorPanel.setShowSelector(true)}
-            className="relative h-12 w-12 rounded-lg overflow-hidden bg-slate-900/95 backdrop-blur-sm border border-slate-700 hover:border-slate-500 transition-all"
-            title="Oscillators"
-          >
-            <img 
-              src="/grok_image_1771510818185.jpg" 
-              alt="Oscillators"
-              className="h-full w-full object-contain"
-            />
-            {oscillatorPanel.selectedOscillators.size > 0 && (
-              <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center">
-                {oscillatorPanel.selectedOscillators.size}
-              </span>
-            )}
-          </button>
-
-          {/* EMA Button */}
-          <button
-            onClick={() => setShowEmaSmaModal(true)}
-            className="h-12 w-12 rounded-lg overflow-hidden bg-slate-900/95 backdrop-blur-sm border border-slate-700 hover:border-slate-500 transition-all"
-            title="EMA / SMA"
-          >
-            <img 
-              src="/grok_image_1771511033696.jpg" 
-              alt="EMA / SMA"
-              className="h-full w-full object-contain"
-            />
-          </button>
-
-          {/* SMC Button */}
-          <button
-            onClick={() => setShowSmcModal(true)}
-            className="h-12 w-12 rounded-lg overflow-hidden bg-slate-900/95 backdrop-blur-sm border border-slate-700 hover:border-slate-500 transition-all"
-            title="SMC Controls"
-          >
-            <img 
-              src="/grok_image_1771510990333.jpg" 
-              alt="SMC"
-              className="h-full w-full object-contain"
-            />
-          </button>
-        </div>
+        {/* Indicator Icon Toolbar (Draggable) */}
+        <DraggableToolbar
+          storageKey="indicator-toolbar-position"
+          rotationStorageKey="indicator-toolbar-vertical"
+          minimizedStorageKey="indicator-toolbar-minimized"
+          defaultPosition={() => ({ x: 16, y: 16 })}
+          minimizedPreview={<IndicatorIconToolbarPreview />}
+        >
+          <IndicatorIconToolbar
+            onOpenOscillators={() => oscillatorPanel.setShowSelector(true)}
+            onOpenEmaSma={() => setShowEmaSmaModal(true)}
+            onOpenSmc={() => setShowSmcModal(true)}
+          />
+        </DraggableToolbar>
 
         {/* Mini Oscillator Indicators */}
         <MiniOscillatorSection
@@ -328,14 +297,17 @@ export function ChartFullscreenPage({
         />
 
         {/* Drawing Toolbar */}
-        <DraggableToolbar 
+        <DraggableToolbar
           storageKey="chart-drawing-toolbar-position"
+          rotationStorageKey="drawing-toolbar-vertical"
+          minimizedStorageKey="drawing-toolbar-minimized"
           defaultPosition={() => ({
             x: window.innerWidth / 2 - DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
-            y: window.innerHeight - (oscillatorPanel.selectedOscillators.size > 0 
+            y: window.innerHeight - (oscillatorPanel.selectedOscillators.size > 0
               ? oscillatorPanel.totalHeight + DRAWING_TOOLBAR_BOTTOM_MARGIN
               : DRAWING_TOOLBAR_BOTTOM_MARGIN)
           })}
+          minimizedPreview={<DrawingToolbarPreview />}
         >
           <VerticalDrawingToolbar activeTool={activeTool} onSelectTool={handleSelectTool} />
         </DraggableToolbar>

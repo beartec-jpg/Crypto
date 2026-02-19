@@ -58,15 +58,17 @@ const TOOLS: ToolConfig[] = [
 interface VerticalDrawingToolbarProps {
   activeTool: ChartDrawingTool;
   onSelectTool: (tool: ChartDrawingTool) => void;
-  className?: string; // NEW: Allow custom positioning
-  style?: React.CSSProperties; // Allow inline styles
+  isVertical?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 export function VerticalDrawingToolbar({
   activeTool,
   onSelectTool,
-  className, // NEW
-  style, // NEW
+  isVertical = false,
+  className,
+  style,
 }: VerticalDrawingToolbarProps) {
   const handleToolClick = (toolId: ChartDrawingTool) => {
     // Toggle behavior: if already active, deselect it
@@ -81,7 +83,8 @@ export function VerticalDrawingToolbar({
     <TooltipProvider delayDuration={200}>
       <div 
         className={cn(
-          "flex flex-row gap-2",
+          "flex gap-2",
+          isVertical ? "flex-col" : "flex-row",
           "bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl",
           className
         )}
@@ -127,5 +130,14 @@ export function VerticalDrawingToolbar({
         })}
       </div>
     </TooltipProvider>
+  );
+}
+
+/** Preview component for minimized state - shows first tool icon */
+export function DrawingToolbarPreview() {
+  return (
+    <div className="h-10 w-10 flex items-center justify-center text-slate-400 opacity-60">
+      <TrendingUp className="h-5 w-5" />
+    </div>
   );
 }
