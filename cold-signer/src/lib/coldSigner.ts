@@ -29,7 +29,7 @@ function derivePrivateKey(mnemonic: string, chain: Chain): Uint8Array {
   let derived = hdkey;
   for (const segment of segments) {
     const hardened = segment.endsWith("'");
-    const index = parseInt(segment.replace("'", ''));
+    const index = parseInt(segment.replace(/'/g, ''));
     const actualIndex = hardened ? index + 0x80000000 : index;
     
     derived = derived.deriveChild(actualIndex);
