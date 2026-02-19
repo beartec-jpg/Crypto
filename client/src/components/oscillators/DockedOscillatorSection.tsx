@@ -27,7 +27,7 @@ export function DockedOscillatorSection({
   isFullscreen = false,
 }: DockedOscillatorSectionProps) {
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
-    osc => !poppedOutOscillators.has(osc) && !(miniOscillators?.has(osc))
+    osc => !poppedOutOscillators.has(osc) && !miniOscillators?.has(osc)
   ).length;
 
   if (dockedOscillatorsCount === 0) return null;
@@ -42,7 +42,7 @@ export function DockedOscillatorSection({
       }}
     >
       <div className="bg-slate-900 overflow-y-auto h-full">
-        {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && !(miniOscillators?.has('rsi')) && (
+        {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && !miniOscillators?.has('rsi') && (
           <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
             <div className="flex items-center justify-between mb-1">
               <div className="text-xs text-slate-400">RSI (14)</div>
@@ -59,7 +59,7 @@ export function DockedOscillatorSection({
           </div>
         )}
         
-        {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && !(miniOscillators?.has('macd')) && (
+        {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && !miniOscillators?.has('macd') && (
           <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
             <div className="flex items-center justify-between mb-1">
               <div className="text-xs text-slate-400">MACD (12, 26, 9)</div>
@@ -83,7 +83,7 @@ export function DockedOscillatorSection({
           </div>
         )}
         
-        {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && !(miniOscillators?.has('volume')) && (
+        {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && !miniOscillators?.has('volume') && (
           <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
             <div className="flex items-center justify-between mb-1">
               <div className="text-xs text-slate-400">Volume</div>

@@ -70,10 +70,18 @@ export function MiniOscillatorSection({
 
   if (miniOscillators.has('volume') && oscillatorData.volume.length > 0) {
     const lastVolume = oscillatorData.volume[oscillatorData.volume.length - 1].value;
+    let formattedValue: string;
+    if (lastVolume >= 1000000) {
+      formattedValue = `${(lastVolume / 1000000).toFixed(1)}M`;
+    } else if (lastVolume >= 1000) {
+      formattedValue = `${(lastVolume / 1000).toFixed(0)}K`;
+    } else {
+      formattedValue = lastVolume.toFixed(0);
+    }
     miniItems.push({
       id: 'volume',
       label: 'VOL',
-      value: lastVolume >= 1000000 ? `${(lastVolume / 1000000).toFixed(1)}M` : `${(lastVolume / 1000).toFixed(0)}K`,
+      value: formattedValue,
       status: getVolumeStatus(lastVolume, oscillatorData.volume),
     });
   }
