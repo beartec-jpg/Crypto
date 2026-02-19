@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import { RSIPanel } from '@/components/indicators/oscillators/RSIPanel';
 import { MACDPanel } from '@/components/indicators/oscillators/MACDPanel';
 import { VolumePanel } from '@/components/indicators/oscillators/VolumePanel';
@@ -18,6 +17,7 @@ interface DockedOscillatorSectionProps {
   usePercentage?: boolean;
   totalPercentage?: number;
   perOscillatorPercentage?: number;
+  mainChartVisibleRange?: any;
 }
 
 export function DockedOscillatorSection({
@@ -32,6 +32,7 @@ export function DockedOscillatorSection({
   usePercentage = false,
   totalPercentage = 0,
   perOscillatorPercentage = 0,
+  mainChartVisibleRange,
 }: DockedOscillatorSectionProps) {
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
     osc => !poppedOutOscillators.has(osc) && !miniOscillators?.has(osc)
@@ -53,34 +54,14 @@ export function DockedOscillatorSection({
       <div className="bg-slate-900 overflow-y-auto h-full">
         {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-xs text-slate-400">RSI (14)</div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-5 text-xs px-2"
-                onClick={() => onPopout('rsi')}
-              >
-                Popout
-              </Button>
-            </div>
-            <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} />
+            <div className="text-xs text-slate-400 mb-1">RSI (14)</div>
+            <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
         
         {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && !miniOscillators?.has('macd') && (
           <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-xs text-slate-400">MACD (12, 26, 9)</div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-5 text-xs px-2"
-                onClick={() => onPopout('macd')}
-              >
-                Popout
-              </Button>
-            </div>
+            <div className="text-xs text-slate-400 mb-1">MACD (12, 26, 9)</div>
             <MACDPanel 
               macdData={oscillatorData.macd.macd}
               signalData={oscillatorData.macd.signal}
@@ -88,24 +69,15 @@ export function DockedOscillatorSection({
               fastPeriod={12}
               slowPeriod={26}
               signalPeriod={9}
+              mainChartVisibleRange={mainChartVisibleRange}
             />
           </div>
         )}
         
         {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && !miniOscillators?.has('volume') && (
           <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-xs text-slate-400">Volume</div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-5 text-xs px-2"
-                onClick={() => onPopout('volume')}
-              >
-                Popout
-              </Button>
-            </div>
-            <VolumePanel data={oscillatorData.volume} />
+            <div className="text-xs text-slate-400 mb-1">Volume</div>
+            <VolumePanel data={oscillatorData.volume} mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
       </div>

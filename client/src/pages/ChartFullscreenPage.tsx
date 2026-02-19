@@ -85,6 +85,20 @@ export function ChartFullscreenPage({
     mobileNavHeight: 0, // No mobile nav in fullscreen mode
   });
 
+  // Subscribe to main chart visible range for oscillator sync
+  const [mainChartVisibleRange, setMainChartVisibleRange] = useState<any>(null);
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const handleVisibleRangeChange = () => {
+      const range = chartRef.current?.timeScale().getVisibleRange();
+      if (range) setMainChartVisibleRange(range);
+    };
+    chartRef.current.timeScale().subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+    return () => {
+      chartRef.current?.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+    };
+  }, [chartRef.current]);
+
   // Hooks - Data fetching
   const { candles, isLoading, error } = useCandleData({
     symbol,
@@ -355,6 +369,7 @@ export function ChartFullscreenPage({
         usePercentage={true}
         totalPercentage={oscillatorPanel.totalPercentage}
         perOscillatorPercentage={oscillatorPanel.perOscillatorPercentage}
+        mainChartVisibleRange={mainChartVisibleRange}
       />
       
       {/* Popped Out Oscillators */}
@@ -364,6 +379,7 @@ export function ChartFullscreenPage({
         oscillatorData={oscillatorData}
         candles={candles}
         onPopout={oscillatorPanel.popoutOscillator}
+        mainChartVisibleRange={mainChartVisibleRange}
       />
       
       {/* Modals */}
