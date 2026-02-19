@@ -21,14 +21,13 @@ import { PoppedOutOscillators } from '@/components/oscillators/PoppedOutOscillat
 import { ChartLoadingOverlay } from '@/components/chart/ChartLoadingOverlay';
 import { MiniOscillatorSection } from '@/components/oscillators/MiniOscillatorSection';
 
-// Existing components
-import { Button } from '@/components/ui/button';
+import { EmaSmaModal } from '@/components/indicators';
+import { SmcModal } from '@/components/modals/SmcModal';
 import { VerticalDrawingToolbar } from '@/components/drawings/VerticalDrawingToolbar';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
 import { DrawingSettingsModal } from '@/components/modals/DrawingSettingsModal';
 import { DrawingSelectionModal } from '@/components/drawings/DrawingSelectionModal';
-import { IndicatorToolbar, EmaSmaModal } from '@/components/indicators';
 import { MovingAverages } from '@/components/chart/MovingAverages';
 import { calculateEMA } from '@/lib/indicators';
 import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
@@ -67,6 +66,7 @@ export function ChartFullscreenPage({
   const [autoColorEnabled, setAutoColorEnabled] = useState(true);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
+  const [showSmcModal, setShowSmcModal] = useState(false);
   const [tempDrawing, setTempDrawing] = useState<{ points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null>(null);
 
   // Refs
@@ -273,17 +273,51 @@ export function ChartFullscreenPage({
 
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Indicator & Oscillator Buttons */}
-        <div className="absolute top-2 left-2 z-20 flex gap-2">
-          <IndicatorToolbar onOpenEmaSma={() => setShowEmaSmaModal(true)} />
-          <Button 
-            variant="outline" 
-            size="sm"
+        {/* Chart Control Buttons - evenly spaced across top */}
+        <div className="absolute top-2 left-0 right-0 z-20 flex justify-evenly px-4">
+          {/* Oscillator Button */}
+          <button
             onClick={() => oscillatorPanel.setShowSelector(true)}
-            className="bg-slate-900/95 backdrop-blur-sm border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+            className="relative h-12 w-12 rounded-lg overflow-hidden bg-slate-900/95 backdrop-blur-sm border border-slate-700 hover:border-slate-500 transition-all"
+            title="Oscillators"
           >
-            Oscillators {oscillatorPanel.selectedOscillators.size > 0 && `(${oscillatorPanel.selectedOscillators.size})`}
-          </Button>
+            <img 
+              src="/grok_image_1771510818185.jpg" 
+              alt="Oscillators"
+              className="h-full w-full object-contain"
+            />
+            {oscillatorPanel.selectedOscillators.size > 0 && (
+              <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center">
+                {oscillatorPanel.selectedOscillators.size}
+              </span>
+            )}
+          </button>
+
+          {/* EMA Button */}
+          <button
+            onClick={() => setShowEmaSmaModal(true)}
+            className="h-12 w-12 rounded-lg overflow-hidden bg-slate-900/95 backdrop-blur-sm border border-slate-700 hover:border-slate-500 transition-all"
+            title="EMA / SMA"
+          >
+            <img 
+              src="/grok_image_1771511033696.jpg" 
+              alt="EMA / SMA"
+              className="h-full w-full object-contain"
+            />
+          </button>
+
+          {/* SMC Button */}
+          <button
+            onClick={() => setShowSmcModal(true)}
+            className="h-12 w-12 rounded-lg overflow-hidden bg-slate-900/95 backdrop-blur-sm border border-slate-700 hover:border-slate-500 transition-all"
+            title="SMC Controls"
+          >
+            <img 
+              src="/grok_image_1771510990333.jpg" 
+              alt="SMC"
+              className="h-full w-full object-contain"
+            />
+          </button>
         </div>
 
         {/* Mini Oscillator Indicators */}
@@ -442,6 +476,11 @@ export function ChartFullscreenPage({
         onClose={() => oscillatorPanel.setShowSelector(false)}
         selectedOscillators={oscillatorPanel.selectedOscillators}
         onToggleOscillator={oscillatorPanel.toggleOscillator}
+      />
+
+      <SmcModal
+        isOpen={showSmcModal}
+        onClose={() => setShowSmcModal(false)}
       />
     </div>
   );
