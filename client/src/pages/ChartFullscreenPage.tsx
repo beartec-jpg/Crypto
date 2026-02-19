@@ -22,7 +22,10 @@ import { ChartLoadingOverlay } from '@/components/chart/ChartLoadingOverlay';
 import { MiniOscillatorSection } from '@/components/oscillators/MiniOscillatorSection';
 
 import { EmaSmaModal } from '@/components/indicators';
-import { SmcModal } from '@/components/modals/SmcModal';
+import { FVGSettingsModal } from '@/components/modals/FVGSettingsModal';
+import { FVGRenderer } from '@/components/indicators/FVGRenderer';
+import { useFVGSettings } from '@/hooks/useFVGSettings';
+import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { VerticalDrawingToolbar, DrawingToolbarPreview } from '@/components/drawings/VerticalDrawingToolbar';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
@@ -114,6 +117,10 @@ export function ChartFullscreenPage({
 
   // Hooks - Indicators
   const indicators = useIndicatorState();
+
+  // Hooks - FVG detection
+  const fvgSettings = useFVGSettings();
+  const fvgs = useFVGDetection({ candles, settings: fvgSettings.settings });
 
   // Hooks - HTF data cache
   const { htfDataCache } = useHTFDataCache({
@@ -336,6 +343,14 @@ export function ChartFullscreenPage({
           interval={timeframe}
         />
         
+        {/* FVG Renderer */}
+        <FVGRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          fvgs={fvgs}
+          settings={fvgSettings.settings}
+        />
+        
         {/* Drawing Renderer */}
         <DrawingRenderer
           drawingMode={activeTool ? 'draw' : 'off'}
@@ -450,9 +465,11 @@ export function ChartFullscreenPage({
         onToggleOscillator={oscillatorPanel.toggleOscillator}
       />
 
-      <SmcModal
+      <FVGSettingsModal
         isOpen={showSmcModal}
         onClose={() => setShowSmcModal(false)}
+        settings={fvgSettings.settings}
+        onSettingsChange={fvgSettings.setSettings}
       />
     </div>
   );
