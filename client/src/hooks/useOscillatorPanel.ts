@@ -7,8 +7,6 @@ import {
   MIN_CHART_PERCENT
 } from '@/lib/constants/layout';
 
-type OscillatorDisplayMode = 'bottom' | 'mini' | 'popout' | 'off';
-
 interface UseOscillatorPanelReturn {
   selectedOscillators: Set<string>;
   poppedOutOscillators: Set<string>;
@@ -16,9 +14,10 @@ interface UseOscillatorPanelReturn {
   dockedCount: number;
   miniCount: number;
   totalHeight: number;
-  toggleOscillator: (id: string, mode?: OscillatorDisplayMode) => void;
+  toggleOscillator: (id: string, enabled: boolean) => void;
   popoutOscillator: (id: string) => void;
   toggleMini: (id: string) => void;
+  cycleMode: (id: string) => void;
   showSelector: boolean;
   setShowSelector: (show: boolean) => void;
   // NEW percentage-based values:
@@ -89,39 +88,39 @@ export function useOscillatorPanel(): UseOscillatorPanelReturn {
     setSelectedOscillators(prev => { const next = new Set(prev); next.add(oscillatorId); return next; });
   }, []);
 
-  const toggleOscillator = useCallback((oscillator: string, mode?: OscillatorDisplayMode) => {
-    if (!mode) {
-      // Toggle between off and bottom for backward compatibility
-      setSelectedOscillators(prev => {
-        const next = new Set(prev);
-        if (next.has(oscillator)) {
-          next.delete(oscillator);
-        } else {
-          next.add(oscillator);
-        }
-        return next;
-      });
-      return;
-    }
-
-    if (mode === 'off') {
-      setSelectedOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
-      setPoppedOutOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
-      setMiniOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
-    } else if (mode === 'bottom') {
+  const toggleOscillator = useCallback((oscillator: string, enabled: boolean) => {
+    if (enabled) {
+      // Turn ON - start in mini mode
       setSelectedOscillators(prev => { const next = new Set(prev); next.add(oscillator); return next; });
-      setPoppedOutOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
-      setMiniOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
-    } else if (mode === 'mini') {
-      setSelectedOscillators(prev => { const next = new Set(prev); next.add(oscillator); return next; });
-      setPoppedOutOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
       setMiniOscillators(prev => { const next = new Set(prev); next.add(oscillator); return next; });
-    } else if (mode === 'popout') {
-      setSelectedOscillators(prev => { const next = new Set(prev); next.add(oscillator); return next; });
-      setPoppedOutOscillators(prev => { const next = new Set(prev); next.add(oscillator); return next; });
+      setPoppedOutOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
+    } else {
+      // Turn OFF - remove from all
+      setSelectedOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
       setMiniOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
+      setPoppedOutOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
     }
   }, []);
+
+  const cycleMode = useCallback((oscillatorId: string) => {
+    // Only cycle if the oscillator is currently enabled
+    if (!selectedOscillators.has(oscillatorId)) return;
+
+    const isMini = miniOscillators.has(oscillatorId);
+    const isPopout = poppedOutOscillators.has(oscillatorId);
+
+    if (isMini) {
+      // Mini → Popout
+      setMiniOscillators(prev => { const next = new Set(prev); next.delete(oscillatorId); return next; });
+      setPoppedOutOscillators(prev => { const next = new Set(prev); next.add(oscillatorId); return next; });
+    } else if (isPopout) {
+      // Popout → Bottom (docked)
+      setPoppedOutOscillators(prev => { const next = new Set(prev); next.delete(oscillatorId); return next; });
+    } else {
+      // Bottom → Mini
+      setMiniOscillators(prev => { const next = new Set(prev); next.add(oscillatorId); return next; });
+    }
+  }, [selectedOscillators, miniOscillators, poppedOutOscillators]);
 
   return {
     selectedOscillators,
@@ -133,6 +132,7 @@ export function useOscillatorPanel(): UseOscillatorPanelReturn {
     toggleOscillator,
     popoutOscillator,
     toggleMini,
+    cycleMode,
     showSelector,
     setShowSelector,
     totalPercentage,

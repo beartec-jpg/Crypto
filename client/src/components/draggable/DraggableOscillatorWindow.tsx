@@ -7,6 +7,7 @@ interface DraggableOscillatorWindowProps {
   storageKey?: string;
   initialPosition?: { x: number; y: number };
   initialSize?: { width: number; height: number };
+  onTap?: () => void;
 }
 
 const MIN_WIDTH = 150;
@@ -21,6 +22,7 @@ export function DraggableOscillatorWindow({
   storageKey,
   initialPosition = { x: 20, y: 100 },
   initialSize = { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT },
+  onTap,
 }: DraggableOscillatorWindowProps) {
   // Load position from localStorage
   const [position, setPosition] = useState(() => {
@@ -46,6 +48,7 @@ export function DraggableOscillatorWindow({
 
   const isDragging = useRef(false);
   const isResizing = useRef(false);
+  const dragMoved = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const resizeStart = useRef({ width: 0, height: 0, x: 0, y: 0 });
 
@@ -66,11 +69,13 @@ export function DraggableOscillatorWindow({
   // Drag handlers
   const handleDragStart = useCallback((clientX: number, clientY: number) => {
     isDragging.current = true;
+    dragMoved.current = false;
     dragStart.current = { x: clientX - position.x, y: clientY - position.y };
   }, [position]);
 
   const handleDragMove = useCallback((clientX: number, clientY: number) => {
     if (!isDragging.current) return;
+    dragMoved.current = true;
     const newX = Math.max(0, Math.min(window.innerWidth - size.width, clientX - dragStart.current.x));
     const newY = Math.max(0, Math.min(window.innerHeight - size.height, clientY - dragStart.current.y));
     setPosition({ x: newX, y: newY });
@@ -123,6 +128,12 @@ export function DraggableOscillatorWindow({
     handleResizeStart(touch.clientX, touch.clientY);
   };
 
+  const handleTitleClick = useCallback(() => {
+    if (!dragMoved.current && onTap) {
+      onTap();
+    }
+  }, [onTap]);
+
   // Global mouse/touch move and end
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -170,6 +181,7 @@ export function DraggableOscillatorWindow({
       <div
         onMouseDown={onMouseDown}
         onTouchStart={onTouchStart}
+        onClick={handleTitleClick}
         className="flex items-center gap-2 px-2 py-1 bg-slate-800 cursor-grab active:cursor-grabbing select-none"
       >
         <GripVertical className="h-3 w-3 text-slate-500" />
@@ -185,7 +197,7 @@ export function DraggableOscillatorWindow({
       <div
         onMouseDown={onResizeMouseDown}
         onTouchStart={onResizeTouchStart}
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+        className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize"
         style={{
           background: 'linear-gradient(135deg, transparent 50%, #475569 50%)',
         }}
