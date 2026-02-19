@@ -159,7 +159,26 @@ export function useChartInstance({
         candleSeriesRef.current = null;
       }
     };
-  }, [reinitializeKey, totalOscillatorHeight, topToolbarHeight, mobileNavHeight, containerRef]);
+  }, [reinitializeKey, topToolbarHeight, mobileNavHeight, containerRef]);
+
+  // Separate effect to resize chart when oscillator height changes (without destroying it)
+  useEffect(() => {
+    if (!chartRef.current || !containerRef.current) return;
+    
+    const newHeight = window.innerHeight - topToolbarHeight - mobileNavHeight - totalOscillatorHeight;
+    
+    if (newHeight > 0) {
+      chartRef.current.applyOptions({ 
+        height: newHeight 
+      });
+      
+      requestAnimationFrame(() => {
+        chartRef.current?.timeScale().fitContent();
+      });
+      
+      console.log('[Chart] Resized for oscillator change, new height:', newHeight);
+    }
+  }, [totalOscillatorHeight, topToolbarHeight, mobileNavHeight]);
 
   return { chartRef, candleSeriesRef, isReady, fitContent };
 }
