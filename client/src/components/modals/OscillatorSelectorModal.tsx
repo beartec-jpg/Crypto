@@ -9,6 +9,7 @@ interface OscillatorSelectorModalProps {
   onClose: () => void;
   selectedOscillators: Set<string>;
   poppedOutOscillators: Set<string>;
+  miniOscillators?: Set<string>;
   onToggleOscillator: (oscillator: string, mode?: OscillatorDisplayMode) => void;
 }
 
@@ -23,17 +24,19 @@ export function OscillatorSelectorModal({
   onClose,
   selectedOscillators,
   poppedOutOscillators,
+  miniOscillators,
   onToggleOscillator,
 }: OscillatorSelectorModalProps) {
   const getOscillatorMode = (oscId: string): OscillatorDisplayMode => {
     const isSelected = selectedOscillators.has(oscId);
     const isPoppedOut = poppedOutOscillators.has(oscId);
+    const isMini = miniOscillators?.has(oscId);
     
     if (!isSelected) {
       return 'off';
+    } else if (isMini) {
+      return 'mini';
     } else if (isPoppedOut) {
-      // TODO: In the future, distinguish between 'mini' and 'popout' based on window size or additional state
-      // For now, default to 'popout' for all popped out oscillators (both mini and popout buttons will behave the same)
       return 'popout';
     } else {
       return 'bottom';
@@ -49,10 +52,6 @@ export function OscillatorSelectorModal({
         <div className="space-y-4 py-4">
           {OSCILLATORS.map((osc) => {
             const mode = getOscillatorMode(osc.id);
-            // Both mini and popout buttons are highlighted when oscillator is popped out
-            // This is intentional: both modes currently behave identically (floating window)
-            // Future enhancement: Distinguish between mini (smaller) and popout (larger) windows
-            const isFloating = mode === 'mini' || mode === 'popout';
             
             return (
               <div 
@@ -77,9 +76,9 @@ export function OscillatorSelectorModal({
                   </Button>
                   <Button
                     size="sm"
-                    variant={isFloating ? 'default' : 'outline'}
+                    variant={mode === 'mini' ? 'default' : 'outline'}
                     onClick={() => onToggleOscillator(osc.id, 'mini')}
-                    className={isFloating
+                    className={mode === 'mini'
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
                     }
@@ -88,9 +87,9 @@ export function OscillatorSelectorModal({
                   </Button>
                   <Button
                     size="sm"
-                    variant={isFloating ? 'default' : 'outline'}
+                    variant={mode === 'popout' ? 'default' : 'outline'}
                     onClick={() => onToggleOscillator(osc.id, 'popout')}
-                    className={isFloating
+                    className={mode === 'popout'
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700'
                     }
