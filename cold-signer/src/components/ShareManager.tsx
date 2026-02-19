@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Shield, Upload, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { encrypt, generateSalt, validatePassword } from '../lib/coldCrypto';
 import { storeEncryptedShare, getStoredShare, clearAllShares } from '../lib/offlineStorage';

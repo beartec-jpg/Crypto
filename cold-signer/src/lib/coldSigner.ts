@@ -32,7 +32,7 @@ function derivePrivateKey(mnemonic: string, chain: Chain): Uint8Array {
     const index = parseInt(segment.replace("'", ''));
     const actualIndex = hardened ? index + 0x80000000 : index;
     
-    derived = derived.derive(actualIndex);
+    derived = derived.deriveChild(actualIndex);
   }
 
   if (!derived.privateKey) {
@@ -60,7 +60,11 @@ async function signEthereumTransaction(
   privateKey: Uint8Array,
   txData: UnsignedTransaction['tx']
 ): Promise<string> {
-  const wallet = new ethers.Wallet(privateKey);
+  // Convert Uint8Array to hex string for ethers
+  const privateKeyHex = '0x' + Array.from(privateKey)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  const wallet = new ethers.Wallet(privateKeyHex);
 
   const tx = {
     to: txData.to,
@@ -88,15 +92,18 @@ function signXRPTransaction(
   
   const wallet = XRPLWallet.fromSeed(seed);
 
-  const tx = {
+  const tx: any = {
     TransactionType: 'Payment',
     Account: wallet.address,
     Destination: txData.destination || txData.to,
     Amount: String(parseFloat(txData.amount) * 1_000_000), // Convert XRP to drops
     Fee: String(parseFloat(txData.fee) * 1_000_000), // Convert XRP to drops
     Sequence: txData.sequence || 0,
-    DestinationTag: txData.destinationTag,
   };
+
+  if (txData.destinationTag !== undefined) {
+    tx.DestinationTag = txData.destinationTag;
+  }
 
   const signed = wallet.sign(tx);
   return signed.tx_blob;
@@ -125,7 +132,7 @@ export async function signTransaction(
       throw new Error('Invalid mnemonic reconstructed from shares');
     }
 
-    const { chain, ...txData } = unsignedTx.tx;
+    const { chain } = unsignedTx.tx;
 
     // Derive private key for the chain
     const privateKey = derivePrivateKey(mnemonic, chain);
@@ -136,11 +143,11 @@ export async function signTransaction(
     switch (chain) {
       case 'ethereum':
       case 'bsc':
-        signedTx = await signEthereumTransaction(privateKey, txData);
+        signedTx = await signEthereumTransaction(privateKey, unsignedTx.tx);
         break;
       
       case 'xrp':
-        signedTx = signXRPTransaction(privateKey, txData);
+        signedTx = signXRPTransaction(privateKey, unsignedTx.tx);
         break;
       
       default:
@@ -169,7 +176,10 @@ export function getAddress(mnemonic: string, chain: Chain): string {
   switch (chain) {
     case 'ethereum':
     case 'bsc': {
-      const wallet = new ethers.Wallet(privateKey);
+      const privateKeyHex = '0x' + Array.from(privateKey)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      const wallet = new ethers.Wallet(privateKeyHex);
       address = wallet.address;
       break;
     }

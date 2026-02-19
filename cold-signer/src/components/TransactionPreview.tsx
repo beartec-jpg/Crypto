@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertCircle, ArrowRight, CheckCircle } from 'lucide-react';
 import { TransactionPreviewData } from '../types/coldTypes';
 

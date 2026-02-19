@@ -34,7 +34,7 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
   const derivedBits = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',
-      salt: salt,
+      salt: salt as BufferSource,
       iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { QrCode, Shield, WifiOff, AlertTriangle } from 'lucide-react';
 import QRScanner from './components/QRScanner';
 import QRDisplay from './components/QRDisplay';
