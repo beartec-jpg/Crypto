@@ -274,7 +274,7 @@ export function ChartFullscreenPage({
           className="absolute inset-x-0 top-0 w-full" 
           style={{ 
             height: oscillatorPanel.dockedCount > 0 
-              ? `${oscillatorPanel.chartPercentage}vh` 
+              ? `calc(${oscillatorPanel.chartPercentage}vh - ${TOP_TOOLBAR_HEIGHT}px)` 
               : `calc(100vh - ${TOP_TOOLBAR_HEIGHT}px)` 
           }}
         />
