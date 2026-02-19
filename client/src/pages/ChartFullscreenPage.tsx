@@ -344,6 +344,7 @@ export function ChartFullscreenPage({
       <DockedOscillatorSection
         selectedOscillators={oscillatorPanel.selectedOscillators}
         poppedOutOscillators={oscillatorPanel.poppedOutOscillators}
+        miniOscillators={oscillatorPanel.miniOscillators}
         oscillatorData={oscillatorData}
         candles={candles}
         totalOscillatorHeight={oscillatorPanel.totalHeight}
