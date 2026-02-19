@@ -114,8 +114,17 @@ const handleVerify = async () => {
       setStep('verify');
     } else if (chain === 'xrp') {
       // Validate XRPL inputs
-      if (!currencyCode || currencyCode.length < 3 || currencyCode.length > 3) {
-        throw new Error('Currency code must be exactly 3 characters (e.g., USD)');
+      const isValidCurrencyCode = (code: string): boolean => {
+        if (!code) return false;
+        // Standard 3-character code (ASCII, alphanumeric)
+        if (code.length === 3 && /^[A-Za-z0-9]{3}$/.test(code)) return true;
+        // 40-character hex code for non-standard currencies
+        if (code.length === 40 && /^[0-9A-Fa-f]{40}$/.test(code)) return true;
+        return false;
+      };
+
+      if (!isValidCurrencyCode(currencyCode)) {
+        throw new Error('Currency code must be 3 characters (e.g., USD) or 40-character hex for non-standard tokens');
       }
       if (!/^r[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(issuerAddress)) {
         throw new Error('Invalid XRP issuer address format');
@@ -131,7 +140,7 @@ const handleVerify = async () => {
       const reserve = await calculateXRPReserve(walletAddress);
       
       const token: Partial<Token> = {
-        id: `xrpl-${currencyCode}-${issuerAddress}`,
+        id: `xrpl-${currencyCode.toUpperCase()}-${issuerAddress}`,
         chain: 'xrp',
         standard: 'XRPL',
         currencyCode: currencyCode.toUpperCase(),
@@ -207,6 +216,24 @@ const handleVerify = async () => {
     setStep('adding');
 
     try {
+      // Import getXRPLTrustlines
+      const { getXRPLTrustlines } = await import('@/lib/xrpReserveService');
+      
+      // Check if trustline already exists
+      const existingTrustlines = await getXRPLTrustlines(walletAddress);
+      const alreadyExists = existingTrustlines.some(
+        tl => tl.currency.toUpperCase() === verifiedToken.currencyCode!.toUpperCase() && 
+              tl.issuer === verifiedToken.issuer
+      );
+      
+      if (alreadyExists) {
+        // Just add to local wallet without submitting transaction
+        await onAdd(verifiedToken);
+        setStep('success');
+        setTimeout(() => onClose(), 2000);
+        return;
+      }
+      
       // Set trustline first
       await onSetTrustline(verifiedToken.currencyCode!, verifiedToken.issuer!);
       
@@ -244,18 +271,18 @@ const handleVerify = async () => {
                   {/* XRPL: Currency Code + Issuer */}
                   <div>
                     <label className="text-sm text-gray-400 mb-2 block">
-                      Currency Code (3 characters)
+                      Currency Code
                     </label>
                     <input
                       type="text"
                       value={currencyCode}
-                      onChange={(e) => setCurrencyCode(e.target.value.toUpperCase().slice(0, 3))}
+                      onChange={(e) => setCurrencyCode(e.target.value.toUpperCase().slice(0, 40))}
                       placeholder="USD"
-                      maxLength={3}
-                      className="w-full px-4 py-2 bg-gray-700 rounded-lg text-white font-mono uppercase"
+                      maxLength={40}
+                      className="w-full px-4 py-2 bg-gray-700 rounded-lg text-white font-mono uppercase text-sm"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Example: USD, EUR, BTC, etc.
+                      Standard: 3 characters (USD, EUR, BTC). Hex: 40-character code for longer token names (SOLO, RLUSD, etc.)
                     </p>
                   </div>
                   

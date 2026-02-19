@@ -191,7 +191,8 @@ export default function PortfolioSummary({
             <span className={`font-mono font-medium ${
               topMover.priceChange24h >= 0 ? 'text-emerald-400' : 'text-gray-400'
             }`}>
-              {topMover.priceChange24h >= 0 ? '+' : ''}{topMover.priceChange24h.toFixed(2)}%
+              {topMover.priceChange24h >= 0 ? '+' : ''}
+              {typeof topMover.priceChange24h === 'number' ? topMover.priceChange24h.toFixed(2) : '0.00'}%
             </span>
           </div>
 
@@ -219,7 +220,8 @@ export default function PortfolioSummary({
             <span className={`font-mono font-medium ${
               bottomMover.priceChange24h < 0 ? 'text-red-400' : 'text-gray-400'
             }`}>
-              {bottomMover.priceChange24h >= 0 ? '+' : ''}{bottomMover.priceChange24h.toFixed(2)}%
+              {bottomMover.priceChange24h >= 0 ? '+' : ''}
+              {typeof bottomMover.priceChange24h === 'number' ? bottomMover.priceChange24h.toFixed(2) : '0.00'}%
             </span>
           </div>
         </div>
