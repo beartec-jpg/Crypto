@@ -34,7 +34,7 @@ export function MACDPanel({
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
-      height: height, 
+      height, 
       layout: {
         background: { type: ColorType.Solid, color: '#1e293b' },
         textColor: '#94a3b8',
