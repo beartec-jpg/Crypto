@@ -5341,7 +5341,7 @@ useEffect(() => {
             }
 
             // Save to database
-            drawingsPersistence.updateDrawing({ id: selectedDrawingId, style: updates.style });
+            drawingsPersistence.updateDrawing({ id: selectedDrawingId, updates: { style: updates.style } });
             
             toast({
               title: 'Alert settings saved',

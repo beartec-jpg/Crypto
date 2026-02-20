@@ -244,12 +244,15 @@ export default function WalletPage() {
     addPendingTransaction({
       hash: txid,
       chain: 'bitcoin',
-      type: 'send',
       amount: '0',
-      asset: 'BTC',
+      token: 'BTC',
+      from: '',
       to: '',
       timestamp: Date.now(),
       status: 'pending',
+      confirmations: 0,
+      requiredConfirmations: 6,
+      explorerUrl: `https://mempool.space/tx/${txid}`,
     });
 
     setShowBitcoinSend(false);
@@ -260,12 +263,15 @@ export default function WalletPage() {
     addPendingTransaction({
       hash: signature,
       chain: 'solana',
-      type: 'send',
       amount: '0',
-      asset: selectedToken?.symbol || 'SOL',
+      token: selectedToken?.symbol || 'SOL',
+      from: '',
       to: '',
       timestamp: Date.now(),
       status: 'pending',
+      confirmations: 0,
+      requiredConfirmations: 32,
+      explorerUrl: `https://solscan.io/tx/${signature}`,
     });
 
     setShowSolanaSend(false);

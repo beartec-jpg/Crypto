@@ -2,7 +2,7 @@
 // Hybrid post-quantum cryptography utilities
 // Uses ML-DSA (Dilithium) for post-quantum security + ECDSA for compatibility
 
-import { ml_dsa65 } from '@noble/post-quantum/ml-dsa';
+import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
