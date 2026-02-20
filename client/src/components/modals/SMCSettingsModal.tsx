@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { FVGSettings } from '@/types/fvg';
 import type { OrderBlockSettings } from '@/types/orderBlock';
+import type { BOSSettings } from '@/types/structureBreak';
 
 interface SMCSettingsModalProps {
   isOpen: boolean;
@@ -13,6 +14,8 @@ interface SMCSettingsModalProps {
   onFVGSettingsChange: (settings: FVGSettings) => void;
   obSettings: OrderBlockSettings;
   onOBSettingsChange: (settings: OrderBlockSettings) => void;
+  bosSettings: BOSSettings;
+  onBOSSettingsChange: (settings: BOSSettings) => void;
 }
 
 interface SettingRowProps {
@@ -64,6 +67,8 @@ export function SMCSettingsModal({
   onFVGSettingsChange,
   obSettings,
   onOBSettingsChange,
+  bosSettings,
+  onBOSSettingsChange,
 }: SMCSettingsModalProps) {
   function updateFVG<K extends keyof FVGSettings>(key: K, value: FVGSettings[K]) {
     onFVGSettingsChange({ ...fvgSettings, [key]: value });
@@ -71,6 +76,10 @@ export function SMCSettingsModal({
 
   function updateOB<K extends keyof OrderBlockSettings>(key: K, value: OrderBlockSettings[K]) {
     onOBSettingsChange({ ...obSettings, [key]: value });
+  }
+
+  function updateBOS<K extends keyof BOSSettings>(key: K, value: BOSSettings[K]) {
+    onBOSSettingsChange({ ...bosSettings, [key]: value });
   }
 
   return (
@@ -84,6 +93,7 @@ export function SMCSettingsModal({
           <TabsList className="w-full bg-slate-800 border border-slate-700">
             <TabsTrigger value="fvg" className="flex-1 data-[state=active]:bg-slate-700">FVG</TabsTrigger>
             <TabsTrigger value="orderblock" className="flex-1 data-[state=active]:bg-slate-700">Order Blocks</TabsTrigger>
+            <TabsTrigger value="bos" className="flex-1 data-[state=active]:bg-slate-700">BOS/CHoCH</TabsTrigger>
           </TabsList>
 
           {/* FVG Tab */}
@@ -409,6 +419,141 @@ export function SMCSettingsModal({
                       type="color"
                       value={obSettings[key] as string}
                       onChange={(e) => updateOB(key, e.target.value)}
+                      className="w-8 h-8 rounded cursor-pointer border border-slate-600 bg-transparent"
+                      aria-label={`${label} color`}
+                    />
+                    <span className="text-xs text-slate-300">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* BOS/CHoCH Tab */}
+          <TabsContent value="bos" className="space-y-4 py-2">
+            <SettingRow label="Enable BOS/CHoCH Detection">
+              <Switch
+                checked={bosSettings.enabled}
+                onCheckedChange={(v) => updateBOS('enabled', v)}
+                className="data-[state=checked]:bg-blue-600"
+              />
+            </SettingRow>
+
+            <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Swing Detection</p>
+
+              <SliderRow
+                label="Swing Lookback"
+                value={bosSettings.swingLookback}
+                min={3}
+                max={20}
+                step={1}
+                displayValue={`${bosSettings.swingLookback}`}
+                onChange={(v) => updateBOS('swingLookback', v)}
+              />
+
+              <SettingRow label="Require Close Through Level">
+                <Switch
+                  checked={bosSettings.requireClose}
+                  onCheckedChange={(v) => updateBOS('requireClose', v)}
+                  className="data-[state=checked]:bg-blue-600"
+                />
+              </SettingRow>
+            </div>
+
+            <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Display</p>
+
+              <SettingRow label="Show BOS (Continuation)">
+                <Switch
+                  checked={bosSettings.showBOS}
+                  onCheckedChange={(v) => updateBOS('showBOS', v)}
+                  className="data-[state=checked]:bg-green-600"
+                />
+              </SettingRow>
+
+              <SettingRow label="Show CHoCH (Reversal)">
+                <Switch
+                  checked={bosSettings.showCHoCH}
+                  onCheckedChange={(v) => updateBOS('showCHoCH', v)}
+                  className="data-[state=checked]:bg-cyan-600"
+                />
+              </SettingRow>
+
+              <SettingRow label="Show Swing Points (HH/HL/LH/LL)">
+                <Switch
+                  checked={bosSettings.showSwingPoints}
+                  onCheckedChange={(v) => updateBOS('showSwingPoints', v)}
+                  className="data-[state=checked]:bg-purple-600"
+                />
+              </SettingRow>
+
+              <SettingRow label="Show Labels">
+                <Switch
+                  checked={bosSettings.showLabels}
+                  onCheckedChange={(v) => updateBOS('showLabels', v)}
+                  className="data-[state=checked]:bg-blue-600"
+                />
+              </SettingRow>
+
+              <SettingRow label="Draw Lines">
+                <Switch
+                  checked={bosSettings.drawLines}
+                  onCheckedChange={(v) => updateBOS('drawLines', v)}
+                  className="data-[state=checked]:bg-blue-600"
+                />
+              </SettingRow>
+
+              <SettingRow label="Extend Lines">
+                <Switch
+                  checked={bosSettings.extendLines}
+                  onCheckedChange={(v) => updateBOS('extendLines', v)}
+                  className="data-[state=checked]:bg-blue-600"
+                />
+              </SettingRow>
+            </div>
+
+            <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Filters</p>
+
+              <SliderRow
+                label="Max Age (candles)"
+                value={bosSettings.maxAge}
+                min={50}
+                max={500}
+                step={25}
+                displayValue={`${bosSettings.maxAge}`}
+                onChange={(v) => updateBOS('maxAge', v)}
+              />
+
+              <SettingRow label="Hide Swept (Wick Only)">
+                <Switch
+                  checked={bosSettings.hideSwept}
+                  onCheckedChange={(v) => updateBOS('hideSwept', v)}
+                  className="data-[state=checked]:bg-blue-600"
+                />
+              </SettingRow>
+            </div>
+
+            <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Colors</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                {(
+                  [
+                    { key: 'bullishBOSColor', label: 'Bullish BOS' },
+                    { key: 'bearishBOSColor', label: 'Bearish BOS' },
+                    { key: 'bullishCHoCHColor', label: 'Bullish CHoCH' },
+                    { key: 'bearishCHoCHColor', label: 'Bearish CHoCH' },
+                    { key: 'swingHighColor', label: 'Swing High' },
+                    { key: 'swingLowColor', label: 'Swing Low' },
+                  ] as { key: keyof BOSSettings; label: string }[]
+                ).map(({ key, label }) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={bosSettings[key] as string}
+                      onChange={(e) => updateBOS(key, e.target.value)}
                       className="w-8 h-8 rounded cursor-pointer border border-slate-600 bg-transparent"
                       aria-label={`${label} color`}
                     />

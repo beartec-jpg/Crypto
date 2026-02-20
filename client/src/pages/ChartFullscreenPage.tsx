@@ -25,10 +25,13 @@ import { EmaSmaModal } from '@/components/indicators';
 import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
 import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
+import { BOSRenderer } from '@/components/indicators/BOSRenderer';
 import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
 import { useOrderBlockDetection } from '@/hooks/useOrderBlockDetection';
+import { useBOSSettings } from '@/hooks/useBOSSettings';
+import { useBOSDetection } from '@/hooks/useBOSDetection';
 import { VerticalDrawingToolbar, DrawingToolbarPreview } from '@/components/drawings/VerticalDrawingToolbar';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
@@ -128,6 +131,15 @@ export function ChartFullscreenPage({
   // Hooks - Order Block detection
   const obSettings = useOrderBlockSettings();
   const orderBlocks = useOrderBlockDetection({ candles, settings: obSettings.settings, fvgs });
+
+  // Hooks - BOS/CHoCH detection
+  const bosSettings = useBOSSettings();
+  const { structureBreaks, swingPoints } = useBOSDetection({
+    candles,
+    settings: bosSettings.settings,
+    fvgs,
+    orderBlocks,
+  });
 
   // Hooks - HTF data cache
   const { htfDataCache } = useHTFDataCache({
@@ -365,6 +377,15 @@ export function ChartFullscreenPage({
           orderBlocks={orderBlocks}
           settings={obSettings.settings}
         />
+
+        {/* BOS/CHoCH Renderer */}
+        <BOSRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          structureBreaks={structureBreaks}
+          swingPoints={swingPoints}
+          settings={bosSettings.settings}
+        />
         
         {/* Drawing Renderer */}
         <DrawingRenderer
@@ -487,6 +508,8 @@ export function ChartFullscreenPage({
         onFVGSettingsChange={fvgSettings.setSettings}
         obSettings={obSettings.settings}
         onOBSettingsChange={obSettings.setSettings}
+        bosSettings={bosSettings.settings}
+        onBOSSettingsChange={bosSettings.setSettings}
       />
     </div>
   );
