@@ -26,10 +26,10 @@ export function IndicatorToolbar({ onOpenEmaSma, className }: IndicatorToolbarPr
               variant="ghost"
               size="icon"
               onClick={onOpenEmaSma}
-              className="h-10 w-10 text-slate-300 hover:text-white hover:bg-slate-800 transition-all"
+              className="h-20 w-20 text-slate-300 hover:text-white hover:bg-slate-800 transition-all"
               aria-label="EMA/SMA Settings"
             >
-              <TrendingUp className="h-5 w-5" />
+              <TrendingUp className="h-20 w-20" />
             </Button>
           </TooltipTrigger>
           <TooltipContent className="bg-slate-800 text-white border-slate-600">
