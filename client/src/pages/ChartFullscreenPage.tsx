@@ -26,12 +26,18 @@ import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
 import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
 import { BOSRenderer } from '@/components/indicators/BOSRenderer';
+import { LiquidityRenderer } from '@/components/indicators/LiquidityRenderer';
+import { PDZoneRenderer } from '@/components/indicators/PDZoneRenderer';
 import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
 import { useOrderBlockDetection } from '@/hooks/useOrderBlockDetection';
 import { useBOSSettings } from '@/hooks/useBOSSettings';
 import { useBOSDetection } from '@/hooks/useBOSDetection';
+import { useLiquiditySettings } from '@/hooks/useLiquiditySettings';
+import { useLiquidityDetection } from '@/hooks/useLiquidityDetection';
+import { usePDZoneSettings } from '@/hooks/usePDZoneSettings';
+import { usePDZoneDetection } from '@/hooks/usePDZoneDetection';
 import { VerticalDrawingToolbar, DrawingToolbarPreview } from '@/components/drawings/VerticalDrawingToolbar';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
@@ -139,6 +145,20 @@ export function ChartFullscreenPage({
     settings: bosSettings.settings,
     fvgs,
     orderBlocks,
+  });
+
+  // Hooks - Liquidity Zone detection
+  const liquiditySettings = useLiquiditySettings();
+  const liquidityZones = useLiquidityDetection({
+    candles,
+    settings: liquiditySettings.settings,
+  });
+
+  // Hooks - Premium/Discount Zone detection
+  const pdZoneSettings = usePDZoneSettings();
+  const pdZones = usePDZoneDetection({
+    candles,
+    settings: pdZoneSettings.settings,
   });
 
   // Hooks - HTF data cache
@@ -386,6 +406,22 @@ export function ChartFullscreenPage({
           swingPoints={swingPoints}
           settings={bosSettings.settings}
         />
+
+        {/* Liquidity Zone Renderer */}
+        <LiquidityRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          zones={liquidityZones}
+          settings={liquiditySettings.settings}
+        />
+
+        {/* Premium/Discount Zone Renderer */}
+        <PDZoneRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          zones={pdZones}
+          settings={pdZoneSettings.settings}
+        />
         
         {/* Drawing Renderer */}
         <DrawingRenderer
@@ -510,6 +546,10 @@ export function ChartFullscreenPage({
         onOBSettingsChange={obSettings.setSettings}
         bosSettings={bosSettings.settings}
         onBOSSettingsChange={bosSettings.setSettings}
+        liquiditySettings={liquiditySettings.settings}
+        onLiquiditySettingsChange={liquiditySettings.setSettings}
+        pdZoneSettings={pdZoneSettings.settings}
+        onPDZoneSettingsChange={pdZoneSettings.setSettings}
       />
     </div>
   );
