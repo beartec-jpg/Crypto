@@ -16,7 +16,7 @@ interface IndicatorToolbarProps {
 export function IndicatorToolbar({ onOpenEmaSma, className }: IndicatorToolbarProps) {
   return (
     <div className={cn(
-      "flex flex-row gap-2 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2 shadow-xl",
+      "flex flex-row gap-0 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-0 shadow-xl",
       className
     )}>
       <TooltipProvider delayDuration={200}>
