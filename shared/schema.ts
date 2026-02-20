@@ -1059,3 +1059,110 @@ export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
 export type InsertApiUsageLog = z.infer<typeof insertApiUsageLogSchema>;
 export type ApiUsageLog = typeof apiUsageLog.$inferSelect;
 export type AnalyticsDailyStats = typeof analyticsDailyStats.$inferSelect;
+
+// ========== USER SETTINGS TABLES ==========
+
+// User Settings - general application settings per user
+export const userSettings = pgTable("user_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }).unique(),
+  // Chart preferences
+  defaultTimeframe: varchar("default_timeframe").notNull().default("1h"),
+  chartType: varchar("chart_type").notNull().default("candlestick"), // 'candlestick' | 'line' | 'area'
+  // UI preferences
+  sidebarCollapsed: boolean("sidebar_collapsed").notNull().default(false),
+  theme: varchar("theme").notNull().default("dark"),
+  // Last state
+  lastSymbol: varchar("last_symbol").notNull().default("BTCUSDT"),
+  lastTimeframe: varchar("last_timeframe").notNull().default("1h"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserSettingsSchema = z.object({
+  userId: z.string(),
+  defaultTimeframe: z.string().optional().default("1h"),
+  chartType: z.enum(["candlestick", "line", "area"]).optional().default("candlestick"),
+  sidebarCollapsed: z.boolean().optional().default(false),
+  theme: z.string().optional().default("dark"),
+  lastSymbol: z.string().optional().default("BTCUSDT"),
+  lastTimeframe: z.string().optional().default("1h"),
+});
+
+export const userSettingsResponseSchema = z.object({
+  defaultTimeframe: z.string(),
+  chartType: z.enum(["candlestick", "line", "area"]),
+  sidebarCollapsed: z.boolean(),
+  theme: z.string(),
+  lastSymbol: z.string(),
+  lastTimeframe: z.string(),
+});
+
+export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
+export type UserSettings = typeof userSettings.$inferSelect;
+export type UserSettingsResponse = z.infer<typeof userSettingsResponseSchema>;
+
+// User Indicator Settings - SMC indicator configurations per user
+export const userIndicatorSettings = pgTable("user_indicator_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }).unique(),
+  // All SMC indicator settings stored as JSONB for flexibility
+  fvgSettings: jsonb("fvg_settings"),       // FVGSettings
+  orderBlockSettings: jsonb("order_block_settings"), // OrderBlockSettings
+  liquiditySettings: jsonb("liquidity_settings"),    // LiquiditySettings
+  pdZoneSettings: jsonb("pd_zone_settings"),          // PDZoneSettings
+  bosSettings: jsonb("bos_settings"),                 // BOSSettings
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserIndicatorSettingsSchema = z.object({
+  userId: z.string(),
+  fvgSettings: z.any().optional().nullable(),
+  orderBlockSettings: z.any().optional().nullable(),
+  liquiditySettings: z.any().optional().nullable(),
+  pdZoneSettings: z.any().optional().nullable(),
+  bosSettings: z.any().optional().nullable(),
+});
+
+export const userIndicatorSettingsResponseSchema = z.object({
+  fvgSettings: z.any().nullable(),
+  orderBlockSettings: z.any().nullable(),
+  liquiditySettings: z.any().nullable(),
+  pdZoneSettings: z.any().nullable(),
+  bosSettings: z.any().nullable(),
+});
+
+export type InsertUserIndicatorSettings = z.infer<typeof insertUserIndicatorSettingsSchema>;
+export type UserIndicatorSettings = typeof userIndicatorSettings.$inferSelect;
+export type UserIndicatorSettingsResponse = z.infer<typeof userIndicatorSettingsResponseSchema>;
+
+// User Positions - tracked positions and portfolio data per user
+export const userPositions = pgTable("user_positions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }).unique(),
+  positions: jsonb("positions").notNull().default(sql`'[]'::jsonb`), // Array of position objects
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const userPositionEntrySchema = z.object({
+  id: z.string(),
+  symbol: z.string(),
+  direction: z.enum(["long", "short"]),
+  entryPrice: z.number(),
+  quantity: z.number(),
+  stopLoss: z.number().optional().nullable(),
+  takeProfit: z.number().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  openedAt: z.number(), // Unix timestamp
+});
+
+export const insertUserPositionsSchema = z.object({
+  userId: z.string(),
+  positions: z.array(userPositionEntrySchema).default([]),
+});
+
+export type InsertUserPositions = z.infer<typeof insertUserPositionsSchema>;
+export type UserPositions = typeof userPositions.$inferSelect;
+export type UserPositionEntry = z.infer<typeof userPositionEntrySchema>;
