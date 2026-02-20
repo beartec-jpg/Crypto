@@ -103,7 +103,7 @@ export function VerticalDrawingToolbar({
                   size="icon"
                   onClick={() => handleToolClick(tool.id)}
                   className={`
-                    h-10 w-10 p-0 transition-all
+                    h-20 w-20 p-0 transition-all
                     ${isActive 
                       ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/50' 
                       : 'text-slate-300 hover:text-white hover:bg-slate-800'
