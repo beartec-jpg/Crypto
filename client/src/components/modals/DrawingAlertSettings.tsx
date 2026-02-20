@@ -73,6 +73,7 @@ export function DrawingAlertSettings({
   }, [drawing]);
 
   const handleSave = () => {
+    if (!drawing) return;
     let updatedStyle: any = { ...drawing.style };
 
     if (drawing.drawingType === 'trendline') {
@@ -150,7 +151,7 @@ export function DrawingAlertSettings({
   );
 
   const renderLevelAlerts = () => {
-    const levels = getLevelsForDrawingType(drawing.drawingType);
+    const levels = getLevelsForDrawingType(drawing?.drawingType || '');
     
     return (
       <div className="space-y-4">

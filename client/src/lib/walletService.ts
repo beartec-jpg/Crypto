@@ -43,6 +43,7 @@ interface WalletDB extends DBSchema {
       salt: string;
       mnemonicBackedUp?: boolean;
     };
+    indexes: { userId: string };
   };
 }
 
@@ -1195,8 +1196,37 @@ export async function getXRPSeed(walletId: string, password: string): Promise<st
 }
 
 /**
- * Get Solana keypair for wallet operations
+ * Get legacy Ethereum address for recovery purposes
+ * Uses legacy derivation path m/44'/60'/0'/0 (without leaf index)
  */
+export async function getLegacyAddressForRecovery(
+  walletId: string,
+  password: string
+): Promise<{ legacyAddress: string; currentAddress: string; legacyPrivateKey: string } | null> {
+  try {
+    const wallet = await unlockWallet(walletId, password);
+    const mnemonic = wallet.mnemonic;
+
+    const seed = await bip39.mnemonicToSeed(mnemonic);
+    const root = HDKey.fromMasterSeed(seed);
+
+    // Legacy derivation path (without the leaf index)
+    const legacyNode = derivePath(root, "m/44'/60'/0'/0");
+    if (!legacyNode.privateKey) throw new Error('Failed to derive legacy key');
+
+    const legacyPrivateKey = Buffer.from(legacyNode.privateKey).toString('hex');
+    const legacyAddress = deriveEthereumAddress(legacyNode.privateKey);
+
+    return {
+      legacyAddress,
+      currentAddress: wallet.addresses.ethereum,
+      legacyPrivateKey,
+    };
+  } catch (error) {
+    console.error('Failed to get legacy address for recovery:', error);
+    return null;
+  }
+}
 export async function getSolanaKeypair(walletId: string, password: string): Promise<Keypair> {
   try {
     const wallet = await unlockWallet(walletId, password);

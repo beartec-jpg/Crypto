@@ -34,8 +34,8 @@ interface SettingsPanelProps {
   setChartChochSwingLengthInput: (value: string) => void;
   chartChochSwingLength: number;
   setChartChochSwingLength: (value: number) => void;
-  stratLiquidityGrab: boolean;
-  setStratLiquidityGrab: (value: boolean) => void;
+  stratLiquidityGrab?: boolean;
+  setStratLiquidityGrab?: (value: boolean) => void;
   chartLiquiditySweepSwingLengthInput: string;
   setChartLiquiditySweepSwingLengthInput: (value: string) => void;
   chartLiquiditySweepSwingLength: number;
@@ -79,8 +79,8 @@ export function SettingsPanel({
   setChartChochSwingLengthInput,
   chartChochSwingLength,
   setChartChochSwingLength,
-  stratLiquidityGrab,
-  setStratLiquidityGrab,
+  stratLiquidityGrab = false,
+  setStratLiquidityGrab = () => {},
   chartLiquiditySweepSwingLengthInput,
   setChartLiquiditySweepSwingLengthInput,
   chartLiquiditySweepSwingLength,

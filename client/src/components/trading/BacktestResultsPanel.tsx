@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { BarChart2, Loader2, Play } from 'lucide-react';
-import { BacktestResults } from '@/hooks/useTradingState';
+import type { BacktestResults, BacktestTrade } from '@/types/trading.types';
 
 interface BacktestResultsPanelProps {
   results: BacktestResults | null;
@@ -20,8 +20,8 @@ export function BacktestResultsPanel({
   const [showDetails, setShowDetails] = useState(false);
 
   // Calculate winning/losing trades from the trades array
-  const winningTrades = results?.trades.filter(t => t.pnl > 0).length || 0;
-  const losingTrades = results?.trades.filter(t => t.pnl <= 0).length || 0;
+  const winningTrades = results?.trades.filter((t: BacktestTrade) => t.pnl > 0).length || 0;
+  const losingTrades = results?.trades.filter((t: BacktestTrade) => t.pnl <= 0).length || 0;
 
   return (
     <Card className="bg-slate-800 border-slate-700">
@@ -146,7 +146,7 @@ export function BacktestResultsPanel({
                     </tr>
                   </thead>
                   <tbody>
-                    {results.trades.map((trade, idx) => (
+                    {results.trades.map((trade: BacktestTrade, idx: number) => (
                       <tr key={idx} className="border-t border-slate-800">
                         <td className="px-2 py-1">
                           <span className={trade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}>

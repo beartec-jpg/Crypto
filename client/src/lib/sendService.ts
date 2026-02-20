@@ -61,6 +61,7 @@ const RPC_ENDPOINTS = {
     'https://bsc-dataseed1.defibit.io',
     'https://bsc.meowrpc.com',
   ],
+  xrp: [],
 };
 
 // Block explorer URLs
@@ -74,6 +75,7 @@ const EXPLORER_URLS = {
 const CHAIN_IDS = {
   ethereum: 1,
   bsc: 56,
+  xrp: 0,
 };
 
 // Current RPC index for rotation
@@ -94,6 +96,7 @@ const RPC_HEALTH_CHECK_TIMEOUT = 5000; // 5 seconds
 const REQUIRED_CONFIRMATIONS = {
   ethereum: 6,
   bsc: 15,
+  xrp: 1,
 };
 
 /**
@@ -319,6 +322,7 @@ async function getTokenPrice(chain: Chain): Promise<number> {
     const coinIds: Record<Chain, string> = {
       ethereum: 'ethereum',
       bsc: 'binancecoin',
+      xrp: 'ripple',
     };
     
     const response = await axios.get(

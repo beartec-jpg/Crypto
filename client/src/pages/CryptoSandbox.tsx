@@ -241,7 +241,7 @@ export default function CryptoSandbox() {
     };
   }, []);
   
-  const svgRef = useRef<SVGSVGElement>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
   const [symbol, setSymbol] = useState('BTCUSDT');
@@ -1046,19 +1046,6 @@ useEffect(() => {
     console.log(`✅ Pre-computed ${timeframeMins.length} timeframe aggregations`);
   }
 }, [baseCandles]);
-
-// Helper to convert interval string to milliseconds
-function getBinMsFromInterval(intervalStr: string): number {
-  const map:  Record<string, number> = {
-    '1m': ONE_MINUTE_MS,
-    '5m': 5 * ONE_MINUTE_MS,
-    '15m':  15 * ONE_MINUTE_MS,
-    '1h': ONE_HOUR_MS,
-    '4h': 4 * ONE_HOUR_MS,
-    '1d': ONE_DAY_MS,
-  };
-  return map[intervalStr] || ONE_HOUR_MS;
-}
 
 // Fetch base candles on mount and symbol change
 useEffect(() => {
@@ -2248,7 +2235,7 @@ const scheduleZoomStateUpdate = useCallback((transform: d3.ZoomTransform) => {
 // This includes SWITCH_UP_THRESHOLD_PX, SWITCH_DOWN_THRESHOLD_PX, and related hysteresis logic
 
 // Calculate current candle width - FIXED to use actual spacing
-const calculateCandleWidth = useCallback((
+const calculateD3CandleWidth = useCallback((
   xScale: d3.ScaleTime<number, number>, 
   candleData: CandleData[], 
   chartWidth: number
@@ -4912,15 +4899,12 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
   ref={containerRef} 
   className="w-full flex-1 overflow-hidden"
 >
-  {console.log('🎨 Chart container rendering, loading:', loading)}
   {loading ? (
     <div className="h-full flex items-center justify-center">
-      {console.log('🎨 Showing loading spinner')}
       <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
     </div>
   ) : (
     <div className="relative w-full h-full chart-background" onClick={handleChartBackgroundClick}>
-      {console.log('🎨 Rendering SVG container, dimensions:', dimensions)}
       <svg 
   width={dimensions.width} 
   height={dimensions.height}
@@ -4928,7 +4912,6 @@ const zoom = d3.zoom<SVGSVGElement, unknown>()
   className="chart-background"
   data-testid="sandbox-chart"
   ref={(el) => {
-    console.log('🎨 SVG ref callback:', !!el);
     svgRef.current = el;
   }}
         onTouchStart={(e) => {

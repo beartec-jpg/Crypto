@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { Shield, AlertCircle, CheckCircle, Copy, Download, Lock } from 'lucide-react';
 import { splitMnemonic, getShareFingerprint } from '../../lib/shamirService';
-import { sha256 } from '../../lib/walletService';
+
+async function sha256(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 interface ColdSignerSetupProps {
   mnemonic: string;

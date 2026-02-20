@@ -135,7 +135,7 @@ export function verifyHybridSignature(
     // Verify ECDSA signature (always required - this is our baseline security)
     const ecdsaSig = secp256k1.Signature.fromCompact(signature.ecdsaSignature);
     const ecdsaValid = secp256k1.verify(
-      ecdsaSig,
+      ecdsaSig.toCompactRawBytes(),
       messageHash,
       hexToBytes(ecdsaPublicKey)
     );

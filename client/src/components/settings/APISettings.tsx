@@ -10,7 +10,7 @@ interface APISettingsProps {
     coinbase?: string;
     xai?: string;
   };
-  onUpdateApiKey: (provider: string, key: string) => void;
+  onUpdateApiKey?: (provider: string, key: string) => void;
 }
 
 export function APISettings({ apiKeys, onUpdateApiKey }: APISettingsProps) {
@@ -29,7 +29,7 @@ export function APISettings({ apiKeys, onUpdateApiKey }: APISettingsProps) {
           <Input 
             type={editMode.binance ? 'text' : 'password'}
             value={apiKeys.binance || ''}
-            onChange={(e) => onUpdateApiKey('binance', e.target.value)}
+            onChange={(e) => onUpdateApiKey?.('binance', e.target.value)}
             placeholder="Enter Binance API key..."
             className="flex-1"
           />
@@ -50,7 +50,7 @@ export function APISettings({ apiKeys, onUpdateApiKey }: APISettingsProps) {
           <Input 
             type={editMode.coinbase ? 'text' : 'password'}
             value={apiKeys.coinbase || ''}
-            onChange={(e) => onUpdateApiKey('coinbase', e.target.value)}
+            onChange={(e) => onUpdateApiKey?.('coinbase', e.target.value)}
             placeholder="Enter Coinbase API key..."
             className="flex-1"
           />
@@ -71,7 +71,7 @@ export function APISettings({ apiKeys, onUpdateApiKey }: APISettingsProps) {
           <Input 
             type={editMode.xai ? 'text' : 'password'}
             value={apiKeys.xai || ''}
-            onChange={(e) => onUpdateApiKey('xai', e.target.value)}
+            onChange={(e) => onUpdateApiKey?.('xai', e.target.value)}
             placeholder="Enter XAI API key..."
             className="flex-1"
           />

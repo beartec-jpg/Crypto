@@ -1,6 +1,6 @@
 import ReactDOM from 'react-dom/client'
 import { ClerkProvider } from '@clerk/clerk-react'
-import { WagmiProvider, createConfig, http } from 'wagmi'
+import { WagmiProvider, createConfig, http, type CreateConnectorFn } from 'wagmi'
 import { sepolia } from 'wagmi/chains'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { metaMask, walletConnect } from 'wagmi/connectors'
@@ -36,7 +36,7 @@ if (!WALLETCONNECT_PROJECT_ID) {
 const queryClient = new QueryClient();
 
 // Build connectors array based on available configuration
-const connectors = [
+const connectors: CreateConnectorFn[] = [
   metaMask(),
 ];
 

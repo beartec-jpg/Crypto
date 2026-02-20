@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeries, type Time } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { X } from 'lucide-react';
@@ -166,7 +166,7 @@ export function FullscreenOscillatorPanel({
       color: '#10b981',
       priceFormat: { type: 'price', precision: 6, minMove: 0.000001 },
     });
-    histSeries.setData(histogram.map(h => ({
+    histSeries.setData(histogram.map((h: any) => ({
       ...h,
       color: h.value >= 0 ? '#10b981' : '#ef4444'
     })));
@@ -312,10 +312,10 @@ export function FullscreenOscillatorPanel({
       });
     };
     
-    const unsubscribe = mainChart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
+    mainChart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
     
     return () => {
-      unsubscribe();
+      mainChart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
     };
   }, [isVisible, mainChartRef, showRSI, showMACD, showStochRSI, showCCI, showWilliamsR]);
 

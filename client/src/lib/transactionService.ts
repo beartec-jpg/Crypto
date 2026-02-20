@@ -188,7 +188,7 @@ export async function fetchXRPTransactions(address: string): Promise<Transaction
       
       let amount = '0';
       if (typeof tx.Amount === 'string') {
-        amount = dropsToXrp(tx.Amount);
+        amount = dropsToXrp(tx.Amount).toString();
       } else if (tx.Amount?.value) {
         amount = tx.Amount.value;
       }
@@ -204,7 +204,7 @@ export async function fetchXRPTransactions(address: string): Promise<Transaction
         status: meta.TransactionResult === 'tesSUCCESS' ? 'confirmed' : 'failed',
         chain: 'xrp' as const,
         blockNumber: tx.ledger_index,
-        fee: dropsToXrp(tx.Fee),
+        fee: dropsToXrp(tx.Fee).toString(),
       };
     });
     

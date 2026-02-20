@@ -248,7 +248,7 @@ export default function SendForm({
       return;
     }
     
-    if (!validateAddress(recipient, selectedChain)) {
+    if (!validateAddress(recipient, selectedChain as any)) {
       setError(`Invalid ${selectedChain} address`);
       return;
     }
@@ -418,26 +418,26 @@ export default function SendForm({
       }
 
       setTransactionStep('estimating');
-      const gasEstimate = await estimateGas(selectedChain, fromAddress, recipient, amount);
+      const gasEstimate = await estimateGas(selectedChain as any, fromAddress, recipient, amount);
       setEstimatedFee(gasEstimate.estimatedFee);
       setEstimatedFeeUsd(gasEstimate.estimatedFeeUsd);
       
       const balanceCheck = await checkSufficientBalance(
-        selectedChain,
+        selectedChain as any,
         fromAddress,
         amount,
         gasEstimate.estimatedFee
       );
       
       if (!balanceCheck.sufficient) {
-        const symbol = getSendChainSymbol(selectedChain);
+        const symbol = getSendChainSymbol(selectedChain as any);
         throw new Error(
           `Insufficient balance. You need ${balanceCheck.required} ${symbol} but only have ${balanceCheck.balance} ${symbol}.`
         );
       }
       
       setTransactionStep('signing');
-            const tx = await buildTransaction(selectedChain, fromAddress, recipient, amount, gasEstimate);
+            const tx = await buildTransaction(selectedChain as any, fromAddress, recipient, amount, gasEstimate);
       
       const walletId = localStorage.getItem(`wallet_id_${userId}`);
       if (!walletId) {
@@ -453,7 +453,7 @@ export default function SendForm({
       );
       
       setTransactionStep('broadcasting');
-      const result = await broadcastTransaction(selectedChain, signedTx);
+      const result = await broadcastTransaction(selectedChain as any, signedTx);
       
       console.log('Transaction verified and broadcast successfully');
       
@@ -523,7 +523,7 @@ export default function SendForm({
   const handleRecipientChange = (value: string) => {
     setRecipient(value);
     
-    if (value && validateAddress(value, selectedChain)) {
+    if (value && validateAddress(value, selectedChain as any)) {
       setError(null);
     }
   };
@@ -712,7 +712,7 @@ export default function SendForm({
             placeholder={`Enter ${selectedChain} address`}
             className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:outline-none font-mono text-sm"
           />
-          {recipient && !validateAddress(recipient, selectedChain) && (
+          {recipient && !validateAddress(recipient, selectedChain as any) && (
             <p className="mt-2 text-sm text-red-400">
               Invalid {selectedChain} address format
             </p>
@@ -810,7 +810,7 @@ export default function SendForm({
         {/* Send Button */}
         <button
           onClick={handleSendClick}
-          disabled={!recipient || !amount || !validateAddress(recipient, selectedChain) || !selectedToken}
+          disabled={!recipient || !amount || !validateAddress(recipient, selectedChain as any) || !selectedToken}
           className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
         >
           <Send className="w-5 h-5" />
