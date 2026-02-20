@@ -22,10 +22,13 @@ import { ChartLoadingOverlay } from '@/components/chart/ChartLoadingOverlay';
 import { MiniOscillatorSection } from '@/components/oscillators/MiniOscillatorSection';
 
 import { EmaSmaModal } from '@/components/indicators';
-import { FVGSettingsModal } from '@/components/modals/FVGSettingsModal';
+import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
+import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
 import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
+import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
+import { useOrderBlockDetection } from '@/hooks/useOrderBlockDetection';
 import { VerticalDrawingToolbar, DrawingToolbarPreview } from '@/components/drawings/VerticalDrawingToolbar';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
@@ -121,6 +124,10 @@ export function ChartFullscreenPage({
   // Hooks - FVG detection
   const fvgSettings = useFVGSettings();
   const fvgs = useFVGDetection({ candles, settings: fvgSettings.settings });
+
+  // Hooks - Order Block detection
+  const obSettings = useOrderBlockSettings();
+  const orderBlocks = useOrderBlockDetection({ candles, settings: obSettings.settings, fvgs });
 
   // Hooks - HTF data cache
   const { htfDataCache } = useHTFDataCache({
@@ -350,6 +357,14 @@ export function ChartFullscreenPage({
           fvgs={fvgs}
           settings={fvgSettings.settings}
         />
+
+        {/* Order Block Renderer */}
+        <OrderBlockRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          orderBlocks={orderBlocks}
+          settings={obSettings.settings}
+        />
         
         {/* Drawing Renderer */}
         <DrawingRenderer
@@ -465,11 +480,13 @@ export function ChartFullscreenPage({
         onToggleOscillator={oscillatorPanel.toggleOscillator}
       />
 
-      <FVGSettingsModal
+      <SMCSettingsModal
         isOpen={showSmcModal}
         onClose={() => setShowSmcModal(false)}
-        settings={fvgSettings.settings}
-        onSettingsChange={fvgSettings.setSettings}
+        fvgSettings={fvgSettings.settings}
+        onFVGSettingsChange={fvgSettings.setSettings}
+        obSettings={obSettings.settings}
+        onOBSettingsChange={obSettings.setSettings}
       />
     </div>
   );
