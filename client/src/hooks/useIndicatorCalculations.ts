@@ -4,11 +4,12 @@ import {
   calculateSessionVWAP,
   calculateParabolicSAR,
   type BandValue,
+  type IndicatorValue,
 } from '@/lib/indicators';
 import { calculateBollingerBands } from '@/lib/indicators/volatility';
 
 interface IndicatorCalculations {
-  sessionVWAP: any[];
+  sessionVWAP: { asia: IndicatorValue[]; london: IndicatorValue[]; ny: IndicatorValue[] };
   parabolicSAR: any[];
   bollingerBands: BandValue[];
 }

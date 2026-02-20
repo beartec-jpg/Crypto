@@ -9,6 +9,7 @@ interface CryptoUser {
   firstName?: string;
   lastName?: string;
   profileImageUrl?: string;
+  publicMetadata?: { subscriptionTier?: string; [key: string]: unknown };
 }
 
 interface DailyUsage {

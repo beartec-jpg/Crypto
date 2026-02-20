@@ -205,13 +205,13 @@ export function ChartFullscreenPage({
     if (candleSeriesRef.current && candles.length > 0) {
       if (isInitialDataLoad.current) {
         // First load: set data and fit content
-        candleSeriesRef.current.setData(candles);
+        candleSeriesRef.current.setData(candles.map(c => ({ ...c, time: c.time as Time })));
         fitContent(candles.length);
         isInitialDataLoad.current = false;
       } else {
         // Subsequent updates: preserve the visible range
         const currentRange = chartRef.current?.timeScale().getVisibleRange();
-        candleSeriesRef.current.setData(candles);
+        candleSeriesRef.current.setData(candles.map(c => ({ ...c, time: c.time as Time })));
         if (currentRange) {
           try {
             chartRef.current?.timeScale().setVisibleRange(currentRange);

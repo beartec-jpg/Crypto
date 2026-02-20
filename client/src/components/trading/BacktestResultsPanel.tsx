@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { BarChart2, Loader2, Play } from 'lucide-react';
-import { BacktestResults } from '@/hooks/useTradingState';
+import type { BacktestResults, BacktestTrade } from '@/types/trading.types';
 
 interface BacktestResultsPanelProps {
   results: BacktestResults | null;
@@ -20,8 +20,14 @@ export function BacktestResultsPanel({
   const [showDetails, setShowDetails] = useState(false);
 
   // Calculate winning/losing trades from the trades array
-  const winningTrades = results?.trades.filter(t => t.pnl > 0).length || 0;
-  const losingTrades = results?.trades.filter(t => t.pnl <= 0).length || 0;
+  const winningTrades = results?.trades.filter((t: BacktestTrade) => t.profitLoss > 0).length || 0;
+  const losingTrades = results?.trades.filter((t: BacktestTrade) => t.profitLoss <= 0).length || 0;
+  const avgWin = winningTrades > 0
+    ? (results?.trades.filter((t: BacktestTrade) => t.profitLoss > 0).reduce((sum: number, t: BacktestTrade) => sum + t.profitLoss, 0) || 0) / winningTrades
+    : 0;
+  const avgLoss = losingTrades > 0
+    ? Math.abs((results?.trades.filter((t: BacktestTrade) => t.profitLoss <= 0).reduce((sum: number, t: BacktestTrade) => sum + t.profitLoss, 0) || 0) / losingTrades)
+    : 0;
 
   return (
     <Card className="bg-slate-800 border-slate-700">
@@ -81,14 +87,14 @@ export function BacktestResultsPanel({
             </div>
             <div className="bg-slate-900 p-3 rounded">
               <div className="text-xs text-gray-400">Total P&L</div>
-              <div className={`text-lg font-bold ${results.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ${results.totalPnL.toFixed(2)}
+              <div className={`text-lg font-bold ${results.totalPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                ${results.totalPL.toFixed(2)}
               </div>
             </div>
             <div className="bg-slate-900 p-3 rounded">
-              <div className="text-xs text-gray-400">Max Drawdown</div>
+              <div className="text-xs text-gray-400">Return</div>
               <div className="text-lg font-bold text-red-400">
-                {results.maxDrawdown.toFixed(1)}%
+                {results.returnPercent.toFixed(1)}%
               </div>
             </div>
           </div>
@@ -113,11 +119,11 @@ export function BacktestResultsPanel({
             <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-700">
               <div>
                 <div className="text-gray-400">Avg Win</div>
-                <div className="text-green-400 font-medium">${results.avgWin.toFixed(2)}</div>
+                <div className="text-green-400 font-medium">${avgWin.toFixed(2)}</div>
               </div>
               <div>
                 <div className="text-gray-400">Avg Loss</div>
-                <div className="text-red-400 font-medium">${results.avgLoss.toFixed(2)}</div>
+                <div className="text-red-400 font-medium">${avgLoss.toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -146,10 +152,10 @@ export function BacktestResultsPanel({
                     </tr>
                   </thead>
                   <tbody>
-                    {results.trades.map((trade, idx) => (
+                    {results.trades.map((trade: BacktestTrade, idx: number) => (
                       <tr key={idx} className="border-t border-slate-800">
                         <td className="px-2 py-1">
-                          <span className={trade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}>
+                          <span className={trade.direction === 'long' ? 'text-green-400' : 'text-red-400'}>
                             {trade.direction}
                           </span>
                         </td>
@@ -160,8 +166,8 @@ export function BacktestResultsPanel({
                           {trade.exitTime ? new Date(trade.exitTime).toLocaleTimeString() : '-'}
                         </td>
                         <td className="px-2 py-1 text-right">
-                          <span className={trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            ${trade.pnl.toFixed(2)}
+                          <span className={trade.profitLoss >= 0 ? 'text-green-400' : 'text-red-400'}>
+                            ${trade.profitLoss.toFixed(2)}
                           </span>
                         </td>
                       </tr>

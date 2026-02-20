@@ -6,6 +6,16 @@ interface PriceData {
   price: number;
 }
 
+interface AlertConfig {
+  enabled: boolean;
+  triggered: boolean;
+  lastCheckedPrice: number;
+  crossUpEnabled: boolean;
+  crossDownEnabled: boolean;
+  triggerTime?: number;
+  [key: string]: unknown;
+}
+
 class PriceMonitorService {
   private monitorInterval: NodeJS.Timeout | null = null;
   private readonly CHECK_INTERVAL = 30000; // Check every 30 seconds
@@ -902,7 +912,7 @@ class PriceMonitorService {
     let needsUpdate = false;
     const updatedLevelAlerts = { ...levelAlerts };
 
-    for (const [levelKey, alertConfig] of Object.entries(levelAlerts)) {
+    for (const [levelKey, alertConfig] of Object.entries(levelAlerts) as [string, AlertConfig][]) {
       if (!alertConfig.enabled || alertConfig.triggered) continue;
 
       const levelValue = levelMap[levelKey];
@@ -985,7 +995,7 @@ class PriceMonitorService {
     let needsUpdate = false;
     const updatedLevelAlerts = { ...levelAlerts };
 
-    for (const [levelKey, alertConfig] of Object.entries(levelAlerts)) {
+    for (const [levelKey, alertConfig] of Object.entries(levelAlerts) as [string, AlertConfig][]) {
       if (!alertConfig.enabled || alertConfig.triggered) continue;
 
       const levelValue = fibLevels[levelKey];
@@ -1069,7 +1079,7 @@ class PriceMonitorService {
     let needsUpdate = false;
     const updatedLevelAlerts = { ...levelAlerts };
 
-    for (const [levelKey, alertConfig] of Object.entries(levelAlerts)) {
+    for (const [levelKey, alertConfig] of Object.entries(levelAlerts) as [string, AlertConfig][]) {
       if (!alertConfig.enabled || alertConfig.triggered) continue;
 
       const levelValue = trendFibLevels[levelKey];
@@ -1144,7 +1154,7 @@ class PriceMonitorService {
     let needsUpdate = false;
     const updatedLevelAlerts = { ...levelAlerts };
 
-    for (const [levelKey, alertConfig] of Object.entries(levelAlerts)) {
+    for (const [levelKey, alertConfig] of Object.entries(levelAlerts) as [string, AlertConfig][]) {
       if (!alertConfig.enabled || alertConfig.triggered) continue;
 
       const levelValue = levelMap[levelKey];

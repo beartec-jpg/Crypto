@@ -2,7 +2,7 @@
 // Hybrid post-quantum cryptography utilities
 // Uses ML-DSA (Dilithium) for post-quantum security + ECDSA for compatibility
 
-import { ml_dsa65 } from '@noble/post-quantum/ml-dsa';
+import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
@@ -135,7 +135,7 @@ export function verifyHybridSignature(
     // Verify ECDSA signature (always required - this is our baseline security)
     const ecdsaSig = secp256k1.Signature.fromCompact(signature.ecdsaSignature);
     const ecdsaValid = secp256k1.verify(
-      ecdsaSig,
+      ecdsaSig.toCompactRawBytes(),
       messageHash,
       hexToBytes(ecdsaPublicKey)
     );

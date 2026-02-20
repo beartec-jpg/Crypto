@@ -1,4 +1,4 @@
-import { BacktestResults } from '@/types/trading.types';
+import type { BacktestResults } from '@/types/trading.types';
 
 interface BacktestResultsProps {
   results: BacktestResults | null;

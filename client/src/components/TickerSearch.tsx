@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 
 interface TickerSearchProps {
   onAddTicker: (symbol: string) => void;
-  existingTickers: string[];
+  existingTickers?: string[];
 }
 
 /**
@@ -16,7 +16,7 @@ interface TickerSearchProps {
  * - Validates against real Binance USDT pairs
  * - Prevents duplicate tickers
  */
-export function TickerSearch({ onAddTicker, existingTickers }: TickerSearchProps) {
+export function TickerSearch({ onAddTicker, existingTickers = [] }: TickerSearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [availableTickers, setAvailableTickers] = useState<string[]>([]);
   const [filteredTickers, setFilteredTickers] = useState<string[]>([]);

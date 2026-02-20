@@ -41,7 +41,7 @@ export async function getXrpAccountInfo(address: string): Promise<XRPAccountInfo
     });
     
     const accountData = response.result.account_data;
-    const balance = xrpl.dropsToXrp(accountData.Balance);
+    const balance = xrpl.dropsToXrp(accountData.Balance).toString();
     const ownerCount = accountData.OwnerCount || 0;
     const reserveTotal = BASE_RESERVE + (ownerCount * OWNER_RESERVE);
     const available = Math.max(0, parseFloat(balance) - reserveTotal);
@@ -201,7 +201,7 @@ export async function estimateXrpFee(): Promise<string> {
     
     // Convert drops to XRP
     const feeDrops = response.result.drops?.median_fee || response.result.drops?.minimum_fee || '12';
-    const feeXRP = xrpl.dropsToXrp(feeDrops);
+    const feeXRP = xrpl.dropsToXrp(feeDrops).toString();
     
     return feeXRP;
   } catch (error) {

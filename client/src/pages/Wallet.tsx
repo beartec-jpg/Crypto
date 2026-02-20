@@ -244,12 +244,15 @@ export default function WalletPage() {
     addPendingTransaction({
       hash: txid,
       chain: 'bitcoin',
-      type: 'send',
       amount: '0',
-      asset: 'BTC',
+      token: 'BTC',
+      from: '',
       to: '',
       timestamp: Date.now(),
       status: 'pending',
+      confirmations: 0,
+      requiredConfirmations: 6,
+      explorerUrl: `https://mempool.space/tx/${txid}`,
     });
 
     setShowBitcoinSend(false);
@@ -260,12 +263,15 @@ export default function WalletPage() {
     addPendingTransaction({
       hash: signature,
       chain: 'solana',
-      type: 'send',
       amount: '0',
-      asset: selectedToken?.symbol || 'SOL',
+      token: selectedToken?.symbol || 'SOL',
+      from: '',
       to: '',
       timestamp: Date.now(),
       status: 'pending',
+      confirmations: 0,
+      requiredConfirmations: 32,
+      explorerUrl: `https://solscan.io/tx/${signature}`,
     });
 
     setShowSolanaSend(false);
@@ -536,11 +542,7 @@ export default function WalletPage() {
                 </button>
                 <button
                   onClick={() => setMode('security')}
-                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
-                    mode === 'security'
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
+                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 text-gray-400 hover:text-white`}
                   title="Security"
                 >
                   <Shield className="w-4 h-4 flex-shrink-0" />

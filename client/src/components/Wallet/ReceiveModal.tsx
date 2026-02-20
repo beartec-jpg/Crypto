@@ -222,7 +222,7 @@ export default function ReceiveModal({
             <Download className="w-5 h-5" />
             <span>Save QR</span>
           </button>
-          {navigator.share && (
+          {'share' in navigator && (
             <button
               onClick={handleShare}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors"

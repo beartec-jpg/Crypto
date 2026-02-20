@@ -448,7 +448,7 @@ const handleAIMarketReview = () => {
   
   // Keyboard shortcuts
   useKeyboardShortcuts({
-    onToggleDrawingMode: () => chartControls.setDrawingMode(prev => prev === 'draw' ? 'off' : 'draw'),
+    onToggleDrawingMode: () => chartControls.setDrawingMode(chartControls.drawingMode === 'draw' ? 'off' : 'draw'),
     onSelectTool: (tool) => {
       setActiveTool(tool as any);
       chartControls.setDrawingMode('draw');
@@ -4702,7 +4702,7 @@ useEffect(() => {
                   {/* Select/Cursor Button */}
                   <button
                     onClick={() => {
-                      chartControls.setDrawingMode(prev => prev === 'select' ? 'off' : 'select');
+                      chartControls.setDrawingMode(chartControls.drawingMode === 'select' ? 'off' : 'select');
                       setActiveTool(null);
                       setShowToolPicker(false);
                     }}
@@ -5259,8 +5259,8 @@ useEffect(() => {
 
         {/* Settings Dialog - Simplified for Phase 4G-7 */}
         <SettingsDialog
-          isOpen={modals.isOpen('settings-dialog')}
-          onClose={() => modals.closeModal('settings-dialog')}
+          open={modals.isOpen('settings-dialog')}
+          onOpenChange={(open) => open ? modals.openModal('settings-dialog') : modals.closeModal('settings-dialog')}
           indicators={{
             rsi: { show: indicators.rsi.show, period: indicators.rsi.period },
             macd: { show: indicators.macd.show, fast: indicators.macd.fast, slow: indicators.macd.slow, signal: indicators.macd.signal },
@@ -5325,7 +5325,7 @@ useEffect(() => {
           } : null}
           onUpdate={(updates) => {
             const selectedDrawing = drawings.find(d => d.id === selectedDrawingId);
-            if (!selectedDrawing) return;
+            if (!selectedDrawing || !selectedDrawingId) return;
             
             // Update local state
             setDrawings(prev => prev.map(d =>
@@ -5341,7 +5341,7 @@ useEffect(() => {
             }
 
             // Save to database
-            drawingsPersistence.updateDrawing({ id: selectedDrawingId, style: updates.style });
+            drawingsPersistence.updateDrawing({ id: selectedDrawingId, updates: { style: updates.style } });
             
             toast({
               title: 'Alert settings saved',
