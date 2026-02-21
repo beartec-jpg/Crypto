@@ -49,33 +49,40 @@ class LiquidityRenderer implements IPrimitivePaneRenderer {
       const timeScale = this._chart!.timeScale();
 
       for (const zone of this._zones) {
-        const color = zone.swept
-          ? this._settings.sweptColor
-          : this._settings.lineColor;
+        let color: string;
+        if (zone.invalidated) {
+          color = this._settings.invalidatedColor;
+        } else if (zone.swept) {
+          color = this._settings.sweptColor;
+        } else {
+          color = this._settings.lineColor;
+        }
 
         const yLevel = this._series!.priceToCoordinate(zone.price);
         if (yLevel === null) continue;
 
-        // Draw the line from the first touch to the right edge (or sweep point)
+        // Draw the line from the first touch to the right edge (or resolved point)
         const firstTouchTime = zone.touchTimes[0];
         const xStart = timeScale.timeToCoordinate(firstTouchTime as Time);
         if (xStart === null) continue;
 
         let xEnd = chartWidth;
-        if (!this._settings.extendLines && zone.swept && zone.sweepTime) {
+        if (zone.invalidated && zone.invalidationTime) {
+          const xInvalidation = timeScale.timeToCoordinate(zone.invalidationTime as Time);
+          if (xInvalidation !== null) xEnd = xInvalidation;
+        } else if (zone.swept && zone.sweepTime) {
           const xSweep = timeScale.timeToCoordinate(zone.sweepTime as Time);
           if (xSweep !== null) xEnd = xSweep;
         }
 
-        // Style: swept zones get dashed, active zones solid
-        ctx.strokeStyle = hexToRgba(color, zone.swept ? 0.45 : 0.85);
+        const opacity = zone.invalidated ? 0.6 : 0.85;
+        ctx.strokeStyle = hexToRgba(color, opacity);
         ctx.lineWidth = 1.5;
-        ctx.setLineDash(zone.swept ? [4, 4] : []);
+        ctx.setLineDash([]);
         ctx.beginPath();
         ctx.moveTo(xStart, yLevel);
         ctx.lineTo(xEnd, yLevel);
         ctx.stroke();
-        ctx.setLineDash([]);
 
         // Touch count dots
         for (const touchTime of zone.touchTimes) {
@@ -87,8 +94,8 @@ class LiquidityRenderer implements IPrimitivePaneRenderer {
           ctx.fill();
         }
 
-        // Sweep marker ⚡ when swept
-        if (zone.swept && zone.sweepTime) {
+        // Sweep marker ⚡ when swept (but not invalidated)
+        if (zone.swept && !zone.invalidated && zone.sweepTime) {
           const xSweep = timeScale.timeToCoordinate(zone.sweepTime as Time);
           if (xSweep !== null) {
             ctx.fillStyle = this._settings.sweepMarkerColor;

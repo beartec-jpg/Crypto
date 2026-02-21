@@ -107,6 +107,32 @@ function detectSweep(
 }
 
 /**
+ * Check whether a liquidity level has been invalidated (closed through).
+ * For highs: close above level + buffer = invalidated.
+ * For lows:  close below level - buffer = invalidated.
+ */
+function detectInvalidation(
+  candles: Candle[],
+  level: number,
+  afterIndex: number,
+  type: 'high' | 'low',
+  bufferPct: number,
+): { invalidated: boolean; invalidationTime?: number } {
+  const buffer = level * (bufferPct / 100);
+
+  for (let i = afterIndex + 1; i < candles.length; i++) {
+    const c = candles[i];
+    if (type === 'high' && c.close > level + buffer) {
+      return { invalidated: true, invalidationTime: c.time };
+    }
+    if (type === 'low' && c.close < level - buffer) {
+      return { invalidated: true, invalidationTime: c.time };
+    }
+  }
+  return { invalidated: false };
+}
+
+/**
  * Detect liquidity zones (equal highs / equal lows) from candle data.
  */
 export function useLiquidityDetection({
@@ -126,7 +152,8 @@ export function useLiquidityDetection({
         if (grp.touchTimes.length < settings.minTouches) continue;
 
         const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'high');
-        if (sweep.swept && !settings.showSwept) continue;
+        const invalidation = detectInvalidation(candles, grp.price, grp.lastIndex, 'high', settings.invalidationBuffer);
+        if ((sweep.swept || invalidation.invalidated) && !settings.showSwept) continue;
 
         zones.push({
           id: `liq-high-${grp.touchTimes[0]}`,
@@ -135,6 +162,7 @@ export function useLiquidityDetection({
           touchTimes: grp.touchTimes,
           touchPrices: grp.touchPrices,
           ...sweep,
+          ...invalidation,
         });
       }
     }
@@ -145,7 +173,8 @@ export function useLiquidityDetection({
         if (grp.touchTimes.length < settings.minTouches) continue;
 
         const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'low');
-        if (sweep.swept && !settings.showSwept) continue;
+        const invalidation = detectInvalidation(candles, grp.price, grp.lastIndex, 'low', settings.invalidationBuffer);
+        if ((sweep.swept || invalidation.invalidated) && !settings.showSwept) continue;
 
         zones.push({
           id: `liq-low-${grp.touchTimes[0]}`,
@@ -154,6 +183,7 @@ export function useLiquidityDetection({
           touchTimes: grp.touchTimes,
           touchPrices: grp.touchPrices,
           ...sweep,
+          ...invalidation,
         });
       }
     }

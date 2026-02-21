@@ -11,6 +11,8 @@ export interface LiquidityZone {
   swept: boolean;          // Has price swept (wicked) through then rejected?
   sweepTime?: number;      // Timestamp of the sweep candle
   sweepPrice?: number;     // The wick extreme that swept through the level
+  invalidated: boolean;    // Has price closed through the level (invalidated)?
+  invalidationTime?: number; // Timestamp of the invalidation candle
 }
 
 export type PDRangeSource = 'swing' | 'day' | 'week';
@@ -31,16 +33,17 @@ export interface LiquiditySettings {
   // Detection
   equalThreshold: number;  // % tolerance for "equal" highs/lows, default 0.15
   minTouches: number;      // Minimum touches to qualify as a liquidity zone, default 2
+  invalidationBuffer: number; // % adjustment for close-outside invalidation, default 0.05
 
   // Display
   showHighs: boolean;      // Show equal highs (sell-side liquidity)
   showLows: boolean;       // Show equal lows (buy-side liquidity)
-  showSwept: boolean;      // Keep history of swept zones visible
-  extendLines: boolean;    // Extend lines to the right edge of the chart
+  showSwept: boolean;      // Keep history of swept/invalidated zones visible
 
   // Colors
-  lineColor: string;       // Default: '#fbbf24' (amber)
-  sweptColor: string;      // Default: '#6b7280' (gray, faded)
+  lineColor: string;       // Default: '#fbbf24' (amber/yellow — pending)
+  sweptColor: string;      // Default: '#22c55e' (green — swept)
+  invalidatedColor: string; // Default: '#ef4444' (red — invalidated)
   sweepMarkerColor: string; // Default: '#f97316' (orange, for ⚡ marker)
 }
 
@@ -67,12 +70,13 @@ export const DEFAULT_LIQUIDITY_SETTINGS: LiquiditySettings = {
   enabled: true,
   equalThreshold: 0.15,
   minTouches: 2,
+  invalidationBuffer: 0.05,
   showHighs: true,
   showLows: true,
   showSwept: true,
-  extendLines: true,
   lineColor: '#fbbf24',
-  sweptColor: '#6b7280',
+  sweptColor: '#22c55e',
+  invalidatedColor: '#ef4444',
   sweepMarkerColor: '#f97316',
 };
 
