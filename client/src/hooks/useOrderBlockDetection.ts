@@ -202,7 +202,8 @@ export function useOrderBlockDetection({
         const c = candles[j];
 
         if (ob.type === 'bullish') {
-          if (c.low <= ob.top) {
+          // Only mitigated if price dips into the zone (low must be within zone bounds)
+          if (c.low <= ob.top && c.low >= ob.bottom) {
             const penetration = (ob.top - c.low) / (ob.top - ob.bottom);
             mitigationPercent = Math.min(100, Math.max(mitigationPercent, penetration * 100));
           }
@@ -213,7 +214,8 @@ export function useOrderBlockDetection({
             break;
           }
         } else {
-          if (c.high >= ob.bottom) {
+          // Only mitigated if price rises into the zone (high must be within zone bounds)
+          if (c.high >= ob.bottom && c.high <= ob.top) {
             const penetration = (c.high - ob.bottom) / (ob.top - ob.bottom);
             mitigationPercent = Math.min(100, Math.max(mitigationPercent, penetration * 100));
           }
