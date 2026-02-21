@@ -44,7 +44,7 @@ export function DraggableToolbar({
     } catch { /* Ignore localStorage errors (e.g., private browsing) */ return false; }
   });
 
-  const { position, isDragging, dragHandleProps } = useDraggable({
+  const { position, isDragging, dragHandleProps, setPosition } = useDraggable({
     initialPosition: defaultPosition(),
     storageKey,
   });
@@ -55,6 +55,8 @@ export function DraggableToolbar({
     if (rotationStorageKey) {
       try { localStorage.setItem(rotationStorageKey, String(newValue)); } catch { /* Ignore localStorage errors */ }
     }
+    // Re-clamp position so rotation near edges doesn't push toolbar off-screen
+    setPosition(position);
   };
 
   const handleToggleMinimize = () => {
@@ -82,10 +84,10 @@ export function DraggableToolbar({
         {/* Control Bar (Drag Handle + Rotate + Minimize) */}
         <div
           className={cn(
-            "flex items-center justify-center gap-1 bg-slate-800/95 backdrop-blur-sm border border-slate-700",
+            "flex items-center justify-center gap-0.5 bg-slate-800/95 backdrop-blur-sm border border-slate-700",
             isVertical
-              ? "flex-col border-r-0 rounded-l-lg px-1 py-2"
-              : "flex-row border-b-0 rounded-t-lg px-2 py-1"
+              ? "flex-col border-r-0 rounded-l-lg px-0.5 py-1"
+              : "flex-row border-b-0 rounded-t-lg px-1 py-0.5"
           )}
         >
           {/* Drag Handle */}

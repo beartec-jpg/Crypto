@@ -70,7 +70,17 @@ export function useDraggable(options: UseDraggableOptions = {}): UseDraggableRet
 
   // Constrain position within bounds
   const constrainPosition = useCallback((pos: { x: number; y: number }): { x: number; y: number } => {
-    if (!elementRef.current) return pos;
+    if (!elementRef.current) {
+      // Fallback: clamp to viewport with a minimum visibility margin
+      if (typeof window !== 'undefined') {
+        const margin = 50;
+        return {
+          x: Math.max(0, Math.min(pos.x, window.innerWidth - margin)),
+          y: Math.max(0, Math.min(pos.y, window.innerHeight - margin)),
+        };
+      }
+      return pos;
+    }
 
     const element = elementRef.current;
     const rect = element.getBoundingClientRect();
@@ -215,6 +225,10 @@ export function useDraggable(options: UseDraggableOptions = {}): UseDraggableRet
     }
   }, [position, onDragStart]);
 
+  const setPositionConstrained = useCallback((pos: { x: number; y: number }) => {
+    setPosition(constrainPosition(pos));
+  }, [constrainPosition]);
+
   return {
     position,
     isDragging,
@@ -223,6 +237,6 @@ export function useDraggable(options: UseDraggableOptions = {}): UseDraggableRet
       onTouchStart: handleTouchStart,
       style: { cursor: isDragging ? 'grabbing' : 'grab' },
     },
-    setPosition,
+    setPosition: setPositionConstrained,
   };
 }
