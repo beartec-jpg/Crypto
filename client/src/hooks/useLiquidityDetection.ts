@@ -47,12 +47,41 @@ function detectSwings(
 }
 
 /**
+ * Validate that price has not broken through the level between two swing points.
+ * For highs: price should not have closed above the level.
+ * For lows: price should not have closed below the level.
+ */
+function validateNoBreakthrough(
+  candles: Candle[],
+  point1: SwingPoint,
+  point2: SwingPoint,
+  level: number,
+  type: 'high' | 'low',
+): boolean {
+  const startIndex = Math.min(point1.index, point2.index);
+  const endIndex = Math.max(point1.index, point2.index);
+
+  for (let i = startIndex + 1; i < endIndex; i++) {
+    if (type === 'high' && candles[i].close > level) {
+      return false;
+    }
+    if (type === 'low' && candles[i].close < level) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Group swing points that are within `threshold`% of each other into
  * liquidity clusters. Each group tracks all touch timestamps.
  */
 function groupByPrice(
   points: SwingPoint[],
   thresholdPct: number,
+  candles: Candle[],
+  type: 'high' | 'low',
 ): LiquidityGroup[] {
   const groups: LiquidityGroup[] = [];
 
@@ -61,13 +90,25 @@ function groupByPrice(
     for (const grp of groups) {
       const diffPct = Math.abs(pt.price - grp.price) / grp.price * 100;
       if (diffPct <= thresholdPct) {
-        grp.touchTimes.push(pt.time);
-        grp.touchPrices.push(pt.price);
-        // Keep representative price as running average
-        grp.price = grp.touchPrices.reduce((a, b) => a + b, 0) / grp.touchPrices.length;
-        grp.lastIndex = Math.max(grp.lastIndex, pt.index);
-        matched = true;
-        break;
+        // Validate that price hasn't broken through between touches
+        const lastPoint: SwingPoint = {
+          index: grp.lastIndex,
+          price: grp.touchPrices[grp.touchPrices.length - 1],
+          time: grp.touchTimes[grp.touchTimes.length - 1],
+        };
+
+        const isValid = validateNoBreakthrough(candles, lastPoint, pt, grp.price, type);
+
+        if (isValid) {
+          grp.touchTimes.push(pt.time);
+          grp.touchPrices.push(pt.price);
+          // Keep representative price as running average
+          grp.price = grp.touchPrices.reduce((a, b) => a + b, 0) / grp.touchPrices.length;
+          grp.lastIndex = Math.max(grp.lastIndex, pt.index);
+          matched = true;
+          break;
+        }
+        // If validation failed, don't group these points - continue to next group or create new one
       }
     }
     if (!matched) {
@@ -147,7 +188,7 @@ export function useLiquidityDetection({
     const zones: LiquidityZone[] = [];
 
     if (settings.showHighs) {
-      const highGroups = groupByPrice(highs, settings.equalThreshold);
+      const highGroups = groupByPrice(highs, settings.equalThreshold, candles, 'high');
       for (const grp of highGroups) {
         if (grp.touchTimes.length < settings.minTouches) continue;
 
@@ -168,7 +209,7 @@ export function useLiquidityDetection({
     }
 
     if (settings.showLows) {
-      const lowGroups = groupByPrice(lows, settings.equalThreshold);
+      const lowGroups = groupByPrice(lows, settings.equalThreshold, candles, 'low');
       for (const grp of lowGroups) {
         if (grp.touchTimes.length < settings.minTouches) continue;
 

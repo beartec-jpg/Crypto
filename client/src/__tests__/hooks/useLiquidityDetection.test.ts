@@ -127,6 +127,127 @@ describe('useLiquidityDetection', () => {
     expect(sweptZone?.sweepPrice).toBe(111);
   });
 
+  it('does NOT group equal highs when price closed above the level between touches', () => {
+    // Two swing highs at ~100, but a candle closes at 105 (above level) between them
+    const candles: Candle[] = [
+      // Padding
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1000 + i * 60,
+        open: 95, high: 96, low: 94, close: 95, volume: 1000,
+      })),
+      // Swing high 1 at 100
+      { time: 1300, open: 95, high: 100, low: 94, close: 95, volume: 1000 },
+      // Candles between: one closes ABOVE 100 (breakthrough)
+      { time: 1360, open: 100, high: 106, low: 99, close: 105, volume: 1000 },
+      ...Array.from({ length: 4 }, (_, i) => ({
+        time: 1420 + i * 60,
+        open: 95, high: 96, low: 94, close: 95, volume: 1000,
+      })),
+      // Swing high 2 at 100.05 (within threshold)
+      { time: 1660, open: 95, high: 100.05, low: 94, close: 95, volume: 1000 },
+      // Trailing padding
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1720 + i * 60,
+        open: 95, high: 96, low: 94, close: 95, volume: 1000,
+      })),
+    ];
+
+    const { result } = renderHook(() =>
+      useLiquidityDetection({
+        candles,
+        settings: {
+          ...DEFAULT_LIQUIDITY_SETTINGS,
+          equalThreshold: 0.15,
+          minTouches: 2,
+        },
+      }),
+    );
+
+    // The two highs should NOT be grouped because price broke above the level
+    const highZones = result.current.filter(z => z.type === 'high');
+    const multiTouchZones = highZones.filter(z => z.touchTimes.length >= 2);
+    expect(multiTouchZones.length).toBe(0);
+  });
+
+  it('DOES group equal highs when price stayed below the level between touches', () => {
+    // Two swing highs at ~100, all candles between close below 100
+    const candles: Candle[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1000 + i * 60,
+        open: 95, high: 96, low: 94, close: 95, volume: 1000,
+      })),
+      // Swing high 1 at 100
+      { time: 1300, open: 95, high: 100, low: 94, close: 95, volume: 1000 },
+      // Candles between: all close BELOW 100 (no breakthrough)
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1360 + i * 60,
+        open: 95, high: 96, low: 94, close: 95, volume: 1000,
+      })),
+      // Swing high 2 at 100.05 (within threshold)
+      { time: 1660, open: 95, high: 100.05, low: 94, close: 95, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1720 + i * 60,
+        open: 95, high: 96, low: 94, close: 95, volume: 1000,
+      })),
+    ];
+
+    const { result } = renderHook(() =>
+      useLiquidityDetection({
+        candles,
+        settings: {
+          ...DEFAULT_LIQUIDITY_SETTINGS,
+          equalThreshold: 0.15,
+          minTouches: 2,
+        },
+      }),
+    );
+
+    const highZones = result.current.filter(z => z.type === 'high');
+    const multiTouchZones = highZones.filter(z => z.touchTimes.length >= 2);
+    expect(multiTouchZones.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does NOT group equal lows when price closed below the level between touches', () => {
+    // Two swing lows at ~100, but a candle closes at 95 (below level) between them
+    const candles: Candle[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1000 + i * 60,
+        open: 105, high: 106, low: 104, close: 105, volume: 1000,
+      })),
+      // Swing low 1 at 100
+      { time: 1300, open: 105, high: 106, low: 100, close: 105, volume: 1000 },
+      // Candle that closes BELOW 100 (breakthrough)
+      { time: 1360, open: 100, high: 101, low: 94, close: 95, volume: 1000 },
+      ...Array.from({ length: 4 }, (_, i) => ({
+        time: 1420 + i * 60,
+        open: 105, high: 106, low: 104, close: 105, volume: 1000,
+      })),
+      // Swing low 2 at 100.05 (within threshold)
+      { time: 1660, open: 105, high: 106, low: 100.05, close: 105, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1720 + i * 60,
+        open: 105, high: 106, low: 104, close: 105, volume: 1000,
+      })),
+    ];
+
+    const { result } = renderHook(() =>
+      useLiquidityDetection({
+        candles,
+        settings: {
+          ...DEFAULT_LIQUIDITY_SETTINGS,
+          equalThreshold: 0.15,
+          minTouches: 2,
+          showHighs: false,
+          showLows: true,
+        },
+      }),
+    );
+
+    const lowZones = result.current.filter(z => z.type === 'low');
+    const multiTouchZones = lowZones.filter(z => z.touchTimes.length >= 2);
+    expect(multiTouchZones.length).toBe(0);
+  });
+
   it('hides swept zones when showSwept is false', () => {
     const candles: Candle[] = [
       ...Array.from({ length: 5 }, (_, i) => ({
