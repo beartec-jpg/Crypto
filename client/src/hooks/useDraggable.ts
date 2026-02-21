@@ -70,16 +70,15 @@ export function useDraggable(options: UseDraggableOptions = {}): UseDraggableRet
 
   // Constrain position within bounds
   const constrainPosition = useCallback((pos: { x: number; y: number }): { x: number; y: number } => {
+    if (typeof window === 'undefined') return pos;
+
     if (!elementRef.current) {
-      // Fallback: clamp to viewport with a minimum visibility margin
-      if (typeof window !== 'undefined') {
-        const margin = 50;
-        return {
-          x: Math.max(0, Math.min(pos.x, window.innerWidth - margin)),
-          y: Math.max(0, Math.min(pos.y, window.innerHeight - margin)),
-        };
-      }
-      return pos;
+      // Fallback: clamp to viewport; 60px ensures the drag handle stays reachable
+      const margin = 60;
+      return {
+        x: Math.max(0, Math.min(pos.x, window.innerWidth - margin)),
+        y: Math.max(0, Math.min(pos.y, window.innerHeight - margin)),
+      };
     }
 
     const element = elementRef.current;
