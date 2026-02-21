@@ -125,14 +125,30 @@ class FVGRenderer implements IPrimitivePaneRenderer {
           }
         }
 
-        // Label
+        // Label with background
         if (this._settings.showLabels) {
           const label = fvg.isInverse
             ? `IFVG ${fvg.type === 'bullish' ? '↑' : '↓'}`
             : `FVG ${fvg.type === 'bullish' ? '↑' : '↓'}`;
-          ctx.fillStyle = hexToRgba(baseColor, Math.min(1, borderAlpha * 1.5));
+
           ctx.font = '10px sans-serif';
-          ctx.fillText(label, rectX + 4, rectY + 12);
+          const textMetrics = ctx.measureText(label);
+          const textWidth = textMetrics.width;
+          const textHeight = 12;
+          const padding = 4;
+
+          // Dark background box
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+          ctx.fillRect(
+            rectX + 2,
+            rectY + 2,
+            textWidth + padding * 2,
+            textHeight + padding
+          );
+
+          // White text
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+          ctx.fillText(label, rectX + 2 + padding, rectY + 2 + textHeight);
         }
       }
     });

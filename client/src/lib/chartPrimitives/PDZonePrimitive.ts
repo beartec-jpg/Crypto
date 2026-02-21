@@ -77,9 +77,23 @@ class PDZoneRenderer implements IPrimitivePaneRenderer {
             ctx.stroke();
 
             if (this._settings.showLabels) {
-              ctx.fillStyle = hexToRgba(this._settings.premiumColor, 0.85);
+              const label = 'Premium';
               ctx.font = 'bold 10px sans-serif';
-              ctx.fillText('Premium', xStart + 4, premTop + 13);
+              const textMetrics = ctx.measureText(label);
+              const textWidth = textMetrics.width;
+              const textHeight = 12;
+              const padding = 4;
+
+              // Position at right edge
+              const labelX = xEnd - textWidth - padding * 2 - 4;
+
+              // Dark background box
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+              ctx.fillRect(labelX, premTop + 2, textWidth + padding * 2, textHeight + padding);
+
+              // White text
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+              ctx.fillText(label, labelX + padding, premTop + 2 + textHeight);
             }
           }
         }
@@ -102,9 +116,24 @@ class PDZoneRenderer implements IPrimitivePaneRenderer {
             ctx.stroke();
 
             if (this._settings.showLabels) {
-              ctx.fillStyle = hexToRgba(this._settings.discountColor, 0.85);
+              const label = 'Discount';
               ctx.font = 'bold 10px sans-serif';
-              ctx.fillText('Discount', xStart + 4, discTop + discH - 4);
+              const textMetrics = ctx.measureText(label);
+              const textWidth = textMetrics.width;
+              const textHeight = 12;
+              const padding = 4;
+
+              // Position at right edge
+              const labelX = xEnd - textWidth - padding * 2 - 4;
+              const labelY = discTop + discH - textHeight - padding - 2;
+
+              // Dark background box
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+              ctx.fillRect(labelX, labelY, textWidth + padding * 2, textHeight + padding);
+
+              // White text
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+              ctx.fillText(label, labelX + padding, labelY + textHeight);
             }
           }
         }
@@ -121,9 +150,24 @@ class PDZoneRenderer implements IPrimitivePaneRenderer {
           ctx.setLineDash([]);
 
           if (this._settings.showLabels) {
-            ctx.fillStyle = hexToRgba(this._settings.equilibriumColor, 0.85);
+            const label = 'EQ 50%';
             ctx.font = '9px sans-serif';
-            ctx.fillText('EQ 50%', xStart + 4, yEq - 3);
+            const textMetrics = ctx.measureText(label);
+            const textWidth = textMetrics.width;
+            const textHeight = 11;
+            const padding = 3;
+
+            // Position at right edge
+            const labelX = xEnd - textWidth - padding * 2 - 4;
+            const labelY = yEq - textHeight - 2;
+
+            // Dark background box
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+            ctx.fillRect(labelX, labelY, textWidth + padding * 2, textHeight + padding);
+
+            // White text
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.fillText(label, labelX + padding, labelY + textHeight - 1);
           }
         }
       }
