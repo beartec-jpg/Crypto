@@ -636,21 +636,27 @@ export function SMCSettingsModal({
                 />
               </SettingRow>
 
-              <SettingRow label="Keep Swept Zones (History)">
+              <SettingRow label="Keep History (Swept + Invalidated)">
                 <Switch
                   checked={liquiditySettings.showSwept}
                   onCheckedChange={(v) => updateLiquidity('showSwept', v)}
                   className="data-[state=checked]:bg-blue-600"
                 />
               </SettingRow>
+            </div>
 
-              <SettingRow label="Extend Lines Right">
-                <Switch
-                  checked={liquiditySettings.extendLines}
-                  onCheckedChange={(v) => updateLiquidity('extendLines', v)}
-                  className="data-[state=checked]:bg-blue-600"
-                />
-              </SettingRow>
+            <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Invalidation</p>
+
+              <SliderRow
+                label="Invalidation Buffer %"
+                value={liquiditySettings.invalidationBuffer}
+                min={0}
+                max={0.5}
+                step={0.01}
+                displayValue={`${liquiditySettings.invalidationBuffer.toFixed(2)}%`}
+                onChange={(v) => updateLiquidity('invalidationBuffer', v)}
+              />
             </div>
 
             <div className="border-t border-slate-700 pt-2">
@@ -658,8 +664,9 @@ export function SMCSettingsModal({
               <div className="grid grid-cols-2 gap-3">
                 {(
                   [
-                    { key: 'lineColor', label: 'Active Zone' },
-                    { key: 'sweptColor', label: 'Swept Zone' },
+                    { key: 'lineColor', label: 'Pending Zone (Yellow)' },
+                    { key: 'sweptColor', label: 'Swept Zone (Green)' },
+                    { key: 'invalidatedColor', label: 'Invalidated Zone (Red)' },
                     { key: 'sweepMarkerColor', label: '⚡ Sweep Marker' },
                   ] as { key: keyof LiquiditySettings; label: string }[]
                 ).map(({ key, label }) => (
