@@ -297,8 +297,8 @@ export function SMCSettingsModal({
               <SliderRow
                 label="Min Body %"
                 value={obSettings.minBodyPercent}
-                min={30}
-                max={70}
+                min={0}
+                max={100}
                 step={5}
                 displayValue={`${obSettings.minBodyPercent}%`}
                 onChange={(v) => updateOB('minBodyPercent', v)}
