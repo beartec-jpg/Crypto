@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyToken } from '@clerk/backend';
 import pg from 'pg';
+import { getVisibleTimeframes } from '../../../shared/timeframeUtils';
 
 async function verifyAuth(req: VercelRequest): Promise<string | null> {
   try {
@@ -56,9 +57,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'symbol and timeframe required' });
       }
       
+      const visibleTimeframes = getVisibleTimeframes(timeframe as string);
       const result = await pool.query(
-        'SELECT * FROM chart_drawings WHERE user_id = $1 AND symbol = $2 AND timeframe = $3 ORDER BY created_at ASC',
-        [userId, symbol, timeframe]
+        'SELECT * FROM chart_drawings WHERE user_id = $1 AND symbol = $2 AND timeframe = ANY($3) ORDER BY created_at ASC',
+        [userId, symbol, visibleTimeframes]
       );
       
       await pool.end();
