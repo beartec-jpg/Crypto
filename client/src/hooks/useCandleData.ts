@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Candle, BinanceKline } from '@/types/chart';
+import type { Candle } from '@/types/chart';
 
 interface UseCandleDataOptions {
   symbol: string;
@@ -31,22 +31,15 @@ export function useCandleData({
       setError(null);
 
       const response = await fetch(
-        `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${timeframe}&limit=500`
+        `/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}`
       );
 
       if (!response.ok) {
         throw new Error(`Failed to fetch candles: ${response.status} ${response.statusText}`);
       }
 
-      const klines: BinanceKline[] = await response.json();
-      const candleData: Candle[] = klines.map((kline) => ({
-        time: Math.floor(kline[0] / 1000),
-        open: parseFloat(kline[1]),
-        high: parseFloat(kline[2]),
-        low: parseFloat(kline[3]),
-        close: parseFloat(kline[4]),
-        volume: parseFloat(kline[5]),
-      }));
+      const data = await response.json();
+      const candleData: Candle[] = Array.isArray(data.candles) ? data.candles : [];
 
       setCandles(candleData);
     } catch (err) {

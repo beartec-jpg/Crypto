@@ -32,12 +32,12 @@ const RATE_LIMIT_DELAY_MS = 200;
 const TARGET_HISTORY_CANDLES: Record<string, number> = {
   '1M': 300,    // ~25 years (monthly: 20+ years target)
   '1w': 520,    // ~10 years (weekly: 5-10 years target)
-  '1d': 1825,   // ~5 years (daily: 2-5 years target)
-  '4h': 2190,   // ~1 year (4h: reasonable history)
-  '1h': 2160,   // ~90 days
-  '15m': 2880,  // ~30 days
-  '5m': 2880,   // ~10 days
-  '1m': 1440,   // ~1 day
+  '1d': 3650,   // ~10 years (daily: 10 years target)
+  '4h': 4380,   // ~2 years (4h: reasonable history)
+  '1h': 8760,   // ~1 year
+  '15m': 8640,  // ~90 days
+  '5m': 8640,   // ~30 days
+  '1m': 5760,   // ~4 days
 };
 
 const TIMEFRAME_TO_MS: Record<string, number> = {
