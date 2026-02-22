@@ -122,8 +122,6 @@ export function useOrderBlockDetection({
 
       // Bullish OB: Red candle followed by bullish displacement
       if (isBearishCandle && displacement.bullish) {
-        // Baseline: must have created FVG or broken structure
-        if (!displacement.createdFVG && !displacement.brokePreviousHigh) continue;
         // Strict mode filters
         if (settings.requireFVG && !displacement.createdFVG) continue;
         if (settings.requireBOS && !displacement.brokePreviousHigh) continue;
@@ -153,8 +151,6 @@ export function useOrderBlockDetection({
 
       // Bearish OB: Green candle followed by bearish displacement
       if (isBullishCandle && displacement.bearish) {
-        // Baseline: must have created FVG or broken structure
-        if (!displacement.createdFVG && !displacement.brokePreviousLow) continue;
         // Strict mode filters
         if (settings.requireFVG && !displacement.createdFVG) continue;
         if (settings.requireBOS && !displacement.brokePreviousLow) continue;
