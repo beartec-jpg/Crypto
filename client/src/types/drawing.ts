@@ -30,7 +30,8 @@ export type ChartDrawingTool =
   | 'rectangle' 
   | 'fib_retracement' 
   | 'trend_fib' 
-  | 'channel' 
+  | 'channel'
+  | 'elliott_wave'
   | null;
 
 export type LineStyle = 'solid' | 'dashed' | 'dotted';
