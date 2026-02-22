@@ -4959,7 +4959,7 @@ useEffect(() => {
                     const selectedDrawing = drawings.find(d => d.id === selectedDrawingId);
                     if (!selectedDrawing) return;
                     
-                    const mergedStyle = { ...selectedDrawing.style, ...updates };
+                    const mergedStyle = { ...selectedDrawing.style, ...(updates.style || updates) };
                     // Update local state
                     setDrawings(prev => prev.map(d =>
                       d.id === selectedDrawingId
