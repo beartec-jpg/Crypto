@@ -31,7 +31,7 @@ export function useIndicatorState() {
   // EMA settings - dynamic list with multi-timeframe support
   const [showEMA, setShowEMA] = useState(false);
   const [emaConfigs, setEmaConfigs] = useState<MAConfig[]>([
-    { id: 'ema1', period: 21, timeframe: 'current', color: '#3b82f6' }
+    { id: 'ema1', period: 21, timeframe: 'current', color: '#3b82f6', lineWidth: 2 }
   ]);
   const [emaInputs, setEmaInputs] = useState<Record<string, string>>({ ema1: '21' });
   // Legacy state for backwards compatibility with trading strategies
@@ -43,7 +43,7 @@ export function useIndicatorState() {
   // SMA settings - dynamic list with multi-timeframe support
   const [showSMA, setShowSMA] = useState(false);
   const [smaConfigs, setSmaConfigs] = useState<MAConfig[]>([
-    { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6' }
+    { id: 'sma1', period: 50, timeframe: 'current', color: '#8b5cf6', lineWidth: 2 }
   ]);
   const [smaFastInput, setSmaFastInput] = useState('20');
   const [smaSlowInput, setSmaSlowInput] = useState('50');

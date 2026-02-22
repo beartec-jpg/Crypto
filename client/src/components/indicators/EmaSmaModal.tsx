@@ -61,7 +61,8 @@ export function EmaSmaModal({
       id: newId, 
       period: 21, 
       timeframe: 'current', 
-      color: MA_COLORS[colorIdx] 
+      color: MA_COLORS[colorIdx],
+      lineWidth: 2
     }]);
     onEmaInputsChange({ ...emaInputs, [newId]: '21' });
   };
@@ -74,7 +75,8 @@ export function EmaSmaModal({
       id: newId, 
       period: 50, 
       timeframe: 'current', 
-      color: MA_COLORS[colorIdx] 
+      color: MA_COLORS[colorIdx],
+      lineWidth: 2
     }]);
   };
 
@@ -162,6 +164,15 @@ export function EmaSmaModal({
                     />
                     <input
                       type="number"
+                      min="1"
+                      max="5"
+                      value={config.lineWidth || 2}
+                      onChange={(e) => handleEmaChange(config.id, 'lineWidth', parseInt(e.target.value) || 2)}
+                      className="w-12 px-1 py-1 bg-slate-700 rounded text-white text-sm text-center"
+                      title="Line thickness (1-5)"
+                    />
+                    <input
+                      type="number"
                       min="5"
                       max="500"
                       value={emaInputs[config.id] || config.period}
@@ -241,6 +252,15 @@ export function EmaSmaModal({
                     />
                     <input
                       type="number"
+                      min="1"
+                      max="5"
+                      value={config.lineWidth || 2}
+                      onChange={(e) => handleSmaChange(config.id, 'lineWidth', parseInt(e.target.value) || 2)}
+                      className="w-12 px-1 py-1 bg-slate-700 rounded text-white text-sm text-center"
+                      title="Line thickness (1-5)"
+                    />
+                    <input
+                      type="number"
                       min="5"
                       max="500"
                       value={config.period}
@@ -290,6 +310,7 @@ export function EmaSmaModal({
             <p className="mb-1">💡 <strong>Tips:</strong></p>
             <ul className="list-disc list-inside space-y-1 ml-2">
               <li>Period range: 5-500</li>
+              <li>Line thickness: 1 (thin) to 5 (thick)</li>
               <li>Multi-timeframe: Display HTF MAs on current chart</li>
               <li>Changes apply immediately</li>
             </ul>
