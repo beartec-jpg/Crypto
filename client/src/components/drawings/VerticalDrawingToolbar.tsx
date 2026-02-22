@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -53,6 +54,12 @@ const TOOLS: ToolConfig[] = [
     imageSrc: '/grok_image_1771520978164.jpg',
     label: 'Channel',
     description: 'Parallel price channel',
+  },
+  {
+    id: 'elliott_wave',
+    icon: Activity,
+    label: 'Elliott Wave',
+    description: 'Progressive Elliott Wave analysis',
   },
 ];
 

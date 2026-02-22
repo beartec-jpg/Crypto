@@ -119,6 +119,10 @@ import { MarketAlertsPanel } from '@/components/alerts';
 // Common Components
 import { LoadingOverlay, ErrorDisplay } from '@/components/common';
 
+// Elliott Wave Components
+import { useElliottWaveProgressive } from '@/hooks/useElliottWaveProgressive';
+import { WaveProgressPanel } from '@/components/elliottWave/WaveProgressPanel';
+
 // Data utilities
 import { binanceToCandleData, removeUSDTSuffix, formatMultiExchangeSymbol } from '@/lib/data/candleTransforms';
 
@@ -417,7 +421,7 @@ const handleAIMarketReview = () => {
 };
 
   // Drawing tools state
-  type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | null;
+  type DrawingTool = 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel' | 'elliott_wave' | null;
   const { isFullscreen, setIsFullscreen } = useFullscreen(); // Fullscreen chart mode with keyboard support
   const [activeTool, setActiveTool] = useState<DrawingTool>(null);
   const [showToolPicker, setShowToolPicker] = useState(false);
@@ -429,6 +433,9 @@ const handleAIMarketReview = () => {
   
   // Drawings persistence hook - replaces inline mutations
   const drawingsPersistence = useDrawingsPersistence(symbol, interval);
+  
+  // Elliott Wave progressive tool
+  const elliottWave = useElliottWaveProgressive();
   
   // ChartControlBar state
   const [chartPeriod, setChartPeriod] = useState('24h');
@@ -869,6 +876,12 @@ useEffect(() => {
     const currentTool = activeToolRef.current;
     if (chartControls.drawingMode !== 'draw' || !currentTool) return;
     
+    // Elliott Wave tool: delegate point placement to the hook
+    if (currentTool === 'elliott_wave') {
+      elliottWave.placePoint(point.time as number, point.price, point.snapType === 'high');
+      return;
+    }
+    
     setTempDrawing(prev => {
       if (!prev) return { points: [{ time: point.time as number, price: point.price, snapType: point.snapType }] };
       
@@ -912,7 +925,7 @@ useEffect(() => {
       
       return { points: newPoints };
     });
-  }, [chartControls.drawingMode, saveDrawing]);
+  }, [chartControls.drawingMode, saveDrawing, elliottWave.placePoint]);
   
   // Gesture controller hook for touch/click handling
   const gestureController = useChartGestures({
@@ -3662,6 +3675,35 @@ useEffect(() => {
     
   }, [candles, indicators.rsi.show, indicators.macd.show, indicators.obv.show, indicators.stochRSI.show, indicators.rsi.period, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.stochRSI.period, calculateRSI, calculateMACD, calculateOBV, calculateStochasticRSI, detectDivergence]);
 
+  // ========== ELLIOTT WAVE MARKERS ==========
+  // Render placed Elliott Wave points as chart markers
+  useEffect(() => {
+    if (!candleSeriesRef.current || !elliottWave.isActive) {
+      return;
+    }
+    const points = elliottWave.placedPoints;
+    if (points.length === 0) return;
+
+    if (!seriesMarkersRef.current) {
+      seriesMarkersRef.current = createSeriesMarkers(candleSeriesRef.current, []);
+    }
+
+    const markers = points.map(point => ({
+      time: point.time as Time,
+      position: (point.snappedToHigh ? 'aboveBar' : 'belowBar') as 'aboveBar' | 'belowBar',
+      color: '#00CED1',
+      shape: 'circle' as const,
+      text: point.label,
+      size: 2,
+    }));
+
+    seriesMarkersRef.current.setMarkers(markers);
+
+    return () => {
+      seriesMarkersRef.current?.setMarkers([]);
+    };
+  }, [elliottWave.placedPoints, elliottWave.isActive]);
+
   // ========== INDICATOR REPORTS (Paid only) ==========
   // Generate brief contextual reports for active oscillators
   const getIndicatorReport = useCallback((
@@ -4712,6 +4754,7 @@ useEffect(() => {
                   <button
                     onClick={() => {
                       chartControls.setDrawingMode(chartControls.drawingMode === 'select' ? 'off' : 'select');
+                      if (activeTool === 'elliott_wave') elliottWave.deactivateMode();
                       setActiveTool(null);
                       setShowToolPicker(false);
                     }}
@@ -4732,6 +4775,7 @@ useEffect(() => {
                   <button
                     onClick={() => {
                       chartControls.setDrawingMode('off');
+                      if (activeTool === 'elliott_wave') elliottWave.deactivateMode();
                       setActiveTool(null);
                       setShowToolPicker(false);
                       setSelectedDrawingId(null);
@@ -4938,15 +4982,28 @@ useEffect(() => {
                       { id: 'fib_retracement', name: 'Fib Retracement', icon: '📊' },
                       { id: 'trend_fib', name: 'Trend-Based Fib', icon: '📉' },
                       { id: 'channel', name: 'Channel', icon: '🐻‍❄️' },
+                      { id: 'elliott_wave', name: 'Elliott Wave', icon: '〰️' },
                     ].map(tool => (
                       <button
                         key={tool.id}
                         onClick={() => {
-                          setActiveTool(tool.id as DrawingTool);
-                          chartControls.setDrawingMode('draw');
-                          setShowToolPicker(false);
-                          setTempDrawing({ points: [] });
-                          toast({ title: `${tool.name} Selected`, description: 'Click on chart to place points' });
+                          if (tool.id === 'elliott_wave') {
+                            if (activeTool === 'elliott_wave') {
+                              setActiveTool(null);
+                              elliottWave.deactivateMode();
+                            } else {
+                              setActiveTool('elliott_wave' as DrawingTool);
+                              chartControls.setDrawingMode('draw');
+                              elliottWave.activateMode();
+                            }
+                            setShowToolPicker(false);
+                          } else {
+                            setActiveTool(tool.id as DrawingTool);
+                            chartControls.setDrawingMode('draw');
+                            setShowToolPicker(false);
+                            setTempDrawing({ points: [] });
+                            toast({ title: `${tool.name} Selected`, description: 'Click on chart to place points' });
+                          }
                         }}
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-slate-700 transition-all text-left ${
                           activeTool === tool.id ? 'bg-blue-500/30 text-blue-300' : 'text-gray-300'
@@ -4995,8 +5052,16 @@ useEffect(() => {
                 {activeTool && chartControls.drawingMode === 'draw' && (
                   <div className="absolute top-2 left-44 z-20 bg-blue-500/90 text-white px-3 py-1 rounded-lg text-xs font-medium">
                     Drawing: {activeTool.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    {tempDrawing && ` (${tempDrawing.points.length}/${activeTool === 'horizontal' ? 1 : 2} points)`}
+                    {tempDrawing && activeTool !== 'elliott_wave' && ` (${tempDrawing.points.length}/${activeTool === 'horizontal' ? 1 : 2} points)`}
                   </div>
+                )}
+
+                {/* Elliott Wave Progress Panel */}
+                {activeTool === 'elliott_wave' && elliottWave.isActive && (
+                  <WaveProgressPanel
+                    wave={elliottWave}
+                    className="absolute top-14 right-4 z-30"
+                  />
                 )}
               </div>
             )}
