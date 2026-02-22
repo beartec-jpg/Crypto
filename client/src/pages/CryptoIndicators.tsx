@@ -826,10 +826,19 @@ useEffect(() => {
     const updates: any = {};
     if (style) updates.style = style;
     if (coordinates) updates.coordinates = coordinates;
-    
+
+    // Optimistic local state update for immediate visual feedback
+    setDrawings(prev => prev.map(d =>
+      d.id === id ? { ...d, ...(style && { style }), ...(coordinates && { coordinates }) } : d
+    ));
+
+    const primitive = drawingPrimitivesRef.current?.get(id);
+    if (primitive && updates.style) {
+      const existingStyle = (primitive as any).getStyle?.() ?? {};
+      primitive.updateStyle({ ...existingStyle, ...updates.style });
+    }
+
     // Update in database via hook (handles refetch automatically)
-    // Note: No optimistic update here - style changes are visual-only and don't need instant feedback
-    // The refetch will sync the updated state from the server
     drawingsPersistence.updateDrawing({ id, updates });
   }, [drawingsPersistence]);
   
