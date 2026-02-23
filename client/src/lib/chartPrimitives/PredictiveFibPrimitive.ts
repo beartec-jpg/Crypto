@@ -13,7 +13,10 @@ import type { FibLevel } from '@/lib/elliottWave/fibCalculator';
 type RequestUpdateCallback = () => void;
 
 /** Color coding for fib levels */
-function fibLineColor(level: FibLevel): { line: string; alpha: number } {
+function fibLineColor(level: FibLevel, colorOverride?: string): { line: string; alpha: number } {
+  if (colorOverride) {
+    return { line: colorOverride, alpha: 0.85 };
+  }
   const r = level.ratio;
   // High-probability targets: 50%, 61.8%, 1.0, 1.272, 1.618
   if (r === 0.5 || r === 0.618 || r === 1.0 || r === 1.272 || r === 1.618) {
@@ -27,15 +30,18 @@ class PredictiveFibPaneRenderer implements IPrimitivePaneRenderer {
   private _levels: FibLevel[];
   private _series: ISeriesApi<SeriesType> | null;
   private _chart: IChartApi | null;
+  private _colorOverride?: string;
 
   constructor(
     levels: FibLevel[],
     series: ISeriesApi<SeriesType> | null,
     chart: IChartApi | null,
+    colorOverride?: string,
   ) {
     this._levels = levels;
     this._series = series;
     this._chart = chart;
+    this._colorOverride = colorOverride;
   }
 
   draw(target: any) {
@@ -55,7 +61,7 @@ class PredictiveFibPaneRenderer implements IPrimitivePaneRenderer {
         const y = this._series!.priceToCoordinate(level.price);
         if (y === null) continue;
 
-        const { line, alpha } = fibLineColor(level);
+        const { line, alpha } = fibLineColor(level, this._colorOverride);
 
         // Draw dashed line from left to right edge
         ctx.strokeStyle = `${line}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
@@ -110,6 +116,7 @@ class PredictiveFibPaneView implements IPrimitivePaneView {
       this._primitive.getLevels(),
       this._series,
       this._chart,
+      this._primitive.getColor(),
     );
   }
 }
@@ -117,12 +124,14 @@ class PredictiveFibPaneView implements IPrimitivePaneView {
 export class PredictiveFibPrimitive implements ISeriesPrimitive<Time> {
   private _paneViews: PredictiveFibPaneView[];
   private _levels: FibLevel[];
+  private _color?: string;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _chart: IChartApi | null = null;
   private _requestUpdate?: RequestUpdateCallback;
 
-  constructor(levels: FibLevel[]) {
+  constructor(levels: FibLevel[], color?: string) {
     this._levels = levels;
+    this._color = color;
     this._paneViews = [new PredictiveFibPaneView(this)];
   }
 
@@ -151,8 +160,13 @@ export class PredictiveFibPrimitive implements ISeriesPrimitive<Time> {
     return this._levels;
   }
 
-  update(levels: FibLevel[]) {
+  getColor(): string | undefined {
+    return this._color;
+  }
+
+  update(levels: FibLevel[], color?: string) {
     this._levels = levels;
+    if (color !== undefined) this._color = color;
     this._requestUpdate?.();
   }
 }

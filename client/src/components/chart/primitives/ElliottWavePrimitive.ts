@@ -25,6 +25,8 @@ export interface ElliottWaveData {
   color?: string;
   /** When true, render individual point labels (for saved/reloaded drawings) */
   showPointLabels?: boolean;
+  /** When true, highlight the wave in yellow to indicate selection */
+  isSelected?: boolean;
 }
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx: CanvasRenderingContext2D = scope.context;
       const timeScale = this._chart!.timeScale();
-      const color = this._data.color ?? '#00CED1';
+      const color = this._data.isSelected ? '#facc15' : (this._data.color ?? '#00CED1');
 
       const coords = this._data.points.map(p => ({
         x: timeScale.timeToCoordinate(p.time as Time),
@@ -67,7 +69,7 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
 
       // Trendline: dashed line from first to last point
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = this._data.isSelected ? 3 : 2;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
       ctx.moveTo(first.x, first.y);

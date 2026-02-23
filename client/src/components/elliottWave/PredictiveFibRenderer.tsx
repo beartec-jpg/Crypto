@@ -8,6 +8,8 @@ interface PredictiveFibRendererProps {
   candleSeries: ISeriesApi<'Candlestick'> | null;
   fibLevels: FibLevel[];
   isActive: boolean;
+  /** Optional color override – when provided, all fib lines render in this color */
+  color?: string;
 }
 
 export function PredictiveFibRenderer({
@@ -15,6 +17,7 @@ export function PredictiveFibRenderer({
   candleSeries,
   fibLevels,
   isActive,
+  color,
 }: PredictiveFibRendererProps) {
   const primitiveRef = useRef<PredictiveFibPrimitive | null>(null);
 
@@ -22,12 +25,12 @@ export function PredictiveFibRenderer({
   useEffect(() => {
     if (!chart || !candleSeries || !isActive) return;
 
-    const primitive = new PredictiveFibPrimitive([]);
+    const primitive = new PredictiveFibPrimitive([], color);
     try {
       candleSeries.attachPrimitive(primitive);
       primitiveRef.current = primitive;
       // Apply current levels immediately after attach
-      primitive.update(fibLevels);
+      primitive.update(fibLevels, color);
     } catch (e) {
       console.error('Failed to attach PredictiveFibPrimitive:', e);
     }
@@ -48,9 +51,9 @@ export function PredictiveFibRenderer({
   // Update levels without recreating the primitive
   useEffect(() => {
     if (primitiveRef.current) {
-      primitiveRef.current.update(fibLevels);
+      primitiveRef.current.update(fibLevels, color);
     }
-  }, [fibLevels]);
+  }, [fibLevels, color]);
 
   return null;
 }
