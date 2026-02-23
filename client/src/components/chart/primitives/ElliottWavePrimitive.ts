@@ -25,6 +25,12 @@ export interface ElliottWaveData {
   color?: string;
   /** When true, render individual point labels (for saved/reloaded drawings) */
   showPointLabels?: boolean;
+  /** Time of the last candle in the dataset – used for future point rendering */
+  lastCandleTime?: number;
+  /** Seconds between candles – used for future point rendering */
+  candleInterval?: number;
+  /** Total number of bars in the dataset – used for future point rendering */
+  barCount?: number;
 }
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
@@ -52,8 +58,19 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
       const timeScale = this._chart!.timeScale();
       const color = this._data.color ?? '#00CED1';
 
+      // Resolve screen X for a point, extrapolating for future times
+      const resolveX = (time: number): number | null => {
+        let x = timeScale.timeToCoordinate(time as Time);
+        if (x === null && this._data.candleInterval && this._data.lastCandleTime !== undefined && this._data.barCount !== undefined) {
+          const barsFromLast = (time - this._data.lastCandleTime) / this._data.candleInterval;
+          const logical = (this._data.barCount - 1) + barsFromLast;
+          x = timeScale.logicalToCoordinate(logical);
+        }
+        return x;
+      };
+
       const coords = this._data.points.map(p => ({
-        x: timeScale.timeToCoordinate(p.time as Time),
+        x: resolveX(p.time),
         y: this._series!.priceToCoordinate(p.price),
         label: p.label,
         isMidAir: p.isMidAir,
