@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type MouseEvent } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { createSeriesMarkers, type ISeriesMarkersPluginApi, Time } from 'lightweight-charts';
 import { queryClient } from '@/lib/queryClient';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { useToast } from '@/hooks/use-toast';
+import type { FibLevel } from '@/lib/elliottWave/fibCalculator';
 
 // New extraction hooks
 import { useChartInstance } from '@/hooks/useChartInstance';
@@ -68,6 +69,16 @@ import {
   DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
 } from '@/lib/constants/layout';
 
+/** Shape of a projection line returned from /api/crypto/projection-lines */
+interface ProjectionLine {
+  id: string;
+  structureId: string;
+  levelLabel: string;
+  price: number;
+  waveType: string;
+  color: string;
+}
+
 interface ChartFullscreenPageProps {
   onClose: () => void;
   initialSymbol: string;
@@ -93,6 +104,12 @@ export function ChartFullscreenPage({
   const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
   const [showSmcModal, setShowSmcModal] = useState(false);
   const [tempDrawing, setTempDrawing] = useState<{ points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null>(null);
+
+  // Wave selection state – track which saved EW wave is selected and its fib projections
+  const [selectedWaveId, setSelectedWaveId] = useState<string | null>(null);
+  const [selectedWaveFibs, setSelectedWaveFibs] = useState<FibLevel[]>([]);
+  // Incremented whenever the chart pans/zooms so we can recompute the SVG click overlay coords
+  const [chartViewVersion, setChartViewVersion] = useState(0);
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -122,13 +139,15 @@ export function ChartFullscreenPage({
     mobileNavHeight: 0, // No mobile nav in fullscreen mode
   });
 
-  // Subscribe to main chart visible range for oscillator sync
+  // Subscribe to main chart visible range for oscillator sync,
+  // and increment chartViewVersion on pan/zoom to repaint the SVG wave click overlay
   const [mainChartVisibleRange, setMainChartVisibleRange] = useState<any>(null);
   useEffect(() => {
     if (!chartRef.current) return;
     const handleVisibleRangeChange = () => {
       const range = chartRef.current?.timeScale().getVisibleRange();
       if (range) setMainChartVisibleRange(range);
+      setChartViewVersion(v => v + 1);
     };
     chartRef.current.timeScale().subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
     return () => {
@@ -369,6 +388,9 @@ export function ChartFullscreenPage({
     if (tool === 'elliott_wave' && activeTool !== 'elliott_wave') {
       elliottWave.activateMode();
     }
+    // Deselect any selected wave when activating a drawing tool
+    setSelectedWaveId(null);
+    setSelectedWaveFibs([]);
     setActiveTool(tool);
     activeToolRef.current = tool;
   }, [activeTool, elliottWave]);
@@ -397,6 +419,48 @@ export function ChartFullscreenPage({
     setDrawings(prev => prev.map(d => d.id === selectedId ? { ...d, style: { ...d.style, ...updates.style } } : d));
     drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: updates.style } });
   }, [drawingInteraction.selectedDrawingId, drawingsPersistence]);
+
+  // Elliott Wave: click on a saved wave to show its fibonacci projections
+  const handleWaveClick = useCallback(async (waveId: string, e: MouseEvent) => {
+    e.stopPropagation();
+    // Toggle: clicking the same wave deselects it
+    if (selectedWaveId === waveId) {
+      setSelectedWaveId(null);
+      setSelectedWaveFibs([]);
+      return;
+    }
+    setSelectedWaveId(waveId);
+    setSelectedWaveFibs([]);
+    try {
+      const res = await authenticatedApiRequest(
+        'GET',
+        `/api/crypto/projection-lines?structureId=${encodeURIComponent(waveId)}`,
+      );
+      const projections: ProjectionLine[] = await res.json();
+      const fibs: FibLevel[] = projections.map(proj => {
+        // Parse ratio from label like "W3 100%" or "C 127.2%"
+        const match = proj.levelLabel?.match(/([\d.]+)%/);
+        const ratio = match ? parseFloat(match[1]) / 100 : 1;
+        return {
+          ratio,
+          price: proj.price,
+          label: proj.levelLabel ?? `${(ratio * 100).toFixed(1)}%`,
+          isRetrace: false,
+        };
+      });
+      setSelectedWaveFibs(fibs);
+    } catch (err) {
+      console.warn('[EW] Failed to fetch projection lines:', err);
+    }
+  }, [selectedWaveId]);
+
+  // Deselect wave when drawing tool is activated or chart area is clicked without a wave
+  const handleDeselect = useCallback(() => {
+    if (selectedWaveId) {
+      setSelectedWaveId(null);
+      setSelectedWaveFibs([]);
+    }
+  }, [selectedWaveId]);
 
   // Elliott Wave: save the drawn wave to elliott_wave_labels table
   const handleElliottWaveSave = useCallback(() => {
@@ -546,6 +610,7 @@ export function ChartFullscreenPage({
         lastCandleTime,
         candleInterval,
         barCount: candles.length,
+        isSelected: drawing.id === selectedWaveId,
       };
 
       const existing = savedEWPrimitivesRef.current.get(drawing.id);
@@ -596,6 +661,7 @@ export function ChartFullscreenPage({
       }
     }
   }, [drawings, candles]);
+  }, [drawings, candleSeriesRef, selectedWaveId]);
 
   // Elliott Wave: keyboard shortcuts (Backspace=undo, Escape=deactivate)
   useEffect(() => {
@@ -695,6 +761,7 @@ export function ChartFullscreenPage({
           style={{ 
             height: `calc(${oscillatorPanel.chartPercentage}vh - ${TOP_TOOLBAR_HEIGHT}px)` 
           }}
+          onClick={!activeTool ? handleDeselect : undefined}
         />
         
         {/* Moving Averages */}
@@ -811,7 +878,7 @@ export function ChartFullscreenPage({
           />
         )}
 
-        {/* Predictive Fib Level Renderer */}
+        {/* Predictive Fib Level Renderer – ACTIVE DRAWING */}
         {activeTool === 'elliott_wave' && elliottWave.isActive && (
           <PredictiveFibRenderer
             chart={chartRef.current}
@@ -819,6 +886,65 @@ export function ChartFullscreenPage({
             fibLevels={elliottWave.predictiveFibLevels}
             isActive={elliottWave.mode === 'drawing' || elliottWave.mode === 'complete'}
           />
+        )}
+
+        {/* Predictive Fib Level Renderer – SELECTED SAVED WAVE */}
+        {selectedWaveId && selectedWaveFibs.length > 0 && (
+          <PredictiveFibRenderer
+            chart={chartRef.current}
+            candleSeries={candleSeriesRef.current}
+            fibLevels={selectedWaveFibs}
+            isActive={true}
+            color="#facc15"
+          />
+        )}
+
+        {/* Wave Click Overlay – transparent SVG polygons over each saved EW wave for click detection */}
+        {/* chartViewVersion is read to force re-render on pan/zoom */}
+        {chartViewVersion >= 0 && (
+          <svg
+            className="absolute top-0 left-0 pointer-events-none"
+            style={{ width: '100%', height: '100%', zIndex: 15 }}
+          >
+            {drawings
+              .filter(d => d.type === 'elliott_wave' && d.points.length >= 2)
+              .map(wave => {
+                if (!chartRef.current || !candleSeriesRef.current) return null;
+                const coords = wave.points
+                  .map(p => ({
+                    x: chartRef.current!.timeScale().timeToCoordinate(p.time as Time),
+                    y: candleSeriesRef.current!.priceToCoordinate(p.price),
+                  }))
+                  .filter((c): c is { x: number; y: number } => c.x !== null && c.y !== null);
+                if (coords.length < 2) return null;
+                const first = coords[0];
+                const last = coords[coords.length - 1];
+                // Build a thick invisible line as the click target
+                const dx = last.x - first.x;
+                const dy = last.y - first.y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len === 0) return null;
+                const nx = (-dy / len) * 12;
+                const ny = (dx / len) * 12;
+                const points = [
+                  `${first.x + nx},${first.y + ny}`,
+                  `${last.x + nx},${last.y + ny}`,
+                  `${last.x - nx},${last.y - ny}`,
+                  `${first.x - nx},${first.y - ny}`,
+                ].join(' ');
+                const isInteractive = !activeTool;
+                return (
+                  <polygon
+                    key={wave.id}
+                    points={points}
+                    fill="transparent"
+                    stroke="transparent"
+                    style={{ cursor: isInteractive ? 'pointer' : 'default', pointerEvents: isInteractive ? 'auto' : 'none' }}
+                    onClick={isInteractive ? (e) => handleWaveClick(wave.id, e) : undefined}
+                  />
+                );
+              })}
+          </svg>
         )}
         
         {/* Temp Drawing Points SVG */}

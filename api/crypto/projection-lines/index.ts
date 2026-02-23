@@ -90,10 +90,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET - List all projection lines
     if (req.method === 'GET') {
-      const { symbol } = req.query;
+      const { symbol, structureId } = req.query;
       
       let result;
-      if (symbol) {
+      if (structureId) {
+        result = await pool.query(
+          'SELECT * FROM saved_projection_lines WHERE user_id = $1 AND structure_id = $2',
+          [userId, structureId]
+        );
+      } else if (symbol) {
         result = await pool.query(
           'SELECT * FROM saved_projection_lines WHERE user_id = $1 AND symbol = $2',
           [userId, symbol]
