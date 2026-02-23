@@ -120,8 +120,9 @@ import { MarketAlertsPanel } from '@/components/alerts';
 import { LoadingOverlay, ErrorDisplay } from '@/components/common';
 
 // Elliott Wave Components
-import { useElliottWaveProgressive } from '@/hooks/useElliottWaveProgressive';
-import { WaveProgressPanel } from '@/components/elliottWave/WaveProgressPanel';
+import { usePredictiveElliottWave } from '@/hooks/usePredictiveElliottWave';
+import { PredictiveWavePanel } from '@/components/elliottWave/PredictiveWavePanel';
+import { WaveTypeSelector } from '@/components/chart/WaveTypeSelector';
 
 // Data utilities
 import { binanceToCandleData, removeUSDTSuffix, formatMultiExchangeSymbol } from '@/lib/data/candleTransforms';
@@ -434,8 +435,8 @@ const handleAIMarketReview = () => {
   // Drawings persistence hook - replaces inline mutations
   const drawingsPersistence = useDrawingsPersistence(symbol, interval);
   
-  // Elliott Wave progressive tool
-  const elliottWave = useElliottWaveProgressive();
+  // Elliott Wave predictive tool
+  const elliottWave = usePredictiveElliottWave();
   
   // ChartControlBar state
   const [chartPeriod, setChartPeriod] = useState('24h');
@@ -878,7 +879,9 @@ useEffect(() => {
     
     // Elliott Wave tool: delegate point placement to the hook
     if (currentTool === 'elliott_wave') {
-      elliottWave.placePoint(point.time as number, point.price, point.snapType === 'high');
+      if (elliottWave.mode === 'drawing') {
+        elliottWave.placePoint(point.time as number, point.price, point.snapType === 'none');
+      }
       return;
     }
     
@@ -3690,8 +3693,8 @@ useEffect(() => {
 
     const markers = points.map(point => ({
       time: point.time as Time,
-      position: (point.snappedToHigh ? 'aboveBar' : 'belowBar') as 'aboveBar' | 'belowBar',
-      color: '#00CED1',
+      position: 'aboveBar' as 'aboveBar' | 'belowBar',
+      color: point.isMidAir ? '#f97316' : '#00CED1',
       shape: 'circle' as const,
       text: point.label,
       size: 2,
@@ -5056,9 +5059,20 @@ useEffect(() => {
                   </div>
                 )}
 
+                {/* Elliott Wave – Wave Type Selector */}
+                {elliottWave.showWaveSelector && (
+                  <WaveTypeSelector
+                    onSelect={elliottWave.selectWaveType}
+                    onCancel={() => {
+                      setActiveTool(null);
+                      elliottWave.deactivateMode();
+                    }}
+                  />
+                )}
+
                 {/* Elliott Wave Progress Panel */}
-                {activeTool === 'elliott_wave' && elliottWave.isActive && (
-                  <WaveProgressPanel
+                {activeTool === 'elliott_wave' && elliottWave.isActive && !elliottWave.showWaveSelector && (
+                  <PredictiveWavePanel
                     wave={elliottWave}
                     className="absolute top-14 right-4 z-30"
                   />

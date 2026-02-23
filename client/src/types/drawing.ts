@@ -275,6 +275,22 @@ export interface Drawing {
   };
 }
 
+// ── Elliott Wave Predictive Tool Types ────────────────────────────────────────
+
+/** Wave type identifiers for the predictive Elliott Wave tool */
+export type WaveType = 'W1' | 'W2' | 'W3' | 'W4' | 'W5' | 'A' | 'B' | 'C' | 'W' | 'X' | 'Y';
+
+/** Sub-pattern options for specific wave types */
+export type SubPattern =
+  | 'impulse'
+  | 'leading_diagonal'
+  | 'ending_diagonal'
+  | 'zigzag'
+  | 'flat'
+  | 'expanded_flat'
+  | 'triangle'
+  | 'running_flat';
+
 /**
  * Default style properties for drawings
  */
