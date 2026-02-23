@@ -52,6 +52,7 @@ import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillat
 import { IndicatorIconToolbar, IndicatorIconToolbarPreview } from '@/components/indicators/IndicatorIconToolbar';
 import { WaveTypeSelector } from '@/components/chart/WaveTypeSelector';
 import { PredictiveWavePanel } from '@/components/elliottWave/PredictiveWavePanel';
+import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -498,7 +499,29 @@ export function ChartFullscreenPage({
           saveDrawingMutation={{ mutate: drawingsPersistence.saveDrawing }}
           onPointCommitRef={onPointCommitRef}
           onElliottWavePoint={elliottWave.isActive && elliottWave.mode === 'drawing'
-            ? (p: GesturePoint) => elliottWave.placePoint(p.time as number, p.price, p.snapType === 'none')
+            ? (p: GesturePoint) => {
+                // If no candle snap found, check if click is near a predictive fib level
+                if (p.snapType === 'none' && elliottWave.predictiveFibLevels.length > 0 && candleSeriesRef.current) {
+                  const priceRange = (() => {
+                    try {
+                      // Approximate visible price range from fib levels or series
+                      const prices = elliottWave.predictiveFibLevels.map(l => l.price);
+                      const spread = Math.max(...prices) - Math.min(...prices);
+                      return spread > 0 ? spread * 3 : Math.abs(p.price) * 0.1;
+                    } catch {
+                      return Math.abs(p.price) * 0.1;
+                    }
+                  })();
+                  const snapThreshold = priceRange * 0.02;
+                  for (const level of elliottWave.predictiveFibLevels) {
+                    if (Math.abs(p.price - level.price) < snapThreshold) {
+                      elliottWave.placePoint(p.time as number, level.price, true);
+                      return;
+                    }
+                  }
+                }
+                elliottWave.placePoint(p.time as number, p.price, p.snapType === 'none');
+              }
             : undefined
           }
         />
@@ -521,6 +544,16 @@ export function ChartFullscreenPage({
             wave={elliottWave}
             onSave={handleElliottWaveSave}
             className="absolute top-14 right-4 z-30"
+          />
+        )}
+
+        {/* Predictive Fib Level Renderer */}
+        {activeTool === 'elliott_wave' && elliottWave.isActive && (
+          <PredictiveFibRenderer
+            chart={chartRef.current}
+            candleSeries={candleSeriesRef.current}
+            fibLevels={elliottWave.predictiveFibLevels}
+            isActive={elliottWave.mode === 'drawing' || elliottWave.mode === 'complete'}
           />
         )}
         
