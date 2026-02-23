@@ -26,7 +26,7 @@ export function ADXPanel({
 
     const chart = createChart(containerRef.current, { 
       width: containerRef.current.clientWidth, 
-      height: 200, 
+      height: containerRef.current.clientHeight || 200, 
       layout: {
         background: { type: ColorType.Solid, color: '#1e293b' },
         textColor: '#94a3b8',
@@ -51,13 +51,6 @@ export function ADXPanel({
       onChartCreated(chart);
     }
     
-    // Sync with main chart if enabled
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
     const adxLine = chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 2, title: 'ADX' });
     const plusDILine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, title: '+DI' });
     const minusDILine = chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, title: '-DI' });
@@ -70,11 +63,32 @@ export function ADXPanel({
     
     // Add strength level line (25 is typically considered strong trend)
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 25 })));
+
+    // Observe container size changes and resize chart accordingly
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height: newHeight } = entry.contentRect;
+        if (chartRef.current && width > 0 && newHeight > 0) {
+          chartRef.current.applyOptions({ width, height: newHeight });
+        }
+      }
+    });
+    resizeObserver.observe(containerRef.current);
     
     return () => {
+      resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, candles, period, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
+  }, [data, candles, period, onChartCreated]);
 
-  return <div ref={containerRef} className="w-full" data-testid="chart-adx" />;
+  // Sync time axis with main chart when visible range changes
+  useEffect(() => {
+    if (chartRef.current && mainChartVisibleRange) {
+      try {
+        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+      } catch (e) { /* ignore if range invalid */ }
+    }
+  }, [mainChartVisibleRange]);
+
+  return <div ref={containerRef} className="w-full" style={{ height: '200px' }} data-testid="chart-adx" />;
 }
