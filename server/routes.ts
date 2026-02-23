@@ -6246,19 +6246,24 @@ Return ONLY valid JSON in this exact format:
   // Get all saved projection lines for a symbol
   app.get("/api/crypto/projection-lines", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {
-      const { symbol } = req.query;
+      const { symbol, structureId } = req.query;
       const userId = (req as any).cryptoUser.id;
       
       const { db } = await import("./db");
       const { savedProjectionLines } = await import("@shared/schema");
       const { eq, and } = await import("drizzle-orm");
       
-      let query = db.select().from(savedProjectionLines).where(eq(savedProjectionLines.userId, userId));
-      
-      if (symbol) {
+      let query;
+      if (structureId) {
+        query = db.select().from(savedProjectionLines).where(
+          and(eq(savedProjectionLines.userId, userId), eq(savedProjectionLines.structureId, structureId as string))
+        );
+      } else if (symbol) {
         query = db.select().from(savedProjectionLines).where(
           and(eq(savedProjectionLines.userId, userId), eq(savedProjectionLines.symbol, symbol as string))
         );
+      } else {
+        query = db.select().from(savedProjectionLines).where(eq(savedProjectionLines.userId, userId));
       }
       
       const lines = await query;
