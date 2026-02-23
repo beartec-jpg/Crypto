@@ -9,15 +9,18 @@
  *   – Undo / Reset controls
  */
 
+import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronUp, ChevronDown, Undo2, RotateCcw } from 'lucide-react';
+import { ChevronUp, ChevronDown, Undo2, RotateCcw, Save } from 'lucide-react';
 import type { UseElliottWaveProgressiveResult } from '@/hooks/useElliottWaveProgressive';
 import type { WaveFibResult } from '@/lib/elliottWave/fibCalculator';
 import type { ValidationRule } from '@/lib/elliottWave/patternDetector';
 
 interface WaveProgressPanelProps {
   wave: UseElliottWaveProgressiveResult;
+  /** Called when user clicks the Save / Finish Drawing button */
+  onSave?: () => void;
   /** Optional className for the outer container */
   className?: string;
 }
@@ -79,12 +82,17 @@ function PatternBadge({ pattern }: { pattern: string }) {
   );
 }
 
-export function WaveProgressPanel({ wave, className = '' }: WaveProgressPanelProps) {
-  const { detection, waveDegree, placedPoints, canUndo, isActive } = wave;
+export function WaveProgressPanel({ wave, onSave, className = '' }: WaveProgressPanelProps) {
+  const { detection, waveDegree, placedPoints, canUndo, isActive, classifications, segmentStartIndex, canSave } = wave;
 
   if (!isActive) return null;
 
-  const pointCount = placedPoints.length;
+  const segmentPointCount = placedPoints.length - segmentStartIndex;
+  // Memoize dot indices to avoid allocating a new array each render
+  const dotIndices = useMemo(
+    () => Array.from({ length: Math.max(segmentPointCount, 1) }, (_, i) => i),
+    [segmentPointCount],
+  );
 
   return (
     <div
@@ -137,13 +145,13 @@ export function WaveProgressPanel({ wave, className = '' }: WaveProgressPanelPro
         )}
       </div>
 
-      {/* Progress dots (0–5) */}
-      <div className="flex items-center gap-1.5 mb-3">
-        {Array.from({ length: 6 }, (_, i) => (
+      {/* Progress dots – current segment */}
+      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+        {dotIndices.map(i => (
           <div
             key={i}
             className={`flex items-center justify-center rounded-full text-xs font-bold transition-colors
-              ${i < pointCount
+              ${i < segmentPointCount
                 ? 'w-5 h-5 bg-blue-600 text-white'
                 : 'w-5 h-5 border border-slate-600 text-slate-500'
               }`}
@@ -151,8 +159,33 @@ export function WaveProgressPanel({ wave, className = '' }: WaveProgressPanelPro
             {i}
           </div>
         ))}
-        <span className="text-xs text-slate-500 ml-1">{pointCount}/6</span>
+        <span className="text-xs text-slate-500 ml-1">
+          {segmentPointCount} in segment · {placedPoints.length} total
+        </span>
       </div>
+
+      {/* Completed classifications */}
+      {classifications.length > 0 && (
+        <div className="mb-2">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+            Classified
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {classifications.map((c, i) => (
+              <span
+                key={i}
+                className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                  c.waveType === 'impulse'
+                    ? 'bg-purple-700 text-white'
+                    : 'bg-blue-700 text-white'
+                }`}
+              >
+                {`Wave ${c.waveNumber}`}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Next point hint */}
       {detection.nextPointHint && (
@@ -190,7 +223,7 @@ export function WaveProgressPanel({ wave, className = '' }: WaveProgressPanelPro
       )}
 
       {/* Actions */}
-      <div className="flex gap-2 mt-2 pt-2 border-t border-slate-800">
+      <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-800">
         <Button
           variant="ghost"
           size="sm"
@@ -218,6 +251,17 @@ export function WaveProgressPanel({ wave, className = '' }: WaveProgressPanelPro
         >
           Close
         </Button>
+        {onSave && (
+          <Button
+            size="sm"
+            className="w-full h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white mt-1"
+            disabled={!canSave}
+            onClick={onSave}
+          >
+            <Save className="h-3 w-3 mr-1" />
+            Finish & Save
+          </Button>
+        )}
       </div>
     </div>
   );
