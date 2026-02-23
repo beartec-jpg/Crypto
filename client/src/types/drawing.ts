@@ -252,7 +252,7 @@ export type SelectionCandidate = {
 export interface Drawing {
   id: string;
   type: string;
-  points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[];
+  points: { time: number; price: number; snapType?: 'high' | 'low' | 'none'; label?: string; isMidAir?: boolean }[];
   style: {
     color: string;
     lineWidth: number;
@@ -272,6 +272,8 @@ export interface Drawing {
     boundaryColors?: Record<string, string>;
     fillOpacity?: number;
     __openColorPicker?: string | null;
+    /** For elliott_wave drawings: the wave type degree label (e.g. "W1", "C") */
+    waveType?: string;
   };
 }
 

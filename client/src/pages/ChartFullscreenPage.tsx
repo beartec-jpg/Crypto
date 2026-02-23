@@ -53,6 +53,7 @@ import { IndicatorIconToolbar, IndicatorIconToolbarPreview } from '@/components/
 import { WaveTypeSelector } from '@/components/chart/WaveTypeSelector';
 import { PredictiveWavePanel } from '@/components/elliottWave/PredictiveWavePanel';
 import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
+import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -96,6 +97,10 @@ export function ChartFullscreenPage({
   const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
   const isInitialDataLoad = useRef(true);
   const seriesMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  // Ref for live Elliott Wave trendline primitive (shown while drawing/complete)
+  const liveEWPrimitiveRef = useRef<ElliottWavePrimitive | null>(null);
+  // Ref for saved Elliott Wave trendline primitives (rendered on reload)
+  const savedEWPrimitivesRef = useRef<Map<string, ElliottWavePrimitive>>(new Map());
 
   // Hooks - Elliott Wave predictive tool
   const elliottWave = usePredictiveElliottWave();
@@ -321,9 +326,15 @@ export function ChartFullscreenPage({
       points: elliottWave.placedPoints.map(p => ({
         time: p.time,
         price: p.price,
-        snapType: (p.isMidAir ? 'none' : 'high') as 'high' | 'low' | 'none',
+        label: p.label,
+        isMidAir: p.isMidAir,
+        snapType: p.snapType ?? (p.isMidAir ? 'none' : 'high') as 'high' | 'low' | 'none',
       })),
-      style: { color: '#00CED1', lineWidth: 2 },
+      style: {
+        color: '#00CED1',
+        lineWidth: 2,
+        waveType: elliottWave.selectedWaveType ?? undefined,
+      },
     };
     setDrawings(d => [...d, drawing]);
     drawingsPersistence.saveDrawing(drawing);
@@ -348,7 +359,7 @@ export function ChartFullscreenPage({
     }
     const markers = points.map(point => ({
       time: point.time as Time,
-      position: 'aboveBar' as 'aboveBar' | 'belowBar',
+      position: (point.snapType === 'low' ? 'belowBar' : 'aboveBar') as 'aboveBar' | 'belowBar',
       color: point.isMidAir ? '#f97316' : '#00CED1',
       shape: 'circle' as const,
       text: point.label,
@@ -359,6 +370,109 @@ export function ChartFullscreenPage({
       seriesMarkersRef.current?.setMarkers([]);
     };
   }, [elliottWave.placedPoints, elliottWave.isActive]);
+
+  // Elliott Wave: render live trendline when wave is complete
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    const points = elliottWave.placedPoints;
+    const waveType = elliottWave.selectedWaveType;
+
+    if (elliottWave.mode === 'complete' && points.length >= 2 && waveType) {
+      const data = {
+        points: points.map(p => ({ time: p.time, price: p.price })),
+        waveType,
+        color: '#00CED1',
+      };
+      if (liveEWPrimitiveRef.current) {
+        liveEWPrimitiveRef.current.update(data);
+      } else {
+        const primitive = new ElliottWavePrimitive(data);
+        try {
+          series.attachPrimitive(primitive);
+          liveEWPrimitiveRef.current = primitive;
+        } catch (e) {
+          console.error('[EW] Failed to attach live trendline:', e);
+        }
+      }
+    } else {
+      if (liveEWPrimitiveRef.current) {
+        try { series.detachPrimitive(liveEWPrimitiveRef.current); } catch (e) {
+          console.error('[EW] Failed to detach live trendline:', e);
+        }
+        liveEWPrimitiveRef.current = null;
+      }
+    }
+
+    return () => {
+      if (liveEWPrimitiveRef.current && series) {
+        try { series.detachPrimitive(liveEWPrimitiveRef.current); } catch (e) {
+          console.error('[EW] Failed to detach live trendline on cleanup:', e);
+        }
+        liveEWPrimitiveRef.current = null;
+      }
+    };
+  }, [elliottWave.mode, elliottWave.placedPoints, elliottWave.selectedWaveType, candleSeriesRef]);
+
+  // Elliott Wave: render saved elliott_wave drawings as markers + trendlines on reload
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    const ewDrawings = drawings.filter(d => d.type === 'elliott_wave');
+    const currentIds = new Set(ewDrawings.map(d => d.id));
+
+    // Detach primitives for removed drawings
+    savedEWPrimitivesRef.current.forEach((primitive, id) => {
+      if (!currentIds.has(id)) {
+        try { series.detachPrimitive(primitive); } catch (e) {
+          console.error('[EW] Failed to detach saved trendline:', e);
+        }
+        savedEWPrimitivesRef.current.delete(id);
+      }
+    });
+
+    // Add/update primitives for current EW drawings
+    for (const drawing of ewDrawings) {
+      if (drawing.points.length < 2) continue;
+      const waveType = drawing.style?.waveType ?? 'EW';
+      const color = drawing.style?.color ?? '#00CED1';
+      const data = {
+        points: drawing.points.map(p => ({
+          time: p.time,
+          price: p.price,
+          label: p.label,
+          isMidAir: p.isMidAir,
+        })),
+        waveType,
+        color,
+        showPointLabels: true,
+      };
+
+      const existing = savedEWPrimitivesRef.current.get(drawing.id);
+      if (existing) {
+        existing.update(data);
+      } else {
+        const primitive = new ElliottWavePrimitive(data);
+        try {
+          series.attachPrimitive(primitive);
+          savedEWPrimitivesRef.current.set(drawing.id, primitive);
+        } catch (e) {
+          console.error('[EW] Failed to attach saved trendline:', e);
+        }
+      }
+    }
+
+    return () => {
+      savedEWPrimitivesRef.current.forEach((primitive) => {
+        try { series.detachPrimitive(primitive); } catch (e) {
+          console.error('[EW] Failed to detach saved trendline on cleanup:', e);
+        }
+      });
+      savedEWPrimitivesRef.current.clear();
+    };
+  }, [drawings, candleSeriesRef]);
 
   // Memoized values
   const selectedDrawingForModal = useMemo(() => {
@@ -515,12 +629,12 @@ export function ChartFullscreenPage({
                   const snapThreshold = priceRange * 0.02;
                   for (const level of elliottWave.predictiveFibLevels) {
                     if (Math.abs(p.price - level.price) < snapThreshold) {
-                      elliottWave.placePoint(p.time as number, level.price, true);
+                      elliottWave.placePoint(p.time as number, level.price, true, 'none');
                       return;
                     }
                   }
                 }
-                elliottWave.placePoint(p.time as number, p.price, p.snapType === 'none');
+                elliottWave.placePoint(p.time as number, p.price, p.snapType === 'none', p.snapType);
               }
             : undefined
           }

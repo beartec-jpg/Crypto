@@ -41,6 +41,8 @@ export interface PredictiveWavePoint {
   isMidAir: boolean;
   /** True when the point is a predicted target, not a confirmed user placement */
   isPredicted: boolean;
+  /** Snap type from gesture controller – drives marker position (above/below bar) */
+  snapType?: 'high' | 'low' | 'none';
 }
 
 export interface UsePredictiveElliottWaveResult {
@@ -75,7 +77,7 @@ export interface UsePredictiveElliottWaveResult {
   /** Called after user picks a wave type in WaveTypeSelector */
   selectWaveType: (type: WaveType, subPattern?: SubPattern) => void;
   /** Place a point. isMidAir=true when snapType==='none' */
-  placePoint: (time: number, price: number, isMidAir: boolean) => void;
+  placePoint: (time: number, price: number, isMidAir: boolean, snapType?: 'high' | 'low' | 'none') => void;
   /** Undo the last placed point */
   undo: () => void;
   /** Reset drawing for the current wave type */
@@ -90,15 +92,11 @@ export interface UsePredictiveElliottWaveResult {
 }
 
 /**
- * Builds point labels for a wave structure based on the placed point index.
- * Combines the wave type prefix with the internal structural label.
- * e.g. waveType='W1', pointIndex=2 → label="W1.2"
+ * Returns the structural label for a point (e.g. "0", "1", "A", "B").
+ * The wave type degree label is placed at the trendline endpoint, not on each point.
  */
-function buildPointLabel(
-  waveType: WaveType,
-  structureLabel: string,
-): string {
-  return `${waveType}.${structureLabel}`;
+function buildPointLabel(structureLabel: string): string {
+  return structureLabel;
 }
 
 export function usePredictiveElliottWave(): UsePredictiveElliottWaveResult {
@@ -173,14 +171,14 @@ export function usePredictiveElliottWave(): UsePredictiveElliottWaveResult {
     setMode('drawing');
   }, []);
 
-  const placePoint = useCallback((time: number, price: number, isMidAir: boolean) => {
+  const placePoint = useCallback((time: number, price: number, isMidAir: boolean, snapType?: 'high' | 'low' | 'none') => {
     if (mode !== 'drawing' || !waveStructure) return;
 
     setPlacedPoints(prev => {
       const pointIndex = prev.length;
       const structureLabel = waveStructure.pointLabels[pointIndex] ?? String(pointIndex);
       const label = selectedWaveType
-        ? buildPointLabel(selectedWaveType, structureLabel)
+        ? buildPointLabel(structureLabel)
         : structureLabel;
 
       const newPoint: PredictiveWavePoint = {
@@ -189,6 +187,7 @@ export function usePredictiveElliottWave(): UsePredictiveElliottWaveResult {
         label,
         isMidAir,
         isPredicted: false,
+        snapType: snapType ?? (isMidAir ? 'none' : undefined),
       };
       const updated = [...prev, newPoint];
 
@@ -235,9 +234,10 @@ export function usePredictiveElliottWave(): UsePredictiveElliottWaveResult {
       const startPoint: PredictiveWavePoint = {
         time: lastPoint.time,
         price: lastPoint.price,
-        label: buildPointLabel(suggestedNextWave, firstLabel),
+        label: buildPointLabel(firstLabel),
         isMidAir: lastPoint.isMidAir,
         isPredicted: false,
+        snapType: lastPoint.snapType,
       };
       setPlacedPoints([startPoint]);
     } else {
