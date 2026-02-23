@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { createSeriesMarkers, type ISeriesMarkersPluginApi, Time } from 'lightweight-charts';
+import { queryClient } from '@/lib/queryClient';
+import { authenticatedApiRequest } from '@/lib/apiAuth';
+import { useToast } from '@/hooks/use-toast';
 
 // New extraction hooks
 import { useChartInstance } from '@/hooks/useChartInstance';
@@ -104,6 +108,9 @@ export function ChartFullscreenPage({
 
   // Hooks - Elliott Wave predictive tool
   const elliottWave = usePredictiveElliottWave();
+  // Ref to access latest elliottWave state inside stable event handlers
+  const elliottWaveRef = useRef(elliottWave);
+  elliottWaveRef.current = elliottWave;
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
@@ -185,6 +192,52 @@ export function ChartFullscreenPage({
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
 
+  // Hooks - Toast notifications
+  const { toast } = useToast();
+
+  // ── Elliott Wave persistence ────────────────────────────────────────────────
+
+  // Load saved EW wave labels from elliott_wave_labels table
+  const { data: ewLabels = [] } = useQuery<any[]>({
+    queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe],
+    queryFn: async () => {
+      const res = await authenticatedApiRequest(
+        'GET',
+        `/api/crypto/elliott-wave/labels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
+      );
+      return res.json();
+    },
+  });
+
+  // Save EW wave label
+  const saveEWLabelMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/labels', data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Wave saved', description: 'Elliott Wave saved successfully.' });
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe] });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Failed to save wave', description: err?.message, variant: 'destructive' });
+    },
+  });
+
+  // Delete EW wave label
+  const deleteEWLabelMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await authenticatedApiRequest('DELETE', `/api/crypto/elliott-wave/labels/${id}`);
+    },
+    onSuccess: () => {
+      toast({ title: 'Wave deleted successfully' });
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe] });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Failed to delete wave', description: err?.message, variant: 'destructive' });
+    },
+  });
+
   // Hooks - Drawing interaction
   const drawingInteraction = useDrawingInteraction({
     chartRef,
@@ -257,25 +310,46 @@ export function ChartFullscreenPage({
     return () => gestureController.detachFromChart();
   }, [gestureController, chartRef, candleSeriesRef]);
 
-  // Load drawings from persistence
+  // Load drawings from persistence (regular drawings + saved EW wave labels)
   useEffect(() => {
-    if (drawingsPersistence.drawings) {
-      const loadedDrawings = drawingsPersistence.drawings
-        .map((d: any): Drawing | null => {
-          try {
-            if (!d.id) return null;
-            return {
-              id: d.id,
-              type: d.drawingType || d.drawing_type || d.tool || 'trendline',
-              points: d.coordinates?.points || d.points || [],
-              style: { color: d.style?.color || '#3b82f6', lineWidth: d.style?.lineWidth || 2, ...d.style },
-            };
-          } catch (e) { return null; }
-        })
-        .filter((d): d is Drawing => d !== null && d.points.length > 0);
-      setDrawings(loadedDrawings);
-    }
-  }, [drawingsPersistence.drawings]);
+    const regularDrawings = (drawingsPersistence.drawings ?? [])
+      .map((d: any): Drawing | null => {
+        try {
+          if (!d.id) return null;
+          // Skip any legacy EW drawings saved to chart_drawings – use ewLabels instead
+          const drawingType = d.drawingType || d.drawing_type || d.tool || 'trendline';
+          if (drawingType === 'elliott_wave') return null;
+          return {
+            id: d.id,
+            type: drawingType,
+            points: d.coordinates?.points || d.points || [],
+            style: { color: d.style?.color || '#3b82f6', lineWidth: d.style?.lineWidth || 2, ...d.style },
+          };
+        } catch (e) { return null; }
+      })
+      .filter((d): d is Drawing => d !== null && d.points.length > 0);
+
+    const ewDrawings: Drawing[] = (ewLabels ?? [])
+      .filter((label: any) => Array.isArray(label.points) && label.points.length > 0)
+      .map((label: any): Drawing => ({
+        id: label.id,
+        type: 'elliott_wave',
+        points: label.points.map((p: any) => ({
+          time: p.time,
+          price: p.price,
+          label: p.label,
+          isMidAir: p.isMidAir ?? false,
+          snapType: p.snapType ?? 'high',
+        })),
+        style: {
+          color: label.metadata?.color ?? '#00CED1',
+          lineWidth: 2,
+          waveType: label.patternType ?? label.pattern_type ?? 'EW',
+        },
+      }));
+
+    setDrawings([...regularDrawings, ...ewDrawings]);
+  }, [drawingsPersistence.drawings, ewLabels]);
 
   // Reset initial load flag when symbol/timeframe changes
   useEffect(() => {
@@ -303,12 +377,19 @@ export function ChartFullscreenPage({
   const handleCloseSettings = useCallback(() => setSettingsModalOpen(false), []);
 
   const handleDeleteDrawing = useCallback(() => {
-    if (drawingInteraction.selectedDrawingId) {
-      drawingsPersistence.deleteDrawing(drawingInteraction.selectedDrawingId);
-      setDrawings(prev => prev.filter(d => d.id !== drawingInteraction.selectedDrawingId));
-      drawingInteraction.setSelectedDrawingId(null);
+    const id = drawingInteraction.selectedDrawingId;
+    if (!id) return;
+    const drawing = drawings.find(d => d.id === id);
+    if (drawing?.type === 'elliott_wave') {
+      // EW drawings are stored in elliott_wave_labels, not chart_drawings
+      deleteEWLabelMutation.mutate(id);
+      setDrawings(prev => prev.filter(d => d.id !== id));
+    } else {
+      drawingsPersistence.deleteDrawing(id);
+      setDrawings(prev => prev.filter(d => d.id !== id));
     }
-  }, [drawingInteraction, drawingsPersistence]);
+    drawingInteraction.setSelectedDrawingId(null);
+  }, [drawingInteraction, drawings, drawingsPersistence, deleteEWLabelMutation]);
 
   const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
     const selectedId = drawingInteraction.selectedDrawingId;
@@ -317,31 +398,31 @@ export function ChartFullscreenPage({
     drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: updates.style } });
   }, [drawingInteraction.selectedDrawingId, drawingsPersistence]);
 
-  // Elliott Wave: save the drawn wave as a persistent drawing
+  // Elliott Wave: save the drawn wave to elliott_wave_labels table
   const handleElliottWaveSave = useCallback(() => {
     if (!elliottWave.canSave) return;
-    const drawing = {
-      id: `drawing-${Date.now()}`,
-      type: 'elliott_wave' as ChartDrawingTool,
+    saveEWLabelMutation.mutate({
+      symbol,
+      timeframe,
+      degree: 'intermediate',
+      patternType: elliottWave.selectedWaveType ?? 'unknown',
       points: elliottWave.placedPoints.map(p => ({
         time: p.time,
         price: p.price,
         label: p.label,
         isMidAir: p.isMidAir,
-        snapType: p.snapType ?? (p.isMidAir ? 'none' : 'high') as 'high' | 'low' | 'none',
+        snapType: p.snapType ?? (p.isMidAir ? 'none' : 'high'),
       })),
-      style: {
+      isComplete: true,
+      metadata: {
+        waveType: elliottWave.selectedWaveType,
         color: '#00CED1',
-        lineWidth: 2,
-        waveType: elliottWave.selectedWaveType ?? undefined,
       },
-    };
-    setDrawings(d => [...d, drawing]);
-    drawingsPersistence.saveDrawing(drawing);
+    });
     elliottWave.deactivateMode();
     setActiveTool(null);
     activeToolRef.current = null;
-  }, [elliottWave, drawingsPersistence]);
+  }, [elliottWave, symbol, timeframe, saveEWLabelMutation]);
 
   // Elliott Wave: render placed points as series markers
   useEffect(() => {
@@ -473,6 +554,33 @@ export function ChartFullscreenPage({
       savedEWPrimitivesRef.current.clear();
     };
   }, [drawings, candleSeriesRef]);
+
+  // Elliott Wave: keyboard shortcuts (Backspace=undo, Escape=deactivate)
+  useEffect(() => {
+    if (!elliottWave.isActive) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const ew = elliottWaveRef.current;
+      // Backspace/Delete = undo last point while drawing
+      if ((e.key === 'Backspace' || e.key === 'Delete') && !e.shiftKey) {
+        if (ew.canUndo) {
+          ew.undo();
+          toast({ title: 'Point removed' });
+        }
+        e.preventDefault();
+      }
+      // Escape = deactivate (clear wave and exit tool)
+      if (e.key === 'Escape') {
+        ew.deactivateMode();
+        setActiveTool(null);
+        activeToolRef.current = null;
+        toast({ title: 'Wave cleared' });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [elliottWave.isActive, toast]);
 
   // Memoized values
   const selectedDrawingForModal = useMemo(() => {
