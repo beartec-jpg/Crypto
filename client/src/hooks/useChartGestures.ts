@@ -116,12 +116,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const timeScale = chartRef.current.timeScale();
     const logical = timeScale.coordinateToLogical(localX);
     if (logical === null) return null;
-    
-    const bars = dataRef.current;
-    if (bars.length === 0) return null;
-    
-    const idx = Math.max(0, Math.min(bars.length - 1, Math.round(logical)));
-    return bars[idx].time;
+    return getTimeFromLogical(Math.round(logical));
   };
 
   // Get number of visible candles on screen
@@ -146,12 +141,26 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     return logical !== null ? Math.round(logical) : null;
   };
 
+  // Get number of seconds between consecutive candles (used for future time extrapolation)
+  const getCandleInterval = (): number => {
+    const bars = dataRef.current;
+    if (bars.length < 2) return 3600; // Default to 1H
+    return (bars[1].time as number) - (bars[0].time as number);
+  };
+
   // Get time from a logical index
   const getTimeFromLogical = (logicalIdx: number): Time | null => {
     const bars = dataRef.current;
     if (bars.length === 0) return null;
-    const idx = Math.max(0, Math.min(bars.length - 1, logicalIdx));
-    return bars[idx].time;
+    if (logicalIdx < 0) return bars[0].time;
+    if (logicalIdx >= bars.length) {
+      // Extrapolate future time beyond the last candle
+      const lastBar = bars[bars.length - 1];
+      const interval = getCandleInterval();
+      const barsIntoFuture = logicalIdx - (bars.length - 1);
+      return ((lastBar.time as number) + barsIntoFuture * interval) as Time;
+    }
+    return bars[logicalIdx].time;
   };
 
   // Fixed pixel radius for snap circle (2D mode)

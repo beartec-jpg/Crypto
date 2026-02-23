@@ -502,33 +502,45 @@ export function ChartFullscreenPage({
     if (!seriesMarkersRef.current) {
       seriesMarkersRef.current = createSeriesMarkers(candleSeriesRef.current, []);
     }
-    const markers = points.map(point => ({
-      time: point.time as Time,
-      position: (point.snapType === 'low' ? 'belowBar' : 'aboveBar') as 'aboveBar' | 'belowBar',
-      color: point.isMidAir ? '#f97316' : '#00CED1',
-      shape: 'circle' as const,
-      text: point.label,
-      size: 2,
-    }));
+    if (candles.length === 0) {
+      seriesMarkersRef.current.setMarkers([]);
+      return;
+    }
+    const lastCandleTime = candles[candles.length - 1].time as number;
+    const markers = points
+      .filter(point => (point.time as number) <= lastCandleTime)
+      .map(point => ({
+        time: point.time as Time,
+        position: (point.snapType === 'low' ? 'belowBar' : 'aboveBar') as 'aboveBar' | 'belowBar',
+        color: point.isMidAir ? '#f97316' : '#00CED1',
+        shape: 'circle' as const,
+        text: point.label,
+        size: 2,
+      }));
     seriesMarkersRef.current.setMarkers(markers);
     return () => {
       seriesMarkersRef.current?.setMarkers([]);
     };
-  }, [elliottWave.placedPoints, elliottWave.isActive]);
+  }, [elliottWave.placedPoints, elliottWave.isActive, candles]);
 
-  // Elliott Wave: render live trendline when wave is complete
+  // Elliott Wave: render live trendline when wave is drawing or complete
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
 
     const points = elliottWave.placedPoints;
     const waveType = elliottWave.selectedWaveType;
+    const lastCandleTime = candles.length > 0 ? (candles[candles.length - 1].time as number) : undefined;
+    const candleInterval = candles.length >= 2 ? (candles[1].time as number) - (candles[0].time as number) : 3600;
 
-    if (elliottWave.mode === 'complete' && points.length >= 2 && waveType) {
+    if ((elliottWave.mode === 'drawing' || elliottWave.mode === 'complete') && points.length >= 2 && waveType) {
       const data = {
         points: points.map(p => ({ time: p.time, price: p.price })),
         waveType,
         color: '#00CED1',
+        lastCandleTime,
+        candleInterval,
+        barCount: candles.length,
       };
       if (liveEWPrimitiveRef.current) {
         liveEWPrimitiveRef.current.update(data);
@@ -558,7 +570,7 @@ export function ChartFullscreenPage({
         liveEWPrimitiveRef.current = null;
       }
     };
-  }, [elliottWave.mode, elliottWave.placedPoints, elliottWave.selectedWaveType, candleSeriesRef]);
+  }, [elliottWave.mode, elliottWave.placedPoints, elliottWave.selectedWaveType, candleSeriesRef, candles]);
 
   // Elliott Wave: render saved elliott_wave drawings as markers + trendlines on reload
   useEffect(() => {
@@ -583,6 +595,8 @@ export function ChartFullscreenPage({
       if (drawing.points.length < 2) continue;
       const waveType = drawing.style?.waveType ?? 'EW';
       const color = drawing.style?.color ?? '#00CED1';
+      const lastCandleTime = candles.length > 0 ? (candles[candles.length - 1].time as number) : undefined;
+      const candleInterval = candles.length >= 2 ? (candles[1].time as number) - (candles[0].time as number) : 3600;
       const data = {
         points: drawing.points.map(p => ({
           time: p.time,
@@ -593,6 +607,9 @@ export function ChartFullscreenPage({
         waveType,
         color,
         showPointLabels: true,
+        lastCandleTime,
+        candleInterval,
+        barCount: candles.length,
         isSelected: drawing.id === selectedWaveId,
       };
 
@@ -618,6 +635,32 @@ export function ChartFullscreenPage({
       });
       savedEWPrimitivesRef.current.clear();
     };
+  }, [drawings, candleSeriesRef, candles]);
+
+  // Elliott Wave: expand viewport to show future points in saved drawings
+  useEffect(() => {
+    if (!chartRef.current || candles.length === 0) return;
+    const ewDrawings = drawings.filter(d => d.type === 'elliott_wave');
+    const lastCandleTime = candles[candles.length - 1].time as number;
+    let maxFutureTime = lastCandleTime;
+    for (const drawing of ewDrawings) {
+      for (const point of drawing.points) {
+        if ((point.time as number) > maxFutureTime) {
+          maxFutureTime = point.time as number;
+        }
+      }
+    }
+    if (maxFutureTime > lastCandleTime) {
+      const timeScale = chartRef.current.timeScale();
+      const visibleRange = timeScale.getVisibleRange();
+      if (visibleRange && maxFutureTime > (visibleRange.to as number)) {
+        timeScale.setVisibleRange({
+          from: visibleRange.from,
+          to: maxFutureTime as Time,
+        });
+      }
+    }
+  }, [drawings, candles]);
   }, [drawings, candleSeriesRef, selectedWaveId]);
 
   // Elliott Wave: keyboard shortcuts (Backspace=undo, Escape=deactivate)
