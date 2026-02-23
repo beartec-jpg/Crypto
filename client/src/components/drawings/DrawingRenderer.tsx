@@ -16,6 +16,8 @@ interface DrawingRendererProps {
   setDrawings: React.Dispatch<React.SetStateAction<any[]>>;
   saveDrawingMutation: { mutate: (drawing: any) => void };
   onPointCommitRef?: React.MutableRefObject<((point: GesturePoint) => void) | null>;
+  /** Called instead of standard drawing logic when tool is 'elliott_wave' */
+  onElliottWavePoint?: (point: GesturePoint) => void;
 }
 
 export function DrawingRenderer({
@@ -29,6 +31,7 @@ export function DrawingRenderer({
   setDrawings,
   saveDrawingMutation,
   onPointCommitRef,
+  onElliottWavePoint,
 }: DrawingRendererProps) {
   const { toast } = useToast();
 
@@ -36,6 +39,12 @@ export function DrawingRenderer({
   const handlePointCommit = useCallback((point: GesturePoint) => {
     const currentTool = activeToolRef.current;
     if (drawingMode !== 'draw' || !currentTool) return;
+    
+    // Elliott Wave tool: delegate to external handler
+    if (currentTool === 'elliott_wave') {
+      onElliottWavePoint?.(point);
+      return;
+    }
     
     // For horizontal lines, save immediately on first click
     if (currentTool === 'horizontal') {
@@ -108,7 +117,7 @@ export function DrawingRenderer({
       
       return { points: newPoints };
     });
-  }, [drawingMode, activeToolRef, autoColorEnabledRef, candles, setTempDrawing, setDrawings, saveDrawingMutation, toast]);
+  }, [drawingMode, activeToolRef, autoColorEnabledRef, candles, setTempDrawing, setDrawings, saveDrawingMutation, onElliottWavePoint, toast]);
 
   // Expose handlePointCommit through ref if provided
   useEffect(() => {

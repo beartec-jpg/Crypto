@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Time } from 'lightweight-charts';
+import { createSeriesMarkers, type ISeriesMarkersPluginApi, Time } from 'lightweight-charts';
 
 // New extraction hooks
 import { useChartInstance } from '@/hooks/useChartInstance';
@@ -14,6 +14,7 @@ import { useOscillatorData } from '@/hooks/useOscillatorData';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
 import { useIndicatorState } from '@/hooks/useIndicatorState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
+import { useElliottWaveProgressive } from '@/hooks/useElliottWaveProgressive';
 
 // New extraction components
 import { FullscreenChartToolbar } from '@/components/chart/FullscreenChartToolbar';
@@ -49,6 +50,8 @@ import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorM
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillatorSection';
 import { IndicatorIconToolbar, IndicatorIconToolbarPreview } from '@/components/indicators/IndicatorIconToolbar';
+import { WaveProgressPanel } from '@/components/elliottWave/WaveProgressPanel';
+import { WaveClassificationPopup } from '@/components/elliottWave/WaveClassificationPopup';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -91,6 +94,10 @@ export function ChartFullscreenPage({
   const autoColorEnabledRef = useRef(autoColorEnabled);
   const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
   const isInitialDataLoad = useRef(true);
+  const seriesMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+
+  // Hooks - Elliott Wave progressive tool
+  const elliottWave = useElliottWaveProgressive();
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
@@ -275,9 +282,16 @@ export function ChartFullscreenPage({
 
   // Handlers
   const handleSelectTool = useCallback((tool: ChartDrawingTool) => {
+    // Toggle Elliott Wave mode when selecting/deselecting the tool
+    if (activeTool === 'elliott_wave' && tool !== 'elliott_wave') {
+      elliottWave.deactivateMode();
+    }
+    if (tool === 'elliott_wave' && activeTool !== 'elliott_wave') {
+      elliottWave.activateMode();
+    }
     setActiveTool(tool);
     activeToolRef.current = tool;
-  }, []);
+  }, [activeTool, elliottWave]);
 
   const handleOpenSettings = useCallback(() => setSettingsModalOpen(true), []);
   const handleCloseSettings = useCallback(() => setSettingsModalOpen(false), []);
@@ -296,6 +310,54 @@ export function ChartFullscreenPage({
     setDrawings(prev => prev.map(d => d.id === selectedId ? { ...d, style: { ...d.style, ...updates.style } } : d));
     drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: updates.style } });
   }, [drawingInteraction.selectedDrawingId, drawingsPersistence]);
+
+  // Elliott Wave: save the drawn wave as a persistent drawing
+  const handleElliottWaveSave = useCallback(() => {
+    if (!elliottWave.canSave) return;
+    const drawing = {
+      id: `drawing-${Date.now()}`,
+      type: 'elliott_wave' as ChartDrawingTool,
+      points: elliottWave.placedPoints.map(p => ({
+        time: p.time,
+        price: p.price,
+        snapType: (p.snappedToHigh ? 'high' : 'low') as 'high' | 'low',
+      })),
+      style: { color: '#00CED1', lineWidth: 2 },
+    };
+    setDrawings(d => [...d, drawing]);
+    drawingsPersistence.saveDrawing(drawing);
+    elliottWave.deactivateMode();
+    setActiveTool(null);
+    activeToolRef.current = null;
+  }, [elliottWave, drawingsPersistence]);
+
+  // Elliott Wave: render placed points as series markers
+  useEffect(() => {
+    if (!candleSeriesRef.current || !elliottWave.isActive) {
+      seriesMarkersRef.current?.setMarkers([]);
+      return;
+    }
+    const points = elliottWave.placedPoints;
+    if (points.length === 0) {
+      seriesMarkersRef.current?.setMarkers([]);
+      return;
+    }
+    if (!seriesMarkersRef.current) {
+      seriesMarkersRef.current = createSeriesMarkers(candleSeriesRef.current, []);
+    }
+    const markers = points.map(point => ({
+      time: point.time as Time,
+      position: (point.snappedToHigh ? 'aboveBar' : 'belowBar') as 'aboveBar' | 'belowBar',
+      color: '#00CED1',
+      shape: 'circle' as const,
+      text: point.label,
+      size: 2,
+    }));
+    seriesMarkersRef.current.setMarkers(markers);
+    return () => {
+      seriesMarkersRef.current?.setMarkers([]);
+    };
+  }, [elliottWave.placedPoints, elliottWave.isActive]);
 
   // Memoized values
   const selectedDrawingForModal = useMemo(() => {
@@ -435,7 +497,31 @@ export function ChartFullscreenPage({
           setDrawings={setDrawings}
           saveDrawingMutation={{ mutate: drawingsPersistence.saveDrawing }}
           onPointCommitRef={onPointCommitRef}
+          onElliottWavePoint={elliottWave.isActive
+            ? (p: GesturePoint) => elliottWave.placePoint(p.time as number, p.price, p.snapType === 'high')
+            : undefined
+          }
         />
+
+        {/* Elliott Wave Progress Panel */}
+        {activeTool === 'elliott_wave' && elliottWave.isActive && (
+          <WaveProgressPanel
+            wave={elliottWave}
+            onSave={handleElliottWaveSave}
+            className="absolute top-14 right-4 z-30"
+          />
+        )}
+
+        {/* Elliott Wave Classification Popup */}
+        {elliottWave.pendingClassification && (
+          <WaveClassificationPopup
+            isOpen={true}
+            structureType={elliottWave.pendingClassification.structureType}
+            suggestedWaves={elliottWave.pendingClassification.suggestedWaves}
+            onClassify={elliottWave.classifyLastStructure}
+            onSkip={elliottWave.skipClassification}
+          />
+        )}
         
         {/* Temp Drawing Points SVG */}
         <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', zIndex: 10 }}>
