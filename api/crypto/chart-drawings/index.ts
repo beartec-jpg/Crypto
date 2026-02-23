@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyToken } from '@clerk/backend';
 import pg from 'pg';
-import { getVisibleTimeframes } from '../../../shared/timeframeUtils';
+import { getVisibleTimeframes } from '../../../shared/timeframeUtils.js';
 
 async function verifyAuth(req: VercelRequest): Promise<string | null> {
   try {
