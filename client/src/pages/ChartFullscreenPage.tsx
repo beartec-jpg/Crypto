@@ -14,7 +14,7 @@ import { useOscillatorData } from '@/hooks/useOscillatorData';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
 import { useIndicatorState } from '@/hooks/useIndicatorState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
-import { useElliottWaveProgressive } from '@/hooks/useElliottWaveProgressive';
+import { usePredictiveElliottWave } from '@/hooks/usePredictiveElliottWave';
 
 // New extraction components
 import { FullscreenChartToolbar } from '@/components/chart/FullscreenChartToolbar';
@@ -50,8 +50,8 @@ import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorM
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillatorSection';
 import { IndicatorIconToolbar, IndicatorIconToolbarPreview } from '@/components/indicators/IndicatorIconToolbar';
-import { WaveProgressPanel } from '@/components/elliottWave/WaveProgressPanel';
-import { WaveClassificationPopup } from '@/components/elliottWave/WaveClassificationPopup';
+import { WaveTypeSelector } from '@/components/chart/WaveTypeSelector';
+import { PredictiveWavePanel } from '@/components/elliottWave/PredictiveWavePanel';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -96,8 +96,8 @@ export function ChartFullscreenPage({
   const isInitialDataLoad = useRef(true);
   const seriesMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
-  // Hooks - Elliott Wave progressive tool
-  const elliottWave = useElliottWaveProgressive();
+  // Hooks - Elliott Wave predictive tool
+  const elliottWave = usePredictiveElliottWave();
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
@@ -320,7 +320,7 @@ export function ChartFullscreenPage({
       points: elliottWave.placedPoints.map(p => ({
         time: p.time,
         price: p.price,
-        snapType: (p.snappedToHigh ? 'high' : 'low') as 'high' | 'low',
+        snapType: (p.isMidAir ? 'none' : 'high') as 'high' | 'low' | 'none',
       })),
       style: { color: '#00CED1', lineWidth: 2 },
     };
@@ -347,8 +347,8 @@ export function ChartFullscreenPage({
     }
     const markers = points.map(point => ({
       time: point.time as Time,
-      position: (point.snappedToHigh ? 'aboveBar' : 'belowBar') as 'aboveBar' | 'belowBar',
-      color: '#00CED1',
+      position: 'aboveBar' as 'aboveBar' | 'belowBar',
+      color: point.isMidAir ? '#f97316' : '#00CED1',
       shape: 'circle' as const,
       text: point.label,
       size: 2,
@@ -497,29 +497,30 @@ export function ChartFullscreenPage({
           setDrawings={setDrawings}
           saveDrawingMutation={{ mutate: drawingsPersistence.saveDrawing }}
           onPointCommitRef={onPointCommitRef}
-          onElliottWavePoint={elliottWave.isActive
-            ? (p: GesturePoint) => elliottWave.placePoint(p.time as number, p.price, p.snapType === 'high')
+          onElliottWavePoint={elliottWave.isActive && elliottWave.mode === 'drawing'
+            ? (p: GesturePoint) => elliottWave.placePoint(p.time as number, p.price, p.snapType === 'none')
             : undefined
           }
         />
 
-        {/* Elliott Wave Progress Panel */}
-        {activeTool === 'elliott_wave' && elliottWave.isActive && (
-          <WaveProgressPanel
-            wave={elliottWave}
-            onSave={handleElliottWaveSave}
-            className="absolute top-14 right-4 z-30"
+        {/* Elliott Wave – Wave Type Selector */}
+        {elliottWave.showWaveSelector && (
+          <WaveTypeSelector
+            onSelect={elliottWave.selectWaveType}
+            onCancel={() => {
+              elliottWave.deactivateMode();
+              setActiveTool(null);
+              activeToolRef.current = null;
+            }}
           />
         )}
 
-        {/* Elliott Wave Classification Popup */}
-        {elliottWave.pendingClassification && (
-          <WaveClassificationPopup
-            isOpen={true}
-            structureType={elliottWave.pendingClassification.structureType}
-            suggestedWaves={elliottWave.pendingClassification.suggestedWaves}
-            onClassify={elliottWave.classifyLastStructure}
-            onSkip={elliottWave.skipClassification}
+        {/* Elliott Wave Progress Panel */}
+        {activeTool === 'elliott_wave' && elliottWave.isActive && !elliottWave.showWaveSelector && (
+          <PredictiveWavePanel
+            wave={elliottWave}
+            onSave={handleElliottWaveSave}
+            className="absolute top-14 right-4 z-30"
           />
         )}
         
