@@ -661,7 +661,6 @@ export function ChartFullscreenPage({
       }
     }
   }, [drawings, candles]);
-  }, [drawings, candleSeriesRef, selectedWaveId]);
 
   // Elliott Wave: keyboard shortcuts (Backspace=undo, Escape=deactivate)
   useEffect(() => {
