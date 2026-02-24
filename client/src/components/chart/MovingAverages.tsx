@@ -101,6 +101,12 @@ export function MovingAverages({
             time: c.time as any,
             value: paddedEmaValues[i]
           })).filter(d => d.value !== undefined);
+        } else if (refs[config.id]) {
+          // Cache was cleared (e.g. on timeframe change) – remove stale timestamps
+          // from the merged timeline so fitContent only shows the current timeframe.
+          try { refs[config.id].setData([]); } catch (e) {
+            console.warn('[MovingAverages] Failed to clear HTF EMA series data:', e);
+          }
         }
       }
 

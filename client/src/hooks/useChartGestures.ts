@@ -113,10 +113,9 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
   const getTimeFromCoord = (localX: number): Time | null => {
     if (!chartRef.current) return null;
-    const timeScale = chartRef.current.timeScale();
-    const logical = timeScale.coordinateToLogical(localX);
-    if (logical === null) return null;
-    return getTimeFromLogical(Math.round(logical));
+    // Use coordinateToTime directly to avoid logical-index mismatch when
+    // multiple series with different time ranges are on the chart (e.g. HTF EMAs).
+    return chartRef.current.timeScale().coordinateToTime(localX) as Time | null;
   };
 
   // Get number of visible candles on screen
@@ -251,16 +250,20 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     
     const candidates: Candidate[] = [];
     
-    // Only check visible candles (plus a buffer)
-    const startIdx = Math.max(0, Math.floor(visibleRange.from) - 10);
-    const endIdx = Math.min(bars.length - 1, Math.ceil(visibleRange.to) + 10);
-    
-    for (let idx = startIdx; idx <= endIdx; idx++) {
+    // Iterate all bars and use timeToCoordinate for correct screen X.
+    // Using logicalToCoordinate(idx) was broken when HTF series (e.g. a 4h EMA
+    // on a 5m chart) added extra timestamps to the merged timeline, causing the
+    // logical index for bar[i] to differ from the array index i.
+    for (let idx = 0; idx < bars.length; idx++) {
       const bar = bars[idx];
       
-      // Get screen X for this candle
-      const screenX = timeScale.logicalToCoordinate(idx as any);
+      // Get screen X using the bar's actual timestamp (correct regardless of
+      // how many series are on the chart and their time ranges).
+      const screenX = timeScale.timeToCoordinate(bar.time as any);
       if (screenX === null) continue;
+      
+      // Fast horizontal reject: skip if bar is outside the snap circle
+      if (Math.abs(screenX - tapX) > SNAP_CIRCLE_RADIUS) continue;
       
       // Check the HIGH point
       const highY = series.priceToCoordinate(bar.high);
@@ -586,13 +589,12 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const local = getLocalCoords(clientX, clientY);
     if (!local) return;
 
-    const centerIdx = getLogicalIndex(local.x);
-    if (centerIdx === null) return;
-
     const tapPrice = candleSeriesRef.current.coordinateToPrice(local.y);
     if (tapPrice === null) return;
 
-    const tapTime = getTimeFromLogical(centerIdx);
+    // Use coordinateToTime for accurate fallback time (avoids logical-index
+    // mismatch when HTF series shift the merged timeline).
+    const tapTime = getTimeFromCoord(local.x);
     if (tapTime === null) return;
 
     console.log('[Gesture] Quick tap - autoSnap:', autoSnapEnabledRef.current);
@@ -608,10 +610,11 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const visibleCount = getVisibleCandleCount();
     const radius = getTapSnapRadius(visibleCount);
     
-    console.log('[Gesture] Tap snap - visible:', visibleCount, 'radius:', radius, 'centerIdx:', centerIdx);
+    console.log('[Gesture] Tap snap - visible:', visibleCount, 'radius:', radius);
 
-    // Find best snap point in window using 2D screen distance
-    const snapPoint = findSnapPointInWindow(centerIdx, radius, tapPrice, local.x, local.y);
+    // Pass 0 as the legacy centerIdx - findSnapPointInWindow ignores it when
+    // tapX/tapY are provided and dispatches directly to findSnapPointInCircle.
+    const snapPoint = findSnapPointInWindow(0, radius, tapPrice, local.x, local.y);
     
     if (snapPoint) {
       console.log('[Gesture] Quick tap committed (snapped):', snapPoint);
