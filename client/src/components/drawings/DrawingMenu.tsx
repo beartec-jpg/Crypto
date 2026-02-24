@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Pencil, TrendingUp, Minus, Square, GitBranch, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,7 +13,7 @@ import type { ChartDrawingTool } from '@/types/drawing';
 
 interface DrawingTool {
   id: ChartDrawingTool;
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   description: string;
 }
@@ -116,7 +117,7 @@ export function DrawingMenu({ activeTool, onSelectTool, className }: DrawingMenu
     setOpen(false);
   };
 
-  const activeTool_ = DRAWING_TOOLS.find(t => t.id === activeTool);
+  const activeToolConfig = DRAWING_TOOLS.find(t => t.id === activeTool);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -131,12 +132,12 @@ export function DrawingMenu({ activeTool, onSelectTool, className }: DrawingMenu
               : 'text-slate-300 hover:text-white hover:bg-slate-800',
             className,
           )}
-          title={activeTool_ ? `Drawing: ${activeTool_.label}` : 'Drawing Tools'}
+          title={activeToolConfig ? `Drawing: ${activeToolConfig.label}` : 'Drawing Tools'}
           aria-label="Drawing Tools"
         >
-          {activeTool_ ? (
+          {activeToolConfig ? (
             <span className="h-4 w-4 flex items-center justify-center">
-              {activeTool_.icon}
+              {activeToolConfig.icon}
             </span>
           ) : (
             <Pencil className="h-4 w-4" />

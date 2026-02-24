@@ -216,13 +216,25 @@ export function IndicatorMenu({
             <div className="space-y-0.5">
               <IndicatorRow
                 label="EMA"
-                description={emaConfigs.length > 0 ? `Period ${emaConfigs[0].period}` : 'Exponential MA'}
+                description={
+                  emaConfigs.length > 1
+                    ? `Periods: ${emaConfigs.map(c => c.period).join(', ')}`
+                    : emaConfigs.length === 1
+                    ? `Period ${emaConfigs[0].period}`
+                    : 'Exponential MA'
+                }
                 checked={emaShow}
                 onCheckedChange={onEmaToggle}
               />
               <IndicatorRow
                 label="SMA"
-                description={smaConfigs.length > 0 ? `Period ${smaConfigs[0].period}` : 'Simple MA'}
+                description={
+                  smaConfigs.length > 1
+                    ? `Periods: ${smaConfigs.map(c => c.period).join(', ')}`
+                    : smaConfigs.length === 1
+                    ? `Period ${smaConfigs[0].period}`
+                    : 'Simple MA'
+                }
                 checked={smaShow}
                 onCheckedChange={onSmaToggle}
               />
