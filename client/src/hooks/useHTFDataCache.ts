@@ -47,6 +47,13 @@ export function useHTFDataCache({
     }
   }, [symbol]);
 
+  // Clear cache when timeframe changes so the EMA series is reset and fitContent
+  // doesn't zoom out to show the full HTF history on the new timeframe.
+  useEffect(() => {
+    htfDataCache.current = {};
+    console.log('[EMA HTF] Cache cleared due to timeframe change');
+  }, [currentTimeframe]);
+
   // Fetch higher timeframe data
   useEffect(() => {
     if (!enabled || !symbol) return;
