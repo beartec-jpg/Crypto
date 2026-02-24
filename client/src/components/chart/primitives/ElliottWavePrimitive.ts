@@ -35,6 +35,9 @@ export interface ElliottWaveData {
   isSelected?: boolean;
 }
 
+// Color for the 0→5 diagonal trendline (distinct from the wave color)
+const DIAGONAL_TRENDLINE_COLOR = '#FACC15';
+
 // ─── Renderer ────────────────────────────────────────────────────────────────
 
 class ElliottWaveRenderer implements IPrimitivePaneRenderer {
@@ -78,12 +81,13 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         isMidAir: p.isMidAir,
       }));
 
-      const first = coords[0];
-      const last = coords[coords.length - 1];
-      if (first.x === null || first.y === null || last.x === null || last.y === null) return;
-
       ctx.save();
 
+      // Determine trend direction from first two points
+      const isUptrend = this._data.points.length >= 2 &&
+        this._data.points[1].price > this._data.points[0].price;
+
+      // Draw solid zigzag lines between consecutive points
       // Zigzag lines: solid thin lines connecting consecutive points
       ctx.strokeStyle = color;
       ctx.lineWidth = 1;
@@ -91,20 +95,19 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
       for (let i = 0; i < coords.length - 1; i++) {
         const p1 = coords[i];
         const p2 = coords[i + 1];
-        if (p1.x !== null && p1.y !== null && p2.x !== null && p2.y !== null) {
-          ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
-          ctx.stroke();
-        }
+        if (p1.x === null || p1.y === null || p2.x === null || p2.y === null) continue;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
       }
 
-      // Dashed diagonal trendline from point 0 to point 5 (when all 6 points placed)
+      // Draw dashed diagonal trendline from point 0 to point 5 when all 6 points placed
       if (coords.length === 6) {
         const p0 = coords[0];
         const p5 = coords[5];
         if (p0.x !== null && p0.y !== null && p5.x !== null && p5.y !== null) {
-          ctx.strokeStyle = '#FACC15';
+          ctx.strokeStyle = DIAGONAL_TRENDLINE_COLOR;
           ctx.lineWidth = 1;
           ctx.setLineDash([5, 5]);
           ctx.beginPath();
@@ -115,12 +118,13 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         }
       }
 
-      // Point circles and labels
-      if (this._data.showPointLabels || coords.length > 0) {
-        ctx.font = 'bold 12px sans-serif';
+      // Point labels (for all drawings)
+      if (this._data.showPointLabels) {
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
 
+        for (let i = 0; i < coords.length; i++) {
+          const c = coords[i];
+          if (c.x === null || c.y === null || !c.label) continue;
         // Determine trend direction for label placement
         const isUptrend = this._data.points.length >= 2 && this._data.points[1].price > this._data.points[0].price;
 
@@ -128,11 +132,24 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
           const c = coords[i];
           if (c.x === null || c.y === null) continue;
           const dotColor = c.isMidAir ? '#f97316' : color;
-          // Draw circle
+
+          // Draw dot at the point
           ctx.fillStyle = dotColor;
           ctx.beginPath();
           ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
           ctx.fill();
+
+          // Elliott Wave impulse pattern: in uptrends odd-indexed points (1,3,5) are
+          // peaks and even-indexed (0,2,4) are troughs; reversed for downtrends.
+          const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
+          ctx.fillStyle = dotColor;
+          ctx.font = 'bold 11px sans-serif';
+          if (isHigh) {
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(c.label, c.x, c.y - 7);
+          } else {
+            ctx.textBaseline = 'top';
+            ctx.fillText(c.label, c.x, c.y + 7);
           // Draw label above for highs, below for lows
           if (c.label) {
             const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
@@ -143,6 +160,7 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         }
 
         ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
       }
 
       ctx.restore();

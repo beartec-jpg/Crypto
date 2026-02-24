@@ -89,19 +89,21 @@ export function useElliottWave(): UseElliottWaveResult {
     const p = points.map(pt => pt.price);
 
     if (n === 2) {
-      // After point 1 (W1 complete): show W2 retracement targets
+      // After point 1 (W1 done): project W2 retracement targets of the W0→W1 move
       return calcRetracementLevels(p[0], p[1], [0.382, 0.5, 0.618]);
     }
     if (n === 3) {
-      // After point 2 (W2 complete): show W3 extension targets from p[2] using W1 length
+      // After point 2 (W2 done): project W3 extension from p[2] using W1 magnitude
+      // p[2] - (p[1]-p[0]) anchors the base so that (baseEnd - baseStart) == W1 length
       return calcExtensionLevels(p[2] - (p[1] - p[0]), p[2], [1.618, 2.0, 2.618]);
     }
     if (n === 4) {
-      // After point 3 (W3 complete): show W4 retracement targets
+      // After point 3 (W3 done): project W4 retracement targets of the W2→W3 move
       return calcRetracementLevels(p[2], p[3], [0.236, 0.382, 0.5]);
     }
     if (n === 5) {
-      // After point 4 (W4 complete): show W5 extension targets from p[4] using W1 length
+      // After point 4 (W4 done): project W5 extension from p[4] using W1 magnitude
+      // p[4] - (p[1]-p[0]) anchors the base so that (baseEnd - baseStart) == W1 length
       return calcExtensionLevels(p[4] - (p[1] - p[0]), p[4], [0.618, 1.0, 1.618]);
     }
     return [];
