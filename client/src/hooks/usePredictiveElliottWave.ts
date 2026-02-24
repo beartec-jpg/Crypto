@@ -42,7 +42,7 @@ export interface UseElliottWaveResult {
   // Actions
   activateMode: () => void;
   deactivateMode: () => void;
-  placePoint: (time: number, price: number) => void;
+  placePoint: (time: number, price: number, snapType?: 'high' | 'low' | 'none') => void;
   reset: () => void;
   undo: () => void;
 
@@ -65,11 +65,11 @@ export function useElliottWave(): UseElliottWaveResult {
     setPoints([]);
   }, []);
 
-  const placePoint = useCallback((time: number, price: number) => {
+  const placePoint = useCallback((time: number, price: number, snapType?: 'high' | 'low' | 'none') => {
     setPoints(prev => {
       if (prev.length >= TOTAL_POINTS) return prev;
       const label = POINT_LABELS[prev.length];
-      return [...prev, { time, price, label }];
+      return [...prev, { time, price, label, snapType, isMidAir: snapType === 'none' }];
     });
   }, []);
 

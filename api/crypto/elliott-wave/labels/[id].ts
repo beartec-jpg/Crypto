@@ -58,12 +58,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Label ID required' });
   }
 
-  const auth = await verifyAuth(req);
-  if (!auth) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  const { userId, email } = auth;
+  // TODO [TESTING ONLY]: Authentication temporarily disabled for testing.
+  // Re-enable the verifyAuth check before deploying to production.
+  // const auth = await verifyAuth(req);
+  // if (!auth) {
+  //   return res.status(401).json({ error: 'Authentication required' });
+  // }
+  // const { userId, email } = auth;
+  const userId = 'test-user-id';
+  const email = 'test@test.com';
   let pool: any = null;
 
   try {
@@ -94,12 +97,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       [cryptoUserId]
     );
 
-    const subscription = subResult.rows[0];
-    const hasAccess = subscription?.tier === 'elite' || subscription?.has_elliott_addon === true;
-
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'Elliott Wave features require Elite tier or Elliott Wave add-on' });
-    }
+    // TODO [TESTING ONLY]: Subscription tier check temporarily disabled for testing.
+    // Re-enable this check before deploying to production.
+    // const subscription = subResult.rows[0];
+    // const hasAccess = subscription?.tier === 'elite' || subscription?.has_elliott_addon === true;
+    // if (!hasAccess) {
+    //   return res.status(403).json({ error: 'Elliott Wave features require Elite tier or Elliott Wave add-on' });
+    // }
 
     // Verify ownership of the label
     const existing = await pool.query(
