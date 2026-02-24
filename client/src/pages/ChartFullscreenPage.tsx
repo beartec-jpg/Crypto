@@ -19,7 +19,7 @@ import { useOscillatorData } from '@/hooks/useOscillatorData';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
 import { useIndicatorState } from '@/hooks/useIndicatorState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
-import { usePredictiveElliottWave } from '@/hooks/usePredictiveElliottWave';
+import { useSimpleElliottWave } from '@/hooks/useSimpleElliottWave';
 
 // New extraction components
 import { FullscreenChartToolbar } from '@/components/chart/FullscreenChartToolbar';
@@ -27,6 +27,7 @@ import { PoppedOutOscillators } from '@/components/oscillators/PoppedOutOscillat
 import { ChartLoadingOverlay } from '@/components/chart/ChartLoadingOverlay';
 import { MiniOscillatorSection } from '@/components/oscillators/MiniOscillatorSection';
 
+import { Button } from '@/components/ui/button';
 import { EmaSmaModal } from '@/components/indicators';
 import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
@@ -55,8 +56,7 @@ import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorM
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillatorSection';
 import { IndicatorIconToolbar, IndicatorIconToolbarPreview } from '@/components/indicators/IndicatorIconToolbar';
-import { WaveTypeSelector } from '@/components/chart/WaveTypeSelector';
-import { PredictiveWavePanel } from '@/components/elliottWave/PredictiveWavePanel';
+import { WaveTypeSelector } from '@/components/elliottWave/WaveTypeSelector';
 import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
 import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
 
@@ -123,8 +123,8 @@ export function ChartFullscreenPage({
   // Ref for saved Elliott Wave trendline primitives (rendered on reload)
   const savedEWPrimitivesRef = useRef<Map<string, ElliottWavePrimitive>>(new Map());
 
-  // Hooks - Elliott Wave predictive tool
-  const elliottWave = usePredictiveElliottWave();
+  // Hooks - Elliott Wave simplified tool
+  const elliottWave = useSimpleElliottWave();
   // Ref to access latest elliottWave state inside stable event handlers
   const elliottWaveRef = useRef(elliottWave);
   elliottWaveRef.current = elliottWave;
@@ -469,17 +469,17 @@ export function ChartFullscreenPage({
       symbol,
       timeframe,
       degree: 'intermediate',
-      patternType: elliottWave.selectedWaveType ?? 'unknown',
-      points: elliottWave.placedPoints.map(p => ({
+      patternType: elliottWave.waveType ?? 'unknown',
+      points: elliottWave.points.map(p => ({
         time: p.time,
         price: p.price,
         label: p.label,
-        isMidAir: p.isMidAir,
-        snapType: p.snapType ?? (p.isMidAir ? 'none' : 'high'),
+        isMidAir: false,
+        snapType: 'high',
       })),
       isComplete: true,
       metadata: {
-        waveType: elliottWave.selectedWaveType,
+        waveType: elliottWave.waveType,
         color: '#00CED1',
       },
     });
@@ -494,7 +494,7 @@ export function ChartFullscreenPage({
       seriesMarkersRef.current?.setMarkers([]);
       return;
     }
-    const points = elliottWave.placedPoints;
+    const points = elliottWave.points;
     if (points.length === 0) {
       seriesMarkersRef.current?.setMarkers([]);
       return;
@@ -511,8 +511,8 @@ export function ChartFullscreenPage({
       .filter(point => (point.time as number) <= lastCandleTime)
       .map(point => ({
         time: point.time as Time,
-        position: (point.snapType === 'low' ? 'belowBar' : 'aboveBar') as 'aboveBar' | 'belowBar',
-        color: point.isMidAir ? '#f97316' : '#00CED1',
+        position: 'aboveBar' as 'aboveBar' | 'belowBar',
+        color: '#00CED1',
         shape: 'circle' as const,
         text: point.label,
         size: 2,
@@ -521,23 +521,24 @@ export function ChartFullscreenPage({
     return () => {
       seriesMarkersRef.current?.setMarkers([]);
     };
-  }, [elliottWave.placedPoints, elliottWave.isActive, candles]);
+  }, [elliottWave.points, elliottWave.isActive, candles]);
 
   // Elliott Wave: render live trendline when wave is drawing or complete
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
 
-    const points = elliottWave.placedPoints;
-    const waveType = elliottWave.selectedWaveType;
+    const points = elliottWave.points;
+    const waveType = elliottWave.waveType;
     const lastCandleTime = candles.length > 0 ? (candles[candles.length - 1].time as number) : undefined;
     const candleInterval = candles.length >= 2 ? (candles[1].time as number) - (candles[0].time as number) : 3600;
 
-    if ((elliottWave.mode === 'drawing' || elliottWave.mode === 'complete') && points.length >= 2 && waveType) {
+    if ((elliottWave.isDrawing || elliottWave.isComplete) && points.length >= 2 && waveType) {
       const data = {
-        points: points.map(p => ({ time: p.time, price: p.price })),
+        points: points.map(p => ({ time: p.time, price: p.price, label: p.label })),
         waveType,
         color: '#00CED1',
+        showPointLabels: true,
         lastCandleTime,
         candleInterval,
         barCount: candles.length,
@@ -570,7 +571,7 @@ export function ChartFullscreenPage({
         liveEWPrimitiveRef.current = null;
       }
     };
-  }, [elliottWave.mode, elliottWave.placedPoints, elliottWave.selectedWaveType, candleSeriesRef, candles]);
+  }, [elliottWave.isDrawing, elliottWave.isComplete, elliottWave.points, elliottWave.waveType, candleSeriesRef, candles]);
 
   // Elliott Wave: render saved elliott_wave drawings as markers + trendlines on reload
   useEffect(() => {
@@ -828,36 +829,16 @@ export function ChartFullscreenPage({
           setDrawings={setDrawings}
           saveDrawingMutation={{ mutate: drawingsPersistence.saveDrawing }}
           onPointCommitRef={onPointCommitRef}
-          onElliottWavePoint={elliottWave.isActive && elliottWave.mode === 'drawing'
+          onElliottWavePoint={elliottWave.isActive && elliottWave.isDrawing
             ? (p: GesturePoint) => {
-                // If no candle snap found, check if click is near a predictive fib level
-                if (p.snapType === 'none' && elliottWave.predictiveFibLevels.length > 0 && candleSeriesRef.current) {
-                  const priceRange = (() => {
-                    try {
-                      // Approximate visible price range from fib levels or series
-                      const prices = elliottWave.predictiveFibLevels.map(l => l.price);
-                      const spread = Math.max(...prices) - Math.min(...prices);
-                      return spread > 0 ? spread * 3 : Math.abs(p.price) * 0.1;
-                    } catch {
-                      return Math.abs(p.price) * 0.1;
-                    }
-                  })();
-                  const snapThreshold = priceRange * 0.02;
-                  for (const level of elliottWave.predictiveFibLevels) {
-                    if (Math.abs(p.price - level.price) < snapThreshold) {
-                      elliottWave.placePoint(p.time as number, level.price, true, 'none');
-                      return;
-                    }
-                  }
-                }
-                elliottWave.placePoint(p.time as number, p.price, p.snapType === 'none', p.snapType);
+                elliottWave.placePoint(p.time as number, p.price);
               }
             : undefined
           }
         />
 
         {/* Elliott Wave – Wave Type Selector */}
-        {elliottWave.showWaveSelector && (
+        {elliottWave.showSelector && (
           <WaveTypeSelector
             onSelect={elliottWave.selectWaveType}
             onCancel={() => {
@@ -868,13 +849,58 @@ export function ChartFullscreenPage({
           />
         )}
 
-        {/* Elliott Wave Progress Panel */}
-        {activeTool === 'elliott_wave' && elliottWave.isActive && !elliottWave.showWaveSelector && (
-          <PredictiveWavePanel
-            wave={elliottWave}
-            onSave={handleElliottWaveSave}
-            className="absolute top-14 right-4 z-30"
-          />
+        {/* Simple Status Panel – show while drawing */}
+        {elliottWave.isDrawing && (
+          <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl select-none">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-white text-sm font-semibold">
+                  {elliottWave.waveType?.toUpperCase()} Wave
+                </p>
+                <p className="text-slate-400 text-xs">
+                  Place point {elliottWave.points.length + 1} of 2
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {elliottWave.canUndo && (
+                  <Button size="sm" variant="ghost" onClick={elliottWave.undo}>
+                    Undo
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => {
+                  elliottWave.deactivateMode();
+                  setActiveTool(null);
+                  activeToolRef.current = null;
+                }}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Complete Panel – show when done */}
+        {elliottWave.isComplete && (
+          <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-emerald-700 rounded-lg p-3 shadow-xl select-none">
+            <p className="text-emerald-400 text-sm font-semibold mb-2">
+              ✓ {elliottWave.waveType?.toUpperCase()} Complete
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleElliottWaveSave}>
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={elliottWave.reset}>
+                Reset
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => {
+                elliottWave.deactivateMode();
+                setActiveTool(null);
+                activeToolRef.current = null;
+              }}>
+                Close
+              </Button>
+            </div>
+          </div>
         )}
 
         {/* Predictive Fib Level Renderer – ACTIVE DRAWING */}
@@ -882,8 +908,8 @@ export function ChartFullscreenPage({
           <PredictiveFibRenderer
             chart={chartRef.current}
             candleSeries={candleSeriesRef.current}
-            fibLevels={elliottWave.predictiveFibLevels}
-            isActive={elliottWave.mode === 'drawing' || elliottWave.mode === 'complete'}
+            fibLevels={elliottWave.projections}
+            isActive={elliottWave.isComplete}
           />
         )}
 
