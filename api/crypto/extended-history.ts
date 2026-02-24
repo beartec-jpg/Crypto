@@ -128,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                            intervalStr === '1d' ? '1d' :
                            intervalStr === '1w' ? '1w' : '1h';
 
-    const candlesNeeded = limitParam ? Math.min(parseInt(limitParam as string, 10), 1000) : 600;
+    const candlesNeeded = limitParam ? Math.min(parseInt(limitParam as string, 10), 3000) : 2500;
     const intervalMs = INTERVAL_MS[binanceInterval] || 60 * 60 * 1000;
     const endTime = endTimeParam ? parseInt(endTimeParam as string, 10) * 1000 : Date.now();
     const startTime = endTime - (candlesNeeded * intervalMs);

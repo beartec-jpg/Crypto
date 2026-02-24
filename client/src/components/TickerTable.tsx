@@ -73,9 +73,9 @@ export function TickerTable({
           
           if (tickerInfo) {
             try {
-              // Fetch last 150 candles for EMA and structure calculation
+              // Fetch last 500 candles for EMA and structure calculation
               const candleResponse = await fetch(
-                `https://api.binance.com/api/v3/klines?symbol=${ticker}&interval=${binanceTimeframe}&limit=150`
+                `https://api.binance.com/api/v3/klines?symbol=${ticker}&interval=${binanceTimeframe}&limit=500`
               );
               const candles = await candleResponse.json();
               console.log(`📊 Fetched ${candles.length} candles for ${ticker} on ${binanceTimeframe}`);

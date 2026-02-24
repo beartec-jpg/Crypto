@@ -74,13 +74,28 @@ export function useHTFDataCache({
         
         try {
           const binanceInterval = convertTimeframe(tf);
-          const response = await fetch(
-            `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceInterval}&limit=500`
-          );
-          
-          if (response.ok) {
+          const htfTargetCandles = 2000;
+          const allKlines: any[] = [];
+          let endTime = Date.now();
+
+          while (allKlines.length < htfTargetCandles) {
+            const response = await fetch(
+              `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceInterval}&limit=1000&endTime=${endTime}`
+            );
+
+            if (!response.ok) break;
+
             const klines = await response.json();
-            const transformedCandles = klines.map((kline: any[]) => ({
+            if (!klines.length) break;
+
+            allKlines.unshift(...klines);
+            endTime = klines[0][0] - 1;
+
+            if (klines.length < 1000) break;
+          }
+
+          if (allKlines.length > 0) {
+            const transformedCandles = allKlines.slice(-htfTargetCandles).map((kline: any[]) => ({
               time: Math.floor(kline[0] / 1000),
               open: parseFloat(kline[1]),
               high: parseFloat(kline[2]),
