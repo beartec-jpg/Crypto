@@ -88,6 +88,7 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         this._data.points[1].price > this._data.points[0].price;
 
       // Draw solid zigzag lines between consecutive points
+      // Zigzag lines: solid thin lines connecting consecutive points
       ctx.strokeStyle = color;
       ctx.lineWidth = 1;
       ctx.setLineDash([]);
@@ -124,6 +125,12 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         for (let i = 0; i < coords.length; i++) {
           const c = coords[i];
           if (c.x === null || c.y === null || !c.label) continue;
+        // Determine trend direction for label placement
+        const isUptrend = this._data.points.length >= 2 && this._data.points[1].price > this._data.points[0].price;
+
+        for (let i = 0; i < coords.length; i++) {
+          const c = coords[i];
+          if (c.x === null || c.y === null) continue;
           const dotColor = c.isMidAir ? '#f97316' : color;
 
           // Draw dot at the point
@@ -143,6 +150,12 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
           } else {
             ctx.textBaseline = 'top';
             ctx.fillText(c.label, c.x, c.y + 7);
+          // Draw label above for highs, below for lows
+          if (c.label) {
+            const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
+            const labelY = isHigh ? c.y - 15 : c.y + 20;
+            ctx.fillStyle = color;
+            ctx.fillText(c.label, c.x, labelY);
           }
         }
 

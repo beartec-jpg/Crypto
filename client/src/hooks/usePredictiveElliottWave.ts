@@ -81,7 +81,7 @@ export function useElliottWave(): UseElliottWaveResult {
     setPoints(prev => prev.slice(0, -1));
   }, []);
 
-  // Fibonacci projection levels shown at appropriate stages
+  // Fibonacci projection levels shown progressively as points are placed
   const fibProjections = useMemo<FibLevel[]>(() => {
     const n = points.length;
     if (n < 2) return [];
