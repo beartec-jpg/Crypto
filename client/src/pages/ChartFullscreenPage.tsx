@@ -105,6 +105,9 @@ export function ChartFullscreenPage({
   const [selectedWaveFibs, setSelectedWaveFibs] = useState<FibLevel[]>([]);
   // Incremented whenever the chart pans/zooms so we can recompute the SVG click overlay coords
   const [chartViewVersion, setChartViewVersion] = useState(0);
+  // Wave degree label prompt shown after wave completion
+  const [showWaveDegreePrompt, setShowWaveDegreePrompt] = useState(false);
+  const [waveDegreeLabel, setWaveDegreeLabel] = useState<string | null>(null);
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -567,6 +570,14 @@ export function ChartFullscreenPage({
     };
   }, [elliottWave.isDrawing, elliottWave.isComplete, elliottWave.points, candleSeriesRef, candles]);
 
+  // Elliott Wave: show wave degree prompt when wave is complete
+  useEffect(() => {
+    if (elliottWave.isComplete) {
+      setShowWaveDegreePrompt(true);
+      setWaveDegreeLabel(null);
+    }
+  }, [elliottWave.isComplete]);
+
   // Elliott Wave: render saved elliott_wave drawings as markers + trendlines on reload
   useEffect(() => {
     const series = candleSeriesRef.current;
@@ -866,6 +877,9 @@ export function ChartFullscreenPage({
             <p className="text-emerald-400 text-sm font-semibold mb-2">
               ✓ Impulse Wave Complete
             </p>
+            {waveDegreeLabel && (
+              <p className="text-blue-400 text-xs mb-2">Degree label: <span className="font-bold">{waveDegreeLabel}</span></p>
+            )}
             <div className="flex gap-2">
               <Button size="sm" onClick={handleElliottWaveSave}>
                 Save
@@ -884,13 +898,44 @@ export function ChartFullscreenPage({
           </div>
         )}
 
+        {/* Wave Degree Label Prompt – shown after wave is complete */}
+        {showWaveDegreePrompt && (
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-slate-900 border border-slate-700 rounded-lg p-4 shadow-xl select-none">
+            <h3 className="text-white text-sm font-semibold mb-3">Label this wave?</h3>
+            <div className="grid grid-cols-3 gap-2">
+              {['1', '2', '3', '4', '5', 'A', 'B', 'C', 'W', 'X', 'Y'].map(lbl => (
+                <Button
+                  key={lbl}
+                  size="sm"
+                  aria-label={`Label wave as ${lbl}`}
+                  onClick={() => {
+                    setWaveDegreeLabel(lbl);
+                    setShowWaveDegreePrompt(false);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {lbl}
+                </Button>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowWaveDegreePrompt(false)}
+              className="w-full mt-2"
+            >
+              Skip
+            </Button>
+          </div>
+        )}
+
         {/* Predictive Fib Level Renderer – ACTIVE DRAWING */}
         {activeTool === 'elliott_wave' && elliottWave.isActive && (
           <PredictiveFibRenderer
             chart={chartRef.current}
             candleSeries={candleSeriesRef.current}
             fibLevels={elliottWave.fibProjections}
-            isActive={elliottWave.isComplete}
+            isActive={elliottWave.isActive}
           />
         )}
 

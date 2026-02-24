@@ -81,28 +81,28 @@ export function useElliottWave(): UseElliottWaveResult {
     setPoints(prev => prev.slice(0, -1));
   }, []);
 
-  // Fibonacci projection levels shown at appropriate stages
+  // Fibonacci projection levels shown progressively as points are placed
   const fibProjections = useMemo<FibLevel[]>(() => {
     const n = points.length;
-    if (n < 3) return [];
+    if (n < 2) return [];
 
     const p = points.map(pt => pt.price);
 
+    if (n === 2) {
+      // After point 1 (W1 complete): show W2 retracement targets
+      return calcRetracementLevels(p[0], p[1], [0.382, 0.5, 0.618]);
+    }
     if (n === 3) {
-      // After point 2: retracement levels for Wave 2 (38.2%–61.8% of Wave 1)
-      return calcRetracementLevels(p[0], p[1], [0.236, 0.382, 0.5, 0.618, 0.786]);
+      // After point 2 (W2 complete): show W3 extension targets from p[2] using W1 length
+      return calcExtensionLevels(p[2] - (p[1] - p[0]), p[2], [1.618, 2.0, 2.618]);
     }
     if (n === 4) {
-      // After point 3: extension levels for Wave 3 (161.8%–261.8% of Wave 1)
-      return calcExtensionLevels(p[2], p[1], [1.0, 1.272, 1.618, 2.0, 2.618]);
+      // After point 3 (W3 complete): show W4 retracement targets
+      return calcRetracementLevels(p[2], p[3], [0.236, 0.382, 0.5]);
     }
     if (n === 5) {
-      // After point 4: retracement levels for Wave 4 (23.6%–50% of Wave 3)
-      return calcRetracementLevels(p[2], p[3], [0.236, 0.382, 0.5, 0.618]);
-    }
-    if (n === 6) {
-      // After point 5: extension levels for Wave 5
-      return calcExtensionLevels(p[4], p[3], [0.618, 1.0, 1.272, 1.618]);
+      // After point 4 (W4 complete): show W5 extension targets from p[4] using W1 length
+      return calcExtensionLevels(p[4] - (p[1] - p[0]), p[4], [0.618, 1.0, 1.618]);
     }
     return [];
   }, [points]);
