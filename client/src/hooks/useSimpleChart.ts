@@ -94,21 +94,46 @@ export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleCha
   useEffect(() => {
     if (!candleSeriesRef.current) return;
 
+    const getTargetCandleCount = (tf: string): number => {
+      const targets: Record<string, number> = {
+        '1m': 1500,
+        '5m': 2000,
+        '15m': 2500,
+        '1h': 3000,
+        '4h': 3000,
+        '1d': 3000,
+        '1w': 2000,
+      };
+      return targets[tf] || 2000;
+    };
+
     const fetchData = async () => {
       try {
         const binanceTimeframe = convertTimeframe(timeframe);
-        const response = await fetch(
-          `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceTimeframe}&limit=500`
-        );
-        
-        if (!response.ok) {
-          console.error(`Failed to fetch chart data: ${response.status} ${response.statusText}`);
-          return;
-        }
-        
-        const candles = await response.json();
+        const targetCandles = getTargetCandleCount(timeframe);
+        const allCandles: any[] = [];
+        let endTime = Date.now();
 
-        const chartData = candles.map((c: any) => ({
+        while (allCandles.length < targetCandles) {
+          const response = await fetch(
+            `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceTimeframe}&limit=1000&endTime=${endTime}`
+          );
+
+          if (!response.ok) {
+            console.error(`Failed to fetch chart data: ${response.status} ${response.statusText}`);
+            break;
+          }
+
+          const batch = await response.json();
+          if (!batch.length) break;
+
+          allCandles.unshift(...batch);
+          endTime = batch[0][0] - 1;
+
+          if (batch.length < 1000) break;
+        }
+
+        const chartData = allCandles.slice(-targetCandles).map((c: any) => ({
           time: Math.floor(c[0] / 1000),
           open: parseFloat(c[1]),
           high: parseFloat(c[2]),
