@@ -45,7 +45,7 @@ import { useLiquiditySettings } from '@/hooks/useLiquiditySettings';
 import { useLiquidityDetection } from '@/hooks/useLiquidityDetection';
 import { usePDZoneSettings } from '@/hooks/usePDZoneSettings';
 import { usePDZoneDetection } from '@/hooks/usePDZoneDetection';
-import { VerticalDrawingToolbar, DrawingToolbarPreview } from '@/components/drawings/VerticalDrawingToolbar';
+import { DrawingMenu } from '@/components/drawings/DrawingMenu';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
 import { DrawingSettingsModal } from '@/components/modals/DrawingSettingsModal';
@@ -53,20 +53,17 @@ import { DrawingSelectionModal } from '@/components/drawings/DrawingSelectionMod
 import { MovingAverages } from '@/components/chart/MovingAverages';
 import { calculateEMA } from '@/lib/indicators';
 import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
-import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillatorSection';
-import { IndicatorIconToolbar, IndicatorIconToolbarPreview } from '@/components/indicators/IndicatorIconToolbar';
-import { WaveTypeSelector } from '@/components/elliottWave/WaveTypeSelector';
+import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';
+import { WaveTypeSelector } from '@/components/chart/WaveTypeSelector';
+import { PredictiveWavePanel } from '@/components/elliottWave/PredictiveWavePanel';
 import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
 import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
 import {
-  MOBILE_NAV_HEIGHT,
   TOP_TOOLBAR_HEIGHT,
-  DRAWING_TOOLBAR_BOTTOM_MARGIN,
-  DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
 } from '@/lib/constants/layout';
 
 /** Shape of a projection line returned from /api/crypto/projection-lines */
@@ -713,20 +710,35 @@ export function ChartFullscreenPage({
 
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Indicator Icon Toolbar (Draggable) */}
-        <DraggableToolbar
-          storageKey="indicator-toolbar-position"
-          rotationStorageKey="indicator-toolbar-vertical"
-          minimizedStorageKey="indicator-toolbar-minimized"
-          defaultPosition={() => ({ x: 16, y: 16 })}
-          minimizedPreview={<IndicatorIconToolbarPreview />}
-        >
-          <IndicatorIconToolbar
+        {/* Top-left Toolbar: Drawing + Indicator buttons */}
+        <div className="absolute top-2 left-2 z-30 flex items-center gap-1 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-1 shadow-xl">
+          <DrawingMenu activeTool={activeTool} onSelectTool={handleSelectTool} />
+          <IndicatorMenu
+            selectedOscillators={oscillatorPanel.selectedOscillators}
+            onToggleOscillator={oscillatorPanel.toggleOscillator}
             onOpenOscillators={() => oscillatorPanel.setShowSelector(true)}
+            emaShow={indicators.ema.show}
+            onEmaToggle={indicators.ema.setShow}
+            emaConfigs={indicators.ema.configs}
+            smaShow={indicators.sma.show}
+            onSmaToggle={indicators.sma.setShow}
+            smaConfigs={indicators.sma.configs}
+            vwapShow={indicators.vwap.showSession}
+            onVwapToggle={indicators.vwap.setShowSession}
             onOpenEmaSma={() => setShowEmaSmaModal(true)}
+            fvgSettings={fvgSettings.settings}
+            onFVGSettingsChange={fvgSettings.setSettings}
+            obSettings={obSettings.settings}
+            onOBSettingsChange={obSettings.setSettings}
+            bosSettings={bosSettings.settings}
+            onBOSSettingsChange={bosSettings.setSettings}
+            liquiditySettings={liquiditySettings.settings}
+            onLiquiditySettingsChange={liquiditySettings.setSettings}
+            pdZoneSettings={pdZoneSettings.settings}
+            onPDZoneSettingsChange={pdZoneSettings.setSettings}
             onOpenSmc={() => setShowSmcModal(true)}
           />
-        </DraggableToolbar>
+        </div>
 
         {/* Mini Oscillator Indicators */}
         <MiniOscillatorSection
@@ -734,22 +746,6 @@ export function ChartFullscreenPage({
           oscillatorData={oscillatorData}
           onCycleMode={oscillatorPanel.cycleMode}
         />
-
-        {/* Drawing Toolbar */}
-        <DraggableToolbar
-          storageKey="chart-drawing-toolbar-position"
-          rotationStorageKey="drawing-toolbar-vertical"
-          minimizedStorageKey="drawing-toolbar-minimized"
-          defaultPosition={() => ({
-            x: window.innerWidth / 2 - DRAWING_TOOLBAR_ESTIMATED_HALF_WIDTH,
-            y: window.innerHeight - (oscillatorPanel.selectedOscillators.size > 0
-              ? oscillatorPanel.totalHeight + DRAWING_TOOLBAR_BOTTOM_MARGIN
-              : DRAWING_TOOLBAR_BOTTOM_MARGIN)
-          })}
-          minimizedPreview={<DrawingToolbarPreview />}
-        >
-          <VerticalDrawingToolbar activeTool={activeTool} onSelectTool={handleSelectTool} />
-        </DraggableToolbar>
         
         {/* Loading/Error Overlay */}
         <ChartLoadingOverlay isLoading={isLoading} error={error?.message || null} />
