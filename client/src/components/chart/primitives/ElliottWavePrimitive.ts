@@ -121,16 +121,12 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
       // Point labels (for all drawings)
       if (this._data.showPointLabels) {
         ctx.textAlign = 'center';
+        ctx.font = 'bold 11px sans-serif';
 
         for (let i = 0; i < coords.length; i++) {
           const c = coords[i];
           if (c.x === null || c.y === null || !c.label) continue;
-        // Determine trend direction for label placement
-        const isUptrend = this._data.points.length >= 2 && this._data.points[1].price > this._data.points[0].price;
 
-        for (let i = 0; i < coords.length; i++) {
-          const c = coords[i];
-          if (c.x === null || c.y === null) continue;
           const dotColor = c.isMidAir ? '#f97316' : color;
 
           // Draw dot at the point
@@ -139,23 +135,17 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
           ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
           ctx.fill();
 
-          // Elliott Wave impulse pattern: in uptrends odd-indexed points (1,3,5) are
-          // peaks and even-indexed (0,2,4) are troughs; reversed for downtrends.
+          // Elliott Wave: in uptrends odd points are peaks, even are troughs
           const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
+
+          // Draw label above for highs, below for lows
           ctx.fillStyle = dotColor;
-          ctx.font = 'bold 11px sans-serif';
           if (isHigh) {
             ctx.textBaseline = 'bottom';
             ctx.fillText(c.label, c.x, c.y - 7);
           } else {
             ctx.textBaseline = 'top';
             ctx.fillText(c.label, c.x, c.y + 7);
-          // Draw label above for highs, below for lows
-          if (c.label) {
-            const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
-            const labelY = isHigh ? c.y - 15 : c.y + 20;
-            ctx.fillStyle = color;
-            ctx.fillText(c.label, c.x, labelY);
           }
         }
 
