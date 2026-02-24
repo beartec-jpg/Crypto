@@ -1,31 +1,25 @@
 /**
  * PredictiveWavePanel
  *
- * Floating panel for the predictive Elliott Wave tool.
- * Shows current wave type, progress, predictive fib levels, and controls.
+ * Floating panel for the Elliott Wave tool.
+ * Shows current wave progress, fibonacci levels, and controls.
  */
 
 import { Button } from '@/components/ui/button';
-import { Undo2, RotateCcw, Save, ArrowRight } from 'lucide-react';
-import type { UsePredictiveElliottWaveResult } from '@/hooks/usePredictiveElliottWave';
+import { Undo2, RotateCcw, Save } from 'lucide-react';
+import type { UseElliottWaveResult } from '@/hooks/usePredictiveElliottWave';
 import type { FibLevel } from '@/lib/elliottWave/fibCalculator';
-import { getWaveLabel, getSubPatternLabel } from '@/lib/elliottWave/waveStructures';
 
 interface PredictiveWavePanelProps {
-  wave: UsePredictiveElliottWaveResult;
+  wave: UseElliottWaveResult;
   onSave?: () => void;
   className?: string;
 }
 
-const FIB_COLORS: Record<string, string> = {
-  retrace: 'text-amber-400',
-  extend: 'text-blue-400',
-};
-
 function FibLevelRow({ level }: { level: FibLevel }) {
   return (
     <div className="flex items-center justify-between gap-2 py-0.5">
-      <span className={`text-xs font-mono w-12 shrink-0 ${level.isRetrace ? FIB_COLORS.retrace : FIB_COLORS.extend}`}>
+      <span className={`text-xs font-mono w-12 shrink-0 ${level.isRetrace ? 'text-amber-400' : 'text-blue-400'}`}>
         {level.label}
       </span>
       <span className="text-xs text-slate-300 font-mono">{level.price.toFixed(2)}</span>
@@ -35,25 +29,11 @@ function FibLevelRow({ level }: { level: FibLevel }) {
 }
 
 export function PredictiveWavePanel({ wave, onSave, className = '' }: PredictiveWavePanelProps) {
-  const {
-    mode,
-    selectedWaveType,
-    selectedSubPattern,
-    placedPoints,
-    expectedPointCount,
-    predictiveFibLevels,
-    suggestedNextWave,
-    continueToNextWave,
-    canUndo,
-    canSave,
-    getStatusText,
-  } = wave;
+  const { isActive, isComplete, points, fibProjections, canUndo, canSave } = wave;
 
-  if (!wave.isActive || mode === 'selecting') return null;
+  if (!isActive) return null;
 
-  const waveLabel = selectedWaveType ? getWaveLabel(selectedWaveType) : '—';
-  const subPatternLabel = selectedSubPattern ? getSubPatternLabel(selectedSubPattern) : null;
-  const progress = `${placedPoints.length} / ${expectedPointCount}`;
+  const progress = `${points.length} / 6`;
 
   return (
     <div className={`bg-slate-900 border border-slate-700 rounded-lg shadow-xl p-3 w-72 select-none ${className}`}>
@@ -64,83 +44,41 @@ export function PredictiveWavePanel({ wave, onSave, className = '' }: Predictive
             Elliott Wave
           </span>
           <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
-            mode === 'complete' ? 'bg-emerald-700 text-white' : 'bg-blue-700 text-white'
+            isComplete ? 'bg-emerald-700 text-white' : 'bg-blue-700 text-white'
           }`}>
-            {waveLabel}
+            Impulse
           </span>
         </div>
         <span className="text-xs text-slate-400 font-mono">{progress}</span>
       </div>
 
-      {/* Sub-pattern */}
-      {subPatternLabel && (
-        <div className="mb-2">
-          <span className="text-xs text-slate-400">{subPatternLabel}</span>
-        </div>
-      )}
-
-      {/* Status */}
-      <div className="bg-slate-800 rounded px-2 py-1.5 mb-2">
-        <p className="text-xs text-slate-300 leading-snug">{getStatusText()}</p>
+      {/* Progress dots */}
+      <div className="flex items-center gap-1 mb-3 flex-wrap">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            key={i}
+            className={`flex items-center justify-center rounded-full text-xs font-bold transition-colors
+              ${i < points.length
+                ? 'w-5 h-5 bg-blue-600 text-white'
+                : 'w-5 h-5 border border-slate-600 text-slate-500'
+              }`}
+          >
+            {i}
+          </div>
+        ))}
       </div>
 
-      {/* Progress dots */}
-      {expectedPointCount > 0 && (
-        <div className="flex items-center gap-1 mb-3 flex-wrap">
-          {Array.from({ length: expectedPointCount }).map((_, i) => (
-            <div
-              key={i}
-              className={`flex items-center justify-center rounded-full text-xs font-bold transition-colors
-                ${i < placedPoints.length
-                  ? placedPoints[i]?.isMidAir
-                    ? 'w-5 h-5 border-2 border-orange-400 text-orange-400 bg-transparent'
-                    : 'w-5 h-5 bg-blue-600 text-white'
-                  : 'w-5 h-5 border border-slate-600 text-slate-500'
-                }`}
-            >
-              {i}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Predictive fib levels */}
-      {predictiveFibLevels.length > 0 && (
+      {/* Fib levels */}
+      {fibProjections.length > 0 && (
         <div className="mb-2">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
-            {mode === 'complete' ? 'Next Wave Targets' : 'Sub-Wave Targets'}
+            Fibonacci Levels
           </p>
           <div className="divide-y divide-slate-800">
-            {predictiveFibLevels.map((level, i) => (
+            {fibProjections.map((level, i) => (
               <FibLevelRow key={i} level={level} />
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Mid-air legend */}
-      <div className="flex items-center gap-3 mb-2">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full bg-blue-600" />
-          <span className="text-xs text-slate-500">Anchored</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full border-2 border-orange-400" />
-          <span className="text-xs text-slate-500">Mid-air</span>
-        </div>
-      </div>
-
-      {/* Wave continuation */}
-      {mode === 'complete' && suggestedNextWave && (
-        <div className="mb-2">
-          <Button
-            size="sm"
-            className="w-full h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
-            onClick={continueToNextWave}
-          >
-            <ArrowRight className="h-3 w-3 mr-1" />
-            Continue to {getWaveLabel(suggestedNextWave)}
-          </Button>
         </div>
       )}
 
@@ -181,7 +119,7 @@ export function PredictiveWavePanel({ wave, onSave, className = '' }: Predictive
             onClick={onSave}
           >
             <Save className="h-3 w-3 mr-1" />
-            Finish & Save
+            Finish &amp; Save
           </Button>
         )}
       </div>
