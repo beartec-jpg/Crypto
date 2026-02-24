@@ -63,6 +63,7 @@ import type { Drawing, ChartDrawingTool } from '@/types/drawing';
 import {
   TOP_TOOLBAR_HEIGHT,
 } from '@/lib/constants/layout';
+import { generateFutureWhitespace, FUTURE_BAR_COUNT } from '@/lib/chart/timeUtils';
 
 /** Shape of a projection line returned from /api/crypto/projection-lines */
 interface ProjectionLine {
@@ -286,15 +287,22 @@ export function ChartFullscreenPage({
   // Update chart with candle data
   useEffect(() => {
     if (candleSeriesRef.current && candles.length > 0) {
+      const lastCandle = candles[candles.length - 1];
+      const futureBars = generateFutureWhitespace(lastCandle.time as number, timeframe, FUTURE_BAR_COUNT);
+      const chartData = [
+        ...candles.map(c => ({ ...c, time: c.time as Time })),
+        ...(futureBars as any[]),
+      ];
       if (isInitialDataLoad.current) {
-        // First load: set data and fit content
-        candleSeriesRef.current.setData(candles.map(c => ({ ...c, time: c.time as Time })));
+        // First load: set data, add future whitespace, and fit content
+        candleSeriesRef.current.setData(chartData);
         fitContent(candles.length);
+        chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
         isInitialDataLoad.current = false;
       } else {
         // Subsequent updates: preserve the visible range
         const currentRange = chartRef.current?.timeScale().getVisibleRange();
-        candleSeriesRef.current.setData(candles.map(c => ({ ...c, time: c.time as Time })));
+        candleSeriesRef.current.setData(chartData);
         if (currentRange) {
           try {
             chartRef.current?.timeScale().setVisibleRange(currentRange);
@@ -302,7 +310,7 @@ export function ChartFullscreenPage({
         }
       }
     }
-  }, [candles, candleSeriesRef, fitContent]);
+  }, [candles, candleSeriesRef, fitContent, timeframe]);
 
   // Attach click handlers
   useEffect(() => {
@@ -472,8 +480,8 @@ export function ChartFullscreenPage({
         time: p.time,
         price: p.price,
         label: p.label,
-        isMidAir: false,
-        snapType: 'high',
+        isMidAir: p.isMidAir ?? false,
+        snapType: p.snapType ?? 'none',
       })),
       isComplete: true,
       metadata: {
@@ -835,7 +843,7 @@ export function ChartFullscreenPage({
           onPointCommitRef={onPointCommitRef}
           onElliottWavePoint={elliottWave.isActive && elliottWave.isDrawing
             ? (p: GesturePoint) => {
-                elliottWave.placePoint(p.time as number, p.price);
+                elliottWave.placePoint(p.time as number, p.price, p.snapType);
               }
             : undefined
           }
