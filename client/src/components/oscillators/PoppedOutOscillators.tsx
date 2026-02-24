@@ -35,10 +35,10 @@ const OSCILLATOR_CONFIG = [
   { id: 'volume', title: 'Volume', storageKey: 'oscillator-volume', defaultPos: { x: 10, y: 360 } },
   { id: 'stochRsi', title: 'Stoch RSI (14,14,3,3)', storageKey: 'oscillator-stochrsi', defaultPos: { x: 10, y: 500 } },
   { id: 'williamsR', title: 'Williams %R (14)', storageKey: 'oscillator-williamsr', defaultPos: { x: 10, y: 640 } },
-  { id: 'cci', title: 'CCI (20)', storageKey: 'oscillator-cci', defaultPos: { x: 10, y: 780 } },
-  { id: 'adx', title: 'ADX (14)', storageKey: 'oscillator-adx', defaultPos: { x: 10, y: 920 } },
-  { id: 'obv', title: 'OBV', storageKey: 'oscillator-obv', defaultPos: { x: 10, y: 1060 } },
-  { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi', defaultPos: { x: 10, y: 1200 } },
+  { id: 'cci', title: 'CCI (20)', storageKey: 'oscillator-cci', defaultPos: { x: 220, y: 80 } },
+  { id: 'adx', title: 'ADX (14)', storageKey: 'oscillator-adx', defaultPos: { x: 220, y: 220 } },
+  { id: 'obv', title: 'OBV', storageKey: 'oscillator-obv', defaultPos: { x: 220, y: 360 } },
+  { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi', defaultPos: { x: 220, y: 500 } },
 ];
 
 export function PoppedOutOscillators({

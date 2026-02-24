@@ -24,15 +24,19 @@ export function DraggableOscillatorWindow({
   initialSize = { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT },
   onTap,
 }: DraggableOscillatorWindowProps) {
-  // Load position from localStorage
+  // Load position from localStorage, clamped to viewport bounds
   const [position, setPosition] = useState(() => {
+    let pos = initialPosition;
     if (storageKey) {
       try {
         const saved = localStorage.getItem(`${storageKey}-pos`);
-        if (saved) return JSON.parse(saved);
+        if (saved) pos = JSON.parse(saved);
       } catch {}
     }
-    return initialPosition;
+    return {
+      x: Math.max(0, Math.min(window.innerWidth - MIN_WIDTH, pos.x)),
+      y: Math.max(0, Math.min(window.innerHeight - TITLE_BAR_HEIGHT, pos.y)),
+    };
   });
 
   // Load size from localStorage
