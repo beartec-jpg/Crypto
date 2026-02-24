@@ -35,6 +35,9 @@ export interface ElliottWaveData {
   isSelected?: boolean;
 }
 
+// Color for the 0→5 diagonal trendline (distinct from the wave color)
+const DIAGONAL_TRENDLINE_COLOR = '#FACC15';
+
 // ─── Renderer ────────────────────────────────────────────────────────────────
 
 class ElliottWaveRenderer implements IPrimitivePaneRenderer {
@@ -78,64 +81,74 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         isMidAir: p.isMidAir,
       }));
 
-      const first = coords[0];
-      const last = coords[coords.length - 1];
-      if (first.x === null || first.y === null || last.x === null || last.y === null) return;
-
       ctx.save();
 
-      // Trendline: dashed line from first to last point
+      // Determine trend direction from first two points
+      const isUptrend = this._data.points.length >= 2 &&
+        this._data.points[1].price > this._data.points[0].price;
+
+      // Draw solid zigzag lines between consecutive points
       ctx.strokeStyle = color;
-      ctx.lineWidth = this._data.isSelected ? 3 : 2;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      ctx.moveTo(first.x, first.y);
-      ctx.lineTo(last.x, last.y);
-      ctx.stroke();
+      ctx.lineWidth = 1;
       ctx.setLineDash([]);
+      for (let i = 0; i < coords.length - 1; i++) {
+        const p1 = coords[i];
+        const p2 = coords[i + 1];
+        if (p1.x === null || p1.y === null || p2.x === null || p2.y === null) continue;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
 
-      // Point labels (for saved/reloaded drawings)
+      // Draw dashed diagonal trendline from point 0 to point 5 when all 6 points placed
+      if (coords.length === 6) {
+        const p0 = coords[0];
+        const p5 = coords[5];
+        if (p0.x !== null && p0.y !== null && p5.x !== null && p5.y !== null) {
+          ctx.strokeStyle = DIAGONAL_TRENDLINE_COLOR;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+          ctx.lineTo(p5.x, p5.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+
+      // Point labels (for all drawings)
       if (this._data.showPointLabels) {
-        ctx.font = 'bold 10px sans-serif';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
 
-        for (const c of coords) {
+        for (let i = 0; i < coords.length; i++) {
+          const c = coords[i];
           if (c.x === null || c.y === null || !c.label) continue;
           const dotColor = c.isMidAir ? '#f97316' : color;
-          // Draw circle
+
+          // Draw dot at the point
           ctx.fillStyle = dotColor;
           ctx.beginPath();
-          ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
+          ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
           ctx.fill();
-          // Draw label text inside circle
-          ctx.fillStyle = 'rgba(0,0,0,0.9)';
-          ctx.fillText(c.label, c.x, c.y);
+
+          // Elliott Wave impulse pattern: in uptrends odd-indexed points (1,3,5) are
+          // peaks and even-indexed (0,2,4) are troughs; reversed for downtrends.
+          const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
+          ctx.fillStyle = dotColor;
+          ctx.font = 'bold 11px sans-serif';
+          if (isHigh) {
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(c.label, c.x, c.y - 7);
+          } else {
+            ctx.textBaseline = 'top';
+            ctx.fillText(c.label, c.x, c.y + 7);
+          }
         }
 
         ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
       }
-
-      // Degree label pill at the last point
-      const label = this._data.waveType;
-      ctx.font = 'bold 11px sans-serif';
-      ctx.textBaseline = 'bottom';
-
-      const textWidth = ctx.measureText(label).width;
-      const padding = 4;
-      const pillW = textWidth + padding * 2;
-      const pillH = 16;
-      // Place pill slightly above/right of the last point
-      const pillX = last.x + 4;
-      const pillY = last.y - pillH - 2;
-
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.beginPath();
-      ctx.roundRect(pillX, pillY, pillW, pillH, 3);
-      ctx.fill();
-
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.fillText(label, pillX + padding, last.y - 3);
 
       ctx.restore();
     });

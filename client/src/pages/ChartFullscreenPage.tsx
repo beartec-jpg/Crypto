@@ -890,7 +890,7 @@ export function ChartFullscreenPage({
             chart={chartRef.current}
             candleSeries={candleSeriesRef.current}
             fibLevels={elliottWave.fibProjections}
-            isActive={elliottWave.isComplete}
+            isActive={elliottWave.isActive}
           />
         )}
 
