@@ -120,9 +120,7 @@ import { MarketAlertsPanel } from '@/components/alerts';
 import { LoadingOverlay, ErrorDisplay } from '@/components/common';
 
 // Elliott Wave Components
-import { usePredictiveElliottWave } from '@/hooks/usePredictiveElliottWave';
-import { PredictiveWavePanel } from '@/components/elliottWave/PredictiveWavePanel';
-import { WaveTypeSelector } from '@/components/chart/WaveTypeSelector';
+import { useElliottWave } from '@/hooks/usePredictiveElliottWave';
 
 // Data utilities
 import { binanceToCandleData, removeUSDTSuffix, formatMultiExchangeSymbol } from '@/lib/data/candleTransforms';
@@ -436,7 +434,7 @@ const handleAIMarketReview = () => {
   const drawingsPersistence = useDrawingsPersistence(symbol, interval);
   
   // Elliott Wave predictive tool
-  const elliottWave = usePredictiveElliottWave();
+  const elliottWave = useElliottWave();
   
   // ChartControlBar state
   const [chartPeriod, setChartPeriod] = useState('24h');
@@ -879,8 +877,8 @@ useEffect(() => {
     
     // Elliott Wave tool: delegate point placement to the hook
     if (currentTool === 'elliott_wave') {
-      if (elliottWave.mode === 'drawing') {
-        elliottWave.placePoint(point.time as number, point.price, point.snapType === 'none');
+      if (elliottWave.isDrawing) {
+        elliottWave.placePoint(point.time as number, point.price);
       }
       return;
     }
@@ -3684,7 +3682,7 @@ useEffect(() => {
     if (!candleSeriesRef.current || !elliottWave.isActive) {
       return;
     }
-    const points = elliottWave.placedPoints;
+    const points = elliottWave.points;
     if (points.length === 0) return;
 
     if (!seriesMarkersRef.current) {
@@ -3694,7 +3692,7 @@ useEffect(() => {
     const markers = points.map(point => ({
       time: point.time as Time,
       position: 'aboveBar' as 'aboveBar' | 'belowBar',
-      color: point.isMidAir ? '#f97316' : '#00CED1',
+      color: '#00CED1',
       shape: 'circle' as const,
       text: point.label,
       size: 2,
@@ -3705,7 +3703,7 @@ useEffect(() => {
     return () => {
       seriesMarkersRef.current?.setMarkers([]);
     };
-  }, [elliottWave.placedPoints, elliottWave.isActive]);
+  }, [elliottWave.points, elliottWave.isActive]);
 
   // ========== INDICATOR REPORTS (Paid only) ==========
   // Generate brief contextual reports for active oscillators
@@ -5059,23 +5057,29 @@ useEffect(() => {
                   </div>
                 )}
 
-                {/* Elliott Wave – Wave Type Selector */}
-                {elliottWave.showWaveSelector && (
-                  <WaveTypeSelector
-                    onSelect={elliottWave.selectWaveType}
-                    onCancel={() => {
-                      setActiveTool(null);
-                      elliottWave.deactivateMode();
-                    }}
-                  />
-                )}
-
-                {/* Elliott Wave Progress Panel */}
-                {activeTool === 'elliott_wave' && elliottWave.isActive && !elliottWave.showWaveSelector && (
-                  <PredictiveWavePanel
-                    wave={elliottWave}
-                    className="absolute top-14 right-4 z-30"
-                  />
+                {/* Elliott Wave – Status Panel */}
+                {activeTool === 'elliott_wave' && elliottWave.isActive && (
+                  <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl select-none">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-white text-sm font-semibold">Impulse Wave</p>
+                        <p className="text-slate-400 text-xs">
+                          {elliottWave.isComplete
+                            ? '✓ Complete'
+                            : `Place point ${elliottWave.points.length + 1} of 6`}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        {elliottWave.canUndo && (
+                          <Button size="sm" variant="ghost" onClick={elliottWave.undo}>Undo</Button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => {
+                          elliottWave.deactivateMode();
+                          setActiveTool(null);
+                        }}>Cancel</Button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

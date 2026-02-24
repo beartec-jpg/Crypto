@@ -19,7 +19,7 @@ import { useOscillatorData } from '@/hooks/useOscillatorData';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
 import { useIndicatorState } from '@/hooks/useIndicatorState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
-import { useSimpleElliottWave } from '@/hooks/useSimpleElliottWave';
+import { useElliottWave } from '@/hooks/usePredictiveElliottWave';
 
 // New extraction components
 import { FullscreenChartToolbar } from '@/components/chart/FullscreenChartToolbar';
@@ -55,8 +55,6 @@ import { calculateEMA } from '@/lib/indicators';
 import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
 import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillatorSection';
 import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';
-import { WaveTypeSelector } from '@/components/chart/WaveTypeSelector';
-import { PredictiveWavePanel } from '@/components/elliottWave/PredictiveWavePanel';
 import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
 import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
 
@@ -120,8 +118,8 @@ export function ChartFullscreenPage({
   // Ref for saved Elliott Wave trendline primitives (rendered on reload)
   const savedEWPrimitivesRef = useRef<Map<string, ElliottWavePrimitive>>(new Map());
 
-  // Hooks - Elliott Wave simplified tool
-  const elliottWave = useSimpleElliottWave();
+  // Hooks - Elliott Wave tool
+  const elliottWave = useElliottWave();
   // Ref to access latest elliottWave state inside stable event handlers
   const elliottWaveRef = useRef(elliottWave);
   elliottWaveRef.current = elliottWave;
@@ -466,7 +464,7 @@ export function ChartFullscreenPage({
       symbol,
       timeframe,
       degree: 'intermediate',
-      patternType: elliottWave.waveType ?? 'unknown',
+      patternType: 'impulse',
       points: elliottWave.points.map(p => ({
         time: p.time,
         price: p.price,
@@ -476,7 +474,7 @@ export function ChartFullscreenPage({
       })),
       isComplete: true,
       metadata: {
-        waveType: elliottWave.waveType,
+        waveType: 'impulse',
         color: '#00CED1',
       },
     });
@@ -526,14 +524,13 @@ export function ChartFullscreenPage({
     if (!series) return;
 
     const points = elliottWave.points;
-    const waveType = elliottWave.waveType;
     const lastCandleTime = candles.length > 0 ? (candles[candles.length - 1].time as number) : undefined;
     const candleInterval = candles.length >= 2 ? (candles[1].time as number) - (candles[0].time as number) : 3600;
 
-    if ((elliottWave.isDrawing || elliottWave.isComplete) && points.length >= 2 && waveType) {
+    if ((elliottWave.isDrawing || elliottWave.isComplete) && points.length >= 2) {
       const data = {
         points: points.map(p => ({ time: p.time, price: p.price, label: p.label })),
-        waveType,
+        waveType: 'impulse',
         color: '#00CED1',
         showPointLabels: true,
         lastCandleTime,
@@ -568,7 +565,7 @@ export function ChartFullscreenPage({
         liveEWPrimitiveRef.current = null;
       }
     };
-  }, [elliottWave.isDrawing, elliottWave.isComplete, elliottWave.points, elliottWave.waveType, candleSeriesRef, candles]);
+  }, [elliottWave.isDrawing, elliottWave.isComplete, elliottWave.points, candleSeriesRef, candles]);
 
   // Elliott Wave: render saved elliott_wave drawings as markers + trendlines on reload
   useEffect(() => {
@@ -833,28 +830,16 @@ export function ChartFullscreenPage({
           }
         />
 
-        {/* Elliott Wave – Wave Type Selector */}
-        {elliottWave.showSelector && (
-          <WaveTypeSelector
-            onSelect={elliottWave.selectWaveType}
-            onCancel={() => {
-              elliottWave.deactivateMode();
-              setActiveTool(null);
-              activeToolRef.current = null;
-            }}
-          />
-        )}
-
-        {/* Simple Status Panel – show while drawing */}
+        {/* Elliott Wave – Status Panel – show while drawing */}
         {elliottWave.isDrawing && (
           <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl select-none">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-white text-sm font-semibold">
-                  {elliottWave.waveType?.toUpperCase()} Wave
+                  Impulse Wave
                 </p>
                 <p className="text-slate-400 text-xs">
-                  Place point {elliottWave.points.length + 1} of 2
+                  Place point {elliottWave.points.length + 1} of 6
                 </p>
               </div>
               <div className="flex gap-2">
@@ -879,7 +864,7 @@ export function ChartFullscreenPage({
         {elliottWave.isComplete && (
           <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-emerald-700 rounded-lg p-3 shadow-xl select-none">
             <p className="text-emerald-400 text-sm font-semibold mb-2">
-              ✓ {elliottWave.waveType?.toUpperCase()} Complete
+              ✓ Impulse Wave Complete
             </p>
             <div className="flex gap-2">
               <Button size="sm" onClick={handleElliottWaveSave}>
@@ -904,7 +889,7 @@ export function ChartFullscreenPage({
           <PredictiveFibRenderer
             chart={chartRef.current}
             candleSeries={candleSeriesRef.current}
-            fibLevels={elliottWave.projections}
+            fibLevels={elliottWave.fibProjections}
             isActive={elliottWave.isComplete}
           />
         )}

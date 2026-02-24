@@ -1,296 +1,130 @@
 /**
- * usePredictiveElliottWave
+ * useElliottWave
  *
- * Predictive Elliott Wave drawing hook.
+ * Simple 6-point impulse Elliott Wave drawing hook.
  *
  * User flow:
- *   1. Activate the tool → mode becomes 'selecting'
- *   2. WaveTypeSelector popup appears
- *   3. User selects wave type (and optionally sub-pattern) → mode becomes 'drawing'
- *   4. Tool expects `expectedPointCount` points based on the wave type
- *   5. As points are placed, `predictiveFibLevels` shows targets for the next sub-wave
- *   6. After all points are placed → mode becomes 'complete'
- *   7. `suggestedNextWave` is shown; user can call `continueToNextWave()` to chain waves
- *   8. `canPlaceMidAir` is always true – points can be placed anywhere on the chart
- *   9. Points placed without candle snap have `isMidAir = true` (visual distinction)
+ *   1. Activate the tool → isDrawing becomes true immediately
+ *   2. User places 6 points (labeled 0–5)
+ *   3. Lines connect each point; fibonacci levels appear at key stages
+ *   4. After 6 points → isComplete becomes true
+ *   5. User can save, reset, or undo
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import type { FibLevel } from '@/lib/elliottWave/fibCalculator';
 import {
-  getWaveStructure,
-  getNextWaveType,
-} from '@/lib/elliottWave/waveStructures';
-import {
-  getPredictiveTargets,
-  getInProgressPredictiveLevels,
-} from '@/lib/elliottWave/waveTargets';
-import type { WaveType, SubPattern } from '@/types/drawing';
+  calcRetracementLevels,
+  calcExtensionLevels,
+  type FibLevel,
+} from '@/lib/elliottWave/fibCalculator';
 
-export type { WaveType, SubPattern };
 export type { FibLevel };
 
-export type PredictiveMode = 'idle' | 'selecting' | 'drawing' | 'complete';
+const POINT_LABELS = ['0', '1', '2', '3', '4', '5'];
+const TOTAL_POINTS = 6;
 
-export interface PredictiveWavePoint {
+export interface WavePoint {
   time: number;
   price: number;
-  /** Label within the current wave structure (e.g. "0", "1", "A", "B") */
-  label: string;
-  /** True when the point was placed without snapping to a candle high/low */
-  isMidAir: boolean;
-  /** True when the point is a predicted target, not a confirmed user placement */
-  isPredicted: boolean;
-  /** Snap type from gesture controller – drives marker position (above/below bar) */
+  label: string; // "0" | "1" | "2" | "3" | "4" | "5"
+  isMidAir?: boolean;
   snapType?: 'high' | 'low' | 'none';
 }
 
-export interface UsePredictiveElliottWaveResult {
-  // ── Selection state ────────────────────────────────────────────────────────
-  showWaveSelector: boolean;
-  selectedWaveType: WaveType | null;
-  selectedSubPattern: SubPattern | null;
-
-  // ── Drawing state ──────────────────────────────────────────────────────────
-  mode: PredictiveMode;
-  placedPoints: PredictiveWavePoint[];
-  /** Total expected point count for the selected wave type */
-  expectedPointCount: number;
-
-  // ── Predictive features ────────────────────────────────────────────────────
-  /** Fibonacci levels showing targets for the next sub-wave WHILE drawing */
-  predictiveFibLevels: FibLevel[];
-  /** Always true – users can place points anywhere on the chart */
-  canPlaceMidAir: boolean;
-
-  // ── Continuation ──────────────────────────────────────────────────────────
-  /** Next suggested wave type after completing the current one */
-  suggestedNextWave: WaveType | null;
-  /** Transition to drawing the next wave (inherits context from completed wave) */
-  continueToNextWave: () => void;
-
-  // ── Actions ────────────────────────────────────────────────────────────────
-  /** Activate the tool (transitions to 'selecting') */
-  activateMode: () => void;
-  /** Deactivate and reset the tool */
-  deactivateMode: () => void;
-  /** Called after user picks a wave type in WaveTypeSelector */
-  selectWaveType: (type: WaveType, subPattern?: SubPattern) => void;
-  /** Place a point. isMidAir=true when snapType==='none' */
-  placePoint: (time: number, price: number, isMidAir: boolean, snapType?: 'high' | 'low' | 'none') => void;
-  /** Undo the last placed point */
-  undo: () => void;
-  /** Reset drawing for the current wave type */
-  reset: () => void;
-
-  // ── Status helpers ─────────────────────────────────────────────────────────
-  getStatusText: () => string;
+export interface UseElliottWaveResult {
+  // State
   isActive: boolean;
-  canUndo: boolean;
-  /** True when ≥2 points are placed (drawing can be saved) */
+  isDrawing: boolean;
+  isComplete: boolean;
+  points: WavePoint[];
+  fibProjections: FibLevel[];
+
+  // Actions
+  activateMode: () => void;
+  deactivateMode: () => void;
+  placePoint: (time: number, price: number) => void;
+  reset: () => void;
+  undo: () => void;
+
+  // UI helpers
   canSave: boolean;
+  canUndo: boolean;
 }
 
-/**
- * Returns the structural label for a point (e.g. "0", "1", "A", "B").
- * The wave type degree label is placed at the trendline endpoint, not on each point.
- */
-function buildPointLabel(structureLabel: string): string {
-  return structureLabel;
-}
-
-export function usePredictiveElliottWave(): UsePredictiveElliottWaveResult {
-  const [mode, setMode] = useState<PredictiveMode>('idle');
-  const [selectedWaveType, setSelectedWaveType] = useState<WaveType | null>(null);
-  const [selectedSubPattern, setSelectedSubPattern] = useState<SubPattern | null>(null);
-  const [placedPoints, setPlacedPoints] = useState<PredictiveWavePoint[]>([]);
-
-  // Track prior wave points for inter-wave fib calculations
-  const [priorW1Points, setPriorW1Points] = useState<{ time: number; price: number }[]>([]);
-  const [priorAPoints, setPriorAPoints] = useState<{ time: number; price: number }[]>([]);
-
-  // Derived: wave structure info
-  const waveStructure = useMemo(
-    () => selectedWaveType ? getWaveStructure(selectedWaveType, selectedSubPattern ?? undefined) : null,
-    [selectedWaveType, selectedSubPattern],
-  );
-
-  const expectedPointCount = waveStructure?.pointCount ?? 0;
-
-  // Derived: predictive fib levels
-  const predictiveFibLevels = useMemo<FibLevel[]>(() => {
-    if (!selectedWaveType || placedPoints.length < 2) return [];
-
-    const rawPoints = placedPoints.map(p => ({ time: p.time, price: p.price }));
-    const n = placedPoints.length;
-
-    // When the wave is complete, show targets for the NEXT wave
-    if (mode === 'complete') {
-      return getPredictiveTargets(
-        selectedWaveType,
-        rawPoints,
-        priorW1Points.length >= 2 ? priorW1Points : undefined,
-        priorAPoints.length >= 2 ? priorAPoints : undefined,
-      );
-    }
-
-    // While drawing, show in-progress targets for the next sub-wave
-    if (n < expectedPointCount) {
-      return getInProgressPredictiveLevels(selectedWaveType, rawPoints);
-    }
-
-    return [];
-  }, [selectedWaveType, placedPoints, mode, expectedPointCount, priorW1Points, priorAPoints]);
-
-  // Derived: suggested next wave
-  const suggestedNextWave = useMemo<WaveType | null>(
-    () => mode === 'complete' && selectedWaveType ? getNextWaveType(selectedWaveType) : null,
-    [mode, selectedWaveType],
-  );
-
-  // ── Actions ──────────────────────────────────────────────────────────────
+export function useElliottWave(): UseElliottWaveResult {
+  const [isActive, setIsActive] = useState(false);
+  const [points, setPoints] = useState<WavePoint[]>([]);
 
   const activateMode = useCallback(() => {
-    setMode('selecting');
-    setPlacedPoints([]);
-    setSelectedWaveType(null);
-    setSelectedSubPattern(null);
+    setIsActive(true);
+    setPoints([]);
   }, []);
 
   const deactivateMode = useCallback(() => {
-    setMode('idle');
-    setPlacedPoints([]);
-    setSelectedWaveType(null);
-    setSelectedSubPattern(null);
+    setIsActive(false);
+    setPoints([]);
   }, []);
 
-  const selectWaveType = useCallback((type: WaveType, subPattern?: SubPattern) => {
-    setSelectedWaveType(type);
-    setSelectedSubPattern(subPattern ?? null);
-    setPlacedPoints([]);
-    setMode('drawing');
-  }, []);
-
-  const placePoint = useCallback((time: number, price: number, isMidAir: boolean, snapType?: 'high' | 'low' | 'none') => {
-    if (mode !== 'drawing' || !waveStructure) return;
-
-    setPlacedPoints(prev => {
-      const pointIndex = prev.length;
-      const structureLabel = waveStructure.pointLabels[pointIndex] ?? String(pointIndex);
-      const label = selectedWaveType
-        ? buildPointLabel(structureLabel)
-        : structureLabel;
-
-      const newPoint: PredictiveWavePoint = {
-        time,
-        price,
-        label,
-        isMidAir,
-        isPredicted: false,
-        snapType: snapType ?? (isMidAir ? 'none' : undefined),
-      };
-      const updated = [...prev, newPoint];
-
-      // Check if the wave is now complete
-      if (updated.length >= waveStructure.pointCount) {
-        // Save context for subsequent waves
-        const rawPoints = updated.map(p => ({ time: p.time, price: p.price }));
-        if (selectedWaveType === 'W1') setPriorW1Points(rawPoints);
-        if (selectedWaveType === 'A') setPriorAPoints(rawPoints);
-        // For complex corrections, save W as prior reference for Y targets
-        if (selectedWaveType === 'W') setPriorW1Points(rawPoints);
-        // Schedule mode transition after state update
-        setTimeout(() => setMode('complete'), 0);
-      }
-
-      return updated;
+  const placePoint = useCallback((time: number, price: number) => {
+    setPoints(prev => {
+      if (prev.length >= TOTAL_POINTS) return prev;
+      const label = POINT_LABELS[prev.length];
+      return [...prev, { time, price, label }];
     });
-  }, [mode, waveStructure, selectedWaveType]);
-
-  const undo = useCallback(() => {
-    setPlacedPoints(prev => prev.slice(0, -1));
-    // If we were in 'complete', go back to 'drawing'
-    if (mode === 'complete') {
-      setMode('drawing');
-    }
-  }, [mode]);
+  }, []);
 
   const reset = useCallback(() => {
-    setPlacedPoints([]);
-    setMode('drawing');
+    setPoints([]);
   }, []);
 
-  const continueToNextWave = useCallback(() => {
-    if (!suggestedNextWave) return;
-    // The last point of the current wave becomes the first point of the next
-    const lastPoint = placedPoints[placedPoints.length - 1] ?? null;
-    const nextStructure = getWaveStructure(suggestedNextWave);
+  const undo = useCallback(() => {
+    setPoints(prev => prev.slice(0, -1));
+  }, []);
 
-    setSelectedWaveType(suggestedNextWave);
-    setSelectedSubPattern(null);
+  // Fibonacci projection levels shown at appropriate stages
+  const fibProjections = useMemo<FibLevel[]>(() => {
+    const n = points.length;
+    if (n < 3) return [];
 
-    if (lastPoint) {
-      const firstLabel = nextStructure.pointLabels[0] ?? '0';
-      const startPoint: PredictiveWavePoint = {
-        time: lastPoint.time,
-        price: lastPoint.price,
-        label: buildPointLabel(firstLabel),
-        isMidAir: lastPoint.isMidAir,
-        isPredicted: false,
-        snapType: lastPoint.snapType,
-      };
-      setPlacedPoints([startPoint]);
-    } else {
-      setPlacedPoints([]);
+    const p = points.map(pt => pt.price);
+
+    if (n === 3) {
+      // After point 2: retracement levels for Wave 2 (38.2%–61.8% of Wave 1)
+      return calcRetracementLevels(p[0], p[1], [0.236, 0.382, 0.5, 0.618, 0.786]);
     }
-
-    setMode('drawing');
-  }, [suggestedNextWave, placedPoints]);
-
-  // ── Status helpers ────────────────────────────────────────────────────────
-
-  const getStatusText = useCallback(() => {
-    switch (mode) {
-      case 'idle':
-        return 'Elliott Wave tool inactive';
-      case 'selecting':
-        return 'Select a wave type to begin drawing';
-      case 'drawing': {
-        const n = placedPoints.length;
-        if (!waveStructure) return 'Drawing…';
-        const remaining = waveStructure.pointCount - n;
-        const nextLabel = waveStructure.pointLabels[n] ?? '?';
-        return remaining > 0
-          ? `Place point ${nextLabel} (${n}/${waveStructure.pointCount} placed)`
-          : 'Wave complete';
-      }
-      case 'complete':
-        return `${selectedWaveType ? getWaveStructure(selectedWaveType).description.split('–')[0].trim() : 'Wave'} complete${suggestedNextWave ? ` – continue with ${suggestedNextWave}?` : ''}`;
-      default:
-        return '';
+    if (n === 4) {
+      // After point 3: extension levels for Wave 3 (161.8%–261.8% of Wave 1)
+      return calcExtensionLevels(p[2], p[1], [1.0, 1.272, 1.618, 2.0, 2.618]);
     }
-  }, [mode, placedPoints.length, waveStructure, selectedWaveType, suggestedNextWave]);
+    if (n === 5) {
+      // After point 4: retracement levels for Wave 4 (23.6%–50% of Wave 3)
+      return calcRetracementLevels(p[2], p[3], [0.236, 0.382, 0.5, 0.618]);
+    }
+    if (n === 6) {
+      // After point 5: extension levels for Wave 5
+      return calcExtensionLevels(p[4], p[3], [0.618, 1.0, 1.272, 1.618]);
+    }
+    return [];
+  }, [points]);
+
+  const isComplete = points.length === TOTAL_POINTS;
+  const isDrawing = isActive && !isComplete;
 
   return {
-    showWaveSelector: mode === 'selecting',
-    selectedWaveType,
-    selectedSubPattern,
-    mode,
-    placedPoints,
-    expectedPointCount,
-    predictiveFibLevels,
-    canPlaceMidAir: true,
-    suggestedNextWave,
-    continueToNextWave,
+    isActive,
+    isDrawing,
+    isComplete,
+    points,
+    fibProjections,
     activateMode,
     deactivateMode,
-    selectWaveType,
     placePoint,
-    undo,
     reset,
-    getStatusText,
-    isActive: mode !== 'idle',
-    canUndo: placedPoints.length > 0,
-    canSave: placedPoints.length >= 2,
+    undo,
+    canSave: isComplete,
+    canUndo: points.length > 0,
   };
 }
+
+// Keep old name as alias for backward compatibility
+export const usePredictiveElliottWave = useElliottWave;
