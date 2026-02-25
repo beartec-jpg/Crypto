@@ -3,14 +3,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 
 export const USER_SELECTABLE_DEGREES = [
-  { name: 'Grand Supercycle', color: '#FF0000', impulseLabels: ['(I)', '(II)', '(III)', '(IV)', '(V)'], correctionLabels: ['(A)', '(B)', '(C)'] },
-  { name: 'Supercycle',       color: '#FF6B00', impulseLabels: ['(I)', '(II)', '(III)', '(IV)', '(V)'], correctionLabels: ['(A)', '(B)', '(C)'] },
-  { name: 'Cycle',            color: '#FFD700', impulseLabels: ['I',   'II',   'III',   'IV',   'V'  ], correctionLabels: ['A',   'B',   'C'  ] },
-  { name: 'Primary',          color: '#00FF00', impulseLabels: ['1',   '2',    '3',     '4',    '5'  ], correctionLabels: ['A',   'B',   'C'  ] },
-  { name: 'Intermediate',     color: '#00BFFF', impulseLabels: ['(1)', '(2)',  '(3)',   '(4)',  '(5)'], correctionLabels: ['(A)', '(B)', '(C)'] },
-  { name: 'Minor',            color: '#0000FF', impulseLabels: ['1',   '2',    '3',     '4',    '5'  ], correctionLabels: ['A',   'B',   'C'  ] },
-  { name: 'Minute',           color: '#8B00FF', impulseLabels: ['i',   'ii',   'iii',   'iv',   'v'  ], correctionLabels: ['a',   'b',   'c'  ] },
-  { name: 'Minuette',         color: '#FF1493', impulseLabels: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'], correctionLabels: ['(a)', '(b)', '(c)'] },
+  { name: 'Grand Supercycle', color: '#FF0000', impulseLabels: ['(I)', '(II)', '(III)', '(IV)', '(V)'], correctionLabels: ['(A)', '(B)', '(C)'], complexLabels: ['(W)', '(X)', '(Y)', '(Z)'] },
+  { name: 'Supercycle',       color: '#FF6B00', impulseLabels: ['(I)', '(II)', '(III)', '(IV)', '(V)'], correctionLabels: ['(A)', '(B)', '(C)'], complexLabels: ['(W)', '(X)', '(Y)', '(Z)'] },
+  { name: 'Cycle',            color: '#FFD700', impulseLabels: ['I',   'II',   'III',   'IV',   'V'  ], correctionLabels: ['A',   'B',   'C'  ], complexLabels: ['W',   'X',   'Y',   'Z'  ] },
+  { name: 'Primary',          color: '#00FF00', impulseLabels: ['1',   '2',    '3',     '4',    '5'  ], correctionLabels: ['A',   'B',   'C'  ], complexLabels: ['W',   'X',   'Y',   'Z'  ] },
+  { name: 'Intermediate',     color: '#00BFFF', impulseLabels: ['(1)', '(2)',  '(3)',   '(4)',  '(5)'], correctionLabels: ['(A)', '(B)', '(C)'], complexLabels: ['(W)', '(X)', '(Y)', '(Z)'] },
+  { name: 'Minor',            color: '#0000FF', impulseLabels: ['1',   '2',    '3',     '4',    '5'  ], correctionLabels: ['A',   'B',   'C'  ], complexLabels: ['W',   'X',   'Y',   'Z'  ] },
+  { name: 'Minute',           color: '#8B00FF', impulseLabels: ['i',   'ii',   'iii',   'iv',   'v'  ], correctionLabels: ['a',   'b',   'c'  ], complexLabels: ['w',   'x',   'y',   'z'  ] },
+  { name: 'Minuette',         color: '#FF1493', impulseLabels: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'], correctionLabels: ['(a)', '(b)', '(c)'], complexLabels: ['(w)', '(x)', '(y)', '(z)'] },
 ];
 
 export const SUBMINUETTE_DEGREE = {
@@ -18,6 +18,7 @@ export const SUBMINUETTE_DEGREE = {
   color: '#808080',
   impulseLabels: ['i', 'ii', 'iii', 'iv', 'v'],
   correctionLabels: ['a', 'b', 'c'],
+  complexLabels: ['w', 'x', 'y', 'z'],
 };
 
 export function getDegreeConfiguration(selectedDegreeName: string) {
@@ -39,58 +40,158 @@ export function getDegreeConfiguration(selectedDegreeName: string) {
   };
 }
 
+// Canonical wave positions (used to determine which sub-pattern menu to show)
+type CanonicalWave = '1' | '2' | '3' | '4' | '5' | 'A' | 'B' | 'C' | 'W' | 'X' | 'Y' | 'Z';
+
+interface SubPatternOption {
+  value: string;
+  label: string;
+  description: string;
+}
+
+// Smart contextual sub-patterns per canonical wave type
+const WAVE_SUB_PATTERNS: Record<CanonicalWave, SubPatternOption[] | null> = {
+  '1': [
+    { value: 'impulse',          label: '5-wave impulse',    description: 'Standard' },
+    { value: 'leading_diagonal', label: 'Leading Diagonal',  description: '5-wave diagonal' },
+  ],
+  '2': [
+    { value: 'zigzag',      label: 'Zigzag',   description: 'Sharp ABC (5-3-5)' },
+    { value: 'flat',        label: 'Flat',     description: 'Sideways ABC (3-3-5)' },
+    { value: 'combination', label: 'Complex',  description: 'W-X-Y' },
+  ],
+  '3': null, // Auto-impulse, no sub-menu needed
+  '4': [
+    { value: 'zigzag',      label: 'Zigzag',   description: 'Sharp ABC' },
+    { value: 'flat',        label: 'Flat',     description: 'Sideways ABC' },
+    { value: 'triangle',    label: 'Triangle', description: 'A-B-C-D-E' },
+    { value: 'combination', label: 'Complex',  description: 'W-X-Y' },
+  ],
+  '5': [
+    { value: 'impulse',          label: '5-wave impulse',    description: 'Standard' },
+    { value: 'ending_diagonal',  label: 'Ending Diagonal',   description: '5-wave diagonal' },
+    { value: 'truncated',        label: 'Truncated 5th',     description: 'Rare' },
+  ],
+  'A': [
+    { value: 'impulse',          label: '5-wave impulse',    description: 'Standard' },
+    { value: 'leading_diagonal', label: 'Leading Diagonal',  description: '5-wave diagonal' },
+    { value: 'zigzag',           label: '3-wave correction', description: 'ABC' },
+  ],
+  'B': [
+    { value: 'zigzag',      label: 'Zigzag',   description: '3-wave' },
+    { value: 'flat',        label: 'Flat',     description: '3-wave' },
+    { value: 'triangle',    label: 'Triangle', description: '5-wave' },
+    { value: 'combination', label: 'Complex',  description: 'W-X-Y' },
+  ],
+  'C': [
+    { value: 'impulse',         label: '5-wave impulse',   description: 'Standard' },
+    { value: 'ending_diagonal', label: 'Ending Diagonal',  description: '5-wave diagonal' },
+  ],
+  'W': [
+    { value: 'zigzag',   label: 'Zigzag',   description: 'A-B-C' },
+    { value: 'flat',     label: 'Flat',     description: 'A-B-C' },
+    { value: 'triangle', label: 'Triangle', description: 'A-B-C-D-E' },
+  ],
+  'X': [
+    { value: 'zigzag',   label: 'Zigzag',   description: 'A-B-C' },
+    { value: 'flat',     label: 'Flat',     description: 'A-B-C' },
+    { value: 'triangle', label: 'Triangle', description: 'A-B-C-D-E' },
+  ],
+  'Y': [
+    { value: 'zigzag',   label: 'Zigzag',   description: 'A-B-C' },
+    { value: 'flat',     label: 'Flat',     description: 'A-B-C' },
+    { value: 'triangle', label: 'Triangle', description: 'A-B-C-D-E' },
+  ],
+  'Z': [
+    { value: 'zigzag',   label: 'Zigzag',   description: 'A-B-C' },
+    { value: 'flat',     label: 'Flat',     description: 'A-B-C' },
+    { value: 'triangle', label: 'Triangle', description: 'A-B-C-D-E' },
+  ],
+};
+
+// Map a degree-specific wave label back to its canonical wave (e.g. '(1)' → '1', '(A)' → 'A')
+function getCanonicalWave(
+  label: string,
+  degreeConfig: typeof USER_SELECTABLE_DEGREES[number],
+): CanonicalWave {
+  const impulseIdx = degreeConfig.impulseLabels.indexOf(label);
+  if (impulseIdx !== -1) return (['1', '2', '3', '4', '5'] as CanonicalWave[])[impulseIdx];
+  const corrIdx = degreeConfig.correctionLabels.indexOf(label);
+  if (corrIdx !== -1) return (['A', 'B', 'C'] as CanonicalWave[])[corrIdx];
+  const complexIdx = degreeConfig.complexLabels.indexOf(label);
+  if (complexIdx !== -1) return (['W', 'X', 'Y', 'Z'] as CanonicalWave[])[complexIdx];
+  return '1'; // fallback
+}
+
 interface DegreePickerProps {
   isOpen: boolean;
-  onSelect: (degree: string, waveLabel: string) => void;
+  onSelect: (degree: string, waveLabel: string, patternType: string) => void;
   onClose: () => void;
 }
 
 export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
   const [selectedDegree, setSelectedDegree] = useState('Minor');
-  const [step, setStep] = useState<'degree' | 'type' | 'wave'>('degree');
-  const [selectedType, setSelectedType] = useState<'impulse' | 'correction' | null>(null);
-  const [selectedWave, setSelectedWave] = useState<string | null>(null);
+  const [step, setStep] = useState<'degree' | 'wave' | 'subpattern'>('degree');
+  const [selectedWaveLabel, setSelectedWaveLabel] = useState<string | null>(null);
+  const [selectedCanonical, setSelectedCanonical] = useState<CanonicalWave | null>(null);
+  const [selectedPattern, setSelectedPattern] = useState<string | null>(null);
+
+  const degreeConfig = USER_SELECTABLE_DEGREES.find(d => d.name === selectedDegree)!;
 
   const handleDegreeConfirm = () => {
-    setStep('type');
-    setSelectedType(null);
-    setSelectedWave(null);
-  };
-
-  const handleTypeSelect = (type: 'impulse' | 'correction') => {
-    setSelectedType(type);
     setStep('wave');
-    setSelectedWave(null);
+    setSelectedWaveLabel(null);
+    setSelectedCanonical(null);
+    setSelectedPattern(null);
   };
 
-  const handleWaveConfirm = () => {
-    if (selectedWave) {
-      onSelect(selectedDegree, selectedWave);
-      setStep('degree');
-      setSelectedType(null);
-      setSelectedWave(null);
+  const handleWaveSelect = (label: string) => {
+    const canonical = getCanonicalWave(label, degreeConfig);
+    setSelectedWaveLabel(label);
+    setSelectedCanonical(canonical);
+
+    // Wave 3 always uses impulse – skip sub-pattern step
+    if (canonical === '3') {
+      onSelect(selectedDegree, label, 'impulse');
+      resetState();
+      return;
+    }
+
+    setSelectedPattern(null);
+    setStep('subpattern');
+  };
+
+  const handleSubPatternConfirm = () => {
+    if (selectedWaveLabel && selectedPattern) {
+      onSelect(selectedDegree, selectedWaveLabel, selectedPattern);
+      resetState();
     }
   };
 
-  const handleClose = () => {
+  const resetState = () => {
     setStep('degree');
-    setSelectedType(null);
-    setSelectedWave(null);
+    setSelectedWaveLabel(null);
+    setSelectedCanonical(null);
+    setSelectedPattern(null);
+  };
+
+  const handleClose = () => {
+    resetState();
     onClose();
   };
 
-  const degreeConfig = USER_SELECTABLE_DEGREES.find(d => d.name === selectedDegree);
-  const waveLabels = degreeConfig
-    ? (selectedType === 'correction' ? degreeConfig.correctionLabels : degreeConfig.impulseLabels)
-    : (selectedType === 'correction' ? ['A', 'B', 'C'] : ['1', '2', '3', '4', '5']);
+  const subPatternOptions = selectedCanonical ? WAVE_SUB_PATTERNS[selectedCanonical] : null;
+
+  const stepTitle =
+    step === 'degree'     ? 'Select Elliott Wave Degree' :
+    step === 'wave'       ? 'Which wave are you drawing?' :
+                            'Choose pattern type';
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="w-[90vw] max-w-md bg-slate-900 border-slate-700">
         <DialogHeader>
-          <DialogTitle className="text-white">
-            {step === 'degree' ? 'Select Elliott Wave Degree' : step === 'type' ? 'Select Wave Type' : 'Which wave are you labeling?'}
-          </DialogTitle>
+          <DialogTitle className="text-white">{stepTitle}</DialogTitle>
         </DialogHeader>
 
         {step === 'degree' ? (
@@ -137,28 +238,64 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
               </Button>
             </div>
           </>
-        ) : step === 'type' ? (
+        ) : step === 'wave' ? (
           <>
             <p className="text-sm text-slate-300 mb-3">
               Degree: <span className="font-bold text-white">{selectedDegree}</span>
             </p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => handleTypeSelect('impulse')}
-                className="px-4 py-6 rounded-lg bg-slate-800 border border-slate-600 hover:bg-blue-700 hover:border-blue-400 transition-all text-center"
-              >
-                <div className="text-white font-bold text-lg mb-1">Impulse</div>
-                <div className="text-xs text-slate-400">{degreeConfig?.impulseLabels.join(' ') ?? '1 2 3 4 5'}</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleTypeSelect('correction')}
-                className="px-4 py-6 rounded-lg bg-slate-800 border border-slate-600 hover:bg-purple-700 hover:border-purple-400 transition-all text-center"
-              >
-                <div className="text-white font-bold text-lg mb-1">Correction</div>
-                <div className="text-xs text-slate-400">{degreeConfig?.correctionLabels.join(' ') ?? 'A B C'}</div>
-              </button>
+
+            {/* Impulse waves */}
+            <div className="mb-2">
+              <p className="text-xs text-slate-400 mb-1">Impulse</p>
+              <div className="grid grid-cols-5 gap-2">
+                {degreeConfig.impulseLabels.map((label, i) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => handleWaveSelect(label)}
+                    className="px-3 py-2 rounded text-sm font-bold bg-blue-900 border border-blue-700 text-blue-200 hover:bg-blue-700 transition-all text-center"
+                    title={`Wave ${i + 1}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Correction waves */}
+            <div className="mb-2">
+              <p className="text-xs text-slate-400 mb-1">Correction</p>
+              <div className="grid grid-cols-3 gap-2">
+                {degreeConfig.correctionLabels.map((label, i) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => handleWaveSelect(label)}
+                    className="px-3 py-2 rounded text-sm font-bold bg-purple-900 border border-purple-700 text-purple-200 hover:bg-purple-700 transition-all text-center"
+                    title={`Wave ${['A', 'B', 'C'][i]}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Complex waves */}
+            <div className="mb-2">
+              <p className="text-xs text-slate-400 mb-1">Complex correction</p>
+              <div className="grid grid-cols-4 gap-2">
+                {degreeConfig.complexLabels.map((label, i) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => handleWaveSelect(label)}
+                    className="px-3 py-2 rounded text-sm font-bold bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600 transition-all text-center"
+                    title={`Wave ${['W', 'X', 'Y', 'Z'][i]}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="mt-4 flex gap-2">
@@ -183,35 +320,37 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
             <p className="text-sm text-slate-300 mb-3">
               Degree: <span className="font-bold text-white">{selectedDegree}</span>
               {' · '}
-              <span className="font-bold text-white capitalize">{selectedType}</span>
+              Wave: <span className="font-bold text-white">{selectedWaveLabel}</span>
             </p>
-            <div className="grid grid-cols-5 gap-2">
-              {waveLabels.map(label => (
+
+            <div className="space-y-2">
+              {subPatternOptions?.map(option => (
                 <button
-                  key={label}
+                  key={option.value}
                   type="button"
-                  onClick={() => setSelectedWave(label)}
-                  className={`px-3 py-2 rounded text-sm font-bold transition-all ${
-                    selectedWave === label
-                      ? 'bg-blue-600 text-white border-2 border-blue-400'
-                      : 'bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600'
+                  onClick={() => setSelectedPattern(option.value)}
+                  className={`w-full px-4 py-3 rounded-lg flex items-center justify-between transition-all ${
+                    selectedPattern === option.value
+                      ? 'bg-blue-600 border-2 border-blue-400'
+                      : 'bg-slate-800 border border-slate-600 hover:bg-slate-700'
                   }`}
                 >
-                  {label}
+                  <span className="text-white font-medium">{option.label}</span>
+                  <span className="text-xs text-slate-400">{option.description}</span>
                 </button>
               ))}
             </div>
 
             <div className="mt-4 flex gap-2">
               <Button
-                onClick={handleWaveConfirm}
-                disabled={!selectedWave}
+                onClick={handleSubPatternConfirm}
+                disabled={!selectedPattern}
                 className="flex-1 bg-blue-600 hover:bg-blue-700"
               >
                 Start Drawing
               </Button>
               <Button
-                onClick={() => setStep('type')}
+                onClick={() => setStep('wave')}
                 variant="outline"
                 className="flex-1"
               >
