@@ -113,6 +113,7 @@ export function ChartFullscreenPage({
   // Degree picker state – shown when elliott_wave tool is activated
   const [showDegreePicker, setShowDegreePicker] = useState(false);
   const [selectedWaveDegree, setSelectedWaveDegree] = useState('Minor');
+  const [selectedWaveLabel, setSelectedWaveLabel] = useState('1');
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -375,6 +376,7 @@ export function ChartFullscreenPage({
           lineWidth: 2,
           waveType: label.patternType ?? label.pattern_type ?? 'EW',
           degreeLabel: label.metadata?.degreeLabel ?? label.degree ?? 'Minor',
+          waveLabel: label.metadata?.waveLabel ?? '',
           impulseColor: label.metadata?.impulseColor ?? label.metadata?.color ?? '#00CED1',
           zigzagColor: label.metadata?.zigzagColor ?? '#808080',
           showLabel: label.metadata?.showLabel ?? true,
@@ -412,8 +414,9 @@ export function ChartFullscreenPage({
     activeToolRef.current = tool;
   }, [activeTool, elliottWave]);
 
-  const handleDegreeSelect = useCallback((degree: string) => {
+  const handleDegreeSelect = useCallback((degree: string, waveLabel: string) => {
     setSelectedWaveDegree(degree);
+    setSelectedWaveLabel(waveLabel);
     setShowDegreePicker(false);
     setSelectedWaveId(null);
     setSelectedWaveFibs([]);
@@ -450,12 +453,24 @@ export function ChartFullscreenPage({
   // Elliott Wave: click on a saved wave to show its fibonacci projections
   const handleWaveClick = useCallback(async (waveId: string, e: MouseEvent) => {
     e.stopPropagation();
+
+    // Haptic feedback
+    if ('vibrate' in navigator) {
+      navigator.vibrate(10);
+    }
+
     // Toggle: clicking the same wave deselects it
     if (selectedWaveId === waveId) {
       setSelectedWaveId(null);
       setSelectedWaveFibs([]);
+      drawingInteraction.setSelectedDrawingId(null);
       return;
     }
+
+    // Integrate with drawing interaction system for quick menu (settings/delete)
+    drawingInteraction.setSelectedDrawingId(waveId);
+    drawingInteraction.setQuickMenuPosition({ x: e.clientX, y: e.clientY });
+
     setSelectedWaveId(waveId);
     setSelectedWaveFibs([]);
     try {
@@ -479,7 +494,7 @@ export function ChartFullscreenPage({
     } catch (err) {
       console.warn('[EW] Failed to fetch projection lines:', err);
     }
-  }, [selectedWaveId]);
+  }, [selectedWaveId, drawingInteraction]);
 
   // Deselect wave when drawing tool is activated or chart area is clicked without a wave
   const handleDeselect = useCallback(() => {
@@ -510,6 +525,7 @@ export function ChartFullscreenPage({
         waveType: 'impulse',
         color: degreeConfig.impulse.color,
         degreeLabel: selectedWaveDegree,
+        waveLabel: selectedWaveLabel,
         impulseColor: degreeConfig.impulse.color,
         zigzagColor: degreeConfig.correction.color,
       },
@@ -517,7 +533,7 @@ export function ChartFullscreenPage({
     elliottWave.deactivateMode();
     setActiveTool(null);
     activeToolRef.current = null;
-  }, [elliottWave, symbol, timeframe, saveEWLabelMutation, selectedWaveDegree]);
+  }, [elliottWave, symbol, timeframe, saveEWLabelMutation, selectedWaveDegree, selectedWaveLabel]);
 
   // Elliott Wave: render placed points as series markers
   useEffect(() => {
@@ -997,8 +1013,8 @@ export function ChartFullscreenPage({
                 if (!chartRef.current || !candleSeriesRef.current) return null;
                 const coords = wave.points
                   .map(p => ({
-                    x: chartRef.current!.timeScale().timeToCoordinate(p.time as Time),
-                    y: candleSeriesRef.current!.priceToCoordinate(p.price),
+                    x: chartRef.current!.timeScale().timeToCoordinate(p.time as Time) as number | null,
+                    y: candleSeriesRef.current!.priceToCoordinate(p.price) as number | null,
                   }))
                   .filter((c): c is { x: number; y: number } => c.x !== null && c.y !== null);
                 if (coords.length < 2) return null;
@@ -1029,15 +1045,15 @@ export function ChartFullscreenPage({
                     />
                     {(wave.style?.showLabel !== false) && (
                       <text
-                        x={(first.x + last.x) / 2}
-                        y={(first.y + last.y) / 2 - 10}
-                        fill="rgba(255,255,255,0.7)"
-                        fontSize={wave.style?.fontSize ?? '12px'}
-                        fontWeight="600"
-                        textAnchor="middle"
+                        x={last.x + 15}
+                        y={last.y - 10}
+                        fill="rgba(255,255,255,0.9)"
+                        fontSize={wave.style?.fontSize ?? '16px'}
+                        fontWeight="bold"
+                        textAnchor="start"
                         style={{ pointerEvents: 'none' }}
                       >
-                        {wave.style?.degreeLabel ?? 'Minor'}
+                        {wave.style?.waveLabel || wave.style?.degreeLabel || '?'}
                       </text>
                     )}
                   </g>
