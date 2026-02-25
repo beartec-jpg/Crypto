@@ -165,6 +165,7 @@ export function ChartFullscreenPage({
   const [showDegreePicker, setShowDegreePicker] = useState(false);
   const [selectedWaveDegree, setSelectedWaveDegree] = useState('Minor');
   const [selectedWaveLabel, setSelectedWaveLabel] = useState('1');
+  const [selectedWavePatternType, setSelectedWavePatternType] = useState('impulse');
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -465,13 +466,14 @@ export function ChartFullscreenPage({
     activeToolRef.current = tool;
   }, [activeTool, elliottWave]);
 
-  const handleDegreeSelect = useCallback((degree: string, waveLabel: string) => {
+  const handleDegreeSelect = useCallback((degree: string, waveLabel: string, patternType: string) => {
     setSelectedWaveDegree(degree);
     setSelectedWaveLabel(waveLabel);
+    setSelectedWavePatternType(patternType);
     setShowDegreePicker(false);
     setSelectedWaveId(null);
     setSelectedWaveFibs([]);
-    elliottWave.activateMode();
+    elliottWave.activateMode(patternType);
     setActiveTool('elliott_wave');
     activeToolRef.current = 'elliott_wave';
   }, [elliottWave]);
@@ -601,7 +603,7 @@ export function ChartFullscreenPage({
       symbol,
       timeframe,
       degree: selectedWaveDegree.toLowerCase().replace(/\s+/g, '_'),
-      patternType: 'impulse',
+      patternType: selectedWavePatternType,
       points: elliottWave.points.map(p => ({
         time: p.time,
         price: p.price,
@@ -611,7 +613,7 @@ export function ChartFullscreenPage({
       })),
       isComplete: true,
       metadata: {
-        waveType: 'impulse',
+        waveType: selectedWavePatternType,
         color: degreeConfig.impulse.color,
         degreeLabel: selectedWaveDegree,
         waveLabel: selectedWaveLabel,
@@ -622,7 +624,7 @@ export function ChartFullscreenPage({
     elliottWave.deactivateMode();
     setActiveTool(null);
     activeToolRef.current = null;
-  }, [elliottWave, symbol, timeframe, saveEWLabelMutation, selectedWaveDegree, selectedWaveLabel]);
+  }, [elliottWave, symbol, timeframe, saveEWLabelMutation, selectedWaveDegree, selectedWaveLabel, selectedWavePatternType]);
 
   // Elliott Wave: render placed points as series markers
   useEffect(() => {
