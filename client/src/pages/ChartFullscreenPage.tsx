@@ -452,6 +452,7 @@ export function ChartFullscreenPage({
 
   // Elliott Wave: click on a saved wave to show its fibonacci projections
   const handleWaveClick = useCallback(async (waveId: string, e: MouseEvent) => {
+    console.log('[DEBUG] Wave clicked:', waveId, 'at', e.clientX, e.clientY);
     e.stopPropagation();
 
     // Haptic feedback
@@ -459,17 +460,22 @@ export function ChartFullscreenPage({
       navigator.vibrate(10);
     }
 
+    console.log('[DEBUG] Selected wave ID before:', selectedWaveId);
+    console.log('[DEBUG] Setting drawing interaction...');
+
     // Toggle: clicking the same wave deselects it
     if (selectedWaveId === waveId) {
       setSelectedWaveId(null);
       setSelectedWaveFibs([]);
       drawingInteraction.setSelectedDrawingId(null);
+      console.log('[DEBUG] Deselected wave');
       return;
     }
 
     // Integrate with drawing interaction system for quick menu (settings/delete)
     drawingInteraction.setSelectedDrawingId(waveId);
     drawingInteraction.setQuickMenuPosition({ x: e.clientX, y: e.clientY });
+    console.log('[DEBUG] Quick menu position set:', { x: e.clientX, y: e.clientY });
 
     setSelectedWaveId(waveId);
     setSelectedWaveFibs([]);
@@ -1040,9 +1046,30 @@ export function ChartFullscreenPage({
                       points={points}
                       fill="transparent"
                       stroke="transparent"
-                      style={{ cursor: isInteractive ? 'pointer' : 'default', pointerEvents: 'auto' }}
-                      onClick={isInteractive ? (e) => handleWaveClick(wave.id, e) : undefined}
+                      style={{
+                        pointerEvents: 'auto',
+                        cursor: isInteractive ? 'pointer' : 'default',
+                      }}
+                      onClick={(e) => {
+                        if (!activeTool) {
+                          e.stopPropagation();
+                          handleWaveClick(wave.id, e.nativeEvent);
+                        }
+                      }}
                     />
+                    {/* Visual indicator line when wave is selected */}
+                    {selectedWaveId === wave.id && (
+                      <line
+                        x1={first.x}
+                        y1={first.y}
+                        x2={last.x}
+                        y2={last.y}
+                        stroke="#22c55e"
+                        strokeWidth={3}
+                        pointerEvents="none"
+                        opacity={0.8}
+                      />
+                    )}
                     {(wave.style?.showLabel !== false) && (
                       <text
                         x={last.x + 15}
@@ -1054,6 +1081,18 @@ export function ChartFullscreenPage({
                         style={{ pointerEvents: 'none' }}
                       >
                         {wave.style?.waveLabel || '?'}
+                      </text>
+                    )}
+                    {selectedWaveId === wave.id && (
+                      <text
+                        x={last.x + 10}
+                        y={last.y - 10}
+                        fill="#22c55e"
+                        fontSize="12"
+                        fontWeight="bold"
+                        pointerEvents="none"
+                      >
+                        {wave.style?.waveLabel || '✓'}
                       </text>
                     )}
                   </g>
