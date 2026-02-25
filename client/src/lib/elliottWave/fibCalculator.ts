@@ -86,8 +86,10 @@ interface FibRule {
 const FIB_RULES: Record<string, FibRule> = {
   wave2: { validMin: 0.382, validMax: 0.786, idealTargets: [0.5, 0.618] },
   wave3: { validMin: 1.618, validMax: 4.236, idealTargets: [1.618, 2.0, 2.618] },
+  wave3_diagonal: { validMin: 0.618, validMax: 1.272, idealTargets: [1.0, 1.272] },
   wave4: { validMin: 0.236, validMax: 0.500, idealTargets: [0.236, 0.382, 0.5] },
   wave5: { validMin: 0.618, validMax: 1.618, idealTargets: [0.618, 1.0, 1.618] },
+  wave5_diagonal: { validMin: 0.382, validMax: 1.0, idealTargets: [0.618, 1.0] },
   waveB:  { validMin: 0.382, validMax: 1.386, idealTargets: [0.5, 0.618, 1.0] },
   waveC:  { validMin: 1.0,   validMax: 1.618, idealTargets: [1.0, 1.272, 1.618] },
 };

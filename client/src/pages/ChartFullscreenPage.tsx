@@ -158,9 +158,6 @@ export function ChartFullscreenPage({
   const [showFuturePredictions, setShowFuturePredictions] = useState(true);
   // Incremented whenever the chart pans/zooms so we can recompute the SVG click overlay coords
   const [chartViewVersion, setChartViewVersion] = useState(0);
-  // Wave degree label prompt shown after wave completion
-  const [showWaveDegreePrompt, setShowWaveDegreePrompt] = useState(false);
-  const [waveDegreeLabel, setWaveDegreeLabel] = useState<string | null>(null);
   // Degree picker state – shown when elliott_wave tool is activated
   const [showDegreePicker, setShowDegreePicker] = useState(false);
   const [selectedWaveDegree, setSelectedWaveDegree] = useState('Minor');
@@ -473,7 +470,7 @@ export function ChartFullscreenPage({
     setShowDegreePicker(false);
     setSelectedWaveId(null);
     setSelectedWaveFibs([]);
-    elliottWave.activateMode(patternType);
+    elliottWave.activateMode(patternType, degree, waveLabel);
     setActiveTool('elliott_wave');
     activeToolRef.current = 'elliott_wave';
   }, [elliottWave]);
@@ -652,7 +649,6 @@ export function ChartFullscreenPage({
         position: 'aboveBar' as 'aboveBar' | 'belowBar',
         color: '#00CED1',
         shape: 'circle' as const,
-        text: point.label,
         size: 2,
       }));
     seriesMarkersRef.current.setMarkers(markers);
@@ -711,12 +707,12 @@ export function ChartFullscreenPage({
     };
   }, [elliottWave.isDrawing, elliottWave.isComplete, elliottWave.points, candleSeriesRef, candles, selectedWaveDegree]);
 
-  // Elliott Wave: show wave degree prompt when wave is complete
+  // Elliott Wave: auto-save the wave immediately when all points are placed
   useEffect(() => {
     if (elliottWave.isComplete) {
-      setShowWaveDegreePrompt(true);
-      setWaveDegreeLabel(null);
+      handleElliottWaveSave();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elliottWave.isComplete]);
 
   // Elliott Wave: render saved elliott_wave drawings as markers + trendlines on reload
@@ -1012,19 +1008,13 @@ export function ChartFullscreenPage({
           </div>
         )}
 
-        {/* Complete Panel – show when done */}
+        {/* Complete Panel – show when done (auto-save in progress) */}
         {elliottWave.isComplete && (
           <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-emerald-700 rounded-lg p-3 shadow-xl select-none">
             <p className="text-emerald-400 text-sm font-semibold mb-2">
-              ✓ Impulse Wave Complete
+              ✓ Wave Complete – Saving…
             </p>
-            {waveDegreeLabel && (
-              <p className="text-blue-400 text-xs mb-2">Degree label: <span className="font-bold">{waveDegreeLabel}</span></p>
-            )}
             <div className="flex gap-2">
-              <Button size="sm" onClick={handleElliottWaveSave}>
-                Save
-              </Button>
               <Button size="sm" variant="ghost" onClick={elliottWave.reset}>
                 Reset
               </Button>
@@ -1033,40 +1023,9 @@ export function ChartFullscreenPage({
                 setActiveTool(null);
                 activeToolRef.current = null;
               }}>
-                Close
+                Cancel
               </Button>
             </div>
-          </div>
-        )}
-
-        {/* Wave Degree Label Prompt – shown after wave is complete */}
-        {showWaveDegreePrompt && (
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-slate-900 border border-slate-700 rounded-lg p-4 shadow-xl select-none">
-            <h3 className="text-white text-sm font-semibold mb-3">Label this wave?</h3>
-            <div className="grid grid-cols-3 gap-2">
-              {['1', '2', '3', '4', '5', 'A', 'B', 'C', 'W', 'X', 'Y'].map(lbl => (
-                <Button
-                  key={lbl}
-                  size="sm"
-                  aria-label={`Label wave as ${lbl}`}
-                  onClick={() => {
-                    setWaveDegreeLabel(lbl);
-                    setShowWaveDegreePrompt(false);
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {lbl}
-                </Button>
-              ))}
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowWaveDegreePrompt(false)}
-              className="w-full mt-2"
-            >
-              Skip
-            </Button>
           </div>
         )}
 
