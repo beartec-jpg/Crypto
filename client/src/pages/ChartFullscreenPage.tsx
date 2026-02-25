@@ -57,6 +57,7 @@ import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillat
 import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';
 import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
 import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
+import { DegreePicker, getDegreeConfiguration } from '@/components/elliottWave/DegreePicker';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -109,6 +110,9 @@ export function ChartFullscreenPage({
   // Wave degree label prompt shown after wave completion
   const [showWaveDegreePrompt, setShowWaveDegreePrompt] = useState(false);
   const [waveDegreeLabel, setWaveDegreeLabel] = useState<string | null>(null);
+  // Degree picker state – shown when elliott_wave tool is activated
+  const [showDegreePicker, setShowDegreePicker] = useState(false);
+  const [selectedWaveDegree, setSelectedWaveDegree] = useState('Minor');
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -367,9 +371,14 @@ export function ChartFullscreenPage({
           snapType: p.snapType ?? 'high',
         })),
         style: {
-          color: label.metadata?.color ?? '#00CED1',
+          color: label.metadata?.impulseColor ?? label.metadata?.color ?? '#00CED1',
           lineWidth: 2,
           waveType: label.patternType ?? label.pattern_type ?? 'EW',
+          degreeLabel: label.metadata?.degreeLabel ?? label.degree ?? 'Minor',
+          impulseColor: label.metadata?.impulseColor ?? label.metadata?.color ?? '#00CED1',
+          zigzagColor: label.metadata?.zigzagColor ?? '#808080',
+          showLabel: label.metadata?.showLabel ?? true,
+          fontSize: label.metadata?.fontSize ?? '12px',
         },
       }));
 
@@ -392,7 +401,9 @@ export function ChartFullscreenPage({
       elliottWave.deactivateMode();
     }
     if (tool === 'elliott_wave' && activeTool !== 'elliott_wave') {
-      elliottWave.activateMode();
+      // Show degree picker first before activating
+      setShowDegreePicker(true);
+      return;
     }
     // Deselect any selected wave when activating a drawing tool
     setSelectedWaveId(null);
@@ -400,6 +411,16 @@ export function ChartFullscreenPage({
     setActiveTool(tool);
     activeToolRef.current = tool;
   }, [activeTool, elliottWave]);
+
+  const handleDegreeSelect = useCallback((degree: string) => {
+    setSelectedWaveDegree(degree);
+    setShowDegreePicker(false);
+    setSelectedWaveId(null);
+    setSelectedWaveFibs([]);
+    elliottWave.activateMode();
+    setActiveTool('elliott_wave');
+    activeToolRef.current = 'elliott_wave';
+  }, [elliottWave]);
 
   const handleOpenSettings = useCallback(() => setSettingsModalOpen(true), []);
   const handleCloseSettings = useCallback(() => setSettingsModalOpen(false), []);
@@ -471,10 +492,11 @@ export function ChartFullscreenPage({
   // Elliott Wave: save the drawn wave to elliott_wave_labels table
   const handleElliottWaveSave = useCallback(() => {
     if (!elliottWave.canSave) return;
+    const degreeConfig = getDegreeConfiguration(selectedWaveDegree);
     saveEWLabelMutation.mutate({
       symbol,
       timeframe,
-      degree: 'intermediate',
+      degree: selectedWaveDegree.toLowerCase().replace(/\s+/g, '_'),
       patternType: 'impulse',
       points: elliottWave.points.map(p => ({
         time: p.time,
@@ -486,13 +508,16 @@ export function ChartFullscreenPage({
       isComplete: true,
       metadata: {
         waveType: 'impulse',
-        color: '#00CED1',
+        color: degreeConfig.impulse.color,
+        degreeLabel: selectedWaveDegree,
+        impulseColor: degreeConfig.impulse.color,
+        zigzagColor: degreeConfig.correction.color,
       },
     });
     elliottWave.deactivateMode();
     setActiveTool(null);
     activeToolRef.current = null;
-  }, [elliottWave, symbol, timeframe, saveEWLabelMutation]);
+  }, [elliottWave, symbol, timeframe, saveEWLabelMutation, selectedWaveDegree]);
 
   // Elliott Wave: render placed points as series markers
   useEffect(() => {
@@ -539,10 +564,11 @@ export function ChartFullscreenPage({
     const candleInterval = candles.length >= 2 ? (candles[1].time as number) - (candles[0].time as number) : 3600;
 
     if ((elliottWave.isDrawing || elliottWave.isComplete) && points.length >= 2) {
+      const degreeConfig = getDegreeConfiguration(selectedWaveDegree);
       const data = {
         points: points.map(p => ({ time: p.time, price: p.price, label: p.label })),
         waveType: 'impulse',
-        color: '#00CED1',
+        color: degreeConfig.impulse.color,
         showPointLabels: true,
         lastCandleTime,
         candleInterval,
@@ -576,7 +602,7 @@ export function ChartFullscreenPage({
         liveEWPrimitiveRef.current = null;
       }
     };
-  }, [elliottWave.isDrawing, elliottWave.isComplete, elliottWave.points, candleSeriesRef, candles]);
+  }, [elliottWave.isDrawing, elliottWave.isComplete, elliottWave.points, candleSeriesRef, candles, selectedWaveDegree]);
 
   // Elliott Wave: show wave degree prompt when wave is complete
   useEffect(() => {
@@ -993,14 +1019,28 @@ export function ChartFullscreenPage({
                 ].join(' ');
                 const isInteractive = !activeTool;
                 return (
-                  <polygon
-                    key={wave.id}
-                    points={points}
-                    fill="transparent"
-                    stroke="transparent"
-                    style={{ cursor: isInteractive ? 'pointer' : 'default', pointerEvents: isInteractive ? 'auto' : 'none' }}
-                    onClick={isInteractive ? (e) => handleWaveClick(wave.id, e) : undefined}
-                  />
+                  <g key={wave.id}>
+                    <polygon
+                      points={points}
+                      fill="transparent"
+                      stroke="transparent"
+                      style={{ cursor: isInteractive ? 'pointer' : 'default', pointerEvents: isInteractive ? 'auto' : 'none' }}
+                      onClick={isInteractive ? (e) => handleWaveClick(wave.id, e) : undefined}
+                    />
+                    {(wave.style?.showLabel !== false) && (
+                      <text
+                        x={(first.x + last.x) / 2}
+                        y={(first.y + last.y) / 2 - 10}
+                        fill="rgba(255,255,255,0.7)"
+                        fontSize={wave.style?.fontSize ?? '12px'}
+                        fontWeight="600"
+                        textAnchor="middle"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        {wave.style?.degreeLabel ?? 'Minor'}
+                      </text>
+                    )}
+                  </g>
                 );
               })}
           </svg>
@@ -1119,6 +1159,12 @@ export function ChartFullscreenPage({
         onLiquiditySettingsChange={liquiditySettings.setSettings}
         pdZoneSettings={pdZoneSettings.settings}
         onPDZoneSettingsChange={pdZoneSettings.setSettings}
+      />
+
+      <DegreePicker
+        isOpen={showDegreePicker}
+        onSelect={handleDegreeSelect}
+        onClose={() => setShowDegreePicker(false)}
       />
     </div>
   );
