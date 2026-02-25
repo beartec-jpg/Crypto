@@ -72,6 +72,9 @@ export function useDrawingInteraction({
       setSelectedDrawingId(null);
       setQuickMenuPosition(null);
     } else if (hits.length === 1) {
+      if (navigator.vibrate) {
+        navigator.vibrate(10);
+      }
       setSelectedDrawingId(hits[0].drawingId);
       setQuickMenuPosition({ x: clickX, y: clickY });
     } else {

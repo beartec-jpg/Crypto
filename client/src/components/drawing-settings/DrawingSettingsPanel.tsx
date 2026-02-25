@@ -4,6 +4,7 @@ import { HorizontalLineSettings } from './HorizontalLineSettings';
 import { FibRetracementSettings } from './FibRetracementSettings';
 import { TrendFibSettings } from './TrendFibSettings';
 import { RectangleSettings } from './RectangleSettings';
+import { ElliottWaveSettings } from './ElliottWaveSettings';
 
 interface DrawingSettingsPanelProps {
   drawing: any;
@@ -28,6 +29,8 @@ export function DrawingSettingsPanel({ drawing, onUpdate, onClose }: DrawingSett
         return <FibRetracementSettings drawing={drawing} onUpdate={onUpdate} />;
       case 'trend_fib':
         return <TrendFibSettings drawing={drawing} onUpdate={onUpdate} />;
+      case 'elliott_wave':
+        return <ElliottWaveSettings drawing={drawing} onUpdate={onUpdate} />;
       default:
         return <div className="p-4 text-gray-400 text-sm text-center">Settings not available for this tool</div>;
     }
