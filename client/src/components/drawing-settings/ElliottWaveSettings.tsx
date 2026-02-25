@@ -21,6 +21,7 @@ export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsPr
   const degreeLabel    = style.degreeLabel     ?? 'Minor';
   const showLabel      = style.showLabel       ?? true;
   const fontSize       = style.fontSize        ?? '12px';
+  const showFuturePredictions = style.showFuturePredictions ?? true;
 
   const handleUpdate = (styleUpdates: any) => {
     onUpdate({ style: { ...style, ...styleUpdates } });
@@ -86,7 +87,7 @@ export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsPr
       </div>
 
       {/* Degree Label */}
-      <div>
+      <div className="border-b border-slate-700 pb-4">
         <div className="text-sm font-semibold text-white mb-3">Degree Label</div>
 
         <div className="space-y-3">
@@ -121,6 +122,30 @@ export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsPr
               <option value="14px">14px</option>
             </select>
           </div>
+        </div>
+      </div>
+
+      {/* Future Projections */}
+      <div>
+        <div className="text-sm font-semibold text-white mb-3">Future Projections</div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="ew-show-predictions"
+              checked={showFuturePredictions}
+              onChange={(e) => handleUpdate({ showFuturePredictions: e.target.checked })}
+              className="rounded border-slate-600 w-4 h-4 cursor-pointer"
+            />
+            <label htmlFor="ew-show-predictions" className="text-xs text-slate-300 cursor-pointer">
+              Show Future Wave Predictions
+            </label>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Display predicted retracement levels for the next wave based on current wave labeling
+          </p>
         </div>
       </div>
     </div>

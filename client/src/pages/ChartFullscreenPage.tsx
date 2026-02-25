@@ -5,6 +5,7 @@ import { queryClient } from '@/lib/queryClient';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { useToast } from '@/hooks/use-toast';
 import type { FibLevel } from '@/lib/elliottWave/fibCalculator';
+import { calcRetracementLevels } from '@/lib/elliottWave/fibCalculator';
 
 // New extraction hooks
 import { useChartInstance } from '@/hooks/useChartInstance';
@@ -76,6 +77,53 @@ interface ProjectionLine {
   color: string;
 }
 
+/** Shorten degree names to concise abbreviations for SVG labels */
+const getDegreeAbbreviation = (degree: string): string => {
+  const abbrev: Record<string, string> = {
+    'Grand Supercycle': 'GSC',
+    'Supercycle': 'SC',
+    'Cycle': 'Cyc',
+    'Primary': 'Prim',
+    'Intermediate': 'Int',
+    'Minor': 'Min',
+    'Minute': 'min',
+    'Minuette': 'min.',
+    'Sub-Minuette': 'sub',
+  };
+  return abbrev[degree] ?? degree;
+};
+
+/** Calculate future prediction fib levels based on the completed wave label */
+const calculateFuturePredictions = (wave: { points: { price: number }[]; style?: { waveLabel?: string } }): FibLevel[] => {
+  const waveLabel = wave.style?.waveLabel;
+  const points = wave.points;
+  if (!waveLabel || points.length < 2) return [];
+
+  const startPrice = points[0].price;
+  const endPrice = points[points.length - 1].price;
+
+  // Wave 3 complete → show Wave 4 retracement levels
+  if (waveLabel === '3' || waveLabel === '(iii)' || waveLabel === 'iii') {
+    const prevStart = points.length >= 3 ? points[points.length - 2].price : startPrice;
+    const levels = calcRetracementLevels(prevStart, endPrice, [0.236, 0.382, 0.5, 0.618]);
+    return levels.map(l => ({ ...l, label: `W4: ${(l.ratio * 100).toFixed(1)}%` }));
+  }
+
+  // Wave A complete → show Wave B retracement levels
+  if (waveLabel === 'A' || waveLabel === '(a)' || waveLabel === 'a') {
+    const levels = calcRetracementLevels(startPrice, endPrice, [0.382, 0.5, 0.618, 0.786]);
+    return levels.map(l => ({ ...l, label: `WB: ${(l.ratio * 100).toFixed(1)}%` }));
+  }
+
+  // Wave 5 complete → show Wave C (correction) target levels
+  if (waveLabel === '5' || waveLabel === '(v)' || waveLabel === 'v') {
+    const levels = calcRetracementLevels(startPrice, endPrice, [0.618, 1.0, 1.618]);
+    return levels.map(l => ({ ...l, label: `WC: ${(l.ratio * 100).toFixed(0)}%` }));
+  }
+
+  return [];
+};
+
 interface ChartFullscreenPageProps {
   onClose: () => void;
   initialSymbol: string;
@@ -105,6 +153,9 @@ export function ChartFullscreenPage({
   // Wave selection state – track which saved EW wave is selected and its fib projections
   const [selectedWaveId, setSelectedWaveId] = useState<string | null>(null);
   const [selectedWaveFibs, setSelectedWaveFibs] = useState<FibLevel[]>([]);
+  // Future prediction lines – shown for Wave 3/5/A completions
+  const [futurePredictionLines, setFuturePredictionLines] = useState<FibLevel[]>([]);
+  const [showFuturePredictions, setShowFuturePredictions] = useState(true);
   // Incremented whenever the chart pans/zooms so we can recompute the SVG click overlay coords
   const [chartViewVersion, setChartViewVersion] = useState(0);
   // Wave degree label prompt shown after wave completion
@@ -446,9 +497,20 @@ export function ChartFullscreenPage({
   const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
     const selectedId = drawingInteraction.selectedDrawingId;
     if (!selectedId || selectedId.startsWith('drawing-')) return;
+    const drawing = drawings.find(d => d.id === selectedId);
     setDrawings(prev => prev.map(d => d.id === selectedId ? { ...d, style: { ...d.style, ...updates.style } } : d));
-    drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: updates.style } });
-  }, [drawingInteraction.selectedDrawingId, drawingsPersistence]);
+    // Sync showFuturePredictions local state when changed via settings modal
+    if ((updates.style as any).showFuturePredictions !== undefined) {
+      setShowFuturePredictions((updates.style as any).showFuturePredictions);
+    }
+    if (drawing?.type === 'elliott_wave') {
+      // EW waves live in elliott_wave_labels, not chart_drawings – use the EW-specific endpoint
+      authenticatedApiRequest('PATCH', `/api/crypto/elliott-wave/labels/${selectedId}`, { metadata: updates.style })
+        .catch(err => console.warn('[EW] Failed to update wave style:', err));
+    } else {
+      drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: updates.style } });
+    }
+  }, [drawingInteraction.selectedDrawingId, drawings, drawingsPersistence]);
 
   // Elliott Wave: click on a saved wave to show its fibonacci projections
   const handleWaveClick = useCallback(async (waveId: string, e: MouseEvent) => {
@@ -467,6 +529,7 @@ export function ChartFullscreenPage({
     if (selectedWaveId === waveId) {
       setSelectedWaveId(null);
       setSelectedWaveFibs([]);
+      setFuturePredictionLines([]);
       drawingInteraction.setSelectedDrawingId(null);
       console.log('[DEBUG] Deselected wave');
       return;
@@ -479,34 +542,54 @@ export function ChartFullscreenPage({
 
     setSelectedWaveId(waveId);
     setSelectedWaveFibs([]);
+
+    // Calculate fib retracement levels from the wave's own points
+    const wave = drawings.find(d => d.id === waveId);
+    if (wave && wave.points.length >= 2) {
+      const startPrice = wave.points[0].price;
+      const endPrice = wave.points[wave.points.length - 1].price;
+      const fibs = calcRetracementLevels(startPrice, endPrice, [0.236, 0.382, 0.5, 0.618, 0.786]);
+      setSelectedWaveFibs(fibs);
+
+      // Calculate future predictions based on the wave label
+      const predictions = calculateFuturePredictions(wave);
+      setFuturePredictionLines(predictions);
+    } else {
+      setFuturePredictionLines([]);
+    }
+
+    // Also try to fetch stored projection lines from the API (may supplement the above)
     try {
       const res = await authenticatedApiRequest(
         'GET',
         `/api/crypto/projection-lines?structureId=${encodeURIComponent(waveId)}`,
       );
       const projections: ProjectionLine[] = await res.json();
-      const fibs: FibLevel[] = projections.map(proj => {
-        // Parse ratio from label like "W3 100%" or "C 127.2%"
-        const match = proj.levelLabel?.match(/([\d.]+)%/);
-        const ratio = match ? parseFloat(match[1]) / 100 : 1;
-        return {
-          ratio,
-          price: proj.price,
-          label: proj.levelLabel ?? `${(ratio * 100).toFixed(1)}%`,
-          isRetrace: false,
-        };
-      });
-      setSelectedWaveFibs(fibs);
+      if (projections.length > 0) {
+        const fibs: FibLevel[] = projections.map(proj => {
+          // Parse ratio from label like "W3 100%" or "C 127.2%"
+          const match = proj.levelLabel?.match(/([\d.]+)%/);
+          const ratio = match ? parseFloat(match[1]) / 100 : 1;
+          return {
+            ratio,
+            price: proj.price,
+            label: proj.levelLabel ?? `${(ratio * 100).toFixed(1)}%`,
+            isRetrace: false,
+          };
+        });
+        setSelectedWaveFibs(fibs);
+      }
     } catch (err) {
       console.warn('[EW] Failed to fetch projection lines:', err);
     }
-  }, [selectedWaveId, drawingInteraction]);
+  }, [selectedWaveId, drawingInteraction, drawings]);
 
   // Deselect wave when drawing tool is activated or chart area is clicked without a wave
   const handleDeselect = useCallback(() => {
     if (selectedWaveId) {
       setSelectedWaveId(null);
       setSelectedWaveFibs([]);
+      setFuturePredictionLines([]);
     }
   }, [selectedWaveId]);
 
@@ -1006,6 +1089,17 @@ export function ChartFullscreenPage({
           />
         )}
 
+        {/* Future Prediction Lines – persistent purple dashed lines for next wave targets */}
+        {showFuturePredictions && futurePredictionLines.length > 0 && (
+          <PredictiveFibRenderer
+            chart={chartRef.current}
+            candleSeries={candleSeriesRef.current}
+            fibLevels={futurePredictionLines}
+            isActive={true}
+            color="#a855f7"
+          />
+        )}
+
         {/* Wave Click Overlay – transparent SVG polygons over each saved EW wave for click detection */}
         {/* chartViewVersion is read to force re-render on pan/zoom */}
         {chartViewVersion >= 0 && (
@@ -1071,29 +1165,33 @@ export function ChartFullscreenPage({
                       />
                     )}
                     {(wave.style?.showLabel !== false) && (
-                      <text
-                        x={last.x + 15}
-                        y={last.y - 10}
-                        fill="rgba(255,255,255,0.9)"
-                        fontSize={wave.style?.fontSize ?? '16px'}
-                        fontWeight="bold"
-                        textAnchor="start"
-                        style={{ pointerEvents: 'none' }}
-                      >
-                        {wave.style?.waveLabel || '?'}
-                      </text>
-                    )}
-                    {selectedWaveId === wave.id && (
-                      <text
-                        x={last.x + 10}
-                        y={last.y - 10}
-                        fill="#22c55e"
-                        fontSize="12"
-                        fontWeight="bold"
-                        pointerEvents="none"
-                      >
-                        {wave.style?.waveLabel || '✓'}
-                      </text>
+                      <>
+                        {/* Abbreviated degree label – shown above the wave label in small text */}
+                        {wave.style?.degreeLabel && (
+                          <text
+                            x={last.x + 15}
+                            y={last.y - 24}
+                            fill={selectedWaveId === wave.id ? '#22c55e' : 'rgba(255,255,255,0.55)'}
+                            fontSize="9px"
+                            textAnchor="start"
+                            style={{ pointerEvents: 'none' }}
+                          >
+                            {getDegreeAbbreviation(wave.style.degreeLabel)}
+                          </text>
+                        )}
+                        {/* Wave label – single element, changes color when selected */}
+                        <text
+                          x={last.x + 15}
+                          y={last.y - 10}
+                          fill={selectedWaveId === wave.id ? '#22c55e' : 'rgba(255,255,255,0.9)'}
+                          fontSize={wave.style?.fontSize ?? '12px'}
+                          fontWeight="bold"
+                          textAnchor="start"
+                          style={{ pointerEvents: 'none' }}
+                        >
+                          {wave.style?.waveLabel || '?'}
+                        </text>
+                      </>
                     )}
                   </g>
                 );
