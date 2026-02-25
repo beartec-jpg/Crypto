@@ -94,6 +94,8 @@ export interface UseElliottWaveProgressiveResult {
   reset: () => void;
   incrementDegree: () => void;
   decrementDegree: () => void;
+  /** Set degree directly by display name (e.g. 'Minor'). Subminuette is silently rejected. */
+  setDegree: (degreeName: string) => void;
 
   /** Classify the last completed structure */
   classifyLastStructure: (waveNumber: WaveNumber | 'standalone') => void;
@@ -278,7 +280,16 @@ export function useElliottWaveProgressive(): UseElliottWaveProgressiveResult {
   }, []);
 
   const decrementDegree = useCallback(() => {
-    setWaveDegreeIndex(i => Math.max(i - 1, 0));
+    // Minimum index 1 (Minuette) – Subminuette (index 0) is not user-selectable
+    setWaveDegreeIndex(i => Math.max(i - 1, 1));
+  }, []);
+
+  const setDegree = useCallback((degreeName: string) => {
+    const idx = WAVE_DEGREES.indexOf(degreeName as WaveDegree);
+    // Reject invalid names and Subminuette (index 0)
+    if (idx > 0) {
+      setWaveDegreeIndex(idx);
+    }
   }, []);
 
   /** Classify the last completed structure and apply sub-wave labels */
@@ -377,6 +388,7 @@ export function useElliottWaveProgressive(): UseElliottWaveProgressiveResult {
     reset,
     incrementDegree,
     decrementDegree,
+    setDegree,
     classifyLastStructure,
     skipClassification,
     getStatusText,

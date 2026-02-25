@@ -1,16 +1,21 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Wave degrees with format matching frontend expectations
+// Wave degrees with format matching frontend expectations.
+// userSelectable: false means the degree is only used internally
+// (e.g. as the automatic lower-degree correction level) and must
+// not appear in any user-facing degree picker.
 const WAVE_DEGREES = [
-  { name: 'Grand Supercycle', color: '#FF0000', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
-  { name: 'Supercycle', color: '#FF6B00', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'] },
-  { name: 'Cycle', color: '#FFD700', labels: ['I', 'II', 'III', 'IV', 'V'] },
-  { name: 'Primary', color: '#00FF00', labels: ['1', '2', '3', '4', '5'] },
-  { name: 'Intermediate', color: '#00BFFF', labels: ['(1)', '(2)', '(3)', '(4)', '(5)'] },
-  { name: 'Minor', color: '#0000FF', labels: ['1', '2', '3', '4', '5'] },
-  { name: 'Minute', color: '#8B00FF', labels: ['i', 'ii', 'iii', 'iv', 'v'] },
-  { name: 'Minuette', color: '#FF1493', labels: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'] },
-  { name: 'Subminuette', color: '#808080', labels: ['i', 'ii', 'iii', 'iv', 'v'] },
+  { name: 'Grand Supercycle', color: '#FF0000', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'],    userSelectable: true  },
+  { name: 'Supercycle',       color: '#FF6B00', labels: ['(I)', '(II)', '(III)', '(IV)', '(V)'],    userSelectable: true  },
+  { name: 'Cycle',            color: '#FFD700', labels: ['I', 'II', 'III', 'IV', 'V'],              userSelectable: true  },
+  { name: 'Primary',          color: '#00FF00', labels: ['1', '2', '3', '4', '5'],                  userSelectable: true  },
+  { name: 'Intermediate',     color: '#00BFFF', labels: ['(1)', '(2)', '(3)', '(4)', '(5)'],        userSelectable: true  },
+  { name: 'Minor',            color: '#0000FF', labels: ['1', '2', '3', '4', '5'],                  userSelectable: true  },
+  { name: 'Minute',           color: '#8B00FF', labels: ['i', 'ii', 'iii', 'iv', 'v'],              userSelectable: true  },
+  { name: 'Minuette',         color: '#FF1493', labels: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'],    userSelectable: true  },
+  // Subminuette is NOT user-selectable – it appears automatically as the
+  // lower-degree correction when Minuette is the active degree.
+  { name: 'Subminuette',      color: '#808080', labels: ['i', 'ii', 'iii', 'iv', 'v'],              userSelectable: false },
 ];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

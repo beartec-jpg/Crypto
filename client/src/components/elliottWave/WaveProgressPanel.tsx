@@ -12,10 +12,11 @@
 import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronUp, ChevronDown, Undo2, RotateCcw, Save } from 'lucide-react';
+import { Undo2, RotateCcw, Save } from 'lucide-react';
 import type { UseElliottWaveProgressiveResult } from '@/hooks/useElliottWaveProgressive';
 import type { WaveFibResult } from '@/lib/elliottWave/fibCalculator';
 import type { ValidationRule } from '@/lib/elliottWave/patternDetector';
+import { DegreePicker, USER_SELECTABLE_DEGREES } from '@/components/elliottWave/DegreePicker';
 
 interface WaveProgressPanelProps {
   wave: UseElliottWaveProgressiveResult;
@@ -83,7 +84,12 @@ function PatternBadge({ pattern }: { pattern: string }) {
 }
 
 export function WaveProgressPanel({ wave, onSave, className = '' }: WaveProgressPanelProps) {
-  const { detection, waveDegree, placedPoints, canUndo, isActive, classifications, segmentStartIndex, canSave } = wave;
+  const { detection, waveDegree, placedPoints, canUndo, isActive, classifications, segmentStartIndex, canSave, setDegree } = wave;
+
+  // Map the current waveDegree string to a user-selectable option, falling back to 'Minor'
+  const pickerValue = USER_SELECTABLE_DEGREES.find(d => d.name === waveDegree)
+    ? waveDegree
+    : 'Minor';
 
   if (!isActive) return null;
 
@@ -107,24 +113,12 @@ export function WaveProgressPanel({ wave, onSave, className = '' }: WaveProgress
           <PatternBadge pattern={detection.detectedPattern} />
         </div>
         <div className="flex items-center gap-1">
-          {/* Wave degree controls */}
-          <button
-            onClick={wave.decrementDegree}
-            title="Decrease wave degree"
-            className="p-0.5 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            <ChevronDown className="h-3 w-3" />
-          </button>
-          <span className="text-xs text-slate-300 font-medium w-20 text-center">
-            {waveDegree}
-          </span>
-          <button
-            onClick={wave.incrementDegree}
-            title="Increase wave degree"
-            className="p-0.5 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            <ChevronUp className="h-3 w-3" />
-          </button>
+          {/* Wave degree picker – Subminuette is intentionally excluded */}
+          <DegreePicker
+            value={pickerValue}
+            onChange={setDegree ?? (() => {})}
+            className="w-36"
+          />
         </div>
       </div>
 
