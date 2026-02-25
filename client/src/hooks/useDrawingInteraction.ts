@@ -23,6 +23,7 @@ interface UseDrawingInteractionReturn {
   selectedDrawingId: string | null;
   setSelectedDrawingId: (id: string | null) => void;
   quickMenuPosition: { x: number; y: number } | null;
+  setQuickMenuPosition: (pos: { x: number; y: number } | null) => void;
   closeQuickMenu: () => void;
   showSelectionModal: boolean;
   nearbyDrawings: NearbyDrawing[];
@@ -155,6 +156,7 @@ export function useDrawingInteraction({
     selectedDrawingId,
     setSelectedDrawingId,
     quickMenuPosition,
+    setQuickMenuPosition,
     closeQuickMenu,
     showSelectionModal,
     nearbyDrawings,

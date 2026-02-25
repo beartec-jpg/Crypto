@@ -274,6 +274,18 @@ export interface Drawing {
     __openColorPicker?: string | null;
     /** For elliott_wave drawings: the wave type degree label (e.g. "W1", "C") */
     waveType?: string;
+    /** For elliott_wave drawings: degree name e.g. "Minor", "Minute" */
+    degreeLabel?: string;
+    /** For elliott_wave drawings: the specific wave being labeled e.g. "3", "iii" */
+    waveLabel?: string;
+    /** For elliott_wave drawings: whether to show the label */
+    showLabel?: boolean;
+    /** For elliott_wave drawings: font size of the label */
+    fontSize?: string;
+    /** For elliott_wave drawings: color of impulse waves */
+    impulseColor?: string;
+    /** For elliott_wave drawings: color of corrective/zigzag waves */
+    zigzagColor?: string;
   };
 }
 

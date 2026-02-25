@@ -41,61 +41,132 @@ export function getDegreeConfiguration(selectedDegreeName: string) {
 
 interface DegreePickerProps {
   isOpen: boolean;
-  onSelect: (degree: string) => void;
+  onSelect: (degree: string, waveLabel: string) => void;
   onClose: () => void;
 }
 
 export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
   const [selectedDegree, setSelectedDegree] = useState('Minor');
+  const [step, setStep] = useState<'degree' | 'wave'>('degree');
+  const [selectedWave, setSelectedWave] = useState<string | null>(null);
+
+  const handleDegreeConfirm = () => {
+    setStep('wave');
+    setSelectedWave(null);
+  };
+
+  const handleWaveConfirm = () => {
+    if (selectedWave) {
+      onSelect(selectedDegree, selectedWave);
+      setStep('degree');
+      setSelectedWave(null);
+    }
+  };
+
+  const handleClose = () => {
+    setStep('degree');
+    setSelectedWave(null);
+    onClose();
+  };
+
+  const degreeConfig = USER_SELECTABLE_DEGREES.find(d => d.name === selectedDegree);
+  const allWaveLabels = degreeConfig
+    ? [...degreeConfig.impulseLabels, ...degreeConfig.correctionLabels]
+    : ['1', '2', '3', '4', '5', 'A', 'B', 'C'];
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="w-[90vw] max-w-md bg-slate-900 border-slate-700">
         <DialogHeader>
-          <DialogTitle className="text-white">Select Elliott Wave Degree</DialogTitle>
+          <DialogTitle className="text-white">
+            {step === 'degree' ? 'Select Elliott Wave Degree' : 'Which wave are you labeling?'}
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-          {USER_SELECTABLE_DEGREES.map(degree => (
-            <button
-              key={degree.name}
-              type="button"
-              onClick={() => setSelectedDegree(degree.name)}
-              className={`w-full px-4 py-3 rounded-lg flex items-center justify-between transition-all ${
-                selectedDegree === degree.name
-                  ? 'bg-blue-600 border-2 border-blue-400'
-                  : 'bg-slate-800 border border-slate-600 hover:bg-slate-700'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-4 h-4 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: degree.color }}
-                />
-                <span className="text-white font-medium">{degree.name}</span>
-              </div>
-              <div className="text-xs text-slate-400">
-                {degree.impulseLabels.join(' ')}
-              </div>
-            </button>
-          ))}
-        </div>
+        {step === 'degree' ? (
+          <>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {USER_SELECTABLE_DEGREES.map(degree => (
+                <button
+                  key={degree.name}
+                  type="button"
+                  onClick={() => setSelectedDegree(degree.name)}
+                  className={`w-full px-4 py-3 rounded-lg flex items-center justify-between transition-all ${
+                    selectedDegree === degree.name
+                      ? 'bg-blue-600 border-2 border-blue-400'
+                      : 'bg-slate-800 border border-slate-600 hover:bg-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: degree.color }}
+                    />
+                    <span className="text-white font-medium">{degree.name}</span>
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {degree.impulseLabels.join(' ')}
+                  </div>
+                </button>
+              ))}
+            </div>
 
-        <div className="mt-4 flex gap-2">
-          <Button
-            onClick={() => onSelect(selectedDegree)}
-            className="flex-1 bg-blue-600 hover:bg-blue-700"
-          >
-            Start Drawing
-          </Button>
-          <Button
-            onClick={onClose}
-            variant="outline"
-            className="flex-1"
-          >
-            Cancel
-          </Button>
-        </div>
+            <div className="mt-4 flex gap-2">
+              <Button
+                onClick={handleDegreeConfirm}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                Next →
+              </Button>
+              <Button
+                onClick={handleClose}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-300 mb-3">
+              Degree: <span className="font-bold text-white">{selectedDegree}</span>
+            </p>
+            <div className="grid grid-cols-5 gap-2">
+              {allWaveLabels.map(label => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setSelectedWave(label)}
+                  className={`px-3 py-2 rounded text-sm font-bold transition-all ${
+                    selectedWave === label
+                      ? 'bg-blue-600 text-white border-2 border-blue-400'
+                      : 'bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <Button
+                onClick={handleWaveConfirm}
+                disabled={!selectedWave}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                Start Drawing
+              </Button>
+              <Button
+                onClick={() => setStep('degree')}
+                variant="outline"
+                className="flex-1"
+              >
+                ← Back
+              </Button>
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
