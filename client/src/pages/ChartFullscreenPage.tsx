@@ -1004,8 +1004,8 @@ export function ChartFullscreenPage({
         {/* chartViewVersion is read to force re-render on pan/zoom */}
         {chartViewVersion >= 0 && (
           <svg
-            className="absolute top-0 left-0 pointer-events-none"
-            style={{ width: '100%', height: '100%', zIndex: 15 }}
+            className="absolute top-0 left-0"
+            style={{ width: '100%', height: '100%', zIndex: 15, pointerEvents: 'none' }}
           >
             {drawings
               .filter(d => d.type === 'elliott_wave' && d.points.length >= 2)
@@ -1040,7 +1040,7 @@ export function ChartFullscreenPage({
                       points={points}
                       fill="transparent"
                       stroke="transparent"
-                      style={{ cursor: isInteractive ? 'pointer' : 'default', pointerEvents: isInteractive ? 'auto' : 'none' }}
+                      style={{ cursor: isInteractive ? 'pointer' : 'default', pointerEvents: 'auto' }}
                       onClick={isInteractive ? (e) => handleWaveClick(wave.id, e) : undefined}
                     />
                     {(wave.style?.showLabel !== false) && (
@@ -1053,7 +1053,7 @@ export function ChartFullscreenPage({
                         textAnchor="start"
                         style={{ pointerEvents: 'none' }}
                       >
-                        {wave.style?.waveLabel || wave.style?.degreeLabel || '?'}
+                        {wave.style?.waveLabel || '?'}
                       </text>
                     )}
                   </g>
