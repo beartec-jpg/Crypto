@@ -20,22 +20,66 @@ import {
 
 export type { FibLevel };
 
-/** Map a patternType to its ordered point labels (index 0 = origin) */
-function getPatternConfig(patternType: string): { labels: string[]; total: number } {
+/** Wrap a label in degree-appropriate bracket notation */
+function wrapDegree(raw: string, degree: string): string {
+  switch (degree) {
+    case 'Intermediate': return `(${raw})`;
+    case 'Primary': return `[${raw}]`;
+    default: return raw; // Minor and below: no brackets
+  }
+}
+
+/** Roman numeral map for impulse wave parent labels at Minor degree */
+const WAVE_TO_ROMAN: Record<string, string> = {
+  '1': 'i', '2': 'ii', '3': 'iii', '4': 'iv', '5': 'v',
+};
+
+/** Format the parent wave label with degree notation for the final point hierarchy */
+function formatParentLabel(waveLabel: string, degree: string): string {
+  switch (degree) {
+    case 'Minor':
+      return WAVE_TO_ROMAN[waveLabel] ?? waveLabel.toLowerCase();
+    default:
+      return wrapDegree(waveLabel, degree);
+  }
+}
+
+/**
+ * Map a patternType to its ordered point labels (index 0 = origin).
+ * Labels use degree-aware bracket notation and the final point shows
+ * the `sub-wave/parent-wave` hierarchical format.
+ */
+function getPatternConfig(
+  patternType: string,
+  degree: string = 'Minor',
+  waveLabel: string = '1',
+): { labels: string[]; total: number } {
+  const wrap = (s: string) => wrapDegree(s, degree);
+  const parent = formatParentLabel(waveLabel, degree);
+
   switch (patternType) {
     case 'zigzag':
     case 'flat':
     case 'combination':
     case 'wxy':
-      return { labels: ['0', 'A', 'B', 'C'], total: 4 };
+      return {
+        labels: ['0', wrap('a'), wrap('b'), `${wrap('c')}/${parent}`],
+        total: 4,
+      };
     case 'triangle':
-      return { labels: ['0', 'A', 'B', 'C', 'D', 'E'], total: 6 };
+      return {
+        labels: ['0', wrap('a'), wrap('b'), wrap('c'), wrap('d'), `${wrap('e')}/${parent}`],
+        total: 6,
+      };
     case 'impulse':
     case 'leading_diagonal':
     case 'ending_diagonal':
     case 'truncated':
     default:
-      return { labels: ['0', '1', '2', '3', '4', '5'], total: 6 };
+      return {
+        labels: ['0', wrap('1'), wrap('2'), wrap('3'), wrap('4'), `${wrap('5')}/${parent}`],
+        total: 6,
+      };
   }
 }
 
@@ -57,7 +101,7 @@ export interface UseElliottWaveResult {
   patternType: string;
 
   // Actions
-  activateMode: (patternType?: string) => void;
+  activateMode: (patternType?: string, degree?: string, waveLabel?: string) => void;
   deactivateMode: () => void;
   placePoint: (time: number, price: number, snapType?: 'high' | 'low' | 'none') => void;
   reset: () => void;
@@ -72,11 +116,15 @@ export function useElliottWave(): UseElliottWaveResult {
   const [isActive, setIsActive] = useState(false);
   const [points, setPoints] = useState<WavePoint[]>([]);
   const [currentPatternType, setCurrentPatternType] = useState('impulse');
+  const [currentDegree, setCurrentDegree] = useState('Minor');
+  const [currentWaveLabel, setCurrentWaveLabel] = useState('1');
 
-  const activateMode = useCallback((patternType: string = 'impulse') => {
+  const activateMode = useCallback((patternType: string = 'impulse', degree: string = 'Minor', waveLabel: string = '1') => {
     setIsActive(true);
     setPoints([]);
     setCurrentPatternType(patternType);
+    setCurrentDegree(degree);
+    setCurrentWaveLabel(waveLabel);
   }, []);
 
   const deactivateMode = useCallback(() => {
@@ -86,12 +134,12 @@ export function useElliottWave(): UseElliottWaveResult {
 
   const placePoint = useCallback((time: number, price: number, snapType?: 'high' | 'low' | 'none') => {
     setPoints(prev => {
-      const config = getPatternConfig(currentPatternType);
+      const config = getPatternConfig(currentPatternType, currentDegree, currentWaveLabel);
       if (prev.length >= config.total) return prev;
       const label = config.labels[prev.length];
       return [...prev, { time, price, label, snapType, isMidAir: snapType === 'none' }];
     });
-  }, [currentPatternType]);
+  }, [currentPatternType, currentDegree, currentWaveLabel]);
 
   const reset = useCallback(() => {
     setPoints([]);
@@ -108,6 +156,7 @@ export function useElliottWave(): UseElliottWaveResult {
 
     const p = points.map(pt => pt.price);
     const isImpulse = ['impulse', 'leading_diagonal', 'ending_diagonal', 'truncated'].includes(currentPatternType);
+    const isDiagonal = ['leading_diagonal', 'ending_diagonal'].includes(currentPatternType);
     const isCorrection = ['zigzag', 'flat', 'combination', 'wxy'].includes(currentPatternType);
 
     if (isImpulse) {
@@ -117,7 +166,9 @@ export function useElliottWave(): UseElliottWaveResult {
       }
       if (n === 3) {
         // After W2: project W3 extension
-        return calcExtensionLevels(p[2] - (p[1] - p[0]), p[2], [1.618, 2.0, 2.618]);
+        // Diagonals use shallower 100%/127.2% targets; standard impulse uses 161.8%+
+        const w3Ratios = isDiagonal ? [1.0, 1.272] : [1.618, 2.0, 2.618];
+        return calcExtensionLevels(p[2] - (p[1] - p[0]), p[2], w3Ratios);
       }
       if (n === 4) {
         // After W3: project W4 retracement
@@ -125,7 +176,9 @@ export function useElliottWave(): UseElliottWaveResult {
       }
       if (n === 5) {
         // After W4: project W5 extension
-        return calcExtensionLevels(p[4] - (p[1] - p[0]), p[4], [0.618, 1.0, 1.618]);
+        // Diagonals use shallower 61.8%/100% targets
+        const w5Ratios = isDiagonal ? [0.618, 1.0] : [0.618, 1.0, 1.618];
+        return calcExtensionLevels(p[4] - (p[1] - p[0]), p[4], w5Ratios);
       }
     } else if (isCorrection) {
       if (n === 2) {
@@ -147,7 +200,7 @@ export function useElliottWave(): UseElliottWaveResult {
     return [];
   }, [points, currentPatternType]);
 
-  const config = getPatternConfig(currentPatternType);
+  const config = getPatternConfig(currentPatternType, currentDegree, currentWaveLabel);
   const isComplete = points.length === config.total;
   const isDrawing = isActive && !isComplete;
 
