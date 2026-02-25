@@ -47,10 +47,18 @@ interface DegreePickerProps {
 
 export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
   const [selectedDegree, setSelectedDegree] = useState('Minor');
-  const [step, setStep] = useState<'degree' | 'wave'>('degree');
+  const [step, setStep] = useState<'degree' | 'type' | 'wave'>('degree');
+  const [selectedType, setSelectedType] = useState<'impulse' | 'correction' | null>(null);
   const [selectedWave, setSelectedWave] = useState<string | null>(null);
 
   const handleDegreeConfirm = () => {
+    setStep('type');
+    setSelectedType(null);
+    setSelectedWave(null);
+  };
+
+  const handleTypeSelect = (type: 'impulse' | 'correction') => {
+    setSelectedType(type);
     setStep('wave');
     setSelectedWave(null);
   };
@@ -59,27 +67,29 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
     if (selectedWave) {
       onSelect(selectedDegree, selectedWave);
       setStep('degree');
+      setSelectedType(null);
       setSelectedWave(null);
     }
   };
 
   const handleClose = () => {
     setStep('degree');
+    setSelectedType(null);
     setSelectedWave(null);
     onClose();
   };
 
   const degreeConfig = USER_SELECTABLE_DEGREES.find(d => d.name === selectedDegree);
-  const allWaveLabels = degreeConfig
-    ? [...degreeConfig.impulseLabels, ...degreeConfig.correctionLabels]
-    : ['1', '2', '3', '4', '5', 'A', 'B', 'C'];
+  const waveLabels = degreeConfig
+    ? (selectedType === 'correction' ? degreeConfig.correctionLabels : degreeConfig.impulseLabels)
+    : (selectedType === 'correction' ? ['A', 'B', 'C'] : ['1', '2', '3', '4', '5']);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="w-[90vw] max-w-md bg-slate-900 border-slate-700">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {step === 'degree' ? 'Select Elliott Wave Degree' : 'Which wave are you labeling?'}
+            {step === 'degree' ? 'Select Elliott Wave Degree' : step === 'type' ? 'Select Wave Type' : 'Which wave are you labeling?'}
           </DialogTitle>
         </DialogHeader>
 
@@ -127,13 +137,56 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
               </Button>
             </div>
           </>
-        ) : (
+        ) : step === 'type' ? (
           <>
             <p className="text-sm text-slate-300 mb-3">
               Degree: <span className="font-bold text-white">{selectedDegree}</span>
             </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => handleTypeSelect('impulse')}
+                className="px-4 py-6 rounded-lg bg-slate-800 border border-slate-600 hover:bg-blue-700 hover:border-blue-400 transition-all text-center"
+              >
+                <div className="text-white font-bold text-lg mb-1">Impulse</div>
+                <div className="text-xs text-slate-400">{degreeConfig?.impulseLabels.join(' ') ?? '1 2 3 4 5'}</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTypeSelect('correction')}
+                className="px-4 py-6 rounded-lg bg-slate-800 border border-slate-600 hover:bg-purple-700 hover:border-purple-400 transition-all text-center"
+              >
+                <div className="text-white font-bold text-lg mb-1">Correction</div>
+                <div className="text-xs text-slate-400">{degreeConfig?.correctionLabels.join(' ') ?? 'A B C'}</div>
+              </button>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <Button
+                onClick={() => setStep('degree')}
+                variant="outline"
+                className="flex-1"
+              >
+                ← Back
+              </Button>
+              <Button
+                onClick={handleClose}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-300 mb-3">
+              Degree: <span className="font-bold text-white">{selectedDegree}</span>
+              {' · '}
+              <span className="font-bold text-white capitalize">{selectedType}</span>
+            </p>
             <div className="grid grid-cols-5 gap-2">
-              {allWaveLabels.map(label => (
+              {waveLabels.map(label => (
                 <button
                   key={label}
                   type="button"
@@ -158,7 +211,7 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
                 Start Drawing
               </Button>
               <Button
-                onClick={() => setStep('degree')}
+                onClick={() => setStep('type')}
                 variant="outline"
                 className="flex-1"
               >
