@@ -147,12 +147,12 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
 
           if (isHigh) {
             ctx.textBaseline = 'bottom';
-            ctx.strokeText(c.label, c.x, c.y - 9);
-            ctx.fillText(c.label, c.x, c.y - 9);
+            ctx.strokeText(c.label, c.x, c.y - 16);
+            ctx.fillText(c.label, c.x, c.y - 16);
           } else {
             ctx.textBaseline = 'top';
-            ctx.strokeText(c.label, c.x, c.y + 9);
-            ctx.fillText(c.label, c.x, c.y + 9);
+            ctx.strokeText(c.label, c.x, c.y + 16);
+            ctx.fillText(c.label, c.x, c.y + 16);
           }
         }
         
@@ -182,12 +182,12 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
           
           if (isHigh) {
             ctx.textBaseline = 'bottom';
-            ctx.strokeText(c.label, c.x, c.y - 9);
-            ctx.fillText(c.label, c.x, c.y - 9);
+            ctx.strokeText(c.label, c.x, c.y - 16);
+            ctx.fillText(c.label, c.x, c.y - 16);
           } else {
             ctx.textBaseline = 'top';
-            ctx.strokeText(c.label, c.x, c.y + 9);
-            ctx.fillText(c.label, c.x, c.y + 9);
+            ctx.strokeText(c.label, c.x, c.y + 16);
+            ctx.fillText(c.label, c.x, c.y + 16);
           }
           
           ctx.textAlign = 'left';
