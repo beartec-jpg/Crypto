@@ -9,6 +9,7 @@ import type { FVGSettings } from '@/types/fvg';
 import type { OrderBlockSettings } from '@/types/orderBlock';
 import type { BOSSettings } from '@/types/structureBreak';
 import type { LiquiditySettings, PDZoneSettings } from '@/types/liquidity';
+import type { AutoFibSettings } from '@/types/autoFib';
 import type { MAConfig } from '@/types/chart.types';
 
 const OSCILLATORS = [
@@ -49,6 +50,9 @@ interface IndicatorMenuProps {
   pdZoneSettings: PDZoneSettings;
   onPDZoneSettingsChange: (s: PDZoneSettings) => void;
   onOpenSmc: () => void;
+  autoFibSettings: AutoFibSettings;
+  onAutoFibToggle: (enabled: boolean) => void;
+  onOpenAutoFib: () => void;
   className?: string;
 }
 
@@ -101,6 +105,9 @@ export function IndicatorMenu({
   pdZoneSettings,
   onPDZoneSettingsChange,
   onOpenSmc,
+  autoFibSettings,
+  onAutoFibToggle,
+  onOpenAutoFib,
   className,
 }: IndicatorMenuProps) {
   const [open, setOpen] = useState(false);
@@ -114,7 +121,8 @@ export function IndicatorMenu({
     (obSettings.enabled ? 1 : 0) +
     (bosSettings.enabled ? 1 : 0) +
     (liquiditySettings.enabled ? 1 : 0) +
-    (pdZoneSettings.enabled ? 1 : 0);
+    (pdZoneSettings.enabled ? 1 : 0) +
+    (autoFibSettings.enabled ? 1 : 0);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -303,6 +311,28 @@ export function IndicatorMenu({
                 onCheckedChange={checked =>
                   onPDZoneSettingsChange({ ...pdZoneSettings, enabled: checked })
                 }
+              />
+            </div>
+            <div className="flex items-center justify-between mt-2 px-1">
+              <span className="text-xs text-slate-400 font-medium uppercase tracking-wide">
+                Auto-Fibonacci
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-800"
+                title="Configure Auto-Fibonacci settings"
+                onClick={() => { setOpen(false); onOpenAutoFib(); }}
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="space-y-0.5">
+              <IndicatorRow
+                label="Auto-Fibonacci"
+                description="Swing-based fib levels"
+                checked={autoFibSettings.enabled}
+                onCheckedChange={onAutoFibToggle}
               />
             </div>
           </TabsContent>

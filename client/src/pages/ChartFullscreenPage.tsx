@@ -32,11 +32,13 @@ import { MiniOscillatorSection } from '@/components/oscillators/MiniOscillatorSe
 import { Button } from '@/components/ui/button';
 import { EmaSmaModal } from '@/components/indicators';
 import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
+import { AutoFibSettingsModal } from '@/components/modals/AutoFibSettingsModal';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
 import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
 import { BOSRenderer } from '@/components/indicators/BOSRenderer';
 import { LiquidityRenderer } from '@/components/indicators/LiquidityRenderer';
 import { PDZoneRenderer } from '@/components/indicators/PDZoneRenderer';
+import { AutoFibRenderer } from '@/components/indicators/AutoFibRenderer';
 import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
@@ -47,6 +49,8 @@ import { useLiquiditySettings } from '@/hooks/useLiquiditySettings';
 import { useLiquidityDetection } from '@/hooks/useLiquidityDetection';
 import { usePDZoneSettings } from '@/hooks/usePDZoneSettings';
 import { usePDZoneDetection } from '@/hooks/usePDZoneDetection';
+import { useAutoFibSettings } from '@/hooks/useAutoFibSettings';
+import { useAutoFibDetection } from '@/hooks/useAutoFibDetection';
 import { DrawingMenu } from '@/components/drawings/DrawingMenu';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
@@ -263,6 +267,7 @@ export function ChartFullscreenPage({
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
   const [showSmcModal, setShowSmcModal] = useState(false);
+  const [showAutoFibModal, setShowAutoFibModal] = useState(false);
   const [tempDrawing, setTempDrawing] = useState<{ points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null>(null);
 
   // Wave selection state – track which saved EW wave is selected and its fib projections
@@ -377,6 +382,10 @@ export function ChartFullscreenPage({
     candles,
     settings: pdZoneSettings.settings,
   });
+
+  // Hooks - Auto-Fibonacci detection
+  const autoFibSettings = useAutoFibSettings();
+  const autoFibZones = useAutoFibDetection(candles, autoFibSettings.settings);
 
   // Hooks - Divergence Scanner
   const divergencePoints = useDivergenceScanner(candles, DEFAULT_OSCILLATOR_CONFIG);
@@ -1104,6 +1113,9 @@ export function ChartFullscreenPage({
             pdZoneSettings={pdZoneSettings.settings}
             onPDZoneSettingsChange={pdZoneSettings.setSettings}
             onOpenSmc={() => setShowSmcModal(true)}
+            autoFibSettings={autoFibSettings.settings}
+            onAutoFibToggle={(enabled) => autoFibSettings.updateSettings({ enabled })}
+            onOpenAutoFib={() => setShowAutoFibModal(true)}
           />
           <ToolsMenu
             divergenceScannerEnabled={divergenceScannerEnabled}
@@ -1239,6 +1251,14 @@ export function ChartFullscreenPage({
           candleSeries={candleSeriesRef.current}
           zones={pdZones}
           settings={pdZoneSettings.settings}
+        />
+
+        {/* Auto-Fibonacci Renderer */}
+        <AutoFibRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          zones={autoFibZones}
+          settings={autoFibSettings.settings}
         />
 
         {/* Divergence Scanner – badges overlaid on chart */}
@@ -1591,6 +1611,13 @@ export function ChartFullscreenPage({
         isOpen={showDegreePicker}
         onSelect={handleDegreeSelect}
         onClose={() => setShowDegreePicker(false)}
+      />
+
+      <AutoFibSettingsModal
+        isOpen={showAutoFibModal}
+        onClose={() => setShowAutoFibModal(false)}
+        settings={autoFibSettings.settings}
+        onSettingsChange={autoFibSettings.updateSettings}
       />
     </div>
   );
