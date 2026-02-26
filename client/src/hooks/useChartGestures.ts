@@ -51,6 +51,7 @@ interface UseChartGesturesOptions {
   onPreviewPoint?: (point: GesturePoint | null) => void;
   onCrosshairModeChange?: (active: boolean) => void;
   autoSnapEnabled?: boolean;
+  waveEndpoints?: { time: number; price: number }[];
 }
 
 interface UseChartGesturesReturn {
@@ -64,7 +65,7 @@ interface UseChartGesturesReturn {
 }
 
 export function useChartGestures(options: UseChartGesturesOptions): UseChartGesturesReturn {
-  const { enabled, data, onPointCommit, onPreviewPoint, onCrosshairModeChange, autoSnapEnabled = true } = options;
+  const { enabled, data, onPointCommit, onPreviewPoint, onCrosshairModeChange, autoSnapEnabled = true, waveEndpoints } = options;
 
   const enabledRef = useRef(enabled);
   const dataRef = useRef<BarData[]>(data);
@@ -72,6 +73,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   const onPreviewPointRef = useRef(onPreviewPoint);
   const onCrosshairModeChangeRef = useRef(onCrosshairModeChange);
   const autoSnapEnabledRef = useRef(autoSnapEnabled);
+  const waveEndpointsRef = useRef<{ time: number; price: number }[] | undefined>(waveEndpoints);
 
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
   useEffect(() => { dataRef.current = data; }, [data]);
@@ -79,6 +81,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
   useEffect(() => { onPreviewPointRef.current = onPreviewPoint; }, [onPreviewPoint]);
   useEffect(() => { onCrosshairModeChangeRef.current = onCrosshairModeChange; }, [onCrosshairModeChange]);
   useEffect(() => { autoSnapEnabledRef.current = autoSnapEnabled; }, [autoSnapEnabled]);
+  useEffect(() => { waveEndpointsRef.current = waveEndpoints; }, [waveEndpoints]);
 
   const crosshairActiveRef = useRef<boolean>(false);
   const isDraggingRef = useRef<boolean>(false);
@@ -164,12 +167,16 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
 
   // Fixed pixel radius for snap circle (2D mode)
   const SNAP_CIRCLE_RADIUS = 40; // pixels
+  // Larger radius for wave endpoint snapping (higher priority)
+  const WAVE_SNAP_RADIUS = 55; // pixels
+  // Color for wave endpoint snap indicator
+  const WAVE_SNAP_COLOR = '#00BFFF';
   
   // Reference for snap circle visual element
   const snapCircleRef = useRef<HTMLDivElement | null>(null);
   
   // Show a visual circle at the tap point that fades out
-  const showSnapCircle = (tapX: number, tapY: number, foundSnap: boolean) => {
+  const showSnapCircle = (tapX: number, tapY: number, foundSnap: boolean, snapColor?: string) => {
     if (!chartElementRef.current) return;
     
     // Create circle if it doesn't exist
@@ -192,8 +199,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const circle = snapCircleRef.current;
     const diameter = SNAP_CIRCLE_RADIUS * 2;
     
-    // Color: green if snap found, red if no snap
-    const color = foundSnap ? '#00FF00' : '#FF0000';
+    // Color: provided color > green if snap found, red if no snap
+    const color = snapColor ?? (foundSnap ? '#00FF00' : '#FF0000');
     
     circle.style.width = `${diameter}px`;
     circle.style.height = `${diameter}px`;
@@ -228,6 +235,36 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       return null;
     }
     
+    // Check wave endpoints first – they have highest snap priority
+    const waveEndpointsData = waveEndpointsRef.current;
+    if (waveEndpointsData && waveEndpointsData.length > 0) {
+      type WaveCandidate = { time: number; price: number; dist2D: number };
+      const waveCandidates: WaveCandidate[] = [];
+
+      for (const endpoint of waveEndpointsData) {
+        const screenX = chart.timeScale().timeToCoordinate(endpoint.time as Time);
+        if (screenX === null) continue;
+        const screenY = series.priceToCoordinate(endpoint.price);
+        if (screenY === null) continue;
+
+        const dx = screenX - tapX;
+        const dy = screenY - tapY;
+        const dist2D = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist2D <= WAVE_SNAP_RADIUS) {
+          waveCandidates.push({ time: endpoint.time, price: endpoint.price, dist2D });
+        }
+      }
+
+      if (waveCandidates.length > 0) {
+        waveCandidates.sort((a, b) => a.dist2D - b.dist2D);
+        const best = waveCandidates[0];
+        console.log(`[Gesture] → Snapped to wave endpoint @ price=${best.price.toFixed(4)}, dist=${best.dist2D.toFixed(1)}px`);
+        showSnapCircle(tapX, tapY, true, WAVE_SNAP_COLOR);
+        return { time: best.time as Time, price: best.price, snapType: 'none' };
+      }
+    }
+
     const timeScale = chart.timeScale();
     const visibleRange = timeScale.getVisibleLogicalRange();
     if (!visibleRange) {

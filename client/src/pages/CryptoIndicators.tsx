@@ -5057,30 +5057,7 @@ useEffect(() => {
                   </div>
                 )}
 
-                {/* Elliott Wave – Status Panel */}
-                {activeTool === 'elliott_wave' && elliottWave.isActive && (
-                  <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl select-none">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-white text-sm font-semibold">Impulse Wave</p>
-                        <p className="text-slate-400 text-xs">
-                          {elliottWave.isComplete
-                            ? '✓ Complete'
-                            : `Place point ${elliottWave.points.length + 1} of 6`}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        {elliottWave.canUndo && (
-                          <Button size="sm" variant="ghost" onClick={elliottWave.undo}>Undo</Button>
-                        )}
-                        <Button size="sm" variant="ghost" onClick={() => {
-                          elliottWave.deactivateMode();
-                          setActiveTool(null);
-                        }}>Cancel</Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+
               </div>
             )}
             

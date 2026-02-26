@@ -349,6 +349,14 @@ export function ChartFullscreenPage({
     visible: drawingsVisible,
   });
 
+  // Extract wave endpoints from all saved drawings for priority snapping
+  const waveEndpoints = useMemo(() =>
+    drawings
+      .filter(d => d.type === 'elliott_wave' && d.points.length > 0)
+      .flatMap(d => d.points.map(p => ({ time: p.time, price: p.price }))),
+    [drawings]
+  );
+
   // Hooks - Gesture controller
   const gestureController = useChartGestures({
     enabled: activeTool !== null,
@@ -356,6 +364,7 @@ export function ChartFullscreenPage({
     onPointCommit: (point) => onPointCommitRef.current?.(point),
     onCrosshairModeChange: () => {},
     autoSnapEnabled: true,
+    waveEndpoints,
   });
 
   // Update chart with candle data
@@ -1022,36 +1031,6 @@ export function ChartFullscreenPage({
             : undefined
           }
         />
-
-        {/* Elliott Wave – Status Panel – show while drawing */}
-        {elliottWave.isDrawing && (
-          <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-xl select-none">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-white text-sm font-semibold">
-                  Impulse Wave
-                </p>
-                <p className="text-slate-400 text-xs">
-                  Place point {elliottWave.points.length + 1} of 6
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {elliottWave.canUndo && (
-                  <Button size="sm" variant="ghost" onClick={elliottWave.undo}>
-                    Undo
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" onClick={() => {
-                  elliottWave.deactivateMode();
-                  setActiveTool(null);
-                  activeToolRef.current = null;
-                }}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Complete Panel – show when done (auto-save in progress) */}
         {elliottWave.isComplete && (
