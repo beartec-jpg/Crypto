@@ -1159,22 +1159,7 @@ export function ChartFullscreenPage({
                         opacity={0.8}
                       />
                     )}
-                    {(wave.style?.showLabel !== false) && (
-                      <>
-                        {/* Wave label – single combined label in lower/higher format */}
-                        <text
-                          x={last.x + 15}
-                          y={last.y - 10}
-                          fill={selectedWaveId === wave.id ? '#22c55e' : 'rgba(255,255,255,0.9)'}
-                          fontSize="12px"
-                          fontWeight="bold"
-                          textAnchor="start"
-                          style={{ pointerEvents: 'none' }}
-                        >
-                          {wave.style?.waveLabel || 'W'}
-                        </text>
-                      </>
-                    )}
+
                   </g>
                 );
               })}
