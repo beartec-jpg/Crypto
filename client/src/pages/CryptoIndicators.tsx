@@ -1,3 +1,19 @@
+/**
+ * ⛔️ DO NOT USE THIS FILE - DEPRECATED ⛔️
+ * 
+ * This file is OBSOLETE and should NOT be modified.
+ * 
+ * Use client/src/pages/ChartFullscreenPage.tsx instead.
+ * 
+ * CryptoIndicators.tsx has been replaced by:
+ * - CryptoIndicatorsClean.tsx (main page)
+ * - ChartFullscreenPage.tsx (fullscreen mode)
+ * 
+ * ANY CHANGES TO THIS FILE WILL BE IGNORED.
+ * 
+ * ⛔️ DO NOT USE THIS FILE - DEPRECATED ⛔️
+ */
+
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries, ISeriesApi, createSeriesMarkers, ISeriesMarkersPluginApi, LineWidth, Time } from 'lightweight-charts';
