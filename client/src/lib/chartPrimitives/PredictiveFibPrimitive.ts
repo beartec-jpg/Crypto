@@ -17,6 +17,9 @@ function fibLineColor(level: FibLevel, colorOverride?: string): { line: string; 
   if (colorOverride) {
     return { line: colorOverride, alpha: 0.85 };
   }
+  if (level.color) {
+    return { line: level.color, alpha: 0.85 };
+  }
   const r = level.ratio;
   // High-probability targets: 50%, 61.8%, 1.0, 1.272, 1.618
   if (r === 0.5 || r === 0.618 || r === 1.0 || r === 1.272 || r === 1.618) {
@@ -52,8 +55,6 @@ class PredictiveFibPaneRenderer implements IPrimitivePaneRenderer {
       const chartWidth: number = scope.mediaSize.width;
 
       ctx.save();
-      ctx.setLineDash([6, 4]);
-      ctx.lineWidth = 1.5;
       ctx.font = 'bold 10px sans-serif';
       ctx.textBaseline = 'bottom';
 
@@ -63,7 +64,11 @@ class PredictiveFibPaneRenderer implements IPrimitivePaneRenderer {
 
         const { line, alpha } = fibLineColor(level, this._colorOverride);
 
-        // Draw dashed line from left to right edge
+        // Apply per-level style and width
+        ctx.lineWidth = level.width || 1.5;
+        ctx.setLineDash(level.style === 'solid' ? [] : [6, 4]);
+
+        // Draw line from left to right edge
         ctx.strokeStyle = `${line}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
         ctx.beginPath();
         ctx.moveTo(0, y);

@@ -8,6 +8,9 @@ export interface FibLevel {
   price: number;
   label: string;
   isRetrace: boolean; // true = retracement, false = extension
+  color?: string;              // Custom line/label color
+  style?: 'dashed' | 'solid'; // Line style (default: dashed)
+  width?: number;              // Line width in px (default: 1.5)
 }
 
 export interface WaveFibResult {
