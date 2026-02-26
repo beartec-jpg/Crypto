@@ -14,7 +14,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import {
   calcRetracementLevels,
-  calcExtensionLevels,
   type FibLevel,
 } from '@/lib/elliottWave/fibCalculator';
 
@@ -162,23 +161,51 @@ export function useElliottWave(): UseElliottWaveResult {
     if (isImpulse) {
       if (n === 2) {
         // After W1: project W2 retracement targets
-        return calcRetracementLevels(p[0], p[1], [0.382, 0.5, 0.618]);
+        return calcRetracementLevels(p[0], p[1], [0.382, 0.5, 0.618, 0.786]);
       }
       if (n === 3) {
-        // After W2: project W3 extension
+        // After W2: project W3 trend-based extension using W1 length projected from W2
         // Diagonals use shallower 100%/127.2% targets; standard impulse uses 161.8%+
+        const w1Length = Math.abs(p[1] - p[0]);
+        const direction = p[1] > p[0] ? 1 : -1;
         const w3Ratios = isDiagonal ? [1.0, 1.272] : [1.618, 2.0, 2.618];
-        return calcExtensionLevels(p[2] - (p[1] - p[0]), p[2], w3Ratios);
+        return w3Ratios.map(ratio => ({
+          ratio,
+          price: p[2] + direction * w1Length * ratio,
+          label: `W3 ${(ratio * 100).toFixed(0)}%`,
+          isRetrace: false,
+          color: '#22c55e',
+        }));
       }
       if (n === 4) {
-        // After W3: project W4 retracement
-        return calcRetracementLevels(p[2], p[3], [0.236, 0.382, 0.5]);
+        // After W3: project W4 retracement + invalidation level at W1 peak
+        const w4Levels = calcRetracementLevels(p[2], p[3], [0.236, 0.382, 0.5]);
+        const invalidation: FibLevel = {
+          ratio: 0,
+          price: p[1],
+          label: 'W4 Invalidation (W1 peak)',
+          isRetrace: false,
+          color: '#ef4444',
+          style: 'solid',
+          width: 2,
+        };
+        return [...w4Levels, invalidation];
       }
       if (n === 5) {
-        // After W4: project W5 extension
+        // After W4: project W5 trend-based extension using combined W1+W3 length
         // Diagonals use shallower 61.8%/100% targets
+        const w1Length = Math.abs(p[1] - p[0]);
+        const w3Length = Math.abs(p[3] - p[2]);
+        const totalLength = w1Length + w3Length;
+        const direction = p[1] > p[0] ? 1 : -1;
         const w5Ratios = isDiagonal ? [0.618, 1.0] : [0.618, 1.0, 1.618];
-        return calcExtensionLevels(p[4] - (p[1] - p[0]), p[4], w5Ratios);
+        return w5Ratios.map(ratio => ({
+          ratio,
+          price: p[4] + direction * totalLength * ratio,
+          label: `W5 ${(ratio * 100).toFixed(0)}%`,
+          isRetrace: false,
+          color: '#22c55e',
+        }));
       }
     } else if (isCorrection) {
       if (n === 2) {
@@ -186,14 +213,16 @@ export function useElliottWave(): UseElliottWaveResult {
         return calcRetracementLevels(p[0], p[1], [0.382, 0.5, 0.618, 1.0]);
       }
       if (n === 3) {
-        // After Wave B: project Wave C extension (100%–161.8% of A)
+        // After Wave B: project Wave C extension (100%–161.8% of A length)
+        // C travels in same direction as A from B endpoint
         const waveALen = Math.abs(p[1] - p[0]);
-        const direction = p[1] > p[0] ? -1 : 1;
+        const correctionDirection = p[1] > p[0] ? 1 : -1;
         return [1.0, 1.272, 1.618].map(ratio => ({
           ratio,
-          price: p[2] + direction * waveALen * ratio,
-          label: `${(ratio * 100).toFixed(1)}%`,
+          price: p[2] + correctionDirection * waveALen * ratio,
+          label: `Wave C ${(ratio * 100).toFixed(0)}%`,
           isRetrace: false,
+          color: '#fb923c',
         }));
       }
     }
