@@ -4230,7 +4230,35 @@ useEffect(() => {
                     
                     // Convert time/price to pixel coordinates
                     const toPixel = (point: { time: number; price: number }, pointIndex?: number) => {
-                      const x = timeScale.timeToCoordinate(point.time as any);
+                      // Try to get coordinate for timestamp
+                      let x = timeScale.timeToCoordinate(point.time as any);
+
+                      // If off-chart (before or after visible range), extrapolate
+                      if (x === null) {
+                        const container = chartContainerRef.current;
+                        if (container) {
+                          const containerWidth = container.clientWidth;
+
+                          // Get visible time range boundaries
+                          const leftTime = timeScale.coordinateToTime(0);
+                          const rightTime = timeScale.coordinateToTime(containerWidth);
+
+                          if (leftTime !== null && rightTime !== null) {
+                            // Calculate time-to-pixel ratio
+                            const timeRange = (rightTime as number) - (leftTime as number);
+                            const pixelsPerSecond = containerWidth / timeRange;
+
+                            // Extrapolate x position based on time offset
+                            const timeOffset = point.time - (leftTime as number);
+                            x = timeOffset * pixelsPerSecond;
+                          } else {
+                            x = 0;
+                          }
+                        } else {
+                          x = 0;
+                        }
+                      }
+
                       const y = candleSeriesRef.current?.priceToCoordinate(point.price);
                       return { x: x ?? 0, y: y ?? 0 };
                     };
