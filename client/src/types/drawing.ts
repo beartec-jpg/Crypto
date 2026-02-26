@@ -286,6 +286,7 @@ export interface Drawing {
     impulseColor?: string;
     /** For elliott_wave drawings: color of corrective/zigzag waves */
     zigzagColor?: string;
+    showPointLabels?: boolean;
   };
 }
 
