@@ -110,35 +110,46 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
 
     // Need at least y coordinates to calculate slope
     if (y1 === null || y2 === null) return;
-    // Need at least one x coordinate unless extending both ways
-    if (x1Raw === null && x2Raw === null && !this._style.extendLeft && !this._style.extendRight) return;
 
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx = scope.context;
       const chartWidth = scope.mediaSize.width;
-      
+
+      // Extrapolate x coordinate for off-chart timestamps using visible time range
+      const extrapolateX = (timestamp: number): number | null => {
+        const leftTime = timeScale.coordinateToTime(0);
+        const rightTime = timeScale.coordinateToTime(chartWidth);
+        if (leftTime === null || rightTime === null) return null;
+        const timeRange = (rightTime as number) - (leftTime as number);
+        if (timeRange === 0) return null;
+        return ((timestamp - (leftTime as number)) / timeRange) * chartWidth;
+      };
+
       // Handle extend left/right from style
       const extendLeft = this._style.extendLeft ?? false;
       const extendRight = this._style.extendRight ?? false;
-      
-      // Calculate base coordinates
-      const x1 = x1Raw ?? 0;
-      const x2 = x2Raw ?? chartWidth;
-      
+
+      // Calculate base coordinates with extrapolation for off-chart points
+      const x1 = x1Raw !== null ? x1Raw : extrapolateX(this._point1.time);
+      const x2 = x2Raw !== null ? x2Raw : extrapolateX(this._point2.time);
+
+      // Skip if we can't determine coordinates (extrapolation requires a visible time range)
+      if (x1 === null || x2 === null) return;
+
       // Calculate line extension if needed
       let drawX1 = x1;
       let drawY1 = y1;
       let drawX2 = x2;
       let drawY2 = y2;
-      
+
       if (extendLeft || extendRight) {
         // Calculate slope
         const dx = x2 - x1;
         const dy = y2 - y1;
-        
+
         if (dx !== 0) {
           const slope = dy / dx;
-          
+
           if (extendLeft) {
             drawX1 = 0;
             drawY1 = (y1 - slope * x1) as Coordinate;
@@ -149,14 +160,14 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
           }
         }
       }
-      
+
       // Apply opacity to color
       const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
       const colorWithOpacity = applyOpacity(this._style.color, opacity);
-      
+
       // Apply line style
       applyLineStyle(ctx, this._style.lineStyle);
-      
+
       ctx.beginPath();
       ctx.strokeStyle = colorWithOpacity;
       ctx.lineWidth = this._style.lineWidth || 2;
@@ -165,19 +176,17 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Draw selection handles at original points (not extended edges)
+      // Draw selection handles at original or extrapolated points
       if (this._isSelected) {
         ctx.fillStyle = '#22c55e';
-        if (x1Raw !== null) {
-          ctx.beginPath();
-          ctx.arc(x1Raw, y1, 6, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        if (x2Raw !== null) {
-          ctx.beginPath();
-          ctx.arc(x2Raw, y2, 6, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        const handleX1 = x1Raw !== null ? x1Raw : x1;
+        ctx.beginPath();
+        ctx.arc(handleX1, y1, 6, 0, Math.PI * 2);
+        ctx.fill();
+        const handleX2 = x2Raw !== null ? x2Raw : x2;
+        ctx.beginPath();
+        ctx.arc(handleX2, y2, 6, 0, Math.PI * 2);
+        ctx.fill();
       }
     });
   }
@@ -682,23 +691,33 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
     const x2Raw = timeScale.timeToCoordinate(this._point2.time as Time);
     const x3Raw = timeScale.timeToCoordinate(this._point3.time as Time);
 
-    // Need at least one valid x coordinate to render
-    if (x1Raw === null && x2Raw === null && x3Raw === null) return;
-
     const priceDiff = this._point2.price - this._point1.price;
 
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx = scope.context;
       const chartWidth = scope.mediaSize.width;
-      
+
+      // Extrapolate x coordinate for off-chart timestamps using visible time range
+      const extrapolateX = (timestamp: number): number | null => {
+        const leftTime = timeScale.coordinateToTime(0);
+        const rightTime = timeScale.coordinateToTime(chartWidth);
+        if (leftTime === null || rightTime === null) return null;
+        const timeRange = (rightTime as number) - (leftTime as number);
+        if (timeRange === 0) return null;
+        return ((timestamp - (leftTime as number)) / timeRange) * chartWidth;
+      };
+
       // Handle extend left/right from style
       const extendLeft = this._style.extendLeft ?? false;
       const extendRight = this._style.extendRight ?? false;
-      
-      // Calculate base coordinates
-      const x1 = x1Raw ?? 0;
-      const x2 = x2Raw ?? chartWidth;
-      const x3 = x3Raw ?? chartWidth;
+
+      // Calculate base coordinates with extrapolation for off-chart points
+      const x1 = x1Raw !== null ? x1Raw : extrapolateX(this._point1.time);
+      const x2 = x2Raw !== null ? x2Raw : extrapolateX(this._point2.time);
+      const x3 = x3Raw !== null ? x3Raw : extrapolateX(this._point3.time);
+
+      // Skip if we can't determine all anchor coordinates
+      if (x1 === null || x2 === null || x3 === null) return;
       
       // Determine drawing bounds based on extension and 3 points
       // Lines draw from min(point1.time, point2.time) to point3.time
