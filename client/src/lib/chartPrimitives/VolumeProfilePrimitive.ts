@@ -67,7 +67,7 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
         }
 
         // Highlight POC row
-        const isPOC = Math.abs(row.price - this._data.poc) < 1e-9;
+        const isPOC = row.price === this._data.poc || (priceStep > 0 && Math.abs(row.price - this._data.poc) < priceStep * 0.1);
         if (isPOC) {
           color = this._settings.pocColor;
         }

@@ -83,12 +83,17 @@ export function useVolumeProfileCalculation(
       const lowVolume = vaLow > 0 ? rows[vaLow - 1].volume : 0;
       const highVolume = vaHigh < rows.length - 1 ? rows[vaHigh + 1].volume : 0;
 
-      if (lowVolume >= highVolume) {
+      if (vaLow <= 0 && vaHigh >= rows.length - 1) break;
+
+      if (lowVolume >= highVolume && vaLow > 0) {
         vaLow--;
         vaVolume += lowVolume;
-      } else {
+      } else if (vaHigh < rows.length - 1) {
         vaHigh++;
         vaVolume += highVolume;
+      } else {
+        vaLow--;
+        vaVolume += lowVolume;
       }
     }
 
