@@ -99,6 +99,11 @@ export interface UseElliottWaveResult {
   fibProjections: FibLevel[];
   patternType: string;
 
+  // Validation
+  validationErrors: string[];
+  isValid: boolean;
+  invalidationLevels: FibLevel[];
+
   // Actions
   activateMode: (patternType?: string, degree?: string, waveLabel?: string) => void;
   deactivateMode: () => void;
@@ -229,6 +234,122 @@ export function useElliottWave(): UseElliottWaveResult {
     return [];
   }, [points, currentPatternType]);
 
+  // Real-time wave-specific validation rules
+  const { validationErrors, invalidationLevels } = useMemo(() => {
+    const errors: string[] = [];
+    const levels: FibLevel[] = [];
+    const n = points.length;
+    if (n < 2) return { validationErrors: errors, invalidationLevels: levels };
+
+    const p = points.map(pt => pt.price);
+    const isImpulseType = ['impulse', 'leading_diagonal', 'ending_diagonal', 'truncated'].includes(currentPatternType);
+    const isDiagonalType = ['leading_diagonal', 'ending_diagonal'].includes(currentPatternType);
+    const isCorrectionType = ['zigzag', 'flat', 'combination', 'wxy'].includes(currentPatternType);
+
+    if (isImpulseType && !isDiagonalType) {
+      // W2 retracement check: cannot exceed 100% of W1
+      if (n >= 3) {
+        const w1Len = Math.abs(p[1] - p[0]);
+        const w2Len = Math.abs(p[2] - p[1]);
+        const origin = p[0];
+        levels.push({
+          ratio: 1.0,
+          price: origin,
+          label: 'W2 max (100% W1)',
+          isRetrace: false,
+          color: '#ef4444',
+          style: 'solid',
+          width: 1,
+        });
+        if (w1Len > 0 && w2Len > w1Len) {
+          errors.push('W2 retraced more than 100% of W1 (invalidated)');
+        }
+      }
+      // W4 overlap check: W4 cannot enter W1 territory (below W1 high for uptrend)
+      if (n >= 5) {
+        const w1Peak = p[1];
+        const direction = p[1] > p[0] ? 1 : -1;
+        const w4Invalid = direction === 1 ? p[4] < w1Peak : p[4] > w1Peak;
+        if (w4Invalid) {
+          errors.push('W4 overlaps Wave 1 territory (impulse rule violated)');
+        }
+      }
+      // W3 shortest check: W3 cannot be the shortest impulse wave
+      if (n >= 6) {
+        const w1Len = Math.abs(p[1] - p[0]);
+        const w3Len = Math.abs(p[3] - p[2]);
+        const w5Len = Math.abs(p[5] - p[4]);
+        if (w3Len < w1Len && w3Len < w5Len) {
+          errors.push('Wave 3 is the shortest (impulse rule violated: W3 must not be shortest)');
+        }
+      }
+    }
+
+    if (isDiagonalType) {
+      // W3 must be shorter than W1
+      if (n >= 4) {
+        const w1Len = Math.abs(p[1] - p[0]);
+        const w3Len = Math.abs(p[3] - p[2]);
+        if (w3Len >= w1Len) {
+          errors.push('W3 must be shorter than W1 for a diagonal wave');
+        }
+      }
+      // W5 must be shorter than W3
+      if (n >= 6) {
+        const w3Len = Math.abs(p[3] - p[2]);
+        const w5Len = Math.abs(p[5] - p[4]);
+        if (w5Len >= w3Len) {
+          errors.push('W5 must be shorter than W3 for a diagonal wave');
+        }
+      }
+      // Invalidation at P0 origin
+      if (n >= 2) {
+        levels.push({
+          ratio: 0,
+          price: p[0],
+          label: 'Diagonal Invalidation (P0)',
+          isRetrace: false,
+          color: '#ef4444',
+          style: 'solid',
+          width: 1,
+        });
+      }
+    }
+
+    if (isCorrectionType) {
+      if (n >= 3) {
+        const waveALen = Math.abs(p[1] - p[0]);
+        const waveBLen = Math.abs(p[2] - p[1]);
+        const bRetrace = waveALen > 0 ? waveBLen / waveALen : 0;
+
+        if (currentPatternType === 'zigzag' || currentPatternType === 'wxy' || currentPatternType === 'combination') {
+          // Wave B cannot retrace more than 100% of Wave A
+          levels.push({
+            ratio: 1.0,
+            price: p[0],
+            label: 'B max (100% of A)',
+            isRetrace: false,
+            color: '#ef4444',
+            style: 'solid',
+            width: 1,
+          });
+          if (bRetrace > 1.0) {
+            errors.push('Wave B retraced more than 100% of Wave A (zigzag invalidated)');
+          }
+        } else if (currentPatternType === 'flat') {
+          // Wave B should retrace 90-138.2% of Wave A
+          if (bRetrace < 0.9) {
+            errors.push(`Wave B retraced only ${(bRetrace * 100).toFixed(1)}% of A (flat requires 90-138.2%)`);
+          } else if (bRetrace > 1.382) {
+            errors.push('Wave B retraced more than 138.2% of Wave A (flat invalidated)');
+          }
+        }
+      }
+    }
+
+    return { validationErrors: errors, invalidationLevels: levels };
+  }, [points, currentPatternType]);
+
   const config = getPatternConfig(currentPatternType, currentDegree, currentWaveLabel);
   const isComplete = points.length === config.total;
   const isDrawing = isActive && !isComplete;
@@ -240,12 +361,15 @@ export function useElliottWave(): UseElliottWaveResult {
     points,
     fibProjections,
     patternType: currentPatternType,
+    validationErrors,
+    isValid: validationErrors.length === 0,
+    invalidationLevels,
     activateMode,
     deactivateMode,
     placePoint,
     reset,
     undo,
-    canSave: isComplete,
+    canSave: isComplete && validationErrors.length === 0,
     canUndo: points.length > 0,
   };
 }
