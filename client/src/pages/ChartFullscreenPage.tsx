@@ -1291,6 +1291,20 @@ export function ChartFullscreenPage({
               }}>
                 Cancel
               </Button>
+              {!elliottWave.isValid && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-red-400 hover:text-red-300 hover:bg-red-950"
+                  onClick={() => {
+                    elliottWave.deactivateMode();
+                    setActiveTool(null);
+                    activeToolRef.current = null;
+                  }}
+                >
+                  Delete Drawing
+                </Button>
+              )}
             </div>
           </div>
         )}
