@@ -186,6 +186,8 @@ export function TickerTable({
               <SelectItem value="1h">1H</SelectItem>
               <SelectItem value="4h">4H</SelectItem>
               <SelectItem value="1d">1D</SelectItem>
+              <SelectItem value="1w">1W</SelectItem>
+              <SelectItem value="1M">1M</SelectItem>
             </SelectContent>
           </Select>
         </div>
