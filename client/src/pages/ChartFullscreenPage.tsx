@@ -56,12 +56,18 @@ import { calculateEMA } from '@/lib/indicators';
 import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
 import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillatorSection';
 import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';
+import { ToolsMenu } from '@/components/tools/ToolsMenu';
+import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
+import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
+import { useDivergenceScanner } from '@/hooks/useDivergenceScanner';
+import { DEFAULT_OSCILLATOR_CONFIG } from '@/lib/calculations/divergenceCalculations';
 import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
 import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
 import { DegreePicker, getDegreeConfiguration } from '@/components/elliottWave/DegreePicker';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
+import type { DivergencePoint } from '@/types/chart.types';
 import {
   TOP_TOOLBAR_HEIGHT,
 } from '@/lib/constants/layout';
@@ -164,6 +170,10 @@ export function ChartFullscreenPage({
   const [selectedWaveLabel, setSelectedWaveLabel] = useState('1');
   const [selectedWavePatternType, setSelectedWavePatternType] = useState('impulse');
 
+  // Divergence Scanner state
+  const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
+  const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
+
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const activeToolRef = useRef<ChartDrawingTool>(null);
@@ -252,6 +262,9 @@ export function ChartFullscreenPage({
     candles,
     settings: pdZoneSettings.settings,
   });
+
+  // Hooks - Divergence Scanner
+  const divergencePoints = useDivergenceScanner(candles, DEFAULT_OSCILLATOR_CONFIG);
 
   // Hooks - HTF data cache
   const { htfDataCache } = useHTFDataCache({
@@ -883,6 +896,10 @@ export function ChartFullscreenPage({
             onPDZoneSettingsChange={pdZoneSettings.setSettings}
             onOpenSmc={() => setShowSmcModal(true)}
           />
+          <ToolsMenu
+            divergenceScannerEnabled={divergenceScannerEnabled}
+            onToggleDivergenceScanner={setDivergenceScannerEnabled}
+          />
         </div>
 
         {/* Mini Oscillator Indicators */}
@@ -957,7 +974,25 @@ export function ChartFullscreenPage({
           zones={pdZones}
           settings={pdZoneSettings.settings}
         />
-        
+
+        {/* Divergence Scanner – badges overlaid on chart */}
+        {divergenceScannerEnabled && (
+          <DivergenceRenderer
+            chart={chartRef.current}
+            candleSeries={candleSeriesRef.current}
+            divergencePoints={divergencePoints}
+            onBadgeClick={setSelectedDivergencePoint}
+          />
+        )}
+
+        {/* Divergence Badge Popup – shown when a badge is clicked */}
+        {selectedDivergencePoint && (
+          <DivergenceBadgePopup
+            point={selectedDivergencePoint}
+            onClose={() => setSelectedDivergencePoint(null)}
+          />
+        )}
+
         {/* Drawing Renderer */}
         <DrawingRenderer
           drawingMode={activeTool ? 'draw' : 'off'}
