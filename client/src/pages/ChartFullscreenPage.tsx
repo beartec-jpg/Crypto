@@ -99,14 +99,42 @@ const getDegreeAbbreviation = (degree: string): string => {
   return abbrev[degree] ?? degree;
 };
 
+/** Normalize a degree-specific wave label to its canonical position (1-5, A-C, W-Z) */
+function getCanonicalWavePosition(label: string): string | null {
+  // All impulse position labels across all degrees
+  const pos1 = ['1', '(1)', 'I', '(I)', 'i', '(i)'];
+  const pos2 = ['2', '(2)', 'II', '(II)', 'ii', '(ii)'];
+  const pos3 = ['3', '(3)', 'III', '(III)', 'iii', '(iii)'];
+  const pos4 = ['4', '(4)', 'IV', '(IV)', 'iv', '(iv)'];
+  const pos5 = ['5', '(5)', 'V', '(V)', 'v', '(v)'];
+  // Correction labels
+  const posA = ['A', '(A)', 'a', '(a)'];
+  const posB = ['B', '(B)', 'b', '(b)'];
+  const posC = ['C', '(C)', 'c', '(c)'];
+
+  if (pos1.includes(label)) return '1';
+  if (pos2.includes(label)) return '2';
+  if (pos3.includes(label)) return '3';
+  if (pos4.includes(label)) return '4';
+  if (pos5.includes(label)) return '5';
+  if (posA.includes(label)) return 'A';
+  if (posB.includes(label)) return 'B';
+  if (posC.includes(label)) return 'C';
+  return null;
+}
+
 /** Calculate future prediction fib levels based on the completed wave label */
 const calculateFuturePredictions = (
-  wave: { points: { price: number; time?: number }[]; style?: { waveLabel?: string } },
+  wave: { points: { price: number; time?: number }[]; style?: { waveLabel?: string; waveType?: string } },
   candleInterval: number = 3600,
 ): FibLevel[] => {
   const waveLabel = wave.style?.waveLabel;
+  const waveType = wave.style?.waveType ?? 'impulse';
   const points = wave.points;
   if (!waveLabel || points.length < 2) return [];
+
+  const canonicalPos = getCanonicalWavePosition(waveLabel);
+  if (!canonicalPos) return [];
 
   const startPrice = points[0].price;
   const endPrice = points[points.length - 1].price;
@@ -115,23 +143,94 @@ const calculateFuturePredictions = (
   const endTime = lastTime !== undefined ? lastTime + 4 * candleInterval : undefined;
   const lineRange = lastTime !== undefined ? { startTime: lastTime, endTime } : {};
 
+  // Wave 2 complete → show Wave 3 extension targets
+  // W3 extends from W2 end in the direction opposite to W2 (continuing the parent trend)
+  if (canonicalPos === '2') {
+    const refLen = Math.abs(endPrice - startPrice); // W2 total span as reference
+    // If W2 went down (endPrice < startPrice), W3 goes up; if W2 went up, W3 goes down
+    const direction = endPrice < startPrice ? 1 : -1;
+    const w3Ratios = ['leading_diagonal', 'ending_diagonal'].includes(waveType)
+      ? [1.0, 1.272]
+      : [1.618, 2.0, 2.618];
+    return w3Ratios.map(ratio => ({
+      ratio,
+      price: endPrice + direction * refLen * ratio,
+      label: `W3 ${(ratio * 100).toFixed(1)}%`,
+      isRetrace: false,
+      color: '#22c55e',
+      ...lineRange,
+    }));
+  }
+
   // Wave 3 complete → show Wave 4 retracement levels
-  if (waveLabel === '3' || waveLabel === '(iii)' || waveLabel === 'iii') {
-    const prevStart = points.length >= 3 ? points[points.length - 2].price : startPrice;
-    const levels = calcRetracementLevels(prevStart, endPrice, [0.236, 0.382, 0.5, 0.618]);
+  if (canonicalPos === '3') {
+    // W4 retraces the full W3 move (startPrice to endPrice)
+    const levels = calcRetracementLevels(startPrice, endPrice, [0.236, 0.382, 0.5, 0.618]);
     return levels.map(l => ({ ...l, label: `W4: ${(l.ratio * 100).toFixed(1)}%`, ...lineRange }));
   }
 
+  // Wave 4 complete → show Wave 5 extension targets
+  // W5 extends from W4 end in the direction opposite to W4 (continuing the parent trend)
+  if (canonicalPos === '4') {
+    const refLen = Math.abs(endPrice - startPrice); // W4 total span as reference
+    // If W4 went down (endPrice < startPrice), W5 goes up; if W4 went up, W5 goes down
+    const direction = endPrice < startPrice ? 1 : -1;
+    const w5Ratios = ['leading_diagonal', 'ending_diagonal'].includes(waveType)
+      ? [0.618, 1.0]
+      : [0.618, 1.0, 1.618];
+    return w5Ratios.map(ratio => ({
+      ratio,
+      price: endPrice + direction * refLen * ratio,
+      label: `W5 ${(ratio * 100).toFixed(1)}%`,
+      isRetrace: false,
+      color: '#22c55e',
+      ...lineRange,
+    }));
+  }
+
+  // Wave 5 complete → show next correction (Wave A) target levels
+  if (canonicalPos === '5') {
+    const levels = calcRetracementLevels(startPrice, endPrice, [0.382, 0.5, 0.618, 1.0]);
+    return levels.map(l => ({ ...l, label: `WA: ${(l.ratio * 100).toFixed(1)}%`, ...lineRange }));
+  }
+
   // Wave A complete → show Wave B retracement levels
-  if (waveLabel === 'A' || waveLabel === '(a)' || waveLabel === 'a') {
-    const levels = calcRetracementLevels(startPrice, endPrice, [0.382, 0.5, 0.618, 0.786]);
+  if (canonicalPos === 'A') {
+    const isFlatType = waveType === 'flat';
+    const bRatios = isFlatType ? [0.9, 1.0, 1.382] : [0.382, 0.5, 0.618, 0.786];
+    const levels = calcRetracementLevels(startPrice, endPrice, bRatios);
     return levels.map(l => ({ ...l, label: `WB: ${(l.ratio * 100).toFixed(1)}%`, ...lineRange }));
   }
 
-  // Wave 5 complete → show Wave C (correction) target levels
-  if (waveLabel === '5' || waveLabel === '(v)' || waveLabel === 'v') {
-    const levels = calcRetracementLevels(startPrice, endPrice, [0.618, 1.0, 1.618]);
-    return levels.map(l => ({ ...l, label: `WC: ${(l.ratio * 100).toFixed(0)}%`, ...lineRange }));
+  // Wave B complete → show Wave C extension targets
+  // C travels in the SAME direction as Wave A, which is OPPOSITE to Wave B
+  if (canonicalPos === 'B') {
+    const refLen = Math.abs(endPrice - startPrice); // Wave B span as reference for Wave C
+    // C direction = opposite to B direction (same as A direction)
+    const correctionDirection = endPrice > startPrice ? -1 : 1;
+    const cRatios = waveType === 'flat' ? [0.618, 1.0, 1.618] : [1.0, 1.272, 1.618];
+    return cRatios.map(ratio => ({
+      ratio,
+      price: endPrice + correctionDirection * refLen * ratio,
+      label: `WC: ${(ratio * 100).toFixed(1)}%`,
+      isRetrace: false,
+      color: '#fb923c',
+      ...lineRange,
+    }));
+  }
+
+  // Wave C complete → show next impulse targets (recovery)
+  if (canonicalPos === 'C') {
+    const totalCorrLen = Math.abs(endPrice - points[0].price);
+    const direction = endPrice < points[0].price ? 1 : -1; // Recovery after correction
+    return [0.618, 1.0, 1.618].map(ratio => ({
+      ratio,
+      price: endPrice + direction * totalCorrLen * ratio,
+      label: `Next: ${(ratio * 100).toFixed(1)}%`,
+      isRetrace: false,
+      color: '#22c55e',
+      ...lineRange,
+    }));
   }
 
   return [];
@@ -619,7 +718,10 @@ export function ChartFullscreenPage({
       candles.length >= 2 ? Math.abs((candles[1].time as number) - (candles[0].time as number)) : 3600;
     const allPredictions: FibLevel[] = [];
     for (const drawing of drawings.filter(d => d.type === 'elliott_wave')) {
-      allPredictions.push(...calculateFuturePredictions(drawing, candleInterval));
+      // Respect per-wave showFuturePredictions setting (defaults to true)
+      if ((drawing.style as any)?.showFuturePredictions !== false) {
+        allPredictions.push(...calculateFuturePredictions(drawing, candleInterval));
+      }
     }
     setFuturePredictionLines(allPredictions);
   }, [drawings, candles]);
@@ -739,13 +841,13 @@ export function ChartFullscreenPage({
     };
   }, [elliottWave.isDrawing, elliottWave.isComplete, elliottWave.points, candleSeriesRef, candles, selectedWaveDegree]);
 
-  // Elliott Wave: auto-save the wave immediately when all points are placed
+  // Elliott Wave: auto-save the wave immediately when all points are placed and valid
   useEffect(() => {
-    if (elliottWave.isComplete) {
+    if (elliottWave.isComplete && elliottWave.isValid) {
       handleElliottWaveSave();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elliottWave.isComplete]);
+  }, [elliottWave.isComplete, elliottWave.isValid]);
 
   // Elliott Wave: render saved elliott_wave drawings as markers + trendlines on reload
   useEffect(() => {
@@ -1034,10 +1136,23 @@ export function ChartFullscreenPage({
 
         {/* Complete Panel – show when done (auto-save in progress) */}
         {elliottWave.isComplete && (
-          <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-emerald-700 rounded-lg p-3 shadow-xl select-none">
-            <p className="text-emerald-400 text-sm font-semibold mb-2">
-              ✓ Wave Complete – Saving…
-            </p>
+          <div className={`absolute top-14 right-4 z-30 bg-slate-900 border rounded-lg p-3 shadow-xl select-none ${elliottWave.isValid ? 'border-emerald-700' : 'border-red-700'}`}>
+            {elliottWave.isValid ? (
+              <p className="text-emerald-400 text-sm font-semibold mb-2">
+                ✓ Wave Complete – Saving…
+              </p>
+            ) : (
+              <>
+                <p className="text-red-400 text-sm font-semibold mb-1">
+                  ⚠ Invalid Wave Structure
+                </p>
+                <ul className="mb-2 space-y-0.5">
+                  {elliottWave.validationErrors.map((err, i) => (
+                    <li key={i} className="text-red-300 text-xs">{err}</li>
+                  ))}
+                </ul>
+              </>
+            )}
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" onClick={elliottWave.reset}>
                 Reset
@@ -1053,6 +1168,18 @@ export function ChartFullscreenPage({
           </div>
         )}
 
+        {/* Validation Error Panel – shown during active drawing */}
+        {elliottWave.isDrawing && elliottWave.validationErrors.length > 0 && (
+          <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-amber-700 rounded-lg p-3 shadow-xl select-none max-w-xs">
+            <p className="text-amber-400 text-xs font-semibold mb-1">⚠ Validation Warnings</p>
+            <ul className="space-y-0.5">
+              {elliottWave.validationErrors.map((err, i) => (
+                <li key={i} className="text-amber-300 text-xs">{err}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Predictive Fib Level Renderer – ACTIVE DRAWING */}
         {activeTool === 'elliott_wave' && elliottWave.isActive && (
           <PredictiveFibRenderer
@@ -1060,6 +1187,17 @@ export function ChartFullscreenPage({
             candleSeries={candleSeriesRef.current}
             fibLevels={elliottWave.fibProjections}
             isActive={elliottWave.isActive}
+          />
+        )}
+
+        {/* Invalidation Level Renderer – red lines for active drawing validation */}
+        {activeTool === 'elliott_wave' && elliottWave.isActive && elliottWave.invalidationLevels.length > 0 && (
+          <PredictiveFibRenderer
+            chart={chartRef.current}
+            candleSeries={candleSeriesRef.current}
+            fibLevels={elliottWave.invalidationLevels}
+            isActive={elliottWave.isActive}
+            color="#ef4444"
           />
         )}
 
