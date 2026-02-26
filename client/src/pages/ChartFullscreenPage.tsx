@@ -34,6 +34,7 @@ import { EmaSmaModal } from '@/components/indicators';
 import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
 import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
+import { BreakerBlockRenderer } from '@/components/indicators/BreakerBlockRenderer';
 import { BOSRenderer } from '@/components/indicators/BOSRenderer';
 import { LiquidityRenderer } from '@/components/indicators/LiquidityRenderer';
 import { PDZoneRenderer } from '@/components/indicators/PDZoneRenderer';
@@ -41,6 +42,8 @@ import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
 import { useOrderBlockDetection } from '@/hooks/useOrderBlockDetection';
+import { useBreakerBlockSettings } from '@/hooks/useBreakerBlockSettings';
+import { useBreakerBlockDetection } from '@/hooks/useBreakerBlockDetection';
 import { useBOSSettings } from '@/hooks/useBOSSettings';
 import { useBOSDetection } from '@/hooks/useBOSDetection';
 import { useLiquiditySettings } from '@/hooks/useLiquiditySettings';
@@ -354,6 +357,10 @@ export function ChartFullscreenPage({
   // Hooks - Order Block detection
   const obSettings = useOrderBlockSettings();
   const orderBlocks = useOrderBlockDetection({ candles, settings: obSettings.settings, fvgs });
+
+  // Hooks - Breaker Block detection (derived from existing Order Blocks)
+  const bbSettings = useBreakerBlockSettings();
+  const breakerBlocks = useBreakerBlockDetection({ candles, orderBlocks, settings: bbSettings.settings });
 
   // Hooks - BOS/CHoCH detection
   const bosSettings = useBOSSettings();
@@ -1214,6 +1221,14 @@ export function ChartFullscreenPage({
           candleSeries={candleSeriesRef.current}
           orderBlocks={orderBlocks}
           settings={obSettings.settings}
+        />
+
+        {/* Breaker Block Renderer */}
+        <BreakerBlockRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          breakerBlocks={breakerBlocks}
+          settings={bbSettings.settings}
         />
 
         {/* BOS/CHoCH Renderer */}
