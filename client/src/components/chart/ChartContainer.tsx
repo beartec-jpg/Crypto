@@ -1,6 +1,7 @@
 import { useEffect, useRef, forwardRef, Ref, useCallback } from 'react';
 import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, ISeriesApi, MouseEventParams, Time } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
+import { getDecimalsForPrice } from '@/lib/chart/priceUtils';
 
 interface FutureWhitespaceConfig {
   enabled: boolean;
@@ -117,11 +118,13 @@ export const ChartContainer = forwardRef<HTMLDivElement, ChartContainerProps>(fu
         borderVisible: false,
         wickUpColor: '#10b981',
         wickDownColor: '#ef4444',
-        priceFormat: {
-          type: 'price',
-          precision: 6,
-          minMove: 0.000001,
-        },
+        priceFormat: (() => {
+          // Compute precision from representative price (use latest close if available)
+          const refPrice = data.length > 0 ? data[data.length - 1].close : 1;
+          const decimals = getDecimalsForPrice(refPrice || 1);
+          const minMove = decimals > 0 ? parseFloat((1 / Math.pow(10, decimals)).toFixed(decimals)) : 1;
+          return { type: 'price' as const, precision: decimals, minMove };
+        })(),
       });
 
       // Prepare chart data with optional future whitespace

@@ -12,6 +12,9 @@ interface KeyboardShortcutsConfig {
   onOpenSettings?: () => void;
   onDeleteSelected?: () => void;
   onDeselectAll?: () => void;
+  onTurnOffDrawing?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 export function useKeyboardShortcuts({
@@ -20,12 +23,33 @@ export function useKeyboardShortcuts({
   onToggleFullscreen,
   onOpenSettings,
   onDeleteSelected,
-  onDeselectAll
+  onDeselectAll,
+  onTurnOffDrawing,
+  onUndo,
+  onRedo,
 }: KeyboardShortcutsConfig) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in input field
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Undo: Ctrl/Cmd + Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          onRedo?.();
+        } else {
+          onUndo?.();
+        }
+        return;
+      }
+
+      // Redo: Ctrl/Cmd + Y
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        onRedo?.();
         return;
       }
 
@@ -70,8 +94,9 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // Deselect: Escape
+      // Escape: turn off drawing mode and deselect all
       if (e.key === 'Escape') {
+        onTurnOffDrawing?.();
         onDeselectAll?.();
         return;
       }
@@ -79,5 +104,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onToggleDrawingMode, onSelectTool, onToggleFullscreen, onOpenSettings, onDeleteSelected, onDeselectAll]);
+  }, [onToggleDrawingMode, onSelectTool, onToggleFullscreen, onOpenSettings, onDeleteSelected, onDeselectAll, onTurnOffDrawing, onUndo, onRedo]);
 }
