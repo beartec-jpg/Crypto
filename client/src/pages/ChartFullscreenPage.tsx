@@ -150,7 +150,7 @@ const calculateFuturePredictions = (
     // If W2 went down (endPrice < startPrice), W3 goes up; if W2 went up, W3 goes down
     const direction = endPrice < startPrice ? 1 : -1;
     const w3Ratios = ['leading_diagonal', 'ending_diagonal'].includes(waveType)
-      ? [1.0, 1.272]
+      ? [0.618, 0.786, 1.0]
       : [1.618, 2.0, 2.618];
     return w3Ratios.map(ratio => ({
       ratio,
@@ -267,7 +267,6 @@ export function ChartFullscreenPage({
   const [selectedWaveFibs, setSelectedWaveFibs] = useState<FibLevel[]>([]);
   // Future prediction lines – shown for Wave 3/5/A completions
   const [futurePredictionLines, setFuturePredictionLines] = useState<FibLevel[]>([]);
-  const [showFuturePredictions, setShowFuturePredictions] = useState(true);
   // Incremented whenever the chart pans/zooms so we can recompute the SVG click overlay coords
   const [chartViewVersion, setChartViewVersion] = useState(0);
   // Degree picker state – shown when elliott_wave tool is activated
@@ -558,6 +557,7 @@ export function ChartFullscreenPage({
           zigzagColor: label.metadata?.zigzagColor ?? '#808080',
           showLabel: label.metadata?.showLabel ?? true,
           fontSize: label.metadata?.fontSize ?? '12px',
+          showFuturePredictions: label.metadata?.showFuturePredictions ?? true,
         },
       }));
 
@@ -626,10 +626,6 @@ export function ChartFullscreenPage({
     if (!selectedId || selectedId.startsWith('drawing-')) return;
     const drawing = drawings.find(d => d.id === selectedId);
     setDrawings(prev => prev.map(d => d.id === selectedId ? { ...d, style: { ...d.style, ...updates.style } } : d));
-    // Sync showFuturePredictions local state when changed via settings modal
-    if ((updates.style as any).showFuturePredictions !== undefined) {
-      setShowFuturePredictions((updates.style as any).showFuturePredictions);
-    }
     if (drawing?.type === 'elliott_wave') {
       // EW waves live in elliott_wave_labels, not chart_drawings – use the EW-specific endpoint
       authenticatedApiRequest('PATCH', `/api/crypto/elliott-wave/labels/${selectedId}`, { metadata: updates.style })
@@ -1213,7 +1209,7 @@ export function ChartFullscreenPage({
         )}
 
         {/* Future Prediction Lines – persistent purple dashed lines for next wave targets */}
-        {showFuturePredictions && futurePredictionLines.length > 0 && (
+        {futurePredictionLines.length > 0 && (
           <PredictiveFibRenderer
             chart={chartRef.current}
             candleSeries={candleSeriesRef.current}

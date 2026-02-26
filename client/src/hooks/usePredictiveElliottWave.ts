@@ -170,10 +170,10 @@ export function useElliottWave(): UseElliottWaveResult {
       }
       if (n === 3) {
         // After W2: project W3 trend-based extension using W1 length projected from W2
-        // Diagonals use shallower 100%/127.2% targets; standard impulse uses 161.8%+
+        // Diagonals: W3 must be < W1 so targets are 61.8–100% of W1; standard impulse uses 161.8%+
         const w1Length = Math.abs(p[1] - p[0]);
         const direction = p[1] > p[0] ? 1 : -1;
-        const w3Ratios = isDiagonal ? [1.0, 1.272] : [1.618, 2.0, 2.618];
+        const w3Ratios = isDiagonal ? [0.618, 0.786, 1.0] : [1.618, 2.0, 2.618];
         return w3Ratios.map(ratio => ({
           ratio,
           price: p[2] + direction * w1Length * ratio,
@@ -197,13 +197,24 @@ export function useElliottWave(): UseElliottWaveResult {
         return [...w4Levels, invalidation];
       }
       if (n === 5) {
-        // After W4: project W5 trend-based extension using combined W1+W3 length
-        // Diagonals use shallower 61.8%/100% targets
+        // After W4: project W5 trend-based extension
+        // Diagonals: W5 must be < W3, so use W3 length with 61.8–100% targets
+        // Standard impulse: use W1+W3 combined length
         const w1Length = Math.abs(p[1] - p[0]);
         const w3Length = Math.abs(p[3] - p[2]);
-        const totalLength = w1Length + w3Length;
         const direction = p[1] > p[0] ? 1 : -1;
-        const w5Ratios = isDiagonal ? [0.618, 1.0] : [0.618, 1.0, 1.618];
+        if (isDiagonal) {
+          const w5Ratios = [0.618, 0.786, 1.0];
+          return w5Ratios.map(ratio => ({
+            ratio,
+            price: p[4] + direction * w3Length * ratio,
+            label: `W5 ${(ratio * 100).toFixed(0)}%`,
+            isRetrace: false,
+            color: '#22c55e',
+          }));
+        }
+        const totalLength = w1Length + w3Length;
+        const w5Ratios = [0.618, 1.0, 1.618];
         return w5Ratios.map(ratio => ({
           ratio,
           price: p[4] + direction * totalLength * ratio,
