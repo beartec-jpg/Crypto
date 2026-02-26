@@ -21,6 +21,7 @@ import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
 import { useIndicatorState } from '@/hooks/useIndicatorState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import { useElliottWave } from '@/hooks/usePredictiveElliottWave';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 // New extraction components
 import { FullscreenChartToolbar } from '@/components/chart/FullscreenChartToolbar';
@@ -292,6 +293,12 @@ export function ChartFullscreenPage({
   // Ref for saved Elliott Wave trendline primitives (rendered on reload)
   const savedEWPrimitivesRef = useRef<Map<string, ElliottWavePrimitive>>(new Map());
 
+  // Undo/redo drawing history (tracks add/delete operations)
+  const drawingUndoStackRef = useRef<Array<{ type: 'add' | 'delete'; drawing: any }>>([]);
+  const drawingRedoStackRef = useRef<Array<{ type: 'add' | 'delete'; drawing: any }>>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
   // Hooks - Elliott Wave tool
   const elliottWave = useElliottWave();
   // Ref to access latest elliottWave state inside stable event handlers
@@ -385,6 +392,37 @@ export function ChartFullscreenPage({
 
   // Hooks - Toast notifications
   const { toast } = useToast();
+
+  // Undo/redo handlers
+  const handleUndo = useCallback(() => {
+    const op = drawingUndoStackRef.current.pop();
+    if (!op) return;
+    drawingRedoStackRef.current.push(op);
+    setCanUndo(drawingUndoStackRef.current.length > 0);
+    setCanRedo(true);
+    if (op.type === 'add') {
+      drawingsPersistence.deleteDrawing(op.drawing.id);
+      setDrawings(prev => prev.filter(d => d.id !== op.drawing.id));
+    } else {
+      drawingsPersistence.saveDrawing(op.drawing);
+      setDrawings(prev => [...prev, op.drawing]);
+    }
+  }, [drawingsPersistence]);
+
+  const handleRedo = useCallback(() => {
+    const op = drawingRedoStackRef.current.pop();
+    if (!op) return;
+    drawingUndoStackRef.current.push(op);
+    setCanUndo(true);
+    setCanRedo(drawingRedoStackRef.current.length > 0);
+    if (op.type === 'add') {
+      drawingsPersistence.saveDrawing(op.drawing);
+      setDrawings(prev => [...prev, op.drawing]);
+    } else {
+      drawingsPersistence.deleteDrawing(op.drawing.id);
+      setDrawings(prev => prev.filter(d => d.id !== op.drawing.id));
+    }
+  }, [drawingsPersistence]);
 
   // ── Elliott Wave persistence ────────────────────────────────────────────────
 
@@ -615,11 +653,48 @@ export function ChartFullscreenPage({
       deleteEWLabelMutation.mutate(id);
       setDrawings(prev => prev.filter(d => d.id !== id));
     } else {
+      if (drawing) {
+        drawingUndoStackRef.current.push({ type: 'delete', drawing });
+        drawingRedoStackRef.current = [];
+        setCanUndo(true);
+        setCanRedo(false);
+      }
       drawingsPersistence.deleteDrawing(id);
       setDrawings(prev => prev.filter(d => d.id !== id));
     }
     drawingInteraction.setSelectedDrawingId(null);
   }, [drawingInteraction, drawings, drawingsPersistence, deleteEWLabelMutation]);
+
+  // Wrap saveDrawing to track undo history
+  const saveDrawingWithUndo = useCallback((drawing: any) => {
+    drawingUndoStackRef.current.push({ type: 'add', drawing });
+    drawingRedoStackRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+    drawingsPersistence.saveDrawing(drawing);
+  }, [drawingsPersistence]);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onToggleDrawingMode: () => {
+      if (activeTool) {
+        setActiveTool(null);
+        activeToolRef.current = null;
+      } else {
+        setActiveTool('trendline');
+        activeToolRef.current = 'trendline';
+      }
+    },
+    onTurnOffDrawing: () => {
+      setActiveTool(null);
+      activeToolRef.current = null;
+    },
+    onSelectTool: (tool) => handleSelectTool(tool as ChartDrawingTool),
+    onDeleteSelected: handleDeleteDrawing,
+    onDeselectAll: () => drawingInteraction.setSelectedDrawingId(null),
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+  });
 
   const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
     const selectedId = drawingInteraction.selectedDrawingId;
@@ -1021,6 +1096,62 @@ export function ChartFullscreenPage({
             divergenceScannerEnabled={divergenceScannerEnabled}
             onToggleDivergenceScanner={setDivergenceScannerEnabled}
           />
+
+          {/* Drawing Mode Toggle Button */}
+          <button
+            onClick={() => {
+              if (activeTool) {
+                setActiveTool(null);
+                activeToolRef.current = null;
+              } else {
+                setActiveTool('trendline');
+                activeToolRef.current = 'trendline';
+              }
+            }}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+              activeTool
+                ? 'bg-blue-500 text-white'
+                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
+            }`}
+            title={activeTool ? 'Drawing: ON (press D or click to disable)' : 'Drawing: OFF (press D or click to enable)'}
+            data-testid="btn-drawing-toggle"
+          >
+            {activeTool ? 'Drawing: ON' : 'Drawing: OFF'}
+          </button>
+
+          {/* Undo Button */}
+          <button
+            onClick={handleUndo}
+            disabled={!canUndo}
+            className={`p-2 rounded-lg transition-all ${
+              canUndo
+                ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                : 'bg-slate-800/40 text-gray-600 cursor-not-allowed'
+            }`}
+            title="Undo (Ctrl+Z)"
+            data-testid="btn-undo"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+            </svg>
+          </button>
+
+          {/* Redo Button */}
+          <button
+            onClick={handleRedo}
+            disabled={!canRedo}
+            className={`p-2 rounded-lg transition-all ${
+              canRedo
+                ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                : 'bg-slate-800/40 text-gray-600 cursor-not-allowed'
+            }`}
+            title="Redo (Ctrl+Y)"
+            data-testid="btn-redo"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
+            </svg>
+          </button>
         </div>
 
         {/* Mini Oscillator Indicators */}
@@ -1124,7 +1255,7 @@ export function ChartFullscreenPage({
           tempDrawing={tempDrawing}
           setTempDrawing={setTempDrawing}
           setDrawings={setDrawings}
-          saveDrawingMutation={{ mutate: drawingsPersistence.saveDrawing }}
+          saveDrawingMutation={{ mutate: saveDrawingWithUndo }}
           onPointCommitRef={onPointCommitRef}
           onElliottWavePoint={elliottWave.isActive && elliottWave.isDrawing
             ? (p: GesturePoint) => {
