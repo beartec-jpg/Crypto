@@ -100,31 +100,38 @@ const getDegreeAbbreviation = (degree: string): string => {
 };
 
 /** Calculate future prediction fib levels based on the completed wave label */
-const calculateFuturePredictions = (wave: { points: { price: number }[]; style?: { waveLabel?: string } }): FibLevel[] => {
+const calculateFuturePredictions = (
+  wave: { points: { price: number; time?: number }[]; style?: { waveLabel?: string } },
+  candleInterval: number = 3600,
+): FibLevel[] => {
   const waveLabel = wave.style?.waveLabel;
   const points = wave.points;
   if (!waveLabel || points.length < 2) return [];
 
   const startPrice = points[0].price;
   const endPrice = points[points.length - 1].price;
+  const lastPoint = points[points.length - 1];
+  const lastTime = typeof lastPoint.time === 'number' ? lastPoint.time : undefined;
+  const endTime = lastTime !== undefined ? lastTime + 4 * candleInterval : undefined;
+  const lineRange = lastTime !== undefined ? { startTime: lastTime, endTime } : {};
 
   // Wave 3 complete → show Wave 4 retracement levels
   if (waveLabel === '3' || waveLabel === '(iii)' || waveLabel === 'iii') {
     const prevStart = points.length >= 3 ? points[points.length - 2].price : startPrice;
     const levels = calcRetracementLevels(prevStart, endPrice, [0.236, 0.382, 0.5, 0.618]);
-    return levels.map(l => ({ ...l, label: `W4: ${(l.ratio * 100).toFixed(1)}%` }));
+    return levels.map(l => ({ ...l, label: `W4: ${(l.ratio * 100).toFixed(1)}%`, ...lineRange }));
   }
 
   // Wave A complete → show Wave B retracement levels
   if (waveLabel === 'A' || waveLabel === '(a)' || waveLabel === 'a') {
     const levels = calcRetracementLevels(startPrice, endPrice, [0.382, 0.5, 0.618, 0.786]);
-    return levels.map(l => ({ ...l, label: `WB: ${(l.ratio * 100).toFixed(1)}%` }));
+    return levels.map(l => ({ ...l, label: `WB: ${(l.ratio * 100).toFixed(1)}%`, ...lineRange }));
   }
 
   // Wave 5 complete → show Wave C (correction) target levels
   if (waveLabel === '5' || waveLabel === '(v)' || waveLabel === 'v') {
     const levels = calcRetracementLevels(startPrice, endPrice, [0.618, 1.0, 1.618]);
-    return levels.map(l => ({ ...l, label: `WC: ${(l.ratio * 100).toFixed(0)}%` }));
+    return levels.map(l => ({ ...l, label: `WC: ${(l.ratio * 100).toFixed(0)}%`, ...lineRange }));
   }
 
   return [];
@@ -541,7 +548,6 @@ export function ChartFullscreenPage({
     if (selectedWaveId === waveId) {
       setSelectedWaveId(null);
       setSelectedWaveFibs([]);
-      setFuturePredictionLines([]);
       drawingInteraction.setSelectedDrawingId(null);
       console.log('[DEBUG] Deselected wave');
       return;
@@ -562,12 +568,6 @@ export function ChartFullscreenPage({
       const endPrice = wave.points[wave.points.length - 1].price;
       const fibs = calcRetracementLevels(startPrice, endPrice, [0.236, 0.382, 0.5, 0.618, 0.786]);
       setSelectedWaveFibs(fibs);
-
-      // Calculate future predictions based on the wave label
-      const predictions = calculateFuturePredictions(wave);
-      setFuturePredictionLines(predictions);
-    } else {
-      setFuturePredictionLines([]);
     }
 
     // Also try to fetch stored projection lines from the API (may supplement the above)
@@ -601,9 +601,19 @@ export function ChartFullscreenPage({
     if (selectedWaveId) {
       setSelectedWaveId(null);
       setSelectedWaveFibs([]);
-      setFuturePredictionLines([]);
     }
   }, [selectedWaveId]);
+
+  // Compute future prediction lines for ALL saved waves whenever drawings or candles change
+  useEffect(() => {
+    const candleInterval =
+      candles.length >= 2 ? Math.abs((candles[1].time as number) - (candles[0].time as number)) : 3600;
+    const allPredictions: FibLevel[] = [];
+    for (const drawing of drawings.filter(d => d.type === 'elliott_wave')) {
+      allPredictions.push(...calculateFuturePredictions(drawing, candleInterval));
+    }
+    setFuturePredictionLines(allPredictions);
+  }, [drawings, candles]);
 
   // Elliott Wave: save the drawn wave to elliott_wave_labels table
   const handleElliottWaveSave = useCallback(() => {
@@ -1103,6 +1113,16 @@ export function ChartFullscreenPage({
             className="absolute top-0 left-0"
             style={{ width: '100%', height: '100%', zIndex: 15, pointerEvents: 'none' }}
           >
+            {/* Background rect – captures clicks on chart background to deselect the active wave */}
+            <rect
+              x={0}
+              y={0}
+              width="100%"
+              height="100%"
+              fill="transparent"
+              style={{ pointerEvents: selectedWaveId && !activeTool ? 'auto' : 'none' }}
+              onClick={() => handleDeselect()}
+            />
             {drawings
               .filter(d => d.type === 'elliott_wave' && d.points.length >= 2)
               .map(wave => {

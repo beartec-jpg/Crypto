@@ -64,24 +64,36 @@ class PredictiveFibPaneRenderer implements IPrimitivePaneRenderer {
 
         const { line, alpha } = fibLineColor(level, this._colorOverride);
 
+        // Determine horizontal extent – use startTime/endTime if provided
+        let lineStart = 0;
+        let lineEnd = chartWidth;
+        if (level.startTime !== undefined && this._chart) {
+          const xStart = this._chart.timeScale().timeToCoordinate(level.startTime as Time);
+          if (xStart !== null) lineStart = Math.max(xStart, 0);
+        }
+        if (level.endTime !== undefined && this._chart) {
+          const xEnd = this._chart.timeScale().timeToCoordinate(level.endTime as Time);
+          if (xEnd !== null) lineEnd = Math.min(xEnd, chartWidth);
+        }
+
         // Apply per-level style and width
         ctx.lineWidth = level.width || 1.5;
         ctx.setLineDash(level.style === 'solid' ? [] : [6, 4]);
 
-        // Draw line from left to right edge
+        // Draw line from lineStart to lineEnd
         ctx.strokeStyle = `${line}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(chartWidth, y);
+        ctx.moveTo(lineStart, y);
+        ctx.lineTo(lineEnd, y);
         ctx.stroke();
 
-        // Label background pill on the right side
+        // Label background pill positioned at line end
         const label = `${level.label}  ${level.price.toFixed(2)}`;
         const textWidth = ctx.measureText(label).width;
         const padding = 4;
         const pillW = textWidth + padding * 2;
         const pillH = 14;
-        const pillX = chartWidth - pillW - 6;
+        const pillX = lineEnd - pillW - 6;
         const pillY = y - pillH;
 
         ctx.fillStyle = 'rgba(0,0,0,0.75)';
