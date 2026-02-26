@@ -38,6 +38,32 @@ export interface DivergenceAlert {
   level: number;
 }
 
+/**
+ * Configuration for all 7 divergence-capable oscillators.
+ * Used by checkAllOscillatorDivergence and useDivergenceScanner.
+ */
+export interface OscillatorConfig {
+  rsiPeriod: number;
+  macdFast: number;
+  macdSlow: number;
+  macdSignal: number;
+  stochRSIPeriod: number;
+  mfiPeriod: number;
+  williamsRPeriod: number;
+  cciPeriod: number;
+}
+
+export const DEFAULT_OSCILLATOR_CONFIG: OscillatorConfig = {
+  rsiPeriod: 14,
+  macdFast: 12,
+  macdSlow: 26,
+  macdSignal: 9,
+  stochRSIPeriod: 14,
+  mfiPeriod: 14,
+  williamsRPeriod: 14,
+  cciPeriod: 20,
+};
+
 // ==================== CORE FUNCTIONS ====================
 
 /**
@@ -325,4 +351,96 @@ export function detectDivergences(
   }
   
   return divergences;
+}
+
+// ==================== MULTI-INDICATOR CONFLUENCE ====================
+
+/**
+ * Returns the Tailwind background color class for a divergence badge based on confluence count.
+ * 5-7 indicators = strong (red), 3-4 = medium (orange), 1-2 = weak (yellow).
+ */
+const STRONG_CONFLUENCE_THRESHOLD = 5;
+const MEDIUM_CONFLUENCE_THRESHOLD = 3;
+
+export function getDivergenceBadgeColor(count: number): string {
+  if (count >= STRONG_CONFLUENCE_THRESHOLD) return 'bg-red-600';
+  if (count >= MEDIUM_CONFLUENCE_THRESHOLD) return 'bg-orange-500';
+  return 'bg-yellow-500';
+}
+
+/**
+ * Helper: get the oscillator value at a given candle index.
+ * Oscillators may have fewer values than candles due to warm-up periods.
+ * The oscillator values correspond to the last `values.length` candles.
+ */
+function getOscValueAt(values: number[], candleIdx: number, totalCandles: number): number | null {
+  const offset = totalCandles - values.length;
+  const oscIdx = candleIdx - offset;
+  if (oscIdx < 0 || oscIdx >= values.length || values.length === 0) return null;
+  return values[oscIdx];
+}
+
+/**
+ * Check all 7 divergence-capable oscillators for a divergence at a given price extreme.
+ *
+ * @param currentIdx - Index (in candles array) of the current price peak/trough
+ * @param prevIdx    - Index (in candles array) of the previous price peak/trough
+ * @param type       - 'bullish' (lower low) or 'bearish' (higher high)
+ * @param candles    - Candle data array
+ * @param config     - Oscillator configuration parameters
+ * @returns count of confirming indicators and their names
+ */
+export function checkAllOscillatorDivergence(
+  currentIdx: number,
+  prevIdx: number,
+  type: 'bullish' | 'bearish',
+  candles: CandleData[],
+  config: OscillatorConfig
+): { count: number; indicators: string[] } {
+  const total = candles.length;
+  const indicatorsWithDiv: string[] = [];
+
+  function checkOsc(values: number[], name: string) {
+    const curr = getOscValueAt(values, currentIdx, total);
+    const prev = getOscValueAt(values, prevIdx, total);
+    if (curr === null || prev === null || isNaN(curr) || isNaN(prev)) return;
+    if (type === 'bearish' && curr < prev) {
+      indicatorsWithDiv.push(name);
+    } else if (type === 'bullish' && curr > prev) {
+      indicatorsWithDiv.push(name);
+    }
+  }
+
+  // RSI
+  const rsiValues = calculateRSI(candles, config.rsiPeriod).map((d: { value: number }) => d.value);
+  checkOsc(rsiValues, 'RSI');
+
+  // MACD histogram
+  const macdHist = calculateMACD(candles, config.macdFast, config.macdSlow, config.macdSignal)
+    .hist.map((d: { value: number }) => d.value);
+  checkOsc(macdHist, 'MACD');
+
+  // Stochastic RSI (k line)
+  const stochValues = calculateStochasticRSI(candles, config.stochRSIPeriod)
+    .map((d: { k: number }) => d.k);
+  checkOsc(stochValues, 'Stoch RSI');
+
+  // MFI
+  const mfiValues = calculateMFI(candles, config.mfiPeriod).map((d: { value: number }) => d.value);
+  checkOsc(mfiValues, 'MFI');
+
+  // Williams %R
+  const wrValues = calculateWilliamsR(candles, config.williamsRPeriod)
+    .map((d: { value: number }) => d.value);
+  checkOsc(wrValues, 'Williams %R');
+
+  // CCI
+  const cciValues = calculateCCI(candles, config.cciPeriod).map((d: { value: number }) => d.value);
+  checkOsc(cciValues, 'CCI');
+
+  // OBV
+  const obvValues = calculateOBV(candles).map((d: { value: number }) => d.value);
+  checkOsc(obvValues, 'OBV');
+
+  return { count: indicatorsWithDiv.length, indicators: indicatorsWithDiv };
 }

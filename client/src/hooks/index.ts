@@ -23,3 +23,6 @@ export * from './useIndicatorState';
 export * from './useDrawingState';
 export * from './useDrawingsPersistence';
 export * from './useSettingsPersistence';
+
+// Divergence scanner
+export * from './useDivergenceScanner';
