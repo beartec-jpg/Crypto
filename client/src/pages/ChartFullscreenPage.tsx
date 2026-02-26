@@ -74,6 +74,9 @@ import { DEFAULT_OSCILLATOR_CONFIG } from '@/lib/calculations/divergenceCalculat
 import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
 import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
 import { DegreePicker, getDegreeConfiguration } from '@/components/elliottWave/DegreePicker';
+import { HTFBiasPanel } from '@/components/indicators/HTFBiasPanel';
+import { useHTFBias } from '@/hooks/useHTFBias';
+import { useHTFBiasSettings } from '@/hooks/useHTFBiasSettings';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -417,6 +420,14 @@ export function ChartFullscreenPage({
     currentTimeframe: timeframe,
     emaConfigs: indicators.ema.configs,
     enabled: indicators.ema.show,
+  });
+
+  // Hooks - HTF Bias Panel
+  const htfBiasSettings = useHTFBiasSettings();
+  const htfBiasEntries = useHTFBias({
+    symbol,
+    timeframes: htfBiasSettings.settings.timeframes,
+    enabled: htfBiasSettings.settings.enabled,
   });
 
   // Hooks - Drawing persistence
@@ -1185,6 +1196,20 @@ export function ChartFullscreenPage({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
             </svg>
           </button>
+
+          {/* HTF Bias Toggle Button */}
+          <button
+            onClick={() => htfBiasSettings.updateSetting('enabled', !htfBiasSettings.settings.enabled)}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+              htfBiasSettings.settings.enabled
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
+            }`}
+            title="Toggle HTF Bias Panel"
+            data-testid="btn-htf-bias-toggle"
+          >
+            HTF
+          </button>
         </div>
 
         {/* Mini Oscillator Indicators */}
@@ -1193,6 +1218,11 @@ export function ChartFullscreenPage({
           oscillatorData={oscillatorData}
           onCycleMode={oscillatorPanel.cycleMode}
         />
+
+        {/* HTF Bias Panel – top-right corner */}
+        {htfBiasSettings.settings.enabled && (
+          <HTFBiasPanel entries={htfBiasEntries} />
+        )}
         
         {/* Loading/Error Overlay */}
         <ChartLoadingOverlay isLoading={isLoading} error={error?.message || null} />
