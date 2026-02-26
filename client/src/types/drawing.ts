@@ -287,6 +287,8 @@ export interface Drawing {
     /** For elliott_wave drawings: color of corrective/zigzag waves */
     zigzagColor?: string;
     showPointLabels?: boolean;
+    /** For elliott_wave drawings: whether to display future wave prediction fibonacci levels */
+    showFuturePredictions?: boolean;
   };
 }
 
