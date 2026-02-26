@@ -1,4 +1,4 @@
-import { TrendingUp, Minus, Square, Divide, GitBranch } from 'lucide-react';
+import { TrendingUp, Minus, Square, Divide, GitBranch, Waves } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
@@ -10,6 +10,7 @@ interface DrawingSelectionModalProps {
     label?: string;
     color?: string;
     points?: { time: number; price: number }[];
+    style?: Record<string, any>;
   }>;
   onSelect: (drawingId: string) => void;
   onClose: () => void;
@@ -22,6 +23,7 @@ const TOOL_ICONS: Record<string, any> = {
   fib_retracement: Divide,
   trend_fib: TrendingUp,
   channel: GitBranch,
+  elliott_wave: Waves,
 };
 
 const TOOL_NAMES: Record<string, string> = {
@@ -31,6 +33,7 @@ const TOOL_NAMES: Record<string, string> = {
   fib_retracement: 'Fib Retracement',
   trend_fib: 'Trend-Based Fib',
   channel: 'Channel',
+  elliott_wave: 'Elliott Wave',
 };
 
 // Visual preview component for each drawing type
@@ -119,7 +122,15 @@ export function DrawingSelectionModal({ open, drawings, onSelect, onClose }: Dra
           <div className="space-y-2">
             {drawings.map((drawing, index) => {
               const Icon = TOOL_ICONS[drawing.type] || Square;
-              const name = drawing.label || TOOL_NAMES[drawing.type] || drawing.type;
+              let name = drawing.label || TOOL_NAMES[drawing.type] || drawing.type;
+
+              // Add degree/pattern info for Elliott Waves
+              if (drawing.type === 'elliott_wave') {
+                const degree = drawing.style?.degreeLabel || 'Unknown';
+                const waveLabel = drawing.style?.waveLabel || '';
+                name = `Elliott Wave ${waveLabel} (${degree})`;
+              }
+
               const color = drawing.color || '#3b82f6';
               
               return (

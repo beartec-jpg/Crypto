@@ -37,6 +37,11 @@ export interface ElliottWaveData {
 
 // Color for the 0→5 diagonal trendline (distinct from the wave color)
 const DIAGONAL_TRENDLINE_COLOR = '#FACC15';
+// Final point label rendering constants
+const FINAL_POINT_RADIUS = 6;
+const LABEL_FONT = 'bold 12px sans-serif';
+const LABEL_STROKE_COLOR = '#000';
+const LABEL_STROKE_WIDTH = 3;
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
 
@@ -118,34 +123,40 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         }
       }
 
-      // Point labels (for all drawings)
-      if (this._data.showPointLabels) {
+      // Point labels (only show final point label)
+      if (this._data.showPointLabels && coords.length > 0) {
         ctx.textAlign = 'center';
-        ctx.font = 'bold 11px sans-serif';
+        ctx.font = LABEL_FONT;
 
-        for (let i = 0; i < coords.length; i++) {
-          const c = coords[i];
-          if (c.x === null || c.y === null || !c.label) continue;
+        // Only render the LAST point's label
+        const finalIndex = coords.length - 1;
+        const c = coords[finalIndex];
 
+        if (c.x !== null && c.y !== null && c.label) {
           const dotColor = c.isMidAir ? '#f97316' : color;
 
-          // Draw dot at the point
+          // Draw dot at the final point
           ctx.fillStyle = dotColor;
           ctx.beginPath();
-          ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
+          ctx.arc(c.x, c.y, FINAL_POINT_RADIUS, 0, Math.PI * 2);
           ctx.fill();
 
-          // Elliott Wave: in uptrends odd points are peaks, even are troughs
-          const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
+          // Determine if this is a high or low based on wave direction
+          const isHigh = isUptrend ? (finalIndex % 2 === 1) : (finalIndex % 2 === 0);
 
-          // Draw label above for highs, below for lows
+          // Draw hierarchical label with stroke outline for readability
           ctx.fillStyle = dotColor;
+          ctx.strokeStyle = LABEL_STROKE_COLOR;
+          ctx.lineWidth = LABEL_STROKE_WIDTH;
+
           if (isHigh) {
             ctx.textBaseline = 'bottom';
-            ctx.fillText(c.label, c.x, c.y - 7);
+            ctx.strokeText(c.label, c.x, c.y - 9);
+            ctx.fillText(c.label, c.x, c.y - 9);
           } else {
             ctx.textBaseline = 'top';
-            ctx.fillText(c.label, c.x, c.y + 7);
+            ctx.strokeText(c.label, c.x, c.y + 9);
+            ctx.fillText(c.label, c.x, c.y + 9);
           }
         }
 

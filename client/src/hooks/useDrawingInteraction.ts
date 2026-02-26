@@ -17,6 +17,7 @@ interface NearbyDrawing {
   type: string;
   color?: string;
   points?: { time: number; price: number }[];
+  style?: Record<string, any>;
 }
 
 interface UseDrawingInteractionReturn {
@@ -86,6 +87,7 @@ export function useDrawingInteraction({
           type: h.drawingType,
           color: drawing?.style?.color || '#3b82f6',
           points: drawing?.points,
+          style: drawing?.style,
         };
       }));
       setShowSelectionModal(true);
