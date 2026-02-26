@@ -6359,7 +6359,22 @@ Return ONLY valid JSON in this exact format:
   });
 
   // ============ Chart Drawings API ============
-  
+
+  // Timeframe hierarchy from highest to lowest
+  const TIMEFRAME_HIERARCHY = ['1M', '1w', '1d', '4h', '1h', '30m', '15m', '5m', '3m', '1m'];
+
+  /**
+   * Get all timeframes that should be visible on the current viewing timeframe.
+   * Higher timeframes cascade down, but lower timeframes stay isolated.
+   */
+  function getVisibleTimeframes(currentTimeframe: string): string[] {
+    const currentIndex = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe);
+    if (currentIndex === -1) {
+      return [currentTimeframe];
+    }
+    return TIMEFRAME_HIERARCHY.slice(0, currentIndex + 1);
+  }
+
   // Get chart drawings for a user/symbol/timeframe
   app.get("/api/crypto/chart-drawings", requireCryptoAuth, async (req, res) => {
     try {
@@ -6372,14 +6387,16 @@ Return ONLY valid JSON in this exact format:
       
       const { db } = await import("./db");
       const { chartDrawings } = await import("@shared/schema");
-      const { eq, and } = await import("drizzle-orm");
+      const { eq, and, inArray } = await import("drizzle-orm");
+
+      const visibleTimeframes = getVisibleTimeframes(timeframe as string);
       
       const drawings = await db.select()
         .from(chartDrawings)
         .where(and(
           eq(chartDrawings.userId, userId),
           eq(chartDrawings.symbol, symbol as string),
-          eq(chartDrawings.timeframe, timeframe as string)
+          inArray(chartDrawings.timeframe, visibleTimeframes)
         ));
       
       res.json(drawings);
