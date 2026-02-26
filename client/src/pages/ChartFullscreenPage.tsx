@@ -762,7 +762,7 @@ export function ChartFullscreenPage({
         })),
         waveType,
         color,
-        showPointLabels: true,
+        showPointLabels: false,
         lastCandleTime,
         candleInterval,
         barCount: candles.length,
@@ -1162,30 +1162,17 @@ export function ChartFullscreenPage({
                     )}
                     {(wave.style?.showLabel !== false) && (
                       <>
-                        {/* Abbreviated degree label – shown above the wave label in small text */}
-                        {wave.style?.degreeLabel && (
-                          <text
-                            x={last.x + 15}
-                            y={last.y - 24}
-                            fill={selectedWaveId === wave.id ? '#22c55e' : 'rgba(255,255,255,0.55)'}
-                            fontSize="9px"
-                            textAnchor="start"
-                            style={{ pointerEvents: 'none' }}
-                          >
-                            {getDegreeAbbreviation(wave.style.degreeLabel)}
-                          </text>
-                        )}
-                        {/* Wave label – single element, changes color when selected */}
+                        {/* Wave label – single combined label in lower/higher format */}
                         <text
                           x={last.x + 15}
                           y={last.y - 10}
                           fill={selectedWaveId === wave.id ? '#22c55e' : 'rgba(255,255,255,0.9)'}
-                          fontSize={wave.style?.fontSize ?? '12px'}
+                          fontSize="12px"
                           fontWeight="bold"
                           textAnchor="start"
                           style={{ pointerEvents: 'none' }}
                         >
-                          {wave.style?.waveLabel || '?'}
+                          {wave.style?.waveLabel || 'W'}
                         </text>
                       </>
                     )}
