@@ -123,28 +123,24 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         }
       }
 
-      // Point labels (only show final point label)
+      // Point labels
       if (this._data.showPointLabels && coords.length > 0) {
         ctx.textAlign = 'center';
         ctx.font = LABEL_FONT;
 
-        // Only render the LAST point's label
-        const finalIndex = coords.length - 1;
-        const c = coords[finalIndex];
+        for (let i = 0; i < coords.length; i++) {
+          const c = coords[i];
+          if (c.x === null || c.y === null || !c.label) continue;
 
-        if (c.x !== null && c.y !== null && c.label) {
           const dotColor = c.isMidAir ? '#f97316' : color;
 
-          // Draw dot at the final point
           ctx.fillStyle = dotColor;
           ctx.beginPath();
           ctx.arc(c.x, c.y, FINAL_POINT_RADIUS, 0, Math.PI * 2);
           ctx.fill();
 
-          // Determine if this is a high or low based on wave direction
-          const isHigh = isUptrend ? (finalIndex % 2 === 1) : (finalIndex % 2 === 0);
+          const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
 
-          // Draw hierarchical label with stroke outline for readability
           ctx.fillStyle = dotColor;
           ctx.strokeStyle = LABEL_STROKE_COLOR;
           ctx.lineWidth = LABEL_STROKE_WIDTH;
@@ -159,9 +155,44 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
             ctx.fillText(c.label, c.x, c.y + 9);
           }
         }
-
+        
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
+      }
+
+      if (!this._data.showPointLabels && coords.length > 0) {
+        const finalIndex = coords.length - 1;
+        const c = coords[finalIndex];
+        
+        if (c.x !== null && c.y !== null && c.label) {
+          ctx.textAlign = 'center';
+          ctx.font = LABEL_FONT;
+          
+          const dotColor = c.isMidAir ? '#f97316' : color;
+          const isHigh = isUptrend ? (finalIndex % 2 === 1) : (finalIndex % 2 === 0);
+          
+          ctx.fillStyle = dotColor;
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, FINAL_POINT_RADIUS, 0, Math.PI * 2);
+          ctx.fill();
+          
+          ctx.fillStyle = dotColor;
+          ctx.strokeStyle = LABEL_STROKE_COLOR;
+          ctx.lineWidth = LABEL_STROKE_WIDTH;
+          
+          if (isHigh) {
+            ctx.textBaseline = 'bottom';
+            ctx.strokeText(c.label, c.x, c.y - 9);
+            ctx.fillText(c.label, c.x, c.y - 9);
+          } else {
+            ctx.textBaseline = 'top';
+            ctx.strokeText(c.label, c.x, c.y + 9);
+            ctx.fillText(c.label, c.x, c.y + 9);
+          }
+          
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+        }
       }
 
       ctx.restore();
