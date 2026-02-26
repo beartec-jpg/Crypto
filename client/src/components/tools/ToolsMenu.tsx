@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Wrench } from 'lucide-react';
+import { Wrench, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
@@ -8,12 +8,14 @@ import { cn } from '@/lib/utils';
 interface ToolsMenuProps {
   divergenceScannerEnabled: boolean;
   onToggleDivergenceScanner: (enabled: boolean) => void;
+  onOpenDivergenceSettings?: () => void;
   className?: string;
 }
 
 export function ToolsMenu({
   divergenceScannerEnabled,
   onToggleDivergenceScanner,
+  onOpenDivergenceSettings,
   className,
 }: ToolsMenuProps) {
   const [open, setOpen] = useState(false);
@@ -56,11 +58,27 @@ export function ToolsMenu({
                 Scan all 7 oscillators
               </div>
             </div>
-            <Switch
-              checked={divergenceScannerEnabled}
-              onCheckedChange={onToggleDivergenceScanner}
-              className="shrink-0 data-[state=checked]:bg-blue-600"
-            />
+            <div className="flex items-center gap-1">
+              <Switch
+                checked={divergenceScannerEnabled}
+                onCheckedChange={onToggleDivergenceScanner}
+                className="shrink-0 data-[state=checked]:bg-blue-600"
+              />
+              {divergenceScannerEnabled && onOpenDivergenceSettings && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                  title="Divergence Settings"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenDivergenceSettings();
+                  }}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </PopoverContent>

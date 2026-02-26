@@ -60,7 +60,9 @@ import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';
 import { ToolsMenu } from '@/components/tools/ToolsMenu';
 import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
 import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
+import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
 import { useDivergenceScanner } from '@/hooks/useDivergenceScanner';
+import { useDivergenceSettings } from '@/hooks/useDivergenceSettings';
 import { DEFAULT_OSCILLATOR_CONFIG } from '@/lib/calculations/divergenceCalculations';
 import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
 import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
@@ -279,6 +281,7 @@ export function ChartFullscreenPage({
   // Divergence Scanner state
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
+  const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -377,6 +380,20 @@ export function ChartFullscreenPage({
 
   // Hooks - Divergence Scanner
   const divergencePoints = useDivergenceScanner(candles, DEFAULT_OSCILLATOR_CONFIG);
+  const divSettings = useDivergenceSettings();
+
+  const filteredDivergencePoints = useMemo(() => {
+    const count = divSettings.settings.historyCount;
+    const bullish = divergencePoints
+      .filter(p => p.type === 'bullish')
+      .sort((a, b) => (b.time as number) - (a.time as number))
+      .slice(0, count);
+    const bearish = divergencePoints
+      .filter(p => p.type === 'bearish')
+      .sort((a, b) => (b.time as number) - (a.time as number))
+      .slice(0, count);
+    return [...bullish, ...bearish];
+  }, [divergencePoints, divSettings.settings.historyCount]);
 
   // Hooks - HTF data cache
   const { htfDataCache } = useHTFDataCache({
@@ -1091,6 +1108,7 @@ export function ChartFullscreenPage({
           <ToolsMenu
             divergenceScannerEnabled={divergenceScannerEnabled}
             onToggleDivergenceScanner={setDivergenceScannerEnabled}
+            onOpenDivergenceSettings={() => setShowDivergenceSettings(true)}
           />
 
           {/* Drawing Mode Toggle Button */}
@@ -1228,8 +1246,9 @@ export function ChartFullscreenPage({
           <DivergenceRenderer
             chart={chartRef.current}
             candleSeries={candleSeriesRef.current}
-            divergencePoints={divergencePoints}
+            divergencePoints={filteredDivergencePoints}
             onBadgeClick={setSelectedDivergencePoint}
+            settings={divSettings.settings}
           />
         )}
 
@@ -1240,6 +1259,14 @@ export function ChartFullscreenPage({
             onClose={() => setSelectedDivergencePoint(null)}
           />
         )}
+
+        {/* Divergence Settings Modal */}
+        <DivergenceSettingsModal
+          isOpen={showDivergenceSettings}
+          onClose={() => setShowDivergenceSettings(false)}
+          settings={divSettings.settings}
+          onSettingsChange={divSettings.updateSettings}
+        />
 
         {/* Drawing Renderer */}
         <DrawingRenderer
