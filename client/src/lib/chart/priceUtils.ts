@@ -28,19 +28,36 @@ export const formatTickerDisplay = (ticker: string): string => {
 };
 
 /**
+ * Compute the number of decimal places for N significant figures at the given price.
+ */
+export function getDecimalsForPrice(price: number, sigFigs: number = 3): number {
+  if (price === 0) return 0;
+  const magnitude = Math.floor(Math.log10(Math.abs(price)));
+  return Math.max(0, sigFigs - magnitude - 1);
+}
+
+/**
+ * Format price using N significant figures for smart decimal precision.
+ * Examples (3 sig figs): 123.45 → "123", 12.34 → "12.3", 1.234 → "1.23",
+ * 0.1234 → "0.123", 0.01234 → "0.0123", 0.001234 → "0.00123"
+ */
+export function formatPriceWithSignificantFigures(price: number, sigFigs: number = 3): string {
+  if (price === 0) return '0';
+
+  const decimals = getDecimalsForPrice(price, sigFigs);
+
+  return price.toFixed(decimals);
+}
+
+/**
  * Format price with smart decimal precision
  */
 export function formatPrice(price: number, precision?: number): string {
   if (precision !== undefined) {
     return price.toFixed(precision);
   }
-  
-  // Auto-detect precision based on price magnitude
-  if (price >= 1000) return price.toFixed(2);
-  if (price >= 100) return price.toFixed(3);
-  if (price >= 10) return price.toFixed(4);
-  if (price >= 1) return price.toFixed(5);
-  return price.toFixed(6);
+
+  return formatPriceWithSignificantFigures(price);
 }
 
 /**

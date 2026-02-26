@@ -452,9 +452,50 @@ const handleAIMarketReview = () => {
   // Modal manager for confirmation dialogs
   const modalManager = useModalManager();
   
+  // Undo/redo drawing history (tracks add/delete operations)
+  const drawingUndoStackRef = useRef<Array<{ type: 'add' | 'delete'; drawing: any }>>([]);
+  const drawingRedoStackRef = useRef<Array<{ type: 'add' | 'delete'; drawing: any }>>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const handleUndo = useCallback(() => {
+    const op = drawingUndoStackRef.current.pop();
+    if (!op) return;
+    drawingRedoStackRef.current.push(op);
+    setCanUndo(drawingUndoStackRef.current.length > 0);
+    setCanRedo(true);
+    if (op.type === 'add') {
+      drawingsPersistence.deleteDrawing(op.drawing.id);
+      setDrawings(prev => prev.filter(d => d.id !== op.drawing.id));
+    } else {
+      drawingsPersistence.saveDrawing({ symbol, interval, tool: op.drawing.type, points: op.drawing.points, style: op.drawing.style });
+      setDrawings(prev => [...prev, op.drawing]);
+    }
+  }, [drawingsPersistence, symbol, interval]);
+
+  const handleRedo = useCallback(() => {
+    const op = drawingRedoStackRef.current.pop();
+    if (!op) return;
+    drawingUndoStackRef.current.push(op);
+    setCanUndo(true);
+    setCanRedo(drawingRedoStackRef.current.length > 0);
+    if (op.type === 'add') {
+      drawingsPersistence.saveDrawing({ symbol, interval, tool: op.drawing.type, points: op.drawing.points, style: op.drawing.style });
+      setDrawings(prev => [...prev, op.drawing]);
+    } else {
+      drawingsPersistence.deleteDrawing(op.drawing.id);
+      setDrawings(prev => prev.filter(d => d.id !== op.drawing.id));
+    }
+  }, [drawingsPersistence, symbol, interval]);
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     onToggleDrawingMode: () => chartControls.setDrawingMode(chartControls.drawingMode === 'draw' ? 'off' : 'draw'),
+    onTurnOffDrawing: () => {
+      chartControls.setDrawingMode('off');
+      setActiveTool(null);
+      setShowToolPicker(false);
+    },
     onSelectTool: (tool) => {
       setActiveTool(tool as any);
       chartControls.setDrawingMode('draw');
@@ -466,7 +507,9 @@ const handleAIMarketReview = () => {
         modalManager.openModal('delete-drawing', { id: selectedDrawingId });
       }
     },
-    onDeselectAll: () => setSelectedDrawingId(null)
+    onDeselectAll: () => setSelectedDrawingId(null),
+    onUndo: handleUndo,
+    onRedo: handleRedo,
   });
   const [editFibMode, setEditFibMode] = useState<'none' | 'values' | 'labels'>('none');
   const [crosshairModeActive, setCrosshairModeActive] = useState(false);
@@ -796,6 +839,12 @@ useEffect(() => {
   // Save drawing mutation
   // Drawing mutation wrappers - hook handles refetching and toasts
   const saveDrawing = useCallback((drawing: any) => {
+    // Track in undo history
+    drawingUndoStackRef.current.push({ type: 'add', drawing });
+    drawingRedoStackRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+
     // Add to local state immediately for instant feedback
     // Note: The hook will refetch after save, which syncs server-generated IDs back via the useEffect at line 678
     setDrawings(d => [...d, drawing]);
@@ -811,8 +860,17 @@ useEffect(() => {
   }, [symbol, interval, drawingsPersistence]);
   
   const deleteDrawing = useCallback((drawingId: string) => {
-    // Immediately remove from local state for instant UI feedback
-    setDrawings(prev => prev.filter(d => d.id !== drawingId));
+    // Track in undo history (capture drawing before deletion)
+    setDrawings(prev => {
+      const drawing = prev.find(d => d.id === drawingId);
+      if (drawing) {
+        drawingUndoStackRef.current.push({ type: 'delete', drawing });
+        drawingRedoStackRef.current = [];
+        setCanUndo(true);
+        setCanRedo(false);
+      }
+      return prev.filter(d => d.id !== drawingId);
+    });
     setSelectedDrawingId(null);
     
     // Delete from database via hook
@@ -4861,6 +4919,54 @@ useEffect(() => {
                       <path d="M18 15a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2" strokeLinecap="round" strokeLinejoin="round"/>
                       <path d="M6 15v4" strokeLinecap="round"/>
                       <path d="M18 15v4" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                  
+                  {/* Drawing Mode Toggle Button */}
+                  <button
+                    onClick={() => chartControls.toggleDrawingMode()}
+                    className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      chartControls.drawingMode === 'draw'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
+                    }`}
+                    title={chartControls.drawingMode === 'draw' ? 'Drawing: ON (press D or click to disable)' : 'Drawing: OFF (press D or click to enable)'}
+                    data-testid="btn-drawing-toggle"
+                  >
+                    {chartControls.drawingMode === 'draw' ? 'Drawing: ON' : 'Drawing: OFF'}
+                  </button>
+                  
+                  {/* Undo Button */}
+                  <button
+                    onClick={handleUndo}
+                    disabled={!canUndo}
+                    className={`p-2 rounded-lg transition-all ${
+                      canUndo
+                        ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                        : 'bg-slate-800/40 text-gray-600 cursor-not-allowed'
+                    }`}
+                    title="Undo (Ctrl+Z)"
+                    data-testid="btn-undo"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                  </button>
+                  
+                  {/* Redo Button */}
+                  <button
+                    onClick={handleRedo}
+                    disabled={!canRedo}
+                    className={`p-2 rounded-lg transition-all ${
+                      canRedo
+                        ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+                        : 'bg-slate-800/40 text-gray-600 cursor-not-allowed'
+                    }`}
+                    title="Redo (Ctrl+Y)"
+                    data-testid="btn-redo"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
                     </svg>
                   </button>
                   
