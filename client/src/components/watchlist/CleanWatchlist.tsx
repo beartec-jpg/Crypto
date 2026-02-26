@@ -31,7 +31,7 @@ export function CleanWatchlist({ onExpandChart }: CleanWatchlistProps = { onExpa
   const [selectedSymbol, setSelectedSymbol] = useState('XRPUSDT');
 
   // Timeframe for watchlist bias calculations (drives TickerTable Select)
-  const [tableTimeframe, setTableTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h' | '1d'>('1h');
+  const [tableTimeframe, setTableTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h' | '1d' | '1w' | '1M'>('1h');
 
   // Modal state for settings
   const [showSettings, setShowSettings] = useState(false);
@@ -64,7 +64,7 @@ export function CleanWatchlist({ onExpandChart }: CleanWatchlistProps = { onExpa
 
   const handleTimeframeChange = useCallback(
     (tf: string) => {
-      const allowed = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
+      const allowed = ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'] as const;
       if (!allowed.includes(tf as any)) return;
       setTableTimeframe(tf as (typeof allowed)[number]);
     },

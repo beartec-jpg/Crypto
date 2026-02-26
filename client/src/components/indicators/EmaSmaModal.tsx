@@ -36,6 +36,8 @@ const MA_TIMEFRAMES = [
   { value: '1h', label: '1h' },
   { value: '4h', label: '4h' },
   { value: '1d', label: '1d' },
+  { value: '1w', label: '1w' },
+  { value: '1M', label: '1M' },
 ];
 
 export function EmaSmaModal({

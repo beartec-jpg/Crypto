@@ -362,7 +362,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
         maxTickers: 3,
         allowedAlertTypes: ['bos', 'choch', 'fvg', 'liquidation', 'rsi_divergence', 'rsi_overbought', 'macd_crossover', 'stoch_cross', 'cci', 'adx'],
         allowedGrades: ['A+', 'A', 'B', 'C', 'D', 'E'],
-        allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
+        allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M']
       },
       pro: {
         maxTickers: 4,
@@ -372,7 +372,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
           'ema_cross', 'sma_alignment', 'bb_squeeze', 'vwap_cross'
         ],
         allowedGrades: ['A+', 'A', 'B', 'C', 'D', 'E'],
-        allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
+        allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M']
       },
       elite: {
         maxTickers: 5,
@@ -384,7 +384,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
           'engulfing', 'hammer_star'
         ],
         allowedGrades: ['A+', 'A', 'B', 'C', 'D', 'E'],
-        allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d']
+        allowedTimeframes: ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M']
       },
     };
     // Return free limits for free tier, otherwise intermediate as fallback
