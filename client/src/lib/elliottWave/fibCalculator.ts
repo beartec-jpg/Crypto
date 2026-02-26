@@ -11,6 +11,8 @@ export interface FibLevel {
   color?: string;              // Custom line/label color
   style?: 'dashed' | 'solid'; // Line style (default: dashed)
   width?: number;              // Line width in px (default: 1.5)
+  startTime?: number;          // Unix timestamp: start of horizontal line extent
+  endTime?: number;            // Unix timestamp: end of horizontal line extent
 }
 
 export interface WaveFibResult {
