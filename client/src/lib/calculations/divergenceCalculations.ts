@@ -64,6 +64,9 @@ export const DEFAULT_OSCILLATOR_CONFIG: OscillatorConfig = {
   cciPeriod: 20,
 };
 
+/** Total number of oscillators checked for divergence */
+export const DIVERGENCE_OSCILLATOR_COUNT = 7;
+
 // ==================== CORE FUNCTIONS ====================
 
 /**

@@ -3,6 +3,8 @@ import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import type { Time } from 'lightweight-charts';
 import type { DivergencePoint } from '@/types/chart.types';
 import { getDivergenceBadgeColor } from '@/lib/calculations/divergenceCalculations';
+import { DIVERGENCE_OSCILLATOR_COUNT } from '@/lib/calculations/divergenceCalculations';
+import type { DivergenceSettings } from '@/hooks/useDivergenceSettings';
 
 interface BadgePosition {
   point: DivergencePoint;
@@ -15,11 +17,14 @@ const BEARISH_BADGE_OFFSET = 28;
 /** Pixels below the price to position bullish (bottom) badges */
 const BULLISH_BADGE_OFFSET = 10;
 
+const TOTAL_INDICATORS = DIVERGENCE_OSCILLATOR_COUNT;
+
 interface DivergenceRendererProps {
   chart: IChartApi | null;
   candleSeries: ISeriesApi<'Candlestick'> | null;
   divergencePoints: DivergencePoint[];
   onBadgeClick: (point: DivergencePoint) => void;
+  settings: DivergenceSettings;
 }
 
 export function DivergenceRenderer({
@@ -27,6 +32,7 @@ export function DivergenceRenderer({
   candleSeries,
   divergencePoints,
   onBadgeClick,
+  settings,
 }: DivergenceRendererProps) {
   const [positions, setPositions] = useState<BadgePosition[]>([]);
 
@@ -67,8 +73,15 @@ export function DivergenceRenderer({
   return (
     <>
       {positions.map((pos, i) => {
-        const bgColor = getDivergenceBadgeColor(pos.point.count);
-        const emoji = pos.point.type === 'bullish' ? '🐂' : '🐻';
+        const bgColor = settings.showColors
+          ? getDivergenceBadgeColor(pos.point.count)
+          : 'bg-gray-600';
+        const emoji = settings.showEmoji
+          ? (pos.point.type === 'bullish' ? '🐂' : '🐻')
+          : '';
+        const displayValue = settings.displayFormat === 'percentage'
+          ? `${Math.round((pos.point.count / TOTAL_INDICATORS) * 100)}%`
+          : pos.point.count.toString();
 
         return (
           <button
@@ -85,8 +98,8 @@ export function DivergenceRenderer({
             }}
             title={`${pos.point.type === 'bullish' ? 'Bullish' : 'Bearish'} divergence – ${pos.point.count}/7 indicators`}
           >
-            <span>{emoji}</span>
-            <span>{pos.point.count}</span>
+            {emoji && <span>{emoji}</span>}
+            <span>{displayValue}</span>
           </button>
         );
       })}
