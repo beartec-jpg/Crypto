@@ -33,6 +33,10 @@ import { Button } from '@/components/ui/button';
 import { EmaSmaModal } from '@/components/indicators';
 import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
 import { AutoFibSettingsModal } from '@/components/modals/AutoFibSettingsModal';
+import { SuperTrendSettingsModal } from '@/components/modals/SuperTrendSettingsModal';
+import { SuperTrendRenderer } from '@/components/indicators/SuperTrendRenderer';
+import { useSuperTrendSettings } from '@/hooks/useSuperTrendSettings';
+import { useSuperTrendCalculation } from '@/hooks/useSuperTrendCalculation';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
 import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
 import { BreakerBlockRenderer } from '@/components/indicators/BreakerBlockRenderer';
@@ -274,6 +278,7 @@ export function ChartFullscreenPage({
   const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
   const [showSmcModal, setShowSmcModal] = useState(false);
   const [showAutoFibModal, setShowAutoFibModal] = useState(false);
+  const [showSuperTrendModal, setShowSuperTrendModal] = useState(false);
   const [tempDrawing, setTempDrawing] = useState<{ points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null>(null);
 
   // Wave selection state – track which saved EW wave is selected and its fib projections
@@ -396,6 +401,10 @@ export function ChartFullscreenPage({
   // Hooks - Auto-Fibonacci detection
   const autoFibSettings = useAutoFibSettings();
   const autoFibZones = useAutoFibDetection(candles, autoFibSettings.settings);
+
+  // Hooks - SuperTrend
+  const superTrendSettings = useSuperTrendSettings();
+  const superTrendData = useSuperTrendCalculation(candles, superTrendSettings.settings);
 
   // Hooks - Divergence Scanner
   const divergencePoints = useDivergenceScanner(candles, DEFAULT_OSCILLATOR_CONFIG);
@@ -1139,6 +1148,12 @@ export function ChartFullscreenPage({
             divergenceScannerEnabled={divergenceScannerEnabled}
             onToggleDivergenceScanner={setDivergenceScannerEnabled}
             onOpenDivergenceSettings={() => setShowDivergenceSettings(true)}
+            superTrendEnabled={
+              superTrendSettings.settings.standard.enabled ||
+              superTrendSettings.settings.adx.enabled ||
+              superTrendSettings.settings.keltner.enabled
+            }
+            onOpenSuperTrendSettings={() => setShowSuperTrendModal(true)}
           />
 
           {/* Drawing Mode Toggle Button */}
@@ -1304,6 +1319,14 @@ export function ChartFullscreenPage({
           candleSeries={candleSeriesRef.current}
           zones={autoFibZones}
           settings={autoFibSettings.settings}
+        />
+
+        {/* SuperTrend Renderer */}
+        <SuperTrendRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          data={superTrendData}
+          settings={superTrendSettings.settings}
         />
 
         {/* Divergence Scanner – badges overlaid on chart */}
@@ -1663,6 +1686,13 @@ export function ChartFullscreenPage({
         onClose={() => setShowAutoFibModal(false)}
         settings={autoFibSettings.settings}
         onSettingsChange={autoFibSettings.updateSettings}
+      />
+
+      <SuperTrendSettingsModal
+        isOpen={showSuperTrendModal}
+        onClose={() => setShowSuperTrendModal(false)}
+        settings={superTrendSettings.settings}
+        onSettingsChange={superTrendSettings.updateConfig}
       />
     </div>
   );
