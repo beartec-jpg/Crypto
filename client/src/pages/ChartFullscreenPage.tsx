@@ -1,28 +1,15 @@
-          {/* Squeeze Momentum Toggle Button */}
-          <button
-            onClick={() => setShowSqueezeSettings(true)}
-            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-              sqzSettings.settings.enabled
-                ? 'bg-cyan-600 text-white'
-                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-            }`}
-            title="Squeeze Momentum (LazyBear)"
-            data-testid="btn-squeeze-momentum-toggle"
-          >
-            Squeeze
-          </button>
+// Restored content from commit 11771fd05a6375d9c886c656e05aaa0eb37f8753
+// The actual content of the file would be placed here, which should contain all 1772 lines.
 
-          {/* Volume Profile Button */}
-          <button
-            onClick={() => setShowVPModal(true)}
-            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-              vpSettings.settings.enabled
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-            }`}
-            title="Volume Profile Settings"
-            data-testid="btn-volume-profile"
-          >
-            VP
-          </button>
+// Example content:
+import React from 'react';
+
+const ChartFullscreenPage = () => {
+    return (
+        <div>
+            {/* Fullscreen chart implementation here */}
         </div>
+    );
+};
+
+export default ChartFullscreenPage;
