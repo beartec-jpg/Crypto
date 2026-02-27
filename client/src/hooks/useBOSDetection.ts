@@ -384,7 +384,8 @@ export function useBOSDetection({
   orderBlocks = [],
 }: UseBOSDetectionOptions): UseBOSDetectionResult {
   return useMemo(() => {
-    if (!settings.enabled || candles.length < setti, sessionSeparators: [] };
+    if (!settings.enabled || candles.length < settings.swingLookback) {
+      return { swingPoints: [], structureBreaks: [], sessionSeparators: [] };
     }
 
     const swingPoints = detectSwingPoints(candles, settings.swingLookback);
@@ -407,7 +408,6 @@ export function useBOSDetection({
         )
       : [];
 
-    return { swingPoints, structureBreaks, sessionSeparator
-    return { swingPoints, structureBreaks };
+    return { swingPoints, structureBreaks, sessionSeparators };
   }, [candles, settings, fvgs, orderBlocks]);
 }
