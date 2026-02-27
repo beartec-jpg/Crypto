@@ -235,6 +235,7 @@ export function ChartFullscreenPage({
   const [showAlertSettings, setShowAlertSettings] = useState(false);
   const [showDrawingAlertSettings, setShowDrawingAlertSettings] = useState(false);
   const [selectedDrawingForAlerts, setSelectedDrawingForAlerts] = useState<Drawing | null>(null);
+  const [isLiveSignalCollapsed, setIsLiveSignalCollapsed] = useState(false);
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -610,9 +611,12 @@ export function ChartFullscreenPage({
       name: system.name,
       historicalSignalCount: historicalSystemSignalEvents.length,
       lookbackCandles: Math.min(400, Math.max(0, candles.length - 1)),
-      latestHistoricalSignal: historicalSystemSignalEvents[historicalSystemSignalEvents.length - 1] ?? null,
     };
   }, [tradingSystem.activeSystem, historicalSystemSignalEvents, candles.length]);
+
+  useEffect(() => {
+    setIsLiveSignalCollapsed(false);
+  }, [tradingSystem.activeSystem]);
 
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
@@ -873,15 +877,8 @@ export function ChartFullscreenPage({
           <div className="absolute top-12 left-2 z-40 rounded-lg border border-blue-700/70 bg-slate-900/95 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur-sm">
             <div className="font-semibold text-blue-300">{activeSystemSummary.name} • Signal Replay</div>
             <div className="mt-1 text-slate-300">
-              {activeSystemSummary.historicalSignalCount > 0
-                ? `Found ${activeSystemSummary.historicalSignalCount} activations in last ${activeSystemSummary.lookbackCandles} candles`
-                : `No activations in last ${activeSystemSummary.lookbackCandles} candles`}
+              {activeSystemSummary.historicalSignalCount} signals found in {activeSystemSummary.lookbackCandles} candles
             </div>
-            {activeSystemSummary.latestHistoricalSignal && (
-              <div className="mt-1 text-[11px] text-slate-400">
-                Last: {activeSystemSummary.latestHistoricalSignal.action} • {activeSystemSummary.latestHistoricalSignal.primaryReason}
-              </div>
-            )}
           </div>
         )}
 
@@ -892,7 +889,12 @@ export function ChartFullscreenPage({
               <span className="rounded border border-slate-600 px-1.5 py-0.5 text-[10px] text-slate-300">Active</span>
             </div>
             <div className="mb-3 rounded border border-slate-700 bg-slate-800/70 p-2">
-              <div className="mb-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setIsLiveSignalCollapsed(prev => !prev)}
+                className="mb-2 flex w-full items-center justify-between rounded px-1 py-1 text-left hover:bg-slate-700/40"
+                title={isLiveSignalCollapsed ? 'Expand live signal details' : 'Collapse to signal only'}
+              >
                 <span className="text-[10px] uppercase tracking-wide text-slate-400">Live Signal</span>
                 <span className={
                   activeSystemDetails.signalAction === 'OPEN LONG'
@@ -903,48 +905,61 @@ export function ChartFullscreenPage({
                 }>
                   {activeSystemDetails.signalAction}
                 </span>
-              </div>
-              <div className="mb-2 text-[10px] text-slate-400">
-                Backfilled {activeSystemDetails.historicalSignalCount} historical signals on chart
-              </div>
-              <div className="mb-2 space-y-1">
-                {activeSystemDetails.signalReasons.map((reason, index) => (
-                  <div key={`${activeSystemDetails.system.id}-live-reason-${index}`} className="text-slate-300">
-                    • {reason}
+              </button>
+
+              {!isLiveSignalCollapsed && (
+                <>
+                  <div className="mb-2 text-[10px] text-slate-400">
+                    Backfilled {activeSystemDetails.historicalSignalCount} historical signals on chart
                   </div>
-                ))}
-              </div>
-              <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">Previous Candle</div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                <span className="text-slate-400">Open</span>
-                <span>{activeSystemDetails.previousOpen.toFixed(4)}</span>
-                <span className="text-slate-400">Close</span>
-                <span>{activeSystemDetails.previousClose.toFixed(4)}</span>
-                <span className="text-slate-400">Direction</span>
-                <span className={activeSystemDetails.previousDirection === 'Bullish' ? 'text-emerald-400' : 'text-rose-400'}>
-                  {activeSystemDetails.previousDirection}
-                </span>
-                <span className="text-slate-400">Delta</span>
-                <span className={activeSystemDetails.previousDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                  {activeSystemDetails.previousDelta >= 0 ? '+' : ''}
-                  {activeSystemDetails.previousDelta.toFixed(4)}
-                </span>
-              </div>
-            </div>
-            <div>
-              <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">System Signals</div>
-              {activeSystemDetails.signals.length > 0 ? (
-                <div className="space-y-1">
-                  {activeSystemDetails.signals.slice(0, 4).map((signal, index) => (
-                    <div key={`${activeSystemDetails.system.id}-signal-${index}`} className="rounded border border-slate-700 bg-slate-800/60 px-2 py-1 text-slate-300">
-                      {signal}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-slate-400">No configured signal criteria for this system.</div>
+                  <div className="mb-2 space-y-1">
+                    {activeSystemDetails.signalReasons.map((reason, index) => (
+                      <div key={`${activeSystemDetails.system.id}-live-reason-${index}`} className="text-slate-300">
+                        • {reason}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {!isLiveSignalCollapsed && (
+                <>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">Previous Candle</div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    <span className="text-slate-400">Open</span>
+                    <span>{activeSystemDetails.previousOpen.toFixed(4)}</span>
+                    <span className="text-slate-400">Close</span>
+                    <span>{activeSystemDetails.previousClose.toFixed(4)}</span>
+                    <span className="text-slate-400">Direction</span>
+                    <span className={activeSystemDetails.previousDirection === 'Bullish' ? 'text-emerald-400' : 'text-rose-400'}>
+                      {activeSystemDetails.previousDirection}
+                    </span>
+                    <span className="text-slate-400">Delta</span>
+                    <span className={activeSystemDetails.previousDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                      {activeSystemDetails.previousDelta >= 0 ? '+' : ''}
+                      {activeSystemDetails.previousDelta.toFixed(4)}
+                    </span>
+                  </div>
+                </>
               )}
             </div>
+
+            {!isLiveSignalCollapsed && (
+              <div>
+                <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">System Signals</div>
+                {activeSystemDetails.signals.length > 0 ? (
+                  <div className="space-y-1">
+                    {activeSystemDetails.signals.slice(0, 4).map((signal, index) => (
+                      <div key={`${activeSystemDetails.system.id}-signal-${index}`} className="rounded border border-slate-700 bg-slate-800/60 px-2 py-1 text-slate-300">
+                        {signal}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-400">No configured signal criteria for this system.</div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
