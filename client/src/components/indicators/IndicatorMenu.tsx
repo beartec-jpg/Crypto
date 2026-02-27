@@ -15,9 +15,13 @@ import type { MAConfig } from '@/types/chart.types';
 const OSCILLATORS = [
   { id: 'rsi', name: 'RSI', description: 'Relative Strength Index (14)' },
   { id: 'macd', name: 'MACD', description: 'MACD (12, 26, 9)' },
+  { id: 'waddah', name: 'Waddah Explosion', description: 'MACD momentum + volatility explosion' },
+  { id: 'cmf', name: 'CMF', description: 'Chaikin Money Flow (20)' },
   { id: 'stochRsi', name: 'Stoch RSI', description: 'Stochastic RSI (14)' },
+  { id: 'tsi', name: 'TSI', description: 'True Strength Index (25, 13, 7)' },
   { id: 'obv', name: 'OBV', description: 'On Balance Volume' },
   { id: 'mfi', name: 'MFI', description: 'Money Flow Index (14)' },
+  { id: 'klinger', name: 'Klinger', description: 'Klinger Oscillator (34, 55, 13)' },
   { id: 'williamsR', name: 'Williams %R', description: 'Williams Percent Range (14)' },
   { id: 'cci', name: 'CCI', description: 'Commodity Channel Index (20)' },
   { id: 'adx', name: 'ADX', description: 'Average Directional Index (14)' },
@@ -37,6 +41,8 @@ interface IndicatorMenuProps {
   smaConfigs: MAConfig[];
   vwapShow: boolean;
   onVwapToggle: (show: boolean) => void;
+  elderImpulseShow: boolean;
+  onElderImpulseToggle: (show: boolean) => void;
   onOpenEmaSma: () => void;
   // SMC
   fvgSettings: FVGSettings;
@@ -93,6 +99,8 @@ export function IndicatorMenu({
   smaConfigs,
   vwapShow,
   onVwapToggle,
+  elderImpulseShow,
+  onElderImpulseToggle,
   onOpenEmaSma,
   fvgSettings,
   onFVGSettingsChange,
@@ -117,6 +125,7 @@ export function IndicatorMenu({
     (emaShow ? 1 : 0) +
     (smaShow ? 1 : 0) +
     (vwapShow ? 1 : 0) +
+    (elderImpulseShow ? 1 : 0) +
     (fvgSettings.enabled ? 1 : 0) +
     (obSettings.enabled ? 1 : 0) +
     (bosSettings.enabled ? 1 : 0) +
@@ -251,6 +260,12 @@ export function IndicatorMenu({
                 description="Volume Weighted Average Price"
                 checked={vwapShow}
                 onCheckedChange={onVwapToggle}
+              />
+              <IndicatorRow
+                label="Elder Impulse"
+                description="Trend impulse bars (MACD + EMA)"
+                checked={elderImpulseShow}
+                onCheckedChange={onElderImpulseToggle}
               />
             </div>
           </TabsContent>

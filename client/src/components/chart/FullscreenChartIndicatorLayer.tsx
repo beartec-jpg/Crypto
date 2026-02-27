@@ -9,6 +9,7 @@ import { AutoFibRenderer } from '@/components/indicators/AutoFibRenderer';
 import { VolumeProfileRenderer } from '@/components/indicators/VolumeProfileRenderer';
 import { VolumeProfileSettingsModal } from '@/components/modals/VolumeProfileSettingsModal';
 import { SuperTrendRenderer } from '@/components/indicators/SuperTrendRenderer';
+import { ElderImpulseRenderer } from '@/components/indicators/ElderImpulseRenderer';
 import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
 import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
 import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
@@ -24,6 +25,7 @@ interface FullscreenChartIndicatorLayerProps {
   emaHTFDataCache: any;
   symbol: string;
   interval: string;
+  elderImpulseEnabled: boolean;
 
   fvgs: any[];
   fvgSettings: any;
@@ -77,6 +79,7 @@ export function FullscreenChartIndicatorLayer({
   emaHTFDataCache,
   symbol,
   interval,
+  elderImpulseEnabled,
   fvgs,
   fvgSettings,
   orderBlocks,
@@ -125,6 +128,12 @@ export function FullscreenChartIndicatorLayer({
         emaHTFDataCache={emaHTFDataCache}
         symbol={symbol}
         interval={interval}
+      />
+
+      <ElderImpulseRenderer
+        chart={chart}
+        candles={candles}
+        show={elderImpulseEnabled}
       />
 
       <FVGRenderer

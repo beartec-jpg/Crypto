@@ -19,6 +19,8 @@ interface FullscreenChartActionToolbarProps {
   smaConfigs: any;
   vwapShow: boolean;
   onVwapToggle: (show: boolean) => void;
+  elderImpulseShow: boolean;
+  onElderImpulseToggle: (show: boolean) => void;
   onOpenEmaSma: () => void;
 
   fvgSettings: any;
@@ -74,6 +76,8 @@ export function FullscreenChartActionToolbar({
   smaConfigs,
   vwapShow,
   onVwapToggle,
+  elderImpulseShow,
+  onElderImpulseToggle,
   onOpenEmaSma,
   fvgSettings,
   onFVGSettingsChange,
@@ -121,6 +125,8 @@ export function FullscreenChartActionToolbar({
         smaConfigs={smaConfigs}
         vwapShow={vwapShow}
         onVwapToggle={onVwapToggle}
+        elderImpulseShow={elderImpulseShow}
+        onElderImpulseToggle={onElderImpulseToggle}
         onOpenEmaSma={onOpenEmaSma}
         fvgSettings={fvgSettings}
         onFVGSettingsChange={onFVGSettingsChange}

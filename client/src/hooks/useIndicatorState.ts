@@ -144,6 +144,9 @@ export function useIndicatorState() {
   const [adxPeriod, setAdxPeriod] = useState(14);
   const [adxPeriodInput, setAdxPeriodInput] = useState('14');
 
+  // Elder Impulse overlay
+  const [showElderImpulse, setShowElderImpulse] = useState(false);
+
   return {
     // VWAP
     vwap: {
@@ -325,6 +328,11 @@ export function useIndicatorState() {
       setPeriod: setAdxPeriod,
       periodInput: adxPeriodInput,
       setPeriodInput: setAdxPeriodInput
+    },
+
+    elderImpulse: {
+      show: showElderImpulse,
+      setShow: setShowElderImpulse
     },
     
     // Bollinger Bands

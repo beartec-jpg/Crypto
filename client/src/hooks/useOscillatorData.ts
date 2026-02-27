@@ -4,8 +4,18 @@
  */
 
 import { useMemo } from 'react';
-import { calculateRSI, calculateMACD } from '@/lib/indicators/momentum';
-import { calculateOBV, calculateMFI } from '@/lib/indicators/volume';
+import {
+  calculateRSI,
+  calculateMACD,
+  calculateTSI,
+  calculateWaddahAttarExplosion,
+} from '@/lib/indicators/momentum';
+import {
+  calculateOBV,
+  calculateMFI,
+  calculateCMF,
+  calculateKlingerOscillator,
+} from '@/lib/indicators/volume';
 import {
   calculateStochasticRSI,
   calculateWilliamsR,
@@ -37,6 +47,19 @@ export interface OscillatorData {
   adx: Array<{ time: number; adx: number; plusDI: number; minusDI: number }>;
   obv: Array<{ time: number; value: number }>;
   mfi: Array<{ time: number; value: number }>;
+  cmf: Array<{ time: number; value: number }>;
+  tsi: {
+    tsi: Array<{ time: number; value: number }>;
+    signal: Array<{ time: number; value: number }>;
+  };
+  klinger: {
+    klinger: Array<{ time: number; value: number }>;
+    signal: Array<{ time: number; value: number }>;
+  };
+  waddah: {
+    histogram: Array<{ time: number; value: number; color: string }>;
+    explosion: Array<{ time: number; value: number }>;
+  };
 }
 
 // Number of candles to use for volume average calculation
@@ -61,6 +84,10 @@ export function useOscillatorData(candles: CandleData[]): OscillatorData {
         adx: [],
         obv: [],
         mfi: [],
+        cmf: [],
+        tsi: { tsi: [], signal: [] },
+        klinger: { klinger: [], signal: [] },
+        waddah: { histogram: [], explosion: [] },
       };
     }
 
@@ -91,6 +118,10 @@ export function useOscillatorData(candles: CandleData[]): OscillatorData {
       adx: calculateADX(candles, 14),
       obv: calculateOBV(candles),
       mfi: calculateMFI(candles, 14),
+      cmf: calculateCMF(candles, 20),
+      tsi: calculateTSI(candles, 25, 13, 7),
+      klinger: calculateKlingerOscillator(candles, 34, 55, 13),
+      waddah: calculateWaddahAttarExplosion(candles, 150, 20, 2),
     };
   }, [candles]);
 }

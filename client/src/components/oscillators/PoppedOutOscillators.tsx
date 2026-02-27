@@ -8,6 +8,10 @@ import { CCIPanel } from '@/components/indicators/oscillators/CCIPanel';
 import { ADXPanel } from '@/components/indicators/oscillators/ADXPanel';
 import { OBVPanel } from '@/components/indicators/oscillators/OBVPanel';
 import { MFIPanel } from '@/components/indicators/oscillators/MFIPanel';
+import { WaddahExplosionPanel } from '@/components/indicators/oscillators/WaddahExplosionPanel';
+import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
+import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
+import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 
 interface CandleData {
@@ -32,13 +36,17 @@ interface PoppedOutOscillatorsProps {
 const OSCILLATOR_CONFIG = [
   { id: 'rsi', title: 'RSI (14)', storageKey: 'oscillator-rsi', defaultPos: { x: 10, y: 80 } },
   { id: 'macd', title: 'MACD', storageKey: 'oscillator-macd', defaultPos: { x: 10, y: 220 } },
+  { id: 'waddah', title: 'Waddah Explosion', storageKey: 'oscillator-waddah', defaultPos: { x: 10, y: 360 } },
+  { id: 'cmf', title: 'CMF (20)', storageKey: 'oscillator-cmf', defaultPos: { x: 10, y: 500 } },
   { id: 'volume', title: 'Volume', storageKey: 'oscillator-volume', defaultPos: { x: 10, y: 360 } },
-  { id: 'stochRsi', title: 'Stoch RSI (14,14,3,3)', storageKey: 'oscillator-stochrsi', defaultPos: { x: 10, y: 500 } },
-  { id: 'williamsR', title: 'Williams %R (14)', storageKey: 'oscillator-williamsr', defaultPos: { x: 10, y: 640 } },
+  { id: 'stochRsi', title: 'Stoch RSI (14,14,3,3)', storageKey: 'oscillator-stochrsi', defaultPos: { x: 10, y: 640 } },
+  { id: 'tsi', title: 'TSI (25,13,7)', storageKey: 'oscillator-tsi', defaultPos: { x: 10, y: 780 } },
+  { id: 'williamsR', title: 'Williams %R (14)', storageKey: 'oscillator-williamsr', defaultPos: { x: 220, y: 80 } },
   { id: 'cci', title: 'CCI (20)', storageKey: 'oscillator-cci', defaultPos: { x: 220, y: 80 } },
   { id: 'adx', title: 'ADX (14)', storageKey: 'oscillator-adx', defaultPos: { x: 220, y: 220 } },
   { id: 'obv', title: 'OBV', storageKey: 'oscillator-obv', defaultPos: { x: 220, y: 360 } },
   { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi', defaultPos: { x: 220, y: 500 } },
+  { id: 'klinger', title: 'Klinger (34,55,13)', storageKey: 'oscillator-klinger', defaultPos: { x: 220, y: 640 } },
 ];
 
 export function PoppedOutOscillators({
@@ -66,10 +74,28 @@ export function PoppedOutOscillators({
             mainChartVisibleRange={mainChartVisibleRange}
           />
         );
+      case 'waddah':
+        return (
+          <WaddahExplosionPanel
+            histogramData={oscillatorData.waddah.histogram}
+            explosionData={oscillatorData.waddah.explosion}
+            mainChartVisibleRange={mainChartVisibleRange}
+          />
+        );
+      case 'cmf':
+        return <CMFPanel data={oscillatorData.cmf} mainChartVisibleRange={mainChartVisibleRange} />;
       case 'volume':
         return <VolumePanel data={oscillatorData.volume} mainChartVisibleRange={mainChartVisibleRange} />;
       case 'stochRsi':
         return <StochasticPanel data={oscillatorData.stochRsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+      case 'tsi':
+        return (
+          <TSIPanel
+            tsiData={oscillatorData.tsi.tsi}
+            signalData={oscillatorData.tsi.signal}
+            mainChartVisibleRange={mainChartVisibleRange}
+          />
+        );
       case 'williamsR':
         return <WilliamsRPanel data={oscillatorData.williamsR} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
       case 'cci':
@@ -80,6 +106,14 @@ export function PoppedOutOscillators({
         return <OBVPanel data={oscillatorData.obv} mainChartVisibleRange={mainChartVisibleRange} />;
       case 'mfi':
         return <MFIPanel data={oscillatorData.mfi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+      case 'klinger':
+        return (
+          <KlingerPanel
+            klingerData={oscillatorData.klinger.klinger}
+            signalData={oscillatorData.klinger.signal}
+            mainChartVisibleRange={mainChartVisibleRange}
+          />
+        );
       default:
         return null;
     }

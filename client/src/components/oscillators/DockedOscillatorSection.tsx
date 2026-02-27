@@ -7,6 +7,10 @@ import { CCIPanel } from '@/components/indicators/oscillators/CCIPanel';
 import { ADXPanel } from '@/components/indicators/oscillators/ADXPanel';
 import { OBVPanel } from '@/components/indicators/oscillators/OBVPanel';
 import { MFIPanel } from '@/components/indicators/oscillators/MFIPanel';
+import { WaddahExplosionPanel } from '@/components/indicators/oscillators/WaddahExplosionPanel';
+import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
+import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
+import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import { SqueezeMomentumPanel } from '@/components/oscillators/SqueezeMomentumPanel';
 import { OSCILLATOR_PANEL_HEIGHT_PER, MOBILE_NAV_HEIGHT, TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
@@ -100,6 +104,36 @@ export function DockedOscillatorSection({
             />
           </div>
         )}
+
+        {selectedOscillators.has('waddah') && !poppedOutOscillators.has('waddah') && !miniOscillators?.has('waddah') && (
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+            <div
+              onClick={() => onCycleMode?.('waddah')}
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+            >
+              <span>Waddah Explosion</span>
+              <span className="text-slate-600 ml-2">tap to cycle</span>
+            </div>
+            <WaddahExplosionPanel
+              histogramData={oscillatorData.waddah.histogram}
+              explosionData={oscillatorData.waddah.explosion}
+              mainChartVisibleRange={mainChartVisibleRange}
+            />
+          </div>
+        )}
+
+        {selectedOscillators.has('cmf') && !poppedOutOscillators.has('cmf') && !miniOscillators?.has('cmf') && (
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+            <div
+              onClick={() => onCycleMode?.('cmf')}
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+            >
+              <span>CMF (20)</span>
+              <span className="text-slate-600 ml-2">tap to cycle</span>
+            </div>
+            <CMFPanel data={oscillatorData.cmf} mainChartVisibleRange={mainChartVisibleRange} />
+          </div>
+        )}
         
         {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && !miniOscillators?.has('volume') && (
           <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
@@ -124,6 +158,23 @@ export function DockedOscillatorSection({
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
             <StochasticPanel data={oscillatorData.stochRsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
+          </div>
+        )}
+
+        {selectedOscillators.has('tsi') && !poppedOutOscillators.has('tsi') && !miniOscillators?.has('tsi') && (
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+            <div
+              onClick={() => onCycleMode?.('tsi')}
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+            >
+              <span>TSI (25,13,7)</span>
+              <span className="text-slate-600 ml-2">tap to cycle</span>
+            </div>
+            <TSIPanel
+              tsiData={oscillatorData.tsi.tsi}
+              signalData={oscillatorData.tsi.signal}
+              mainChartVisibleRange={mainChartVisibleRange}
+            />
           </div>
         )}
 
@@ -189,6 +240,23 @@ export function DockedOscillatorSection({
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
             <MFIPanel data={oscillatorData.mfi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
+          </div>
+        )}
+
+        {selectedOscillators.has('klinger') && !poppedOutOscillators.has('klinger') && !miniOscillators?.has('klinger') && (
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+            <div
+              onClick={() => onCycleMode?.('klinger')}
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+            >
+              <span>Klinger (34,55,13)</span>
+              <span className="text-slate-600 ml-2">tap to cycle</span>
+            </div>
+            <KlingerPanel
+              klingerData={oscillatorData.klinger.klinger}
+              signalData={oscillatorData.klinger.signal}
+              mainChartVisibleRange={mainChartVisibleRange}
+            />
           </div>
         )}
 

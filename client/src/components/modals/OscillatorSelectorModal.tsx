@@ -11,13 +11,17 @@ interface OscillatorSelectorModalProps {
 const OSCILLATORS = [
   { id: 'rsi', name: 'RSI', description: 'Relative Strength Index (14)' },
   { id: 'macd', name: 'MACD', description: 'Moving Average Convergence Divergence' },
+  { id: 'waddah', name: 'Waddah Explosion', description: 'MACD momentum + volatility explosion' },
+  { id: 'cmf', name: 'CMF', description: 'Chaikin Money Flow (20)' },
   { id: 'volume', name: 'Volume', description: 'Trading Volume vs Average' },
   { id: 'stochRsi', name: 'Stoch RSI', description: 'Stochastic RSI (14,14,3,3)' },
+  { id: 'tsi', name: 'TSI', description: 'True Strength Index (25,13,7)' },
   { id: 'williamsR', name: 'Williams %R', description: 'Williams Percent Range (14)' },
   { id: 'cci', name: 'CCI', description: 'Commodity Channel Index (20)' },
   { id: 'adx', name: 'ADX', description: 'Average Directional Index (14)' },
   { id: 'obv', name: 'OBV', description: 'On Balance Volume' },
   { id: 'mfi', name: 'MFI', description: 'Money Flow Index (14)' },
+  { id: 'klinger', name: 'Klinger', description: 'Klinger Oscillator (34,55,13)' },
 ];
 
 export function OscillatorSelectorModal({

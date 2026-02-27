@@ -436,6 +436,8 @@ export function ChartFullscreenPage({
           smaConfigs={indicators.sma.configs}
           vwapShow={indicators.vwap.showSession}
           onVwapToggle={indicators.vwap.setShowSession}
+          elderImpulseShow={indicators.elderImpulse.show}
+          onElderImpulseToggle={indicators.elderImpulse.setShow}
           onOpenEmaSma={() => setShowEmaSmaModal(true)}
           fvgSettings={fvgSettings.settings}
           onFVGSettingsChange={fvgSettings.setSettings}
@@ -504,6 +506,7 @@ export function ChartFullscreenPage({
           emaHTFDataCache={htfDataCache}
           symbol={symbol}
           interval={timeframe}
+          elderImpulseEnabled={indicators.elderImpulse.show}
           fvgs={fvgs}
           fvgSettings={fvgSettings.settings}
           orderBlocks={orderBlocks}

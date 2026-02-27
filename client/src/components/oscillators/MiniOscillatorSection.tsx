@@ -77,6 +77,31 @@ function getMFIStatus(value: number): { label: string; value: string; color: str
   return { label: 'MFI', value: `${value.toFixed(0)}`, color: 'text-yellow-400', zone: 'NEU' };
 }
 
+function getCMFStatus(value: number): { label: string; value: string; color: string; zone: string } {
+  if (value > 0.1) return { label: 'CMF', value: value.toFixed(2), color: 'text-green-400', zone: 'Buy' };
+  if (value < -0.1) return { label: 'CMF', value: value.toFixed(2), color: 'text-red-400', zone: 'Sell' };
+  return { label: 'CMF', value: value.toFixed(2), color: 'text-yellow-400', zone: 'NEU' };
+}
+
+function getWaddahStatus(value: number, explosion: number): { label: string; value: string; color: string; zone: string } {
+  const isExplosive = Math.abs(value) > explosion;
+  if (value > 0) return { label: 'WAE', value: value.toFixed(2), color: 'text-green-400', zone: isExplosive ? 'BOOM' : 'Bull' };
+  if (value < 0) return { label: 'WAE', value: value.toFixed(2), color: 'text-red-400', zone: isExplosive ? 'BOOM' : 'Bear' };
+  return { label: 'WAE', value: value.toFixed(2), color: 'text-yellow-400', zone: 'Flat' };
+}
+
+function getTSIStatus(tsi: number, signal: number): { label: string; value: string; color: string; zone: string } {
+  if (tsi > signal) return { label: 'TSI', value: tsi.toFixed(1), color: 'text-green-400', zone: 'Bull' };
+  if (tsi < signal) return { label: 'TSI', value: tsi.toFixed(1), color: 'text-red-400', zone: 'Bear' };
+  return { label: 'TSI', value: tsi.toFixed(1), color: 'text-yellow-400', zone: 'NEU' };
+}
+
+function getKlingerStatus(klinger: number, signal: number): { label: string; value: string; color: string; zone: string } {
+  if (klinger > signal) return { label: 'KL', value: klinger.toFixed(0), color: 'text-green-400', zone: 'Bull' };
+  if (klinger < signal) return { label: 'KL', value: klinger.toFixed(0), color: 'text-red-400', zone: 'Bear' };
+  return { label: 'KL', value: klinger.toFixed(0), color: 'text-yellow-400', zone: 'NEU' };
+}
+
 export function MiniOscillatorSection({
   miniOscillators,
   oscillatorData,
@@ -99,6 +124,21 @@ export function MiniOscillatorSection({
     newMiniItems.push({ id: 'macd', label: 'MACD', value: lastMACD.toFixed(4), color: s.color, zone: s.label });
   }
 
+  if (miniOscillators.has('waddah') && oscillatorData.waddah.histogram.length > 0) {
+    const lastHist = oscillatorData.waddah.histogram[oscillatorData.waddah.histogram.length - 1].value;
+    const lastExplosion = oscillatorData.waddah.explosion.length > 0
+      ? oscillatorData.waddah.explosion[oscillatorData.waddah.explosion.length - 1].value
+      : 0;
+    const s = getWaddahStatus(lastHist, lastExplosion);
+    newMiniItems.push({ id: 'waddah', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('cmf') && oscillatorData.cmf.length > 0) {
+    const lastCMF = oscillatorData.cmf[oscillatorData.cmf.length - 1].value;
+    const s = getCMFStatus(lastCMF);
+    newMiniItems.push({ id: 'cmf', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
   if (miniOscillators.has('volume') && oscillatorData.volume.length > 0) {
     const lastVolume = oscillatorData.volume[oscillatorData.volume.length - 1].value;
     let formattedValue: string;
@@ -117,6 +157,15 @@ export function MiniOscillatorSection({
     const last = oscillatorData.stochRsi[oscillatorData.stochRsi.length - 1];
     const s = getStochRSIStatus(last.k, last.d);
     newMiniItems.push({ id: 'stochRsi', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('tsi') && oscillatorData.tsi.tsi.length > 0) {
+    const tsiLen = oscillatorData.tsi.tsi.length;
+    const signalLen = oscillatorData.tsi.signal.length;
+    const lastTSI = oscillatorData.tsi.tsi[tsiLen - 1].value;
+    const lastSignal = signalLen > 0 ? oscillatorData.tsi.signal[signalLen - 1].value : lastTSI;
+    const s = getTSIStatus(lastTSI, lastSignal);
+    newMiniItems.push({ id: 'tsi', label: s.label, value: s.value, color: s.color, zone: s.zone });
   }
 
   if (miniOscillators.has('williamsR') && oscillatorData.williamsR.length > 0) {
@@ -151,6 +200,15 @@ export function MiniOscillatorSection({
     const last = oscillatorData.mfi[oscillatorData.mfi.length - 1].value;
     const s = getMFIStatus(last);
     newMiniItems.push({ id: 'mfi', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('klinger') && oscillatorData.klinger.klinger.length > 0) {
+    const klingerLen = oscillatorData.klinger.klinger.length;
+    const signalLen = oscillatorData.klinger.signal.length;
+    const lastKlinger = oscillatorData.klinger.klinger[klingerLen - 1].value;
+    const lastSignal = signalLen > 0 ? oscillatorData.klinger.signal[signalLen - 1].value : lastKlinger;
+    const s = getKlingerStatus(lastKlinger, lastSignal);
+    newMiniItems.push({ id: 'klinger', label: s.label, value: s.value, color: s.color, zone: s.zone });
   }
 
   return (
