@@ -5,6 +5,14 @@ import { ToolsMenu } from '@/components/tools/ToolsMenu';
 import { TradingSystemsMenu } from '@/components/tradingSystems/TradingSystemsMenu';
 import type { TradingSystemId } from '@/types/tradingSystems';
 
+interface ConfluenceSnapshot {
+  score: number;
+  longCount: number;
+  shortCount: number;
+  neutralCount: number;
+  updatedAt: number;
+}
+
 interface FullscreenChartActionToolbarProps {
   activeTool: ChartDrawingTool;
   onSelectTool: (tool: ChartDrawingTool) => void;
@@ -66,6 +74,7 @@ interface FullscreenChartActionToolbarProps {
   activeSystem: TradingSystemId | null;
   onActivateSystem: (systemId: TradingSystemId) => void;
   onDeactivateSystem: () => void;
+  confluenceSnapshot: ConfluenceSnapshot | null;
 }
 
 export function FullscreenChartActionToolbar({
@@ -118,6 +127,7 @@ export function FullscreenChartActionToolbar({
   activeSystem,
   onActivateSystem,
   onDeactivateSystem,
+  confluenceSnapshot,
 }: FullscreenChartActionToolbarProps) {
   return (
     <div className="absolute top-2 left-2 z-30 flex items-center gap-1 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-1 shadow-xl">
@@ -172,6 +182,7 @@ export function FullscreenChartActionToolbar({
         activeSystem={activeSystem}
         onActivateSystem={onActivateSystem}
         onDeactivateSystem={onDeactivateSystem}
+        confluenceSnapshot={confluenceSnapshot}
       />
 
       <div className="w-px h-6 bg-slate-700" />

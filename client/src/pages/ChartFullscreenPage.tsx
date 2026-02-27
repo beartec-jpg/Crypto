@@ -254,7 +254,6 @@ export function ChartFullscreenPage({
   const [showDrawingAlertSettings, setShowDrawingAlertSettings] = useState(false);
   const [selectedDrawingForAlerts, setSelectedDrawingForAlerts] = useState<Drawing | null>(null);
   const [isLiveSignalCollapsed, setIsLiveSignalCollapsed] = useState(false);
-  const [isConfluenceCollapsed, setIsConfluenceCollapsed] = useState(true);
   const [confluenceSnapshot, setConfluenceSnapshot] = useState<{
     score: number;
     longCount: number;
@@ -727,16 +726,18 @@ export function ChartFullscreenPage({
   }, [totalConfluenceNow]);
 
   useEffect(() => {
-    if (!tradingSystem.activeSystem || !totalConfluenceNowRef.current) {
+    if (!totalConfluenceNow) {
       setConfluenceSnapshot(null);
       return;
     }
 
     setConfluenceSnapshot({
-      ...totalConfluenceNowRef.current,
+      ...totalConfluenceNow,
       updatedAt: Date.now(),
     });
+  }, [totalConfluenceNow]);
 
+  useEffect(() => {
     const intervalId = window.setInterval(() => {
       const current = totalConfluenceNowRef.current;
       if (!current) return;
@@ -750,7 +751,7 @@ export function ChartFullscreenPage({
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [tradingSystem.activeSystem]);
+  }, []);
 
   useEffect(() => {
     setIsLiveSignalCollapsed(false);
@@ -1009,49 +1010,12 @@ export function ChartFullscreenPage({
           activeSystem={tradingSystem.activeSystem}
           onActivateSystem={tradingSystem.activateSystem}
           onDeactivateSystem={tradingSystem.deactivateSystem}
+          confluenceSnapshot={confluenceSnapshot}
         />
 
         {activeSystemSummary && (
-          <div className="pointer-events-none select-none absolute top-14 left-2 z-40 rounded-md border border-blue-700/70 bg-slate-900/95 px-2 py-1 text-[11px] font-semibold text-blue-200 shadow-lg backdrop-blur-sm">
+          <div className="pointer-events-none select-none absolute top-14 left-2 z-[60] rounded-md border border-blue-700/70 bg-slate-900/95 px-2 py-1 text-[11px] font-semibold text-blue-200 shadow-lg backdrop-blur-sm">
             {activeSystemSummary.historicalSignalCount}/{activeSystemSummary.lookbackCandles}
-          </div>
-        )}
-
-        {tradingSystem.activeSystem && confluenceSnapshot && (
-          <div
-            className={`absolute top-24 left-2 z-40 rounded-md border border-slate-700 bg-slate-900/95 text-[10px] shadow-lg backdrop-blur-sm ${
-              isConfluenceCollapsed ? 'px-2 py-1' : 'px-2.5 py-1.5'
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => setIsConfluenceCollapsed(prev => !prev)}
-              className="flex w-full items-center justify-between gap-2 rounded text-left hover:bg-slate-800/70"
-              title={isConfluenceCollapsed ? 'Expand confluence status' : 'Collapse confluence status'}
-            >
-              <span className="text-[9px] uppercase tracking-wide text-slate-400">Total Confluence</span>
-              <span className={
-                confluenceSnapshot.score >= 0.35
-                  ? 'font-semibold text-emerald-300'
-                  : confluenceSnapshot.score >= 0.1
-                    ? 'font-semibold text-lime-300'
-                    : confluenceSnapshot.score <= -0.35
-                      ? 'font-semibold text-rose-300'
-                      : confluenceSnapshot.score <= -0.1
-                        ? 'font-semibold text-orange-300'
-                        : 'font-semibold text-yellow-300'
-              }>
-                {confluenceSnapshot.score > 0 ? '+' : ''}{confluenceSnapshot.score.toFixed(2)}
-              </span>
-            </button>
-
-            {!isConfluenceCollapsed && (
-              <div className="mt-1 flex items-center gap-2 text-slate-300">
-                <span>{confluenceSnapshot.longCount}L/{confluenceSnapshot.shortCount}S/{confluenceSnapshot.neutralCount}N</span>
-                <span className="text-slate-500">•</span>
-                <span className="text-slate-400">read-only</span>
-              </div>
-            )}
           </div>
         )}
 
