@@ -152,7 +152,7 @@ export function FullscreenChartActionToolbar({
         onAutoFibToggle={onAutoFibToggle}
         onOpenAutoFib={onOpenAutoFib}
       />
-      <ToolsMenu
+            <ToolsMenu
         divergenceScannerEnabled={divergenceScannerEnabled}
         onToggleDivergenceScanner={onToggleDivergenceScanner}
         onOpenDivergenceSettings={onOpenDivergenceSettings}
@@ -163,7 +163,10 @@ export function FullscreenChartActionToolbar({
         squeezeEnabled={squeezeEnabled}
         onOpenSqueezeSettings={onOpenSqueezeSettings}
         vpEnabled={vpEnabled}
-       div className="w-px h-6 bg-slate-700" />
+        onOpenVolumeProfileSettings={onOpenVolumeProfileSettings}
+      />
+
+      <div className="w-px h-6 bg-slate-700" />
 
       <TradingSystemsMenu
         activeSystem={activeSystem}
