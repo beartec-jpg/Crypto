@@ -13,7 +13,6 @@ import { useFullscreenChartLifecycle } from '@/hooks/useFullscreenChartLifecycle
 import { useHydratedDrawings } from '@/hooks/useHydratedDrawings';
 import { useFullscreenKeyboardShortcuts } from '@/hooks/useFullscreenKeyboardShortcuts';
 import { useFullscreenModalHelpers } from '@/hooks/useFullscreenModalHelpers';
-import type { FibLevel } from '@/lib/elliottWave/fibCalculator';
 
 // New extraction hooks
 import { useChartInstance } from '@/hooks/useChartInstance';
@@ -72,22 +71,6 @@ import { useSqueezeMomentum } from '@/hooks/useSqueezeMomentum';
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
 import type { DivergencePoint } from '@/types/chart.types';
 
-/** Shorten degree names to concise abbreviations for SVG labels */
-const getDegreeAbbreviation = (degree: string): string => {
-  const abbrev: Record<string, string> = {
-    'Grand Supercycle': 'GSC',
-    'Supercycle': 'SC',
-    'Cycle': 'Cyc',
-    'Primary': 'Prim',
-    'Intermediate': 'Int',
-    'Minor': 'Min',
-    'Minute': 'min',
-    'Minuette': 'min.',
-    'Sub-Minuette': 'sub',
-  };
-  return abbrev[degree] ?? degree;
-};
-
 interface ChartFullscreenPageProps {
   onClose: () => void;
   initialSymbol: string;
@@ -108,7 +91,6 @@ export function ChartFullscreenPage({
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [drawingsVisible, setDrawingsVisible] = useState(true);
   const [activeEdit, setActiveEdit] = useState<{ drawingId: string; pointIndex: number; originalDrawing: Drawing } | null>(null);
-  const [autoColorEnabled, setAutoColorEnabled] = useState(true);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
   const [showSmcModal, setShowSmcModal] = useState(false);
@@ -137,7 +119,7 @@ export function ChartFullscreenPage({
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const activeToolRef = useRef<ChartDrawingTool>(null);
-  const autoColorEnabledRef = useRef(autoColorEnabled);
+  const autoColorEnabledRef = useRef(true);
   const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
   // Hooks - Elliott Wave tool
   const elliottWave = useElliottWave();
@@ -395,7 +377,6 @@ export function ChartFullscreenPage({
 
   // Update refs
   useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
-  useEffect(() => { autoColorEnabledRef.current = autoColorEnabled; }, [autoColorEnabled]);
 
   const modalHelpers = useFullscreenModalHelpers({
     selectedDrawingId: drawingInteraction.selectedDrawingId,
