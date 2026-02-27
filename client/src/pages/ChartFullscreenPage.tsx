@@ -44,6 +44,11 @@ import { BOSRenderer } from '@/components/indicators/BOSRenderer';
 import { LiquidityRenderer } from '@/components/indicators/LiquidityRenderer';
 import { PDZoneRenderer } from '@/components/indicators/PDZoneRenderer';
 import { AutoFibRenderer } from '@/components/indicators/AutoFibRenderer';
+import { VolumeProfileRenderer } from '@/components/indicators/VolumeProfileRenderer';
+import { VolumeProfileSettingsModal } from '@/components/modals/VolumeProfileSettingsModal';
+import { useVolumeProfileSettings } from '@/hooks/useVolumeProfileSettings';
+import { useVisibleRange } from '@/hooks/useVisibleRange';
+import { useVolumeProfileCalculation } from '@/hooks/useVolumeProfileCalculation';
 import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
@@ -299,6 +304,9 @@ export function ChartFullscreenPage({
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
 
+  // Volume Profile state
+  const [showVPModal, setShowVPModal] = useState(false);
+
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const activeToolRef = useRef<ChartDrawingTool>(null);
@@ -438,6 +446,11 @@ export function ChartFullscreenPage({
     timeframes: htfBiasSettings.settings.timeframes,
     enabled: htfBiasSettings.settings.enabled,
   });
+
+  // Hooks - Volume Profile
+  const vpSettings = useVolumeProfileSettings();
+  const visibleRange = useVisibleRange(vpSettings.settings.updateOnPan ? chartRef.current : null);
+  const volumeProfileData = useVolumeProfileCalculation(candles, visibleRange, vpSettings.settings);
 
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
@@ -1225,6 +1238,20 @@ export function ChartFullscreenPage({
           >
             HTF
           </button>
+
+          {/* Volume Profile Button */}
+          <button
+            onClick={() => setShowVPModal(true)}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+              vpSettings.settings.enabled
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
+            }`}
+            title="Volume Profile Settings"
+            data-testid="btn-volume-profile"
+          >
+            VP
+          </button>
         </div>
 
         {/* Mini Oscillator Indicators */}
@@ -1321,6 +1348,20 @@ export function ChartFullscreenPage({
           settings={autoFibSettings.settings}
         />
 
+        {/* Volume Profile Renderer */}
+        <VolumeProfileRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          data={volumeProfileData}
+          settings={vpSettings.settings}
+        />
+
+        {/* Volume Profile Settings Modal */}
+        <VolumeProfileSettingsModal
+          isOpen={showVPModal}
+          onClose={() => setShowVPModal(false)}
+          settings={vpSettings.settings}
+          onSettingsChange={vpSettings.setSettings}
         {/* SuperTrend Renderer */}
         <SuperTrendRenderer
           chart={chartRef.current}
