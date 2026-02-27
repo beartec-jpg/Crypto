@@ -100,6 +100,8 @@ interface SignalEvaluationInput {
   previousClose: number;
 }
 
+const TOTAL_CONFLUENCE_REFRESH_MS = 2 * 60 * 1000;
+
 function evaluateTradingSystemSignal({
   systemId,
   lastRsi,
@@ -153,6 +155,10 @@ function evaluateTradingSystemSignal({
       if (latestStructureDirection === 'bearish') shortReasons.push('SMC structure shift bearish');
       if (latestStructureDirection === 'bullish' && latestClose > previousClose) longReasons.push('Follow-through close after shift');
       if (latestStructureDirection === 'bearish' && latestClose < previousClose) shortReasons.push('Follow-through close after shift');
+      if (latestStructureDirection === 'bullish' && stTrend === 'bullish') longReasons.push('Trend aligned with bullish shift');
+      if (latestStructureDirection === 'bearish' && stTrend === 'bearish') shortReasons.push('Trend aligned with bearish shift');
+      if (lastRsi !== undefined && lastRsi > 52) longReasons.push('Bullish momentum confirmation');
+      if (lastRsi !== undefined && lastRsi < 48) shortReasons.push('Bearish momentum confirmation');
       break;
     case 'momentum-scalper':
       if (macdBullCross) longReasons.push('MACD bullish crossover');
@@ -177,16 +183,20 @@ function evaluateTradingSystemSignal({
     case 'volume-profile':
       if (lastRsi !== undefined && prevRsi !== undefined && prevRsi <= 50 && lastRsi > 50) longReasons.push('RSI crossed above midpoint');
       if (lastRsi !== undefined && prevRsi !== undefined && prevRsi >= 50 && lastRsi < 50) shortReasons.push('RSI crossed below midpoint');
-      if (stTrend === 'bullish') longReasons.push('SuperTrend bullish confirmation');
-      if (stTrend === 'bearish') shortReasons.push('SuperTrend bearish confirmation');
+      if (latestClose > previousClose) longReasons.push('Bullish candle follow-through');
+      if (latestClose < previousClose) shortReasons.push('Bearish candle follow-through');
+      if (lastRsi !== undefined && lastRsi <= 40 && latestClose > previousClose) longReasons.push('Discount zone rebound confirmation');
+      if (lastRsi !== undefined && lastRsi >= 60 && latestClose < previousClose) shortReasons.push('Premium zone rejection confirmation');
       break;
     default:
       break;
   }
 
-  const action: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' = longReasons.length >= 2
+  const requiredConfluence = systemId === 'smart-money' ? 3 : 2;
+
+  const action: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' = longReasons.length >= requiredConfluence
     ? 'OPEN LONG'
-    : shortReasons.length >= 2
+    : shortReasons.length >= requiredConfluence
       ? 'OPEN SHORT'
       : 'WAIT';
 
@@ -244,6 +254,14 @@ export function ChartFullscreenPage({
   const [showDrawingAlertSettings, setShowDrawingAlertSettings] = useState(false);
   const [selectedDrawingForAlerts, setSelectedDrawingForAlerts] = useState<Drawing | null>(null);
   const [isLiveSignalCollapsed, setIsLiveSignalCollapsed] = useState(false);
+  const [isConfluenceCollapsed, setIsConfluenceCollapsed] = useState(true);
+  const [confluenceSnapshot, setConfluenceSnapshot] = useState<{
+    score: number;
+    longCount: number;
+    shortCount: number;
+    neutralCount: number;
+    updatedAt: number;
+  } | null>(null);
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -455,7 +473,12 @@ export function ChartFullscreenPage({
 
     let previousAction: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' = 'WAIT';
     let lastActivationIndex = -1000;
-    const minBarsBetweenActivations = tradingSystem.activeSystem === 'volume-profile' ? 12 : 4;
+    const minBarsBetweenActivations =
+      tradingSystem.activeSystem === 'volume-profile'
+        ? 12
+        : tradingSystem.activeSystem === 'smart-money'
+          ? 16
+          : 4;
 
     for (let index = startIndex; index < candles.length; index++) {
       const currentCandle = candles[index] as { time: number; close: number };
@@ -631,6 +654,103 @@ export function ChartFullscreenPage({
       lookbackCandles: Math.min(400, Math.max(0, candles.length - 1)),
     };
   }, [tradingSystem.activeSystem, historicalSystemSignalEvents, candles.length]);
+
+  const totalConfluenceNow = useMemo(() => {
+    if (candles.length < 2) return null;
+
+    const previousCandle = candles[candles.length - 2] as { time: number; open: number; close: number };
+    const latestCandle = candles[candles.length - 1] as { time: number; close: number };
+
+    const lastRsi = oscillatorData.rsi[oscillatorData.rsi.length - 1]?.value;
+    const prevRsi = oscillatorData.rsi[oscillatorData.rsi.length - 2]?.value;
+    const macdNow = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 1]?.value;
+    const macdPrev = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 2]?.value;
+    const sigNow = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 1]?.value;
+    const sigPrev = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 2]?.value;
+    const stLatest = superTrendData.standard[superTrendData.standard.length - 1];
+    const stTrend = stLatest?.trend;
+    const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
+    const latestSqz = sqzData[sqzData.length - 1];
+    const htfBullish = htfBiasEntries.filter(entry => entry.bias === 'bullish').length;
+    const htfBearish = htfBiasEntries.filter(entry => entry.bias === 'bearish').length;
+
+    const systemIds = Object.keys(TRADING_SYSTEMS) as TradingSystemId[];
+    let longCount = 0;
+    let shortCount = 0;
+    let neutralCount = 0;
+    let scoreSum = 0;
+
+    for (const systemId of systemIds) {
+      const evaluatedSignal = evaluateTradingSystemSignal({
+        systemId,
+        lastRsi,
+        prevRsi,
+        macdNow,
+        macdPrev,
+        sigNow,
+        sigPrev,
+        stTrend,
+        latestStructureDirection: latestStructureBreak?.direction,
+        sqzOff: latestSqz?.sqzOff,
+        sqzValue: latestSqz?.value,
+        htfBullish,
+        htfBearish,
+        latestClose: latestCandle.close,
+        previousClose: previousCandle.close,
+      });
+
+      if (evaluatedSignal.action === 'OPEN LONG') {
+        longCount += 1;
+        scoreSum += 1;
+      } else if (evaluatedSignal.action === 'OPEN SHORT') {
+        shortCount += 1;
+        scoreSum -= 1;
+      } else {
+        neutralCount += 1;
+      }
+    }
+
+    const score = systemIds.length > 0 ? scoreSum / systemIds.length : 0;
+
+    return {
+      score,
+      longCount,
+      shortCount,
+      neutralCount,
+    };
+  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries]);
+
+  const totalConfluenceNowRef = useRef(totalConfluenceNow);
+
+  useEffect(() => {
+    totalConfluenceNowRef.current = totalConfluenceNow;
+  }, [totalConfluenceNow]);
+
+  useEffect(() => {
+    if (!tradingSystem.activeSystem || !totalConfluenceNowRef.current) {
+      setConfluenceSnapshot(null);
+      return;
+    }
+
+    setConfluenceSnapshot({
+      ...totalConfluenceNowRef.current,
+      updatedAt: Date.now(),
+    });
+
+    const intervalId = window.setInterval(() => {
+      const current = totalConfluenceNowRef.current;
+      if (!current) return;
+
+      setConfluenceSnapshot({
+        ...current,
+        updatedAt: Date.now(),
+      });
+    }, TOTAL_CONFLUENCE_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [tradingSystem.activeSystem]);
 
   useEffect(() => {
     setIsLiveSignalCollapsed(false);
@@ -892,8 +1012,46 @@ export function ChartFullscreenPage({
         />
 
         {activeSystemSummary && (
-          <div className="absolute top-14 left-2 z-40 rounded-md border border-blue-700/70 bg-slate-900/95 px-2 py-1 text-[11px] font-semibold text-blue-200 shadow-lg backdrop-blur-sm">
+          <div className="pointer-events-none select-none absolute top-14 left-2 z-40 rounded-md border border-blue-700/70 bg-slate-900/95 px-2 py-1 text-[11px] font-semibold text-blue-200 shadow-lg backdrop-blur-sm">
             {activeSystemSummary.historicalSignalCount}/{activeSystemSummary.lookbackCandles}
+          </div>
+        )}
+
+        {tradingSystem.activeSystem && confluenceSnapshot && (
+          <div
+            className={`absolute top-24 left-2 z-40 rounded-md border border-slate-700 bg-slate-900/95 text-[10px] shadow-lg backdrop-blur-sm ${
+              isConfluenceCollapsed ? 'px-2 py-1' : 'px-2.5 py-1.5'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setIsConfluenceCollapsed(prev => !prev)}
+              className="flex w-full items-center justify-between gap-2 rounded text-left hover:bg-slate-800/70"
+              title={isConfluenceCollapsed ? 'Expand confluence status' : 'Collapse confluence status'}
+            >
+              <span className="text-[9px] uppercase tracking-wide text-slate-400">Total Confluence</span>
+              <span className={
+                confluenceSnapshot.score >= 0.35
+                  ? 'font-semibold text-emerald-300'
+                  : confluenceSnapshot.score >= 0.1
+                    ? 'font-semibold text-lime-300'
+                    : confluenceSnapshot.score <= -0.35
+                      ? 'font-semibold text-rose-300'
+                      : confluenceSnapshot.score <= -0.1
+                        ? 'font-semibold text-orange-300'
+                        : 'font-semibold text-yellow-300'
+              }>
+                {confluenceSnapshot.score > 0 ? '+' : ''}{confluenceSnapshot.score.toFixed(2)}
+              </span>
+            </button>
+
+            {!isConfluenceCollapsed && (
+              <div className="mt-1 flex items-center gap-2 text-slate-300">
+                <span>{confluenceSnapshot.longCount}L/{confluenceSnapshot.shortCount}S/{confluenceSnapshot.neutralCount}N</span>
+                <span className="text-slate-500">•</span>
+                <span className="text-slate-400">read-only</span>
+              </div>
+            )}
           </div>
         )}
 
