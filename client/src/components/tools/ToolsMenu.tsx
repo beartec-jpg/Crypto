@@ -9,6 +9,8 @@ interface ToolsMenuProps {
   divergenceScannerEnabled: boolean;
   onToggleDivergenceScanner: (enabled: boolean) => void;
   onOpenDivergenceSettings?: () => void;
+  superTrendEnabled: boolean;
+  onOpenSuperTrendSettings: () => void;
   className?: string;
 }
 
@@ -16,6 +18,8 @@ export function ToolsMenu({
   divergenceScannerEnabled,
   onToggleDivergenceScanner,
   onOpenDivergenceSettings,
+  superTrendEnabled,
+  onOpenSuperTrendSettings,
   className,
 }: ToolsMenuProps) {
   const [open, setOpen] = useState(false);
@@ -28,7 +32,7 @@ export function ToolsMenu({
           size="icon"
           className={cn(
             'relative h-9 w-9 transition-all',
-            divergenceScannerEnabled
+            divergenceScannerEnabled || superTrendEnabled
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30'
               : 'text-slate-300 hover:text-white hover:bg-slate-800',
             className,
@@ -78,6 +82,30 @@ export function ToolsMenu({
                   <Settings className="h-3.5 w-3.5" />
                 </Button>
               )}
+            </div>
+          </div>
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                SuperTrend
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Standard, ADX, Keltner
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                title="SuperTrend Settings"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenSuperTrendSettings();
+                }}
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
             </div>
           </div>
         </div>
