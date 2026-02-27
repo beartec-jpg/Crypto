@@ -176,9 +176,6 @@ export function FullscreenChartActionToolbar({
 
       <div className="w-px h-6 bg-slate-700" />
 
-      < onOpenVolumeProfileSettings={onOpenVolumeProfileSettings}
-      />
-
       <button
         onClick={onToggleDrawingMode}
         className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
