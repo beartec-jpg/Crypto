@@ -1,11 +1,19 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type MouseEvent } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { createSeriesMarkers, type ISeriesMarkersPluginApi, Time } from 'lightweight-charts';
-import { queryClient } from '@/lib/queryClient';
-import { authenticatedApiRequest } from '@/lib/apiAuth';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Time } from 'lightweight-charts';
 import { useToast } from '@/hooks/use-toast';
+import { useDrawingHistory } from '@/hooks/useDrawingHistory';
+import { useElliottWaveLabels } from '@/hooks/useElliottWaveLabels';
+import { useWaveSelection } from '@/hooks/useWaveSelection';
+import { useElliottWaveRendering } from '@/hooks/useElliottWaveRendering';
+import { useElliottWaveKeyboardShortcuts } from '@/hooks/useElliottWaveKeyboardShortcuts';
+import { useElliottWaveController } from '@/hooks/useElliottWaveController';
+import { useFullscreenDrawingActions } from '@/hooks/useFullscreenDrawingActions';
+import { useSaveDrawingWithUndo } from '@/hooks/useSaveDrawingWithUndo';
+import { useFullscreenChartLifecycle } from '@/hooks/useFullscreenChartLifecycle';
+import { useHydratedDrawings } from '@/hooks/useHydratedDrawings';
+import { useFullscreenKeyboardShortcuts } from '@/hooks/useFullscreenKeyboardShortcuts';
+import { useFullscreenModalHelpers } from '@/hooks/useFullscreenModalHelpers';
 import type { FibLevel } from '@/lib/elliottWave/fibCalculator';
-import { calcRetracementLevels } from '@/lib/elliottWave/fibCalculator';
 
 // New extraction hooks
 import { useChartInstance } from '@/hooks/useChartInstance';
@@ -21,31 +29,17 @@ import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
 import { useIndicatorState } from '@/hooks/useIndicatorState';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
 import { useElliottWave } from '@/hooks/usePredictiveElliottWave';
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 // New extraction components
 import { FullscreenChartToolbar } from '@/components/chart/FullscreenChartToolbar';
-import { PoppedOutOscillators } from '@/components/oscillators/PoppedOutOscillators';
-import { ChartLoadingOverlay } from '@/components/chart/ChartLoadingOverlay';
-import { MiniOscillatorSection } from '@/components/oscillators/MiniOscillatorSection';
+import { FullscreenChartActionToolbar } from '@/components/chart/FullscreenChartActionToolbar';
+import { FullscreenChartIndicatorLayer } from '@/components/chart/FullscreenChartIndicatorLayer';
+import { FullscreenChartModals } from '@/components/chart/FullscreenChartModals';
+import { FullscreenChartViewportLayer } from '@/components/chart/FullscreenChartViewportLayer';
+import { FullscreenOscillatorLayout } from '@/components/oscillators/FullscreenOscillatorLayout';
 
-import { Button } from '@/components/ui/button';
-import { EmaSmaModal } from '@/components/indicators';
-import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
-import { AutoFibSettingsModal } from '@/components/modals/AutoFibSettingsModal';
-import { SuperTrendSettingsModal } from '@/components/modals/SuperTrendSettingsModal';
-import { SuperTrendRenderer } from '@/components/indicators/SuperTrendRenderer';
 import { useSuperTrendSettings } from '@/hooks/useSuperTrendSettings';
 import { useSuperTrendCalculation } from '@/hooks/useSuperTrendCalculation';
-import { FVGRenderer } from '@/components/indicators/FVGRenderer';
-import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
-import { BreakerBlockRenderer } from '@/components/indicators/BreakerBlockRenderer';
-import { BOSRenderer } from '@/components/indicators/BOSRenderer';
-import { LiquidityRenderer } from '@/components/indicators/LiquidityRenderer';
-import { PDZoneRenderer } from '@/components/indicators/PDZoneRenderer';
-import { AutoFibRenderer } from '@/components/indicators/AutoFibRenderer';
-import { VolumeProfileRenderer } from '@/components/indicators/VolumeProfileRenderer';
-import { VolumeProfileSettingsModal } from '@/components/modals/VolumeProfileSettingsModal';
 import { useVolumeProfileSettings } from '@/hooks/useVolumeProfileSettings';
 import { useVisibleRange } from '@/hooks/useVisibleRange';
 import { useVolumeProfileCalculation } from '@/hooks/useVolumeProfileCalculation';
@@ -63,50 +57,20 @@ import { usePDZoneSettings } from '@/hooks/usePDZoneSettings';
 import { usePDZoneDetection } from '@/hooks/usePDZoneDetection';
 import { useAutoFibSettings } from '@/hooks/useAutoFibSettings';
 import { useAutoFibDetection } from '@/hooks/useAutoFibDetection';
-import { DrawingMenu } from '@/components/drawings/DrawingMenu';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
-import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';
-import { DrawingSettingsModal } from '@/components/modals/DrawingSettingsModal';
-import { DrawingSelectionModal } from '@/components/drawings/DrawingSelectionModal';
-import { MovingAverages } from '@/components/chart/MovingAverages';
 import { calculateEMA } from '@/lib/indicators';
-import { OscillatorSelectorModal } from '@/components/modals/OscillatorSelectorModal';
-import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillatorSection';
-import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';
-import { ToolsMenu } from '@/components/tools/ToolsMenu';
-import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
-import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
-import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
 import { useDivergenceScanner } from '@/hooks/useDivergenceScanner';
 import { useDivergenceSettings } from '@/hooks/useDivergenceSettings';
 import { DEFAULT_OSCILLATOR_CONFIG } from '@/lib/calculations/divergenceCalculations';
-import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
-import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
-import { DegreePicker, getDegreeConfiguration } from '@/components/elliottWave/DegreePicker';
-import { HTFBiasPanel } from '@/components/indicators/HTFBiasPanel';
+import { WaveOverlayStack } from '@/components/elliottWave/WaveOverlayStack';
 import { useHTFBias } from '@/hooks/useHTFBias';
 import { useHTFBiasSettings } from '@/hooks/useHTFBiasSettings';
 import { useSqueezeMomentumSettings } from '@/hooks/useSqueezeMomentumSettings';
 import { useSqueezeMomentum } from '@/hooks/useSqueezeMomentum';
-import { SqueezeMomentumSettingsModal } from '@/components/modals/SqueezeMomentumSettingsModal';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
 import type { DivergencePoint } from '@/types/chart.types';
-import {
-  TOP_TOOLBAR_HEIGHT,
-} from '@/lib/constants/layout';
-import { generateFutureWhitespace, FUTURE_BAR_COUNT } from '@/lib/chart/timeUtils';
-
-/** Shape of a projection line returned from /api/crypto/projection-lines */
-interface ProjectionLine {
-  id: string;
-  structureId: string;
-  levelLabel: string;
-  price: number;
-  waveType: string;
-  color: string;
-}
 
 /** Shorten degree names to concise abbreviations for SVG labels */
 const getDegreeAbbreviation = (degree: string): string => {
@@ -122,143 +86,6 @@ const getDegreeAbbreviation = (degree: string): string => {
     'Sub-Minuette': 'sub',
   };
   return abbrev[degree] ?? degree;
-};
-
-/** Normalize a degree-specific wave label to its canonical position (1-5, A-C, W-Z) */
-function getCanonicalWavePosition(label: string): string | null {
-  // All impulse position labels across all degrees
-  const pos1 = ['1', '(1)', 'I', '(I)', 'i', '(i)'];
-  const pos2 = ['2', '(2)', 'II', '(II)', 'ii', '(ii)'];
-  const pos3 = ['3', '(3)', 'III', '(III)', 'iii', '(iii)'];
-  const pos4 = ['4', '(4)', 'IV', '(IV)', 'iv', '(iv)'];
-  const pos5 = ['5', '(5)', 'V', '(V)', 'v', '(v)'];
-  // Correction labels
-  const posA = ['A', '(A)', 'a', '(a)'];
-  const posB = ['B', '(B)', 'b', '(b)'];
-  const posC = ['C', '(C)', 'c', '(c)'];
-
-  if (pos1.includes(label)) return '1';
-  if (pos2.includes(label)) return '2';
-  if (pos3.includes(label)) return '3';
-  if (pos4.includes(label)) return '4';
-  if (pos5.includes(label)) return '5';
-  if (posA.includes(label)) return 'A';
-  if (posB.includes(label)) return 'B';
-  if (posC.includes(label)) return 'C';
-  return null;
-}
-
-/** Calculate future prediction fib levels based on the completed wave label */
-const calculateFuturePredictions = (
-  wave: { points: { price: number; time?: number }[]; style?: { waveLabel?: string; waveType?: string } },
-  candleInterval: number = 3600,
-): FibLevel[] => {
-  const waveLabel = wave.style?.waveLabel;
-  const waveType = wave.style?.waveType ?? 'impulse';
-  const points = wave.points;
-  if (!waveLabel || points.length < 2) return [];
-
-  const canonicalPos = getCanonicalWavePosition(waveLabel);
-  if (!canonicalPos) return [];
-
-  const startPrice = points[0].price;
-  const endPrice = points[points.length - 1].price;
-  const lastPoint = points[points.length - 1];
-  const lastTime = typeof lastPoint.time === 'number' ? lastPoint.time : undefined;
-  const endTime = lastTime !== undefined ? lastTime + 4 * candleInterval : undefined;
-  const lineRange = lastTime !== undefined ? { startTime: lastTime, endTime } : {};
-
-  // Wave 2 complete → show Wave 3 extension targets
-  // W3 extends from W2 end in the direction opposite to W2 (continuing the parent trend)
-  if (canonicalPos === '2') {
-    const refLen = Math.abs(endPrice - startPrice); // W2 total span as reference
-    // If W2 went down (endPrice < startPrice), W3 goes up; if W2 went up, W3 goes down
-    const direction = endPrice < startPrice ? 1 : -1;
-    const w3Ratios = ['leading_diagonal', 'ending_diagonal'].includes(waveType)
-      ? [0.618, 0.786, 1.0]
-      : [1.618, 2.0, 2.618];
-    return w3Ratios.map(ratio => ({
-      ratio,
-      price: endPrice + direction * refLen * ratio,
-      label: `W3 ${(ratio * 100).toFixed(1)}%`,
-      isRetrace: false,
-      color: '#22c55e',
-      ...lineRange,
-    }));
-  }
-
-  // Wave 3 complete → show Wave 4 retracement levels
-  if (canonicalPos === '3') {
-    // W4 retraces the full W3 move (startPrice to endPrice)
-    const levels = calcRetracementLevels(startPrice, endPrice, [0.236, 0.382, 0.5, 0.618]);
-    return levels.map(l => ({ ...l, label: `W4: ${(l.ratio * 100).toFixed(1)}%`, ...lineRange }));
-  }
-
-  // Wave 4 complete → show Wave 5 extension targets
-  // W5 extends from W4 end in the direction opposite to W4 (continuing the parent trend)
-  if (canonicalPos === '4') {
-    const refLen = Math.abs(endPrice - startPrice); // W4 total span as reference
-    // If W4 went down (endPrice < startPrice), W5 goes up; if W4 went up, W5 goes down
-    const direction = endPrice < startPrice ? 1 : -1;
-    const w5Ratios = ['leading_diagonal', 'ending_diagonal'].includes(waveType)
-      ? [0.618, 1.0]
-      : [0.618, 1.0, 1.618];
-    return w5Ratios.map(ratio => ({
-      ratio,
-      price: endPrice + direction * refLen * ratio,
-      label: `W5 ${(ratio * 100).toFixed(1)}%`,
-      isRetrace: false,
-      color: '#22c55e',
-      ...lineRange,
-    }));
-  }
-
-  // Wave 5 complete → show next correction (Wave A) target levels
-  if (canonicalPos === '5') {
-    const levels = calcRetracementLevels(startPrice, endPrice, [0.382, 0.5, 0.618, 1.0]);
-    return levels.map(l => ({ ...l, label: `WA: ${(l.ratio * 100).toFixed(1)}%`, ...lineRange }));
-  }
-
-  // Wave A complete → show Wave B retracement levels
-  if (canonicalPos === 'A') {
-    const isFlatType = waveType === 'flat';
-    const bRatios = isFlatType ? [0.9, 1.0, 1.382] : [0.382, 0.5, 0.618, 0.786];
-    const levels = calcRetracementLevels(startPrice, endPrice, bRatios);
-    return levels.map(l => ({ ...l, label: `WB: ${(l.ratio * 100).toFixed(1)}%`, ...lineRange }));
-  }
-
-  // Wave B complete → show Wave C extension targets
-  // C travels in the SAME direction as Wave A, which is OPPOSITE to Wave B
-  if (canonicalPos === 'B') {
-    const refLen = Math.abs(endPrice - startPrice); // Wave B span as reference for Wave C
-    // C direction = opposite to B direction (same as A direction)
-    const correctionDirection = endPrice > startPrice ? -1 : 1;
-    const cRatios = waveType === 'flat' ? [0.618, 1.0, 1.618] : [1.0, 1.272, 1.618];
-    return cRatios.map(ratio => ({
-      ratio,
-      price: endPrice + correctionDirection * refLen * ratio,
-      label: `WC: ${(ratio * 100).toFixed(1)}%`,
-      isRetrace: false,
-      color: '#fb923c',
-      ...lineRange,
-    }));
-  }
-
-  // Wave C complete → show next impulse targets (recovery)
-  if (canonicalPos === 'C') {
-    const totalCorrLen = Math.abs(endPrice - points[0].price);
-    const direction = endPrice < points[0].price ? 1 : -1; // Recovery after correction
-    return [0.618, 1.0, 1.618].map(ratio => ({
-      ratio,
-      price: endPrice + direction * totalCorrLen * ratio,
-      label: `Next: ${(ratio * 100).toFixed(1)}%`,
-      isRetrace: false,
-      color: '#22c55e',
-      ...lineRange,
-    }));
-  }
-
-  return [];
 };
 
 interface ChartFullscreenPageProps {
@@ -289,11 +116,6 @@ export function ChartFullscreenPage({
   const [showSuperTrendModal, setShowSuperTrendModal] = useState(false);
   const [tempDrawing, setTempDrawing] = useState<{ points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null>(null);
 
-  // Wave selection state – track which saved EW wave is selected and its fib projections
-  const [selectedWaveId, setSelectedWaveId] = useState<string | null>(null);
-  const [selectedWaveFibs, setSelectedWaveFibs] = useState<FibLevel[]>([]);
-  // Future prediction lines – shown for Wave 3/5/A completions
-  const [futurePredictionLines, setFuturePredictionLines] = useState<FibLevel[]>([]);
   // Incremented whenever the chart pans/zooms so we can recompute the SVG click overlay coords
   const [chartViewVersion, setChartViewVersion] = useState(0);
   // Degree picker state – shown when elliott_wave tool is activated
@@ -317,24 +139,8 @@ export function ChartFullscreenPage({
   const activeToolRef = useRef<ChartDrawingTool>(null);
   const autoColorEnabledRef = useRef(autoColorEnabled);
   const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
-  const isInitialDataLoad = useRef(true);
-  const seriesMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
-  // Ref for live Elliott Wave trendline primitive (shown while drawing/complete)
-  const liveEWPrimitiveRef = useRef<ElliottWavePrimitive | null>(null);
-  // Ref for saved Elliott Wave trendline primitives (rendered on reload)
-  const savedEWPrimitivesRef = useRef<Map<string, ElliottWavePrimitive>>(new Map());
-
-  // Undo/redo drawing history (tracks add/delete operations)
-  const drawingUndoStackRef = useRef<Array<{ type: 'add' | 'delete'; drawing: any }>>([]);
-  const drawingRedoStackRef = useRef<Array<{ type: 'add' | 'delete'; drawing: any }>>([]);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
-
   // Hooks - Elliott Wave tool
   const elliottWave = useElliottWave();
-  // Ref to access latest elliottWave state inside stable event handlers
-  const elliottWaveRef = useRef(elliottWave);
-  elliottWaveRef.current = elliottWave;
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
@@ -463,82 +269,23 @@ export function ChartFullscreenPage({
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
 
+  const {
+    canUndo,
+    canRedo,
+    handleUndo,
+    handleRedo,
+    recordAdd,
+    recordDelete,
+  } = useDrawingHistory({ drawingsPersistence, setDrawings });
+
   // Hooks - Toast notifications
   const { toast } = useToast();
 
-  // Undo/redo handlers
-  const handleUndo = useCallback(() => {
-    const op = drawingUndoStackRef.current.pop();
-    if (!op) return;
-    drawingRedoStackRef.current.push(op);
-    setCanUndo(drawingUndoStackRef.current.length > 0);
-    setCanRedo(true);
-    if (op.type === 'add') {
-      drawingsPersistence.deleteDrawing(op.drawing.id);
-      setDrawings(prev => prev.filter(d => d.id !== op.drawing.id));
-    } else {
-      drawingsPersistence.saveDrawing(op.drawing);
-      setDrawings(prev => [...prev, op.drawing]);
-    }
-  }, [drawingsPersistence]);
-
-  const handleRedo = useCallback(() => {
-    const op = drawingRedoStackRef.current.pop();
-    if (!op) return;
-    drawingUndoStackRef.current.push(op);
-    setCanUndo(true);
-    setCanRedo(drawingRedoStackRef.current.length > 0);
-    if (op.type === 'add') {
-      drawingsPersistence.saveDrawing(op.drawing);
-      setDrawings(prev => [...prev, op.drawing]);
-    } else {
-      drawingsPersistence.deleteDrawing(op.drawing.id);
-      setDrawings(prev => prev.filter(d => d.id !== op.drawing.id));
-    }
-  }, [drawingsPersistence]);
-
-  // ── Elliott Wave persistence ────────────────────────────────────────────────
-
-  // Load saved EW wave labels from elliott_wave_labels table
-  const { data: ewLabels = [] } = useQuery<any[]>({
-    queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe],
-    queryFn: async () => {
-      const res = await authenticatedApiRequest(
-        'GET',
-        `/api/crypto/elliott-wave/labels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
-      );
-      return res.json();
-    },
-  });
-
-  // Save EW wave label
-  const saveEWLabelMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/labels', data);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: 'Wave saved', description: 'Elliott Wave saved successfully.' });
-      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe] });
-    },
-    onError: (err: any) => {
-      toast({ title: 'Failed to save wave', description: err?.message, variant: 'destructive' });
-    },
-  });
-
-  // Delete EW wave label
-  const deleteEWLabelMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await authenticatedApiRequest('DELETE', `/api/crypto/elliott-wave/labels/${id}`);
-    },
-    onSuccess: () => {
-      toast({ title: 'Wave deleted successfully' });
-      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe] });
-    },
-    onError: (err: any) => {
-      toast({ title: 'Failed to delete wave', description: err?.message, variant: 'destructive' });
-    },
-  });
+  const {
+    ewLabels,
+    saveEWLabelMutation,
+    deleteEWLabelMutation,
+  } = useElliottWaveLabels({ symbol, timeframe, toast });
 
   // Hooks - Drawing interaction
   const drawingInteraction = useDrawingInteraction({
@@ -547,6 +294,56 @@ export function ChartFullscreenPage({
     containerRef: chartContainerRef,
     drawings,
     activeTool,
+  });
+
+  const waveSelection = useWaveSelection({
+    drawings,
+    candles: candles as Array<{ time: number }>,
+    drawingInteraction,
+  });
+
+  useElliottWaveRendering({
+    candleSeriesRef,
+    chartRef,
+    candles,
+    drawings,
+    selectedWaveDegree,
+    selectedWaveId: waveSelection.selectedWaveId,
+    elliottWave,
+  });
+
+  const elliottWaveController = useElliottWaveController({
+    activeTool,
+    elliottWave,
+    waveSelection,
+    symbol,
+    timeframe,
+    selectedWaveDegree,
+    selectedWaveLabel,
+    selectedWavePatternType,
+    setShowDegreePicker,
+    setSelectedWaveDegree,
+    setSelectedWaveLabel,
+    setSelectedWavePatternType,
+    setActiveTool,
+    activeToolRef,
+    saveEWLabelMutation,
+  });
+
+  const drawingActions = useFullscreenDrawingActions({
+    selectedDrawingId: drawingInteraction.selectedDrawingId,
+    drawings,
+    setDrawings,
+    drawingsPersistence,
+    deleteEWLabelMutation,
+    recordDelete,
+    setSelectedDrawingId: drawingInteraction.setSelectedDrawingId,
+  });
+
+  useElliottWaveKeyboardShortcuts({
+    elliottWave,
+    onDeactivateTool: elliottWaveController.deactivateTool,
+    toast,
   });
 
   // Hooks - Drawing primitives (side effect only)
@@ -577,548 +374,58 @@ export function ChartFullscreenPage({
     waveEndpoints,
   });
 
-  // Update chart with candle data
-  useEffect(() => {
-    if (candleSeriesRef.current && candles.length > 0) {
-      const lastCandle = candles[candles.length - 1];
-      const futureBars = generateFutureWhitespace(lastCandle.time as number, timeframe, FUTURE_BAR_COUNT);
-      const chartData = [
-        ...candles.map(c => ({ ...c, time: c.time as Time })),
-        ...(futureBars as any[]),
-      ];
-      if (isInitialDataLoad.current) {
-        // First load: set data, add future whitespace, and fit content
-        candleSeriesRef.current.setData(chartData);
-        fitContent(candles.length);
-        chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
-        isInitialDataLoad.current = false;
-      } else {
-        // Subsequent updates: preserve the visible range
-        const currentRange = chartRef.current?.timeScale().getVisibleRange();
-        candleSeriesRef.current.setData(chartData);
-        if (currentRange) {
-          try {
-            chartRef.current?.timeScale().setVisibleRange(currentRange);
-          } catch (e) { /* ignore if range is now invalid */ }
-        }
-      }
-    }
-  }, [candles, candleSeriesRef, fitContent, timeframe]);
+  useFullscreenChartLifecycle({
+    candleSeriesRef,
+    chartRef,
+    chartContainerRef,
+    candles,
+    timeframe,
+    symbol,
+    fitContent,
+    handleChartClick: drawingInteraction.handleChartClick as EventListener,
+    handleTouchEnd: drawingInteraction.handleTouchEnd as EventListener,
+    gestureController,
+  });
 
-  // Attach click handlers
-  useEffect(() => {
-    const chartElement = chartContainerRef.current;
-    if (!chartElement) return;
-    
-    chartElement.addEventListener('click', drawingInteraction.handleChartClick as EventListener);
-    chartElement.addEventListener('touchstart', drawingInteraction.handleChartClick as EventListener, { passive: true });
-    chartElement.addEventListener('touchend', drawingInteraction.handleTouchEnd as EventListener);
-    
-    return () => {
-      chartElement.removeEventListener('click', drawingInteraction.handleChartClick as EventListener);
-      chartElement.removeEventListener('touchstart', drawingInteraction.handleChartClick as EventListener);
-      chartElement.removeEventListener('touchend', drawingInteraction.handleTouchEnd as EventListener);
-    };
-  }, [drawingInteraction.handleChartClick, drawingInteraction.handleTouchEnd]);
-
-  // Attach gesture controller
-  useEffect(() => {
-    if (!chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) return;
-    gestureController.attachToChart(chartRef.current, candleSeriesRef.current, chartContainerRef.current);
-    return () => gestureController.detachFromChart();
-  }, [gestureController, chartRef, candleSeriesRef]);
-
-  // Load drawings from persistence (regular drawings + saved EW wave labels)
-  useEffect(() => {
-    const regularDrawings = (drawingsPersistence.drawings ?? [])
-      .map((d: any): Drawing | null => {
-        try {
-          if (!d.id) return null;
-          // Skip any legacy EW drawings saved to chart_drawings – use ewLabels instead
-          const drawingType = d.drawingType || d.drawing_type || d.tool || 'trendline';
-          if (drawingType === 'elliott_wave') return null;
-          return {
-            id: d.id,
-            type: drawingType,
-            points: d.coordinates?.points || d.points || [],
-            style: { color: d.style?.color || '#3b82f6', lineWidth: d.style?.lineWidth || 2, ...d.style },
-          };
-        } catch (e) { return null; }
-      })
-      .filter((d): d is Drawing => d !== null && d.points.length > 0);
-
-    const ewDrawings: Drawing[] = (ewLabels ?? [])
-      .filter((label: any) => Array.isArray(label.points) && label.points.length > 0)
-      .map((label: any): Drawing => ({
-        id: label.id,
-        type: 'elliott_wave',
-        points: label.points.map((p: any) => ({
-          time: p.time,
-          price: p.price,
-          label: p.label,
-          isMidAir: p.isMidAir ?? false,
-          snapType: p.snapType ?? 'high',
-        })),
-        style: {
-          color: label.metadata?.impulseColor ?? label.metadata?.color ?? '#00CED1',
-          lineWidth: 2,
-          waveType: label.patternType ?? label.pattern_type ?? 'EW',
-          degreeLabel: label.metadata?.degreeLabel ?? label.degree ?? 'Minor',
-          waveLabel: label.metadata?.waveLabel ?? '',
-          impulseColor: label.metadata?.impulseColor ?? label.metadata?.color ?? '#00CED1',
-          zigzagColor: label.metadata?.zigzagColor ?? '#808080',
-          showLabel: label.metadata?.showLabel ?? true,
-          fontSize: label.metadata?.fontSize ?? '12px',
-          showFuturePredictions: label.metadata?.showFuturePredictions ?? true,
-        },
-      }));
-
-    setDrawings([...regularDrawings, ...ewDrawings]);
-  }, [drawingsPersistence.drawings, ewLabels]);
-
-  // Reset initial load flag when symbol/timeframe changes
-  useEffect(() => {
-    isInitialDataLoad.current = true;
-  }, [symbol, timeframe]);
+  useHydratedDrawings({
+    persistedDrawings: drawingsPersistence.drawings,
+    ewLabels,
+    setDrawings,
+  });
 
   // Update refs
   useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
   useEffect(() => { autoColorEnabledRef.current = autoColorEnabled; }, [autoColorEnabled]);
 
-  // Handlers
-  const handleSelectTool = useCallback((tool: ChartDrawingTool) => {
-    // Toggle Elliott Wave mode when selecting/deselecting the tool
-    if (activeTool === 'elliott_wave' && tool !== 'elliott_wave') {
-      elliottWave.deactivateMode();
-    }
-    if (tool === 'elliott_wave' && activeTool !== 'elliott_wave') {
-      // Show degree picker first before activating
-      setShowDegreePicker(true);
-      return;
-    }
-    // Deselect any selected wave when activating a drawing tool
-    setSelectedWaveId(null);
-    setSelectedWaveFibs([]);
-    setActiveTool(tool);
-    activeToolRef.current = tool;
-  }, [activeTool, elliottWave]);
+  const modalHelpers = useFullscreenModalHelpers({
+    selectedDrawingId: drawingInteraction.selectedDrawingId,
+    drawings,
+    setSettingsModalOpen,
+  });
 
-  const handleDegreeSelect = useCallback((degree: string, waveLabel: string, patternType: string) => {
-    setSelectedWaveDegree(degree);
-    setSelectedWaveLabel(waveLabel);
-    setSelectedWavePatternType(patternType);
-    setShowDegreePicker(false);
-    setSelectedWaveId(null);
-    setSelectedWaveFibs([]);
-    elliottWave.activateMode(patternType, degree, waveLabel);
-    setActiveTool('elliott_wave');
-    activeToolRef.current = 'elliott_wave';
-  }, [elliottWave]);
+  const saveDrawingWithUndo = useSaveDrawingWithUndo({
+    saveDrawing: drawingsPersistence.saveDrawing,
+    recordAdd,
+  });
 
-  const handleOpenSettings = useCallback(() => setSettingsModalOpen(true), []);
-  const handleCloseSettings = useCallback(() => setSettingsModalOpen(false), []);
-
-  const handleDeleteDrawing = useCallback(() => {
-    const id = drawingInteraction.selectedDrawingId;
-    if (!id) return;
-    const drawing = drawings.find(d => d.id === id);
-    if (drawing?.type === 'elliott_wave') {
-      // EW drawings are stored in elliott_wave_labels, not chart_drawings
-      deleteEWLabelMutation.mutate(id);
-      setDrawings(prev => prev.filter(d => d.id !== id));
-    } else {
-      if (drawing) {
-        drawingUndoStackRef.current.push({ type: 'delete', drawing });
-        drawingRedoStackRef.current = [];
-        setCanUndo(true);
-        setCanRedo(false);
-      }
-      drawingsPersistence.deleteDrawing(id);
-      setDrawings(prev => prev.filter(d => d.id !== id));
-    }
-    drawingInteraction.setSelectedDrawingId(null);
-  }, [drawingInteraction, drawings, drawingsPersistence, deleteEWLabelMutation]);
-
-  // Wrap saveDrawing to track undo history
-  const saveDrawingWithUndo = useCallback((drawing: any) => {
-    drawingUndoStackRef.current.push({ type: 'add', drawing });
-    drawingRedoStackRef.current = [];
-    setCanUndo(true);
-    setCanRedo(false);
-    drawingsPersistence.saveDrawing(drawing);
-  }, [drawingsPersistence]);
-
-  // Keyboard shortcuts
-  useKeyboardShortcuts({
-    onToggleDrawingMode: () => {
-      if (activeTool) {
-        setActiveTool(null);
-        activeToolRef.current = null;
-      } else {
-        setActiveTool('trendline');
-        activeToolRef.current = 'trendline';
-      }
-    },
-    onTurnOffDrawing: () => {
-      setActiveTool(null);
-      activeToolRef.current = null;
-    },
-    onSelectTool: (tool) => handleSelectTool(tool as ChartDrawingTool),
-    onDeleteSelected: handleDeleteDrawing,
+  useFullscreenKeyboardShortcuts({
+    activeTool,
+    setActiveTool,
+    activeToolRef,
+    onSelectTool: elliottWaveController.handleSelectTool,
+    onDeleteSelected: drawingActions.handleDeleteDrawing,
     onDeselectAll: () => drawingInteraction.setSelectedDrawingId(null),
     onUndo: handleUndo,
     onRedo: handleRedo,
   });
 
-  const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
-    const selectedId = drawingInteraction.selectedDrawingId;
-    if (!selectedId || selectedId.startsWith('drawing-')) return;
-    const drawing = drawings.find(d => d.id === selectedId);
-    setDrawings(prev => prev.map(d => d.id === selectedId ? { ...d, style: { ...d.style, ...updates.style } } : d));
-    if (drawing?.type === 'elliott_wave') {
-      // EW waves live in elliott_wave_labels, not chart_drawings – use the EW-specific endpoint
-      authenticatedApiRequest('PATCH', `/api/crypto/elliott-wave/labels/${selectedId}`, { metadata: updates.style })
-        .catch(err => console.warn('[EW] Failed to update wave style:', err));
-    } else {
-      drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: updates.style } });
-    }
-  }, [drawingInteraction.selectedDrawingId, drawings, drawingsPersistence]);
-
-  // Elliott Wave: click on a saved wave to show its fibonacci projections
-  const handleWaveClick = useCallback(async (waveId: string, e: MouseEvent) => {
-    console.log('[DEBUG] Wave clicked:', waveId, 'at', e.clientX, e.clientY);
-    e.stopPropagation();
-
-    // Haptic feedback
-    if ('vibrate' in navigator) {
-      navigator.vibrate(10);
-    }
-
-    console.log('[DEBUG] Selected wave ID before:', selectedWaveId);
-    console.log('[DEBUG] Setting drawing interaction...');
-
-    // Toggle: clicking the same wave deselects it
-    if (selectedWaveId === waveId) {
-      setSelectedWaveId(null);
-      setSelectedWaveFibs([]);
-      drawingInteraction.setSelectedDrawingId(null);
-      console.log('[DEBUG] Deselected wave');
-      return;
-    }
-
-    // Integrate with drawing interaction system for quick menu (settings/delete)
-    drawingInteraction.setSelectedDrawingId(waveId);
-    drawingInteraction.setQuickMenuPosition({ x: e.clientX, y: e.clientY });
-    console.log('[DEBUG] Quick menu position set:', { x: e.clientX, y: e.clientY });
-
-    setSelectedWaveId(waveId);
-    setSelectedWaveFibs([]);
-
-    // Calculate fib retracement levels from the wave's own points
-    const wave = drawings.find(d => d.id === waveId);
-    if (wave && wave.points.length >= 2) {
-      const startPrice = wave.points[0].price;
-      const endPrice = wave.points[wave.points.length - 1].price;
-      const fibs = calcRetracementLevels(startPrice, endPrice, [0.236, 0.382, 0.5, 0.618, 0.786]);
-      setSelectedWaveFibs(fibs);
-    }
-
-    // Also try to fetch stored projection lines from the API (may supplement the above)
-    try {
-      const res = await authenticatedApiRequest(
-        'GET',
-        `/api/crypto/projection-lines?structureId=${encodeURIComponent(waveId)}`,
-      );
-      const projections: ProjectionLine[] = await res.json();
-      if (projections.length > 0) {
-        const fibs: FibLevel[] = projections.map(proj => {
-          // Parse ratio from label like "W3 100%" or "C 127.2%"
-          const match = proj.levelLabel?.match(/([\d.]+)%/);
-          const ratio = match ? parseFloat(match[1]) / 100 : 1;
-          return {
-            ratio,
-            price: proj.price,
-            label: proj.levelLabel ?? `${(ratio * 100).toFixed(1)}%`,
-            isRetrace: false,
-          };
-        });
-        setSelectedWaveFibs(fibs);
-      }
-    } catch (err) {
-      console.warn('[EW] Failed to fetch projection lines:', err);
-    }
-  }, [selectedWaveId, drawingInteraction, drawings]);
-
-  // Deselect wave when drawing tool is activated or chart area is clicked without a wave
-  const handleDeselect = useCallback(() => {
-    if (selectedWaveId) {
-      setSelectedWaveId(null);
-      setSelectedWaveFibs([]);
-    }
-  }, [selectedWaveId]);
-
-  // Compute future prediction lines for ALL saved waves whenever drawings or candles change
-  useEffect(() => {
-    const candleInterval =
-      candles.length >= 2 ? Math.abs((candles[1].time as number) - (candles[0].time as number)) : 3600;
-    const allPredictions: FibLevel[] = [];
-    for (const drawing of drawings.filter(d => d.type === 'elliott_wave')) {
-      // Respect per-wave showFuturePredictions setting (defaults to true)
-      if ((drawing.style as any)?.showFuturePredictions !== false) {
-        allPredictions.push(...calculateFuturePredictions(drawing, candleInterval));
-      }
-    }
-    setFuturePredictionLines(allPredictions);
-  }, [drawings, candles]);
-
-  // Elliott Wave: save the drawn wave to elliott_wave_labels table
-  const handleElliottWaveSave = useCallback(() => {
-    if (!elliottWave.canSave) return;
-    const degreeConfig = getDegreeConfiguration(selectedWaveDegree);
-    saveEWLabelMutation.mutate({
-      symbol,
-      timeframe,
-      degree: selectedWaveDegree.toLowerCase().replace(/\s+/g, '_'),
-      patternType: selectedWavePatternType,
-      points: elliottWave.points.map(p => ({
-        time: p.time,
-        price: p.price,
-        label: p.label,
-        isMidAir: p.isMidAir ?? false,
-        snapType: p.snapType ?? 'none',
-      })),
-      isComplete: true,
-      metadata: {
-        waveType: selectedWavePatternType,
-        color: degreeConfig.impulse.color,
-        degreeLabel: selectedWaveDegree,
-        waveLabel: selectedWaveLabel,
-        impulseColor: degreeConfig.impulse.color,
-        zigzagColor: degreeConfig.correction.color,
-      },
-    });
-    elliottWave.deactivateMode();
-    setActiveTool(null);
-    activeToolRef.current = null;
-  }, [elliottWave, symbol, timeframe, saveEWLabelMutation, selectedWaveDegree, selectedWaveLabel, selectedWavePatternType]);
-
-  // Elliott Wave: render placed points as series markers
-  useEffect(() => {
-    if (!candleSeriesRef.current || !elliottWave.isActive) {
-      seriesMarkersRef.current?.setMarkers([]);
-      return;
-    }
-    const points = elliottWave.points;
-    if (points.length === 0) {
-      seriesMarkersRef.current?.setMarkers([]);
-      return;
-    }
-    if (!seriesMarkersRef.current) {
-      seriesMarkersRef.current = createSeriesMarkers(candleSeriesRef.current, []);
-    }
-    if (candles.length === 0) {
-      seriesMarkersRef.current.setMarkers([]);
-      return;
-    }
-    const lastCandleTime = candles[candles.length - 1].time as number;
-    const markers = points
-      .filter(point => (point.time as number) <= lastCandleTime)
-      .map(point => ({
-        time: point.time as Time,
-        position: 'aboveBar' as 'aboveBar' | 'belowBar',
-        color: '#00CED1',
-        shape: 'circle' as const,
-        size: 2,
-      }));
-    seriesMarkersRef.current.setMarkers(markers);
-    return () => {
-      seriesMarkersRef.current?.setMarkers([]);
-    };
-  }, [elliottWave.points, elliottWave.isActive, candles]);
-
-  // Elliott Wave: render live trendline when wave is drawing or complete
-  useEffect(() => {
-    const series = candleSeriesRef.current;
-    if (!series) return;
-
-    const points = elliottWave.points;
-    const lastCandleTime = candles.length > 0 ? (candles[candles.length - 1].time as number) : undefined;
-    const candleInterval = candles.length >= 2 ? (candles[1].time as number) - (candles[0].time as number) : 3600;
-
-    if ((elliottWave.isDrawing || elliottWave.isComplete) && points.length >= 2) {
-      const degreeConfig = getDegreeConfiguration(selectedWaveDegree);
-      const data = {
-        points: points.map(p => ({ time: p.time, price: p.price, label: p.label })),
-        waveType: 'impulse',
-        color: degreeConfig.impulse.color,
-        showPointLabels: true,
-        lastCandleTime,
-        candleInterval,
-        barCount: candles.length,
-      };
-      if (liveEWPrimitiveRef.current) {
-        liveEWPrimitiveRef.current.update(data);
-      } else {
-        const primitive = new ElliottWavePrimitive(data);
-        try {
-          series.attachPrimitive(primitive);
-          liveEWPrimitiveRef.current = primitive;
-        } catch (e) {
-          console.error('[EW] Failed to attach live trendline:', e);
-        }
-      }
-    } else {
-      if (liveEWPrimitiveRef.current) {
-        try { series.detachPrimitive(liveEWPrimitiveRef.current); } catch (e) {
-          console.error('[EW] Failed to detach live trendline:', e);
-        }
-        liveEWPrimitiveRef.current = null;
-      }
-    }
-
-    return () => {
-      if (liveEWPrimitiveRef.current && series) {
-        try { series.detachPrimitive(liveEWPrimitiveRef.current); } catch (e) {
-          console.error('[EW] Failed to detach live trendline on cleanup:', e);
-        }
-        liveEWPrimitiveRef.current = null;
-      }
-    };
-  }, [elliottWave.isDrawing, elliottWave.isComplete, elliottWave.points, candleSeriesRef, candles, selectedWaveDegree]);
-
   // Elliott Wave: auto-save the wave immediately when all points are placed and valid
   useEffect(() => {
     if (elliottWave.isComplete && elliottWave.isValid) {
-      handleElliottWaveSave();
+      elliottWaveController.handleElliottWaveSave();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elliottWave.isComplete, elliottWave.isValid]);
-
-  // Elliott Wave: render saved elliott_wave drawings as markers + trendlines on reload
-  useEffect(() => {
-    const series = candleSeriesRef.current;
-    if (!series) return;
-
-    const ewDrawings = drawings.filter(d => d.type === 'elliott_wave');
-    const currentIds = new Set(ewDrawings.map(d => d.id));
-
-    // Detach primitives for removed drawings
-    savedEWPrimitivesRef.current.forEach((primitive, id) => {
-      if (!currentIds.has(id)) {
-        try { series.detachPrimitive(primitive); } catch (e) {
-          console.error('[EW] Failed to detach saved trendline:', e);
-        }
-        savedEWPrimitivesRef.current.delete(id);
-      }
-    });
-
-    // Add/update primitives for current EW drawings
-    for (const drawing of ewDrawings) {
-      if (drawing.points.length < 2) continue;
-      const waveType = drawing.style?.waveType ?? 'EW';
-      const color = drawing.style?.color ?? '#00CED1';
-      const lastCandleTime = candles.length > 0 ? (candles[candles.length - 1].time as number) : undefined;
-      const candleInterval = candles.length >= 2 ? (candles[1].time as number) - (candles[0].time as number) : 3600;
-      const data = {
-        points: drawing.points.map(p => ({
-          time: p.time,
-          price: p.price,
-          label: p.label,
-          isMidAir: p.isMidAir,
-        })),
-        waveType,
-        color,
-        showPointLabels: false,
-        lastCandleTime,
-        candleInterval,
-        barCount: candles.length,
-        isSelected: drawing.id === selectedWaveId,
-      };
-
-      const existing = savedEWPrimitivesRef.current.get(drawing.id);
-      if (existing) {
-        existing.update(data);
-      } else {
-        const primitive = new ElliottWavePrimitive(data);
-        try {
-          series.attachPrimitive(primitive);
-          savedEWPrimitivesRef.current.set(drawing.id, primitive);
-        } catch (e) {
-          console.error('[EW] Failed to attach saved trendline:', e);
-        }
-      }
-    }
-
-    return () => {
-      savedEWPrimitivesRef.current.forEach((primitive) => {
-        try { series.detachPrimitive(primitive); } catch (e) {
-          console.error('[EW] Failed to detach saved trendline on cleanup:', e);
-        }
-      });
-      savedEWPrimitivesRef.current.clear();
-    };
-  }, [drawings, candleSeriesRef, candles]);
-
-  // Elliott Wave: expand viewport to show future points in saved drawings
-  useEffect(() => {
-    if (!chartRef.current || candles.length === 0) return;
-    const ewDrawings = drawings.filter(d => d.type === 'elliott_wave');
-    const lastCandleTime = candles[candles.length - 1].time as number;
-    let maxFutureTime = lastCandleTime;
-    for (const drawing of ewDrawings) {
-      for (const point of drawing.points) {
-        if ((point.time as number) > maxFutureTime) {
-          maxFutureTime = point.time as number;
-        }
-      }
-    }
-    if (maxFutureTime > lastCandleTime) {
-      const timeScale = chartRef.current.timeScale();
-      const visibleRange = timeScale.getVisibleRange();
-      if (visibleRange && maxFutureTime > (visibleRange.to as number)) {
-        timeScale.setVisibleRange({
-          from: visibleRange.from,
-          to: maxFutureTime as Time,
-        });
-      }
-    }
-  }, [drawings, candles]);
-
-  // Elliott Wave: keyboard shortcuts (Backspace=undo, Escape=deactivate)
-  useEffect(() => {
-    if (!elliottWave.isActive) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const ew = elliottWaveRef.current;
-      // Backspace/Delete = undo last point while drawing
-      if ((e.key === 'Backspace' || e.key === 'Delete') && !e.shiftKey) {
-        if (ew.canUndo) {
-          ew.undo();
-          toast({ title: 'Point removed' });
-        }
-        e.preventDefault();
-      }
-      // Escape = deactivate (clear wave and exit tool)
-      if (e.key === 'Escape') {
-        ew.deactivateMode();
-        setActiveTool(null);
-        activeToolRef.current = null;
-        toast({ title: 'Wave cleared' });
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [elliottWave.isActive, toast]);
-
-  // Memoized values
-  const selectedDrawingForModal = useMemo(() => {
-    const id = drawingInteraction.selectedDrawingId;
-    if (!id) return null;
-    const drawing = drawings.find(d => d.id === id);
-    if (!drawing) return null;
-    return { ...drawing, points: drawing.points.map(p => ({ time: p.time, value: p.price })) };
-  }, [drawingInteraction.selectedDrawingId, drawings]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col h-screen">
@@ -1134,296 +441,124 @@ export function ChartFullscreenPage({
 
       {/* Chart Area */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Top-left Toolbar: Drawing + Indicator buttons */}
-        <div className="absolute top-2 left-2 z-30 flex items-center gap-1 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-1 shadow-xl">
-          <DrawingMenu activeTool={activeTool} onSelectTool={handleSelectTool} />
-          <IndicatorMenu
-            selectedOscillators={oscillatorPanel.selectedOscillators}
-            onToggleOscillator={oscillatorPanel.toggleOscillator}
-            onOpenOscillators={() => oscillatorPanel.setShowSelector(true)}
-            emaShow={indicators.ema.show}
-            onEmaToggle={indicators.ema.setShow}
-            emaConfigs={indicators.ema.configs}
-            smaShow={indicators.sma.show}
-            onSmaToggle={indicators.sma.setShow}
-            smaConfigs={indicators.sma.configs}
-            vwapShow={indicators.vwap.showSession}
-            onVwapToggle={indicators.vwap.setShowSession}
-            onOpenEmaSma={() => setShowEmaSmaModal(true)}
-            fvgSettings={fvgSettings.settings}
-            onFVGSettingsChange={fvgSettings.setSettings}
-            obSettings={obSettings.settings}
-            onOBSettingsChange={obSettings.setSettings}
-            bosSettings={bosSettings.settings}
-            onBOSSettingsChange={bosSettings.setSettings}
-            liquiditySettings={liquiditySettings.settings}
-            onLiquiditySettingsChange={liquiditySettings.setSettings}
-            pdZoneSettings={pdZoneSettings.settings}
-            onPDZoneSettingsChange={pdZoneSettings.setSettings}
-            onOpenSmc={() => setShowSmcModal(true)}
-            autoFibSettings={autoFibSettings.settings}
-            onAutoFibToggle={(enabled) => autoFibSettings.updateSettings({ enabled })}
-            onOpenAutoFib={() => setShowAutoFibModal(true)}
-          />
-          <ToolsMenu
-            divergenceScannerEnabled={divergenceScannerEnabled}
-            onToggleDivergenceScanner={setDivergenceScannerEnabled}
-            onOpenDivergenceSettings={() => setShowDivergenceSettings(true)}
-            superTrendEnabled={
-              superTrendSettings.settings.standard.enabled ||
-              superTrendSettings.settings.adx.enabled ||
-              superTrendSettings.settings.keltner.enabled
+        <FullscreenChartActionToolbar
+          activeTool={activeTool}
+          onSelectTool={elliottWaveController.handleSelectTool}
+          selectedOscillators={oscillatorPanel.selectedOscillators}
+          onToggleOscillator={oscillatorPanel.toggleOscillator}
+          onOpenOscillators={() => oscillatorPanel.setShowSelector(true)}
+          emaShow={indicators.ema.show}
+          onEmaToggle={indicators.ema.setShow}
+          emaConfigs={indicators.ema.configs}
+          smaShow={indicators.sma.show}
+          onSmaToggle={indicators.sma.setShow}
+          smaConfigs={indicators.sma.configs}
+          vwapShow={indicators.vwap.showSession}
+          onVwapToggle={indicators.vwap.setShowSession}
+          onOpenEmaSma={() => setShowEmaSmaModal(true)}
+          fvgSettings={fvgSettings.settings}
+          onFVGSettingsChange={fvgSettings.setSettings}
+          obSettings={obSettings.settings}
+          onOBSettingsChange={obSettings.setSettings}
+          bosSettings={bosSettings.settings}
+          onBOSSettingsChange={bosSettings.setSettings}
+          liquiditySettings={liquiditySettings.settings}
+          onLiquiditySettingsChange={liquiditySettings.setSettings}
+          pdZoneSettings={pdZoneSettings.settings}
+          onPDZoneSettingsChange={pdZoneSettings.setSettings}
+          onOpenSmc={() => setShowSmcModal(true)}
+          autoFibSettings={autoFibSettings.settings}
+          onAutoFibToggle={(enabled) => autoFibSettings.updateSettings({ enabled })}
+          onOpenAutoFib={() => setShowAutoFibModal(true)}
+          divergenceScannerEnabled={divergenceScannerEnabled}
+          onToggleDivergenceScanner={setDivergenceScannerEnabled}
+          onOpenDivergenceSettings={() => setShowDivergenceSettings(true)}
+          superTrendEnabled={
+            superTrendSettings.settings.standard.enabled ||
+            superTrendSettings.settings.adx.enabled ||
+            superTrendSettings.settings.keltner.enabled
+          }
+          onOpenSuperTrendSettings={() => setShowSuperTrendModal(true)}
+          onToggleDrawingMode={() => {
+            if (activeTool) {
+              setActiveTool(null);
+              activeToolRef.current = null;
+            } else {
+              setActiveTool('trendline');
+              activeToolRef.current = 'trendline';
             }
-            onOpenSuperTrendSettings={() => setShowSuperTrendModal(true)}
-          />
+          }}
+          canUndo={canUndo}
+          onUndo={handleUndo}
+          canRedo={canRedo}
+          onRedo={handleRedo}
+          htfBiasEnabled={htfBiasSettings.settings.enabled}
+          onToggleHtfBias={() => htfBiasSettings.updateSetting('enabled', !htfBiasSettings.settings.enabled)}
+          squeezeEnabled={sqzSettings.settings.enabled}
+          onOpenSqueezeSettings={() => setShowSqueezeSettings(true)}
+          vpEnabled={vpSettings.settings.enabled}
+          onOpenVolumeProfileSettings={() => setShowVPModal(true)}
+        />
 
-          {/* Drawing Mode Toggle Button */}
-          <button
-            onClick={() => {
-              if (activeTool) {
-                setActiveTool(null);
-                activeToolRef.current = null;
-              } else {
-                setActiveTool('trendline');
-                activeToolRef.current = 'trendline';
-              }
-            }}
-            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-              activeTool
-                ? 'bg-blue-500 text-white'
-                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-            }`}
-            title={activeTool ? 'Drawing: ON (press D or click to disable)' : 'Drawing: OFF (press D or click to enable)'}
-            data-testid="btn-drawing-toggle"
-          >
-            {activeTool ? 'Drawing: ON' : 'Drawing: OFF'}
-          </button>
-
-          {/* Undo Button */}
-          <button
-            onClick={handleUndo}
-            disabled={!canUndo}
-            className={`p-2 rounded-lg transition-all ${
-              canUndo
-                ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
-                : 'bg-slate-800/40 text-gray-600 cursor-not-allowed'
-            }`}
-            title="Undo (Ctrl+Z)"
-            data-testid="btn-undo"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-            </svg>
-          </button>
-
-          {/* Redo Button */}
-          <button
-            onClick={handleRedo}
-            disabled={!canRedo}
-            className={`p-2 rounded-lg transition-all ${
-              canRedo
-                ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
-                : 'bg-slate-800/40 text-gray-600 cursor-not-allowed'
-            }`}
-            title="Redo (Ctrl+Y)"
-            data-testid="btn-redo"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
-            </svg>
-          </button>
-
-          {/* HTF Bias Toggle Button */}
-          <button
-            onClick={() => htfBiasSettings.updateSetting('enabled', !htfBiasSettings.settings.enabled)}
-            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-              htfBiasSettings.settings.enabled
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-            }`}
-            title="Toggle HTF Bias Panel"
-            data-testid="btn-htf-bias-toggle"
-          >
-            HTF
-          </button>
-
-          {/* Squeeze Momentum Toggle Button */}
-          <button
-            onClick={() => setShowSqueezeSettings(true)}
-            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-              sqzSettings.settings.enabled
-                ? 'bg-cyan-600 text-white'
-                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-            }`}
-            title="Squeeze Momentum (LazyBear)"
-            data-testid="btn-squeeze-momentum-toggle"
-          >
-            Squeeze
-          {/* Volume Profile Button */}
-          <button
-            onClick={() => setShowVPModal(true)}
-            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-              vpSettings.settings.enabled
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-            }`}
-            title="Volume Profile Settings"
-            data-testid="btn-volume-profile"
-          >
-            VP
-          </button>
-        </div>
-
-        {/* Mini Oscillator Indicators */}
-        <MiniOscillatorSection
+        <FullscreenChartViewportLayer
           miniOscillators={oscillatorPanel.miniOscillators}
           oscillatorData={oscillatorData}
-          onCycleMode={oscillatorPanel.cycleMode}
-        />
-
-        {/* HTF Bias Panel – top-right corner */}
-        {htfBiasSettings.settings.enabled && (
-          <HTFBiasPanel entries={htfBiasEntries} />
-        )}
-        
-        {/* Loading/Error Overlay */}
-        <ChartLoadingOverlay isLoading={isLoading} error={error?.message || null} />
-        
-        {/* Chart Container */}
-        <div 
-          ref={chartContainerRef} 
-          className="absolute inset-x-0 top-0 w-full" 
-          style={{ 
-            height: `calc(${oscillatorPanel.chartPercentage}vh - ${TOP_TOOLBAR_HEIGHT}px)` 
-          }}
-          onClick={!activeTool ? handleDeselect : undefined}
+          onCycleMiniMode={oscillatorPanel.cycleMode}
+          showHtfBiasPanel={htfBiasSettings.settings.enabled}
+          htfBiasEntries={htfBiasEntries}
+          isLoading={isLoading}
+          errorMessage={error?.message || null}
+          chartContainerRef={chartContainerRef}
+          chartPercentage={oscillatorPanel.chartPercentage}
+          onChartBackgroundClick={!activeTool ? waveSelection.handleDeselect : undefined}
         />
         
-        {/* Moving Averages */}
-        <MovingAverages
+        <FullscreenChartIndicatorLayer
           chart={chartRef.current}
-          maConfigs={indicators.ema.configs}
-          show={indicators.ema.show}
+          candleSeries={candleSeriesRef.current}
           candles={candles}
           calculateEMA={calculateEMA}
+          emaConfigs={indicators.ema.configs}
+          showEma={indicators.ema.show}
           emaHTFDataCache={htfDataCache}
           symbol={symbol}
           interval={timeframe}
-        />
-        
-        {/* FVG Renderer */}
-        <FVGRenderer
-          chart={chartRef.current}
-          candleSeries={candleSeriesRef.current}
           fvgs={fvgs}
-          settings={fvgSettings.settings}
-        />
-
-        {/* Order Block Renderer */}
-        <OrderBlockRenderer
-          chart={chartRef.current}
-          candleSeries={candleSeriesRef.current}
+          fvgSettings={fvgSettings.settings}
           orderBlocks={orderBlocks}
-          settings={obSettings.settings}
-        />
-
-        {/* Breaker Block Renderer */}
-        <BreakerBlockRenderer
-          chart={chartRef.current}
-          candleSeries={candleSeriesRef.current}
+          obSettings={obSettings.settings}
           breakerBlocks={breakerBlocks}
-          settings={bbSettings.settings}
-        />
-
-        {/* BOS/CHoCH Renderer */}
-        <BOSRenderer
-          chart={chartRef.current}
-          candleSeries={candleSeriesRef.current}
+          bbSettings={bbSettings.settings}
           structureBreaks={structureBreaks}
           swingPoints={swingPoints}
-          settings={bosSettings.settings}
-        />
-
-        {/* Liquidity Zone Renderer */}
-        <LiquidityRenderer
-          chart={chartRef.current}
-          candleSeries={candleSeriesRef.current}
-          zones={liquidityZones}
-          settings={liquiditySettings.settings}
-        />
-
-        {/* Premium/Discount Zone Renderer */}
-        <PDZoneRenderer
-          chart={chartRef.current}
-          candleSeries={candleSeriesRef.current}
-          zones={pdZones}
-          settings={pdZoneSettings.settings}
-        />
-
-        {/* Auto-Fibonacci Renderer */}
-        <AutoFibRenderer
-          chart={chartRef.current}
-          candleSeries={candleSeriesRef.current}
-          zones={autoFibZones}
-          settings={autoFibSettings.settings}
-        />
-
-        {/* Volume Profile Renderer */}
-        <VolumeProfileRenderer
-          chart={chartRef.current}
-          candleSeries={candleSeriesRef.current}
-          data={volumeProfileData}
-          settings={vpSettings.settings}
-        />
-
-        {/* Volume Profile Settings Modal */}
-        <VolumeProfileSettingsModal
-          isOpen={showVPModal}
-          onClose={() => setShowVPModal(false)}
-          settings={vpSettings.settings}
-          onSettingsChange={vpSettings.setSettings}
-        {/* SuperTrend Renderer */}
-        <SuperTrendRenderer
-          chart={chartRef.current}
-          candleSeries={candleSeriesRef.current}
-          data={superTrendData}
-          settings={superTrendSettings.settings}
-        />
-
-        {/* Divergence Scanner – badges overlaid on chart */}
-        {divergenceScannerEnabled && (
-          <DivergenceRenderer
-            chart={chartRef.current}
-            candleSeries={candleSeriesRef.current}
-            divergencePoints={filteredDivergencePoints}
-            onBadgeClick={setSelectedDivergencePoint}
-            settings={divSettings.settings}
-          />
-        )}
-
-        {/* Divergence Badge Popup – shown when a badge is clicked */}
-        {selectedDivergencePoint && (
-          <DivergenceBadgePopup
-            point={selectedDivergencePoint}
-            onClose={() => setSelectedDivergencePoint(null)}
-          />
-        )}
-
-        {/* Divergence Settings Modal */}
-        <DivergenceSettingsModal
-          isOpen={showDivergenceSettings}
-          onClose={() => setShowDivergenceSettings(false)}
-          settings={divSettings.settings}
-          onSettingsChange={divSettings.updateSettings}
-        />
-
-        {/* Squeeze Momentum Settings Modal */}
-        <SqueezeMomentumSettingsModal
-          isOpen={showSqueezeSettings}
-          onClose={() => setShowSqueezeSettings(false)}
-          settings={sqzSettings.settings}
-          onSettingsChange={sqzSettings.updateSettings}
-          onReset={sqzSettings.resetSettings}
+          bosSettings={bosSettings.settings}
+          liquidityZones={liquidityZones}
+          liquiditySettings={liquiditySettings.settings}
+          pdZones={pdZones}
+          pdZoneSettings={pdZoneSettings.settings}
+          autoFibZones={autoFibZones}
+          autoFibSettings={autoFibSettings.settings}
+          volumeProfileData={volumeProfileData}
+          vpSettings={vpSettings.settings}
+          showVPModal={showVPModal}
+          onCloseVPModal={() => setShowVPModal(false)}
+          onVPSettingsChange={vpSettings.setSettings}
+          superTrendData={superTrendData}
+          superTrendSettings={superTrendSettings.settings}
+          divergenceScannerEnabled={divergenceScannerEnabled}
+          filteredDivergencePoints={filteredDivergencePoints}
+          onSelectDivergencePoint={setSelectedDivergencePoint}
+          selectedDivergencePoint={selectedDivergencePoint}
+          onCloseDivergencePoint={() => setSelectedDivergencePoint(null)}
+          showDivergenceSettings={showDivergenceSettings}
+          onCloseDivergenceSettings={() => setShowDivergenceSettings(false)}
+          divergenceSettings={divSettings.settings}
+          onDivergenceSettingsChange={divSettings.updateSettings}
+          showSqueezeSettings={showSqueezeSettings}
+          onCloseSqueezeSettings={() => setShowSqueezeSettings(false)}
+          squeezeSettings={sqzSettings.settings}
+          onSqueezeSettingsChange={sqzSettings.updateSettings}
+          onResetSqueezeSettings={sqzSettings.resetSettings}
         />
 
         {/* Drawing Renderer */}
@@ -1446,223 +581,29 @@ export function ChartFullscreenPage({
           }
         />
 
-        {/* Complete Panel – show when done (auto-save in progress) */}
-        {elliottWave.isComplete && (
-          <div className={`absolute top-14 right-4 z-30 bg-slate-900 border rounded-lg p-3 shadow-xl select-none ${elliottWave.isValid ? 'border-emerald-700' : 'border-red-700'}`}>
-            {elliottWave.isValid ? (
-              <p className="text-emerald-400 text-sm font-semibold mb-2">
-                ✓ Wave Complete – Saving…
-              </p>
-            ) : (
-              <>
-                <p className="text-red-400 text-sm font-semibold mb-1">
-                  ⚠ Invalid Wave Structure
-                </p>
-                <ul className="mb-2 space-y-0.5">
-                  {elliottWave.validationErrors.map((err, i) => (
-                    <li key={i} className="text-red-300 text-xs">{err}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={elliottWave.reset}>
-                Reset
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => {
-                elliottWave.deactivateMode();
-                setActiveTool(null);
-                activeToolRef.current = null;
-              }}>
-                Cancel
-              </Button>
-              {!elliottWave.isValid && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-red-400 hover:text-red-300 hover:bg-red-950"
-                  onClick={() => {
-                    elliottWave.deactivateMode();
-                    setActiveTool(null);
-                    activeToolRef.current = null;
-                  }}
-                >
-                  Delete Drawing
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Validation Error Panel – shown during active drawing */}
-        {elliottWave.isDrawing && elliottWave.validationErrors.length > 0 && (
-          <div className="absolute top-14 right-4 z-30 bg-slate-900 border border-amber-700 rounded-lg p-3 shadow-xl select-none max-w-xs">
-            <p className="text-amber-400 text-xs font-semibold mb-1">⚠ Validation Warnings</p>
-            <ul className="space-y-0.5">
-              {elliottWave.validationErrors.map((err, i) => (
-                <li key={i} className="text-amber-300 text-xs">{err}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Predictive Fib Level Renderer – ACTIVE DRAWING */}
-        {activeTool === 'elliott_wave' && elliottWave.isActive && (
-          <PredictiveFibRenderer
-            chart={chartRef.current}
-            candleSeries={candleSeriesRef.current}
-            fibLevels={elliottWave.fibProjections}
-            isActive={elliottWave.isActive}
-          />
-        )}
-
-        {/* Invalidation Level Renderer – red lines for active drawing validation */}
-        {activeTool === 'elliott_wave' && elliottWave.isActive && elliottWave.invalidationLevels.length > 0 && (
-          <PredictiveFibRenderer
-            chart={chartRef.current}
-            candleSeries={candleSeriesRef.current}
-            fibLevels={elliottWave.invalidationLevels}
-            isActive={elliottWave.isActive}
-            color="#ef4444"
-          />
-        )}
-
-        {/* Predictive Fib Level Renderer – SELECTED SAVED WAVE */}
-        {selectedWaveId && selectedWaveFibs.length > 0 && (
-          <PredictiveFibRenderer
-            chart={chartRef.current}
-            candleSeries={candleSeriesRef.current}
-            fibLevels={selectedWaveFibs}
-            isActive={true}
-            color="#facc15"
-          />
-        )}
-
-        {/* Future Prediction Lines – persistent purple dashed lines for next wave targets */}
-        {futurePredictionLines.length > 0 && (
-          <PredictiveFibRenderer
-            chart={chartRef.current}
-            candleSeries={candleSeriesRef.current}
-            fibLevels={futurePredictionLines}
-            isActive={true}
-            color="#a855f7"
-          />
-        )}
-
-        {/* Wave Click Overlay – transparent SVG polygons over each saved EW wave for click detection */}
-        {/* chartViewVersion is read to force re-render on pan/zoom */}
-        {chartViewVersion >= 0 && (
-          <svg
-            className="absolute top-0 left-0"
-            style={{ width: '100%', height: '100%', zIndex: 15, pointerEvents: 'none' }}
-          >
-            {/* Background rect – captures clicks on chart background to deselect the active wave */}
-            <rect
-              x={0}
-              y={0}
-              width="100%"
-              height="100%"
-              fill="transparent"
-              style={{ pointerEvents: selectedWaveId && !activeTool ? 'auto' : 'none' }}
-              onClick={() => handleDeselect()}
-            />
-            {drawings
-              .filter(d => d.type === 'elliott_wave' && d.points.length >= 2)
-              .map(wave => {
-                if (!chartRef.current || !candleSeriesRef.current) return null;
-                const coords = wave.points
-                  .map(p => ({
-                    x: chartRef.current!.timeScale().timeToCoordinate(p.time as Time) as number | null,
-                    y: candleSeriesRef.current!.priceToCoordinate(p.price) as number | null,
-                  }))
-                  .filter((c): c is { x: number; y: number } => c.x !== null && c.y !== null);
-                if (coords.length < 2) return null;
-                const first = coords[0];
-                const last = coords[coords.length - 1];
-                // Build a thick invisible line as the click target
-                const dx = last.x - first.x;
-                const dy = last.y - first.y;
-                const len = Math.sqrt(dx * dx + dy * dy);
-                if (len === 0) return null;
-                const nx = (-dy / len) * 12;
-                const ny = (dx / len) * 12;
-                const points = [
-                  `${first.x + nx},${first.y + ny}`,
-                  `${last.x + nx},${last.y + ny}`,
-                  `${last.x - nx},${last.y - ny}`,
-                  `${first.x - nx},${first.y - ny}`,
-                ].join(' ');
-                const isInteractive = !activeTool;
-                return (
-                  <g key={wave.id}>
-                    <polygon
-                      points={points}
-                      fill="transparent"
-                      stroke="transparent"
-                      style={{
-                        pointerEvents: 'auto',
-                        cursor: isInteractive ? 'pointer' : 'default',
-                      }}
-                      onClick={(e) => {
-                        if (!activeTool) {
-                          e.stopPropagation();
-                          handleWaveClick(wave.id, e.nativeEvent);
-                        }
-                      }}
-                    />
-                    {/* Visual indicator line when wave is selected */}
-                    {selectedWaveId === wave.id && (
-                      <line
-                        x1={first.x}
-                        y1={first.y}
-                        x2={last.x}
-                        y2={last.y}
-                        stroke="#22c55e"
-                        strokeWidth={3}
-                        pointerEvents="none"
-                        opacity={0.8}
-                      />
-                    )}
-
-                  </g>
-                );
-              })}
-          </svg>
-        )}
-        
-        {/* Temp Drawing Points SVG */}
-        <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', zIndex: 10 }}>
-          {tempDrawing && tempDrawing.points.length > 0 && chartRef.current && tempDrawing.points.map((point, i) => {
-            const x = chartRef.current?.timeScale().timeToCoordinate(point.time as Time);
-            const y = candleSeriesRef.current?.priceToCoordinate(point.price);
-            return (
-              <circle 
-                key={i} 
-                cx={x ?? 0} 
-                cy={y ?? 0} 
-                r={6} 
-                fill={point.snapType === 'high' ? '#ef4444' : point.snapType === 'low' ? '#22c55e' : '#3b82f6'} 
-                stroke="#fff" 
-                strokeWidth={2}
-              />
-            );
-          })}
-        </svg>
-        
-        {/* Drawing Quick Menu */}
-        {drawingInteraction.quickMenuPosition && drawingInteraction.selectedDrawingId && (
-          <DrawingQuickMenu
-            x={drawingInteraction.quickMenuPosition.x}
-            y={drawingInteraction.quickMenuPosition.y}
-            onSettings={handleOpenSettings}
-            onDelete={handleDeleteDrawing}
-            onClose={drawingInteraction.closeQuickMenu}
-          />
-        )}
+        <WaveOverlayStack
+          elliottWave={elliottWave}
+          activeTool={activeTool}
+          onDeactivateTool={elliottWaveController.deactivateTool}
+          selectedWaveId={waveSelection.selectedWaveId}
+          selectedWaveFibs={waveSelection.selectedWaveFibs}
+          futurePredictionLines={waveSelection.futurePredictionLines}
+          chartViewVersion={chartViewVersion}
+          drawings={drawings}
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          onDeselectWave={waveSelection.handleDeselect}
+          onWaveClick={waveSelection.handleWaveClick}
+          tempDrawing={tempDrawing}
+          quickMenuPosition={drawingInteraction.quickMenuPosition}
+          selectedDrawingId={drawingInteraction.selectedDrawingId}
+          onOpenDrawingSettings={modalHelpers.handleOpenSettings}
+          onDeleteDrawing={drawingActions.handleDeleteDrawing}
+          onCloseQuickMenu={drawingInteraction.closeQuickMenu}
+        />
       </div>
       
-      {/* Docked Oscillators */}
-      <DockedOscillatorSection
+      <FullscreenOscillatorLayout
         selectedOscillators={oscillatorPanel.selectedOscillators}
         poppedOutOscillators={oscillatorPanel.poppedOutOscillators}
         miniOscillators={oscillatorPanel.miniOscillators}
@@ -1671,8 +612,6 @@ export function ChartFullscreenPage({
         totalOscillatorHeight={oscillatorPanel.totalHeight}
         onPopout={oscillatorPanel.popoutOscillator}
         onCycleMode={oscillatorPanel.cycleMode}
-        isFullscreen={true}
-        usePercentage={true}
         totalPercentage={oscillatorPanel.totalPercentage}
         perOscillatorPercentage={oscillatorPanel.perOscillatorPercentage}
         mainChartVisibleRange={mainChartVisibleRange}
@@ -1680,39 +619,18 @@ export function ChartFullscreenPage({
         sqzSettings={sqzSettings.settings}
       />
       
-      {/* Popped Out Oscillators */}
-      <PoppedOutOscillators
-        selectedOscillators={oscillatorPanel.selectedOscillators}
-        poppedOutOscillators={oscillatorPanel.poppedOutOscillators}
-        oscillatorData={oscillatorData}
-        candles={candles}
-        onPopout={oscillatorPanel.popoutOscillator}
-        onCycleMode={oscillatorPanel.cycleMode}
-        mainChartVisibleRange={mainChartVisibleRange}
-      />
-      
-      {/* Modals */}
-      {drawingInteraction.selectedDrawingId && (
-        <DrawingSettingsModal
-          isOpen={settingsModalOpen}
-          onClose={handleCloseSettings}
-          drawing={selectedDrawingForModal}
-          onUpdate={handleUpdateDrawing}
-        />
-      )}
-      
-      {drawingInteraction.showSelectionModal && (
-        <DrawingSelectionModal
-          open={drawingInteraction.showSelectionModal}
-          drawings={drawingInteraction.nearbyDrawings}
-          onSelect={drawingInteraction.selectFromModal}
-          onClose={drawingInteraction.closeSelectionModal}
-        />
-      )}
-      
-      <EmaSmaModal
-        isOpen={showEmaSmaModal}
-        onClose={() => setShowEmaSmaModal(false)}
+      <FullscreenChartModals
+        selectedDrawingId={drawingInteraction.selectedDrawingId}
+        settingsModalOpen={settingsModalOpen}
+        onCloseSettings={modalHelpers.handleCloseSettings}
+        selectedDrawingForModal={modalHelpers.selectedDrawingForModal}
+        onUpdateDrawing={drawingActions.handleUpdateDrawing}
+        showSelectionModal={drawingInteraction.showSelectionModal}
+        nearbyDrawings={drawingInteraction.nearbyDrawings}
+        onSelectFromModal={drawingInteraction.selectFromModal}
+        onCloseSelectionModal={drawingInteraction.closeSelectionModal}
+        showEmaSmaModal={showEmaSmaModal}
+        onCloseEmaSmaModal={() => setShowEmaSmaModal(false)}
         emaShow={indicators.ema.show}
         emaConfigs={indicators.ema.configs}
         emaInputs={indicators.ema.inputs}
@@ -1723,18 +641,12 @@ export function ChartFullscreenPage({
         smaConfigs={indicators.sma.configs}
         onSmaToggle={indicators.sma.setShow}
         onSmaConfigsChange={indicators.sma.setConfigs}
-      />
-      
-      <OscillatorSelectorModal
-        isOpen={oscillatorPanel.showSelector}
-        onClose={() => oscillatorPanel.setShowSelector(false)}
+        showOscillatorSelector={oscillatorPanel.showSelector}
+        onCloseOscillatorSelector={() => oscillatorPanel.setShowSelector(false)}
         selectedOscillators={oscillatorPanel.selectedOscillators}
         onToggleOscillator={oscillatorPanel.toggleOscillator}
-      />
-
-      <SMCSettingsModal
-        isOpen={showSmcModal}
-        onClose={() => setShowSmcModal(false)}
+        showSmcModal={showSmcModal}
+        onCloseSmcModal={() => setShowSmcModal(false)}
         fvgSettings={fvgSettings.settings}
         onFVGSettingsChange={fvgSettings.setSettings}
         obSettings={obSettings.settings}
@@ -1745,26 +657,17 @@ export function ChartFullscreenPage({
         onLiquiditySettingsChange={liquiditySettings.setSettings}
         pdZoneSettings={pdZoneSettings.settings}
         onPDZoneSettingsChange={pdZoneSettings.setSettings}
-      />
-
-      <DegreePicker
-        isOpen={showDegreePicker}
-        onSelect={handleDegreeSelect}
-        onClose={() => setShowDegreePicker(false)}
-      />
-
-      <AutoFibSettingsModal
-        isOpen={showAutoFibModal}
-        onClose={() => setShowAutoFibModal(false)}
-        settings={autoFibSettings.settings}
-        onSettingsChange={autoFibSettings.updateSettings}
-      />
-
-      <SuperTrendSettingsModal
-        isOpen={showSuperTrendModal}
-        onClose={() => setShowSuperTrendModal(false)}
-        settings={superTrendSettings.settings}
-        onSettingsChange={superTrendSettings.updateConfig}
+        showDegreePicker={showDegreePicker}
+        onDegreeSelect={elliottWaveController.handleDegreeSelect}
+        onCloseDegreePicker={() => setShowDegreePicker(false)}
+        showAutoFibModal={showAutoFibModal}
+        onCloseAutoFibModal={() => setShowAutoFibModal(false)}
+        autoFibSettings={autoFibSettings.settings}
+        onAutoFibSettingsChange={autoFibSettings.updateSettings}
+        showSuperTrendModal={showSuperTrendModal}
+        onCloseSuperTrendModal={() => setShowSuperTrendModal(false)}
+        superTrendSettings={superTrendSettings.settings}
+        onSuperTrendSettingsChange={superTrendSettings.updateConfig}
       />
     </div>
   );

@@ -1,0 +1,55 @@
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { queryClient } from '@/lib/queryClient';
+import { authenticatedApiRequest } from '@/lib/apiAuth';
+
+interface UseElliottWaveLabelsParams {
+  symbol: string;
+  timeframe: string;
+  toast: (args: { title: string; description?: string; variant?: 'default' | 'destructive' }) => void;
+}
+
+export function useElliottWaveLabels({ symbol, timeframe, toast }: UseElliottWaveLabelsParams) {
+  const { data: ewLabels = [] } = useQuery<any[]>({
+    queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe],
+    queryFn: async () => {
+      const response = await authenticatedApiRequest(
+        'GET',
+        `/api/crypto/elliott-wave/labels?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
+      );
+      return response.json();
+    },
+  });
+
+  const saveEWLabelMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await authenticatedApiRequest('POST', '/api/crypto/elliott-wave/labels', data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Wave saved', description: 'Elliott Wave saved successfully.' });
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe] });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Failed to save wave', description: error?.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteEWLabelMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await authenticatedApiRequest('DELETE', `/api/crypto/elliott-wave/labels/${id}`);
+    },
+    onSuccess: () => {
+      toast({ title: 'Wave deleted successfully' });
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe] });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Failed to delete wave', description: error?.message, variant: 'destructive' });
+    },
+  });
+
+  return {
+    ewLabels,
+    saveEWLabelMutation,
+    deleteEWLabelMutation,
+  };
+}
