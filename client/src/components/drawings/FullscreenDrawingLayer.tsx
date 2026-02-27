@@ -8,6 +8,7 @@ interface FullscreenDrawingLayerProps {
   quickMenuPosition: { x: number; y: number } | null;
   selectedDrawingId: string | null;
   onSettings: () => void;
+  onAlert?: () => void;
   onDelete: () => void;
   onCloseQuickMenu: () => void;
 }
@@ -19,6 +20,7 @@ export function FullscreenDrawingLayer({
   quickMenuPosition,
   selectedDrawingId,
   onSettings,
+  onAlert,
   onDelete,
   onCloseQuickMenu,
 }: FullscreenDrawingLayerProps) {
@@ -47,6 +49,7 @@ export function FullscreenDrawingLayer({
           x={quickMenuPosition.x}
           y={quickMenuPosition.y}
           onSettings={onSettings}
+          onAlert={onAlert}
           onDelete={onDelete}
           onClose={onCloseQuickMenu}
         />

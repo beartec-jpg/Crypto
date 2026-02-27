@@ -11,6 +11,12 @@ interface ToolsMenuProps {
   onOpenDivergenceSettings?: () => void;
   superTrendEnabled: boolean;
   onOpenSuperTrendSettings: () => void;
+  htfBiasEnabled: boolean;
+  onToggleHtfBias: () => void;
+  squeezeEnabled: boolean;
+  onOpenSqueezeSettings: () => void;
+  vpEnabled: boolean;
+  onOpenVolumeProfileSettings: () => void;
   className?: string;
 }
 
@@ -20,9 +26,22 @@ export function ToolsMenu({
   onOpenDivergenceSettings,
   superTrendEnabled,
   onOpenSuperTrendSettings,
+  htfBiasEnabled,
+  onToggleHtfBias,
+  squeezeEnabled,
+  onOpenSqueezeSettings,
+  vpEnabled,
+  onOpenVolumeProfileSettings,
   className,
 }: ToolsMenuProps) {
   const [open, setOpen] = useState(false);
+
+  const hasActiveTools =
+    divergenceScannerEnabled ||
+    superTrendEnabled ||
+    htfBiasEnabled ||
+    squeezeEnabled ||
+    vpEnabled;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -32,7 +51,7 @@ export function ToolsMenu({
           size="icon"
           className={cn(
             'relative h-9 w-9 transition-all',
-            divergenceScannerEnabled || superTrendEnabled
+            hasActiveTools
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30'
               : 'text-slate-300 hover:text-white hover:bg-slate-800',
             className,
@@ -87,6 +106,49 @@ export function ToolsMenu({
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
               <div className="text-sm font-medium text-slate-100 leading-tight">
+                HTF Bias
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Multi-timeframe bias panel
+              </div>
+            </div>
+            <Switch
+              checked={htfBiasEnabled}
+              onCheckedChange={() => onToggleHtfBias()}
+              className="shrink-0 data-[state=checked]:bg-blue-600"
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                Squeeze
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Squeeze Momentum (LazyBear)
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'h-6 w-6 hover:text-white hover:bg-slate-700',
+                squeezeEnabled ? 'text-cyan-400' : 'text-slate-400',
+              )}
+              title="Squeeze Momentum Settings"
+              onClick={() => {
+                setOpen(false);
+                onOpenSqueezeSettings();
+              }}
+              data-testid="btn-squeeze-momentum-toggle"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
                 SuperTrend
               </div>
               <div className="text-xs text-slate-400 leading-tight">
@@ -107,6 +169,33 @@ export function ToolsMenu({
                 <Settings className="h-3.5 w-3.5" />
               </Button>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                Volume Profile
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                VP settings and visibility
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'h-6 w-6 hover:text-white hover:bg-slate-700',
+                vpEnabled ? 'text-blue-400' : 'text-slate-400',
+              )}
+              title="Volume Profile Settings"
+              onClick={() => {
+                setOpen(false);
+                onOpenVolumeProfileSettings();
+              }}
+              data-testid="btn-volume-profile"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
           </div>
         </div>
       </PopoverContent>

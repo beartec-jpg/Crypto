@@ -15,7 +15,7 @@ export interface SwingPoint {
 
 export interface StructureBreak {
   id: string;
-  type: 'bos' | 'choch';
+  type: 'bos' | 'choch' | 'mss';
   direction: 'bullish' | 'bearish';
 
   // The swing point that was broken
@@ -53,10 +53,18 @@ export interface BOSSettings {
   // Display
   showBOS: boolean;         // Show continuation breaks
   showCHoCH: boolean;       // Show reversal breaks
+  showMSS: boolean;         // Show market structure shifts
   showSwingPoints: boolean; // Mark HH/HL/LH/LL on chart
-  showLabels: boolean;      // Show "BOS" / "CHoCH" text
+  showLabels: boolean;      // Show "BOS" / "CHoCH" / "MSS" text
   drawLines: boolean;       // Draw horizontal lines at levels
   extendLines: boolean;     // Extend lines to current candle
+
+  // Session Separators
+  showSessions: boolean;    // Show session separator lines
+  showAsianSession: boolean;   // Show Asian (Tokyo) open
+  showLondonSession: boolean;  // Show London open
+  showNYSession: boolean;      // Show New York open
+  sessionLabelSize: number;    // Label font size (10-14)
 
   // Filters
   maxAge: number;       // Max candles to show (50-500)
@@ -67,8 +75,13 @@ export interface BOSSettings {
   bearishBOSColor: string;   // Default: #ef4444 (red)
   bullishCHoCHColor: string; // Default: #06b6d4 (cyan)
   bearishCHoCHColor: string; // Default: #f97316 (orange)
+  bullishMSSColor: string;   // Default: #10b981 (emerald)
+  bearishMSSColor: string;   // Default: #dc2626 (rose)
   swingHighColor: string;    // Default: #a855f7 (purple)
   swingLowColor: string;     // Default: #eab308 (yellow)
+  asianSessionColor: string;  // Default: #f59e0b (amber)
+  londonSessionColor: string; // Default: #3b82f6 (blue)
+  nySessionColor: string;     // Default: #10b981 (green)
 
   // Integration
   linkToOB: boolean;  // Show which OB caused break
@@ -83,10 +96,17 @@ export const DEFAULT_BOS_SETTINGS: BOSSettings = {
 
   showBOS: true,
   showCHoCH: true,
+  showMSS: true,
   showSwingPoints: false,
   showLabels: true,
   drawLines: true,
   extendLines: true,
+
+  showSessions: false,
+  showAsianSession: true,
+  showLondonSession: true,
+  showNYSession: true,
+  sessionLabelSize: 11,
 
   maxAge: 200,
   hideSwept: false,
@@ -95,8 +115,13 @@ export const DEFAULT_BOS_SETTINGS: BOSSettings = {
   bearishBOSColor: '#ef4444',
   bullishCHoCHColor: '#06b6d4',
   bearishCHoCHColor: '#f97316',
+  bullishMSSColor: '#10b981',
+  bearishMSSColor: '#dc2626',
   swingHighColor: '#a855f7',
   swingLowColor: '#eab308',
+  asianSessionColor: '#f59e0b',
+  londonSessionColor: '#3b82f6',
+  nySessionColor: '#10b981',
 
   linkToOB: false,
   linkToFVG: false,

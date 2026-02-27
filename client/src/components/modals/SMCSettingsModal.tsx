@@ -499,6 +499,14 @@ export function SMCSettingsModal({
                 />
               </SettingRow>
 
+              <SettingRow label="Show MSS (Structure Shift)">
+                <Switch
+                  checked={bosSettings.showMSS}
+                  onCheckedChange={(v) => updateBOS('showMSS', v)}
+                  className="data-[state=checked]:bg-emerald-600"
+                />
+              </SettingRow>
+
               <SettingRow label="Show Swing Points (HH/HL/LH/LL)">
                 <Switch
                   checked={bosSettings.showSwingPoints}
@@ -555,6 +563,56 @@ export function SMCSettingsModal({
             </div>
 
             <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Session Separators</p>
+
+              <SettingRow label="Show Session Lines">
+                <Switch
+                  checked={bosSettings.showSessions}
+                  onCheckedChange={(v) => updateBOS('showSessions', v)}
+                  className="data-[state=checked]:bg-blue-600"
+                />
+              </SettingRow>
+
+              {bosSettings.showSessions && (
+                <>
+                  <SettingRow label="Asian (Tokyo) Open - 00:00 UTC">
+                    <Switch
+                      checked={bosSettings.showAsianSession}
+                      onCheckedChange={(v) => updateBOS('showAsianSession', v)}
+                      className="data-[state=checked]:bg-amber-600"
+                    />
+                  </SettingRow>
+
+                  <SettingRow label="London Open - 08:00 UTC">
+                    <Switch
+                      checked={bosSettings.showLondonSession}
+                      onCheckedChange={(v) => updateBOS('showLondonSession', v)}
+                      className="data-[state=checked]:bg-blue-600"
+                    />
+                  </SettingRow>
+
+                  <SettingRow label="New York Open - 13:00 UTC">
+                    <Switch
+                      checked={bosSettings.showNYSession}
+                      onCheckedChange={(v) => updateBOS('showNYSession', v)}
+                      className="data-[state=checked]:bg-green-600"
+                    />
+                  </SettingRow>
+
+                  <SliderRow
+                    label="Label Font Size"
+                    value={bosSettings.sessionLabelSize}
+                    min={9}
+                    max={14}
+                    step={1}
+                    displayValue={`${bosSettings.sessionLabelSize}px`}
+                    onChange={(v) => updateBOS('sessionLabelSize', v)}
+                  />
+                </>
+              )}
+            </div>
+
+            <div className="border-t border-slate-700 pt-2">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Colors</p>
 
               <div className="grid grid-cols-2 gap-3">
@@ -566,6 +624,9 @@ export function SMCSettingsModal({
                     { key: 'bearishCHoCHColor', label: 'Bearish CHoCH' },
                     { key: 'swingHighColor', label: 'Swing High' },
                     { key: 'swingLowColor', label: 'Swing Low' },
+                    { key: 'asianSessionColor', label: 'Asian Session' },
+                    { key: 'londonSessionColor', label: 'London Session' },
+                    { key: 'nySessionColor', label: 'NY Session' },
                   ] as { key: keyof BOSSettings; label: string }[]
                 ).map(({ key, label }) => (
                   <div key={key} className="flex items-center gap-2">

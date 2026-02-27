@@ -9,6 +9,7 @@ import type {
   SeriesType,
 } from 'lightweight-charts';
 import type { BOSSettings, StructureBreak, SwingPoint } from '@/types/structureBreak';
+import type { SessionSeparator } from '@/lib/sessions/sessionSeparators';
 
 type RequestUpdateCallback = () => void;
 
@@ -25,6 +26,7 @@ function hexToRgba(color: string, alpha: number): string {
 class BOSRenderer implements IPrimitivePaneRenderer {
   private _breaks: StructureBreak[];
   private _swings: SwingPoint[];
+  private _sessions: SessionSeparator[];
   private _settings: BOSSettings;
   private _series: ISeriesApi<SeriesType> | null;
   private _chart: IChartApi | null;
@@ -32,12 +34,14 @@ class BOSRenderer implements IPrimitivePaneRenderer {
   constructor(
     breaks: StructureBreak[],
     swings: SwingPoint[],
+    sessions: SessionSeparator[],
     settings: BOSSettings,
     series: ISeriesApi<SeriesType> | null,
     chart: IChartApi | null,
   ) {
     this._breaks = breaks;
     this._swings = swings;
+    this._sessions = sessions;
     this._settings = settings;
     this._series = series;
     this._chart = chart;
@@ -51,11 +55,12 @@ class BOSRenderer implements IPrimitivePaneRenderer {
       const chartWidth: number = scope.mediaSize.width;
       const timeScale = this._chart!.timeScale();
 
-      // Draw BOS/CHoCH lines
+      // Draw BOS/CHoCH/MSS lines
       if (this._settings.drawLines) {
         for (const sb of this._breaks) {
           if (sb.type === 'bos' && !this._settings.showBOS) continue;
           if (sb.type === 'choch' && !this._settings.showCHoCH) continue;
+          if (sb.type === 'mss' && !this._settings.showMSS) continue;
           if (sb.swept && this._settings.hideSwept) continue;
 
           const color = this._getBreakColor(sb);
@@ -70,7 +75,7 @@ class BOSRenderer implements IPrimitivePaneRenderer {
             : timeScale.timeToCoordinate(sb.breakTime as Time) ?? chartWidth;
 
           ctx.strokeStyle = hexToRgba(color, sb.confirmed ? 0.85 : 0.45);
-          ctx.lineWidth = sb.type === 'choch' ? 2 : 1.5;
+          ctx.lineWidth = sb.type === 'mss' ? 2.5 : sb.type === 'choch' ? 2 : 1.5;
           ctx.setLineDash(sb.swept ? [4, 4] : []);
           ctx.beginPath();
           ctx.moveTo(xStart, yLevel);
@@ -80,10 +85,10 @@ class BOSRenderer implements IPrimitivePaneRenderer {
 
           // Label
           if (this._settings.showLabels) {
-            const label = sb.type === 'bos' ? 'BOS' : 'CHoCH';
+            const label = sb.type === 'mss' ? 'MSS' : sb.type === 'bos' ? 'BOS' : 'CHoCH';
             const arrow = sb.direction === 'bullish' ? ' ↑' : ' ↓';
-            ctx.fillStyle = hexToRgba(color, 0.9);
-            ctx.font = `bold 10px sans-serif`;
+            ctx.fillStyle = hexToRgba(color, 0.95);
+            ctx.font = sb.type === 'mss' ? 'bold 11px sans-serif' : `bold 10px sans-serif`;
             ctx.fillText(label + arrow, xStart + 4, yLevel - 3);
           }
         }
@@ -115,11 +120,50 @@ class BOSRenderer implements IPrimitivePaneRenderer {
           ctx.fillText(swing.label, x - 6, labelY);
         }
       }
+
+      // Draw session separators
+      if (this._settings.showSessions && this._sessions && this._sessions.length > 0) {
+        for (const session of this._sessions) {
+          const x = timeScale.timeToCoordinate(session.time as Time);
+          if (x === null) continue;
+
+          const color = session.session === 'asian'
+            ? this._settings.asianSessionColor
+            : session.session === 'london'
+            ? this._settings.londonSessionColor
+            : this._settings.nySessionColor;
+          const chartHeight = scope.mediaSize.height;
+
+          // Vertical line
+          ctx.strokeStyle = hexToRgba(color, 0.4);
+          ctx.lineWidth = 1;
+          ctx.setLineDash([8, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, chartHeight);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Label at top
+          ctx.save();
+          ctx.fillStyle = hexToRgba(color, 0.85);
+          ctx.font = `bold ${this._settings.sessionLabelSize}px sans-serif`;
+          const labelWidth = ctx.measureText(session.label).width;
+          ctx.fillRect(x - labelWidth / 2 - 4, 4, labelWidth + 8, this._settings.sessionLabelSize + 4);
+          ctx.fillStyle = '#1e293b';
+          ctx.fillText(session.label, x - labelWidth / 2, 4 + this._settings.sessionLabelSize);
+          ctx.restore();
+        }
+      }
     });
   }
 
   private _getBreakColor(sb: StructureBreak): string {
-    if (sb.type === 'bos') {
+    if (sb.type === 'mss') {
+      return sb.direction === 'bullish'
+        ? this._settings.bullishMSSColor
+        : this._settings.bearishMSSColor;
+    } else if (sb.type === 'bos') {
       return sb.direction === 'bullish'
         ? this._settings.bullishBOSColor
         : this._settings.bearishBOSColor;
@@ -153,6 +197,7 @@ class BOSPaneView implements IPrimitivePaneView {
     return new BOSRenderer(
       this._primitive.getBreaks(),
       this._primitive.getSwings(),
+      this._primitive.getSessions(),
       this._primitive.getSettings(),
       this._series,
       this._chart,
@@ -164,14 +209,16 @@ export class BOSPrimitive implements ISeriesPrimitive<Time> {
   private _paneViews: BOSPaneView[];
   private _breaks: StructureBreak[];
   private _swings: SwingPoint[];
+  private _sessions: SessionSeparator[];
   private _settings: BOSSettings;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _chart: IChartApi | null = null;
   private _requestUpdate?: RequestUpdateCallback;
 
-  constructor(breaks: StructureBreak[], swings: SwingPoint[], settings: BOSSettings) {
+  constructor(breaks: StructureBreak[], swings: SwingPoint[], sessions: SessionSeparator[], settings: BOSSettings) {
     this._breaks = breaks;
     this._swings = swings;
+    this._sessions = sessions;
     this._settings = settings;
     this._paneViews = [new BOSPaneView(this)];
   }
@@ -204,13 +251,18 @@ export class BOSPrimitive implements ISeriesPrimitive<Time> {
     return this._swings;
   }
 
+  getSessions(): SessionSeparator[] {
+    return this._sessions;
+  }
+
   getSettings(): BOSSettings {
     return this._settings;
   }
 
-  update(breaks: StructureBreak[], swings: SwingPoint[], settings: BOSSettings) {
+  update(breaks: StructureBreak[], swings: SwingPoint[], sessions: SessionSeparator[], settings: BOSSettings) {
     this._breaks = breaks;
     this._swings = swings;
+    this._sessions = sessions;
     this._settings = settings;
     this._requestUpdate?.();
   }

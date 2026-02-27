@@ -5498,6 +5498,111 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
+  // Trading System Alerts endpoints
+  app.get("/api/crypto/trading-system-alerts", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { db } = await import("./db");
+      const { tradingSystemAlerts } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      const activeSystems = await db.query.tradingSystemAlerts.findMany({
+        where: and(
+          eq(tradingSystemAlerts.userId, userId),
+          eq(tradingSystemAlerts.active, true)
+        ),
+        orderBy: (alerts, { desc }) => [desc(alerts.createdAt)]
+      });
+
+      return res.json(activeSystems);
+    } catch (error: any) {
+      console.error("Error fetching trading system alerts:", error);
+      return res.status(500).json({ error: "Failed to fetch trading system alerts: " + error.message });
+    }
+  });
+
+  app.post("/api/crypto/trading-system-alerts", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { systemId, systemName, symbol, timeframe, conditions } = req.body;
+      const { db } = await import("./db");
+      const { tradingSystemAlerts } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      if (!systemId || !systemName || !symbol || !timeframe || !Array.isArray(conditions)) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      
+      // Check if system already exists
+      const existing = await db.query.tradingSystemAlerts.findFirst({
+        where: and(
+          eq(tradingSystemAlerts.userId, userId),
+          eq(tradingSystemAlerts.systemId, systemId),
+          eq(tradingSystemAlerts.symbol, symbol),
+          eq(tradingSystemAlerts.timeframe, timeframe)
+        )
+      });
+      
+      if (existing) {
+        // Reactivate if exists
+        await db.update(tradingSystemAlerts)
+          .set({ 
+            active: true, 
+            activeConditions: conditions,
+            updatedAt: new Date()
+          })
+          .where(eq(tradingSystemAlerts.id, existing.id));
+        
+        return res.json({ message: "Trading system reactivated", id: existing.id });
+      }
+      
+      // Create new alert
+      const [newAlert] = await db.insert(tradingSystemAlerts)
+        .values({
+          userId,
+          systemId,
+          systemName,
+          symbol,
+          timeframe,
+          activeConditions: conditions,
+          active: true
+        })
+        .returning();
+      
+      return res.json({ message: "Trading system activated", id: newAlert.id });
+    } catch (error: any) {
+      console.error("Error creating trading system alert:", error);
+      return res.status(500).json({ error: "Failed to activate trading system: " + error.message });
+    }
+  });
+
+  app.delete("/api/crypto/trading-system-alerts", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { systemId } = req.body;
+      const { db } = await import("./db");
+      const { tradingSystemAlerts } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      if (!systemId) {
+        return res.status(400).json({ error: "Missing systemId" });
+      }
+      
+      // Deactivate (don't delete, keep history)
+      await db.update(tradingSystemAlerts)
+        .set({ active: false, updatedAt: new Date() })
+        .where(and(
+          eq(tradingSystemAlerts.id, systemId),
+          eq(tradingSystemAlerts.userId, userId)
+        ));
+      
+      return res.json({ message: "Trading system deactivated" });
+    } catch (error: any) {
+      console.error("Error deactivating trading system alert:", error);
+      return res.status(500).json({ error: "Failed to deactivate trading system: " + error.message });
+    }
+  });
+
   // Get VAPID public key for push notifications
   app.get("/api/crypto/vapid-key", async (_req, res) => {
     try {
@@ -7606,7 +7711,7 @@ CRITICAL FOR SINGLE-PHASE STRUCTURES:
   // ==================== END CHART DATA ANALYSIS ====================
 
   // Timeframe hierarchy mapping for detailed analysis (higher → lower)
-  const TIMEFRAME_HIERARCHY: Record<string, string> = {
+  const TIMEFRAME_LOWER_MAP: Record<string, string> = {
     '1M': '1w',
     '1w': '1d',
     '1d': '4h',
@@ -7714,7 +7819,7 @@ CRITICAL FOR SINGLE-PHASE STRUCTURES:
       }
       
       const currentTimeframe = selectedWave.timeframe || '1d';
-      const lowerTimeframe = TIMEFRAME_HIERARCHY[currentTimeframe] || currentTimeframe;
+      const lowerTimeframe = TIMEFRAME_LOWER_MAP[currentTimeframe] || currentTimeframe;
       const yahooInterval = TF_TO_INTERVAL[lowerTimeframe] || '15m';
       
       // Convert symbol format dynamically (XYZUSDT → XYZ-USD)

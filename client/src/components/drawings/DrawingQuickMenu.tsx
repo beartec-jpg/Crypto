@@ -1,4 +1,4 @@
-import { Move, Settings, Trash2 } from 'lucide-react';
+import { Move, Settings, Trash2, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface DrawingQuickMenuProps {
@@ -6,6 +6,7 @@ interface DrawingQuickMenuProps {
   y: number;
   onMove?: () => void;
   onSettings: () => void;
+  onAlert?: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -19,6 +20,7 @@ export function DrawingQuickMenu({
   y,
   onMove,
   onSettings,
+  onAlert,
   onDelete,
   onClose,
 }: DrawingQuickMenuProps) {
@@ -68,6 +70,21 @@ export function DrawingQuickMenu({
             <Settings className="h-4 w-4 mr-2" />
             Settings
           </Button>
+          
+          {onAlert && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onAlert();
+                onClose();
+              }}
+              className="justify-start text-blue-400 hover:text-blue-300 hover:bg-blue-950/30"
+            >
+              <Bell className="h-4 w-4 mr-2" />
+              Alerts
+            </Button>
+          )}
           
           <Button
             variant="ghost"

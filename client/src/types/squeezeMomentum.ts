@@ -25,7 +25,7 @@ export interface SqueezeMomentumSettings {
 }
 
 export const DEFAULT_SQUEEZE_MOMENTUM_SETTINGS: SqueezeMomentumSettings = {
-  enabled: false,
+  enabled: true,
   length: 20,
   mult: 2.0,
   lengthKC: 20,

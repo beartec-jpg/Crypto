@@ -62,7 +62,7 @@ export function SqueezeMomentumSettingsModal({
                 min={10}
                 max={50}
                 step={1}
-                onValueChange={([length]) => onSettingsChange({ length })}
+                onValueChange={([length]) => onSettingsChange({ length, lengthKC: length })}
               />
             </div>
 

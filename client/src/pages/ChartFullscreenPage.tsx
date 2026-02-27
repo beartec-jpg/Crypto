@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Time } from 'lightweight-charts';
 import { useToast } from '@/hooks/use-toast';
 import { useDrawingHistory } from '@/hooks/useDrawingHistory';
@@ -66,6 +66,9 @@ import { useHTFBias } from '@/hooks/useHTFBias';
 import { useHTFBiasSettings } from '@/hooks/useHTFBiasSettings';
 import { useSqueezeMomentumSettings } from '@/hooks/useSqueezeMomentumSettings';
 import { useSqueezeMomentum } from '@/hooks/useSqueezeMomentum';
+import { useTradingSystem, type TradingSystemCallbacks } from '@/hooks/useTradingSystem';
+import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
+import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -115,6 +118,10 @@ export function ChartFullscreenPage({
   const [showSqueezeSettings, setShowSqueezeSettings] = useState(false);
   // Volume Profile state
   const [showVPModal, setShowVPModal] = useState(false);
+  // Alerts state
+  const [showAlertSettings, setShowAlertSettings] = useState(false);
+  const [showDrawingAlertSettings, setShowDrawingAlertSettings] = useState(false);
+  const [selectedDrawingForAlerts, setSelectedDrawingForAlerts] = useState<Drawing | null>(null);
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -178,7 +185,7 @@ export function ChartFullscreenPage({
 
   // Hooks - BOS/CHoCH detection
   const bosSettings = useBOSSettings();
-  const { structureBreaks, swingPoints } = useBOSDetection({
+  const { structureBreaks, swingPoints, sessionSeparators } = useBOSDetection({
     candles,
     settings: bosSettings.settings,
     fvgs,
@@ -247,6 +254,55 @@ export function ChartFullscreenPage({
   const vpSettings = useVolumeProfileSettings();
   const visibleRange = useVisibleRange(vpSettings.settings.updateOnPan ? chartRef.current : null);
   const volumeProfileData = useVolumeProfileCalculation(candles, visibleRange, vpSettings.settings);
+
+  // Hooks - Trading Systems
+  const tradingSystemCallbacks: TradingSystemCallbacks = {
+    // Oscillators
+    setShowRSI: indicators.rsi.setShow,
+    setRSIPeriod: indicators.rsi.setPeriod,
+    setShowMACD: indicators.macd.setShow,
+    setMACDFast: indicators.macd.setFast,
+    setMACDSlow: indicators.macd.setSlow,
+    setMACDSignal: indicators.macd.setSignal,
+    setShowStochRSI: indicators.stochRSI.setShow,
+    setStochRSIPeriod: indicators.stochRSI.setPeriod,
+    setShowOBV: indicators.obv.setShow,
+    setShowMFI: indicators.mfi.setShow,
+    setMFIPeriod: indicators.mfi.setPeriod,
+    setShowWilliamsR: indicators.williamsR.setShow,
+    setShowCCI: indicators.cci.setShow,
+    setShowADX: indicators.adx.setShow,
+    setADXPeriod: indicators.adx.setPeriod,
+    
+    // Chart indicators
+    setShowEMA: indicators.ema.setShow,
+    setShowBollingerBands: indicators.bb.setShow,
+    setBBPeriod: indicators.bb.setPeriod,
+    setBBStdDev: indicators.bb.setStdDev,
+    setElderImpulseEnabled: indicators.elderImpulse.setShow,
+    
+    // SMC
+    setFVGEnabled: (enabled) => fvgSettings.updateSettings({ enabled }),
+    setOrderBlocksEnabled: (enabled) => obSettings.updateSettings({ enabled }),
+    setBreakerBlocksEnabled: (enabled) => bbSettings.updateSettings({ enabled }),
+    setBOSEnabled: (enabled) => bosSettings.updateSettings({ enabled }),
+    setLiquidityEnabled: (enabled) => liquiditySettings.updateSettings({ enabled }),
+    setPDZonesEnabled: (enabled) => pdZoneSettings.updateSettings({ enabled }),
+    setAutoFibEnabled: (enabled) => autoFibSettings.updateSettings({ enabled }),
+    
+    // Tools
+    setSuperTrendEnabled: (enabled) => {
+      // Enable standard SuperTrend by default
+      superTrendSettings.updateSettings({ standard: { ...superTrendSettings.settings.standard, enabled } });
+    },
+    setVolumeProfileEnabled: (enabled) => vpSettings.updateSettings({ enabled }),
+    setSqueezeEnabled: (enabled) => sqzSettings.updateSettings({ enabled }),
+    setDivergenceScannerEnabled: setDivergenceScannerEnabled,
+    setHTFBiasEnabled: (enabled) => htfBiasSettings.updateSetting('enabled', enabled),
+    setSessionSeparatorsEnabled: (enabled) => bosSettings.updateSettings({ showSessions: enabled }),
+  };
+  
+  const tradingSystem = useTradingSystem(tradingSystemCallbacks);
 
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
@@ -384,6 +440,22 @@ export function ChartFullscreenPage({
     setSettingsModalOpen,
   });
 
+  // Drawing alerts handler
+  const handleOpenDrawingAlerts = useCallback(() => {
+    if (!drawingInteraction.selectedDrawingId) return;
+    const drawing = drawings.find(d => d.id === drawingInteraction.selectedDrawingId);
+    if (!drawing) return;
+    // Add symbol and timeframe to drawing for alert modal
+    const drawingWithContext = {
+      ...drawing,
+      drawingType: drawing.type,
+      symbol,
+      timeframe,
+    };
+    setSelectedDrawingForAlerts(drawingWithContext as any);
+    setShowDrawingAlertSettings(true);
+  }, [drawingInteraction.selectedDrawingId, drawings, symbol, timeframe]);
+
   const saveDrawingWithUndo = useSaveDrawingWithUndo({
     saveDrawing: drawingsPersistence.saveDrawing,
     recordAdd,
@@ -418,6 +490,7 @@ export function ChartFullscreenPage({
         onTimeframeChange={setTimeframe}
         watchlistTickers={watchlistTickers}
         onClose={onClose}
+        onOpenAlerts={() => setShowAlertSettings(true)}
       />
 
       {/* Chart Area */}
@@ -481,6 +554,9 @@ export function ChartFullscreenPage({
           onOpenSqueezeSettings={() => setShowSqueezeSettings(true)}
           vpEnabled={vpSettings.settings.enabled}
           onOpenVolumeProfileSettings={() => setShowVPModal(true)}
+          activeSystem={tradingSystem.activeSystem}
+          onActivateSystem={tradingSystem.activateSystem}
+          onDeactivateSystem={tradingSystem.deactivateSystem}
         />
 
         <FullscreenChartViewportLayer
@@ -515,6 +591,7 @@ export function ChartFullscreenPage({
           bbSettings={bbSettings.settings}
           structureBreaks={structureBreaks}
           swingPoints={swingPoints}
+          sessionSeparators={sessionSeparators}
           bosSettings={bosSettings.settings}
           liquidityZones={liquidityZones}
           liquiditySettings={liquiditySettings.settings}
@@ -582,6 +659,7 @@ export function ChartFullscreenPage({
           quickMenuPosition={drawingInteraction.quickMenuPosition}
           selectedDrawingId={drawingInteraction.selectedDrawingId}
           onOpenDrawingSettings={modalHelpers.handleOpenSettings}
+          onOpenDrawingAlerts={handleOpenDrawingAlerts}
           onDeleteDrawing={drawingActions.handleDeleteDrawing}
           onCloseQuickMenu={drawingInteraction.closeQuickMenu}
         />
@@ -653,6 +731,23 @@ export function ChartFullscreenPage({
         superTrendSettings={superTrendSettings.settings}
         onSuperTrendSettingsChange={superTrendSettings.updateConfig}
       />
+      
+      <AlertSettingsDialog 
+        open={showAlertSettings} 
+        onOpenChange={setShowAlertSettings} 
+      />
+
+      {selectedDrawingForAlerts && (
+        <DrawingAlertSettings
+          isOpen={showDrawingAlertSettings}
+          onClose={() => {
+            setShowDrawingAlertSettings(false);
+            setSelectedDrawingForAlerts(null);
+          }}
+          drawing={selectedDrawingForAlerts}
+          onUpdate={drawingActions.handleUpdateDrawing}
+        />
+      )}
     </div>
   );
 }

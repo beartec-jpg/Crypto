@@ -1166,3 +1166,48 @@ export const insertUserPositionsSchema = z.object({
 export type InsertUserPositions = z.infer<typeof insertUserPositionsSchema>;
 export type UserPositions = typeof userPositions.$inferSelect;
 export type UserPositionEntry = z.infer<typeof userPositionEntrySchema>;
+
+// Trading System Alerts - Monitors activated trading systems and alerts on entry conditions
+export const tradingSystemAlerts = pgTable("trading_system_alerts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }),
+  systemId: varchar("system_id").notNull(), // e.g., "trend-following-pro"
+  systemName: varchar("system_name").notNull(), // Display name
+  symbol: varchar("symbol").notNull(), // e.g., "BTCUSDT"
+  timeframe: varchar("timeframe").notNull(), // e.g., "15m", "1h"
+  activeConditions: text("active_conditions").array().notNull().default(sql`ARRAY[]::text[]`), // Alert conditions to monitor
+  lastIndicatorState: jsonb("last_indicator_state").$type<{
+    rsi?: number;
+    macd?: number;
+    macdSignal?: number;
+    stochK?: number;
+    stochD?: number;
+    cci?: number;
+    adx?: number;
+    mfi?: number;
+    superTrendDirection?: 'bullish' | 'bearish';
+    sqzMomentum?: number;
+    ema9?: number;
+    ema21?: number;
+    ema50?: number;
+    sma200?: number;
+  }>(),
+  lastChecked: timestamp("last_checked").defaultNow(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTradingSystemAlertSchema = z.object({
+  userId: z.string(),
+  systemId: z.string(),
+  systemName: z.string(),
+  symbol: z.string(),
+  timeframe: z.string(),
+  activeConditions: z.array(z.string()).default([]),
+  lastIndicatorState: z.any().optional().nullable(),
+  active: z.boolean().optional().default(true),
+});
+
+export type InsertTradingSystemAlert = z.infer<typeof insertTradingSystemAlertSchema>;
+export type TradingSystemAlert = typeof tradingSystemAlerts.$inferSelect;

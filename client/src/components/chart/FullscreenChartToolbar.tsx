@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { X, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
@@ -10,6 +10,7 @@ interface FullscreenChartToolbarProps {
   onTimeframeChange: (tf: string) => void;
   watchlistTickers: string[];
   onClose: () => void;
+  onOpenAlerts?: () => void;
 }
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'];
@@ -21,13 +22,28 @@ export function FullscreenChartToolbar({
   onTimeframeChange,
   watchlistTickers,
   onClose,
+  onOpenAlerts,
 }: FullscreenChartToolbarProps) {
   return (
     <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 flex items-center justify-between gap-4">
-      <Button variant="outline" size="sm" onClick={onClose} className="gap-2">
-        <X className="h-4 w-4" />
-        Close
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={onClose} className="gap-2">
+          <X className="h-4 w-4" />
+          Close
+        </Button>
+
+        {onOpenAlerts && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenAlerts}
+            className="gap-2 border-blue-500/30 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500"
+          >
+            <Bell className="h-4 w-4" />
+            Alerts
+          </Button>
+        )}
+      </div>
 
       <div className="flex-1 text-center">
         <span className="text-lg font-semibold text-white">{formatTickerDisplay(symbol)}</span>

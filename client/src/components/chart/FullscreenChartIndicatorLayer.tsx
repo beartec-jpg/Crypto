@@ -35,6 +35,7 @@ interface FullscreenChartIndicatorLayerProps {
   bbSettings: any;
   structureBreaks: any[];
   swingPoints: any[];
+  sessionSeparators: any[];
   bosSettings: any;
   liquidityZones: any[];
   liquiditySettings: any;
@@ -88,6 +89,7 @@ export function FullscreenChartIndicatorLayer({
   bbSettings,
   structureBreaks,
   swingPoints,
+  sessionSeparators,
   bosSettings,
   liquidityZones,
   liquiditySettings,
@@ -162,6 +164,7 @@ export function FullscreenChartIndicatorLayer({
         candleSeries={candleSeries}
         structureBreaks={structureBreaks}
         swingPoints={swingPoints}
+        sessionSeparators={sessionSeparators}
         settings={bosSettings}
       />
 

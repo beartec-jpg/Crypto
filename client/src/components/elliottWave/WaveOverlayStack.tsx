@@ -34,6 +34,7 @@ interface WaveOverlayStackProps {
   quickMenuPosition: { x: number; y: number } | null;
   selectedDrawingId: string | null;
   onOpenDrawingSettings: () => void;
+  onOpenDrawingAlerts?: () => void;
   onDeleteDrawing: () => void;
   onCloseQuickMenu: () => void;
 }
@@ -55,6 +56,7 @@ export function WaveOverlayStack({
   quickMenuPosition,
   selectedDrawingId,
   onOpenDrawingSettings,
+  onOpenDrawingAlerts,
   onDeleteDrawing,
   onCloseQuickMenu,
 }: WaveOverlayStackProps) {
@@ -106,6 +108,7 @@ export function WaveOverlayStack({
         quickMenuPosition={quickMenuPosition}
         selectedDrawingId={selectedDrawingId}
         onSettings={onOpenDrawingSettings}
+        onAlert={onOpenDrawingAlerts}
         onDelete={onDeleteDrawing}
         onCloseQuickMenu={onCloseQuickMenu}
       />

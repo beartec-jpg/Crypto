@@ -53,7 +53,7 @@ export function HTFBiasPanel({ entries }: HTFBiasPanelProps) {
   if (entries.length === 0) return null;
 
   return (
-    <div className="absolute top-2 right-2 z-20 flex flex-col gap-1 pointer-events-none select-none">
+    <div className="absolute top-2 right-16 z-20 flex flex-col gap-1 pointer-events-none select-none">
       {entries.map((entry) => (
         <div
           key={entry.timeframe}

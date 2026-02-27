@@ -2,12 +2,14 @@ import { useEffect, useRef } from 'react';
 import { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { BOSPrimitive } from '@/lib/chartPrimitives/BOSPrimitive';
 import type { BOSSettings, StructureBreak, SwingPoint } from '@/types/structureBreak';
+import type { SessionSeparator } from '@/lib/sessions/sessionSeparators';
 
 interface BOSRendererProps {
   chart: IChartApi | null;
   candleSeries: ISeriesApi<'Candlestick'> | null;
   structureBreaks: StructureBreak[];
   swingPoints: SwingPoint[];
+  sessionSeparators: SessionSeparator[];
   settings: BOSSettings;
 }
 
@@ -16,6 +18,7 @@ export function BOSRenderer({
   candleSeries,
   structureBreaks,
   swingPoints,
+  sessionSeparators,
   settings,
 }: BOSRendererProps) {
   const primitiveRef = useRef<BOSPrimitive | null>(null);
@@ -24,7 +27,7 @@ export function BOSRenderer({
   useEffect(() => {
     if (!chart || !candleSeries || !settings.enabled) return;
 
-    const primitive = new BOSPrimitive(structureBreaks, swingPoints, settings);
+    const primitive = new BOSPrimitive(structureBreaks, swingPoints, sessionSeparators, settings);
     try {
       candleSeries.attachPrimitive(primitive);
       primitiveRef.current = primitive;
@@ -46,9 +49,9 @@ export function BOSRenderer({
   // Update data and settings without recreating the primitive
   useEffect(() => {
     if (primitiveRef.current) {
-      primitiveRef.current.update(structureBreaks, swingPoints, settings);
+      primitiveRef.current.update(structureBreaks, swingPoints, sessionSeparators, settings);
     }
-  }, [structureBreaks, swingPoints, settings]);
+  }, [structureBreaks, swingPoints, sessionSeparators, settings]);
 
   return null;
 }

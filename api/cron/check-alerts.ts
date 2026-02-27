@@ -531,12 +531,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // ========== TRADING SYSTEM ALERTS ==========
+    const { checkTradingSystemAlerts } = await import('../utils/tradingSystemMonitor.js');
+    
+    const tradingSystemResults = await checkTradingSystemAlerts(sql, prices);
+    alertsSent += tradingSystemResults.alertsSent;
+    console.log(`Trading Systems: Checked ${tradingSystemResults.systemsChecked}, sent ${tradingSystemResults.alertsSent} alerts`);
+
     return res.status(200).json({ 
       message: 'Alerts checked', 
       hLineChecked: activeAlerts.length,
       aiTradesChecked: activeTrades.length,
       indicatorUsersChecked: usersWithIndicatorAlerts.length,
       elliottChecked: projectionAlerts.length,
+      tradingSystemsChecked: tradingSystemResults.systemsChecked,
       alertsSent 
     });
   } catch (error: any) {

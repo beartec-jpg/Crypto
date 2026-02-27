@@ -3,6 +3,7 @@ import type { Candle } from '@/types/candle';
 import type { FVGDetection } from '@/types/fvg';
 import type { OrderBlock } from '@/types/orderBlock';
 import type { BOSSettings, StructureBreak, SwingPoint, TrendBias } from '@/types/structureBreak';
+import { calculateSessionSeparators, type SessionSeparator } from '@/lib/sessions/sessionSeparators';
 
 interface UseBOSDetectionOptions {
   candles: Candle[];
@@ -81,7 +82,12 @@ function detectSwingPoints(candles: Candle[], lookback: number): SwingPoint[] {
 }
 
 /**
- * Detect BOS and CHoCH from candles and swing points.
+ * Detect BOS, CHoCH, and MSS from candles and swing points.
+ * 
+ * MSS (Market Structure Shift) logic:
+ * - Bullish MSS: After breaking a swing high (CHoCH candidate), price creates a Higher Low (HL)
+ * - Bearish MSS: After breaking a swing low (CHoCH candidate), price creates a Lower High (LH)
+ * - MSS confirms a stronger trend change than CHoCH alone
  */
 function detectStructureBreaks(
   candles: Candle[],
@@ -93,6 +99,9 @@ function detectStructureBreaks(
   const breaks: StructureBreak[] = [];
   // Track broken swing IDs to avoid duplicates
   const brokenSwingIds = new Set<string>();
+  
+  // Track potential MSS candidates (CHoCH breaks that might upgrade to MSS)
+  const pendingMSS: Map<string, { breakId: string; direction: 'bullish' | 'bearish'; swingIdNeeded: string; lastSwingPrice: number }> = new Map();
 
   // Sort swings by index
   const sortedSwings = [...swings].sort((a, b) => a.index - b.index);
@@ -116,6 +125,33 @@ function detectStructureBreaks(
   // Now iterate candles starting from after the first few swings
   for (let ci = 0; ci < candles.length; ci++) {
     const candle = candles[ci];
+
+    // Check for MSS confirmation from new swing points
+    const currentSwing = sortedSwings.find(s => s.index === ci);
+    if (currentSwing) {
+      // Check if this swing confirms any pending MSS
+      for (const [key, pending] of pendingMSS.entries()) {
+        if (pending.direction === 'bullish' && currentSwing.type === 'low' && currentSwing.label === 'HL') {
+          // Bullish MSS confirmed: found HL after breaking swing high
+          const existingBreak = breaks.find(b => b.id === pending.breakId);
+          if (existingBreak && existingBreak.type === 'choch') {
+            // Upgrade CHoCH to MSS
+            existingBreak.type = 'mss';
+            existingBreak.id = existingBreak.id.replace('choch', 'mss');
+          }
+          pendingMSS.delete(key);
+        } else if (pending.direction === 'bearish' && currentSwing.type === 'high' && currentSwing.label === 'LH') {
+          // Bearish MSS confirmed: found LH after breaking swing low
+          const existingBreak = breaks.find(b => b.id === pending.breakId);
+          if (existingBreak && existingBreak.type === 'choch') {
+            // Upgrade CHoCH to MSS
+            existingBreak.type = 'mss';
+            existingBreak.id = existingBreak.id.replace('choch', 'mss');
+          }
+          pendingMSS.delete(key);
+        }
+      }
+    }
 
     // Find the last unbroken swing high and low with index < ci
     const prevHighs = sortedSwings.filter(s => s.type === 'high' && s.index < ci && !brokenSwingIds.has(s.id));
@@ -147,8 +183,21 @@ function detectStructureBreaks(
             const associatedFVGId = findAssociatedFVG(candle, fvgs, 'bullish');
             const associatedOBId = findAssociatedOB(candle, orderBlocks, 'bullish');
 
-            breaks.push(createBreak(sbType, direction, recentHigh, candle, ci, swept, false,
-              associatedOBId, associatedFVGId, settings.extendLines));
+            const newBreak = createBreak(sbType, direction, recentHigh, candle, ci, swept, false,
+              associatedOBId, associatedFVGId, settings.extendLines);
+            
+            breaks.push(newBreak);
+
+            // If this is a CHoCH (trend reversal), mark as pending MSS candidate
+            if (sbType === 'choch') {
+              const lastLowSwing = prevLows[prevLows.length - 1];
+              pendingMSS.set(newBreak.id, {
+                breakId: newBreak.id,
+                direction: 'bullish',
+                swingIdNeeded: 'HL',
+                lastSwingPrice: lastLowSwing ? lastLowSwing.price : 0,
+              });
+            }
 
             // Update trend
             trend = direction;
@@ -165,8 +214,21 @@ function detectStructureBreaks(
         const associatedFVGId = findAssociatedFVG(candle, fvgs, 'bullish');
         const associatedOBId = findAssociatedOB(candle, orderBlocks, 'bullish');
 
-        breaks.push(createBreak(sbType, direction, recentHigh, candle, ci, swept, confirmed,
-          associatedOBId, associatedFVGId, settings.extendLines));
+        const newBreak = createBreak(sbType, direction, recentHigh, candle, ci, swept, confirmed,
+          associatedOBId, associatedFVGId, settings.extendLines);
+        
+        breaks.push(newBreak);
+
+        // If this is a CHoCH (trend reversal), mark as pending MSS candidate
+        if (sbType === 'choch') {
+          const lastLowSwing = prevLows[prevLows.length - 1];
+          pendingMSS.set(newBreak.id, {
+            breakId: newBreak.id,
+            direction: 'bullish',
+            swingIdNeeded: 'HL',
+            lastSwingPrice: lastLowSwing ? lastLowSwing.price : 0,
+          });
+        }
 
         trend = direction;
       }
@@ -191,8 +253,21 @@ function detectStructureBreaks(
             const associatedFVGId = findAssociatedFVG(candle, fvgs, 'bearish');
             const associatedOBId = findAssociatedOB(candle, orderBlocks, 'bearish');
 
-            breaks.push(createBreak(sbType, direction, recentLow, candle, ci, swept, false,
-              associatedOBId, associatedFVGId, settings.extendLines));
+            const newBreak = createBreak(sbType, direction, recentLow, candle, ci, swept, false,
+              associatedOBId, associatedFVGId, settings.extendLines);
+            
+            breaks.push(newBreak);
+
+            // If this is a CHoCH (trend reversal), mark as pending MSS candidate
+            if (sbType === 'choch') {
+              const lastHighSwing = prevHighs[prevHighs.length - 1];
+              pendingMSS.set(newBreak.id, {
+                breakId: newBreak.id,
+                direction: 'bearish',
+                swingIdNeeded: 'LH',
+                lastSwingPrice: lastHighSwing ? lastHighSwing.price : 0,
+              });
+            }
 
             trend = direction;
           }
@@ -208,8 +283,21 @@ function detectStructureBreaks(
         const associatedFVGId = findAssociatedFVG(candle, fvgs, 'bearish');
         const associatedOBId = findAssociatedOB(candle, orderBlocks, 'bearish');
 
-        breaks.push(createBreak(sbType, direction, recentLow, candle, ci, swept, confirmed,
-          associatedOBId, associatedFVGId, settings.extendLines));
+        const newBreak = createBreak(sbType, direction, recentLow, candle, ci, swept, confirmed,
+          associatedOBId, associatedFVGId, settings.extendLines);
+        
+        breaks.push(newBreak);
+
+        // If this is a CHoCH (trend reversal), mark as pending MSS candidate
+        if (sbType === 'choch') {
+          const lastHighSwing = prevHighs[prevHighs.length - 1];
+          pendingMSS.set(newBreak.id, {
+            breakId: newBreak.id,
+            direction: 'bearish',
+            swingIdNeeded: 'LH',
+            lastSwingPrice: lastHighSwing ? lastHighSwing.price : 0,
+          });
+        }
 
         trend = direction;
       }
@@ -220,7 +308,7 @@ function detectStructureBreaks(
 }
 
 function createBreak(
-  type: 'bos' | 'choch',
+  type: 'bos' | 'choch' | 'mss',
   direction: 'bullish' | 'bearish',
   brokenSwing: SwingPoint,
   breakCandle: Candle,
@@ -283,6 +371,7 @@ function findAssociatedOB(
 export interface UseBOSDetectionResult {
   swingPoints: SwingPoint[];
   structureBreaks: StructureBreak[];
+  sessionSeparators: SessionSeparator[];
 }
 
 /**
@@ -295,8 +384,7 @@ export function useBOSDetection({
   orderBlocks = [],
 }: UseBOSDetectionOptions): UseBOSDetectionResult {
   return useMemo(() => {
-    if (!settings.enabled || candles.length < settings.swingLookback * 2 + 1) {
-      return { swingPoints: [], structureBreaks: [] };
+    if (!settings.enabled || candles.length < setti, sessionSeparators: [] };
     }
 
     const swingPoints = detectSwingPoints(candles, settings.swingLookback);
@@ -309,6 +397,17 @@ export function useBOSDetection({
       return age <= settings.maxAge;
     });
 
+    // Session separators (only if showSessions is enabled)
+    const sessionSeparators = settings.showSessions
+      ? calculateSessionSeparators(
+          candles,
+          settings.showAsianSession,
+          settings.showLondonSession,
+          settings.showNYSession
+        )
+      : [];
+
+    return { swingPoints, structureBreaks, sessionSeparator
     return { swingPoints, structureBreaks };
   }, [candles, settings, fvgs, orderBlocks]);
 }

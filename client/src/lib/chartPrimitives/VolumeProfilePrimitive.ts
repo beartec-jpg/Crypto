@@ -47,6 +47,13 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
         ? this._data.rows[1].price - this._data.rows[0].price
         : 0;
 
+      // Helper function to format volume numbers
+      const formatVolume = (vol: number): string => {
+        if (vol >= 1000000) return `${(vol / 1000000).toFixed(1)}M`;
+        if (vol >= 1000) return `${(vol / 1000).toFixed(1)}K`;
+        return vol.toFixed(0);
+      };
+
       // Draw histogram bars
       for (const row of this._data.rows) {
         const yBottom = this._series!.priceToCoordinate(row.price);
@@ -74,6 +81,20 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
 
         ctx.fillStyle = color;
         ctx.fillRect(xStart, yDraw, barWidth, Math.max(barHeight - 1, 1));
+
+        // Draw volume text label
+        if (barWidth > 30 && barHeight > 10) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.font = '9px sans-serif';
+          ctx.textAlign = this._settings.side === 'right' ? 'left' : 'right';
+          const textX = this._settings.side === 'right' 
+            ? xStart + 3 
+            : xStart + barWidth - 3;
+          const textY = yDraw + barHeight / 2 + 3;
+          ctx.fillText(formatVolume(row.volume), textX, textY);
+          ctx.restore();
+        }
       }
 
       // Draw POC line

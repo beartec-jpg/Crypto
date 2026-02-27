@@ -5,12 +5,13 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Bell, Loader2, MessageSquare, Phone, Send, Eye, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
+import { Bell, Loader2, MessageSquare, Phone, Send, Eye, Trash2, TrendingUp, TrendingDown, Zap } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import type { CryptoPreferences } from '@shared/schema';
+import { TRADING_SYSTEMS, type TradingSystemPreset } from '@/types/tradingSystems';
 
 interface AlertSettingsDialogProps {
   open: boolean;
@@ -37,7 +38,11 @@ const ALERT_TYPES = [
   // Smart Money Concepts
   { value: 'bos', label: 'Break of Structure (BOS)', description: 'Alert when price breaks market structure', category: 'Smart Money' },
   { value: 'choch', label: 'Change of Character (CHoCH)', description: 'Alert on trend reversals', category: 'Smart Money' },
+  { value: 'mss', label: 'Market Structure Shift (MSS)', description: 'Alert on major structure shifts', category: 'Smart Money' },
   { value: 'fvg', label: 'Fair Value Gap (FVG)', description: 'Alert when FVGs are created', category: 'Smart Money' },
+  { value: 'order_block', label: 'Order Block Creation', description: 'Alert when new order blocks form', category: 'Smart Money' },
+  { value: 'order_block_test', label: 'Order Block Test', description: 'Alert when price tests order blocks', category: 'Smart Money' },
+  { value: 'pd_zones', label: 'Premium/Discount Zone Test', description: 'Alert on equilibrium zone tests', category: 'Smart Money' },
   { value: 'liquidation', label: 'Liquidation Spikes', description: 'Alert on high-volume liquidation events', category: 'Smart Money' },
   
   // Oscillators
@@ -45,20 +50,27 @@ const ALERT_TYPES = [
   { value: 'rsi_overbought', label: 'RSI Overbought/Oversold', description: 'Alert when RSI enters extreme zones', category: 'Oscillators' },
   { value: 'macd_crossover', label: 'MACD Crossover', description: 'Alert on MACD signal line crosses', category: 'Oscillators' },
   { value: 'stoch_cross', label: 'Stochastic Crossover', description: 'Alert on Stochastic K/D crosses', category: 'Oscillators' },
-  { value: 'cci', label: 'CCI (Commodity Channel Index)', description: 'Alert on CCI overbought/oversold and zero crosses', category: 'Oscillators' },
-  { value: 'adx', label: 'ADX (Trend Strength)', description: 'Alert on ADX strong trend/ranging and DI crossovers', category: 'Oscillators' },
+  { value: 'cci', label: 'CCI Extreme Levels', description: 'Alert on CCI overbought/oversold and zero crosses', category: 'Oscillators' },
+  { value: 'adx', label: 'ADX Trend Strength', description: 'Alert on ADX strong trend/ranging and DI crossovers', category: 'Oscillators' },
+  { value: 'mfi', label: 'MFI Overbought/Oversold', description: 'Alert on Money Flow Index extreme levels', category: 'Oscillators' },
   
   // Indicators
   { value: 'ema_cross', label: 'EMA Crossover', description: 'Alert on EMA crossovers (9/21, 20/50)', category: 'Indicators' },
   { value: 'sma_alignment', label: 'SMA Alignment', description: 'Alert on bullish/bearish SMA stacks', category: 'Indicators' },
   { value: 'bb_squeeze', label: 'Bollinger Band Squeeze', description: 'Alert on volatility compression', category: 'Indicators' },
   { value: 'vwap_cross', label: 'VWAP Cross', description: 'Alert on VWAP crosses', category: 'Indicators' },
+  { value: 'htf_vwap_cross', label: 'HTF Anchored VWAP Cross', description: 'Alert on higher timeframe VWAP crosses', category: 'Indicators' },
+  { value: 'atr_spike', label: 'ATR Volatility Spike', description: 'Alert on significant ATR increases', category: 'Indicators' },
+  { value: 'supertrend_flip', label: 'SuperTrend Direction Change', description: 'Alert on SuperTrend bullish/bearish flips', category: 'Indicators' },
+  { value: 'sqz_momentum', label: 'Squeeze Momentum Breakout', description: 'Alert on TTM Squeeze releases and momentum shifts', category: 'Indicators' },
   
   // Volume
   { value: 'volume_spike', label: 'Volume Spike', description: 'Alert on unusual volume spikes', category: 'Volume' },
   { value: 'volume_divergence', label: 'Volume Divergence', description: 'Alert on price-volume divergences', category: 'Volume' },
   { value: 'obv_divergence', label: 'OBV Divergence', description: 'Alert on OBV divergences', category: 'Volume' },
   { value: 'cvd_spike', label: 'CVD Spike', description: 'Alert on cumulative delta spikes', category: 'Volume' },
+  { value: 'vp_poc_test', label: 'Volume Profile POC Test', description: 'Alert when price tests Point of Control', category: 'Volume' },
+  { value: 'vp_vah_val_test', label: 'Volume Profile VAH/VAL Test', description: 'Alert on Value Area High/Low tests', category: 'Volume' },
   
   // Price Action
   { value: 'engulfing', label: 'Engulfing Pattern', description: 'Alert on bullish/bearish engulfing candles', category: 'Price Action' },
@@ -99,6 +111,12 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
   
   // Active alerts view
   const [showActiveAlerts, setShowActiveAlerts] = useState(false);
+  
+  // Trading Systems state
+  const [showTradingSystems, setShowTradingSystems] = useState(false);
+  const [selectedSystem, setSelectedSystem] = useState<TradingSystemPreset | null>(null);
+  const [systemSymbol, setSystemSymbol] = useState('BTCUSDT');
+  const [systemTimeframe, setSystemTimeframe] = useState('15m');
 
   // Fetch user preferences
   const { data: preferences, isLoading} = useQuery<CryptoPreferences>({
@@ -128,6 +146,72 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
   const { data: activeAlerts, isLoading: isLoadingAlerts, refetch: refetchAlerts } = useQuery<ActiveAlertsResponse>({
     queryKey: ['/api/crypto/active-alerts'],
     enabled: open && showActiveAlerts,
+  });
+  
+  // Fetch active trading system alerts
+  interface TradingSystemAlertResponse {
+    id: string;
+    systemId: string;
+    systemName: string;
+    symbol: string;
+    timeframe: string;
+    activeConditions: string[];
+    active: boolean;
+    createdAt: string;
+  }
+  
+  const { data: activeTradingSystems, isLoading: isLoadingTradingSystems, refetch: refetchTradingSystems } = useQuery<TradingSystemAlertResponse[]>({
+    queryKey: ['/api/crypto/trading-system-alerts'],
+    enabled: open && showTradingSystems,
+  });
+  
+  // Activate trading system mutation
+  const activateTradingSystemMutation = useMutation({
+    mutationFn: async (data: { systemId: string; systemName: string; symbol: string; timeframe: string; conditions: string[] }) => {
+      const token = await getToken();
+      const response = await apiRequest('POST', '/api/crypto/trading-system-alerts', data, token || undefined);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/trading-system-alerts'] });
+      toast({
+        title: '✅ Trading System Activated',
+        description: 'System will monitor conditions and alert you when entry signals are detected.',
+      });
+      setSelectedSystem(null);
+      refetchTradingSystems();
+    },
+    onError: (error: any) => {
+      toast({
+        title: '❌ Activation Failed',
+        description: error.message || 'Failed to activate trading system',
+        variant: 'destructive',
+      });
+    },
+  });
+  
+  // Deactivate trading system mutation
+  const deactivateTradingSystemMutation = useMutation({
+    mutationFn: async (systemId: string) => {
+      const token = await getToken();
+      const response = await apiRequest('DELETE', '/api/crypto/trading-system-alerts', { systemId }, token || undefined);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crypto/trading-system-alerts'] });
+      toast({
+        title: '✅ System Deactivated',
+        description: 'Trading system alerts have been stopped.',
+      });
+      refetchTradingSystems();
+    },
+    onError: (error: any) => {
+      toast({
+        title: '❌ Error',
+        description: error.message || 'Failed to deactivate system',
+        variant: 'destructive',
+      });
+    },
   });
   
   // Delete alert mutation
@@ -804,6 +888,160 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                     data-testid="toggle-indicator-alerts"
                   />
                 </div>
+              </div>
+              
+              {/* Trading Systems - NEW */}
+              <div className="mt-6 p-4 bg-gradient-to-r from-purple-900/30 to-slate-800 rounded-lg border border-purple-700/50">
+                <div className="flex items-center gap-2 mb-3">
+                  <Zap className="h-5 w-5 text-purple-400" />
+                  <Label className="text-white font-semibold">Trading System Alerts</Label>
+                  <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded">Advanced</span>
+                </div>
+                <p className="text-sm text-gray-400 mb-4">
+                  Activate pre-configured trading systems to receive entry signals when all conditions align.
+                </p>
+                
+                <Button
+                  variant="outline"
+                  onClick={() => setShowTradingSystems(!showTradingSystems)}
+                  className="w-full border-purple-600 text-purple-400 hover:bg-purple-900/30 mb-3"
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  {showTradingSystems ? 'Hide Trading Systems' : 'Manage Trading Systems'}
+                </Button>
+                
+                {showTradingSystems && (
+                  <div className="space-y-3">
+                    {/* Active Systems */}
+                    {isLoadingTradingSystems ? (
+                      <div className="flex items-center justify-center p-4">
+                        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                      </div>
+                    ) : activeTradingSystems && activeTradingSystems.length > 0 ? (
+                      <div className="space-y-2">
+                        <Label className="text-xs text-gray-400">Active Systems</Label>
+                        {activeTradingSystems.map((system) => (
+                          <div key={system.id} className="flex items-center justify-between p-3 bg-slate-900/70 rounded border border-purple-700/30">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-sm font-semibold text-purple-300">{system.systemName}</span>
+                                <span className="text-xs bg-slate-700 px-2 py-0.5 rounded">{system.symbol}</span>
+                                <span className="text-xs text-gray-500">{system.timeframe}</span>
+                              </div>
+                              <p className="text-xs text-gray-500">
+                                Monitoring: {system.activeConditions.slice(0, 2).join(', ')}
+                                {system.activeConditions.length > 2 && ` +${system.activeConditions.length - 2} more`}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deactivateTradingSystemMutation.mutate(system.id)}
+                              className="h-7 w-7 p-0 text-red-400 hover:text-red-300 hover:bg-red-900/30"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 text-center py-2">No active trading systems</p>
+                    )}
+                    
+                    {/* Add New System */}
+                    <div className="border-t border-slate-700 pt-3 mt-3">
+                      <Label className="text-xs text-gray-400 mb-2 block">Activate New System</Label>
+                      
+                      {!selectedSystem ? (
+                        <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                          {TRADING_SYSTEMS.map((system) => (
+                            <button
+                              key={system.id}
+                              onClick={() => setSelectedSystem(system)}
+                              className="p-3 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 hover:border-purple-600 rounded text-left transition-colors"
+                            >
+                              <div className="text-sm font-medium text-purple-300">{system.name}</div>
+                              <div className="text-xs text-gray-500 mt-1">{system.category}</div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="p-3 bg-purple-900/20 border border-purple-700/50 rounded">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-semibold text-purple-300">{selectedSystem.name}</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedSystem(null)}
+                                className="h-6 text-xs"
+                              >
+                                Back
+                              </Button>
+                            </div>
+                            <p className="text-xs text-gray-400 mb-2">{selectedSystem.description}</p>
+                            <div className="text-xs text-gray-500">
+                              <div className="font-semibold mb-1">Entry Signals:</div>
+                              {selectedSystem.preset.alerts.entry.slice(0, 3).map((condition, i) => (
+                                <div key={i}>• {condition}</div>
+                              ))}
+                              {selectedSystem.preset.alerts.entry.length > 3 && (
+                                <div>• +{selectedSystem.preset.alerts.entry.length - 3} more conditions</div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-xs text-gray-400">Symbol</Label>
+                              <select
+                                value={systemSymbol}
+                                onChange={(e) => setSystemSymbol(e.target.value)}
+                                className="w-full mt-1 px-2 py-1.5 bg-slate-800 border border-slate-600 rounded text-sm text-white"
+                              >
+                                {TICKERS.map(t => (
+                                  <option key={t.value} value={t.value}>{t.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-400">Timeframe</Label>
+                              <select
+                                value={systemTimeframe}
+                                onChange={(e) => setSystemTimeframe(e.target.value)}
+                                className="w-full mt-1 px-2 py-1.5 bg-slate-800 border border-slate-600 rounded text-sm text-white"
+                              >
+                                {TIMEFRAMES.map(tf => (
+                                  <option key={tf.value} value={tf.value}>{tf.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          
+                          <Button
+                            onClick={() => {
+                              activateTradingSystemMutation.mutate({
+                                systemId: selectedSystem.id,
+                                systemName: selectedSystem.name,
+                                symbol: systemSymbol,
+                                timeframe: systemTimeframe,
+                                conditions: selectedSystem.preset.alerts.entry
+                              });
+                            }}
+                            disabled={activateTradingSystemMutation.isPending}
+                            className="w-full bg-purple-600 hover:bg-purple-700"
+                          >
+                            {activateTradingSystemMutation.isPending ? (
+                              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Activating...</>
+                            ) : (
+                              <><Zap className="w-4 h-4 mr-2" /> Activate System</>
+                            )}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               
               {/* View Active Alerts Button */}

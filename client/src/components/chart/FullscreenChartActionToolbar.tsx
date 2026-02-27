@@ -2,6 +2,8 @@ import type { ChartDrawingTool } from '@/types/drawing';
 import { DrawingMenu } from '@/components/drawings/DrawingMenu';
 import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';
 import { ToolsMenu } from '@/components/tools/ToolsMenu';
+import { TradingSystemsMenu } from '@/components/tradingSystems/TradingSystemsMenu';
+import type { TradingSystemId } from '@/types/tradingSystems';
 
 interface FullscreenChartActionToolbarProps {
   activeTool: ChartDrawingTool;
@@ -60,6 +62,10 @@ interface FullscreenChartActionToolbarProps {
 
   vpEnabled: boolean;
   onOpenVolumeProfileSettings: () => void;
+
+  activeSystem: TradingSystemId | null;
+  onActivateSystem: (systemId: TradingSystemId) => void;
+  onDeactivateSystem: () => void;
 }
 
 export function FullscreenChartActionToolbar({
@@ -109,6 +115,9 @@ export function FullscreenChartActionToolbar({
   onOpenSqueezeSettings,
   vpEnabled,
   onOpenVolumeProfileSettings,
+  activeSystem,
+  onActivateSystem,
+  onDeactivateSystem,
 }: FullscreenChartActionToolbarProps) {
   return (
     <div className="absolute top-2 left-2 z-30 flex items-center gap-1 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-1 shadow-xl">
@@ -149,6 +158,22 @@ export function FullscreenChartActionToolbar({
         onOpenDivergenceSettings={onOpenDivergenceSettings}
         superTrendEnabled={superTrendEnabled}
         onOpenSuperTrendSettings={onOpenSuperTrendSettings}
+        htfBiasEnabled={htfBiasEnabled}
+        onToggleHtfBias={onToggleHtfBias}
+        squeezeEnabled={squeezeEnabled}
+        onOpenSqueezeSettings={onOpenSqueezeSettings}
+        vpEnabled={vpEnabled}
+       div className="w-px h-6 bg-slate-700" />
+
+      <TradingSystemsMenu
+        activeSystem={activeSystem}
+        onActivateSystem={onActivateSystem}
+        onDeactivateSystem={onDeactivateSystem}
+      />
+
+      <div className="w-px h-6 bg-slate-700" />
+
+      < onOpenVolumeProfileSettings={onOpenVolumeProfileSettings}
       />
 
       <button
@@ -196,44 +221,6 @@ export function FullscreenChartActionToolbar({
         </svg>
       </button>
 
-      <button
-        onClick={onToggleHtfBias}
-        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-          htfBiasEnabled
-            ? 'bg-indigo-600 text-white'
-            : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-        }`}
-        title="Toggle HTF Bias Panel"
-        data-testid="btn-htf-bias-toggle"
-      >
-        HTF
-      </button>
-
-      <button
-        onClick={onOpenSqueezeSettings}
-        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-          squeezeEnabled
-            ? 'bg-cyan-600 text-white'
-            : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-        }`}
-        title="Squeeze Momentum (LazyBear)"
-        data-testid="btn-squeeze-momentum-toggle"
-      >
-        Squeeze
-      </button>
-
-      <button
-        onClick={onOpenVolumeProfileSettings}
-        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-          vpEnabled
-            ? 'bg-blue-600 text-white'
-            : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-        }`}
-        title="Volume Profile Settings"
-        data-testid="btn-volume-profile"
-      >
-        VP
-      </button>
     </div>
   );
 }
