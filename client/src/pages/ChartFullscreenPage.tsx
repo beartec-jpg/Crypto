@@ -85,6 +85,7 @@ interface ChartFullscreenPageProps {
 interface SignalEvaluationInput {
   systemId: TradingSystemId;
   lastRsi?: number;
+  prevRsi?: number;
   macdNow?: number;
   macdPrev?: number;
   sigNow?: number;
@@ -102,6 +103,7 @@ interface SignalEvaluationInput {
 function evaluateTradingSystemSignal({
   systemId,
   lastRsi,
+  prevRsi,
   macdNow,
   macdPrev,
   sigNow,
@@ -137,6 +139,8 @@ function evaluateTradingSystemSignal({
     case 'mean-reversion':
       if (lastRsi !== undefined && lastRsi <= 30) longReasons.push(`RSI oversold (${lastRsi.toFixed(1)})`);
       if (lastRsi !== undefined && lastRsi >= 70) shortReasons.push(`RSI overbought (${lastRsi.toFixed(1)})`);
+      if (lastRsi !== undefined && lastRsi <= 35 && latestClose > previousClose) longReasons.push('Rebound candle confirmed');
+      if (lastRsi !== undefined && lastRsi >= 65 && latestClose < previousClose) shortReasons.push('Rejection candle confirmed');
       break;
     case 'breakout-momentum':
       if (latestStructureDirection === 'bullish') longReasons.push('Recent bullish BOS/CHoCH');
@@ -147,12 +151,16 @@ function evaluateTradingSystemSignal({
     case 'smart-money':
       if (latestStructureDirection === 'bullish') longReasons.push('SMC structure shift bullish');
       if (latestStructureDirection === 'bearish') shortReasons.push('SMC structure shift bearish');
+      if (latestStructureDirection === 'bullish' && latestClose > previousClose) longReasons.push('Follow-through close after shift');
+      if (latestStructureDirection === 'bearish' && latestClose < previousClose) shortReasons.push('Follow-through close after shift');
       break;
     case 'momentum-scalper':
       if (macdBullCross) longReasons.push('MACD bullish crossover');
       if (macdBearCross) shortReasons.push('MACD bearish crossover');
       if (stTrend === 'bullish') longReasons.push('Momentum trend bullish');
       if (stTrend === 'bearish') shortReasons.push('Momentum trend bearish');
+      if (macdNow !== undefined && macdNow > 0) longReasons.push('MACD above zero line');
+      if (macdNow !== undefined && macdNow < 0) shortReasons.push('MACD below zero line');
       break;
     case 'divergence-master':
       if (macdBullCross) longReasons.push('Bullish momentum shift');
@@ -167,10 +175,10 @@ function evaluateTradingSystemSignal({
       if (stTrend === 'bearish') shortReasons.push('Local trend bearish');
       break;
     case 'volume-profile':
-      if (latestClose > previousClose) longReasons.push('Price improving from prior close');
-      if (latestClose < previousClose) shortReasons.push('Price weakening from prior close');
-      if (lastRsi !== undefined && lastRsi < 50) longReasons.push('Momentum still discounted');
-      if (lastRsi !== undefined && lastRsi > 50) shortReasons.push('Momentum elevated');
+      if (lastRsi !== undefined && prevRsi !== undefined && prevRsi <= 50 && lastRsi > 50) longReasons.push('RSI crossed above midpoint');
+      if (lastRsi !== undefined && prevRsi !== undefined && prevRsi >= 50 && lastRsi < 50) shortReasons.push('RSI crossed below midpoint');
+      if (stTrend === 'bullish') longReasons.push('SuperTrend bullish confirmation');
+      if (stTrend === 'bearish') shortReasons.push('SuperTrend bearish confirmation');
       break;
     default:
       break;
@@ -446,6 +454,8 @@ export function ChartFullscreenPage({
     }> = [];
 
     let previousAction: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' = 'WAIT';
+    let lastActivationIndex = -1000;
+    const minBarsBetweenActivations = tradingSystem.activeSystem === 'volume-profile' ? 12 : 4;
 
     for (let index = startIndex; index < candles.length; index++) {
       const currentCandle = candles[index] as { time: number; close: number };
@@ -466,6 +476,7 @@ export function ChartFullscreenPage({
       const evaluation = evaluateTradingSystemSignal({
         systemId: tradingSystem.activeSystem,
         lastRsi: rsiByTime.get(currentTime),
+        prevRsi: rsiByTime.get(prevTime),
         macdNow: macdByTime.get(currentTime),
         macdPrev: macdByTime.get(prevTime),
         sigNow: signalByTime.get(currentTime),
@@ -480,12 +491,17 @@ export function ChartFullscreenPage({
         previousClose: prevCandle.close,
       });
 
-      if (evaluation.action !== 'WAIT' && evaluation.action !== previousAction) {
+      if (
+        evaluation.action !== 'WAIT' &&
+        evaluation.action !== previousAction &&
+        index - lastActivationIndex >= minBarsBetweenActivations
+      ) {
         events.push({
           time: currentTime,
           action: evaluation.action,
           primaryReason: evaluation.signalReasons[0] ?? 'Confluence confirmed',
         });
+        lastActivationIndex = index;
       }
 
       previousAction = evaluation.action;
@@ -549,6 +565,7 @@ export function ChartFullscreenPage({
     const previousDelta = previousCandle.close - previousCandle.open;
 
     const lastRsi = oscillatorData.rsi[oscillatorData.rsi.length - 1]?.value;
+    const prevRsi = oscillatorData.rsi[oscillatorData.rsi.length - 2]?.value;
     const macdNow = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 1]?.value;
     const macdPrev = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 2]?.value;
     const sigNow = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 1]?.value;
@@ -565,6 +582,7 @@ export function ChartFullscreenPage({
     const evaluatedSignal = evaluateTradingSystemSignal({
       systemId: tradingSystem.activeSystem,
       lastRsi,
+      prevRsi,
       macdNow,
       macdPrev,
       sigNow,
