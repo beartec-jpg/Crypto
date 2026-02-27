@@ -892,28 +892,35 @@ export function ChartFullscreenPage({
         />
 
         {activeSystemSummary && (
-          <div className="absolute top-12 left-2 z-40 rounded-lg border border-blue-700/70 bg-slate-900/95 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur-sm">
-            <div className="font-semibold text-blue-300">{activeSystemSummary.name} • Signal Replay</div>
-            <div className="mt-1 text-slate-300">
-              {activeSystemSummary.historicalSignalCount} signals found in {activeSystemSummary.lookbackCandles} candles
-            </div>
+          <div className="absolute top-14 left-2 z-40 rounded-md border border-blue-700/70 bg-slate-900/95 px-2 py-1 text-[11px] font-semibold text-blue-200 shadow-lg backdrop-blur-sm">
+            {activeSystemSummary.historicalSignalCount}/{activeSystemSummary.lookbackCandles}
           </div>
         )}
 
         {activeSystemDetails && (
-          <div className="absolute top-20 right-2 z-30 w-[320px] rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs text-slate-200 shadow-xl backdrop-blur-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-semibold text-blue-300">{activeSystemDetails.system.name}</span>
-              <span className="rounded border border-slate-600 px-1.5 py-0.5 text-[10px] text-slate-300">Active</span>
-            </div>
-            <div className="mb-3 rounded border border-slate-700 bg-slate-800/70 p-2">
+          <div
+            className={`absolute top-20 right-2 z-30 rounded-lg border border-slate-700 bg-slate-900/95 text-xs text-slate-200 shadow-xl backdrop-blur-sm ${
+              isLiveSignalCollapsed ? 'w-[168px] p-2' : 'w-[320px] p-3'
+            }`}
+          >
+            {!isLiveSignalCollapsed && (
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-semibold text-blue-300">{activeSystemDetails.system.name}</span>
+                <span className="rounded border border-slate-600 px-1.5 py-0.5 text-[10px] text-slate-300">Active</span>
+              </div>
+            )}
+            <div className={`rounded border border-slate-700 bg-slate-800/70 ${isLiveSignalCollapsed ? 'p-1.5' : 'mb-3 p-2'}`}>
               <button
                 type="button"
                 onClick={() => setIsLiveSignalCollapsed(prev => !prev)}
-                className="mb-2 flex w-full items-center justify-between rounded px-1 py-1 text-left hover:bg-slate-700/40"
+                className={`flex w-full items-center justify-between rounded px-1 py-1 text-left hover:bg-slate-700/40 ${
+                  isLiveSignalCollapsed ? 'mb-0' : 'mb-2'
+                }`}
                 title={isLiveSignalCollapsed ? 'Expand live signal details' : 'Collapse to signal only'}
               >
-                <span className="text-[10px] uppercase tracking-wide text-slate-400">Live Signal</span>
+                <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                  {isLiveSignalCollapsed ? 'Signal' : 'Live Signal'}
+                </span>
                 <span className={
                   activeSystemDetails.signalAction === 'OPEN LONG'
                     ? 'rounded border border-emerald-700 bg-emerald-900/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300'
