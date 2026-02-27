@@ -68,6 +68,8 @@ import { useSqueezeMomentumSettings } from '@/hooks/useSqueezeMomentumSettings';
 import { useSqueezeMomentum } from '@/hooks/useSqueezeMomentum';
 import { useTradingSystem, type TradingSystemCallbacks } from '@/hooks/useTradingSystem';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
+import { useMultiSystemConfluence, type SystemDetail } from '@/hooks/useMultiSystemConfluence';
+import { FloatingConfluenceMonitor } from '@/components/tradingSystems/FloatingConfluenceMonitor';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
 
@@ -260,7 +262,17 @@ export function ChartFullscreenPage({
     shortCount: number;
     neutralCount: number;
     updatedAt: number;
+    systemDetails?: SystemDetail[];
   } | null>(null);
+
+  const [showFloatingConfluence, setShowFloatingConfluence] = useState(() => {
+    try {
+      const saved = localStorage.getItem('floatingConfluenceVisible');
+      return saved ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -654,70 +666,14 @@ export function ChartFullscreenPage({
     };
   }, [tradingSystem.activeSystem, historicalSystemSignalEvents, candles.length]);
 
-  const totalConfluenceNow = useMemo(() => {
-    if (candles.length < 2) return null;
-
-    const previousCandle = candles[candles.length - 2] as { time: number; open: number; close: number };
-    const latestCandle = candles[candles.length - 1] as { time: number; close: number };
-
-    const lastRsi = oscillatorData.rsi[oscillatorData.rsi.length - 1]?.value;
-    const prevRsi = oscillatorData.rsi[oscillatorData.rsi.length - 2]?.value;
-    const macdNow = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 1]?.value;
-    const macdPrev = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 2]?.value;
-    const sigNow = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 1]?.value;
-    const sigPrev = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 2]?.value;
-    const stLatest = superTrendData.standard[superTrendData.standard.length - 1];
-    const stTrend = stLatest?.trend;
-    const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
-    const latestSqz = sqzData[sqzData.length - 1];
-    const htfBullish = htfBiasEntries.filter(entry => entry.bias === 'bullish').length;
-    const htfBearish = htfBiasEntries.filter(entry => entry.bias === 'bearish').length;
-
-    const systemIds = Object.keys(TRADING_SYSTEMS) as TradingSystemId[];
-    let longCount = 0;
-    let shortCount = 0;
-    let neutralCount = 0;
-    let scoreSum = 0;
-
-    for (const systemId of systemIds) {
-      const evaluatedSignal = evaluateTradingSystemSignal({
-        systemId,
-        lastRsi,
-        prevRsi,
-        macdNow,
-        macdPrev,
-        sigNow,
-        sigPrev,
-        stTrend,
-        latestStructureDirection: latestStructureBreak?.direction,
-        sqzOff: latestSqz?.sqzOff,
-        sqzValue: latestSqz?.value,
-        htfBullish,
-        htfBearish,
-        latestClose: latestCandle.close,
-        previousClose: previousCandle.close,
-      });
-
-      if (evaluatedSignal.action === 'OPEN LONG') {
-        longCount += 1;
-        scoreSum += 1;
-      } else if (evaluatedSignal.action === 'OPEN SHORT') {
-        shortCount += 1;
-        scoreSum -= 1;
-      } else {
-        neutralCount += 1;
-      }
-    }
-
-    const score = systemIds.length > 0 ? scoreSum / systemIds.length : 0;
-
-    return {
-      score,
-      longCount,
-      shortCount,
-      neutralCount,
-    };
-  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries]);
+  const totalConfluenceNow = useMultiSystemConfluence(
+    candles,
+    oscillatorData,
+    superTrendData,
+    structureBreaks,
+    sqzData,
+    htfBiasEntries,
+  );
 
   const totalConfluenceNowRef = useRef(totalConfluenceNow);
 
@@ -752,6 +708,14 @@ export function ChartFullscreenPage({
       window.clearInterval(intervalId);
     };
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('floatingConfluenceVisible', JSON.stringify(showFloatingConfluence));
+    } catch {
+      // ignore
+    }
+  }, [showFloatingConfluence]);
 
   useEffect(() => {
     setIsLiveSignalCollapsed(false);
@@ -1011,6 +975,13 @@ export function ChartFullscreenPage({
           onActivateSystem={tradingSystem.activateSystem}
           onDeactivateSystem={tradingSystem.deactivateSystem}
           confluenceSnapshot={confluenceSnapshot}
+          onToggleFloatingMonitor={() => setShowFloatingConfluence((v: boolean) => !v)}
+        />
+
+        <FloatingConfluenceMonitor
+          confluenceSnapshot={confluenceSnapshot}
+          isVisible={showFloatingConfluence}
+          onClose={() => setShowFloatingConfluence(false)}
         />
 
         {activeSystemSummary && (

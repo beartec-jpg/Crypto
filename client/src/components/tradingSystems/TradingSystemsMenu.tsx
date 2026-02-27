@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Zap, Check, Info, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { TRADING_SYSTEMS, type TradingSystemId, type TradingSystem } from '@/types/tradingSystems';
 import {
@@ -23,6 +22,7 @@ interface TradingSystemsMenuProps {
     neutralCount: number;
     updatedAt: number;
   } | null;
+  onToggleFloatingMonitor: () => void;
   className?: string;
 }
 
@@ -112,10 +112,10 @@ export function TradingSystemsMenu({
   onActivateSystem,
   onDeactivateSystem,
   confluenceSnapshot,
+  onToggleFloatingMonitor,
   className,
 }: TradingSystemsMenuProps) {
   const [open, setOpen] = useState(false);
-  const [showConfluenceMonitor, setShowConfluenceMonitor] = useState(false);
 
   const systems = Object.values(TRADING_SYSTEMS);
   const trendSystems = systems.filter(s => s.category === 'trend');
@@ -133,7 +133,6 @@ export function TradingSystemsMenu({
   };
 
   const activeSystemData = activeSystem ? TRADING_SYSTEMS[activeSystem] : null;
-  const totalSystems = Object.keys(TRADING_SYSTEMS).length;
 
   const confluenceColorClass = !confluenceSnapshot
     ? 'text-slate-300'
@@ -200,7 +199,7 @@ export function TradingSystemsMenu({
 
           <button
             type="button"
-            onClick={() => setShowConfluenceMonitor(true)}
+            onClick={onToggleFloatingMonitor}
             className="w-full rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2 text-left transition-all hover:border-slate-500 hover:bg-slate-800"
           >
             <div className="flex items-center justify-between">
@@ -290,46 +289,6 @@ export function TradingSystemsMenu({
           </div>
         </div>
       </PopoverContent>
-
-      <Dialog open={showConfluenceMonitor} onOpenChange={setShowConfluenceMonitor}>
-        <DialogContent className="bg-slate-900 border-slate-700 text-white sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-sm text-blue-300">Multi System Confluence Monitor</DialogTitle>
-          </DialogHeader>
-
-          {confluenceSnapshot ? (
-            <div className="space-y-3 text-xs">
-              <div className="rounded-md border border-slate-700 bg-slate-800/70 p-3">
-                <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">Average Score</div>
-                <div className={cn('text-lg font-semibold', confluenceColorClass)}>
-                  {confluenceSnapshot.score > 0 ? '+' : ''}{confluenceSnapshot.score.toFixed(2)}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-md border border-emerald-700/40 bg-emerald-900/20 p-2 text-center">
-                  <div className="text-[10px] uppercase tracking-wide text-emerald-300">Long</div>
-                  <div className="mt-1 font-semibold text-emerald-200">{confluenceSnapshot.longCount}</div>
-                </div>
-                <div className="rounded-md border border-rose-700/40 bg-rose-900/20 p-2 text-center">
-                  <div className="text-[10px] uppercase tracking-wide text-rose-300">Short</div>
-                  <div className="mt-1 font-semibold text-rose-200">{confluenceSnapshot.shortCount}</div>
-                </div>
-                <div className="rounded-md border border-yellow-700/40 bg-yellow-900/20 p-2 text-center">
-                  <div className="text-[10px] uppercase tracking-wide text-yellow-300">Neutral</div>
-                  <div className="mt-1 font-semibold text-yellow-200">{confluenceSnapshot.neutralCount}</div>
-                </div>
-              </div>
-
-              <div className="text-[11px] text-slate-400">
-                Coverage: {totalSystems} systems • Read-only background monitor
-              </div>
-            </div>
-          ) : (
-            <div className="text-xs text-slate-400">Confluence data is warming up...</div>
-          )}
-        </DialogContent>
-      </Dialog>
     </Popover>
   );
 }

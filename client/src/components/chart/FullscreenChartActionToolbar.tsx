@@ -75,6 +75,7 @@ interface FullscreenChartActionToolbarProps {
   onActivateSystem: (systemId: TradingSystemId) => void;
   onDeactivateSystem: () => void;
   confluenceSnapshot: ConfluenceSnapshot | null;
+  onToggleFloatingMonitor: () => void;
 }
 
 export function FullscreenChartActionToolbar({
@@ -128,6 +129,7 @@ export function FullscreenChartActionToolbar({
   onActivateSystem,
   onDeactivateSystem,
   confluenceSnapshot,
+  onToggleFloatingMonitor,
 }: FullscreenChartActionToolbarProps) {
   return (
     <div className="absolute top-2 left-2 z-30 flex items-center gap-1 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-1 shadow-xl">
@@ -183,6 +185,7 @@ export function FullscreenChartActionToolbar({
         onActivateSystem={onActivateSystem}
         onDeactivateSystem={onDeactivateSystem}
         confluenceSnapshot={confluenceSnapshot}
+        onToggleFloatingMonitor={onToggleFloatingMonitor}
       />
 
       <div className="w-px h-6 bg-slate-700" />
