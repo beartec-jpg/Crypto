@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Time } from 'lightweight-charts';
+import { Time, createSeriesMarkers, type ISeriesMarkersPluginApi } from 'lightweight-charts';
 import { useToast } from '@/hooks/use-toast';
 import { useDrawingHistory } from '@/hooks/useDrawingHistory';
 import { useElliottWaveLabels } from '@/hooks/useElliottWaveLabels';
@@ -67,6 +67,7 @@ import { useHTFBiasSettings } from '@/hooks/useHTFBiasSettings';
 import { useSqueezeMomentumSettings } from '@/hooks/useSqueezeMomentumSettings';
 import { useSqueezeMomentum } from '@/hooks/useSqueezeMomentum';
 import { useTradingSystem, type TradingSystemCallbacks } from '@/hooks/useTradingSystem';
+import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
 
@@ -79,6 +80,118 @@ interface ChartFullscreenPageProps {
   initialSymbol: string;
   initialTimeframe: string;
   watchlistTickers: string[];
+}
+
+interface SignalEvaluationInput {
+  systemId: TradingSystemId;
+  lastRsi?: number;
+  macdNow?: number;
+  macdPrev?: number;
+  sigNow?: number;
+  sigPrev?: number;
+  stTrend?: 'bullish' | 'bearish';
+  latestStructureDirection?: 'bullish' | 'bearish';
+  sqzOff?: boolean;
+  sqzValue?: number;
+  htfBullish: number;
+  htfBearish: number;
+  latestClose: number;
+  previousClose: number;
+}
+
+function evaluateTradingSystemSignal({
+  systemId,
+  lastRsi,
+  macdNow,
+  macdPrev,
+  sigNow,
+  sigPrev,
+  stTrend,
+  latestStructureDirection,
+  sqzOff,
+  sqzValue,
+  htfBullish,
+  htfBearish,
+  latestClose,
+  previousClose,
+}: SignalEvaluationInput) {
+  const macdBullCross =
+    macdPrev !== undefined && sigPrev !== undefined && macdNow !== undefined && sigNow !== undefined
+      ? macdPrev <= sigPrev && macdNow > sigNow
+      : false;
+  const macdBearCross =
+    macdPrev !== undefined && sigPrev !== undefined && macdNow !== undefined && sigNow !== undefined
+      ? macdPrev >= sigPrev && macdNow < sigNow
+      : false;
+
+  const longReasons: string[] = [];
+  const shortReasons: string[] = [];
+
+  switch (systemId) {
+    case 'trend-following':
+      if (stTrend === 'bullish') longReasons.push('SuperTrend bullish');
+      if (stTrend === 'bearish') shortReasons.push('SuperTrend bearish');
+      if (macdNow !== undefined && sigNow !== undefined && macdNow > sigNow) longReasons.push('MACD above signal');
+      if (macdNow !== undefined && sigNow !== undefined && macdNow < sigNow) shortReasons.push('MACD below signal');
+      break;
+    case 'mean-reversion':
+      if (lastRsi !== undefined && lastRsi <= 30) longReasons.push(`RSI oversold (${lastRsi.toFixed(1)})`);
+      if (lastRsi !== undefined && lastRsi >= 70) shortReasons.push(`RSI overbought (${lastRsi.toFixed(1)})`);
+      break;
+    case 'breakout-momentum':
+      if (latestStructureDirection === 'bullish') longReasons.push('Recent bullish BOS/CHoCH');
+      if (latestStructureDirection === 'bearish') shortReasons.push('Recent bearish BOS/CHoCH');
+      if (sqzOff && (sqzValue ?? 0) > 0) longReasons.push('Squeeze released up');
+      if (sqzOff && (sqzValue ?? 0) < 0) shortReasons.push('Squeeze released down');
+      break;
+    case 'smart-money':
+      if (latestStructureDirection === 'bullish') longReasons.push('SMC structure shift bullish');
+      if (latestStructureDirection === 'bearish') shortReasons.push('SMC structure shift bearish');
+      break;
+    case 'momentum-scalper':
+      if (macdBullCross) longReasons.push('MACD bullish crossover');
+      if (macdBearCross) shortReasons.push('MACD bearish crossover');
+      if (stTrend === 'bullish') longReasons.push('Momentum trend bullish');
+      if (stTrend === 'bearish') shortReasons.push('Momentum trend bearish');
+      break;
+    case 'divergence-master':
+      if (macdBullCross) longReasons.push('Bullish momentum shift');
+      if (macdBearCross) shortReasons.push('Bearish momentum shift');
+      if (lastRsi !== undefined && lastRsi < 40) longReasons.push('RSI weak/discount zone');
+      if (lastRsi !== undefined && lastRsi > 60) shortReasons.push('RSI strong/premium zone');
+      break;
+    case 'mtf-confluence':
+      if (htfBullish >= 2) longReasons.push('HTF bias mostly bullish');
+      if (htfBearish >= 2) shortReasons.push('HTF bias mostly bearish');
+      if (stTrend === 'bullish') longReasons.push('Local trend bullish');
+      if (stTrend === 'bearish') shortReasons.push('Local trend bearish');
+      break;
+    case 'volume-profile':
+      if (latestClose > previousClose) longReasons.push('Price improving from prior close');
+      if (latestClose < previousClose) shortReasons.push('Price weakening from prior close');
+      if (lastRsi !== undefined && lastRsi < 50) longReasons.push('Momentum still discounted');
+      if (lastRsi !== undefined && lastRsi > 50) shortReasons.push('Momentum elevated');
+      break;
+    default:
+      break;
+  }
+
+  const action: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' = longReasons.length >= 2
+    ? 'OPEN LONG'
+    : shortReasons.length >= 2
+      ? 'OPEN SHORT'
+      : 'WAIT';
+
+  const signalReasons = action === 'OPEN LONG'
+    ? longReasons.slice(0, 3)
+    : action === 'OPEN SHORT'
+      ? shortReasons.slice(0, 3)
+      : ['No multi-signal confluence yet'];
+
+  return {
+    action,
+    signalReasons,
+  };
 }
 
 export function ChartFullscreenPage({
@@ -128,6 +241,8 @@ export function ChartFullscreenPage({
   const activeToolRef = useRef<ChartDrawingTool>(null);
   const autoColorEnabledRef = useRef(true);
   const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
+  const systemSignalMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const systemSignalMarkerHostSeriesRef = useRef<any>(null);
   // Hooks - Elliott Wave tool
   const elliottWave = useElliottWave();
 
@@ -303,6 +418,187 @@ export function ChartFullscreenPage({
   };
   
   const tradingSystem = useTradingSystem(tradingSystemCallbacks);
+
+  const historicalSystemSignalEvents = useMemo(() => {
+    if (!tradingSystem.activeSystem || candles.length < 3) return [];
+
+    const lookbackCandles = Math.min(400, candles.length - 1);
+    const startIndex = Math.max(1, candles.length - lookbackCandles);
+
+    const rsiByTime = new Map<number, number>(oscillatorData.rsi.map(point => [Number(point.time), point.value]));
+    const macdByTime = new Map<number, number>(oscillatorData.macd.macd.map(point => [Number(point.time), point.value]));
+    const signalByTime = new Map<number, number>(oscillatorData.macd.signal.map(point => [Number(point.time), point.value]));
+    const superTrendByTime = new Map<number, 'bullish' | 'bearish'>(
+      superTrendData.standard.map(point => [Number(point.time), point.trend])
+    );
+    const sqzByTime = new Map<number, { sqzOff: boolean; value: number }>(
+      sqzData.map(point => [Number(point.time), { sqzOff: point.sqzOff, value: point.value }])
+    );
+
+    const htfBullish = htfBiasEntries.filter(entry => entry.bias === 'bullish').length;
+    const htfBearish = htfBiasEntries.filter(entry => entry.bias === 'bearish').length;
+
+    const events: Array<{
+      time: number;
+      action: 'OPEN LONG' | 'OPEN SHORT';
+      primaryReason: string;
+    }> = [];
+
+    let previousAction: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' = 'WAIT';
+
+    for (let index = startIndex; index < candles.length; index++) {
+      const currentCandle = candles[index] as { time: number; close: number };
+      const prevCandle = candles[index - 1] as { time: number; close: number };
+      const currentTime = Number(currentCandle.time);
+      const prevTime = Number(prevCandle.time);
+
+      let latestStructureDirection: 'bullish' | 'bearish' | undefined;
+      for (let breakIndex = structureBreaks.length - 1; breakIndex >= 0; breakIndex--) {
+        const structureBreak = structureBreaks[breakIndex];
+        if (structureBreak.breakTime <= currentTime) {
+          latestStructureDirection = structureBreak.direction;
+          break;
+        }
+      }
+
+      const sqzValue = sqzByTime.get(currentTime);
+      const evaluation = evaluateTradingSystemSignal({
+        systemId: tradingSystem.activeSystem,
+        lastRsi: rsiByTime.get(currentTime),
+        macdNow: macdByTime.get(currentTime),
+        macdPrev: macdByTime.get(prevTime),
+        sigNow: signalByTime.get(currentTime),
+        sigPrev: signalByTime.get(prevTime),
+        stTrend: superTrendByTime.get(currentTime),
+        latestStructureDirection,
+        sqzOff: sqzValue?.sqzOff,
+        sqzValue: sqzValue?.value,
+        htfBullish,
+        htfBearish,
+        latestClose: currentCandle.close,
+        previousClose: prevCandle.close,
+      });
+
+      if (evaluation.action !== 'WAIT' && evaluation.action !== previousAction) {
+        events.push({
+          time: currentTime,
+          action: evaluation.action,
+          primaryReason: evaluation.signalReasons[0] ?? 'Confluence confirmed',
+        });
+      }
+
+      previousAction = evaluation.action;
+    }
+
+    return events.slice(-80);
+  }, [
+    tradingSystem.activeSystem,
+    candles,
+    oscillatorData,
+    superTrendData.standard,
+    structureBreaks,
+    sqzData,
+    htfBiasEntries,
+  ]);
+
+  const historicalSystemSignalMarkers = useMemo(() => {
+    return historicalSystemSignalEvents.map(event => ({
+      time: event.time as Time,
+      position: event.action === 'OPEN LONG' ? 'belowBar' as const : 'aboveBar' as const,
+      shape: event.action === 'OPEN LONG' ? 'arrowUp' as const : 'arrowDown' as const,
+      color: event.action === 'OPEN LONG' ? '#22c55e' : '#ef4444',
+      text: event.action === 'OPEN LONG' ? 'LONG' : 'SHORT',
+      size: 1,
+    }));
+  }, [historicalSystemSignalEvents]);
+
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+
+    if (!candleSeries || !tradingSystem.activeSystem) {
+      systemSignalMarkersRef.current?.setMarkers([]);
+      return;
+    }
+
+    if (!systemSignalMarkersRef.current || systemSignalMarkerHostSeriesRef.current !== candleSeries) {
+      systemSignalMarkersRef.current = createSeriesMarkers(candleSeries, []);
+      systemSignalMarkerHostSeriesRef.current = candleSeries;
+    }
+
+    systemSignalMarkersRef.current.setMarkers(historicalSystemSignalMarkers);
+  }, [tradingSystem.activeSystem, historicalSystemSignalMarkers, candleSeriesRef, chartReady]);
+
+  useEffect(() => {
+    return () => {
+      systemSignalMarkersRef.current?.setMarkers([]);
+      systemSignalMarkersRef.current = null;
+      systemSignalMarkerHostSeriesRef.current = null;
+    };
+  }, []);
+
+  const activeSystemDetails = useMemo(() => {
+    if (!tradingSystem.activeSystem || candles.length < 2) return null;
+
+    const system = TRADING_SYSTEMS[tradingSystem.activeSystem];
+    if (!system) return null;
+
+    const previousCandle = candles[candles.length - 2] as { open: number; close: number };
+    const latestCandle = candles[candles.length - 1] as { close: number };
+    const previousDirection = previousCandle.close >= previousCandle.open ? 'Bullish' : 'Bearish';
+    const previousDelta = previousCandle.close - previousCandle.open;
+
+    const lastRsi = oscillatorData.rsi[oscillatorData.rsi.length - 1]?.value;
+    const macdNow = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 1]?.value;
+    const macdPrev = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 2]?.value;
+    const sigNow = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 1]?.value;
+    const sigPrev = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 2]?.value;
+
+    const stLatest = superTrendData.standard[superTrendData.standard.length - 1];
+    const stTrend = stLatest?.trend;
+    const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
+    const latestSqz = sqzData[sqzData.length - 1];
+
+    const htfBullish = htfBiasEntries.filter(e => e.bias === 'bullish').length;
+    const htfBearish = htfBiasEntries.filter(e => e.bias === 'bearish').length;
+
+    const evaluatedSignal = evaluateTradingSystemSignal({
+      systemId: tradingSystem.activeSystem,
+      lastRsi,
+      macdNow,
+      macdPrev,
+      sigNow,
+      sigPrev,
+      stTrend,
+      latestStructureDirection: latestStructureBreak?.direction,
+      sqzOff: latestSqz?.sqzOff,
+      sqzValue: latestSqz?.value,
+      htfBullish,
+      htfBearish,
+      latestClose: latestCandle.close,
+      previousClose: previousCandle.close,
+    });
+
+    return {
+      system,
+      previousOpen: previousCandle.open,
+      previousClose: previousCandle.close,
+      previousDirection,
+      previousDelta,
+      signals: system.alerts?.entry ?? [],
+      signalAction: evaluatedSignal.action,
+      signalReasons: evaluatedSignal.signalReasons,
+      historicalSignalCount: historicalSystemSignalEvents.length,
+    };
+  }, [
+    tradingSystem.activeSystem,
+    candles,
+    oscillatorData,
+    superTrendData,
+    structureBreaks,
+    sqzData,
+    htfBiasEntries,
+    historicalSystemSignalEvents.length,
+  ]);
 
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
@@ -558,6 +854,69 @@ export function ChartFullscreenPage({
           onActivateSystem={tradingSystem.activateSystem}
           onDeactivateSystem={tradingSystem.deactivateSystem}
         />
+
+        {activeSystemDetails && (
+          <div className="absolute top-20 right-2 z-30 w-[320px] rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs text-slate-200 shadow-xl backdrop-blur-sm">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="font-semibold text-blue-300">{activeSystemDetails.system.name}</span>
+              <span className="rounded border border-slate-600 px-1.5 py-0.5 text-[10px] text-slate-300">Active</span>
+            </div>
+            <div className="mb-3 rounded border border-slate-700 bg-slate-800/70 p-2">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400">Live Signal</span>
+                <span className={
+                  activeSystemDetails.signalAction === 'OPEN LONG'
+                    ? 'rounded border border-emerald-700 bg-emerald-900/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300'
+                    : activeSystemDetails.signalAction === 'OPEN SHORT'
+                      ? 'rounded border border-rose-700 bg-rose-900/30 px-2 py-0.5 text-[10px] font-semibold text-rose-300'
+                      : 'rounded border border-slate-600 bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-300'
+                }>
+                  {activeSystemDetails.signalAction}
+                </span>
+              </div>
+              <div className="mb-2 text-[10px] text-slate-400">
+                Backfilled {activeSystemDetails.historicalSignalCount} historical signals on chart
+              </div>
+              <div className="mb-2 space-y-1">
+                {activeSystemDetails.signalReasons.map((reason, index) => (
+                  <div key={`${activeSystemDetails.system.id}-live-reason-${index}`} className="text-slate-300">
+                    • {reason}
+                  </div>
+                ))}
+              </div>
+              <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">Previous Candle</div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                <span className="text-slate-400">Open</span>
+                <span>{activeSystemDetails.previousOpen.toFixed(4)}</span>
+                <span className="text-slate-400">Close</span>
+                <span>{activeSystemDetails.previousClose.toFixed(4)}</span>
+                <span className="text-slate-400">Direction</span>
+                <span className={activeSystemDetails.previousDirection === 'Bullish' ? 'text-emerald-400' : 'text-rose-400'}>
+                  {activeSystemDetails.previousDirection}
+                </span>
+                <span className="text-slate-400">Delta</span>
+                <span className={activeSystemDetails.previousDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                  {activeSystemDetails.previousDelta >= 0 ? '+' : ''}
+                  {activeSystemDetails.previousDelta.toFixed(4)}
+                </span>
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">System Signals</div>
+              {activeSystemDetails.signals.length > 0 ? (
+                <div className="space-y-1">
+                  {activeSystemDetails.signals.slice(0, 4).map((signal, index) => (
+                    <div key={`${activeSystemDetails.system.id}-signal-${index}`} className="rounded border border-slate-700 bg-slate-800/60 px-2 py-1 text-slate-300">
+                      {signal}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-slate-400">No configured signal criteria for this system.</div>
+              )}
+            </div>
+          </div>
+        )}
 
         <FullscreenChartViewportLayer
           miniOscillators={oscillatorPanel.miniOscillators}

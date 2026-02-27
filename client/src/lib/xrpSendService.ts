@@ -162,8 +162,11 @@ export function signXrpTransaction(
 
     if (isHex64 || isHex64WithPrefix) {
       const hexEntropy = normalizedInput.startsWith('0x') ? normalizedInput.slice(2) : normalizedInput;
+      const entropyBytes = Uint8Array.from(
+        hexEntropy.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) ?? []
+      );
       // Standard XRPL.js path for raw entropy/hex keys
-      wallet = xrpl.Wallet.fromEntropy(hexEntropy);
+      wallet = xrpl.Wallet.fromEntropy(entropyBytes);
     } else {
       // Standard XRPL.js seed path
       wallet = xrpl.Wallet.fromSeed(normalizedInput);
