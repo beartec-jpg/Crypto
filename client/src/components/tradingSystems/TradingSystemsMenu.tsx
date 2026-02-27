@@ -222,7 +222,7 @@ export function TradingSystemsMenu({
             <h4 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-2">
               <span>📈</span> Trend Following
             </h4>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {trendSystems.map((system) => (
                 <SystemCard
                   key={system.id}
@@ -239,7 +239,7 @@ export function TradingSystemsMenu({
             <h4 className="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-2">
               <span>🔄</span> Mean Reversion / Reversal
             </h4>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {reversalSystems.map((system) => (
                 <SystemCard
                   key={system.id}
@@ -256,7 +256,7 @@ export function TradingSystemsMenu({
             <h4 className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-2 flex items-center gap-2">
               <span>🚀</span> Breakout & Momentum
             </h4>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {breakoutSystems.map((system) => (
                 <SystemCard
                   key={system.id}
@@ -273,7 +273,7 @@ export function TradingSystemsMenu({
             <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2 flex items-center gap-2">
               <span>💎</span> Smart Money Concepts
             </h4>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {smcSystems.map((system) => (
                 <SystemCard
                   key={system.id}
