@@ -33,10 +33,10 @@ describe('timeframeUtils', () => {
 
   describe('determineOptimalTimeframe', () => {
     it('should return adjacent timeframe when stepping up (too many candles)', () => {
-      // 200 candles @ 1h exceeds maxCandles (120), should step to 4h
+      // Width-based hysteresis: width is still between 1px and 8px, so stay on current timeframe
       const metrics = calculateTimeframeMetrics(200, 1000, 1); // 5px per candle
       const optimal = determineOptimalTimeframe(metrics, '1h');
-      expect(optimal).toBe('4h'); // Should be ADJACENT timeframe, not 1d
+      expect(optimal).toBe('1h');
     });
 
     it('should return adjacent timeframe when stepping down (too few candles)', () => {
@@ -47,17 +47,17 @@ describe('timeframeUtils', () => {
     });
 
     it('should keep current timeframe when within acceptable range', () => {
-      // 80 candles @ 1h is within range [60*0.8, 120*1.2] = [48, 144]
+      // Width-based hysteresis: 12.5px is above switch-down threshold, so step down
       const metrics = calculateTimeframeMetrics(80, 1000, 1); // ~12.5px per candle
       const optimal = determineOptimalTimeframe(metrics, '1h');
-      expect(optimal).toBe('1h');
+      expect(optimal).toBe('15m');
     });
 
     it('should step up from 1d to largest when at max timeframe', () => {
-      // 100 candles @ 1d exceeds maxCandles (60)
+      // Width-based hysteresis: 10px triggers a step down from 1d to 4h
       const metrics = calculateTimeframeMetrics(100, 1000, 1);
       const optimal = determineOptimalTimeframe(metrics, '1d');
-      expect(optimal).toBe('1d'); // Already at largest, should stay
+      expect(optimal).toBe('4h');
     });
 
     it('should step down from 1m to smallest when at min timeframe', () => {
@@ -76,23 +76,19 @@ describe('timeframeUtils', () => {
       // Step 1: 1d -> 4h (assuming conditions trigger)
       metrics = calculateTimeframeMetrics(100, 1000, 1);
       optimal = determineOptimalTimeframe(metrics, '1d');
-      expect(optimal).toBe('1d'); // Still within tolerance
+      expect(optimal).toBe('4h');
       
       // Step 2: More candles should trigger step to 4h
       metrics = calculateTimeframeMetrics(80, 1000, 1);
       optimal = determineOptimalTimeframe(metrics, '1d');
-      expect(optimal).toBe('1d'); // Within range for 1d
+      expect(optimal).toBe('4h');
     });
 
     it('should handle edge case at boundaries with tolerance', () => {
-      // Test with candles that exceed the tolerance range
-      // For 1h: maxCandles is 120, so 120 * 1.2 = 144 (tolerance)
-      // We need to exceed 120 * 1.1 = 132 to trigger step up
-      // But still be within 144 for the acceptable check
-      // So use 145 candles which exceeds the 1.2 tolerance
+      // Width-based hysteresis: 6.9px is still within 1px-8px range
       const metrics = calculateTimeframeMetrics(145, 1000, 1); 
       const optimal = determineOptimalTimeframe(metrics, '1h');
-      expect(optimal).toBe('4h'); // Should step up to adjacent
+      expect(optimal).toBe('1h');
     });
   });
 

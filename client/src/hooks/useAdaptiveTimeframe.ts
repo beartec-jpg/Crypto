@@ -17,6 +17,7 @@ import {
   getTimeframeDuration
 } from '@/lib/timeframeUtils';
 import { DEFAULT_ADAPTIVE_OPTIONS, getAdjacentTimeframes } from '@/constants/timeframes';
+import { TIMEFRAME_CONFIGS, TIMEFRAME_HIERARCHY } from '@/constants/timeframes';
 
 interface UseAdaptiveTimeframeProps {
   /** Current symbol being viewed */
@@ -192,7 +193,25 @@ export function useAdaptiveTimeframe(props: UseAdaptiveTimeframeProps): UseAdapt
   const evaluateTimeframe = useCallback(() => {
     if (!state.adaptiveMode) return;
 
-    const suggestedTimeframe = determineOptimalTimeframe(metrics, state.currentTimeframe);
+    let suggestedTimeframe = determineOptimalTimeframe(metrics, state.currentTimeframe);
+
+    // Fallback: when width-based hysteresis suggests no change, still react to extreme
+    // candle-count pressure to keep adaptive mode responsive.
+    if (suggestedTimeframe === state.currentTimeframe) {
+      const configForTf = TIMEFRAME_CONFIGS[state.currentTimeframe];
+      const currentIndex = TIMEFRAME_HIERARCHY.indexOf(state.currentTimeframe);
+
+      if (configForTf && currentIndex !== -1) {
+        const tooManyCandles = metrics.visibleCandles > configForTf.maxCandles * 1.2;
+        const tooFewCandles = metrics.visibleCandles < configForTf.minCandles * 0.8;
+
+        if (tooManyCandles && currentIndex < TIMEFRAME_HIERARCHY.length - 1) {
+          suggestedTimeframe = TIMEFRAME_HIERARCHY[currentIndex + 1];
+        } else if (tooFewCandles && currentIndex > 0) {
+          suggestedTimeframe = TIMEFRAME_HIERARCHY[currentIndex - 1];
+        }
+      }
+    }
     
     setState(prev => ({
       ...prev,

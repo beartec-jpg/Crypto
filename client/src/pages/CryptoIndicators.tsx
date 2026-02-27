@@ -4231,7 +4231,7 @@ useEffect(() => {
                     // Convert time/price to pixel coordinates
                     const toPixel = (point: { time: number; price: number }, pointIndex?: number) => {
                       // Try to get coordinate for timestamp
-                      let x = timeScale.timeToCoordinate(point.time as any);
+                      let x: any = timeScale.timeToCoordinate(point.time as any);
 
                       // If off-chart (before or after visible range), extrapolate
                       if (x === null) {

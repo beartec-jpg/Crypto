@@ -709,6 +709,10 @@ export function useElliottWave(params: UseElliottWaveParams = {}): UseElliottWav
           }
           
           // Do NOT assign mid labels to simulated candles to avoid visual clutter.
+          if (waveACandles.length > 0) {
+            waveACandles[0].label = 'W2.A-start';
+            waveACandles[waveACandles.length - 1].label = 'W2.A';
+          }
           allCandles.push(...waveACandles);
           currentTime += numWaveA * intervalMs;
           
@@ -733,6 +737,10 @@ export function useElliottWave(params: UseElliottWaveParams = {}): UseElliottWav
           );
           
           // Do NOT assign mid labels to simulated candles to avoid visual clutter.
+          if (waveBCandles.length > 0) {
+            waveBCandles[0].label = 'W2.B-start';
+            waveBCandles[waveBCandles.length - 1].label = 'W2.B';
+          }
           allCandles.push(...waveBCandles);
           currentTime += numWaveB * intervalMs;
           
@@ -748,6 +756,10 @@ export function useElliottWave(params: UseElliottWaveParams = {}): UseElliottWav
           );
           
           // Do NOT assign mid labels to simulated candles to avoid visual clutter.
+          if (waveCCandles.length > 0) {
+            waveCCandles[0].label = 'W2.C-start';
+            waveCCandles[waveCCandles.length - 1].label = 'W2.C';
+          }
           allCandles.push(...waveCCandles);
           
           setSimulatedCandles(allCandles);

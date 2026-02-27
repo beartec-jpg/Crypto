@@ -74,7 +74,7 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         if (x === null && this._data.candleInterval && this._data.lastCandleTime !== undefined && this._data.barCount !== undefined) {
           const barsFromLast = (time - this._data.lastCandleTime) / this._data.candleInterval;
           const logical = (this._data.barCount - 1) + barsFromLast;
-          x = timeScale.logicalToCoordinate(logical);
+          x = timeScale.logicalToCoordinate(logical as any);
         }
         return x;
       };

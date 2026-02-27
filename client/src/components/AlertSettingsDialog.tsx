@@ -11,7 +11,7 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import type { CryptoPreferences } from '@shared/schema';
-import { TRADING_SYSTEMS, type TradingSystemPreset } from '@/types/tradingSystems';
+import { TRADING_SYSTEMS, type TradingSystem } from '@/types/tradingSystems';
 
 interface AlertSettingsDialogProps {
   open: boolean;
@@ -114,7 +114,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
   
   // Trading Systems state
   const [showTradingSystems, setShowTradingSystems] = useState(false);
-  const [selectedSystem, setSelectedSystem] = useState<TradingSystemPreset | null>(null);
+  const [selectedSystem, setSelectedSystem] = useState<TradingSystem | null>(null);
   const [systemSymbol, setSystemSymbol] = useState('BTCUSDT');
   const [systemTimeframe, setSystemTimeframe] = useState('15m');
 
@@ -954,7 +954,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                       
                       {!selectedSystem ? (
                         <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-                          {TRADING_SYSTEMS.map((system) => (
+                          {Object.values(TRADING_SYSTEMS).map((system) => (
                             <button
                               key={system.id}
                               onClick={() => setSelectedSystem(system)}
@@ -982,11 +982,11 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                             <p className="text-xs text-gray-400 mb-2">{selectedSystem.description}</p>
                             <div className="text-xs text-gray-500">
                               <div className="font-semibold mb-1">Entry Signals:</div>
-                              {selectedSystem.preset.alerts.entry.slice(0, 3).map((condition, i) => (
+                              {(selectedSystem.alerts?.entry ?? []).slice(0, 3).map((condition, i) => (
                                 <div key={i}>• {condition}</div>
                               ))}
-                              {selectedSystem.preset.alerts.entry.length > 3 && (
-                                <div>• +{selectedSystem.preset.alerts.entry.length - 3} more conditions</div>
+                              {(selectedSystem.alerts?.entry?.length ?? 0) > 3 && (
+                                <div>• +{(selectedSystem.alerts?.entry?.length ?? 0) - 3} more conditions</div>
                               )}
                             </div>
                           </div>
@@ -1025,7 +1025,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                                 systemName: selectedSystem.name,
                                 symbol: systemSymbol,
                                 timeframe: systemTimeframe,
-                                conditions: selectedSystem.preset.alerts.entry
+                                conditions: selectedSystem.alerts?.entry ?? []
                               });
                             }}
                             disabled={activateTradingSystemMutation.isPending}

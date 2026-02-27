@@ -759,7 +759,8 @@ export function validateAddress(address: string, chain: Chain): boolean {
       // Both Ethereum and BSC use the same address format
       return /^0x[a-fA-F0-9]{40}$/.test(address);
     case 'xrp':
-      return /^r[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(address);
+      // XRP classic address (Base58-like): starts with r, 26-35 chars, exclude visually ambiguous 0 and O
+      return /^r[1-9A-NP-Za-z]{25,34}$/.test(address);
     default:
       return false;
   }

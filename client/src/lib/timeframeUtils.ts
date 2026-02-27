@@ -3,7 +3,7 @@
  */
 
 import type { TimeframeInterval, TimeframeMetrics } from '@/types/timeframes';
-import { TIMEFRAME_CONFIGS, TIMEFRAME_HIERARCHY, OPTIMAL_CANDLE_WIDTH, OPTIMAL_CANDLE_COUNT } from '@/constants/timeframes';
+import { TIMEFRAME_CONFIGS, TIMEFRAME_HIERARCHY } from '@/constants/timeframes';
 
 /**
  * Hysteresis thresholds for smooth timeframe switching
@@ -11,6 +11,7 @@ import { TIMEFRAME_CONFIGS, TIMEFRAME_HIERARCHY, OPTIMAL_CANDLE_WIDTH, OPTIMAL_C
  */
 const SWITCH_UP_THRESHOLD_PX = 1.0; // Switch to larger timeframe when candles reach this width
 const SWITCH_DOWN_THRESHOLD_PX = 8.0; // Switch to smaller timeframe when candles reach this width
+
 
 /**
  * Thresholds for shouldSwitchTimeframe decision
@@ -49,9 +50,10 @@ export function determineOptimalTimeframe(
 ): TimeframeInterval {
   const { candleWidth } = metrics;
   const currentIndex = TIMEFRAME_HIERARCHY.indexOf(currentTimeframe);
+  if (currentIndex === -1) {
+    return currentTimeframe;
+  }
   
-  // If candles are too small (approaching minimum 1.5px), step UP to next larger timeframe
-  // This prevents candles from rendering below 1px
   if (candleWidth <= SWITCH_UP_THRESHOLD_PX) {
     const nextIndex = currentIndex + 1;
     if (nextIndex < TIMEFRAME_HIERARCHY.length) {
@@ -169,5 +171,5 @@ export function calculateTimeframeCandleCount(
  * Validate if a timeframe is supported
  */
 export function isValidTimeframe(interval: string): interval is TimeframeInterval {
-  return TIMEFRAME_HIERARCHY.includes(interval as TimeframeInterval);
+  return interval in TIMEFRAME_CONFIGS;
 }

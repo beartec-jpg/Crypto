@@ -116,7 +116,7 @@ export function MovingAverages({
       if (!refs[config.id]) {
         const series = chart.addSeries(LineSeries, {
           color: config.color,
-          lineWidth: config.lineWidth || 2,
+          lineWidth: (config.lineWidth || 2) as any,
           title: formatMALabel(config.period, config.timeframe),
           priceLineVisible: false,
           lastValueVisible: true,
@@ -127,7 +127,7 @@ export function MovingAverages({
         refs[config.id].setData(emaData);
         refs[config.id].applyOptions({
           color: config.color,
-          lineWidth: config.lineWidth || 2,
+          lineWidth: (config.lineWidth || 2) as any,
           title: formatMALabel(config.period, config.timeframe),
         });
       }

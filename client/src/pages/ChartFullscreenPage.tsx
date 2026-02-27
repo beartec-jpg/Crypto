@@ -282,12 +282,12 @@ export function ChartFullscreenPage({
     setElderImpulseEnabled: indicators.elderImpulse.setShow,
     
     // SMC
-    setFVGEnabled: (enabled) => fvgSettings.updateSettings({ enabled }),
-    setOrderBlocksEnabled: (enabled) => obSettings.updateSettings({ enabled }),
-    setBreakerBlocksEnabled: (enabled) => bbSettings.updateSettings({ enabled }),
-    setBOSEnabled: (enabled) => bosSettings.updateSettings({ enabled }),
-    setLiquidityEnabled: (enabled) => liquiditySettings.updateSettings({ enabled }),
-    setPDZonesEnabled: (enabled) => pdZoneSettings.updateSettings({ enabled }),
+    setFVGEnabled: (enabled) => fvgSettings.updateSetting('enabled', enabled),
+    setOrderBlocksEnabled: (enabled) => obSettings.updateSetting('enabled', enabled),
+    setBreakerBlocksEnabled: (enabled) => bbSettings.updateSetting('enabled', enabled),
+    setBOSEnabled: (enabled) => bosSettings.updateSetting('enabled', enabled),
+    setLiquidityEnabled: (enabled) => liquiditySettings.updateSetting('enabled', enabled),
+    setPDZonesEnabled: (enabled) => pdZoneSettings.updateSetting('enabled', enabled),
     setAutoFibEnabled: (enabled) => autoFibSettings.updateSettings({ enabled }),
     
     // Tools
@@ -299,7 +299,7 @@ export function ChartFullscreenPage({
     setSqueezeEnabled: (enabled) => sqzSettings.updateSettings({ enabled }),
     setDivergenceScannerEnabled: setDivergenceScannerEnabled,
     setHTFBiasEnabled: (enabled) => htfBiasSettings.updateSetting('enabled', enabled),
-    setSessionSeparatorsEnabled: (enabled) => bosSettings.updateSettings({ showSessions: enabled }),
+    setSessionSeparatorsEnabled: (enabled) => bosSettings.updateSetting('showSessions', enabled),
   };
   
   const tradingSystem = useTradingSystem(tradingSystemCallbacks);

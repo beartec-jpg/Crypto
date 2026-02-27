@@ -11,9 +11,10 @@ interface DrawingAlertSettingsProps {
   onClose: () => void;
   drawing: {
     id: string;
-    drawingType: string;
-    symbol: string;
-    timeframe: string;
+    drawingType?: string;
+    type?: string;
+    symbol?: string;
+    timeframe?: string;
     style?: {
       label?: string;
       alertActive?: boolean;
@@ -49,17 +50,18 @@ export function DrawingAlertSettings({
   onUpdate,
 }: DrawingAlertSettingsProps) {
   const [alertConfig, setAlertConfig] = useState<any>({});
+  const drawingType = drawing?.drawingType ?? drawing?.type ?? '';
 
   useEffect(() => {
     if (drawing) {
       // Initialize state based on drawing type
-      if (drawing.drawingType === 'trendline') {
+      if (drawingType === 'trendline') {
         setAlertConfig({
           enabled: drawing.style?.trendlineAlert?.enabled || false,
           crossUpEnabled: drawing.style?.trendlineAlert?.crossUpEnabled || false,
           crossDownEnabled: drawing.style?.trendlineAlert?.crossDownEnabled || false,
         });
-      } else if (drawing.drawingType === 'horizontal') {
+      } else if (drawingType === 'horizontal') {
         setAlertConfig({
           enabled: drawing.style?.alertActive || drawing.style?.trendlineAlert?.enabled || false,
           crossUpEnabled: drawing.style?.trendlineAlert?.crossUpEnabled !== false,
@@ -70,19 +72,19 @@ export function DrawingAlertSettings({
         setAlertConfig(drawing.style?.levelAlerts || {});
       }
     }
-  }, [drawing]);
+  }, [drawing, drawingType]);
 
   const handleSave = () => {
     if (!drawing) return;
     let updatedStyle: any = { ...drawing.style };
 
-    if (drawing.drawingType === 'trendline') {
+    if (drawingType === 'trendline') {
       updatedStyle.trendlineAlert = {
         enabled: alertConfig.enabled,
         crossUpEnabled: alertConfig.crossUpEnabled,
         crossDownEnabled: alertConfig.crossDownEnabled,
       };
-    } else if (drawing.drawingType === 'horizontal') {
+    } else if (drawingType === 'horizontal') {
       // Support both old and new alert system
       updatedStyle.alertActive = alertConfig.enabled;
       updatedStyle.trendlineAlert = {
@@ -151,7 +153,7 @@ export function DrawingAlertSettings({
   );
 
   const renderLevelAlerts = () => {
-    const levels = getLevelsForDrawingType(drawing?.drawingType || '');
+    const levels = getLevelsForDrawingType(drawingType);
     
     return (
       <div className="space-y-4">
@@ -290,7 +292,7 @@ export function DrawingAlertSettings({
   if (!drawing) return null;
 
   const isLevelBased = ['channel', 'fib_retracement', 'trend_fib', 'rectangle'].includes(
-    drawing.drawingType
+    drawingType
   );
 
   return (
@@ -302,12 +304,12 @@ export function DrawingAlertSettings({
             Alert Settings - {drawing.symbol}
           </DialogTitle>
           <div className="text-sm text-slate-400">
-            {drawing.style?.label || drawing.drawingType} on {drawing.timeframe}
+            {drawing.style?.label || drawingType} on {drawing.timeframe}
           </div>
         </DialogHeader>
 
         <div className="space-y-4">
-          {drawing.drawingType === 'trendline' || drawing.drawingType === 'horizontal'
+          {drawingType === 'trendline' || drawingType === 'horizontal'
             ? renderTrendlineAlerts()
             : isLevelBased
             ? renderLevelAlerts()

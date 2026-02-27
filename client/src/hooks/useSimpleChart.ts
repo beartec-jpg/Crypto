@@ -134,7 +134,7 @@ export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleCha
         }
 
         const chartData = allCandles.slice(-targetCandles).map((c: any) => ({
-          time: Math.floor(c[0] / 1000),
+          time: Math.floor(c[0] / 1000) as any,
           open: parseFloat(c[1]),
           high: parseFloat(c[2]),
           low: parseFloat(c[3]),
