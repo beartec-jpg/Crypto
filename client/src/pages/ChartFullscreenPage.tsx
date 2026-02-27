@@ -33,6 +33,10 @@ import { Button } from '@/components/ui/button';
 import { EmaSmaModal } from '@/components/indicators';
 import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
 import { AutoFibSettingsModal } from '@/components/modals/AutoFibSettingsModal';
+import { SuperTrendSettingsModal } from '@/components/modals/SuperTrendSettingsModal';
+import { SuperTrendRenderer } from '@/components/indicators/SuperTrendRenderer';
+import { useSuperTrendSettings } from '@/hooks/useSuperTrendSettings';
+import { useSuperTrendCalculation } from '@/hooks/useSuperTrendCalculation';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
 import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
 import { BreakerBlockRenderer } from '@/components/indicators/BreakerBlockRenderer';
@@ -40,6 +44,11 @@ import { BOSRenderer } from '@/components/indicators/BOSRenderer';
 import { LiquidityRenderer } from '@/components/indicators/LiquidityRenderer';
 import { PDZoneRenderer } from '@/components/indicators/PDZoneRenderer';
 import { AutoFibRenderer } from '@/components/indicators/AutoFibRenderer';
+import { VolumeProfileRenderer } from '@/components/indicators/VolumeProfileRenderer';
+import { VolumeProfileSettingsModal } from '@/components/modals/VolumeProfileSettingsModal';
+import { useVolumeProfileSettings } from '@/hooks/useVolumeProfileSettings';
+import { useVisibleRange } from '@/hooks/useVisibleRange';
+import { useVolumeProfileCalculation } from '@/hooks/useVolumeProfileCalculation';
 import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
@@ -277,6 +286,7 @@ export function ChartFullscreenPage({
   const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
   const [showSmcModal, setShowSmcModal] = useState(false);
   const [showAutoFibModal, setShowAutoFibModal] = useState(false);
+  const [showSuperTrendModal, setShowSuperTrendModal] = useState(false);
   const [tempDrawing, setTempDrawing] = useState<{ points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null>(null);
 
   // Wave selection state – track which saved EW wave is selected and its fib projections
@@ -299,6 +309,8 @@ export function ChartFullscreenPage({
 
   // Squeeze Momentum state
   const [showSqueezeSettings, setShowSqueezeSettings] = useState(false);
+  // Volume Profile state
+  const [showVPModal, setShowVPModal] = useState(false);
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -403,6 +415,10 @@ export function ChartFullscreenPage({
   const autoFibSettings = useAutoFibSettings();
   const autoFibZones = useAutoFibDetection(candles, autoFibSettings.settings);
 
+  // Hooks - SuperTrend
+  const superTrendSettings = useSuperTrendSettings();
+  const superTrendData = useSuperTrendCalculation(candles, superTrendSettings.settings);
+
   // Hooks - Divergence Scanner
   const divergencePoints = useDivergenceScanner(candles, DEFAULT_OSCILLATOR_CONFIG);
   const divSettings = useDivergenceSettings();
@@ -439,6 +455,10 @@ export function ChartFullscreenPage({
   // Hooks - Squeeze Momentum
   const sqzSettings = useSqueezeMomentumSettings();
   const sqzData = useSqueezeMomentum(candles, sqzSettings.settings);
+  // Hooks - Volume Profile
+  const vpSettings = useVolumeProfileSettings();
+  const visibleRange = useVisibleRange(vpSettings.settings.updateOnPan ? chartRef.current : null);
+  const volumeProfileData = useVolumeProfileCalculation(candles, visibleRange, vpSettings.settings);
 
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
@@ -1149,6 +1169,12 @@ export function ChartFullscreenPage({
             divergenceScannerEnabled={divergenceScannerEnabled}
             onToggleDivergenceScanner={setDivergenceScannerEnabled}
             onOpenDivergenceSettings={() => setShowDivergenceSettings(true)}
+            superTrendEnabled={
+              superTrendSettings.settings.standard.enabled ||
+              superTrendSettings.settings.adx.enabled ||
+              superTrendSettings.settings.keltner.enabled
+            }
+            onOpenSuperTrendSettings={() => setShowSuperTrendModal(true)}
           />
 
           {/* Drawing Mode Toggle Button */}
@@ -1233,6 +1259,18 @@ export function ChartFullscreenPage({
             data-testid="btn-squeeze-momentum-toggle"
           >
             Squeeze
+          {/* Volume Profile Button */}
+          <button
+            onClick={() => setShowVPModal(true)}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+              vpSettings.settings.enabled
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
+            }`}
+            title="Volume Profile Settings"
+            data-testid="btn-volume-profile"
+          >
+            VP
           </button>
         </div>
 
@@ -1328,6 +1366,28 @@ export function ChartFullscreenPage({
           candleSeries={candleSeriesRef.current}
           zones={autoFibZones}
           settings={autoFibSettings.settings}
+        />
+
+        {/* Volume Profile Renderer */}
+        <VolumeProfileRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          data={volumeProfileData}
+          settings={vpSettings.settings}
+        />
+
+        {/* Volume Profile Settings Modal */}
+        <VolumeProfileSettingsModal
+          isOpen={showVPModal}
+          onClose={() => setShowVPModal(false)}
+          settings={vpSettings.settings}
+          onSettingsChange={vpSettings.setSettings}
+        {/* SuperTrend Renderer */}
+        <SuperTrendRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          data={superTrendData}
+          settings={superTrendSettings.settings}
         />
 
         {/* Divergence Scanner – badges overlaid on chart */}
@@ -1698,6 +1758,13 @@ export function ChartFullscreenPage({
         onClose={() => setShowAutoFibModal(false)}
         settings={autoFibSettings.settings}
         onSettingsChange={autoFibSettings.updateSettings}
+      />
+
+      <SuperTrendSettingsModal
+        isOpen={showSuperTrendModal}
+        onClose={() => setShowSuperTrendModal(false)}
+        settings={superTrendSettings.settings}
+        onSettingsChange={superTrendSettings.updateConfig}
       />
     </div>
   );
