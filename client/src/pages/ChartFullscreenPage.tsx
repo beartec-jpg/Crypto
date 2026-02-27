@@ -86,6 +86,9 @@ import { DegreePicker, getDegreeConfiguration } from '@/components/elliottWave/D
 import { HTFBiasPanel } from '@/components/indicators/HTFBiasPanel';
 import { useHTFBias } from '@/hooks/useHTFBias';
 import { useHTFBiasSettings } from '@/hooks/useHTFBiasSettings';
+import { useSqueezeMomentumSettings } from '@/hooks/useSqueezeMomentumSettings';
+import { useSqueezeMomentum } from '@/hooks/useSqueezeMomentum';
+import { SqueezeMomentumSettingsModal } from '@/components/modals/SqueezeMomentumSettingsModal';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -304,6 +307,8 @@ export function ChartFullscreenPage({
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
 
+  // Squeeze Momentum state
+  const [showSqueezeSettings, setShowSqueezeSettings] = useState(false);
   // Volume Profile state
   const [showVPModal, setShowVPModal] = useState(false);
 
@@ -447,6 +452,9 @@ export function ChartFullscreenPage({
     enabled: htfBiasSettings.settings.enabled,
   });
 
+  // Hooks - Squeeze Momentum
+  const sqzSettings = useSqueezeMomentumSettings();
+  const sqzData = useSqueezeMomentum(candles, sqzSettings.settings);
   // Hooks - Volume Profile
   const vpSettings = useVolumeProfileSettings();
   const visibleRange = useVisibleRange(vpSettings.settings.updateOnPan ? chartRef.current : null);
@@ -1239,6 +1247,18 @@ export function ChartFullscreenPage({
             HTF
           </button>
 
+          {/* Squeeze Momentum Toggle Button */}
+          <button
+            onClick={() => setShowSqueezeSettings(true)}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+              sqzSettings.settings.enabled
+                ? 'bg-cyan-600 text-white'
+                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
+            }`}
+            title="Squeeze Momentum (LazyBear)"
+            data-testid="btn-squeeze-momentum-toggle"
+          >
+            Squeeze
           {/* Volume Profile Button */}
           <button
             onClick={() => setShowVPModal(true)}
@@ -1395,6 +1415,15 @@ export function ChartFullscreenPage({
           onClose={() => setShowDivergenceSettings(false)}
           settings={divSettings.settings}
           onSettingsChange={divSettings.updateSettings}
+        />
+
+        {/* Squeeze Momentum Settings Modal */}
+        <SqueezeMomentumSettingsModal
+          isOpen={showSqueezeSettings}
+          onClose={() => setShowSqueezeSettings(false)}
+          settings={sqzSettings.settings}
+          onSettingsChange={sqzSettings.updateSettings}
+          onReset={sqzSettings.resetSettings}
         />
 
         {/* Drawing Renderer */}
@@ -1647,6 +1676,8 @@ export function ChartFullscreenPage({
         totalPercentage={oscillatorPanel.totalPercentage}
         perOscillatorPercentage={oscillatorPanel.perOscillatorPercentage}
         mainChartVisibleRange={mainChartVisibleRange}
+        sqzData={sqzData}
+        sqzSettings={sqzSettings.settings}
       />
       
       {/* Popped Out Oscillators */}

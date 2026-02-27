@@ -7,8 +7,10 @@ import { CCIPanel } from '@/components/indicators/oscillators/CCIPanel';
 import { ADXPanel } from '@/components/indicators/oscillators/ADXPanel';
 import { OBVPanel } from '@/components/indicators/oscillators/OBVPanel';
 import { MFIPanel } from '@/components/indicators/oscillators/MFIPanel';
+import { SqueezeMomentumPanel } from '@/components/oscillators/SqueezeMomentumPanel';
 import { OSCILLATOR_PANEL_HEIGHT_PER, MOBILE_NAV_HEIGHT, TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
+import type { SqueezeMomentumValue, SqueezeMomentumSettings } from '@/types/squeezeMomentum';
 
 interface DockedOscillatorSectionProps {
   selectedOscillators: Set<string>;
@@ -25,6 +27,8 @@ interface DockedOscillatorSectionProps {
   totalPercentage?: number;
   perOscillatorPercentage?: number;
   mainChartVisibleRange?: any;
+  sqzData?: SqueezeMomentumValue[];
+  sqzSettings?: SqueezeMomentumSettings;
 }
 
 export function DockedOscillatorSection({
@@ -41,12 +45,15 @@ export function DockedOscillatorSection({
   totalPercentage = 0,
   perOscillatorPercentage = 0,
   mainChartVisibleRange,
+  sqzData,
+  sqzSettings,
 }: DockedOscillatorSectionProps) {
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
     osc => !poppedOutOscillators.has(osc) && !miniOscillators?.has(osc)
   ).length;
+  const hasSqueeze = sqzSettings?.enabled && sqzData && sqzData.length > 0;
 
-  if (dockedOscillatorsCount === 0) return null;
+  if (dockedOscillatorsCount === 0 && !hasSqueeze) return null;
 
   return (
     <div 
@@ -182,6 +189,16 @@ export function DockedOscillatorSection({
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
             <MFIPanel data={oscillatorData.mfi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
+          </div>
+        )}
+
+        {hasSqueeze && sqzData && sqzSettings && (
+          <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+            <SqueezeMomentumPanel
+              data={sqzData}
+              settings={sqzSettings}
+              mainChartVisibleRange={mainChartVisibleRange}
+            />
           </div>
         )}
       </div>
