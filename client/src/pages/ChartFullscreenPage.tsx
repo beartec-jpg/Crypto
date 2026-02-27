@@ -490,7 +490,7 @@ export function ChartFullscreenPage({
       previousAction = evaluation.action;
     }
 
-    return events.slice(-80);
+    return events.slice(-120);
   }, [
     tradingSystem.activeSystem,
     candles,
@@ -508,7 +508,7 @@ export function ChartFullscreenPage({
       shape: event.action === 'OPEN LONG' ? 'arrowUp' as const : 'arrowDown' as const,
       color: event.action === 'OPEN LONG' ? '#22c55e' : '#ef4444',
       text: event.action === 'OPEN LONG' ? 'LONG' : 'SHORT',
-      size: 1,
+      size: 2,
     }));
   }, [historicalSystemSignalEvents]);
 
@@ -599,6 +599,20 @@ export function ChartFullscreenPage({
     htfBiasEntries,
     historicalSystemSignalEvents.length,
   ]);
+
+  const activeSystemSummary = useMemo(() => {
+    if (!tradingSystem.activeSystem) return null;
+
+    const system = TRADING_SYSTEMS[tradingSystem.activeSystem];
+    if (!system) return null;
+
+    return {
+      name: system.name,
+      historicalSignalCount: historicalSystemSignalEvents.length,
+      lookbackCandles: Math.min(400, Math.max(0, candles.length - 1)),
+      latestHistoricalSignal: historicalSystemSignalEvents[historicalSystemSignalEvents.length - 1] ?? null,
+    };
+  }, [tradingSystem.activeSystem, historicalSystemSignalEvents, candles.length]);
 
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
@@ -854,6 +868,22 @@ export function ChartFullscreenPage({
           onActivateSystem={tradingSystem.activateSystem}
           onDeactivateSystem={tradingSystem.deactivateSystem}
         />
+
+        {activeSystemSummary && (
+          <div className="absolute top-12 left-2 z-40 rounded-lg border border-blue-700/70 bg-slate-900/95 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur-sm">
+            <div className="font-semibold text-blue-300">{activeSystemSummary.name} • Signal Replay</div>
+            <div className="mt-1 text-slate-300">
+              {activeSystemSummary.historicalSignalCount > 0
+                ? `Found ${activeSystemSummary.historicalSignalCount} activations in last ${activeSystemSummary.lookbackCandles} candles`
+                : `No activations in last ${activeSystemSummary.lookbackCandles} candles`}
+            </div>
+            {activeSystemSummary.latestHistoricalSignal && (
+              <div className="mt-1 text-[11px] text-slate-400">
+                Last: {activeSystemSummary.latestHistoricalSignal.action} • {activeSystemSummary.latestHistoricalSignal.primaryReason}
+              </div>
+            )}
+          </div>
+        )}
 
         {activeSystemDetails && (
           <div className="absolute top-20 right-2 z-30 w-[320px] rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs text-slate-200 shadow-xl backdrop-blur-sm">
