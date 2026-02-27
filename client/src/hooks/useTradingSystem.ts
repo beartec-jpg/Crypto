@@ -52,9 +52,46 @@ export interface TradingSystemCallbacks {
 export function useTradingSystem(callbacks: TradingSystemCallbacks) {
   const [activeSystem, setActiveSystem] = useState<TradingSystemId | null>(null);
 
+  const resetSystemManagedFeatures = useCallback(() => {
+    // Oscillators
+    callbacks.setShowRSI?.(false);
+    callbacks.setShowMACD?.(false);
+    callbacks.setShowStochRSI?.(false);
+    callbacks.setShowOBV?.(false);
+    callbacks.setShowMFI?.(false);
+    callbacks.setShowWilliamsR?.(false);
+    callbacks.setShowCCI?.(false);
+    callbacks.setShowADX?.(false);
+
+    // Chart indicators
+    callbacks.setShowEMA?.(false);
+    callbacks.setShowBollingerBands?.(false);
+    callbacks.setElderImpulseEnabled?.(false);
+
+    // SMC
+    callbacks.setFVGEnabled?.(false);
+    callbacks.setOrderBlocksEnabled?.(false);
+    callbacks.setBreakerBlocksEnabled?.(false);
+    callbacks.setBOSEnabled?.(false);
+    callbacks.setLiquidityEnabled?.(false);
+    callbacks.setPDZonesEnabled?.(false);
+    callbacks.setAutoFibEnabled?.(false);
+
+    // Tools
+    callbacks.setSuperTrendEnabled?.(false);
+    callbacks.setVolumeProfileEnabled?.(false);
+    callbacks.setSqueezeEnabled?.(false);
+    callbacks.setDivergenceScannerEnabled?.(false);
+    callbacks.setHTFBiasEnabled?.(false);
+    callbacks.setSessionSeparatorsEnabled?.(false);
+  }, [callbacks]);
+
   const activateSystem = useCallback((systemId: TradingSystemId) => {
     const system = TRADING_SYSTEMS[systemId];
     if (!system) return;
+
+    // Always clear chart globally before applying a system preset
+    resetSystemManagedFeatures();
 
     // Apply oscillator configurations
     if (system.preset.oscillators) {
@@ -183,13 +220,13 @@ export function useTradingSystem(callbacks: TradingSystemCallbacks) {
     }
 
     setActiveSystem(systemId);
-  }, [callbacks]);
+  }, [callbacks, resetSystemManagedFeatures]);
 
   const deactivateSystem = useCallback(() => {
+    // Always clear chart globally when deactivating
+    resetSystemManagedFeatures();
     setActiveSystem(null);
-    // Note: We don't turn off indicators when deactivating - user may want to keep them
-    // They can manually disable via settings if needed
-  }, []);
+  }, [resetSystemManagedFeatures]);
 
   return {
     activeSystem,

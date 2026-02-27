@@ -384,7 +384,7 @@ export function useBOSDetection({
   orderBlocks = [],
 }: UseBOSDetectionOptions): UseBOSDetectionResult {
   return useMemo(() => {
-    if (!settings.enabled || candles.length < settings.swingLookback) {
+    if (!settings.enabled || candles.length < settings.swingLookback * 2 + 1) {
       return { swingPoints: [], structureBreaks: [], sessionSeparators: [] };
     }
 
