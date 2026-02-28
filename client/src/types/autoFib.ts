@@ -2,55 +2,121 @@
  * Auto-Fibonacci Detection type definitions.
  */
 
-export interface AutoFibLevel {
-  level: number;        // 0.236, 0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618
-  price: number;        // Calculated price
-  label: string;        // "61.8%"
-  isGolden: boolean;    // 0.618 or 1.618
-  isExtension: boolean; // > 1.0
-}
+export type LabelPosition = 'left' | 'right' | 'off';
 
-export interface AutoFibZone {
-  id: string;
-  swingHigh: { time: number; price: number };
-  swingLow: { time: number; price: number };
-  direction: 'retracement' | 'extension';
-  levels: AutoFibLevel[];
-  active: boolean; // Still valid or broken?
+/** Per-set Fibonacci configuration (Primary or Secondary). */
+export interface FibSetConfig {
+  enabled: boolean;
+  showRetracements: boolean;    // 0-100%
+  showExtensions: boolean;      // >100%, <0%
+  levels: {
+    '-61.8': boolean;
+    '-27.2': boolean;
+    '0': boolean;
+    '23.6': boolean;
+    '38.2': boolean;
+    '50': boolean;
+    '61.8': boolean;
+    '78.6': boolean;
+    '100': boolean;
+    '127.2': boolean;
+    '161.8': boolean;
+    '200': boolean;
+    '261.8': boolean;
+  };
+  color: string;
+  showLabels: boolean;
+  labelPosition: LabelPosition;
+  extendRight: boolean;
 }
 
 export interface AutoFibSettings {
   enabled: boolean;
-  lookback: number;           // Candles to look back for swings (default: 20)
-  showRetracements: boolean;  // Show 0-1.0 levels
-  showExtensions: boolean;    // Show 1.272, 1.618, 2.0, 2.618
-
-  // Level toggles
-  enabledLevels: number[];    // [0.236, 0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618]
-
-  // Display
-  lineColor: string;          // Default: '#fbbf24'
-  goldenColor: string;        // Default: '#FFD700'
-  lineWidth: number;          // Default: 1
-  showLabels: boolean;        // Default: true
-  extendRight: boolean;       // Default: true
-
-  // Confluence
-  enableConfluence: boolean;  // Check for SMC overlaps
-  confluenceThreshold: number; // % tolerance (default: 0.5%)
+  swingLookback: number;
+  primary: FibSetConfig;
+  secondary: FibSetConfig;
+  enableConfluence: boolean;
+  confluenceThreshold: number;  // % proximity (e.g., 0.5 = 0.5%)
 }
+
+// --- Output types from detection hook ---
+
+export interface FibLevelData {
+  level: string;       // e.g., "61.8"
+  percentage: string;  // e.g., "61.8%"
+  price: number;
+  isExtension: boolean;
+  isGolden: boolean;
+}
+
+export interface SwingPoint {
+  index: number;
+  time: number;
+  price: number;
+}
+
+export interface FibSetResult {
+  start: SwingPoint;
+  end: SwingPoint;
+  levels: FibLevelData[];
+  color: string;
+  showLabels: boolean;
+  labelPosition: LabelPosition;
+  extendRight: boolean;
+}
+
+export interface ConfluenceZone {
+  price: number;
+  primaryLevel: string;
+  secondaryLevel: string;
+  strength: number;
+}
+
+export interface AutoFibResult {
+  primary: FibSetResult | null;
+  secondary: FibSetResult | null;
+  confluence: ConfluenceZone[];
+}
+
+const DEFAULT_FIB_SET_LEVELS: FibSetConfig['levels'] = {
+  '-61.8': false,
+  '-27.2': false,
+  '0': false,
+  '23.6': true,
+  '38.2': true,
+  '50': true,
+  '61.8': true,
+  '78.6': true,
+  '100': true,
+  '127.2': false,
+  '161.8': false,
+  '200': false,
+  '261.8': false,
+};
 
 export const DEFAULT_AUTO_FIB_SETTINGS: AutoFibSettings = {
   enabled: false,
-  lookback: 20,
-  showRetracements: true,
-  showExtensions: true,
-  enabledLevels: [0.236, 0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618],
-  lineColor: '#fbbf24',
-  goldenColor: '#FFD700',
-  lineWidth: 1,
-  showLabels: true,
-  extendRight: true,
+  swingLookback: 20,
+  primary: {
+    enabled: true,
+    showRetracements: true,
+    showExtensions: false,
+    levels: { ...DEFAULT_FIB_SET_LEVELS },
+    color: '#00D9FF',
+    showLabels: true,
+    labelPosition: 'left',
+    extendRight: true,
+  },
+  secondary: {
+    enabled: true,
+    showRetracements: true,
+    showExtensions: false,
+    levels: { ...DEFAULT_FIB_SET_LEVELS },
+    color: '#FF8C00',
+    showLabels: true,
+    labelPosition: 'right',
+    extendRight: true,
+  },
   enableConfluence: true,
   confluenceThreshold: 0.5,
 };

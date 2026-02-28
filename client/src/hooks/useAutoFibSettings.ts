@@ -1,13 +1,20 @@
 import { useState, useCallback } from 'react';
 import { AutoFibSettings, DEFAULT_AUTO_FIB_SETTINGS } from '@/types/autoFib';
 
-const STORAGE_KEY = 'autoFibSettings';
+const STORAGE_KEY = 'auto-fib-settings';
 
 function loadSettings(): AutoFibSettings {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return { ...DEFAULT_AUTO_FIB_SETTINGS, ...JSON.parse(stored) };
+      const parsed = JSON.parse(stored);
+      // Deep-merge to preserve nested primary/secondary defaults
+      return {
+        ...DEFAULT_AUTO_FIB_SETTINGS,
+        ...parsed,
+        primary: { ...DEFAULT_AUTO_FIB_SETTINGS.primary, ...(parsed.primary ?? {}) },
+        secondary: { ...DEFAULT_AUTO_FIB_SETTINGS.secondary, ...(parsed.secondary ?? {}) },
+      };
     }
   } catch (e) {
     // Ignore parse errors
