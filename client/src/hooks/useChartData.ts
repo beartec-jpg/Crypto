@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import type { CandleData } from '@/types/chart.types';
 import type { FootprintData } from '@/types/smc.types';
@@ -195,6 +195,10 @@ export function useChartData({ symbol, interval, useMultiExchange }: UseChartDat
       setLoading(false);
     }
   }, [symbol, interval, useMultiExchange]);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
 
   return {
     candles,
