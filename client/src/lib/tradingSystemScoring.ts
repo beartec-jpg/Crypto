@@ -451,7 +451,7 @@ export function scoreMomentumScalper(input: ScoringInput): SystemEvaluation {
 
 // ── 6. Divergence Master ─────────────────────────────────────────────────────
 
-/** Lookback period in candles for divergence detection window (~lookback × bar interval seconds). */
+/** Lookback period in candles for divergence detection (last N divergence points are considered). */
 const DIVERGENCE_LOOKBACK_BARS = 20;
 
 export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
@@ -472,20 +472,11 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
   const conditions: ScoredCondition[] = [];
 
   // ── Actual divergence detection from divergencePoints ──────────────────────
-  // Filter to recent divergence points within the lookback window.
-  // divergencePoints are sorted by time ascending.
-  // We use the last N points that fall within the lookback window.
-  let recentPoints = divergencePoints;
-  if (currentTime !== undefined && divergencePoints.length > 0) {
-    // Estimate bar interval from the spacing of the last few points (if available)
-    // Fall back to using the most recent DIVERGENCE_LOOKBACK_BARS items
-    recentPoints = divergencePoints.slice(-DIVERGENCE_LOOKBACK_BARS);
-    // Further filter: only points at or before currentTime
-    recentPoints = recentPoints.filter(d => d.time <= currentTime);
-  } else {
-    // No time info: use the most recent lookback window
-    recentPoints = divergencePoints.slice(-DIVERGENCE_LOOKBACK_BARS);
-  }
+  // Use the most recent DIVERGENCE_LOOKBACK_BARS points, optionally filtered by currentTime.
+  const recentSlice = divergencePoints.slice(-DIVERGENCE_LOOKBACK_BARS);
+  const recentPoints = currentTime !== undefined
+    ? recentSlice.filter(d => d.time <= currentTime)
+    : recentSlice;
 
   const recentBullish = recentPoints.filter(d => d.type === 'bullish');
   const recentBearish = recentPoints.filter(d => d.type === 'bearish');

@@ -118,16 +118,20 @@ export function DraggableSystemInfoBox({
             </div>
 
             {/* Score bar */}
-            <div className="h-2 rounded-full bg-slate-700 overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-300"
-                style={{
-                  width: `${barFillPct}%`,
-                  backgroundColor: evaluation?.signalColor ?? '#94a3b8',
-                  marginLeft: isBullish ? 0 : undefined,
-                  float: isBullish ? undefined : 'right',
-                }}
-              />
+            <div className="h-2 rounded-full bg-slate-700 overflow-hidden flex">
+              {isBullish ? (
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${barFillPct}%`, backgroundColor: evaluation?.signalColor ?? '#94a3b8' }}
+                />
+              ) : (
+                <div className="flex-1 flex justify-end">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{ width: `${barFillPct}%`, backgroundColor: evaluation?.signalColor ?? '#94a3b8' }}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Signal label */}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Activity, ChevronDown, ChevronUp } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import { TRADING_SYSTEMS } from '@/types/tradingSystems';
+import { getSignalLabel } from '@/lib/tradingSystemScoring';
 import { cn } from '@/lib/utils';
 
 const TOTAL_SYSTEMS = Object.keys(TRADING_SYSTEMS).length;
@@ -58,15 +59,9 @@ function getStateDot(state: 'bullish' | 'bearish' | 'neutral') {
   return 'bg-yellow-400';
 }
 
-/** Map a -100..+100 system score to a bar fill colour (hex). */
+/** Map a -100..+100 system score to a bar fill colour using the shared scoring colour scheme. */
 function scoreToBarColor(score: number): string {
-  if (score >= 80) return '#22c55e';
-  if (score >= 50) return '#84cc16';
-  if (score >= 20) return '#a3e635';
-  if (score > -20) return '#94a3b8';
-  if (score > -50) return '#fb923c';
-  if (score > -80) return '#f97316';
-  return '#ef4444';
+  return getSignalLabel(score).color;
 }
 
 export function FloatingConfluenceMonitor({

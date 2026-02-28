@@ -145,7 +145,8 @@ export function useMultiSystemConfluence(
       });
     }
 
-    // Normalise to -1..+1 to preserve backward-compat with FloatingConfluenceMonitor
+    // Normalise the average -100..+100 score to the legacy -1..+1 range used by FloatingConfluenceMonitor
+    // by dividing by 100 after averaging all system scores.
     const totalScore = systemIds.length > 0 ? scoreSum / systemIds.length / 100 : 0;
 
     return {
