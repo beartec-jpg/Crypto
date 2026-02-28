@@ -156,7 +156,7 @@ export function ActiveSystemMonitor({
                         <span className="text-slate-500 ml-1">({cond.value})</span>
                       )}
                     </div>
-                    {cond.weight !== 0 && (
+                    {cond.weight !== undefined && cond.weight !== 0 && (
                       <span className={cn(
                         'text-[10px] font-mono flex-shrink-0',
                         cond.weight > 0 ? 'text-green-600' : 'text-red-600',
