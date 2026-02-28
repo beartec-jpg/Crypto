@@ -9,8 +9,12 @@ const TOTAL_SYSTEMS = Object.keys(TRADING_SYSTEMS).length;
 interface SystemDetail {
   systemId: string;
   systemName: string;
+  /** Continuous score: -100 to +100 */
   score: number;
   state: 'bullish' | 'bearish' | 'neutral';
+  signalLabel?: string;
+  signalColor?: string;
+  conditions?: Array<{ name: string; met: boolean; weight: number; value?: string }>;
 }
 
 interface FloatingConfluenceMonitorProps {
@@ -52,6 +56,17 @@ function getStateDot(state: 'bullish' | 'bearish' | 'neutral') {
   if (state === 'bullish') return 'bg-emerald-400';
   if (state === 'bearish') return 'bg-rose-400';
   return 'bg-yellow-400';
+}
+
+/** Map a -100..+100 system score to a bar fill colour (hex). */
+function scoreToBarColor(score: number): string {
+  if (score >= 80) return '#22c55e';
+  if (score >= 50) return '#84cc16';
+  if (score >= 20) return '#a3e635';
+  if (score > -20) return '#94a3b8';
+  if (score > -50) return '#fb923c';
+  if (score > -80) return '#f97316';
+  return '#ef4444';
 }
 
 export function FloatingConfluenceMonitor({
@@ -166,18 +181,36 @@ export function FloatingConfluenceMonitor({
         </div>
       </div>
 
-      {/* Expanded: system details */}
+      {/* Expanded: system details with score bars */}
       {expanded && confluenceSnapshot?.systemDetails && (
-        <div className="border-t border-slate-700/60 px-2 py-1.5 space-y-0.5 max-h-[200px] overflow-y-auto">
-          {confluenceSnapshot.systemDetails.map((sys) => (
-            <div key={sys.systemId} className="flex items-center gap-1.5">
-              <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', getStateDot(sys.state))} />
-              <span className="text-[10px] text-slate-300 flex-1 truncate">{sys.systemName}</span>
-              <span className={cn('text-[10px] font-semibold flex-shrink-0', getStateColor(sys.state))}>
-                {sys.state === 'bullish' ? '▲' : sys.state === 'bearish' ? '▼' : '–'}
-              </span>
-            </div>
-          ))}
+        <div className="border-t border-slate-700/60 px-2 py-1.5 space-y-1.5 max-h-[300px] overflow-y-auto">
+          {confluenceSnapshot.systemDetails.map((sys) => {
+            const barColor = scoreToBarColor(sys.score);
+            // Convert -100..+100 to 0..100% fill from center
+            const absPct = Math.abs(sys.score);
+            const isBullish = sys.score >= 0;
+            return (
+              <div key={sys.systemId} className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', getStateDot(sys.state))} />
+                  <span className="text-[10px] text-slate-300 flex-1 truncate">{sys.systemName}</span>
+                  <span
+                    className="text-[10px] font-semibold flex-shrink-0"
+                    style={{ color: sys.signalColor ?? (isBullish ? '#22c55e' : '#ef4444') }}
+                  >
+                    {sys.score > 0 ? '+' : ''}{sys.score}%
+                  </span>
+                </div>
+                {/* Narrow score bar */}
+                <div className="h-1 rounded-full bg-slate-700 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{ width: `${absPct}%`, backgroundColor: barColor }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
