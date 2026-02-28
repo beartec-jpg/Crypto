@@ -1,0 +1,176 @@
+import { useState } from 'react';
+import { X, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { useDraggable } from '@/hooks/useDraggable';
+import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
+import { type SystemEvaluation } from '@/types/systemScoring';
+import {
+  getScoreColor,
+  getScoreBarColor,
+  getSentimentColor,
+  getSentimentLabel,
+  getTimeAgo,
+} from '@/lib/tradingSystemColors';
+import { cn } from '@/lib/utils';
+
+interface ActiveSystemMonitorProps {
+  systemId: TradingSystemId;
+  evaluation: SystemEvaluation;
+  onClose: () => void;
+}
+
+export function ActiveSystemMonitor({
+  systemId,
+  evaluation,
+  onClose,
+}: ActiveSystemMonitorProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  const { position, isDragging, dragHandleProps } = useDraggable({
+    initialPosition: {
+      x: 20,
+      y: typeof window !== 'undefined' ? window.innerHeight - 220 : 600,
+    },
+    storageKey: 'activeSystemMonitorPosition',
+  });
+
+  const system = TRADING_SYSTEMS[systemId];
+  if (!system) return null;
+
+  const { score, confidence, conditions, signalLabel, timestamp } = evaluation;
+  const sentimentLabel = getSentimentLabel(score);
+  const scorePrefix = score > 0 ? '+' : '';
+  const absPct = Math.abs(score);
+  const metCount = conditions.filter(c => c.met).length;
+
+  return (
+    <div
+      data-draggable
+      style={{
+        position: 'fixed',
+        left: position.x,
+        top: position.y,
+        opacity: isDragging ? 0.85 : 1,
+        zIndex: 60,
+        width: expanded ? 320 : 280,
+      }}
+      className="rounded-lg border border-slate-700 bg-slate-900/95 shadow-xl backdrop-blur-sm text-white select-none"
+    >
+      {/* Header – draggable */}
+      <div
+        {...dragHandleProps}
+        className="flex items-center justify-between px-2 py-1.5 border-b border-slate-700/60 cursor-grab active:cursor-grabbing"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-base leading-none flex-shrink-0">{system.icon}</span>
+          <span className="text-[11px] font-semibold text-slate-200 truncate">{system.name}</span>
+        </div>
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+            className="p-0.5 rounded hover:bg-slate-700/60 transition-colors"
+            title={expanded ? 'Collapse' : 'Expand'}
+          >
+            {expanded
+              ? <ChevronUp className="h-3 w-3 text-slate-400" />
+              : <ChevronDown className="h-3 w-3 text-slate-400" />
+            }
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            className="p-0.5 rounded hover:bg-slate-700/60 transition-colors"
+            title="Close"
+          >
+            <X className="h-3 w-3 text-slate-400" />
+          </button>
+        </div>
+      </div>
+
+      {/* Compact score display (always visible) */}
+      <div className="px-3 py-2">
+        <div className="flex items-baseline justify-between mb-1.5">
+          <span className={cn('text-2xl font-bold', getScoreColor(score))}>
+            {scorePrefix}{score}
+          </span>
+          <span className={cn('text-[10px] font-bold uppercase tracking-wide', getSentimentColor(signalLabel))}>
+            {sentimentLabel}
+          </span>
+        </div>
+
+        {/* Score bar */}
+        <div className="h-2 bg-slate-800 rounded-full overflow-hidden flex">
+          {score >= 0 ? (
+            <div
+              className={cn('h-full rounded-full transition-all duration-300', getScoreBarColor(score))}
+              style={{ width: `${absPct}%` }}
+            />
+          ) : (
+            <div className="flex-1 flex justify-end">
+              <div
+                className={cn('h-full rounded-full transition-all duration-300', getScoreBarColor(score))}
+                style={{ width: `${absPct}%` }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Expanded details */}
+      {expanded && (
+        <div className="border-t border-slate-700/50 px-3 pb-3 pt-2 space-y-3">
+          {/* Stats grid */}
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <div className="text-slate-500 mb-0.5">Confidence</div>
+              <div className="text-slate-200 font-semibold text-sm">{confidence}%</div>
+            </div>
+            {timestamp !== undefined && (
+              <div>
+                <div className="text-slate-500 mb-0.5">Updated</div>
+                <div className="text-slate-200 font-semibold text-sm">{getTimeAgo(timestamp)}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Conditions list */}
+          {conditions.length > 0 && (
+            <div>
+              <div className="text-[10px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wide">
+                Conditions ({metCount}/{conditions.length} met)
+              </div>
+              <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                {conditions.map((cond, i) => (
+                  <div key={i} className="flex items-start gap-1.5 py-0.5 text-xs">
+                    {cond.met ? (
+                      <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0 mt-0.5" />
+                    ) : (
+                      <X className="h-3.5 w-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <span className={cond.met ? 'text-slate-300' : 'text-slate-500'}>
+                        {cond.name}
+                      </span>
+                      {cond.value && (
+                        <span className="text-slate-500 ml-1">({cond.value})</span>
+                      )}
+                    </div>
+                    {cond.weight !== undefined && cond.weight !== 0 && (
+                      <span className={cn(
+                        'text-[10px] font-mono flex-shrink-0',
+                        cond.weight > 0 ? 'text-green-600' : 'text-red-600',
+                      )}>
+                        {cond.weight > 0 ? '+' : ''}{cond.weight}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
