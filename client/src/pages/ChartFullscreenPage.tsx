@@ -68,7 +68,7 @@ import { useSqueezeMomentumSettings } from '@/hooks/useSqueezeMomentumSettings';
 import { useSqueezeMomentum } from '@/hooks/useSqueezeMomentum';
 import { useTradingSystem, type TradingSystemCallbacks } from '@/hooks/useTradingSystem';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
-import { useMultiSystemConfluence } from '@/hooks/useMultiSystemConfluence';
+import { useMultiSystemConfluence, type ConfluenceResult } from '@/hooks/useMultiSystemConfluence';
 import { FloatingConfluenceMonitor } from '@/components/tradingSystems/FloatingConfluenceMonitor';
 import { DraggableSystemInfoBox } from '@/components/tradingSystems/DraggableSystemInfoBox';
 import { scoreSystem, type ScoringInput } from '@/lib/tradingSystemScoring';
@@ -153,22 +153,7 @@ export function ChartFullscreenPage({
   const [showAlertSettings, setShowAlertSettings] = useState(false);
   const [showDrawingAlertSettings, setShowDrawingAlertSettings] = useState(false);
   const [selectedDrawingForAlerts, setSelectedDrawingForAlerts] = useState<Drawing | null>(null);
-  const [confluenceSnapshot, setConfluenceSnapshot] = useState<{
-    score: number;
-    longCount: number;
-    shortCount: number;
-    neutralCount: number;
-    updatedAt: number;
-    systemDetails?: Array<{
-      systemId: string;
-      systemName: string;
-      score: number;
-      state: 'bullish' | 'bearish' | 'neutral';
-      signalLabel: string;
-      signalColor: string;
-      conditions?: Array<{ name: string; met: boolean; weight: number; value?: string }>;
-    }>;
-  } | null>(null);
+  const [confluenceSnapshot, setConfluenceSnapshot] = useState<(ConfluenceResult & { updatedAt: number }) | null>(null);
 
   const [showFloatingConfluence, setShowFloatingConfluence] = useState(() => {
     try {

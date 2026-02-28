@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { scoreSystem, type ScoringInput } from '@/lib/tradingSystemScoring';
+import { detectMarketPattern, type MarketPattern } from '@/lib/confluencePatterns';
 import type { Candle } from '@/types/candle';
 import type { DivergencePoint } from '@/types/chart.types';
 
@@ -49,6 +50,8 @@ export interface ConfluenceResult {
   shortCount: number;
   neutralCount: number;
   systemDetails: SystemDetail[];
+  /** Highest-priority market pattern detected, or null if none. */
+  pattern: MarketPattern | null;
 }
 
 export function useMultiSystemConfluence(
@@ -60,7 +63,9 @@ export function useMultiSystemConfluence(
   htfBiasEntries: HTFBiasEntry[],
   divergencePoints?: DivergencePoint[],
 ): ConfluenceResult | null {
-  return useMemo(() => {
+  const previousScoreRef = useRef<number | undefined>(undefined);
+
+  const result = useMemo(() => {
     if (candles.length < 2) return null;
 
     const previousCandle = candles[candles.length - 2];
@@ -147,7 +152,10 @@ export function useMultiSystemConfluence(
 
     // Normalise the average -100..+100 score to the legacy -1..+1 range used by FloatingConfluenceMonitor
     // by dividing by 100 after averaging all system scores.
-    const totalScore = systemIds.length > 0 ? scoreSum / systemIds.length / 100 : 0;
+    const avgScore = systemIds.length > 0 ? scoreSum / systemIds.length : 0;
+    const totalScore = avgScore / 100;
+
+    const pattern = detectMarketPattern(avgScore, systemDetails, previousScoreRef.current);
 
     return {
       score: totalScore,
@@ -155,6 +163,15 @@ export function useMultiSystemConfluence(
       shortCount,
       neutralCount,
       systemDetails,
+      pattern,
     };
   }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints]);
+
+  useEffect(() => {
+    if (result !== null) {
+      previousScoreRef.current = result.score * 100;
+    }
+  }, [result]);
+
+  return result;
 }
