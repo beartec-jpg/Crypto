@@ -27,7 +27,7 @@ interface FloatingConfluenceMonitorProps {
     neutralCount: number;
     updatedAt: number;
     systemDetails?: SystemDetail[];
-    pattern?: MarketPattern | null;
+    patterns?: MarketPattern[];
   } | null;
   isVisible: boolean;
   onClose: () => void;
@@ -90,7 +90,7 @@ export function FloatingConfluenceMonitor({
   const barFillPct = Math.max(0, Math.min(100, (scorePct + 100) / 2));
   const barColor = scorePct >= 20 ? '#22c55e' : scorePct <= -20 ? '#ef4444' : '#eab308';
 
-  const pattern = confluenceSnapshot?.pattern ?? null;
+  const patterns = confluenceSnapshot?.patterns ?? [];
 
   return (
     <div
@@ -164,17 +164,21 @@ export function FloatingConfluenceMonitor({
       {/* Expanded: pattern alert + counts + system details */}
       {expanded && (
         <div className="border-t border-slate-700/60">
-          {/* Pattern alert */}
-          {pattern && (
-            <div className={cn('mx-2 mt-2 rounded-md border p-2 space-y-1', pattern.color.bg, pattern.color.border)}>
-              <div className={cn('flex items-center gap-1 text-[11px] font-bold', pattern.color.text)}>
-                <span>{pattern.icon}</span>
-                <span>{pattern.title}</span>
-              </div>
-              <p className="text-[10px] text-slate-300 leading-snug">{pattern.description}</p>
-              <p className={cn('text-[10px] font-medium leading-snug', pattern.color.text)}>
-                💡 {pattern.recommendation}
-              </p>
+          {/* Pattern alerts */}
+          {patterns.length > 0 && (
+            <div className="mx-2 mt-2 space-y-2">
+              {patterns.map((pattern, idx) => (
+                <div key={idx} className={cn('rounded-md border p-2 space-y-1', pattern.color.bg, pattern.color.border)}>
+                  <div className={cn('flex items-center gap-1 text-[11px] font-bold', pattern.color.text)}>
+                    <span>{pattern.icon}</span>
+                    <span>{pattern.title}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 leading-snug">{pattern.description}</p>
+                  <p className={cn('text-[10px] font-medium leading-snug', pattern.color.text)}>
+                    💡 {pattern.recommendation}
+                  </p>
+                </div>
+              ))}
             </div>
           )}
 

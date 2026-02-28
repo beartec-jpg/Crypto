@@ -24,7 +24,7 @@ interface SystemScore {
 }
 
 /**
- * Detect the highest-priority market pattern from multi-system scores.
+ * Detect the top market patterns from multi-system scores.
  *
  * @param overallScore  Average score across all systems (-100..+100)
  * @param evaluations   Individual system scores (-100..+100 each)
@@ -34,14 +34,16 @@ export function detectMarketPattern(
   overallScore: number,
   evaluations: SystemScore[],
   previousScore?: number,
-): MarketPattern | null {
+): MarketPattern[] {
   const patterns: MarketPattern[] = [];
 
   const trendScore = evaluations.find(e => e.systemId === 'trend-following')?.score ?? 0;
   const meanReversionScore = evaluations.find(e => e.systemId === 'mean-reversion')?.score ?? 0;
   const breakoutScore = evaluations.find(e => e.systemId === 'breakout-momentum')?.score ?? 0;
   const smartMoneyScore = evaluations.find(e => e.systemId === 'smart-money')?.score ?? 0;
+  const momentumScalperScore = evaluations.find(e => e.systemId === 'momentum-scalper')?.score ?? 0;
   const divergenceScore = evaluations.find(e => e.systemId === 'divergence-master')?.score ?? 0;
+  const multiTimeframeScore = evaluations.find(e => e.systemId === 'multi-timeframe')?.score ?? 0;
   const volumeProfileScore = evaluations.find(e => e.systemId === 'volume-profile')?.score ?? 0;
 
   const bullishCount = evaluations.filter(e => e.score > 20).length;
@@ -73,17 +75,42 @@ export function detectMarketPattern(
     });
   }
 
+  // 1b. Moderate Buy/Sell Signals (Priority: 7.5)
+  if (overallScore > 40 && overallScore <= 65 && bullishCount >= 4) {
+    patterns.push({
+      type: 'opportunity',
+      icon: '📈',
+      title: 'MODERATE BUY SIGNAL',
+      description: `${bullishCount}/${evaluations.length} systems bullish with ${overallScore.toFixed(0)}% average`,
+      recommendation: 'Good setup but not high confluence - consider partial position',
+      priority: 7.5,
+      color: { bg: 'bg-lime-900/30', border: 'border-lime-600', text: 'text-lime-400' },
+    });
+  }
+
+  if (overallScore < -40 && overallScore >= -65 && bearishCount >= 4) {
+    patterns.push({
+      type: 'opportunity',
+      icon: '📉',
+      title: 'MODERATE SELL SIGNAL',
+      description: `${bearishCount}/${evaluations.length} systems bearish with ${overallScore.toFixed(0)}% average`,
+      recommendation: 'Good setup but not high confluence - consider partial position',
+      priority: 7.5,
+      color: { bg: 'bg-orange-900/30', border: 'border-orange-600', text: 'text-orange-400' },
+    });
+  }
+
   // 2. False Breakout Warning (Priority: 9)
   if (
-    breakoutScore > 70 &&
-    volumeProfileScore < 0 &&
-    (smartMoneyScore < 20 || meanReversionScore < -50)
+    breakoutScore > 60 &&
+    volumeProfileScore < -30 &&
+    smartMoneyScore < 10
   ) {
     patterns.push({
       type: 'warning',
       icon: '⚠️',
       title: 'FALSE BREAKOUT WARNING',
-      description: `Breakout system fired (+${breakoutScore.toFixed(0)}%) but lacks volume/structure confirmation`,
+      description: `Breakout system fired (+${breakoutScore.toFixed(0)}%) but volume very weak and smart money not confirming`,
       recommendation: 'Wait for volume or structure support before entry',
       priority: 9,
       color: { bg: 'bg-orange-900/30', border: 'border-orange-600', text: 'text-orange-400' },
@@ -92,10 +119,10 @@ export function detectMarketPattern(
 
   // 3. Bottom / Top Forming (Priority: 8)
   if (
-    overallScore < -20 && overallScore > -60 &&
-    divergenceScore > 60 &&
-    meanReversionScore > 50 &&
-    trendScore < -40
+    overallScore < -10 && overallScore > -40 &&
+    divergenceScore > 40 &&
+    meanReversionScore > 30 &&
+    trendScore < -30
   ) {
     patterns.push({
       type: 'opportunity',
@@ -109,10 +136,10 @@ export function detectMarketPattern(
   }
 
   if (
-    overallScore > 20 && overallScore < 60 &&
-    divergenceScore < -60 &&
-    meanReversionScore < -50 &&
-    trendScore > 40
+    overallScore > 10 && overallScore < 40 &&
+    divergenceScore < -40 &&
+    meanReversionScore < -30 &&
+    trendScore > 30
   ) {
     patterns.push({
       type: 'opportunity',
@@ -127,9 +154,9 @@ export function detectMarketPattern(
 
   // 4. Momentum Exhaustion (Priority: 7)
   if (
-    overallScore > 75 &&
-    meanReversionScore < -60 &&
-    volumeProfileScore < -40
+    overallScore > 60 &&
+    meanReversionScore < -50 &&
+    volumeProfileScore < -30
   ) {
     patterns.push({
       type: 'caution',
@@ -143,9 +170,9 @@ export function detectMarketPattern(
   }
 
   if (
-    overallScore < -75 &&
-    meanReversionScore > 60 &&
-    volumeProfileScore > 40
+    overallScore < -60 &&
+    meanReversionScore > 50 &&
+    volumeProfileScore > 30
   ) {
     patterns.push({
       type: 'caution',
@@ -162,8 +189,9 @@ export function detectMarketPattern(
   if (evaluations.length > 0) {
     const maxScore = Math.max(...evaluations.map(e => e.score));
     const minScore = Math.min(...evaluations.map(e => e.score));
+    const scoreSpread = maxScore - minScore;
 
-    if (maxScore > 60 && minScore < -60) {
+    if (scoreSpread > 80 && (maxScore >= 50 || minScore <= -50)) {
       const strongest = evaluations.find(e => e.score === maxScore);
       const weakest = evaluations.find(e => e.score === minScore);
 
@@ -215,7 +243,7 @@ export function detectMarketPattern(
   }
 
   // 7. Choppy Market (Priority: 4)
-  if (Math.abs(overallScore) < 15 && neutralCount >= 4) {
+  if (Math.abs(overallScore) < 20 && neutralCount >= 3) {
     patterns.push({
       type: 'neutral',
       icon: '⏸️',
@@ -227,7 +255,25 @@ export function detectMarketPattern(
     });
   }
 
-  // Return highest priority pattern
+  // 8. Consolidation Pattern (Priority: 3)
+  if (
+    Math.abs(overallScore) < 10 &&
+    neutralCount >= 5 &&
+    previousScore !== undefined &&
+    Math.abs(previousScore) < 15
+  ) {
+    patterns.push({
+      type: 'neutral',
+      icon: '💤',
+      title: 'CONSOLIDATION',
+      description: 'Market in tight range with no clear direction',
+      recommendation: 'Wait for breakout or trade range boundaries',
+      priority: 3,
+      color: { bg: 'bg-slate-800/50', border: 'border-slate-500', text: 'text-slate-400' },
+    });
+  }
+
+  // Return top 3 patterns sorted by priority
   patterns.sort((a, b) => b.priority - a.priority);
-  return patterns[0] ?? null;
+  return patterns.slice(0, 3);
 }
