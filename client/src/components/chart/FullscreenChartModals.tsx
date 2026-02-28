@@ -4,6 +4,7 @@ import { SMCSettingsModal } from '@/components/modals/SMCSettingsModal';
 import { DegreePicker } from '@/components/elliottWave/DegreePicker';
 import { AutoFibSettingsModal } from '@/components/modals/AutoFibSettingsModal';
 import { SuperTrendSettingsModal } from '@/components/modals/SuperTrendSettingsModal';
+import { VWAPSettingsModal } from '@/components/modals/VWAPSettingsModal';
 import { DrawingSettingsModal } from '@/components/modals/DrawingSettingsModal';
 import { DrawingSelectionModal } from '@/components/drawings/DrawingSelectionModal';
 
@@ -63,6 +64,10 @@ interface FullscreenChartModalsProps {
   onCloseSuperTrendModal: () => void;
   superTrendSettings: any;
   onSuperTrendSettingsChange: (...args: any[]) => void;
+
+  showVwapModal: boolean;
+  onCloseVwapModal: () => void;
+  vwapState: any;
 }
 
 export function FullscreenChartModals({
@@ -114,6 +119,9 @@ export function FullscreenChartModals({
   onCloseSuperTrendModal,
   superTrendSettings,
   onSuperTrendSettingsChange,
+  showVwapModal,
+  onCloseVwapModal,
+  vwapState,
 }: FullscreenChartModalsProps) {
   return (
     <>
@@ -190,6 +198,12 @@ export function FullscreenChartModals({
         onClose={onCloseSuperTrendModal}
         settings={superTrendSettings}
         onSettingsChange={onSuperTrendSettingsChange}
+      />
+
+      <VWAPSettingsModal
+        isOpen={showVwapModal}
+        onClose={onCloseVwapModal}
+        vwap={vwapState}
       />
     </>
   );

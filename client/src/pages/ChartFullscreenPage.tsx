@@ -132,6 +132,7 @@ export function ChartFullscreenPage({
   const [showSmcModal, setShowSmcModal] = useState(false);
   const [showAutoFibModal, setShowAutoFibModal] = useState(false);
   const [showSuperTrendModal, setShowSuperTrendModal] = useState(false);
+  const [showVwapModal, setShowVwapModal] = useState(false);
   const [tempDrawing, setTempDrawing] = useState<{ points: { time: number; price: number; snapType?: 'high' | 'low' | 'none' }[] } | null>(null);
 
   // Incremented whenever the chart pans/zooms so we can recompute the SVG click overlay coords
@@ -856,6 +857,7 @@ export function ChartFullscreenPage({
           smaConfigs={indicators.sma.configs}
           vwapShow={indicators.vwap.showSession}
           onVwapToggle={indicators.vwap.setShowSession}
+          onOpenVwapSettings={() => setShowVwapModal(true)}
           elderImpulseShow={indicators.elderImpulse.show}
           onElderImpulseToggle={indicators.elderImpulse.setShow}
           onOpenEmaSma={() => setShowEmaSmaModal(true)}
@@ -957,6 +959,12 @@ export function ChartFullscreenPage({
           symbol={symbol}
           interval={timeframe}
           elderImpulseEnabled={indicators.elderImpulse.show}
+          vwapShowSession={indicators.vwap.showSession}
+          vwapShowDaily={indicators.vwap.showDaily}
+          vwapShowWeekly={indicators.vwap.showWeekly}
+          vwapShowMonthly={indicators.vwap.showMonthly}
+          vwapShowRolling={indicators.vwap.showRolling}
+          vwapRollingPeriod={indicators.vwap.rollingPeriod}
           fvgs={fvgs}
           fvgSettings={fvgSettings.settings}
           orderBlocks={orderBlocks}
@@ -1104,6 +1112,9 @@ export function ChartFullscreenPage({
         onCloseSuperTrendModal={() => setShowSuperTrendModal(false)}
         superTrendSettings={superTrendSettings.settings}
         onSuperTrendSettingsChange={superTrendSettings.updateConfig}
+        showVwapModal={showVwapModal}
+        onCloseVwapModal={() => setShowVwapModal(false)}
+        vwapState={indicators.vwap}
       />
       
       <AlertSettingsDialog 
