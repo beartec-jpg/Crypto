@@ -43,7 +43,7 @@ export function detectMarketPattern(
   const smartMoneyScore = evaluations.find(e => e.systemId === 'smart-money')?.score ?? 0;
   const momentumScalperScore = evaluations.find(e => e.systemId === 'momentum-scalper')?.score ?? 0;
   const divergenceScore = evaluations.find(e => e.systemId === 'divergence-master')?.score ?? 0;
-  const multiTimeframeScore = evaluations.find(e => e.systemId === 'multi-timeframe')?.score ?? 0;
+  const multiTimeframeScore = evaluations.find(e => e.systemId === 'mtf-confluence')?.score ?? 0;
   const volumeProfileScore = evaluations.find(e => e.systemId === 'volume-profile')?.score ?? 0;
 
   const bullishCount = evaluations.filter(e => e.score > 20).length;
@@ -189,9 +189,8 @@ export function detectMarketPattern(
   if (evaluations.length > 0) {
     const maxScore = Math.max(...evaluations.map(e => e.score));
     const minScore = Math.min(...evaluations.map(e => e.score));
-    const scoreSpread = maxScore - minScore;
 
-    if (scoreSpread > 80 && (maxScore >= 50 || minScore <= -50)) {
+    if (maxScore > 50 && minScore < -50 && (maxScore - minScore) > 80) {
       const strongest = evaluations.find(e => e.score === maxScore);
       const weakest = evaluations.find(e => e.score === minScore);
 
