@@ -1,15 +1,9 @@
 import { useState } from 'react';
-import { Zap, Check, Info, Activity } from 'lucide-react';
+import { Zap, Check, Activity, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { TRADING_SYSTEMS, type TradingSystemId, type TradingSystem } from '@/types/tradingSystems';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 
 interface TradingSystemsMenuProps {
   activeSystem: TradingSystemId | null;
@@ -26,83 +20,85 @@ interface TradingSystemsMenuProps {
   className?: string;
 }
 
-function SystemCard({ 
-  system, 
-  isActive, 
-  onSelect 
-}: { 
-  system: TradingSystem; 
-  isActive: boolean; 
-  onSelect: () => void;
+const categoryColors: Record<TradingSystem['category'], string> = {
+  trend: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+  reversal: 'bg-purple-500/10 border-purple-500/30 text-purple-400',
+  breakout: 'bg-orange-500/10 border-orange-500/30 text-orange-400',
+  smc: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+};
+
+function countTools(preset: TradingSystem['preset']): number {
+  let count = 0;
+  if (preset.oscillators) count += Object.values(preset.oscillators).filter(o => o?.enabled).length;
+  if (preset.indicators) count += Object.values(preset.indicators).filter(i => i?.enabled).length;
+  if (preset.smc) count += Object.values(preset.smc).filter(s => s?.enabled).length;
+  if (preset.tools) count += Object.values(preset.tools).filter(t => t?.enabled).length;
+  return count;
+}
+
+function AccordionSystem({
+  system,
+  isActive,
+  isExpanded,
+  onToggle,
+  onActivate,
+}: {
+  system: TradingSystem;
+  isActive: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onActivate: () => void;
 }) {
-  const categoryColors = {
-    trend: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
-    reversal: 'bg-purple-500/10 border-purple-500/30 text-purple-400',
-    breakout: 'bg-orange-500/10 border-orange-500/30 text-orange-400',
-    smc: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
-  };
-
-  const activeTools = [
-    ...Object.entries(system.preset.oscillators || {}).filter(([_, v]) => v?.enabled).map(([k]) => k),
-    ...Object.entries(system.preset.indicators || {}).filter(([_, v]) => v?.enabled).map(([k]) => k),
-    ...Object.entries(system.preset.smc || {}).filter(([_, v]) => v?.enabled).map(([k]) => k),
-    ...Object.entries(system.preset.tools || {}).filter(([_, v]) => v?.enabled).map(([k]) => k),
-  ];
-
   return (
-    <div
-      onClick={onSelect}
-      className={cn(
-        'relative p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.02]',
-        isActive 
-          ? 'bg-blue-600/20 border-blue-500 shadow-lg shadow-blue-500/20' 
-          : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800 hover:border-slate-600'
-      )}
-    >
-      {isActive && (
-        <div className="absolute -top-2 -right-2 bg-blue-600 rounded-full p-1">
-          <Check className="w-3 h-3 text-white" />
+    <div>
+      <button
+        type="button"
+        aria-expanded={isExpanded}
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-3 py-3 hover:bg-slate-800/50 rounded-lg transition-colors min-h-[48px]"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xl flex-shrink-0">{system.icon}</span>
+          <span className="text-sm font-medium text-white truncate">{system.name}</span>
         </div>
-      )}
-      
-      <div className="flex items-start gap-3 mb-2">
-        <span className="text-2xl">{system.icon}</span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-sm font-semibold text-white truncate">{system.name}</h3>
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-xs">
-                  <p className="text-xs">{system.description}</p>
-                  {system.alerts?.entry && (
-                    <div className="mt-2 space-y-1">
-                      <p className="text-xs font-semibold text-blue-300">Entry Signals:</p>
-                      {system.alerts.entry.map((alert, i) => (
-                        <p key={i} className="text-xs text-gray-300">• {alert}</p>
-                      ))}
-                    </div>
-                  )}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          <p className="text-xs text-gray-400 line-clamp-2 mb-2">{system.description}</p>
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              'text-[10px] px-2 py-0.5 rounded-full border uppercase font-medium',
-              categoryColors[system.category]
-            )}>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          {isActive && <Check className="w-4 h-4 text-green-500" />}
+          <ChevronRight
+            className={cn(
+              'w-4 h-4 text-slate-400 transition-transform duration-200',
+              isExpanded && 'rotate-90'
+            )}
+          />
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div className="px-4 pb-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+          <p className="text-xs text-slate-400 leading-relaxed">{system.description}</p>
+          <div className="flex items-center gap-2 text-xs">
+            <span className={cn('px-2 py-0.5 rounded-full border uppercase font-medium text-[10px]', categoryColors[system.category])}>
               {system.category}
             </span>
-            <span className="text-[10px] text-gray-500">
-              {activeTools.length} tools
-            </span>
+            <span className="text-slate-500">{countTools(system.preset)} tools</span>
           </div>
+          <Button
+            onClick={onActivate}
+            className="w-full"
+            variant={isActive ? 'outline' : 'default'}
+            disabled={isActive}
+            size="sm"
+          >
+            {isActive ? (
+              <>
+                <Check className="w-4 h-4 mr-2" />
+                Active
+              </>
+            ) : (
+              'Activate System'
+            )}
+          </Button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -116,6 +112,7 @@ export function TradingSystemsMenu({
   className,
 }: TradingSystemsMenuProps) {
   const [open, setOpen] = useState(false);
+  const [expandedSystemId, setExpandedSystemId] = useState<TradingSystemId | null>(null);
 
   const systems = Object.values(TRADING_SYSTEMS);
   const trendSystems = systems.filter(s => s.category === 'trend');
@@ -123,13 +120,13 @@ export function TradingSystemsMenu({
   const breakoutSystems = systems.filter(s => s.category === 'breakout');
   const smcSystems = systems.filter(s => s.category === 'smc');
 
-  const handleSelectSystem = (systemId: TradingSystemId) => {
-    if (activeSystem === systemId) {
-      onDeactivateSystem();
-    } else {
-      onActivateSystem(systemId);
-    }
-    setOpen(false);
+  const toggleExpand = (systemId: TradingSystemId) => {
+    setExpandedSystemId(prev => prev === systemId ? null : systemId);
+  };
+
+  const handleActivateSystem = (systemId: TradingSystemId) => {
+    onActivateSystem(systemId);
+    setExpandedSystemId(null);
   };
 
   const activeSystemData = activeSystem ? TRADING_SYSTEMS[activeSystem] : null;
@@ -145,6 +142,29 @@ export function TradingSystemsMenu({
           : confluenceSnapshot.score <= -0.1
             ? 'text-orange-300'
             : 'text-yellow-300';
+
+  const renderCategory = (
+    label: string,
+    icon: string,
+    headerClass: string,
+    categorySystems: TradingSystem[]
+  ) => (
+    <div className="space-y-0.5">
+      <h4 className={cn('text-xs font-bold uppercase tracking-wider px-3 py-2', headerClass)}>
+        {icon} {label}
+      </h4>
+      {categorySystems.map((system) => (
+        <AccordionSystem
+          key={system.id}
+          system={system}
+          isActive={activeSystem === system.id}
+          isExpanded={expandedSystemId === system.id}
+          onToggle={() => toggleExpand(system.id)}
+          onActivate={() => handleActivateSystem(system.id)}
+        />
+      ))}
+    </div>
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -172,35 +192,37 @@ export function TradingSystemsMenu({
       </PopoverTrigger>
       
       <PopoverContent 
-        className="w-[600px] max-h-[600px] overflow-y-auto bg-slate-900 border-slate-700 text-white"
+        className="w-[calc(100vw-2rem)] sm:w-[400px] max-h-[80vh] overflow-y-auto overflow-x-hidden bg-slate-900 border-slate-700 text-white p-0"
         align="start"
       >
-        <div className="space-y-4">
-          <div className="flex items-center justify-between sticky top-0 bg-slate-900 pb-2 border-b border-slate-700">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Trading Systems</h3>
-              <p className="text-xs text-gray-400">Pre-configured indicator presets for specific strategies</p>
-            </div>
-            {activeSystem && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeactivateSystem();
-                  setOpen(false);
-                }}
-                className="text-xs h-7 border-red-500/30 text-red-400 hover:bg-red-500/10"
-              >
-                Deactivate
-              </Button>
-            )}
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Trading Systems</h3>
+            <p className="text-xs text-gray-400">Pre-configured indicator presets for specific strategies</p>
           </div>
+          {activeSystem && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeactivateSystem();
+                setOpen(false);
+              }}
+              className="text-xs h-7 border-red-500/30 text-red-400 hover:bg-red-500/10 flex-shrink-0 ml-2"
+            >
+              Deactivate
+            </Button>
+          )}
+        </div>
 
+        <div className="p-2 space-y-1">
+          {/* Confluence Monitor */}
           <button
             type="button"
             onClick={onToggleFloatingMonitor}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2 text-left transition-all hover:border-slate-500 hover:bg-slate-800"
+            className="w-full rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2 text-left transition-all hover:border-slate-500 hover:bg-slate-800 mb-2"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -216,75 +238,12 @@ export function TradingSystemsMenu({
             </div>
           </button>
 
-          {/* Trend Following Systems */}
-          <div>
-            <h4 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span>📈</span> Trend Following
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {trendSystems.map((system) => (
-                <SystemCard
-                  key={system.id}
-                  system={system}
-                  isActive={activeSystem === system.id}
-                  onSelect={() => handleSelectSystem(system.id)}
-                />
-              ))}
-            </div>
-          </div>
+          {renderCategory('Trend Following', '📈', 'text-blue-400', trendSystems)}
+          {renderCategory('Mean Reversion / Reversal', '🎯', 'text-purple-400', reversalSystems)}
+          {renderCategory('Breakout & Momentum', '🚀', 'text-orange-400', breakoutSystems)}
+          {renderCategory('Smart Money Concepts', '💎', 'text-emerald-400', smcSystems)}
 
-          {/* Reversal Systems */}
-          <div>
-            <h4 className="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span>🔄</span> Mean Reversion / Reversal
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {reversalSystems.map((system) => (
-                <SystemCard
-                  key={system.id}
-                  system={system}
-                  isActive={activeSystem === system.id}
-                  onSelect={() => handleSelectSystem(system.id)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Breakout Systems */}
-          <div>
-            <h4 className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span>🚀</span> Breakout & Momentum
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {breakoutSystems.map((system) => (
-                <SystemCard
-                  key={system.id}
-                  system={system}
-                  isActive={activeSystem === system.id}
-                  onSelect={() => handleSelectSystem(system.id)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Smart Money Systems */}
-          <div>
-            <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span>💎</span> Smart Money Concepts
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {smcSystems.map((system) => (
-                <SystemCard
-                  key={system.id}
-                  system={system}
-                  isActive={activeSystem === system.id}
-                  onSelect={() => handleSelectSystem(system.id)}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="text-xs text-gray-500 pt-2 border-t border-slate-700">
+          <div className="text-xs text-gray-500 px-3 pt-2 pb-1 border-t border-slate-700">
             💡 Tip: Activating a system will automatically enable and configure all required indicators
           </div>
         </div>
