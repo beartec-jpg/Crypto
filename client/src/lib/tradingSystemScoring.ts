@@ -79,6 +79,23 @@ export interface ScoringInput {
   divergencePoints?: DivergencePoint[];
   /** Current candle's unix timestamp (seconds) for lookback filtering */
   currentTime?: number;
+  /** Structure breaks array for time-based filtering */
+  structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish' }>;
+  /** Current candle index for index-based structure break lookback */
+  currentCandleIndex?: number;
+  /** SMC Fair Value Gaps for Smart Money scoring */
+  fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>;
+  /** SMC Order Blocks for Smart Money scoring */
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>;
+  /** Liquidity zones for Smart Money scoring */
+  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean }>;
+  /** Volume profile data for Volume Profile scoring */
+  volumeProfileData?: {
+    rows: Array<{ price: number; volume: number }>;
+    valueAreaHigh?: number;
+    valueAreaLow?: number;
+    poc?: number;
+  };
 }
 
 // ── 1. Trend Following Pro ────────────────────────────────────────────────────
@@ -238,13 +255,48 @@ export function scoreMeanReversion(input: ScoringInput): SystemEvaluation {
 
 // ── 3. Breakout Momentum ──────────────────────────────────────────────────────
 
+/** Lookback window in candles for recent structure break detection. */
+const STRUCTURE_LOOKBACK_CANDLES = 15;
+
+/** Proximity threshold (fraction) for FVG detection (0.5%). */
+const FVG_PROXIMITY_THRESHOLD = 0.005;
+
+/** Proximity threshold (fraction) for liquidity sweep detection (1%). */
+const LIQUIDITY_SWEEP_PROXIMITY = 0.01;
+
+/** Proximity threshold (fraction) for POC detection (1%). */
+const POC_PROXIMITY_THRESHOLD = 0.01;
+
+/** Proximity threshold (fraction) for value area boundary detection (0.2%). */
+const VALUE_AREA_THRESHOLD = 0.002;
+
+/** Proximity threshold (fraction) for volume row matching (0.1%). */
+const VOLUME_ROW_PROXIMITY = 0.001;
+
+/** Volume multiplier threshold for "high volume" classification. */
+const HIGH_VOLUME_MULTIPLIER = 1.5;
+
+/** Volume multiplier threshold for "low volume" classification. */
+const LOW_VOLUME_MULTIPLIER = 0.5;
+
 export function scoreBreakoutMomentum(input: ScoringInput): SystemEvaluation {
-  const { latestStructureDirection, sqzOff, sqzValue, macdNow, sigNow, latestClose, previousClose } = input;
+  const { sqzOff, sqzValue, macdNow, sigNow, latestClose, previousClose, structureBreaks, currentTime, currentCandleIndex } = input;
 
   let score = 0;
   const conditions: ScoredCondition[] = [];
 
-  // Structure break direction (±35)
+  // Structure break direction (±35) — only count breaks within last STRUCTURE_LOOKBACK_CANDLES candles
+  const recentStructureBreak = structureBreaks
+    ?.filter(sb => {
+      if (sb.breakIndex !== undefined && currentCandleIndex !== undefined) {
+        return sb.breakIndex >= currentCandleIndex - STRUCTURE_LOOKBACK_CANDLES;
+      }
+      return currentTime !== undefined ? sb.breakTime <= currentTime : true;
+    })
+    .sort((a, b) => b.breakTime - a.breakTime)[0];
+
+  const latestStructureDirection = recentStructureBreak?.direction;
+
   if (latestStructureDirection === 'bullish') {
     score += 35;
     conditions.push({ name: 'Bullish BOS/CHoCH', met: true, weight: 35 });
@@ -297,12 +349,34 @@ export function scoreBreakoutMomentum(input: ScoringInput): SystemEvaluation {
 // ── 4. Smart Money Tracker ────────────────────────────────────────────────────
 
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
-  const { latestStructureDirection, stTrend, lastRsi, latestClose, previousClose } = input;
+  const {
+    stTrend,
+    lastRsi,
+    latestClose,
+    previousClose,
+    structureBreaks,
+    currentTime,
+    currentCandleIndex,
+    fvgs,
+    orderBlocks,
+    liquidityZones,
+  } = input;
 
   let score = 0;
   const conditions: ScoredCondition[] = [];
 
-  // SMC structure shift (±35)
+  // SMC structure shift (±35) — only count breaks within last STRUCTURE_LOOKBACK_CANDLES candles
+  const recentStructureBreak = structureBreaks
+    ?.filter(sb => {
+      if (sb.breakIndex !== undefined && currentCandleIndex !== undefined) {
+        return sb.breakIndex >= currentCandleIndex - STRUCTURE_LOOKBACK_CANDLES;
+      }
+      return currentTime !== undefined ? sb.breakTime <= currentTime : true;
+    })
+    .sort((a, b) => b.breakTime - a.breakTime)[0];
+
+  const latestStructureDirection = recentStructureBreak?.direction;
+
   if (latestStructureDirection === 'bullish') {
     score += 35;
     conditions.push({ name: 'SMC bullish structure shift', met: true, weight: 35 });
@@ -357,6 +431,55 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     conditions.push({ name: 'SuperTrend bearish', met: true, weight: -10 });
   } else {
     conditions.push({ name: 'SuperTrend', met: false, weight: 10 });
+  }
+
+  // FVG proximity (±25): price within 0.5% of an unfilled FVG
+  const currentPrice = latestClose;
+  const nearbyFVG = fvgs?.find(fvg =>
+    !fvg.filled &&
+    currentPrice >= fvg.low * (1 - FVG_PROXIMITY_THRESHOLD) &&
+    currentPrice <= fvg.high * (1 + FVG_PROXIMITY_THRESHOLD)
+  );
+
+  if (nearbyFVG) {
+    if (nearbyFVG.type === 'bullish') {
+      score += 25;
+      conditions.push({ name: 'Price in bullish FVG', met: true, weight: 25 });
+    } else {
+      score -= 25;
+      conditions.push({ name: 'Price in bearish FVG', met: true, weight: -25 });
+    }
+  }
+
+  // Order block touch (±20): price touching/within an active order block
+  const touchingOB = orderBlocks?.find(ob =>
+    currentPrice >= ob.low && currentPrice <= ob.high
+  );
+
+  if (touchingOB) {
+    if (touchingOB.type === 'bullish') {
+      score += 20;
+      conditions.push({ name: 'Touching bullish order block', met: true, weight: 20 });
+    } else {
+      score -= 20;
+      conditions.push({ name: 'Touching bearish order block', met: true, weight: -20 });
+    }
+  }
+
+  // Liquidity sweep (±15): recent liquidity zone sweep detected
+  const recentSwept = liquidityZones?.find(lz =>
+    lz.swept &&
+    Math.abs(currentPrice - lz.price) / currentPrice < LIQUIDITY_SWEEP_PROXIMITY
+  );
+
+  if (recentSwept) {
+    if (recentSwept.type === 'high') {
+      score -= 15; // High liquidity grabbed, potential reversal down
+      conditions.push({ name: 'High liquidity swept', met: true, weight: -15 });
+    } else {
+      score += 15; // Low liquidity swept, potential reversal up
+      conditions.push({ name: 'Low liquidity swept', met: true, weight: 15 });
+    }
   }
 
   return buildEvaluation('smart-money', conditions, score);
@@ -663,58 +786,115 @@ export function scoreMTFConfluence(input: ScoringInput): SystemEvaluation {
 // ── 8. Volume Profile Master ──────────────────────────────────────────────────
 
 export function scoreVolumeProfile(input: ScoringInput): SystemEvaluation {
-  const { lastRsi, prevRsi, latestClose, previousClose, macdNow, sigNow } = input;
+  const { lastRsi, prevRsi, latestClose, previousClose, macdNow, sigNow, volumeProfileData } = input;
 
   let score = 0;
   const conditions: ScoredCondition[] = [];
+  const currentPrice = latestClose;
 
-  // RSI midpoint cross (±35)
-  if (prevRsi !== undefined && lastRsi !== undefined) {
-    if (prevRsi <= 50 && lastRsi > 50) {
-      score += 35;
-      conditions.push({ name: 'RSI crossed above midpoint', met: true, weight: 35 });
-    } else if (prevRsi >= 50 && lastRsi < 50) {
-      score -= 35;
-      conditions.push({ name: 'RSI crossed below midpoint', met: true, weight: -35 });
-    } else if (lastRsi > 50) {
-      score += 15;
-      conditions.push({ name: 'RSI above midpoint', met: true, weight: 15, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi < 50) {
-      score -= 15;
-      conditions.push({ name: 'RSI below midpoint', met: true, weight: -15, value: `RSI: ${lastRsi.toFixed(1)}` });
+  // POC proximity (±30): price within 1% of Point of Control
+  if (volumeProfileData?.poc) {
+    const distanceToPOC = Math.abs(currentPrice - volumeProfileData.poc) / currentPrice;
+    if (distanceToPOC < POC_PROXIMITY_THRESHOLD) {
+      score += 30;
+      conditions.push({ name: 'Price near POC (high volume node)', met: true, weight: 30 });
     } else {
-      conditions.push({ name: 'RSI midpoint', met: false, weight: 35 });
+      conditions.push({ name: 'POC proximity', met: false, weight: 30 });
     }
   }
 
-  // Price action follow-through (±25)
-  if (latestClose > previousClose) {
-    score += 25;
-    conditions.push({ name: 'Bullish candle follow-through', met: true, weight: 25 });
-  } else if (latestClose < previousClose) {
+  // Value area boundaries (±25): price at/near value area high or low
+  if (volumeProfileData?.valueAreaHigh && currentPrice >= volumeProfileData.valueAreaHigh * (1 - VALUE_AREA_THRESHOLD)) {
     score -= 25;
-    conditions.push({ name: 'Bearish candle follow-through', met: true, weight: -25 });
-  }
-
-  // Discount/premium zone confirmation (±25)
-  if (lastRsi !== undefined && lastRsi <= 40 && latestClose > previousClose) {
+    conditions.push({ name: 'Price at value area high', met: true, weight: -25 });
+  } else if (volumeProfileData?.valueAreaLow && currentPrice <= volumeProfileData.valueAreaLow * (1 + VALUE_AREA_THRESHOLD)) {
     score += 25;
-    conditions.push({ name: 'Discount zone rebound', met: true, weight: 25 });
-  } else if (lastRsi !== undefined && lastRsi >= 60 && latestClose < previousClose) {
-    score -= 25;
-    conditions.push({ name: 'Premium zone rejection', met: true, weight: -25 });
+    conditions.push({ name: 'Price at value area low', met: true, weight: 25 });
   } else {
-    conditions.push({ name: 'Zone bounce confirmation', met: false, weight: 25 });
+    conditions.push({ name: 'Value area boundary', met: false, weight: 25 });
   }
 
-  // MACD confirmation (±15)
-  if (macdNow !== undefined && sigNow !== undefined) {
-    if (macdNow > sigNow) {
-      score += 15;
-      conditions.push({ name: 'MACD bullish', met: true, weight: 15 });
-    } else {
+  // Volume at current price level (±20/−15): high or low volume node
+  const currentRow = volumeProfileData?.rows?.find(r =>
+    Math.abs(r.price - currentPrice) / currentPrice < VOLUME_ROW_PROXIMITY
+  );
+  if (currentRow && volumeProfileData?.rows && volumeProfileData.rows.length > 0) {
+    const avgVolume = volumeProfileData.rows.reduce((sum, r) => sum + r.volume, 0) / volumeProfileData.rows.length;
+    if (currentRow.volume > avgVolume * HIGH_VOLUME_MULTIPLIER) {
+      score += 20;
+      conditions.push({ name: 'High volume at current price', met: true, weight: 20 });
+    } else if (currentRow.volume < avgVolume * LOW_VOLUME_MULTIPLIER) {
       score -= 15;
-      conditions.push({ name: 'MACD bearish', met: true, weight: -15 });
+      conditions.push({ name: 'Low volume at current price', met: true, weight: -15 });
+    } else {
+      conditions.push({ name: 'Volume at price level', met: false, weight: 20 });
+    }
+  } else if (volumeProfileData) {
+    conditions.push({ name: 'Volume at price level', met: false, weight: 20 });
+  }
+
+  // Volume confirmation (±15): RSI midpoint as directional confirmation when no VP data
+  if (!volumeProfileData) {
+    if (prevRsi !== undefined && lastRsi !== undefined) {
+      if (prevRsi <= 50 && lastRsi > 50) {
+        score += 35;
+        conditions.push({ name: 'RSI crossed above midpoint', met: true, weight: 35 });
+      } else if (prevRsi >= 50 && lastRsi < 50) {
+        score -= 35;
+        conditions.push({ name: 'RSI crossed below midpoint', met: true, weight: -35 });
+      } else if (lastRsi > 50) {
+        score += 15;
+        conditions.push({ name: 'RSI above midpoint', met: true, weight: 15, value: `RSI: ${lastRsi.toFixed(1)}` });
+      } else if (lastRsi < 50) {
+        score -= 15;
+        conditions.push({ name: 'RSI below midpoint', met: true, weight: -15, value: `RSI: ${lastRsi.toFixed(1)}` });
+      } else {
+        conditions.push({ name: 'RSI midpoint', met: false, weight: 35 });
+      }
+    }
+
+    // Price action follow-through (±25)
+    if (latestClose > previousClose) {
+      score += 25;
+      conditions.push({ name: 'Bullish candle follow-through', met: true, weight: 25 });
+    } else if (latestClose < previousClose) {
+      score -= 25;
+      conditions.push({ name: 'Bearish candle follow-through', met: true, weight: -25 });
+    }
+
+    // Discount/premium zone confirmation (±25)
+    if (lastRsi !== undefined && lastRsi <= 40 && latestClose > previousClose) {
+      score += 25;
+      conditions.push({ name: 'Discount zone rebound', met: true, weight: 25 });
+    } else if (lastRsi !== undefined && lastRsi >= 60 && latestClose < previousClose) {
+      score -= 25;
+      conditions.push({ name: 'Premium zone rejection', met: true, weight: -25 });
+    } else {
+      conditions.push({ name: 'Zone bounce confirmation', met: false, weight: 25 });
+    }
+
+    // MACD confirmation (±15)
+    if (macdNow !== undefined && sigNow !== undefined) {
+      if (macdNow > sigNow) {
+        score += 15;
+        conditions.push({ name: 'MACD bullish', met: true, weight: 15 });
+      } else {
+        score -= 15;
+        conditions.push({ name: 'MACD bearish', met: true, weight: -15 });
+      }
+    }
+  } else {
+    // Volume confirmation (±15): high volume supporting price move
+    if (lastRsi !== undefined) {
+      if (lastRsi > 50 && latestClose > previousClose) {
+        score += 15;
+        conditions.push({ name: 'Volume confirmation bullish', met: true, weight: 15 });
+      } else if (lastRsi < 50 && latestClose < previousClose) {
+        score -= 15;
+        conditions.push({ name: 'Volume confirmation bearish', met: true, weight: -15 });
+      } else {
+        conditions.push({ name: 'Volume confirmation', met: false, weight: 15 });
+      }
     }
   }
 
