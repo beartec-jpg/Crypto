@@ -78,7 +78,7 @@ import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
-import type { DivergencePoint } from '@/types/chart.types';
+import type { DivergencePoint, MAConfig } from '@/types/chart.types';
 
 interface ChartFullscreenPageProps {
   onClose: () => void;
@@ -88,6 +88,12 @@ interface ChartFullscreenPageProps {
 }
 
 const TOTAL_CONFLUENCE_REFRESH_MS = 2 * 60 * 1000;
+
+// All possible oscillator panel IDs (must match OscillatorSelectorModal)
+const ALL_OSCILLATOR_IDS = [
+  'rsi', 'macd', 'waddah', 'cmf', 'volume', 'stochRsi', 'tsi',
+  'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger',
+];
 
 /** Thin adapter: converts the new graduated score to the legacy action+reasons format. */
 function evaluateTradingSystemSignal(
@@ -827,6 +833,190 @@ export function ChartFullscreenPage({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elliottWave.isComplete, elliottWave.isValid]);
+
+  // --- Indicator Persistence ---
+
+  const saveIndicatorDefaults = useCallback(() => {
+    try {
+      const key = `indicatorDefaults_${symbol}_${timeframe}`;
+      const data = {
+        indicators: {
+          ema: { show: indicators.ema.show, configs: indicators.ema.configs, inputs: indicators.ema.inputs },
+          sma: { show: indicators.sma.show, configs: indicators.sma.configs },
+          bb: { show: indicators.bb.show, period: indicators.bb.period, stdDev: indicators.bb.stdDev },
+          vwap: {
+            showSession: indicators.vwap.showSession,
+            showDaily: indicators.vwap.showDaily,
+            showWeekly: indicators.vwap.showWeekly,
+            showMonthly: indicators.vwap.showMonthly,
+            showRolling: indicators.vwap.showRolling,
+            rollingPeriod: indicators.vwap.rollingPeriod,
+          },
+          elderImpulse: { show: indicators.elderImpulse.show },
+          rsi: { show: indicators.rsi.show, period: indicators.rsi.period },
+          macd: { show: indicators.macd.show, fast: indicators.macd.fast, slow: indicators.macd.slow, signal: indicators.macd.signal },
+          stochRSI: { show: indicators.stochRSI.show, period: indicators.stochRSI.period },
+          obv: { show: indicators.obv.show },
+          mfi: { show: indicators.mfi.show, period: indicators.mfi.period },
+          williamsR: { show: indicators.williamsR.show, period: indicators.williamsR.period },
+          cci: { show: indicators.cci.show, period: indicators.cci.period },
+          adx: { show: indicators.adx.show, period: indicators.adx.period },
+        },
+        oscillatorPanel: {
+          selected: Array.from(oscillatorPanel.selectedOscillators),
+        },
+        divergenceScannerEnabled,
+      };
+      localStorage.setItem(key, JSON.stringify(data));
+      console.log(`💾 Saved indicator defaults for ${symbol}_${timeframe}`);
+    } catch {
+      // Ignore storage errors (e.g. quota exceeded)
+    }
+  }, [
+    symbol, timeframe,
+    indicators.ema.show, indicators.ema.configs, indicators.ema.inputs,
+    indicators.sma.show, indicators.sma.configs,
+    indicators.bb.show, indicators.bb.period, indicators.bb.stdDev,
+    indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly,
+    indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod,
+    indicators.elderImpulse.show,
+    indicators.rsi.show, indicators.rsi.period,
+    indicators.macd.show, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal,
+    indicators.stochRSI.show, indicators.stochRSI.period,
+    indicators.obv.show,
+    indicators.mfi.show, indicators.mfi.period,
+    indicators.williamsR.show, indicators.williamsR.period,
+    indicators.cci.show, indicators.cci.period,
+    indicators.adx.show, indicators.adx.period,
+    oscillatorPanel.selectedOscillators,
+    divergenceScannerEnabled,
+  ]);
+
+  const loadIndicatorDefaults = useCallback(() => {
+    try {
+      const key = `indicatorDefaults_${symbol}_${timeframe}`;
+      const saved = localStorage.getItem(key);
+      if (!saved) return;
+
+      const data = JSON.parse(saved);
+      const ind = data.indicators || {};
+
+      // EMA
+      if (ind.ema) {
+        if (ind.ema.show !== undefined) indicators.ema.setShow(ind.ema.show);
+        if (Array.isArray(ind.ema.configs)) {
+          indicators.ema.setConfigs(ind.ema.configs);
+          const inputs: Record<string, string> = {};
+          ind.ema.configs.forEach((c: MAConfig) => { inputs[c.id] = String(c.period); });
+          indicators.ema.setInputs(inputs);
+        }
+      }
+
+      // SMA
+      if (ind.sma) {
+        if (ind.sma.show !== undefined) indicators.sma.setShow(ind.sma.show);
+        if (Array.isArray(ind.sma.configs)) indicators.sma.setConfigs(ind.sma.configs);
+      }
+
+      // Bollinger Bands
+      if (ind.bb) {
+        if (ind.bb.show !== undefined) indicators.bb.setShow(ind.bb.show);
+        if (ind.bb.period !== undefined) { indicators.bb.setPeriod(ind.bb.period); indicators.bb.setPeriodInput(String(ind.bb.period)); }
+        if (ind.bb.stdDev !== undefined) { indicators.bb.setStdDev(ind.bb.stdDev); indicators.bb.setStdDevInput(String(ind.bb.stdDev)); }
+      }
+
+      // VWAP
+      if (ind.vwap) {
+        if (ind.vwap.showSession !== undefined) indicators.vwap.setShowSession(ind.vwap.showSession);
+        if (ind.vwap.showDaily !== undefined) indicators.vwap.setShowDaily(ind.vwap.showDaily);
+        if (ind.vwap.showWeekly !== undefined) indicators.vwap.setShowWeekly(ind.vwap.showWeekly);
+        if (ind.vwap.showMonthly !== undefined) indicators.vwap.setShowMonthly(ind.vwap.showMonthly);
+        if (ind.vwap.showRolling !== undefined) indicators.vwap.setShowRolling(ind.vwap.showRolling);
+        if (ind.vwap.rollingPeriod !== undefined) {
+          indicators.vwap.setRollingPeriod(ind.vwap.rollingPeriod);
+          indicators.vwap.setRollingPeriodInput(String(ind.vwap.rollingPeriod));
+        }
+      }
+
+      // Elder Impulse
+      if (ind.elderImpulse?.show !== undefined) indicators.elderImpulse.setShow(ind.elderImpulse.show);
+
+      // RSI
+      if (ind.rsi) {
+        if (ind.rsi.show !== undefined) indicators.rsi.setShow(ind.rsi.show);
+        if (ind.rsi.period !== undefined) { indicators.rsi.setPeriod(ind.rsi.period); indicators.rsi.setPeriodInput(String(ind.rsi.period)); }
+      }
+
+      // MACD
+      if (ind.macd) {
+        if (ind.macd.show !== undefined) indicators.macd.setShow(ind.macd.show);
+        if (ind.macd.fast !== undefined) { indicators.macd.setFast(ind.macd.fast); indicators.macd.setFastInput(String(ind.macd.fast)); }
+        if (ind.macd.slow !== undefined) { indicators.macd.setSlow(ind.macd.slow); indicators.macd.setSlowInput(String(ind.macd.slow)); }
+        if (ind.macd.signal !== undefined) { indicators.macd.setSignal(ind.macd.signal); indicators.macd.setSignalInput(String(ind.macd.signal)); }
+      }
+
+      // Stochastic RSI
+      if (ind.stochRSI) {
+        if (ind.stochRSI.show !== undefined) indicators.stochRSI.setShow(ind.stochRSI.show);
+        if (ind.stochRSI.period !== undefined) { indicators.stochRSI.setPeriod(ind.stochRSI.period); indicators.stochRSI.setPeriodInput(String(ind.stochRSI.period)); }
+      }
+
+      // OBV
+      if (ind.obv?.show !== undefined) indicators.obv.setShow(ind.obv.show);
+
+      // MFI
+      if (ind.mfi) {
+        if (ind.mfi.show !== undefined) indicators.mfi.setShow(ind.mfi.show);
+        if (ind.mfi.period !== undefined) { indicators.mfi.setPeriod(ind.mfi.period); indicators.mfi.setPeriodInput(String(ind.mfi.period)); }
+      }
+
+      // Williams %R
+      if (ind.williamsR) {
+        if (ind.williamsR.show !== undefined) indicators.williamsR.setShow(ind.williamsR.show);
+        if (ind.williamsR.period !== undefined) { indicators.williamsR.setPeriod(ind.williamsR.period); indicators.williamsR.setPeriodInput(String(ind.williamsR.period)); }
+      }
+
+      // CCI
+      if (ind.cci) {
+        if (ind.cci.show !== undefined) indicators.cci.setShow(ind.cci.show);
+        if (ind.cci.period !== undefined) { indicators.cci.setPeriod(ind.cci.period); indicators.cci.setPeriodInput(String(ind.cci.period)); }
+      }
+
+      // ADX
+      if (ind.adx) {
+        if (ind.adx.show !== undefined) indicators.adx.setShow(ind.adx.show);
+        if (ind.adx.period !== undefined) { indicators.adx.setPeriod(ind.adx.period); indicators.adx.setPeriodInput(String(ind.adx.period)); }
+      }
+
+      // Oscillator panel
+      if (Array.isArray(data.oscillatorPanel?.selected)) {
+        const savedSet = new Set<string>(data.oscillatorPanel.selected);
+        ALL_OSCILLATOR_IDS.forEach(id => {
+          oscillatorPanel.toggleOscillator(id, savedSet.has(id));
+        });
+      }
+
+      // Divergence scanner
+      if (data.divergenceScannerEnabled !== undefined) setDivergenceScannerEnabled(data.divergenceScannerEnabled);
+
+      console.log(`📂 Loaded indicator defaults for ${symbol}_${timeframe}`);
+    } catch (error) {
+      console.error('Failed to load indicator defaults:', error);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setters from useState/useCallback are stable; only re-run when symbol or timeframe changes
+  }, [symbol, timeframe]);
+
+  // Load indicator defaults when symbol or timeframe changes
+  useEffect(() => {
+    loadIndicatorDefaults();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadIndicatorDefaults is stable per symbol+timeframe; avoids double-trigger
+  }, [symbol, timeframe]);
+
+  // Auto-save indicator defaults after 500ms of inactivity
+  useEffect(() => {
+    const timer = setTimeout(saveIndicatorDefaults, 500);
+    return () => clearTimeout(timer);
+  }, [saveIndicatorDefaults]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col h-screen">
