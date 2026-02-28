@@ -68,8 +68,10 @@ import { useSqueezeMomentumSettings } from '@/hooks/useSqueezeMomentumSettings';
 import { useSqueezeMomentum } from '@/hooks/useSqueezeMomentum';
 import { useTradingSystem, type TradingSystemCallbacks } from '@/hooks/useTradingSystem';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
-import { useMultiSystemConfluence, type SystemDetail } from '@/hooks/useMultiSystemConfluence';
+import { useMultiSystemConfluence } from '@/hooks/useMultiSystemConfluence';
 import { FloatingConfluenceMonitor } from '@/components/tradingSystems/FloatingConfluenceMonitor';
+import { DraggableSystemInfoBox } from '@/components/tradingSystems/DraggableSystemInfoBox';
+import { scoreSystem, type ScoringInput } from '@/lib/tradingSystemScoring';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
 
@@ -84,134 +86,31 @@ interface ChartFullscreenPageProps {
   watchlistTickers: string[];
 }
 
-interface SignalEvaluationInput {
-  systemId: TradingSystemId;
-  lastRsi?: number;
-  prevRsi?: number;
-  macdNow?: number;
-  macdPrev?: number;
-  sigNow?: number;
-  sigPrev?: number;
-  stTrend?: 'bullish' | 'bearish';
-  latestStructureDirection?: 'bullish' | 'bearish';
-  sqzOff?: boolean;
-  sqzValue?: number;
-  htfBullish: number;
-  htfBearish: number;
-  latestClose: number;
-  previousClose: number;
-}
-
 const TOTAL_CONFLUENCE_REFRESH_MS = 2 * 60 * 1000;
 
-function evaluateTradingSystemSignal({
-  systemId,
-  lastRsi,
-  prevRsi,
-  macdNow,
-  macdPrev,
-  sigNow,
-  sigPrev,
-  stTrend,
-  latestStructureDirection,
-  sqzOff,
-  sqzValue,
-  htfBullish,
-  htfBearish,
-  latestClose,
-  previousClose,
-}: SignalEvaluationInput) {
-  const macdBullCross =
-    macdPrev !== undefined && sigPrev !== undefined && macdNow !== undefined && sigNow !== undefined
-      ? macdPrev <= sigPrev && macdNow > sigNow
-      : false;
-  const macdBearCross =
-    macdPrev !== undefined && sigPrev !== undefined && macdNow !== undefined && sigNow !== undefined
-      ? macdPrev >= sigPrev && macdNow < sigNow
-      : false;
+/** Thin adapter: converts the new graduated score to the legacy action+reasons format. */
+function evaluateTradingSystemSignal(
+  input: ScoringInput & { systemId: TradingSystemId; divergencePoints?: DivergencePoint[] },
+) {
+  const evaluation = scoreSystem(input.systemId, {
+    ...input,
+    divergencePoints: input.divergencePoints ?? [],
+  });
 
-  const longReasons: string[] = [];
-  const shortReasons: string[] = [];
+  const action: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' =
+    evaluation.score >= 80
+      ? 'OPEN LONG'
+      : evaluation.score <= -80
+        ? 'OPEN SHORT'
+        : 'WAIT';
 
-  switch (systemId) {
-    case 'trend-following':
-      if (stTrend === 'bullish') longReasons.push('SuperTrend bullish');
-      if (stTrend === 'bearish') shortReasons.push('SuperTrend bearish');
-      if (macdNow !== undefined && sigNow !== undefined && macdNow > sigNow) longReasons.push('MACD above signal');
-      if (macdNow !== undefined && sigNow !== undefined && macdNow < sigNow) shortReasons.push('MACD below signal');
-      break;
-    case 'mean-reversion':
-      if (lastRsi !== undefined && lastRsi <= 30) longReasons.push(`RSI oversold (${lastRsi.toFixed(1)})`);
-      if (lastRsi !== undefined && lastRsi >= 70) shortReasons.push(`RSI overbought (${lastRsi.toFixed(1)})`);
-      if (lastRsi !== undefined && lastRsi <= 35 && latestClose > previousClose) longReasons.push('Rebound candle confirmed');
-      if (lastRsi !== undefined && lastRsi >= 65 && latestClose < previousClose) shortReasons.push('Rejection candle confirmed');
-      break;
-    case 'breakout-momentum':
-      if (latestStructureDirection === 'bullish') longReasons.push('Recent bullish BOS/CHoCH');
-      if (latestStructureDirection === 'bearish') shortReasons.push('Recent bearish BOS/CHoCH');
-      if (sqzOff && (sqzValue ?? 0) > 0) longReasons.push('Squeeze released up');
-      if (sqzOff && (sqzValue ?? 0) < 0) shortReasons.push('Squeeze released down');
-      break;
-    case 'smart-money':
-      if (latestStructureDirection === 'bullish') longReasons.push('SMC structure shift bullish');
-      if (latestStructureDirection === 'bearish') shortReasons.push('SMC structure shift bearish');
-      if (latestStructureDirection === 'bullish' && latestClose > previousClose) longReasons.push('Follow-through close after shift');
-      if (latestStructureDirection === 'bearish' && latestClose < previousClose) shortReasons.push('Follow-through close after shift');
-      if (latestStructureDirection === 'bullish' && stTrend === 'bullish') longReasons.push('Trend aligned with bullish shift');
-      if (latestStructureDirection === 'bearish' && stTrend === 'bearish') shortReasons.push('Trend aligned with bearish shift');
-      if (lastRsi !== undefined && lastRsi > 52) longReasons.push('Bullish momentum confirmation');
-      if (lastRsi !== undefined && lastRsi < 48) shortReasons.push('Bearish momentum confirmation');
-      break;
-    case 'momentum-scalper':
-      if (macdBullCross) longReasons.push('MACD bullish crossover');
-      if (macdBearCross) shortReasons.push('MACD bearish crossover');
-      if (stTrend === 'bullish') longReasons.push('Momentum trend bullish');
-      if (stTrend === 'bearish') shortReasons.push('Momentum trend bearish');
-      if (macdNow !== undefined && macdNow > 0) longReasons.push('MACD above zero line');
-      if (macdNow !== undefined && macdNow < 0) shortReasons.push('MACD below zero line');
-      break;
-    case 'divergence-master':
-      if (macdBullCross) longReasons.push('Bullish momentum shift');
-      if (macdBearCross) shortReasons.push('Bearish momentum shift');
-      if (lastRsi !== undefined && lastRsi < 40) longReasons.push('RSI weak/discount zone');
-      if (lastRsi !== undefined && lastRsi > 60) shortReasons.push('RSI strong/premium zone');
-      break;
-    case 'mtf-confluence':
-      if (htfBullish >= 2) longReasons.push('HTF bias mostly bullish');
-      if (htfBearish >= 2) shortReasons.push('HTF bias mostly bearish');
-      if (stTrend === 'bullish') longReasons.push('Local trend bullish');
-      if (stTrend === 'bearish') shortReasons.push('Local trend bearish');
-      break;
-    case 'volume-profile':
-      if (lastRsi !== undefined && prevRsi !== undefined && prevRsi <= 50 && lastRsi > 50) longReasons.push('RSI crossed above midpoint');
-      if (lastRsi !== undefined && prevRsi !== undefined && prevRsi >= 50 && lastRsi < 50) shortReasons.push('RSI crossed below midpoint');
-      if (latestClose > previousClose) longReasons.push('Bullish candle follow-through');
-      if (latestClose < previousClose) shortReasons.push('Bearish candle follow-through');
-      if (lastRsi !== undefined && lastRsi <= 40 && latestClose > previousClose) longReasons.push('Discount zone rebound confirmation');
-      if (lastRsi !== undefined && lastRsi >= 60 && latestClose < previousClose) shortReasons.push('Premium zone rejection confirmation');
-      break;
-    default:
-      break;
-  }
+  const metConditions = evaluation.conditions.filter(c => c.met);
+  const signalReasons =
+    metConditions.length > 0
+      ? metConditions.slice(0, 3).map(c => c.name)
+      : ['No strong confluence yet'];
 
-  const requiredConfluence = systemId === 'smart-money' ? 3 : 2;
-
-  const action: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' = longReasons.length >= requiredConfluence
-    ? 'OPEN LONG'
-    : shortReasons.length >= requiredConfluence
-      ? 'OPEN SHORT'
-      : 'WAIT';
-
-  const signalReasons = action === 'OPEN LONG'
-    ? longReasons.slice(0, 3)
-    : action === 'OPEN SHORT'
-      ? shortReasons.slice(0, 3)
-      : ['No multi-signal confluence yet'];
-
-  return {
-    action,
-    signalReasons,
-  };
+  return { action, signalReasons, evaluation };
 }
 
 export function ChartFullscreenPage({
@@ -242,7 +141,6 @@ export function ChartFullscreenPage({
   const [selectedWaveLabel, setSelectedWaveLabel] = useState('1');
   const [selectedWavePatternType, setSelectedWavePatternType] = useState('impulse');
 
-  // Divergence Scanner state
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
@@ -255,14 +153,21 @@ export function ChartFullscreenPage({
   const [showAlertSettings, setShowAlertSettings] = useState(false);
   const [showDrawingAlertSettings, setShowDrawingAlertSettings] = useState(false);
   const [selectedDrawingForAlerts, setSelectedDrawingForAlerts] = useState<Drawing | null>(null);
-  const [isLiveSignalCollapsed, setIsLiveSignalCollapsed] = useState(false);
   const [confluenceSnapshot, setConfluenceSnapshot] = useState<{
     score: number;
     longCount: number;
     shortCount: number;
     neutralCount: number;
     updatedAt: number;
-    systemDetails?: SystemDetail[];
+    systemDetails?: Array<{
+      systemId: string;
+      systemName: string;
+      score: number;
+      state: 'bullish' | 'bearish' | 'neutral';
+      signalLabel: string;
+      signalColor: string;
+      conditions?: Array<{ name: string; met: boolean; weight: number; value?: string }>;
+    }>;
   } | null>(null);
 
   const [showFloatingConfluence, setShowFloatingConfluence] = useState(() => {
@@ -523,6 +428,8 @@ export function ChartFullscreenPage({
         htfBearish,
         latestClose: currentCandle.close,
         previousClose: prevCandle.close,
+        divergencePoints,
+        currentTime,
       });
 
       if (
@@ -550,6 +457,7 @@ export function ChartFullscreenPage({
     structureBreaks,
     sqzData,
     htfBiasEntries,
+    divergencePoints,
   ]);
 
   const historicalSystemSignalMarkers = useMemo(() => {
@@ -594,7 +502,7 @@ export function ChartFullscreenPage({
     if (!system) return null;
 
     const previousCandle = candles[candles.length - 2] as { open: number; close: number };
-    const latestCandle = candles[candles.length - 1] as { close: number };
+    const latestCandle = candles[candles.length - 1] as { time: number; close: number };
     const previousDirection = previousCandle.close >= previousCandle.open ? 'Bullish' : 'Bearish';
     const previousDelta = previousCandle.close - previousCandle.open;
 
@@ -629,6 +537,8 @@ export function ChartFullscreenPage({
       htfBearish,
       latestClose: latestCandle.close,
       previousClose: previousCandle.close,
+      divergencePoints,
+      currentTime: Number(latestCandle.time),
     });
 
     return {
@@ -640,6 +550,7 @@ export function ChartFullscreenPage({
       signals: system.alerts?.entry ?? [],
       signalAction: evaluatedSignal.action,
       signalReasons: evaluatedSignal.signalReasons,
+      evaluation: evaluatedSignal.evaluation,
       historicalSignalCount: historicalSystemSignalEvents.length,
     };
   }, [
@@ -651,6 +562,7 @@ export function ChartFullscreenPage({
     sqzData,
     htfBiasEntries,
     historicalSystemSignalEvents.length,
+    divergencePoints,
   ]);
 
   const activeSystemSummary = useMemo(() => {
@@ -659,9 +571,14 @@ export function ChartFullscreenPage({
     const system = TRADING_SYSTEMS[tradingSystem.activeSystem];
     if (!system) return null;
 
+    const buySignals = historicalSystemSignalEvents.filter(e => e.action === 'OPEN LONG').length;
+    const sellSignals = historicalSystemSignalEvents.filter(e => e.action === 'OPEN SHORT').length;
+
     return {
       name: system.name,
       historicalSignalCount: historicalSystemSignalEvents.length,
+      buySignals,
+      sellSignals,
       lookbackCandles: Math.min(400, Math.max(0, candles.length - 1)),
     };
   }, [tradingSystem.activeSystem, historicalSystemSignalEvents, candles.length]);
@@ -673,6 +590,7 @@ export function ChartFullscreenPage({
     structureBreaks,
     sqzData,
     htfBiasEntries,
+    divergencePoints,
   );
 
   const totalConfluenceNowRef = useRef(totalConfluenceNow);
@@ -716,10 +634,6 @@ export function ChartFullscreenPage({
       // ignore
     }
   }, [showFloatingConfluence]);
-
-  useEffect(() => {
-    setIsLiveSignalCollapsed(false);
-  }, [tradingSystem.activeSystem]);
 
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
@@ -987,98 +901,26 @@ export function ChartFullscreenPage({
         {activeSystemSummary && (
           <div className="pointer-events-none select-none absolute top-14 left-2 z-[60] rounded-md border border-blue-700/70 bg-slate-900/95 px-2 py-1 text-[11px] font-semibold text-blue-200 shadow-lg backdrop-blur-sm">
             {activeSystemSummary.historicalSignalCount}/{activeSystemSummary.lookbackCandles}
+            {activeSystemSummary.buySignals > 0 || activeSystemSummary.sellSignals > 0 ? (
+              <span className="ml-1 font-normal text-slate-400">
+                ({activeSystemSummary.buySignals}↑ {activeSystemSummary.sellSignals}↓)
+              </span>
+            ) : null}
           </div>
         )}
 
-        {activeSystemDetails && (
-          <div
-            className={`absolute top-20 right-2 z-30 rounded-lg border border-slate-700 bg-slate-900/95 text-xs text-slate-200 shadow-xl backdrop-blur-sm ${
-              isLiveSignalCollapsed ? 'w-[168px] p-2' : 'w-[320px] p-3'
-            }`}
-          >
-            {!isLiveSignalCollapsed && (
-              <div className="mb-2 flex items-center justify-between">
-                <span className="font-semibold text-blue-300">{activeSystemDetails.system.name}</span>
-                <span className="rounded border border-slate-600 px-1.5 py-0.5 text-[10px] text-slate-300">Active</span>
-              </div>
-            )}
-            <div className={`rounded border border-slate-700 bg-slate-800/70 ${isLiveSignalCollapsed ? 'p-1.5' : 'mb-3 p-2'}`}>
-              <button
-                type="button"
-                onClick={() => setIsLiveSignalCollapsed(prev => !prev)}
-                className={`flex w-full items-center justify-between rounded px-1 py-1 text-left hover:bg-slate-700/40 ${
-                  isLiveSignalCollapsed ? 'mb-0' : 'mb-2'
-                }`}
-                title={isLiveSignalCollapsed ? 'Expand live signal details' : 'Collapse to signal only'}
-              >
-                <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                  {isLiveSignalCollapsed ? 'Signal' : 'Live Signal'}
-                </span>
-                <span className={
-                  activeSystemDetails.signalAction === 'OPEN LONG'
-                    ? 'rounded border border-emerald-700 bg-emerald-900/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300'
-                    : activeSystemDetails.signalAction === 'OPEN SHORT'
-                      ? 'rounded border border-rose-700 bg-rose-900/30 px-2 py-0.5 text-[10px] font-semibold text-rose-300'
-                      : 'rounded border border-slate-600 bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-300'
-                }>
-                  {activeSystemDetails.signalAction}
-                </span>
-              </button>
-
-              {!isLiveSignalCollapsed && (
-                <>
-                  <div className="mb-2 text-[10px] text-slate-400">
-                    Backfilled {activeSystemDetails.historicalSignalCount} historical signals on chart
-                  </div>
-                  <div className="mb-2 space-y-1">
-                    {activeSystemDetails.signalReasons.map((reason, index) => (
-                      <div key={`${activeSystemDetails.system.id}-live-reason-${index}`} className="text-slate-300">
-                        • {reason}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {!isLiveSignalCollapsed && (
-                <>
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">Previous Candle</div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                    <span className="text-slate-400">Open</span>
-                    <span>{activeSystemDetails.previousOpen.toFixed(4)}</span>
-                    <span className="text-slate-400">Close</span>
-                    <span>{activeSystemDetails.previousClose.toFixed(4)}</span>
-                    <span className="text-slate-400">Direction</span>
-                    <span className={activeSystemDetails.previousDirection === 'Bullish' ? 'text-emerald-400' : 'text-rose-400'}>
-                      {activeSystemDetails.previousDirection}
-                    </span>
-                    <span className="text-slate-400">Delta</span>
-                    <span className={activeSystemDetails.previousDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                      {activeSystemDetails.previousDelta >= 0 ? '+' : ''}
-                      {activeSystemDetails.previousDelta.toFixed(4)}
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {!isLiveSignalCollapsed && (
-              <div>
-                <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">System Signals</div>
-                {activeSystemDetails.signals.length > 0 ? (
-                  <div className="space-y-1">
-                    {activeSystemDetails.signals.slice(0, 4).map((signal, index) => (
-                      <div key={`${activeSystemDetails.system.id}-signal-${index}`} className="rounded border border-slate-700 bg-slate-800/60 px-2 py-1 text-slate-300">
-                        {signal}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-slate-400">No configured signal criteria for this system.</div>
-                )}
-              </div>
-            )}
-          </div>
+        {activeSystemDetails && tradingSystem.activeSystem && (
+          <DraggableSystemInfoBox
+            activeSystemId={tradingSystem.activeSystem}
+            evaluation={activeSystemDetails.evaluation ?? null}
+            historicalSummary={activeSystemSummary ? {
+              totalSignals: activeSystemSummary.historicalSignalCount,
+              buySignals: activeSystemSummary.buySignals,
+              sellSignals: activeSystemSummary.sellSignals,
+              lookbackCandles: activeSystemSummary.lookbackCandles,
+            } : null}
+            onClose={tradingSystem.deactivateSystem}
+          />
         )}
 
         <FullscreenChartViewportLayer
