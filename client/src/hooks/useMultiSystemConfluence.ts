@@ -20,6 +20,7 @@ interface SuperTrendData {
 
 interface StructureBreak {
   breakTime: number;
+  breakIndex?: number;
   direction: 'bullish' | 'bearish';
 }
 
@@ -62,6 +63,10 @@ export function useMultiSystemConfluence(
   sqzData: SqueezeMomentumPoint[],
   htfBiasEntries: HTFBiasEntry[],
   divergencePoints?: DivergencePoint[],
+  fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>,
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>,
+  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean }>,
+  volumeProfileData?: { rows: Array<{ price: number; volume: number }>; valueAreaHigh?: number; valueAreaLow?: number; poc?: number },
 ): ConfluenceResult | null {
   const previousScoreRef = useRef<number | undefined>(undefined);
 
@@ -112,6 +117,12 @@ export function useMultiSystemConfluence(
       previousClose: previousCandle.close,
       divergencePoints: divergencePoints ?? [],
       currentTime,
+      currentCandleIndex: candles.length - 1,
+      structureBreaks,
+      fvgs,
+      orderBlocks,
+      liquidityZones,
+      volumeProfileData,
     };
 
     const systemIds = Object.keys(TRADING_SYSTEMS) as TradingSystemId[];
@@ -174,4 +185,5 @@ export function useMultiSystemConfluence(
   }, [result]);
 
   return result;
+  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData]);
 }

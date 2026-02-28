@@ -415,6 +415,14 @@ export function ChartFullscreenPage({
         previousClose: prevCandle.close,
         divergencePoints,
         currentTime,
+        currentCandleIndex: index,
+        structureBreaks,
+        fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
+        orderBlocks: orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+        liquidityZones: liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
+        volumeProfileData: volumeProfileData
+          ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
+          : undefined,
       });
 
       if (
@@ -443,6 +451,10 @@ export function ChartFullscreenPage({
     sqzData,
     htfBiasEntries,
     divergencePoints,
+    fvgs,
+    orderBlocks,
+    liquidityZones,
+    volumeProfileData,
   ]);
 
   const historicalSystemSignalMarkers = useMemo(() => {
@@ -524,6 +536,14 @@ export function ChartFullscreenPage({
       previousClose: previousCandle.close,
       divergencePoints,
       currentTime: Number(latestCandle.time),
+      currentCandleIndex: candles.length - 1,
+      structureBreaks,
+      fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
+      orderBlocks: orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+      liquidityZones: liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
+      volumeProfileData: volumeProfileData
+        ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
+        : undefined,
     });
 
     return {
@@ -548,6 +568,10 @@ export function ChartFullscreenPage({
     htfBiasEntries,
     historicalSystemSignalEvents.length,
     divergencePoints,
+    fvgs,
+    orderBlocks,
+    liquidityZones,
+    volumeProfileData,
   ]);
 
   const activeSystemSummary = useMemo(() => {
@@ -576,6 +600,12 @@ export function ChartFullscreenPage({
     sqzData,
     htfBiasEntries,
     divergencePoints,
+    fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
+    orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+    liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
+    volumeProfileData
+      ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
+      : undefined,
   );
 
   const totalConfluenceNowRef = useRef(totalConfluenceNow);
