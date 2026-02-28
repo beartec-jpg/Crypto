@@ -22,6 +22,8 @@ export interface SystemEvaluation {
   signalLabel: SignalLabel;
   /** Tailwind/hex color for the label */
   signalColor: string;
+  /** Unix ms timestamp of when this evaluation was computed */
+  timestamp?: number;
 }
 
 export type SignalLabel =

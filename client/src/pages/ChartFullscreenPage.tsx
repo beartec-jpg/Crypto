@@ -71,6 +71,7 @@ import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { useMultiSystemConfluence, type ConfluenceResult } from '@/hooks/useMultiSystemConfluence';
 import { FloatingConfluenceMonitor } from '@/components/tradingSystems/FloatingConfluenceMonitor';
 import { DraggableSystemInfoBox } from '@/components/tradingSystems/DraggableSystemInfoBox';
+import { ActiveSystemMonitor } from '@/components/tradingSystems/ActiveSystemMonitor';
 import { scoreSystem, type ScoringInput } from '@/lib/tradingSystemScoring';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
@@ -555,7 +556,7 @@ export function ChartFullscreenPage({
       signals: system.alerts?.entry ?? [],
       signalAction: evaluatedSignal.action,
       signalReasons: evaluatedSignal.signalReasons,
-      evaluation: evaluatedSignal.evaluation,
+      evaluation: { ...evaluatedSignal.evaluation, timestamp: Date.now() },
       historicalSignalCount: historicalSystemSignalEvents.length,
     };
   }, [
@@ -925,15 +926,9 @@ export function ChartFullscreenPage({
         )}
 
         {activeSystemDetails && tradingSystem.activeSystem && (
-          <DraggableSystemInfoBox
-            activeSystemId={tradingSystem.activeSystem}
-            evaluation={activeSystemDetails.evaluation ?? null}
-            historicalSummary={activeSystemSummary ? {
-              totalSignals: activeSystemSummary.historicalSignalCount,
-              buySignals: activeSystemSummary.buySignals,
-              sellSignals: activeSystemSummary.sellSignals,
-              lookbackCandles: activeSystemSummary.lookbackCandles,
-            } : null}
+          <ActiveSystemMonitor
+            systemId={tradingSystem.activeSystem}
+            evaluation={activeSystemDetails.evaluation}
             onClose={tradingSystem.deactivateSystem}
           />
         )}
