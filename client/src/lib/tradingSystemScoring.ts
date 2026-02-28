@@ -605,7 +605,9 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
   const recentBearish = recentPoints.filter(d => d.type === 'bearish');
 
   // Strong bullish divergence (count >= 3 oscillators confirming): +40
-  const strongBullish = recentBullish.find(d => d.count >= 3);
+  const strongBullish = recentBullish
+    .filter(d => d.count >= 3)
+    .sort((a, b) => (b.time as number) - (a.time as number))[0];
   if (strongBullish) {
     score += 40;
     conditions.push({
@@ -616,7 +618,9 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
     });
   } else {
     // Weak bullish divergence (count >= 1): +25
-    const weakBullish = recentBullish.find(d => d.count >= 1);
+    const weakBullish = recentBullish
+      .filter(d => d.count >= 1)
+      .sort((a, b) => (b.time as number) - (a.time as number))[0];
     if (weakBullish) {
       score += 25;
       conditions.push({
@@ -631,7 +635,9 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
   }
 
   // Strong bearish divergence (count >= 3): -40
-  const strongBearish = recentBearish.find(d => d.count >= 3);
+  const strongBearish = recentBearish
+    .filter(d => d.count >= 3)
+    .sort((a, b) => (b.time as number) - (a.time as number))[0];
   if (strongBearish) {
     score -= 40;
     conditions.push({
@@ -641,7 +647,9 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
       value: strongBearish.indicators.slice(0, 3).join(', '),
     });
   } else {
-    const weakBearish = recentBearish.find(d => d.count >= 1);
+    const weakBearish = recentBearish
+      .filter(d => d.count >= 1)
+      .sort((a, b) => (b.time as number) - (a.time as number))[0];
     if (weakBearish) {
       score -= 25;
       conditions.push({
