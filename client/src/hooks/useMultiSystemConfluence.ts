@@ -51,8 +51,8 @@ export interface ConfluenceResult {
   shortCount: number;
   neutralCount: number;
   systemDetails: SystemDetail[];
-  /** Highest-priority market pattern detected, or null if none. */
-  pattern: MarketPattern | null;
+  /** Top market patterns detected (up to 3), sorted by priority. */
+  patterns: MarketPattern[];
 }
 
 export function useMultiSystemConfluence(
@@ -166,7 +166,7 @@ export function useMultiSystemConfluence(
     const avgScore = systemIds.length > 0 ? scoreSum / systemIds.length : 0;
     const totalScore = avgScore / 100;
 
-    const pattern = detectMarketPattern(avgScore, systemDetails, previousScoreRef.current);
+    const patterns = detectMarketPattern(avgScore, systemDetails, previousScoreRef.current);
 
     return {
       score: totalScore,
@@ -174,7 +174,7 @@ export function useMultiSystemConfluence(
       shortCount,
       neutralCount,
       systemDetails,
-      pattern,
+      patterns,
     };
   }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData]);
 
