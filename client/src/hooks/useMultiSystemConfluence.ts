@@ -176,7 +176,7 @@ export function useMultiSystemConfluence(
       systemDetails,
       pattern,
     };
-  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints]);
+  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData]);
 
   useEffect(() => {
     if (result !== null) {
@@ -185,5 +185,4 @@ export function useMultiSystemConfluence(
   }, [result]);
 
   return result;
-  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData]);
 }
