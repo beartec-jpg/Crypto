@@ -1,4 +1,4 @@
-import type { AutoFibZone } from '@/types/autoFib';
+import type { FibSetResult } from '@/types/autoFib';
 import type { FVGDetection } from '@/types/fvg';
 import type { OrderBlock } from '@/types/orderBlock';
 import type { LiquidityZone } from '@/types/liquidity';
@@ -9,11 +9,11 @@ import type { LiquidityZone } from '@/types/liquidity';
 export function detectFibConfluence(
   lower: number,
   upper: number,
-  autoFibs: AutoFibZone[],
+  fibSets: FibSetResult[],
   threshold: number = 0.5 // % tolerance
-): { hasFib: boolean; fibLevel?: number; isGolden?: boolean } {
-  for (const zone of autoFibs) {
-    for (const level of zone.levels) {
+): { hasFib: boolean; fibLevel?: string; isGolden?: boolean } {
+  for (const fibSet of fibSets) {
+    for (const level of fibSet.levels) {
       const fibPrice = level.price;
       const range = upper - lower;
       const tolerance = range * (threshold / 100);
@@ -42,14 +42,14 @@ const LIQUIDITY_BONUS = 10;
  */
 export function calculateFVGConfluenceScore(
   fvg: FVGDetection,
-  autoFibs: AutoFibZone[],
+  fibSets: FibSetResult[],
   orderBlocks: OrderBlock[],
   liquidityZones: LiquidityZone[]
 ): number {
   let score = BASE_CONFLUENCE_SCORE;
 
   // Fib confluence
-  const fibConf = detectFibConfluence(fvg.bottom, fvg.top, autoFibs);
+  const fibConf = detectFibConfluence(fvg.bottom, fvg.top, fibSets);
   if (fibConf.hasFib) {
     score += FIB_BONUS;
     if (fibConf.isGolden) {

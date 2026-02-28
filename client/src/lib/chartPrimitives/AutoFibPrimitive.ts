@@ -8,7 +8,7 @@ import type {
   ISeriesApi,
   SeriesType,
 } from 'lightweight-charts';
-import type { AutoFibZone, AutoFibSettings } from '@/types/autoFib';
+import type { AutoFibResult, AutoFibSettings, FibSetResult, ConfluenceZone } from '@/types/autoFib';
 
 type RequestUpdateCallback = () => void;
 
@@ -22,20 +22,80 @@ function hexToRgba(color: string, alpha: number): string {
   return color;
 }
 
+function drawFibSet(
+  ctx: CanvasRenderingContext2D,
+  chartWidth: number,
+  series: ISeriesApi<SeriesType>,
+  fibSet: FibSetResult
+) {
+  const anchorTime = Math.min(fibSet.start.time, fibSet.end.time) as Time;
+
+  for (const level of fibSet.levels) {
+    const y = series.priceToCoordinate(level.price);
+    if (y === null) continue;
+
+    const color = level.isGolden ? hexToRgba(fibSet.color, 1) : hexToRgba(fibSet.color, 0.8);
+    const lineWidth = level.isGolden ? 2 : 1;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash(level.isExtension ? [4, 4] : []);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(fibSet.extendRight ? chartWidth : chartWidth * 0.7, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (fibSet.showLabels && fibSet.labelPosition !== 'off') {
+      ctx.fillStyle = color;
+      ctx.font = `bold 10px sans-serif`;
+      const text = `${level.percentage} • ${level.price.toFixed(2)}`;
+
+      if (fibSet.labelPosition === 'left') {
+        ctx.fillText(text, 4, y - 3);
+      } else {
+        // right
+        const textWidth = ctx.measureText(text).width;
+        ctx.fillText(text, chartWidth - textWidth - 6, y - 3);
+      }
+    }
+  }
+}
+
+function drawConfluence(
+  ctx: CanvasRenderingContext2D,
+  chartWidth: number,
+  series: ISeriesApi<SeriesType>,
+  confluence: ConfluenceZone[]
+) {
+  for (const zone of confluence) {
+    const y = series.priceToCoordinate(zone.price);
+    if (y === null) continue;
+
+    ctx.fillStyle = 'rgba(255, 255, 0, 0.15)';
+    ctx.fillRect(0, y - 3, chartWidth, 6);
+    ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(chartWidth, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
 class AutoFibRenderer implements IPrimitivePaneRenderer {
-  private _zones: AutoFibZone[];
-  private _settings: AutoFibSettings;
+  private _result: AutoFibResult;
   private _series: ISeriesApi<SeriesType> | null;
   private _chart: IChartApi | null;
 
   constructor(
-    zones: AutoFibZone[],
-    settings: AutoFibSettings,
+    result: AutoFibResult,
     series: ISeriesApi<SeriesType> | null,
     chart: IChartApi | null
   ) {
-    this._zones = zones;
-    this._settings = settings;
+    this._result = result;
     this._series = series;
     this._chart = chart;
   }
@@ -46,41 +106,17 @@ class AutoFibRenderer implements IPrimitivePaneRenderer {
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx: CanvasRenderingContext2D = scope.context;
       const chartWidth: number = scope.mediaSize.width;
-      const timeScale = this._chart!.timeScale();
 
-      for (const zone of this._zones) {
-        for (const level of zone.levels) {
-          const y = this._series!.priceToCoordinate(level.price);
-          if (y === null) continue;
+      if (this._result.secondary) {
+        drawFibSet(ctx, chartWidth, this._series!, this._result.secondary);
+      }
 
-          // Use the earlier of swingHigh/swingLow as the left anchor
-          const anchorTime = Math.min(zone.swingHigh.time, zone.swingLow.time) as Time;
-          const xStart = timeScale.timeToCoordinate(anchorTime);
-          if (xStart === null) continue;
+      if (this._result.primary) {
+        drawFibSet(ctx, chartWidth, this._series!, this._result.primary);
+      }
 
-          const xEnd = this._settings.extendRight ? chartWidth : xStart + 200;
-
-          const color = level.isGolden
-            ? this._settings.goldenColor
-            : this._settings.lineColor;
-
-          // Draw line
-          ctx.strokeStyle = hexToRgba(color, 0.8);
-          ctx.lineWidth = this._settings.lineWidth;
-          ctx.setLineDash(level.isExtension ? [4, 4] : []);
-          ctx.beginPath();
-          ctx.moveTo(xStart, y);
-          ctx.lineTo(xEnd, y);
-          ctx.stroke();
-          ctx.setLineDash([]);
-
-          // Draw label
-          if (this._settings.showLabels) {
-            ctx.fillStyle = hexToRgba(color, 0.9);
-            ctx.font = 'bold 10px sans-serif';
-            ctx.fillText(level.label, xStart + 4, y - 3);
-          }
-        }
+      if (this._result.confluence.length > 0) {
+        drawConfluence(ctx, chartWidth, this._series!, this._result.confluence);
       }
     });
   }
@@ -106,8 +142,7 @@ class AutoFibPaneView implements IPrimitivePaneView {
 
   renderer() {
     return new AutoFibRenderer(
-      this._primitive.getZones(),
-      this._primitive.getSettings(),
+      this._primitive.getResult(),
       this._series,
       this._chart
     );
@@ -116,15 +151,13 @@ class AutoFibPaneView implements IPrimitivePaneView {
 
 export class AutoFibPrimitive implements ISeriesPrimitive<Time> {
   private _paneViews: AutoFibPaneView[];
-  private _zones: AutoFibZone[];
-  private _settings: AutoFibSettings;
+  private _result: AutoFibResult;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _chart: IChartApi | null = null;
   private _requestUpdate?: RequestUpdateCallback;
 
-  constructor(zones: AutoFibZone[], settings: AutoFibSettings) {
-    this._zones = zones;
-    this._settings = settings;
+  constructor(result: AutoFibResult) {
+    this._result = result;
     this._paneViews = [new AutoFibPaneView(this)];
   }
 
@@ -148,17 +181,12 @@ export class AutoFibPrimitive implements ISeriesPrimitive<Time> {
     return this._paneViews;
   }
 
-  getZones(): AutoFibZone[] {
-    return this._zones;
+  getResult(): AutoFibResult {
+    return this._result;
   }
 
-  getSettings(): AutoFibSettings {
-    return this._settings;
-  }
-
-  update(zones: AutoFibZone[], settings: AutoFibSettings) {
-    this._zones = zones;
-    this._settings = settings;
+  update(result: AutoFibResult) {
+    this._result = result;
     this._requestUpdate?.();
   }
 }

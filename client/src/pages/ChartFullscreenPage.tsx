@@ -251,7 +251,7 @@ export function ChartFullscreenPage({
 
   // Hooks - Auto-Fibonacci detection
   const autoFibSettings = useAutoFibSettings();
-  const autoFibZones = useAutoFibDetection(candles, autoFibSettings.settings);
+  const autoFibResult = useAutoFibDetection(candles, autoFibSettings.settings);
 
   // Hooks - SuperTrend
   const superTrendSettings = useSuperTrendSettings();
@@ -976,7 +976,7 @@ export function ChartFullscreenPage({
           liquiditySettings={liquiditySettings.settings}
           pdZones={pdZones}
           pdZoneSettings={pdZoneSettings.settings}
-          autoFibZones={autoFibZones}
+          autoFibResult={autoFibResult}
           autoFibSettings={autoFibSettings.settings}
           volumeProfileData={volumeProfileData}
           vpSettings={vpSettings.settings}

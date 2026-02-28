@@ -1,136 +1,265 @@
 import { useMemo } from 'react';
-import type { AutoFibZone, AutoFibLevel, AutoFibSettings } from '@/types/autoFib';
+import type {
+  AutoFibSettings,
+  AutoFibResult,
+  FibLevelData,
+  FibSetConfig,
+  FibSetResult,
+  ConfluenceZone,
+  SwingPoint,
+} from '@/types/autoFib';
 import type { Candle } from '@/types/candle';
 
 /**
- * Detect swing high: highest high in lookback period on each side.
+ * Find the most-recent swing high within the candle array.
+ * Scans from newest to oldest (skipping edge buffers), optionally excluding one index.
  */
-function detectSwingHigh(
+function findSwingHigh(
   candles: Candle[],
-  index: number,
-  lookback: number
-): { time: number; price: number } | null {
-  if (index < lookback || index >= candles.length - lookback) return null;
+  lookback: number,
+  excludeIndex?: number
+): SwingPoint | null {
+  if (candles.length < lookback * 2 + 1) return null;
 
-  const centerHigh = candles[index].high;
+  const start = candles.length - lookback - 1;
+  const end = lookback;
 
-  for (let i = index - lookback; i <= index + lookback; i++) {
-    if (i !== index && candles[i].high >= centerHigh) {
-      return null;
+  for (let i = start; i >= end; i--) {
+    if (excludeIndex !== undefined && excludeIndex === i) continue;
+
+    let isHigh = true;
+    const centerHigh = candles[i].high;
+
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j === i) continue;
+      if (candles[j].high >= centerHigh) {
+        isHigh = false;
+        break;
+      }
+    }
+
+    if (isHigh) {
+      return { index: i, time: Number(candles[i].time), price: centerHigh };
     }
   }
 
-  return { time: candles[index].time, price: centerHigh };
+  return null;
 }
 
 /**
- * Detect swing low: lowest low in lookback period on each side.
+ * Find the most-recent swing low within the candle array.
  */
-function detectSwingLow(
+function findSwingLow(
   candles: Candle[],
-  index: number,
-  lookback: number
-): { time: number; price: number } | null {
-  if (index < lookback || index >= candles.length - lookback) return null;
+  lookback: number,
+  excludeIndex?: number
+): SwingPoint | null {
+  if (candles.length < lookback * 2 + 1) return null;
 
-  const centerLow = candles[index].low;
+  const start = candles.length - lookback - 1;
+  const end = lookback;
 
-  for (let i = index - lookback; i <= index + lookback; i++) {
-    if (i !== index && candles[i].low <= centerLow) {
-      return null;
+  for (let i = start; i >= end; i--) {
+    if (excludeIndex !== undefined && excludeIndex === i) continue;
+
+    let isLow = true;
+    const centerLow = candles[i].low;
+
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j === i) continue;
+      if (candles[j].low <= centerLow) {
+        isLow = false;
+        break;
+      }
+    }
+
+    if (isLow) {
+      return { index: i, time: Number(candles[i].time), price: centerLow };
     }
   }
 
-  return { time: candles[index].time, price: centerLow };
+  return null;
 }
 
+/** All fib level definitions with metadata. */
+const ALL_FIB_LEVELS: Array<{ key: string; ratio: number; isExtension: boolean; isGolden: boolean }> = [
+  { key: '-61.8', ratio: -0.618, isExtension: true,  isGolden: false },
+  { key: '-27.2', ratio: -0.272, isExtension: true,  isGolden: false },
+  { key: '0',     ratio:  0,     isExtension: false, isGolden: false },
+  { key: '23.6',  ratio:  0.236, isExtension: false, isGolden: false },
+  { key: '38.2',  ratio:  0.382, isExtension: false, isGolden: false },
+  { key: '50',    ratio:  0.5,   isExtension: false, isGolden: false },
+  { key: '61.8',  ratio:  0.618, isExtension: false, isGolden: true  },
+  { key: '78.6',  ratio:  0.786, isExtension: false, isGolden: false },
+  { key: '100',   ratio:  1.0,   isExtension: false, isGolden: false },
+  { key: '127.2', ratio:  1.272, isExtension: true,  isGolden: false },
+  { key: '161.8', ratio:  1.618, isExtension: true,  isGolden: true  },
+  { key: '200',   ratio:  2.0,   isExtension: true,  isGolden: false },
+  { key: '261.8', ratio:  2.618, isExtension: true,  isGolden: false },
+];
+
 /**
- * Calculate fib levels between two price points.
+ * Calculate Fibonacci levels between start (0%) and end (100%).
+ * start = price at 0%, end = price at 100%.
  */
 function calculateFibLevels(
-  high: number,
-  low: number,
-  enabledLevels: number[]
-): AutoFibLevel[] {
-  const range = high - low;
+  start: number,
+  end: number,
+  config: FibSetConfig
+): FibLevelData[] {
+  const range = end - start;
+  const result: FibLevelData[] = [];
 
-  const allLevels = [
-    { level: 0, label: '0%', isGolden: false, isExtension: false },
-    { level: 0.236, label: '23.6%', isGolden: false, isExtension: false },
-    { level: 0.382, label: '38.2%', isGolden: false, isExtension: false },
-    { level: 0.5, label: '50%', isGolden: false, isExtension: false },
-    { level: 0.618, label: '61.8%', isGolden: true, isExtension: false },
-    { level: 0.786, label: '78.6%', isGolden: false, isExtension: false },
-    { level: 1.0, label: '100%', isGolden: false, isExtension: false },
-    { level: 1.272, label: '127.2%', isGolden: false, isExtension: true },
-    { level: 1.618, label: '161.8%', isGolden: true, isExtension: true },
-    { level: 2.0, label: '200%', isGolden: false, isExtension: true },
-    { level: 2.618, label: '261.8%', isGolden: false, isExtension: true },
-  ];
+  for (const def of ALL_FIB_LEVELS) {
+    // Filter by extension/retracement toggle
+    if (def.isExtension && !config.showExtensions) continue;
+    if (!def.isExtension && !config.showRetracements) continue;
 
-  return allLevels
-    .filter(l => enabledLevels.includes(l.level))
-    .map(l => ({
-      ...l,
-      price: high - range * l.level,
-    }));
+    // Filter by per-level toggle
+    const key = def.key as keyof typeof config.levels;
+    if (!config.levels[key]) continue;
+
+    let price: number;
+    if (def.ratio < 0) {
+      // Extension below start: start - |ratio| * range
+      price = start + range * def.ratio;
+    } else if (def.ratio <= 1) {
+      // Retracement 0-100%
+      price = start + range * def.ratio;
+    } else {
+      // Extension above 100%: end + (ratio - 1) * range
+      price = start + range * def.ratio;
+    }
+
+    result.push({
+      level: def.key,
+      percentage: `${def.key}%`,
+      price,
+      isExtension: def.isExtension,
+      isGolden: def.isGolden,
+    });
+  }
+
+  return result;
 }
 
 /**
- * Main hook: detect auto fib zones from candle data.
+ * Build a FibSetResult from a swing high + low pair.
  */
+function buildFibSet(
+  swingHigh: SwingPoint,
+  swingLow: SwingPoint,
+  config: FibSetConfig
+): FibSetResult {
+  // Direction: whichever swing point came later in time is the "end"
+  const isDownSwing = swingHigh.time > swingLow.time;
 
-/** Extra buffer on each edge to avoid detecting incomplete swings at chart boundaries. */
-const EDGE_BUFFER = 5;
+  const start = isDownSwing ? swingHigh : swingLow;
+  const end = isDownSwing ? swingLow : swingHigh;
+  const startPrice = isDownSwing ? swingHigh.price : swingLow.price;
+  const endPrice = isDownSwing ? swingLow.price : swingHigh.price;
+
+  const levels = calculateFibLevels(startPrice, endPrice, config);
+
+  return {
+    start,
+    end,
+    levels,
+    color: config.color,
+    showLabels: config.showLabels,
+    labelPosition: config.labelPosition,
+    extendRight: config.extendRight,
+  };
+}
+
+/**
+ * Detect confluence zones between two sets of fib levels.
+ */
+function detectConfluence(
+  primaryLevels: FibLevelData[],
+  secondaryLevels: FibLevelData[],
+  thresholdPercent: number
+): ConfluenceZone[] {
+  const zones: ConfluenceZone[] = [];
+
+  for (const pLevel of primaryLevels) {
+    for (const sLevel of secondaryLevels) {
+      const priceDiff = Math.abs(pLevel.price - sLevel.price);
+      const percentDiff = pLevel.price !== 0 ? (priceDiff / Math.abs(pLevel.price)) * 100 : 0;
+
+      if (percentDiff <= thresholdPercent) {
+        const existing = zones.find(
+          z => Math.abs(z.price - pLevel.price) / (Math.abs(pLevel.price) || 1) * 100 <= thresholdPercent
+        );
+
+        if (existing) {
+          existing.strength += 1;
+        } else {
+          zones.push({
+            price: (pLevel.price + sLevel.price) / 2,
+            primaryLevel: pLevel.percentage,
+            secondaryLevel: sLevel.percentage,
+            strength: 1,
+          });
+        }
+      }
+    }
+  }
+
+  return zones.sort((a, b) => b.strength - a.strength);
+}
+
+/**
+ * Main hook: detect dual Auto-Fibonacci sets from candle data.
+ */
 export function useAutoFibDetection(
   candles: Candle[],
   settings: AutoFibSettings
-): AutoFibZone[] {
+): AutoFibResult {
   return useMemo(() => {
-    if (!settings.enabled || candles.length < settings.lookback * 2 + 1) {
-      return [];
+    const empty: AutoFibResult = { primary: null, secondary: null, confluence: [] };
+
+    if (!settings.enabled || candles.length < settings.swingLookback * 2 + 1) {
+      return empty;
     }
 
-    const lookback = settings.lookback;
-    const startIdx = lookback + EDGE_BUFFER;
-    const endIdx = candles.length - lookback - EDGE_BUFFER;
+    const lookback = settings.swingLookback;
+    let primaryFib: FibSetResult | null = null;
+    let secondaryFib: FibSetResult | null = null;
 
-    let lastSwingHigh: { time: number; price: number } | null = null;
-    let lastSwingLow: { time: number; price: number } | null = null;
+    // --- Primary Fibonacci ---
+    if (settings.primary.enabled) {
+      const primaryHigh = findSwingHigh(candles, lookback);
+      const primaryLow = findSwingLow(candles, lookback);
 
-    for (let i = startIdx; i < endIdx; i++) {
-      const swingHigh = detectSwingHigh(candles, i, lookback);
-      const swingLow = detectSwingLow(candles, i, lookback);
-
-      if (swingHigh) lastSwingHigh = swingHigh;
-      if (swingLow) lastSwingLow = swingLow;
+      if (primaryHigh && primaryLow) {
+        primaryFib = buildFibSet(primaryHigh, primaryLow, settings.primary);
+      }
     }
 
-    if (!lastSwingHigh || !lastSwingLow) {
-      return [];
+    // --- Secondary Fibonacci (excluding primary swing indices) ---
+    if (settings.secondary.enabled) {
+      const excludeHighIdx = primaryFib
+        ? (primaryFib.start.price > primaryFib.end.price ? primaryFib.start.index : primaryFib.end.index)
+        : undefined;
+      const excludeLowIdx = primaryFib
+        ? (primaryFib.start.price < primaryFib.end.price ? primaryFib.start.index : primaryFib.end.index)
+        : undefined;
+
+      const secondaryHigh = findSwingHigh(candles, lookback, excludeHighIdx);
+      const secondaryLow = findSwingLow(candles, lookback, excludeLowIdx);
+
+      if (secondaryHigh && secondaryLow) {
+        secondaryFib = buildFibSet(secondaryHigh, secondaryLow, settings.secondary);
+      }
     }
 
-    const levels = calculateFibLevels(
-      lastSwingHigh.price,
-      lastSwingLow.price,
-      settings.enabledLevels
-    );
+    // --- Confluence Detection ---
+    const confluence =
+      settings.enableConfluence && primaryFib && secondaryFib
+        ? detectConfluence(primaryFib.levels, secondaryFib.levels, settings.confluenceThreshold)
+        : [];
 
-    const filteredLevels = levels.filter(l => {
-      if (l.isExtension && !settings.showExtensions) return false;
-      if (!l.isExtension && !settings.showRetracements) return false;
-      return true;
-    });
-
-    return [
-      {
-        id: `autofib-${lastSwingHigh.time}-${lastSwingLow.time}`,
-        swingHigh: lastSwingHigh,
-        swingLow: lastSwingLow,
-        direction: 'retracement' as const,
-        levels: filteredLevels,
-        active: true,
-      },
-    ];
+    return { primary: primaryFib, secondary: secondaryFib, confluence };
   }, [candles, settings]);
 }

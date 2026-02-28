@@ -41,7 +41,7 @@ interface FullscreenChartIndicatorLayerProps {
   liquiditySettings: any;
   pdZones: any[];
   pdZoneSettings: any;
-  autoFibZones: any[];
+  autoFibResult: any;
   autoFibSettings: any;
 
   volumeProfileData: any;
@@ -95,7 +95,7 @@ export function FullscreenChartIndicatorLayer({
   liquiditySettings,
   pdZones,
   pdZoneSettings,
-  autoFibZones,
+  autoFibResult,
   autoFibSettings,
   volumeProfileData,
   vpSettings,
@@ -185,7 +185,7 @@ export function FullscreenChartIndicatorLayer({
       <AutoFibRenderer
         chart={chart}
         candleSeries={candleSeries}
-        zones={autoFibZones}
+        result={autoFibResult}
         settings={autoFibSettings}
       />
 
