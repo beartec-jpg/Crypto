@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Activity, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Activity, ChevronDown, ChevronUp, Target } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import { TRADING_SYSTEMS } from '@/types/tradingSystems';
 import { getSignalLabel } from '@/lib/tradingSystemScoring';
@@ -60,12 +60,47 @@ function scoreToBarColor(score: number): string {
   return getSignalLabel(score).color;
 }
 
+const DEFAULT_BUY_THRESHOLD = 80;
+const DEFAULT_SELL_THRESHOLD = 80;
+
 export function FloatingConfluenceMonitor({
   confluenceSnapshot,
   isVisible,
   onClose,
 }: FloatingConfluenceMonitorProps) {
   const [expanded, setExpanded] = useState(false);
+
+  const [showLabels, setShowLabels] = useState(() => {
+    const stored = localStorage.getItem('confluenceMonitor_showLabels');
+    return stored !== 'false'; // Default true
+  });
+
+  const toggleLabels = () => {
+    const newValue = !showLabels;
+    setShowLabels(newValue);
+    localStorage.setItem('confluenceMonitor_showLabels', String(newValue));
+  };
+
+  const [systemThresholds, setSystemThresholds] = useState<Record<string, { buyThreshold: number; sellThreshold: number }>>(() => {
+    const stored = localStorage.getItem('confluenceMonitor_allThresholds');
+    return stored ? JSON.parse(stored) : {};
+  });
+
+  const adjustThreshold = (systemId: string, type: 'buy' | 'sell', delta: number) => {
+    setSystemThresholds(prev => {
+      const current = prev[systemId] || { buyThreshold: DEFAULT_BUY_THRESHOLD, sellThreshold: DEFAULT_SELL_THRESHOLD };
+      const key = type === 'buy' ? 'buyThreshold' : 'sellThreshold';
+      const newThresholds = {
+        ...prev,
+        [systemId]: {
+          ...current,
+          [key]: Math.max(50, Math.min(100, current[key] + delta)),
+        },
+      };
+      localStorage.setItem('confluenceMonitor_allThresholds', JSON.stringify(newThresholds));
+      return newThresholds;
+    });
+  };
 
   const { position, isDragging, dragHandleProps } = useDraggable({
     initialPosition: { x: 20, y: 100 },
@@ -132,6 +167,17 @@ export function FloatingConfluenceMonitor({
           </button>
           <button
             type="button"
+            onClick={(e) => { e.stopPropagation(); toggleLabels(); }}
+            className={cn(
+              'p-0.5 rounded hover:bg-slate-700/60 transition-colors',
+              showLabels ? 'text-emerald-400' : 'text-slate-500',
+            )}
+            title={showLabels ? 'Hide signal labels' : 'Show signal labels'}
+          >
+            <Target className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             className="p-0.5 rounded hover:bg-slate-700/60 transition-colors"
             title="Close"
@@ -154,7 +200,7 @@ export function FloatingConfluenceMonitor({
           <span className={cn('text-[11px] font-bold flex-shrink-0', colorClass)}>{scoreText}</span>
         </div>
         {/* Sentiment label */}
-        {sentimentLabel && (
+        {showLabels && sentimentLabel && (
           <div className={cn('text-[10px] font-semibold text-center tracking-wide uppercase', colorClass)}>
             {sentimentLabel}
           </div>
@@ -204,6 +250,7 @@ export function FloatingConfluenceMonitor({
                 const barColor = scoreToBarColor(sys.score);
                 const absPct = Math.abs(sys.score);
                 const isBullish = sys.score >= 0;
+                const thresholds = systemThresholds[sys.systemId] || { buyThreshold: DEFAULT_BUY_THRESHOLD, sellThreshold: DEFAULT_SELL_THRESHOLD };
                 return (
                   <div key={sys.systemId} className="space-y-0.5">
                     <div className="flex items-center gap-1.5">
@@ -216,11 +263,40 @@ export function FloatingConfluenceMonitor({
                         {sys.score > 0 ? '+' : ''}{sys.score}%
                       </span>
                     </div>
+                    {showLabels && sys.signalLabel && (
+                      <span className="text-[9px] opacity-70">{sys.signalLabel}</span>
+                    )}
                     <div className="h-1 rounded-full bg-slate-700 overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-300"
                         style={{ width: `${absPct}%`, backgroundColor: barColor }}
                       />
+                    </div>
+                    <div className="flex items-center gap-2 text-[9px] text-slate-400">
+                      <div className="flex items-center gap-1">
+                        <span>Buy:</span>
+                        <button
+                          onClick={() => adjustThreshold(sys.systemId, 'buy', -5)}
+                          className="px-1 hover:text-slate-200"
+                        >▼</button>
+                        <span className="text-slate-300 font-mono">{thresholds.buyThreshold}</span>
+                        <button
+                          onClick={() => adjustThreshold(sys.systemId, 'buy', 5)}
+                          className="px-1 hover:text-slate-200"
+                        >▲</button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span>Sell:</span>
+                        <button
+                          onClick={() => adjustThreshold(sys.systemId, 'sell', -5)}
+                          className="px-1 hover:text-slate-200"
+                        >▼</button>
+                        <span className="text-slate-300 font-mono">{thresholds.sellThreshold}</span>
+                        <button
+                          onClick={() => adjustThreshold(sys.systemId, 'sell', 5)}
+                          className="px-1 hover:text-slate-200"
+                        >▲</button>
+                      </div>
                     </div>
                   </div>
                 );

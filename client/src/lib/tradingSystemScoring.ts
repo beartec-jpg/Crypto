@@ -26,6 +26,24 @@ export function getSignalLabel(score: number): { label: SignalLabel; color: stri
   return { label: 'SELL SIGNAL', color: '#ef4444' };
 }
 
+/** Map a continuous score to a label and color using custom buy/sell thresholds. */
+export function getSignalLabelWithThresholds(
+  score: number,
+  buyThreshold: number = 80,
+  sellThreshold: number = 80,
+): { label: SignalLabel; color: string } {
+  // 0.625 maps the threshold to the "building" intermediate zone (50/80 = 0.625)
+  const buyBuildingThreshold = buyThreshold * 0.625;
+  const sellBuildingThreshold = sellThreshold * 0.625;
+  if (score >= buyThreshold) return { label: 'BUY SIGNAL', color: '#22c55e' };
+  if (score >= buyBuildingThreshold) return { label: 'BUILDING BUY', color: '#84cc16' };
+  if (score >= 20) return { label: 'WEAK BULLISH', color: '#a3e635' };
+  if (score > -20) return { label: 'NEUTRAL', color: '#94a3b8' };
+  if (score > -sellBuildingThreshold) return { label: 'WEAK BEARISH', color: '#fb923c' };
+  if (score > -sellThreshold) return { label: 'BEARISH SETUP', color: '#f97316' };
+  return { label: 'SELL SIGNAL', color: '#ef4444' };
+}
+
 /** Clamp a value to [-100, 100]. */
 function clamp(value: number): number {
   return Math.max(-100, Math.min(100, value));
