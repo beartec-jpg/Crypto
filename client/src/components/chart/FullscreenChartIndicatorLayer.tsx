@@ -1,4 +1,5 @@
 import { MovingAverages } from '@/components/chart/MovingAverages';
+import { VWAPRenderer } from '@/components/indicators/trend/VWAPRenderer';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
 import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
 import { BreakerBlockRenderer } from '@/components/indicators/BreakerBlockRenderer';
@@ -26,6 +27,13 @@ interface FullscreenChartIndicatorLayerProps {
   symbol: string;
   interval: string;
   elderImpulseEnabled: boolean;
+
+  vwapShowSession: boolean;
+  vwapShowDaily: boolean;
+  vwapShowWeekly: boolean;
+  vwapShowMonthly: boolean;
+  vwapShowRolling: boolean;
+  vwapRollingPeriod: number;
 
   fvgs: any[];
   fvgSettings: any;
@@ -81,6 +89,12 @@ export function FullscreenChartIndicatorLayer({
   symbol,
   interval,
   elderImpulseEnabled,
+  vwapShowSession,
+  vwapShowDaily,
+  vwapShowWeekly,
+  vwapShowMonthly,
+  vwapShowRolling,
+  vwapRollingPeriod,
   fvgs,
   fvgSettings,
   orderBlocks,
@@ -136,6 +150,17 @@ export function FullscreenChartIndicatorLayer({
         chart={chart}
         candles={candles}
         show={elderImpulseEnabled}
+      />
+
+      <VWAPRenderer
+        chart={chart}
+        candles={candles}
+        showSession={vwapShowSession}
+        showDaily={vwapShowDaily}
+        showWeekly={vwapShowWeekly}
+        showMonthly={vwapShowMonthly}
+        showRolling={vwapShowRolling}
+        rollingPeriod={vwapRollingPeriod}
       />
 
       <FVGRenderer

@@ -41,6 +41,7 @@ interface IndicatorMenuProps {
   smaConfigs: MAConfig[];
   vwapShow: boolean;
   onVwapToggle: (show: boolean) => void;
+  onOpenVwapSettings: () => void;
   elderImpulseShow: boolean;
   onElderImpulseToggle: (show: boolean) => void;
   onOpenEmaSma: () => void;
@@ -99,6 +100,7 @@ export function IndicatorMenu({
   smaConfigs,
   vwapShow,
   onVwapToggle,
+  onOpenVwapSettings,
   elderImpulseShow,
   onElderImpulseToggle,
   onOpenEmaSma,
@@ -261,6 +263,17 @@ export function IndicatorMenu({
                 checked={vwapShow}
                 onCheckedChange={onVwapToggle}
               />
+              <div className="flex items-center justify-end px-1 -mt-1 mb-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 text-slate-500 hover:text-white hover:bg-slate-800"
+                  title="Configure VWAP settings"
+                  onClick={() => { setOpen(false); onOpenVwapSettings(); }}
+                >
+                  <Settings className="h-3 w-3" />
+                </Button>
+              </div>
               <IndicatorRow
                 label="Elder Impulse"
                 description="Trend impulse bars (MACD + EMA)"
