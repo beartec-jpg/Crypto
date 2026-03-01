@@ -42,6 +42,28 @@ export function DraggableSystemInfoBox({
 }: DraggableSystemInfoBoxProps) {
   const [collapsed, setCollapsed] = useState(false);
 
+  const [buyThreshold, setBuyThreshold] = useState(() => {
+    const saved = localStorage.getItem(`tradingSystem_${activeSystemId}_buyThreshold`);
+    return saved ? parseInt(saved, 10) : 80;
+  });
+
+  const [sellThreshold, setSellThreshold] = useState(() => {
+    const saved = localStorage.getItem(`tradingSystem_${activeSystemId}_sellThreshold`);
+    return saved ? parseInt(saved, 10) : 80;
+  });
+
+  const adjustThreshold = (type: 'buy' | 'sell', delta: number) => {
+    if (type === 'buy') {
+      const newVal = Math.max(0, Math.min(100, buyThreshold + delta));
+      setBuyThreshold(newVal);
+      localStorage.setItem(`tradingSystem_${activeSystemId}_buyThreshold`, newVal.toString());
+    } else {
+      const newVal = Math.max(0, Math.min(100, sellThreshold + delta));
+      setSellThreshold(newVal);
+      localStorage.setItem(`tradingSystem_${activeSystemId}_sellThreshold`, newVal.toString());
+    }
+  };
+
   const { position, isDragging, dragHandleProps } = useDraggable({
     initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 260 : 800, y: 80 },
     storageKey: 'activeSystemInfoBoxPosition',
@@ -175,6 +197,39 @@ export function DraggableSystemInfoBox({
               ))}
             </div>
           )}
+
+          {/* Signal Thresholds */}
+          <div className="border-t border-slate-700/60 pt-1.5 space-y-1.5">
+            <div className="text-[10px] uppercase tracking-wide text-slate-400">Signal Thresholds</div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] text-emerald-400">Buy:</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => adjustThreshold('buy', -5)}
+                  className="px-1 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
+                >▼</button>
+                <span className="text-[11px] font-mono w-8 text-center">{buyThreshold}</span>
+                <button
+                  onClick={() => adjustThreshold('buy', +5)}
+                  className="px-1 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
+                >▲</button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] text-rose-400">Sell:</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => adjustThreshold('sell', -5)}
+                  className="px-1 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
+                >▼</button>
+                <span className="text-[11px] font-mono w-8 text-center">{sellThreshold}</span>
+                <button
+                  onClick={() => adjustThreshold('sell', +5)}
+                  className="px-1 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px]"
+                >▲</button>
+              </div>
+            </div>
+          </div>
 
           {/* Historical signals */}
           {historicalSummary && (
