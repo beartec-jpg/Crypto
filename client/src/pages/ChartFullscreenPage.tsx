@@ -104,10 +104,19 @@ function evaluateTradingSystemSignal(
     divergencePoints: input.divergencePoints ?? [],
   });
 
+  const buyThreshold = parseInt(
+    localStorage.getItem(`tradingSystem_${input.systemId}_buyThreshold`) || '80',
+    10,
+  );
+  const sellThreshold = parseInt(
+    localStorage.getItem(`tradingSystem_${input.systemId}_sellThreshold`) || '80',
+    10,
+  );
+
   const action: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' =
-    evaluation.score >= 80
+    evaluation.score >= buyThreshold
       ? 'OPEN LONG'
-      : evaluation.score <= -80
+      : evaluation.score <= -sellThreshold
         ? 'OPEN SHORT'
         : 'WAIT';
 
