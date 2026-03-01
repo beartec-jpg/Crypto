@@ -9,6 +9,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
+  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=1800');
+
   try {
     const symbol = (req.query.symbol as string)?.toUpperCase() || 'BTCUSDT';
 
