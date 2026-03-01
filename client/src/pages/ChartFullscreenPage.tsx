@@ -75,6 +75,9 @@ import { ActiveSystemMonitor } from '@/components/tradingSystems/ActiveSystemMon
 import { scoreSystem, type ScoringInput } from '@/lib/tradingSystemScoring';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
+import { useGDSMarketMetrics } from '@/hooks/indicators/useGDSMarketMetrics';
+import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore';
+import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -181,6 +184,15 @@ export function ChartFullscreenPage({
     }
   });
 
+  const [showGdsMiniBadge, setShowGdsMiniBadge] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gdsMiniBadgeVisible');
+      return saved ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const activeToolRef = useRef<ChartDrawingTool>(null);
@@ -223,6 +235,22 @@ export function ChartFullscreenPage({
     timeframe,
     enabled: chartReady,
     refreshInterval: 30000,
+  });
+
+  const {
+    externalMetrics: gdsExternalMetrics,
+    cvdData: gdsCvdData,
+    isLoading: isGdsMetricsLoading,
+  } = useGDSMarketMetrics({
+    symbol,
+    timeframe,
+    enabled: chartReady,
+  });
+
+  const { gds, latestScore } = useGenuineDemandScore({
+    candles,
+    cvdData: gdsCvdData,
+    externalMetrics: gdsExternalMetrics,
   });
 
   // Hooks - Oscillator data
@@ -668,6 +696,14 @@ export function ChartFullscreenPage({
     }
   }, [showFloatingConfluence]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('gdsMiniBadgeVisible', JSON.stringify(showGdsMiniBadge));
+    } catch {
+      // ignore
+    }
+  }, [showGdsMiniBadge]);
+
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
 
@@ -1103,6 +1139,8 @@ export function ChartFullscreenPage({
           onOpenSqueezeSettings={() => setShowSqueezeSettings(true)}
           vpEnabled={vpSettings.settings.enabled}
           onOpenVolumeProfileSettings={() => setShowVPModal(true)}
+          gdsMiniBadgeEnabled={showGdsMiniBadge}
+          onToggleGdsMiniBadge={setShowGdsMiniBadge}
           activeSystem={tradingSystem.activeSystem}
           onActivateSystem={tradingSystem.activateSystem}
           onDeactivateSystem={tradingSystem.deactivateSystem}
@@ -1125,6 +1163,10 @@ export function ChartFullscreenPage({
               </span>
             ) : null}
           </div>
+        )}
+
+        {showGdsMiniBadge && (
+          <GDSMiniBadge score={latestScore} gds={gds} isLoading={isGdsMetricsLoading} />
         )}
 
         {activeSystemDetails && tradingSystem.activeSystem && (

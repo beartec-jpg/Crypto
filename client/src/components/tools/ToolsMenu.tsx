@@ -17,6 +17,8 @@ interface ToolsMenuProps {
   onOpenSqueezeSettings: () => void;
   vpEnabled: boolean;
   onOpenVolumeProfileSettings: () => void;
+  gdsMiniBadgeEnabled: boolean;
+  onToggleGdsMiniBadge: (enabled: boolean) => void;
   className?: string;
 }
 
@@ -32,6 +34,8 @@ export function ToolsMenu({
   onOpenSqueezeSettings,
   vpEnabled,
   onOpenVolumeProfileSettings,
+  gdsMiniBadgeEnabled,
+  onToggleGdsMiniBadge,
   className,
 }: ToolsMenuProps) {
   const [open, setOpen] = useState(false);
@@ -41,7 +45,8 @@ export function ToolsMenu({
     superTrendEnabled ||
     htfBiasEnabled ||
     squeezeEnabled ||
-    vpEnabled;
+    vpEnabled ||
+    gdsMiniBadgeEnabled;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -196,6 +201,22 @@ export function ToolsMenu({
             >
               <Settings className="h-3.5 w-3.5" />
             </Button>
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                GDS Mini Badge
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Show Genuine Demand Score on chart
+              </div>
+            </div>
+            <Switch
+              checked={gdsMiniBadgeEnabled}
+              onCheckedChange={onToggleGdsMiniBadge}
+              className="shrink-0 data-[state=checked]:bg-blue-600"
+            />
           </div>
         </div>
       </PopoverContent>

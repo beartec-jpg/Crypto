@@ -24,7 +24,7 @@ export default function CryptoIndicatorsClean() {
 
   // Fetch candle and CVD data
   // TODO: Connect to watchlist selection state
-  const { candles, cvdData } = useIndicatorsData({
+  const { candles, cvdData, externalMetrics } = useIndicatorsData({
     symbol: DEFAULT_SYMBOL,
     timeframe: DEFAULT_TIMEFRAME,
   });
@@ -81,7 +81,7 @@ export default function CryptoIndicatorsClean() {
           <CleanWatchlist onExpandChart={handleExpandChart} />
 
           {/* Indicators Section (Oscillators + CVD) */}
-          <IndicatorsSection candles={candles} cvdData={cvdData} />
+          <IndicatorsSection candles={candles} cvdData={cvdData} externalMetrics={externalMetrics} />
           </div>
 
           {/* Bottom Navigation */}

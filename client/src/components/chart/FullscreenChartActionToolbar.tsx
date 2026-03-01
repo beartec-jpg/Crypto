@@ -71,6 +71,8 @@ interface FullscreenChartActionToolbarProps {
 
   vpEnabled: boolean;
   onOpenVolumeProfileSettings: () => void;
+  gdsMiniBadgeEnabled: boolean;
+  onToggleGdsMiniBadge: (enabled: boolean) => void;
 
   activeSystem: TradingSystemId | null;
   onActivateSystem: (systemId: TradingSystemId) => void;
@@ -127,6 +129,8 @@ export function FullscreenChartActionToolbar({
   onOpenSqueezeSettings,
   vpEnabled,
   onOpenVolumeProfileSettings,
+  gdsMiniBadgeEnabled,
+  onToggleGdsMiniBadge,
   activeSystem,
   onActivateSystem,
   onDeactivateSystem,
@@ -179,6 +183,8 @@ export function FullscreenChartActionToolbar({
         onOpenSqueezeSettings={onOpenSqueezeSettings}
         vpEnabled={vpEnabled}
         onOpenVolumeProfileSettings={onOpenVolumeProfileSettings}
+        gdsMiniBadgeEnabled={gdsMiniBadgeEnabled}
+        onToggleGdsMiniBadge={onToggleGdsMiniBadge}
       />
 
       <div className="w-px h-6 bg-slate-700" />

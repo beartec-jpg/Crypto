@@ -1818,6 +1818,93 @@ const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, ne
     }
   });
 
+  // Coinbase Premium endpoint (Coinbase spot vs Binance spot)
+  const coinbasePremiumCache = new Map<string, { data: any; timestamp: number }>();
+  const COINBASE_PREMIUM_CACHE_TTL = 60 * 1000; // 1 minute
+
+  app.get("/api/crypto/orderflow/coinbase-premium", async (req, res) => {
+    try {
+      const symbol = (req.query.symbol as string)?.toUpperCase() || 'BTCUSDT';
+      const cacheKey = symbol;
+      const cached = coinbasePremiumCache.get(cacheKey);
+
+      if (cached && (Date.now() - cached.timestamp) < COINBASE_PREMIUM_CACHE_TTL) {
+        return res.json({
+          ...cached.data,
+          cached: true,
+          cacheAge: Math.floor((Date.now() - cached.timestamp) / 1000),
+        });
+      }
+
+      const baseSymbol = symbol.endsWith('USDT')
+        ? symbol.slice(0, -4)
+        : symbol.endsWith('USD')
+          ? symbol.slice(0, -3)
+          : symbol;
+
+      const coinbaseProduct = `${baseSymbol}-USD`;
+
+      let coinbasePrice = 0;
+      let binancePrice = 0;
+      let binanceSource = 'binance-global';
+
+      const coinbaseResponse = await fetch(`https://api.exchange.coinbase.com/products/${coinbaseProduct}/ticker`);
+      if (!coinbaseResponse.ok) {
+        throw new Error(`Coinbase API error: ${coinbaseResponse.status}`);
+      }
+      const coinbaseData = await coinbaseResponse.json();
+      coinbasePrice = parseFloat(coinbaseData.price || '0');
+
+      const binanceGlobalResponse = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
+      if (binanceGlobalResponse.ok) {
+        const binanceGlobalData = await binanceGlobalResponse.json();
+        binancePrice = parseFloat(binanceGlobalData.price || '0');
+      } else {
+        const binanceUsResponse = await fetch(`https://api.binance.us/api/v3/ticker/price?symbol=${symbol}`);
+        if (!binanceUsResponse.ok) {
+          throw new Error(`Binance API error: global=${binanceGlobalResponse.status}, us=${binanceUsResponse.status}`);
+        }
+        const binanceUsData = await binanceUsResponse.json();
+        binancePrice = parseFloat(binanceUsData.price || '0');
+        binanceSource = 'binance-us';
+      }
+
+      if (!Number.isFinite(coinbasePrice) || !Number.isFinite(binancePrice) || binancePrice <= 0) {
+        throw new Error('Invalid price data for premium calculation');
+      }
+
+      const premiumPct = ((coinbasePrice - binancePrice) / binancePrice) * 100;
+
+      const result = {
+        symbol,
+        source: 'coinbase-vs-binance',
+        timestamp: Date.now(),
+        coinbase: {
+          product: coinbaseProduct,
+          price: coinbasePrice,
+        },
+        binance: {
+          symbol,
+          source: binanceSource,
+          price: binancePrice,
+        },
+        current: {
+          value: premiumPct,
+        },
+        cached: false,
+      };
+
+      coinbasePremiumCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      res.json(result);
+    } catch (error: any) {
+      console.error('❌ Error fetching Coinbase Premium:', error);
+      res.status(500).json({
+        error: 'Failed to fetch Coinbase Premium data',
+        details: error.message,
+      });
+    }
+  });
+
   // Long/Short Ratio endpoint with CoinGlass fallback
   const lsRatioCache = new Map<string, { data: any; timestamp: number }>();
   const LS_RATIO_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
