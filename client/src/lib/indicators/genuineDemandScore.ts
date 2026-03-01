@@ -199,6 +199,8 @@ export function calculateGenuineDemandScore({
   const fundingRate = externalMetrics?.fundingRate;
   const coinbasePremium = externalMetrics?.coinbasePremiumPct;
 
+  console.log('[GDS Debug] Input values:', { fundingRate, coinbasePremium, oiChange });
+
   const oiStrength = typeof oiChange === 'number' && priceUp && oiChange < 0
     ? clamp(Math.abs(oiChange) / 5, 0, 1)
     : 0;
@@ -213,6 +215,9 @@ export function calculateGenuineDemandScore({
     ? clamp(coinbasePremium / 0.2, 0, 1)
     : 0;
   const premiumScore = premiumStrength * PREMIUM_WEIGHT;
+
+  console.log('[GDS Debug] Funding:', { rate: fundingRate, condition: fundingRate < 0, score: fundingScore });
+  console.log('[GDS Debug] Premium:', { pct: coinbasePremium, condition: coinbasePremium > 0, score: premiumScore });
 
   const components: GDSComponentScore[] = [
     {
