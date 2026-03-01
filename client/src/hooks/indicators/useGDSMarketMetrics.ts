@@ -91,6 +91,13 @@ export function useGDSMarketMetrics({
         premiumRes.ok ? premiumRes.json() : Promise.resolve({}),
       ]);
 
+      console.log('[GDS Debug] API response statuses:', {
+        cvd: cvdRes.status,
+        openInterest: oiRes.status,
+        funding: fundingRes.status,
+        premium: premiumRes.status,
+      });
+
       return {
         cvd: cvdJson as CVDResponse,
         openInterest: oiJson as OpenInterestResponse,
@@ -122,6 +129,8 @@ export function useGDSMarketMetrics({
       typeof data?.premium?.current?.value === 'number'
         ? data.premium.current.value
         : undefined;
+
+    console.log('[GDS Debug] Parsed metrics:', { fundingRate, coinbasePremiumPct });
 
     return {
       externalMetrics: {
