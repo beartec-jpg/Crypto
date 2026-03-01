@@ -142,6 +142,7 @@ export function useGDSMarketMetrics({
         openInterestChangePct,
         fundingRate,
         coinbasePremiumPct,
+        symbol,
       },
       cvdData: mapCvdToTable(data?.cvd?.history),
       isLoading,

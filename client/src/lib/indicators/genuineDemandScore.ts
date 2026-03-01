@@ -1,4 +1,10 @@
 import type { Candle, CVDDataItem } from '@/types/chart';
+import { PatternHistoryManager } from '@/services/PatternHistoryManager';
+import {
+  runPatternDetectors,
+  type PatternDetectionItem,
+  type Snapshot,
+} from '@/services/patternDetectors';
 
 const PRICE_WEIGHT = 15;
 const CVD_WEIGHT = 30;
@@ -10,6 +16,7 @@ export interface GDSExternalMetrics {
   openInterestChangePct?: number;
   fundingRate?: number;
   coinbasePremiumPct?: number;
+  symbol?: string;
 }
 
 export interface GDSComponentScore {
@@ -44,6 +51,7 @@ export interface GenuineDemandScoreResult {
     confirmationStrength: boolean;
   };
   pattern: MarketPattern;
+  patterns: PatternDetectionItem[];
   rawReadings: {
     fundingRate: number | undefined;
     coinbasePremium: number | undefined;
@@ -59,357 +67,127 @@ export interface CalculateGDSInput {
   lookbackBars?: number;
   externalMetrics?: GDSExternalMetrics;
   scoreHistory?: number[];
+  persistHistory?: boolean;
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function average(values: number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+function getConfidenceLabel(confidence: number): MarketPattern['confidence'] {
+  if (confidence >= 75) return 'High';
+  if (confidence >= 45) return 'Medium';
+  return 'Low';
 }
 
-function calculateATR(candles: Candle[], period: number): number {
-  if (candles.length < 2) return 0;
-
-  const trueRanges: number[] = [];
-  for (let i = 1; i < candles.length; i += 1) {
-    const current = candles[i];
-    const previous = candles[i - 1];
-
-    const highLow = current.high - current.low;
-    const highPrevClose = Math.abs(current.high - previous.close);
-    const lowPrevClose = Math.abs(current.low - previous.close);
-
-    trueRanges.push(Math.max(highLow, highPrevClose, lowPrevClose));
-  }
-
-  const atrWindow = trueRanges.slice(-period);
-  return average(atrWindow);
+function getEmojiFromScore(score: number): GenuineDemandScoreResult['emoji'] {
+  if (score >= 80) return '🚀';
+  if (score >= 60) return '✅';
+  if (score >= 40) return '🟡';
+  if (score >= 20) return '⚠️';
+  return '🔴';
 }
 
-function getVerdict(score: number): { verdict: string; emoji: GenuineDemandScoreResult['emoji'] } {
-  if (score >= 80) {
-    return {
-      verdict: 'Strong Healthy Bottom / Genuine Push Higher',
-      emoji: '🚀',
-    };
-  }
-
-  if (score >= 60) {
-    return {
-      verdict: 'Bullish Reversal Building - Solid Demand',
-      emoji: '✅',
-    };
-  }
-
-  if (score >= 40) {
-    return {
-      verdict: 'Choppy / Neutral - Wait for More Confirmation',
-      emoji: '🟡',
-    };
-  }
-
-  if (score >= 20) {
-    return {
-      verdict: 'Weak Rally / Fakeout Risk',
-      emoji: '⚠️',
-    };
-  }
-
-  return {
-    verdict: 'Top Forming / Distribution Risk',
-    emoji: '🔴',
-  };
-}
-
-function detectMarketPattern(
-  priceUp: boolean,
-  cvdScore: number,
-  oiScore: number,
-  fundingScore: number,
-  premiumScore: number,
-  fundingRate: number | undefined,
-  coinbasePremium: number | undefined,
-  oiChange: number | undefined
-): MarketPattern {
-  const cvdStrong = cvdScore > CVD_WEIGHT * 0.5;
-  const oiDown = typeof oiChange === 'number' && oiChange < -1;
-  const fundingNeg = typeof fundingRate === 'number' && fundingRate < -0.0005;
-  const fundingPos = typeof fundingRate === 'number' && fundingRate > 0.0005;
-  const fundingNeutral = typeof fundingRate === 'number' && Math.abs(fundingRate) <= 0.0005;
-  const premiumPos = typeof coinbasePremium === 'number' && coinbasePremium > 0.05;
-  const premiumNeg = typeof coinbasePremium === 'number' && coinbasePremium < -0.05;
-
-  // Pattern 1: Healthy Bottom (Original Target)
-  if (priceUp && cvdStrong && oiDown && fundingNeg && premiumPos) {
-    return {
-      name: 'Healthy Bottom',
-      confidence: 'High',
-      description: 'Post-capitulation rally with genuine demand',
-      emoji: '🚀',
-      bullishSignals: [
-        'Strong spot buying pressure',
-        'Leverage flushed out (OI down)',
-        'Negative funding (shorts paying)',
-        'US retail entering (premium positive)'
-      ],
-      bearishSignals: [],
-      neutralSignals: [],
-      recommendation: 'Strong buy signal - all conditions aligned for sustained rally'
-    };
-  }
-
-  // Pattern 2: Distribution / Top Forming
-  if (priceUp && !cvdStrong && !oiDown && fundingPos && premiumNeg) {
-    return {
-      name: 'Distribution',
-      confidence: 'High',
-      description: 'Smart money exiting, retail buying futures',
-      emoji: '🔴',
-      bullishSignals: [],
-      bearishSignals: [
-        'Weak or negative spot CVD',
-        'OI expanding (new leveraged longs)',
-        'Positive funding (longs overheated)',
-        'Negative premium (no US demand)'
-      ],
-      neutralSignals: [],
-      recommendation: 'High risk of reversal - avoid longs, consider scaling out'
-    };
-  }
-
-  // Pattern 3: Leveraged Pump (Low Quality Rally)
-  if (priceUp && !cvdStrong && !oiDown && (fundingPos || fundingNeutral) && !premiumPos) {
-    return {
-      name: 'Leveraged Pump',
-      confidence: 'Medium',
-      description: 'Futures-driven move without spot confirmation',
-      emoji: '⚠️',
-      bullishSignals: priceUp ? ['Price momentum'] : [],
-      bearishSignals: [
-        'Weak spot buying',
-        'Leverage-driven (OI not contracting)',
-        premiumNeg ? 'No US retail interest' : 'Premium neutral or negative'
-      ],
-      neutralSignals: [fundingNeutral ? 'Funding neutral' : 'Funding slightly positive'],
-      recommendation: 'Fakeout risk high - wait for spot confirmation before entering'
-    };
-  }
-
-  // Pattern 4: Mixed Signals with Strong CVD
-  if (priceUp && cvdStrong && !fundingNeg && !premiumPos) {
-    const bullish = ['Strong spot buying (CVD positive)', 'Price momentum'];
-    const bearish: string[] = [];
-    const neutral: string[] = [];
-
-    if (premiumNeg) bearish.push('Negative premium (US retail not participating)');
-    else neutral.push('Premium neutral');
-
-    if (fundingNeutral) neutral.push('Funding neutral (balanced positioning)');
-    else if (fundingPos) bearish.push('Positive funding (slight overheating)');
-
-    if (!oiDown && typeof oiChange === 'number' && oiChange > 1) {
-      bearish.push('OI expanding (leverage increasing)');
-    } else {
-      neutral.push(`OI change minimal (${oiChange?.toFixed(2)}%)`);
-    }
-
-    return {
-      name: 'Mixed Signals',
-      confidence: 'Medium',
-      description: 'Good spot buying but missing key confirmation signals',
-      emoji: '🟡',
-      bullishSignals: bullish,
-      bearishSignals: bearish,
-      neutralSignals: neutral,
-      recommendation: 'Spot strength encouraging but wait for funding to go negative OR premium to turn positive'
-    };
-  }
-
-  // Pattern 5: Quiet Accumulation
-  if (!priceUp && cvdStrong && fundingNeutral && !premiumPos) {
-    return {
-      name: 'Quiet Accumulation',
-      confidence: 'Medium',
-      description: 'Smart money accumulating without price movement',
-      emoji: '🤫',
-      bullishSignals: [
-        'Spot buying despite flat price',
-        'Low leverage (funding neutral)'
-      ],
-      bearishSignals: [],
-      neutralSignals: ['Price consolidating', 'No retail FOMO yet'],
-      recommendation: 'Potential base building - monitor for breakout with continued CVD strength'
-    };
-  }
-
-  // Pattern 6: Capitulation
-  if (!priceUp && fundingNeg && oiDown) {
-    return {
-      name: 'Capitulation',
-      confidence: 'High',
-      description: 'Extreme selling pressure and liquidations',
-      emoji: '💥',
-      bullishSignals: [
-        'Negative funding (shorts paying)',
-        'OI flushing out (liquidations)'
-      ],
-      bearishSignals: ['Price declining', ...(!cvdStrong ? ['Spot selling pressure'] : [])],
-      neutralSignals: [],
-      recommendation: 'Potential reversal zone - watch for CVD to turn positive'
-    };
-  }
-
-  // Default: Neutral/Choppy
-  return {
-    name: 'Neutral/Choppy',
-    confidence: 'Low',
-    description: 'No clear pattern - mixed or weak signals',
-    emoji: '😐',
-    bullishSignals: cvdStrong ? ['Some spot buying'] : [],
-    bearishSignals: [],
-    neutralSignals: ['Insufficient conviction in any direction'],
-    recommendation: 'Wait for clearer setup - avoid trading in choppy conditions'
-  };
-}
-
-export function calculateGenuineDemandScore({
-  candles,
-  cvdData,
-  lookbackBars = 48,
-  externalMetrics,
-  scoreHistory = [],
-}: CalculateGDSInput): GenuineDemandScoreResult {
-  const minimumBars = Math.min(lookbackBars, candles.length);
-  const candleWindow = candles.slice(-minimumBars);
-  const cvdWindow = cvdData.slice(-minimumBars);
-
-  const emptyComponents: GDSComponentScore[] = [
-    {
-      key: 'price',
-      label: 'Price Momentum',
-      score: 0,
-      maxScore: PRICE_WEIGHT,
-      isPositive: false,
-      isAvailable: false,
-    },
-    {
-      key: 'cvd',
-      label: 'Spot CVD Strength',
-      score: 0,
-      maxScore: CVD_WEIGHT,
-      isPositive: false,
-      isAvailable: false,
-    },
-    {
-      key: 'oi',
-      label: 'OI Contraction',
-      score: 0,
-      maxScore: OI_WEIGHT,
-      isPositive: false,
-      isAvailable: false,
-    },
-    {
-      key: 'funding',
-      label: 'Funding Pressure',
-      score: 0,
-      maxScore: FUNDING_WEIGHT,
-      isPositive: false,
-      isAvailable: false,
-    },
-    {
-      key: 'premium',
-      label: 'Coinbase Premium',
-      score: 0,
-      maxScore: PREMIUM_WEIGHT,
-      isPositive: false,
-      isAvailable: false,
-    },
+function buildFallbackComponents(): GDSComponentScore[] {
+  return [
+    { key: 'price', label: 'Price Momentum', score: 0, maxScore: PRICE_WEIGHT, isPositive: false, isAvailable: false },
+    { key: 'cvd', label: 'Spot CVD Strength', score: 0, maxScore: CVD_WEIGHT, isPositive: false, isAvailable: false },
+    { key: 'oi', label: 'OI Contraction', score: 0, maxScore: OI_WEIGHT, isPositive: false, isAvailable: false },
+    { key: 'funding', label: 'Funding Pressure', score: 0, maxScore: FUNDING_WEIGHT, isPositive: false, isAvailable: false },
+    { key: 'premium', label: 'Coinbase Premium', score: 0, maxScore: PREMIUM_WEIGHT, isPositive: false, isAvailable: false },
   ];
+}
 
-  if (candleWindow.length < 2) {
-    const fallbackVerdict = getVerdict(0);
+function buildSnapshot(candles: Candle[], cvdData: CVDDataItem[], externalMetrics?: GDSExternalMetrics): Snapshot | null {
+  const latestCandle = candles[candles.length - 1];
+  if (!latestCandle) return null;
+
+  const latestCvd = cvdData[cvdData.length - 1];
+  const previousCvd = cvdData[cvdData.length - 2];
+  const cvdDelta = latestCvd
+    ? typeof previousCvd?.cumDelta === 'number'
+      ? latestCvd.cumDelta - previousCvd.cumDelta
+      : latestCvd.delta
+    : 0;
+
+  return {
+    timestamp: Date.now(),
+    price: latestCandle.close,
+    cvdDelta: Number.isFinite(cvdDelta) ? cvdDelta : 0,
+    oiChangePct: externalMetrics?.openInterestChangePct ?? 0,
+    fundingRate: externalMetrics?.fundingRate ?? 0,
+    premium: externalMetrics?.coinbasePremiumPct ?? 0,
+    volume: latestCandle.volume,
+  };
+}
+
+function buildLegacyPattern(topPattern: PatternDetectionItem | null): MarketPattern {
+  if (!topPattern) {
     return {
-      score: 0,
-      verdict: fallbackVerdict.verdict,
-      emoji: fallbackVerdict.emoji,
-      components: emptyComponents,
-      activeWeight: 0,
-      totalWeight: 100,
-      flags: {
-        fakeBreakoutWarning: false,
-        confirmationStrength: false,
-      },
-      pattern: detectMarketPattern(
-        false, 0, 0, 0, 0,
-        externalMetrics?.fundingRate,
-        externalMetrics?.coinbasePremiumPct,
-        externalMetrics?.openInterestChangePct
-      ),
-      rawReadings: {
-        fundingRate: externalMetrics?.fundingRate,
-        coinbasePremium: externalMetrics?.coinbasePremiumPct,
-        oiChange: externalMetrics?.openInterestChangePct,
-        cvdDelta: undefined,
-        priceChangePct: undefined,
-      },
+      name: 'Neutral/Choppy',
+      confidence: 'Low',
+      description: 'No clear high-confidence structure detected.',
+      emoji: '😐',
+      bullishSignals: [],
+      bearishSignals: [],
+      neutralSignals: ['Insufficient data or conflicting signals'],
+      recommendation: 'Wait for stronger confluence before acting.',
     };
   }
 
-  const latestCandle = candleWindow[candleWindow.length - 1];
-  const firstCandle = candleWindow[0];
-  const periodLow = Math.min(...candleWindow.map((candle) => candle.low));
-  const atr = calculateATR(candleWindow, 14);
-  const priceUp = latestCandle.close > firstCandle.close;
+  const bullishSignals = topPattern.result.signals.orderflow
+    .filter((signal) => signal.met)
+    .slice(0, 2)
+    .map((signal) => signal.name);
 
-  const priceRatio = atr > 0 ? (latestCandle.close - periodLow) / (atr * 3) : 0;
-  const priceScore = clamp(priceRatio, 0, 1) * PRICE_WEIGHT;
+  const technicalSignals = topPattern.result.signals.technical
+    .filter((signal) => signal.met)
+    .slice(0, 2)
+    .map((signal) => signal.name);
 
-  const cvdDelta = cvdWindow.length > 1
-    ? cvdWindow[cvdWindow.length - 1].cumDelta - cvdWindow[0].cumDelta
-    : 0;
-  const avgAbsDelta = average(cvdWindow.map((item) => Math.abs(item.delta)));
-  // More sensitive normalization - was too aggressive before
-  const cvdNormalization = avgAbsDelta * Math.max(5, cvdWindow.length * 0.3);
-  const cvdStrength = cvdDelta > 0 && cvdNormalization > 0
-    ? clamp(cvdDelta / cvdNormalization, 0, 1)
-    : 0;
-  const cvdScore = cvdStrength * CVD_WEIGHT;
+  const missedSignals = [
+    ...topPattern.result.signals.orderflow,
+    ...topPattern.result.signals.technical,
+  ]
+    .filter((signal) => !signal.met)
+    .slice(0, 2)
+    .map((signal) => signal.name);
 
-  const oiChange = externalMetrics?.openInterestChangePct;
-  const fundingRate = externalMetrics?.fundingRate;
-  const coinbasePremium = externalMetrics?.coinbasePremiumPct;
+  return {
+    name: topPattern.definition.name,
+    confidence: getConfidenceLabel(topPattern.result.confidence),
+    description: `${topPattern.result.stageName} stage with ${topPattern.result.score}/100 structure score.`,
+    emoji: topPattern.definition.emoji,
+    bullishSignals,
+    bearishSignals: missedSignals,
+    neutralSignals: technicalSignals,
+    recommendation: topPattern.definition.recommendation,
+  };
+}
 
-  console.log('[GDS Debug] Input values:', { fundingRate, coinbasePremium, oiChange });
+function toLegacyComponents(
+  priceChangePct: number | undefined,
+  cvdDelta: number | undefined,
+  metrics: GDSExternalMetrics | undefined
+): GDSComponentScore[] {
+  const oiChange = metrics?.openInterestChangePct;
+  const funding = metrics?.fundingRate;
+  const premium = metrics?.coinbasePremiumPct;
 
-  const oiStrength = typeof oiChange === 'number' && priceUp && oiChange < 0
-    ? clamp(Math.abs(oiChange) / 5, 0, 1)
-    : 0;
-  const oiScore = oiStrength * OI_WEIGHT;
+  const priceScore = typeof priceChangePct === 'number' ? clamp((priceChangePct + 10) / 20, 0, 1) * PRICE_WEIGHT : 0;
+  const cvdScore = typeof cvdDelta === 'number' ? clamp(cvdDelta > 0 ? 1 : 0, 0, 1) * CVD_WEIGHT : 0;
+  const oiScore = typeof oiChange === 'number' ? clamp(oiChange < 0 ? Math.min(Math.abs(oiChange) / 5, 1) : 0, 0, 1) * OI_WEIGHT : 0;
+  const fundingScore = typeof funding === 'number' ? clamp(funding < 0 ? Math.min(Math.abs(funding) / 0.03, 1) : 0, 0, 1) * FUNDING_WEIGHT : 0;
+  const premiumScore = typeof premium === 'number' ? clamp(premium > 0 ? Math.min(premium / 0.2, 1) : 0, 0, 1) * PREMIUM_WEIGHT : 0;
 
-  const fundingStrength = typeof fundingRate === 'number' && fundingRate < 0
-    ? clamp(Math.abs(fundingRate) / 0.03, 0, 1)
-    : 0;
-  const fundingScore = fundingStrength * FUNDING_WEIGHT;
-
-  const premiumStrength = typeof coinbasePremium === 'number' && coinbasePremium > 0
-    ? clamp(coinbasePremium / 0.2, 0, 1)
-    : 0;
-  const premiumScore = premiumStrength * PREMIUM_WEIGHT;
-
-  console.log('[GDS Debug] Funding:', { rate: fundingRate, condition: fundingRate < 0, score: fundingScore });
-  console.log('[GDS Debug] Premium:', { pct: coinbasePremium, condition: coinbasePremium > 0, score: premiumScore });
-
-  const components: GDSComponentScore[] = [
+  return [
     {
       key: 'price',
       label: 'Price Momentum',
       score: priceScore,
       maxScore: PRICE_WEIGHT,
       isPositive: priceScore > PRICE_WEIGHT * 0.35,
-      isAvailable: true,
+      isAvailable: typeof priceChangePct === 'number',
     },
     {
       key: 'cvd',
@@ -417,7 +195,7 @@ export function calculateGenuineDemandScore({
       score: cvdScore,
       maxScore: CVD_WEIGHT,
       isPositive: cvdScore > CVD_WEIGHT * 0.35,
-      isAvailable: cvdWindow.length > 1,
+      isAvailable: typeof cvdDelta === 'number',
     },
     {
       key: 'oi',
@@ -433,7 +211,7 @@ export function calculateGenuineDemandScore({
       score: fundingScore,
       maxScore: FUNDING_WEIGHT,
       isPositive: fundingScore > FUNDING_WEIGHT * 0.35,
-      isAvailable: typeof fundingRate === 'number',
+      isAvailable: typeof funding === 'number',
     },
     {
       key: 'premium',
@@ -441,67 +219,133 @@ export function calculateGenuineDemandScore({
       score: premiumScore,
       maxScore: PREMIUM_WEIGHT,
       isPositive: premiumScore > PREMIUM_WEIGHT * 0.35,
-      isAvailable: typeof coinbasePremium === 'number',
+      isAvailable: typeof premium === 'number',
     },
   ];
+}
 
-  const activeWeight = components
-    .filter((component) => component.isAvailable)
-    .reduce((sum, component) => sum + component.maxScore, 0);
+function getTopPattern(patterns: PatternDetectionItem[]): PatternDetectionItem | null {
+  if (patterns.length === 0) return null;
+  return patterns.reduce<PatternDetectionItem>((best, current) => {
+    if (current.result.score > best.result.score) return current;
+    return best;
+  }, patterns[0]);
+}
 
-  const rawActiveScore = components
-    .filter((component) => component.isAvailable)
-    .reduce((sum, component) => sum + component.score, 0);
+function getVerdict(topPattern: PatternDetectionItem | null): string {
+  if (!topPattern) return 'Insufficient data for pattern detection';
+  return `${topPattern.definition.name} - ${topPattern.result.stageName}`;
+}
 
-  const normalizedScore = activeWeight > 0
-    ? clamp((rawActiveScore / activeWeight) * 100, 0, 100)
-    : 0;
+function applyPatternEmoji(topPattern: PatternDetectionItem | null): GenuineDemandScoreResult['emoji'] {
+  if (!topPattern) return '🟡';
+  return getEmojiFromScore(topPattern.result.score);
+}
 
-  const previousHigh = candleWindow.length > 2
-    ? Math.max(...candleWindow.slice(0, -1).map((candle) => candle.high))
-    : latestCandle.high;
-
-  const fakeBreakoutWarning = latestCandle.close > previousHigh && normalizedScore < 45;
-
-  const lastThree = scoreHistory.slice(-3);
-  const isRisingThreeBars = lastThree.length === 3 && lastThree[0] < lastThree[1] && lastThree[1] < lastThree[2];
-  const allGreen = components.filter((component) => component.isAvailable).every((component) => component.isPositive);
-
-  const confirmationStrength = isRisingThreeBars && allGreen && normalizedScore >= 60;
-
-  const verdictData = getVerdict(normalizedScore);
-
-  const pattern = detectMarketPattern(
-    priceUp,
-    cvdScore,
-    oiScore,
-    fundingScore,
-    premiumScore,
-    fundingRate,
-    coinbasePremium,
-    oiChange
-  );
+function getPatternFlags(patterns: PatternDetectionItem[]): { fakeBreakoutWarning: boolean; confirmationStrength: boolean } {
+  const fakeout = patterns.find((item) => item.definition.key === 'fakeout');
+  const healthyBottom = patterns.find((item) => item.definition.key === 'healthyBottom');
+  const accumulation = patterns.find((item) => item.definition.key === 'accumulation');
 
   return {
-    score: normalizedScore,
-    verdict: verdictData.verdict,
-    emoji: verdictData.emoji,
+    fakeBreakoutWarning: (fakeout?.result.score ?? 0) >= 70,
+    confirmationStrength: Math.max(healthyBottom?.result.score ?? 0, accumulation?.result.score ?? 0) >= 70,
+  };
+}
+
+export function calculateGenuineDemandScore({
+  candles,
+  cvdData,
+  lookbackBars = 48,
+  externalMetrics,
+  persistHistory = true,
+}: CalculateGDSInput): GenuineDemandScoreResult {
+  if (candles.length < 2) {
+    const components = buildFallbackComponents();
+    return {
+      score: 0,
+      verdict: 'Insufficient data for pattern detection',
+      emoji: '🟡',
+      components,
+      activeWeight: 0,
+      totalWeight: 100,
+      flags: {
+        fakeBreakoutWarning: false,
+        confirmationStrength: false,
+      },
+      pattern: buildLegacyPattern(null),
+      patterns: [],
+      rawReadings: {
+        fundingRate: externalMetrics?.fundingRate,
+        coinbasePremium: externalMetrics?.coinbasePremiumPct,
+        oiChange: externalMetrics?.openInterestChangePct,
+        cvdDelta: undefined,
+        priceChangePct: undefined,
+      },
+    };
+  }
+
+  const windowSize = Math.min(lookbackBars, candles.length);
+  const candleWindow = candles.slice(-windowSize);
+  const cvdWindow = cvdData.slice(-windowSize);
+
+  const latestCandle = candleWindow[candleWindow.length - 1];
+  const firstCandle = candleWindow[0];
+
+  const snapshot = buildSnapshot(candleWindow, cvdWindow, externalMetrics);
+  const symbol = externalMetrics?.symbol || 'default';
+
+  let history = PatternHistoryManager.getHistory(symbol);
+  if (snapshot && persistHistory) {
+    history = PatternHistoryManager.appendSnapshot(symbol, snapshot);
+  }
+
+  const effectiveCurrent = snapshot ?? {
+    timestamp: Date.now(),
+    price: latestCandle.close,
+    cvdDelta: cvdWindow[cvdWindow.length - 1]?.delta ?? 0,
+    oiChangePct: externalMetrics?.openInterestChangePct ?? 0,
+    fundingRate: externalMetrics?.fundingRate ?? 0,
+    premium: externalMetrics?.coinbasePremiumPct ?? 0,
+    volume: latestCandle.volume,
+  };
+
+  const recentHistory = history.slice(-288);
+  const baselineHistory = recentHistory.filter((item) => item.timestamp < effectiveCurrent.timestamp);
+  const patternResults = runPatternDetectors(baselineHistory, effectiveCurrent);
+
+  const strongest = getTopPattern(patternResults);
+  const finalScore = strongest?.result.score ?? 0;
+
+  const priceChangePct = firstCandle.close > 0
+    ? ((latestCandle.close - firstCandle.close) / firstCandle.close) * 100
+    : undefined;
+
+  const cvdDelta = cvdWindow.length > 1
+    ? cvdWindow[cvdWindow.length - 1].cumDelta - cvdWindow[0].cumDelta
+    : undefined;
+
+  const components = toLegacyComponents(priceChangePct, cvdDelta, externalMetrics);
+  const activeWeight = components.filter((component) => component.isAvailable).reduce((sum, component) => sum + component.maxScore, 0);
+
+  const flags = getPatternFlags(patternResults);
+
+  return {
+    score: finalScore,
+    verdict: getVerdict(strongest),
+    emoji: applyPatternEmoji(strongest),
     components,
     activeWeight,
     totalWeight: 100,
-    flags: {
-      fakeBreakoutWarning,
-      confirmationStrength,
-    },
-    pattern,
+    flags,
+    pattern: buildLegacyPattern(strongest),
+    patterns: patternResults,
     rawReadings: {
-      fundingRate,
-      coinbasePremium,
-      oiChange,
-      cvdDelta: cvdWindow.length > 1 ? cvdDelta : undefined,
-      priceChangePct: firstCandle.close > 0
-        ? ((latestCandle.close - firstCandle.close) / firstCandle.close) * 100
-        : undefined,
+      fundingRate: externalMetrics?.fundingRate,
+      coinbasePremium: externalMetrics?.coinbasePremiumPct,
+      oiChange: externalMetrics?.openInterestChangePct,
+      cvdDelta,
+      priceChangePct,
     },
   };
 }

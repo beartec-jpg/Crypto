@@ -50,6 +50,7 @@ export function useGenuineDemandScore({
         lookbackBars,
         externalMetrics,
         scoreHistory,
+        persistHistory: false,
       });
 
       scoreHistory.push(result.score);
@@ -61,6 +62,7 @@ export function useGenuineDemandScore({
       lookbackBars,
       externalMetrics,
       scoreHistory,
+      persistHistory: true,
     });
 
     return {
