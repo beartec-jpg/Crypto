@@ -80,7 +80,8 @@ async function fetchOpenInterest(symbol: string): Promise<any> {
   
   try {
     // Fixed 4h interval - ignores page timeframe setting
-    const url = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${symbol}&interval=4h&limit=24`;
+    const coinglassSymbol = symbol.replace(/USDT$/, '').replace(/BUSD$/, '');
+    const url = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${coinglassSymbol}&interval=4h&limit=24`;
     console.log(`📊 Fetching CoinGlass OI: ${symbol}`);
     
     const response = await fetch(url, {
@@ -131,7 +132,8 @@ async function fetchFundingRate(symbol: string): Promise<any> {
   
   try {
     // Fixed 8h interval - ignores page timeframe setting
-    const url = `https://open-api-v4.coinglass.com/api/futures/funding-rate/history?exchange=Binance&symbol=${symbol}&interval=8h&limit=24`;
+    const coinglassSymbol = symbol.replace(/USDT$/, '').replace(/BUSD$/, '');
+    const url = `https://open-api-v4.coinglass.com/api/futures/funding-rate/history?exchange=Binance&symbol=${coinglassSymbol}&interval=8h&limit=24`;
     console.log(`📊 Fetching CoinGlass Funding: ${symbol}`);
     
     const response = await fetch(url, {
@@ -180,7 +182,8 @@ async function fetchLongShortRatio(symbol: string): Promise<any> {
   
   try {
     // Fixed 4h interval - ignores page timeframe setting
-    const url = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol}&interval=4h&limit=24`;
+    const coinglassSymbol = symbol.replace(/USDT$/, '').replace(/BUSD$/, '');
+    const url = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${coinglassSymbol}&interval=4h&limit=24`;
     console.log(`📊 Fetching CoinGlass L/S Ratio: ${symbol}`);
     
     const response = await fetch(url, {

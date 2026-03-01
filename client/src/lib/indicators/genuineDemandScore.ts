@@ -188,7 +188,8 @@ export function calculateGenuineDemandScore({
     ? cvdWindow[cvdWindow.length - 1].cumDelta - cvdWindow[0].cumDelta
     : 0;
   const avgAbsDelta = average(cvdWindow.map((item) => Math.abs(item.delta)));
-  const cvdNormalization = avgAbsDelta * Math.max(1, cvdWindow.length * 0.6);
+  // More sensitive normalization - was too aggressive before
+  const cvdNormalization = avgAbsDelta * Math.max(5, cvdWindow.length * 0.3);
   const cvdStrength = cvdDelta > 0 && cvdNormalization > 0
     ? clamp(cvdDelta / cvdNormalization, 0, 1)
     : 0;
