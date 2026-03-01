@@ -194,7 +194,7 @@ export function GenuineDemandScorePanel({ candles, cvdData, externalMetrics }: G
         <h5 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
           📊 Current Market Readings
         </h5>
-        <div className="grid grid-cols-3 gap-3 text-xs">
+        <div className="grid grid-cols-5 gap-3 text-xs">
           <div className="bg-slate-800/50 rounded p-2">
             <div className="text-slate-400 mb-1">Funding Rate</div>
             <div className={`text-lg font-bold ${
@@ -228,6 +228,37 @@ export function GenuineDemandScorePanel({ candles, cvdData, externalMetrics }: G
             }`}>
               {gds.rawReadings.oiChange === undefined ? 'N/A' :
                `${gds.rawReadings.oiChange.toFixed(2)}%`}
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded p-2">
+            <div className="text-slate-400 mb-1">CVD Delta</div>
+            <div className={`text-lg font-bold ${
+              gds.rawReadings.cvdDelta === undefined ? 'text-slate-500' :
+              gds.rawReadings.cvdDelta > 0 ? 'text-green-400' :
+              gds.rawReadings.cvdDelta < 0 ? 'text-red-400' : 'text-yellow-400'
+            }`}>
+              {gds.rawReadings.cvdDelta === undefined ? 'N/A' :
+               (() => {
+                 const v = gds.rawReadings.cvdDelta;
+                 const abs = Math.abs(v);
+                 const sign = v >= 0 ? '+' : '-';
+                 if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+                 if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(0)}K`;
+                 return `${sign}${abs.toFixed(0)}`;
+               })()}
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded p-2">
+            <div className="text-slate-400 mb-1">Price Change</div>
+            <div className={`text-lg font-bold ${
+              gds.rawReadings.priceChangePct === undefined ? 'text-slate-500' :
+              gds.rawReadings.priceChangePct > 0 ? 'text-green-400' :
+              gds.rawReadings.priceChangePct < 0 ? 'text-red-400' : 'text-yellow-400'
+            }`}>
+              {gds.rawReadings.priceChangePct === undefined ? 'N/A' :
+               `${gds.rawReadings.priceChangePct >= 0 ? '+' : ''}${gds.rawReadings.priceChangePct.toFixed(2)}%`}
             </div>
           </div>
         </div>

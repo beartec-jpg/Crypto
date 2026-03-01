@@ -48,6 +48,8 @@ export interface GenuineDemandScoreResult {
     fundingRate: number | undefined;
     coinbasePremium: number | undefined;
     oiChange: number | undefined;
+    cvdDelta: number | undefined;
+    priceChangePct: number | undefined;
   };
 }
 
@@ -350,6 +352,8 @@ export function calculateGenuineDemandScore({
         fundingRate: externalMetrics?.fundingRate,
         coinbasePremium: externalMetrics?.coinbasePremiumPct,
         oiChange: externalMetrics?.openInterestChangePct,
+        cvdDelta: undefined,
+        priceChangePct: undefined,
       },
     };
   }
@@ -494,6 +498,10 @@ export function calculateGenuineDemandScore({
       fundingRate,
       coinbasePremium,
       oiChange,
+      cvdDelta: cvdWindow.length > 1 ? cvdDelta : undefined,
+      priceChangePct: firstCandle.close > 0
+        ? ((latestCandle.close - firstCandle.close) / firstCandle.close) * 100
+        : undefined,
     },
   };
 }
