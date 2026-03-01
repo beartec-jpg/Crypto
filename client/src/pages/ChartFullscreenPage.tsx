@@ -259,7 +259,8 @@ export function ChartFullscreenPage({
 
   // Hooks - Auto-Fibonacci detection
   const autoFibSettings = useAutoFibSettings();
-  const autoFibResult = useAutoFibDetection(candles, autoFibSettings.settings);
+  const autoFibVisibleRange = useVisibleRange(chartRef.current);
+  const autoFibResult = useAutoFibDetection(candles, autoFibVisibleRange, autoFibSettings.settings);
 
   // Hooks - SuperTrend
   const superTrendSettings = useSuperTrendSettings();

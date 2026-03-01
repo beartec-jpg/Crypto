@@ -47,6 +47,8 @@ export interface FibLevelData {
   price: number;
   isExtension: boolean;
   isGolden: boolean;
+  isFrozen: boolean;       // has price crossed this level?
+  frozenAtTime?: number;   // UTC timestamp when price first crossed this level
 }
 
 export interface SwingPoint {
