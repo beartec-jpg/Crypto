@@ -98,6 +98,50 @@ const ALL_OSCILLATOR_IDS = [
   'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger',
 ];
 
+function calculateSimpleMovingAverage(
+  candles: Array<{ close: number }>,
+  endIndex: number,
+  period: number,
+): number | undefined {
+  if (endIndex < period - 1 || period <= 0) return undefined;
+  let sum = 0;
+  for (let i = endIndex - period + 1; i <= endIndex; i++) {
+    sum += candles[i].close;
+  }
+  return sum / period;
+}
+
+function calculateAverageVolume(
+  candles: Array<{ volume: number }>,
+  endIndex: number,
+  period: number,
+): number | undefined {
+  if (endIndex < period - 1 || period <= 0) return undefined;
+  let sum = 0;
+  for (let i = endIndex - period + 1; i <= endIndex; i++) {
+    sum += candles[i].volume;
+  }
+  return sum / period;
+}
+
+function calculateSupportResistance(
+  candles: Array<{ low: number; high: number }>,
+  endIndex: number,
+  lookback = 20,
+): { supportLevel?: number; resistanceLevel?: number } {
+  if (endIndex < 1) return {};
+  const start = Math.max(0, endIndex - lookback + 1);
+  let supportLevel = candles[start].low;
+  let resistanceLevel = candles[start].high;
+
+  for (let i = start + 1; i <= endIndex; i++) {
+    supportLevel = Math.min(supportLevel, candles[i].low);
+    resistanceLevel = Math.max(resistanceLevel, candles[i].high);
+  }
+
+  return { supportLevel, resistanceLevel };
+}
+
 /** Thin adapter: converts the new graduated score to the legacy action+reasons format. */
 function evaluateTradingSystemSignal(
   input: ScoringInput & { systemId: TradingSystemId; divergencePoints?: DivergencePoint[] },
@@ -108,11 +152,11 @@ function evaluateTradingSystemSignal(
   });
 
   const buyThreshold = parseInt(
-    localStorage.getItem(`tradingSystem_${input.systemId}_buyThreshold`) || '80',
+    localStorage.getItem(`tradingSystem_${input.systemId}_buyThreshold`) || '70',
     10,
   );
   const sellThreshold = parseInt(
-    localStorage.getItem(`tradingSystem_${input.systemId}_sellThreshold`) || '80',
+    localStorage.getItem(`tradingSystem_${input.systemId}_sellThreshold`) || '70',
     10,
   );
 
@@ -123,11 +167,12 @@ function evaluateTradingSystemSignal(
         ? 'OPEN SHORT'
         : 'WAIT';
 
-  const metConditions = evaluation.conditions.filter(c => c.met);
   const signalReasons =
-    metConditions.length > 0
-      ? metConditions.slice(0, 3).map(c => c.name)
-      : ['No strong confluence yet'];
+    evaluation.reasoning && evaluation.reasoning.length > 0
+      ? evaluation.reasoning
+      : evaluation.conditions.filter(c => c.met).length > 0
+        ? evaluation.conditions.filter(c => c.met).slice(0, 3).map(c => c.name)
+        : ['No strong confluence yet'];
 
   return { action, signalReasons, evaluation };
 }
@@ -174,6 +219,7 @@ export function ChartFullscreenPage({
   const [showDrawingAlertSettings, setShowDrawingAlertSettings] = useState(false);
   const [selectedDrawingForAlerts, setSelectedDrawingForAlerts] = useState<Drawing | null>(null);
   const [confluenceSnapshot, setConfluenceSnapshot] = useState<(ConfluenceResult & { updatedAt: number }) | null>(null);
+  const [conditionWeightsVersion, setConditionWeightsVersion] = useState(0);
 
   const [showFloatingConfluence, setShowFloatingConfluence] = useState(() => {
     try {
@@ -430,8 +476,17 @@ export function ChartFullscreenPage({
     for (let index = startIndex; index < candles.length; index++) {
       const currentCandle = candles[index] as { time: number; close: number };
       const prevCandle = candles[index - 1] as { time: number; close: number };
+      const currentCandleWithVolume = candles[index] as { volume?: number; low?: number; high?: number; close: number; time: number };
       const currentTime = Number(currentCandle.time);
       const prevTime = Number(prevCandle.time);
+      const avgVolume = calculateAverageVolume(candles as Array<{ volume: number }>, index, 20);
+      const shortTermMA = calculateSimpleMovingAverage(candles as Array<{ close: number }>, index, 9);
+      const longTermMA = calculateSimpleMovingAverage(candles as Array<{ close: number }>, index, 21);
+      const { supportLevel, resistanceLevel } = calculateSupportResistance(
+        candles as Array<{ low: number; high: number }>,
+        index,
+        20,
+      );
 
       let latestStructureDirection: 'bullish' | 'bearish' | undefined;
       for (let breakIndex = structureBreaks.length - 1; breakIndex >= 0; breakIndex--) {
@@ -457,6 +512,14 @@ export function ChartFullscreenPage({
         sqzValue: sqzValue?.value,
         htfBullish,
         htfBearish,
+        rsi: rsiByTime.get(currentTime),
+        currentPrice: currentCandle.close,
+        supportLevel,
+        resistanceLevel,
+        currentVolume: currentCandleWithVolume.volume,
+        avgVolume,
+        shortTermMA,
+        longTermMA,
         latestClose: currentCandle.close,
         previousClose: prevCandle.close,
         divergencePoints,
@@ -496,6 +559,7 @@ export function ChartFullscreenPage({
     structureBreaks,
     sqzData,
     htfBiasEntries,
+    conditionWeightsVersion,
     divergencePoints,
     fvgs,
     orderBlocks,
@@ -560,6 +624,14 @@ export function ChartFullscreenPage({
     const stTrend = stLatest?.trend;
     const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
     const latestSqz = sqzData[sqzData.length - 1];
+    const avgVolume = calculateAverageVolume(candles as Array<{ volume: number }>, candles.length - 1, 20);
+    const shortTermMA = calculateSimpleMovingAverage(candles as Array<{ close: number }>, candles.length - 1, 9);
+    const longTermMA = calculateSimpleMovingAverage(candles as Array<{ close: number }>, candles.length - 1, 21);
+    const { supportLevel, resistanceLevel } = calculateSupportResistance(
+      candles as Array<{ low: number; high: number }>,
+      candles.length - 1,
+      20,
+    );
 
     const htfBullish = htfBiasEntries.filter(e => e.bias === 'bullish').length;
     const htfBearish = htfBiasEntries.filter(e => e.bias === 'bearish').length;
@@ -578,6 +650,14 @@ export function ChartFullscreenPage({
       sqzValue: latestSqz?.value,
       htfBullish,
       htfBearish,
+      rsi: lastRsi,
+      currentPrice: latestCandle.close,
+      supportLevel,
+      resistanceLevel,
+      currentVolume: (latestCandle as { volume?: number }).volume,
+      avgVolume,
+      shortTermMA,
+      longTermMA,
       latestClose: latestCandle.close,
       previousClose: previousCandle.close,
       divergencePoints,
@@ -612,6 +692,7 @@ export function ChartFullscreenPage({
     structureBreaks,
     sqzData,
     htfBiasEntries,
+    conditionWeightsVersion,
     historicalSystemSignalEvents.length,
     divergencePoints,
     fvgs,
@@ -652,6 +733,7 @@ export function ChartFullscreenPage({
     volumeProfileData
       ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
       : undefined,
+    conditionWeightsVersion,
   );
 
   const totalConfluenceNowRef = useRef(totalConfluenceNow);
@@ -1174,6 +1256,7 @@ export function ChartFullscreenPage({
             systemId={tradingSystem.activeSystem}
             evaluation={activeSystemDetails.evaluation}
             onClose={tradingSystem.deactivateSystem}
+            onWeightsChanged={() => setConditionWeightsVersion(v => v + 1)}
           />
         )}
 

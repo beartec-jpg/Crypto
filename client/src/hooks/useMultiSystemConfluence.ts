@@ -67,6 +67,7 @@ export function useMultiSystemConfluence(
   orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>,
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean }>,
   volumeProfileData?: { rows: Array<{ price: number; volume: number }>; valueAreaHigh?: number; valueAreaLow?: number; poc?: number },
+  weightsVersion?: number,
 ): ConfluenceResult | null {
   const previousScoreRef = useRef<number | undefined>(undefined);
 
@@ -97,8 +98,33 @@ export function useMultiSystemConfluence(
     const htfBearish = htfBiasEntries.filter(entry => entry.bias === 'bearish').length;
 
     const currentTime = Number(latestCandle.time);
+    const currentPrice = latestCandle.close;
+    const supportSlice = candles.slice(Math.max(0, candles.length - 20));
+    const supportLevel = supportSlice.length > 0 ? Math.min(...supportSlice.map(c => c.low)) : undefined;
+    const resistanceLevel = supportSlice.length > 0 ? Math.max(...supportSlice.map(c => c.high)) : undefined;
+    const currentVolume = latestCandle.volume;
+    const recentVolume = candles.slice(Math.max(0, candles.length - 20));
+    const avgVolume = recentVolume.length > 0
+      ? recentVolume.reduce((sum, candle) => sum + candle.volume, 0) / recentVolume.length
+      : undefined;
+    const shortTermSlice = candles.slice(Math.max(0, candles.length - 9));
+    const shortTermMA = shortTermSlice.length === 9
+      ? shortTermSlice.reduce((sum, candle) => sum + candle.close, 0) / 9
+      : undefined;
+    const longTermSlice = candles.slice(Math.max(0, candles.length - 21));
+    const longTermMA = longTermSlice.length === 21
+      ? longTermSlice.reduce((sum, candle) => sum + candle.close, 0) / 21
+      : undefined;
 
     const scoringInput: ScoringInput = {
+      rsi: lastRsi,
+      currentPrice,
+      supportLevel,
+      resistanceLevel,
+      currentVolume,
+      avgVolume,
+      shortTermMA,
+      longTermMA,
       lastRsi,
       prevRsi,
       macdNow,
@@ -176,7 +202,7 @@ export function useMultiSystemConfluence(
       systemDetails,
       patterns,
     };
-  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData]);
+  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData, weightsVersion]);
 
   useEffect(() => {
     if (result !== null) {

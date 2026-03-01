@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { X, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { type SystemEvaluation } from '@/types/systemScoring';
+import { ConditionWeightAdjuster } from '@/components/ConditionWeightAdjuster';
+import { resetWeightsToDefault } from '@/lib/conditionWeights';
 import {
   getScoreColor,
   getScoreBarColor,
@@ -16,23 +18,25 @@ interface ActiveSystemMonitorProps {
   systemId: TradingSystemId;
   evaluation: SystemEvaluation;
   onClose: () => void;
+  onWeightsChanged?: () => void;
 }
 
 export function ActiveSystemMonitor({
   systemId,
   evaluation,
   onClose,
+  onWeightsChanged,
 }: ActiveSystemMonitorProps) {
   const [expanded, setExpanded] = useState(false);
 
   const [buyThreshold, setBuyThreshold] = useState(() => {
     const saved = localStorage.getItem(`tradingSystem_${systemId}_buyThreshold`);
-    return saved ? parseInt(saved, 10) : 80;
+    return saved ? parseInt(saved, 10) : 70;
   });
 
   const [sellThreshold, setSellThreshold] = useState(() => {
     const saved = localStorage.getItem(`tradingSystem_${systemId}_sellThreshold`);
-    return saved ? parseInt(saved, 10) : 80;
+    return saved ? parseInt(saved, 10) : 70;
   });
 
   const adjustThreshold = (type: 'buy' | 'sell', delta: number) => {
@@ -63,6 +67,22 @@ export function ActiveSystemMonitor({
   const scorePrefix = score > 0 ? '+' : '';
   const absPct = Math.abs(score);
   const metCount = conditions.filter(c => c.met).length;
+
+  const weightedConditions = useMemo(
+    () => conditions
+      .filter(c => c.id && c.userWeight !== undefined && c.score !== undefined)
+      .map(c => ({
+        id: c.id!,
+        name: c.name,
+        score: c.score!,
+        weight: c.userWeight!,
+        weightedScore: c.weightedScore ?? ((c.score ?? 0) * (c.userWeight ?? 0)),
+        description: c.description,
+      })),
+    [conditions],
+  );
+
+  const showWeightAdjuster = weightedConditions.length > 0;
 
   return (
     <div
@@ -190,7 +210,7 @@ export function ActiveSystemMonitor({
           </div>
 
           {/* Conditions list */}
-          {conditions.length > 0 && (
+          {conditions.length > 0 && !showWeightAdjuster && (
             <div>
               <div className="text-[10px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wide">
                 Conditions ({metCount}/{conditions.length} met)
@@ -220,6 +240,35 @@ export function ActiveSystemMonitor({
                       </span>
                     )}
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showWeightAdjuster && (
+            <div className="border-t border-slate-700/60 pt-2 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wide">Condition Weights</div>
+                <button
+                  onClick={() => {
+                    resetWeightsToDefault(systemId);
+                    onWeightsChanged?.();
+                  }}
+                  className="text-[10px] text-blue-400 hover:underline"
+                  title="Set all condition weights back to 1"
+                >
+                  Reset to Defaults
+                </button>
+              </div>
+
+              <div className="space-y-0.5">
+                {weightedConditions.map(condition => (
+                  <ConditionWeightAdjuster
+                    key={condition.id}
+                    systemId={systemId}
+                    condition={condition}
+                    onWeightChange={() => onWeightsChanged?.()}
+                  />
                 ))}
               </div>
             </div>

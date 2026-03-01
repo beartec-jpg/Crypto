@@ -4,9 +4,14 @@
  */
 
 export interface ScoredCondition {
+  id?: string;
   name: string;
   met: boolean;
   weight: number;
+  score?: number;
+  userWeight?: 0 | 1 | 2 | 3;
+  weightedScore?: number;
+  description?: string;
   /** Optional human-readable value for display (e.g. "RSI: 28.4") */
   value?: string;
 }
@@ -22,6 +27,8 @@ export interface SystemEvaluation {
   signalLabel: SignalLabel;
   /** Tailwind/hex color for the label */
   signalColor: string;
+  /** Top reasons extracted from strongest condition scores */
+  reasoning?: string[];
   /** Unix ms timestamp of when this evaluation was computed */
   timestamp?: number;
 }

@@ -12,6 +12,18 @@ import type {
   ScoredCondition,
   SignalLabel,
 } from '@/types/systemScoring';
+import {
+  scoreRSI,
+  scoreDistanceFromLevel,
+  scoreVolume,
+  scoreDivergence,
+  scoreTrendAlignment,
+} from '@/lib/conditionScoring';
+import {
+  getConditionWeights,
+  calculateWeightedScore,
+  type WeightLevel,
+} from '@/lib/conditionWeights';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -49,29 +61,110 @@ function clamp(value: number): number {
   return Math.max(-100, Math.min(100, value));
 }
 
+type GranularCondition = {
+  id: string;
+  name: string;
+  score: number;
+  value?: string;
+  description?: string;
+};
+
+function normalizeByRange(value: number, range: number): number {
+  if (range === 0) return 0;
+  return clamp((value / range) * 100);
+}
+
+function scoreBoolean(bullish: boolean, bearish: boolean, magnitude = 80): number {
+  if (bullish) return magnitude;
+  if (bearish) return -magnitude;
+  return 0;
+}
+
+function scorePercentMove(current: number, previous: number, rangePct = 2): number {
+  if (previous === 0) return 0;
+  const pct = ((current - previous) / previous) * 100;
+  return normalizeByRange(pct, rangePct);
+}
+
+function mapWeightedConditions(
+  systemId: string,
+  granularConditions: GranularCondition[],
+): { conditions: ScoredCondition[]; overallScore: number; reasoning: string[] } {
+  const weights = getConditionWeights(systemId);
+
+  const conditions: ScoredCondition[] = granularConditions.map(condition => {
+    const userWeight = (weights[condition.id] ?? 1) as WeightLevel;
+    const score = clamp(Math.round(condition.score));
+    return {
+      id: condition.id,
+      name: condition.name,
+      met: Math.abs(score) >= 40,
+      weight: userWeight,
+      score,
+      userWeight,
+      weightedScore: score * userWeight,
+      value: condition.value,
+      description: condition.description,
+    };
+  });
+
+  const overallScore = calculateWeightedScore(
+    conditions.map(c => ({ score: c.score ?? 0, weight: (c.userWeight ?? 1) as WeightLevel })),
+  );
+
+  const reasoning = conditions
+    .filter(c => (c.userWeight ?? 0) > 0)
+    .sort((a, b) => Math.abs((b.score ?? 0)) - Math.abs((a.score ?? 0)))
+    .slice(0, 3)
+    .filter(c => Math.abs(c.score ?? 0) >= 50)
+    .map(c => `${c.name}: ${c.score}/100`);
+
+  if (reasoning.length === 0) {
+    reasoning.push('No strong confluence detected');
+  }
+
+  return { conditions, overallScore, reasoning };
+}
+
 /** Build the final SystemEvaluation from accumulated conditions. */
 function buildEvaluation(
   systemId: string,
   conditions: ScoredCondition[],
   rawScore: number,
+  reasoning?: string[],
 ): SystemEvaluation {
   const score = clamp(rawScore);
 
   const buyThreshold = parseInt(
-    localStorage.getItem(`tradingSystem_${systemId}_buyThreshold`) || '80',
+    localStorage.getItem(`tradingSystem_${systemId}_buyThreshold`) || '70',
     10,
   );
   const sellThreshold = parseInt(
-    localStorage.getItem(`tradingSystem_${systemId}_sellThreshold`) || '80',
+    localStorage.getItem(`tradingSystem_${systemId}_sellThreshold`) || '70',
     10,
   );
   const { label, color } = getSignalLabelWithThresholds(score, buyThreshold, sellThreshold);
 
-  // Confidence: proportion of max possible absolute score that was achieved
-  const maxPossible = conditions.reduce((acc, c) => acc + Math.abs(c.weight), 0);
-  const confidence = maxPossible > 0
-    ? Math.round((Math.abs(rawScore) / maxPossible) * 100)
-    : 0;
+  const hasGranularScoring = conditions.some(
+    c => c.score !== undefined && c.userWeight !== undefined,
+  );
+
+  let confidence = 0;
+  if (hasGranularScoring) {
+    const weightedMagnitude = conditions
+      .filter(c => (c.userWeight ?? 0) > 0)
+      .reduce((sum, c) => sum + (Math.abs(c.score ?? 0) * (c.userWeight ?? 0)), 0);
+    const weightedMax = conditions
+      .filter(c => (c.userWeight ?? 0) > 0)
+      .reduce((sum, c) => sum + (100 * (c.userWeight ?? 0)), 0);
+
+    confidence = weightedMax > 0 ? Math.round((weightedMagnitude / weightedMax) * 100) : 0;
+  } else {
+    const maxPossible = conditions.reduce((acc, c) => acc + Math.abs(c.weight), 0);
+    confidence = maxPossible > 0
+      ? Math.round((Math.abs(rawScore) / maxPossible) * 100)
+      : 0;
+  }
 
   return {
     systemId,
@@ -80,12 +173,21 @@ function buildEvaluation(
     conditions,
     signalLabel: label,
     signalColor: color,
+    reasoning,
   };
 }
 
 // ── Shared input type ─────────────────────────────────────────────────────────
 
 export interface ScoringInput {
+  rsi?: number;
+  currentPrice?: number;
+  supportLevel?: number;
+  resistanceLevel?: number;
+  currentVolume?: number;
+  avgVolume?: number;
+  shortTermMA?: number;
+  longTermMA?: number;
   lastRsi?: number;
   prevRsi?: number;
   macdNow?: number;
@@ -139,34 +241,7 @@ export function scoreTrendFollowing(input: ScoringInput): SystemEvaluation {
     previousClose,
   } = input;
 
-  let score = 0;
-  const conditions: ScoredCondition[] = [];
-
-  // SuperTrend direction (±35)
-  if (stTrend === 'bullish') {
-    score += 35;
-    conditions.push({ name: 'SuperTrend bullish', met: true, weight: 35 });
-  } else if (stTrend === 'bearish') {
-    score -= 35;
-    conditions.push({ name: 'SuperTrend bearish', met: true, weight: -35 });
-  } else {
-    conditions.push({ name: 'SuperTrend direction', met: false, weight: 35 });
-  }
-
-  // MACD above/below signal line (±25)
-  if (macdNow !== undefined && sigNow !== undefined) {
-    if (macdNow > sigNow) {
-      score += 25;
-      conditions.push({ name: 'MACD above signal', met: true, weight: 25 });
-    } else if (macdNow < sigNow) {
-      score -= 25;
-      conditions.push({ name: 'MACD below signal', met: true, weight: -25 });
-    } else {
-      conditions.push({ name: 'MACD vs signal', met: false, weight: 25 });
-    }
-  }
-
-  // MACD crossover (±20)
+  // MACD crossover signal
   const macdBullCross =
     macdPrev !== undefined && sigPrev !== undefined &&
     macdNow !== undefined && sigNow !== undefined &&
@@ -176,108 +251,153 @@ export function scoreTrendFollowing(input: ScoringInput): SystemEvaluation {
     macdNow !== undefined && sigNow !== undefined &&
     macdPrev >= sigPrev && macdNow < sigNow;
 
-  if (macdBullCross) {
-    score += 20;
-    conditions.push({ name: 'MACD bullish crossover', met: true, weight: 20 });
-  } else if (macdBearCross) {
-    score -= 20;
-    conditions.push({ name: 'MACD bearish crossover', met: true, weight: -20 });
-  } else {
-    conditions.push({ name: 'MACD crossover', met: false, weight: 20 });
-  }
+  const superTrendScore = scoreBoolean(stTrend === 'bullish', stTrend === 'bearish', 85);
 
-  // RSI momentum confirmation (±10)
-  if (lastRsi !== undefined) {
-    if (lastRsi > 55) {
-      score += 10;
-      conditions.push({ name: 'RSI bullish momentum', met: true, weight: 10, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi < 45) {
-      score -= 10;
-      conditions.push({ name: 'RSI bearish momentum', met: true, weight: -10, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else {
-      conditions.push({ name: 'RSI momentum', met: false, weight: 10, value: `RSI: ${lastRsi.toFixed(1)}` });
-    }
-  }
+  const macdSignalScore =
+    macdNow !== undefined && sigNow !== undefined
+      ? normalizeByRange(macdNow - sigNow, 0.5)
+      : 0;
 
-  // Price follow-through (±10)
-  if (latestClose > previousClose) {
-    score += 10;
-    conditions.push({ name: 'Bullish candle', met: true, weight: 10 });
-  } else if (latestClose < previousClose) {
-    score -= 10;
-    conditions.push({ name: 'Bearish candle', met: true, weight: -10 });
-  }
+  const macdCrossoverScore = scoreBoolean(macdBullCross, macdBearCross, 90);
 
-  return buildEvaluation('trend-following', conditions, score);
+  const rsiMomentumScore =
+    lastRsi !== undefined
+      ? normalizeByRange(lastRsi - 50, 25)
+      : 0;
+
+  const priceFollowScore = scorePercentMove(latestClose, previousClose, 2);
+
+  const granularConditions: GranularCondition[] = [
+    {
+      id: 'supertrend',
+      name: 'SuperTrend Direction',
+      score: superTrendScore,
+      description: 'Trend direction from SuperTrend state.',
+    },
+    {
+      id: 'macdSignal',
+      name: 'MACD vs Signal',
+      score: macdSignalScore,
+      description: 'Positive when MACD is above signal line.',
+    },
+    {
+      id: 'macdCrossover',
+      name: 'MACD Crossover',
+      score: macdCrossoverScore,
+      description: 'Recent crossover adds strong directional bias.',
+    },
+    {
+      id: 'rsiMomentum',
+      name: 'RSI Momentum',
+      score: rsiMomentumScore,
+      value: lastRsi !== undefined ? `RSI: ${lastRsi.toFixed(1)}` : undefined,
+      description: 'RSI above 50 favors bulls, below 50 favors bears.',
+    },
+    {
+      id: 'priceFollowThrough',
+      name: 'Price Follow-Through',
+      score: priceFollowScore,
+      description: 'Latest candle direction and size.',
+    },
+  ];
+
+  const { conditions, overallScore, reasoning } = mapWeightedConditions('trend-following', granularConditions);
+
+  return buildEvaluation('trend-following', conditions, overallScore, reasoning);
 }
 
 // ── 2. Mean Reversion Hunter ──────────────────────────────────────────────────
 
 export function scoreMeanReversion(input: ScoringInput): SystemEvaluation {
-  const { lastRsi, prevRsi, latestClose, previousClose } = input;
+  const weights = getConditionWeights('mean-reversion');
 
-  let score = 0;
-  const conditions: ScoredCondition[] = [];
+  const rsiValue = input.rsi ?? input.lastRsi;
+  const currentPrice = input.currentPrice ?? input.latestClose;
 
-  // RSI extreme oversold/overbought (±40)
-  if (lastRsi !== undefined) {
-    if (lastRsi <= 25) {
-      score += 40;
-      conditions.push({ name: 'RSI extreme oversold', met: true, weight: 40, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi <= 30) {
-      score += 30;
-      conditions.push({ name: 'RSI oversold', met: true, weight: 30, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi <= 40) {
-      score += 15;
-      conditions.push({ name: 'RSI approaching oversold', met: true, weight: 15, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi >= 75) {
-      score -= 40;
-      conditions.push({ name: 'RSI extreme overbought', met: true, weight: -40, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi >= 70) {
-      score -= 30;
-      conditions.push({ name: 'RSI overbought', met: true, weight: -30, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi >= 60) {
-      score -= 15;
-      conditions.push({ name: 'RSI approaching overbought', met: true, weight: -15, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else {
-      conditions.push({ name: 'RSI level', met: false, weight: 40, value: `RSI: ${lastRsi.toFixed(1)}` });
-    }
+  const conditionResults: Array<{
+    id: 'rsi' | 'support' | 'volume' | 'divergence' | 'trend';
+    name: string;
+    score: number;
+    weight: WeightLevel;
+    value?: string;
+    description?: string;
+  }> = [
+    {
+      id: 'rsi',
+      name: 'RSI Oversold',
+      score: rsiValue !== undefined ? scoreRSI(rsiValue) : 0,
+      weight: (weights.rsi ?? 1) as WeightLevel,
+      value: rsiValue !== undefined ? `RSI: ${rsiValue.toFixed(1)}` : undefined,
+      description: 'Higher positive score means more oversold; negative means overbought.',
+    },
+    {
+      id: 'support',
+      name: 'Near Support Level',
+      score: currentPrice !== undefined
+        ? scoreDistanceFromLevel(
+          currentPrice,
+          input.supportLevel ?? null,
+          input.resistanceLevel ?? null,
+        )
+        : 0,
+      weight: (weights.support ?? 1) as WeightLevel,
+      description: 'Positive near support, negative near resistance.',
+    },
+    {
+      id: 'volume',
+      name: 'Volume Spike',
+      score: input.currentVolume !== undefined && input.avgVolume !== undefined
+        ? scoreVolume(input.currentVolume, input.avgVolume)
+        : 0,
+      weight: (weights.volume ?? 1) as WeightLevel,
+      description: 'High relative volume increases conviction.',
+    },
+    {
+      id: 'divergence',
+      name: 'Bullish Divergence',
+      score: scoreDivergence(input.divergencePoints ?? []),
+      weight: (weights.divergence ?? 1) as WeightLevel,
+      description: 'Fresh bullish divergence is strongly positive.',
+    },
+    {
+      id: 'trend',
+      name: 'Trend Confirmation',
+      score: input.shortTermMA !== undefined && input.longTermMA !== undefined && currentPrice !== undefined
+        ? scoreTrendAlignment(input.shortTermMA, input.longTermMA, currentPrice)
+        : 0,
+      weight: (weights.trend ?? 1) as WeightLevel,
+      description: 'Trend alignment can support or oppose mean reversion.',
+    },
+  ];
+
+  const weightedScore = calculateWeightedScore(
+    conditionResults.map(c => ({ score: c.score, weight: c.weight })),
+  );
+
+  const conditions: ScoredCondition[] = conditionResults.map(condition => ({
+    id: condition.id,
+    name: condition.name,
+    met: Math.abs(condition.score) >= 40,
+    weight: condition.weight,
+    score: condition.score,
+    userWeight: condition.weight,
+    weightedScore: condition.score * condition.weight,
+    value: condition.value,
+    description: condition.description,
+  }));
+
+  const reasoning = conditions
+    .filter(c => (c.userWeight ?? 0) > 0)
+    .sort((a, b) => Math.abs((b.score ?? 0)) - Math.abs((a.score ?? 0)))
+    .slice(0, 3)
+    .filter(c => Math.abs(c.score ?? 0) >= 50)
+    .map(c => `${c.name}: ${c.score}/100`);
+
+  if (reasoning.length === 0) {
+    reasoning.push('No strong confluence detected');
   }
 
-  // Bounce/rejection confirmation (±30)
-  if (lastRsi !== undefined && lastRsi <= 35 && latestClose > previousClose) {
-    score += 30;
-    conditions.push({ name: 'Oversold bounce confirmed', met: true, weight: 30 });
-  } else if (lastRsi !== undefined && lastRsi >= 65 && latestClose < previousClose) {
-    score -= 30;
-    conditions.push({ name: 'Overbought rejection confirmed', met: true, weight: -30 });
-  } else {
-    conditions.push({ name: 'Bounce/rejection confirmation', met: false, weight: 30 });
-  }
-
-  // RSI turning (±20)
-  if (prevRsi !== undefined && lastRsi !== undefined) {
-    if (prevRsi < 40 && lastRsi > prevRsi) {
-      score += 20;
-      conditions.push({ name: 'RSI turning up from low', met: true, weight: 20 });
-    } else if (prevRsi > 60 && lastRsi < prevRsi) {
-      score -= 20;
-      conditions.push({ name: 'RSI turning down from high', met: true, weight: -20 });
-    } else {
-      conditions.push({ name: 'RSI momentum turn', met: false, weight: 20 });
-    }
-  }
-
-  // Price follow-through (±10)
-  if (latestClose > previousClose) {
-    score += 5;
-    conditions.push({ name: 'Bullish close', met: true, weight: 5 });
-  } else if (latestClose < previousClose) {
-    score -= 5;
-    conditions.push({ name: 'Bearish close', met: true, weight: -5 });
-  }
-
-  return buildEvaluation('mean-reversion', conditions, score);
+  return buildEvaluation('mean-reversion', conditions, weightedScore, reasoning);
 }
 
 // ── 3. Breakout Momentum ──────────────────────────────────────────────────────
@@ -309,9 +429,6 @@ const LOW_VOLUME_MULTIPLIER = 0.5;
 export function scoreBreakoutMomentum(input: ScoringInput): SystemEvaluation {
   const { sqzOff, sqzValue, macdNow, sigNow, latestClose, previousClose, structureBreaks, currentTime, currentCandleIndex } = input;
 
-  let score = 0;
-  const conditions: ScoredCondition[] = [];
-
   // Structure break direction (±35) — only count breaks within last STRUCTURE_LOOKBACK_CANDLES candles
   const recentStructureBreak = structureBreaks
     ?.filter(sb => {
@@ -324,53 +441,53 @@ export function scoreBreakoutMomentum(input: ScoringInput): SystemEvaluation {
 
   const latestStructureDirection = recentStructureBreak?.direction;
 
-  if (latestStructureDirection === 'bullish') {
-    score += 35;
-    conditions.push({ name: 'Bullish BOS/CHoCH', met: true, weight: 35 });
-  } else if (latestStructureDirection === 'bearish') {
-    score -= 35;
-    conditions.push({ name: 'Bearish BOS/CHoCH', met: true, weight: -35 });
-  } else {
-    conditions.push({ name: 'Structure break', met: false, weight: 35 });
-  }
+  const structureScore = scoreBoolean(
+    latestStructureDirection === 'bullish',
+    latestStructureDirection === 'bearish',
+    90,
+  );
 
-  // Squeeze release (±35)
-  if (sqzOff) {
-    const val = sqzValue ?? 0;
-    if (val > 0) {
-      score += 35;
-      conditions.push({ name: 'Squeeze released upward', met: true, weight: 35 });
-    } else if (val < 0) {
-      score -= 35;
-      conditions.push({ name: 'Squeeze released downward', met: true, weight: -35 });
-    } else {
-      conditions.push({ name: 'Squeeze release direction', met: false, weight: 35 });
-    }
-  } else {
-    conditions.push({ name: 'Squeeze release', met: false, weight: 35 });
-  }
+  const squeezeScore = sqzOff
+    ? normalizeByRange(sqzValue ?? 0, 3)
+    : 0;
 
-  // MACD momentum (±20)
-  if (macdNow !== undefined && sigNow !== undefined) {
-    if (macdNow > sigNow) {
-      score += 20;
-      conditions.push({ name: 'MACD momentum bullish', met: true, weight: 20 });
-    } else {
-      score -= 20;
-      conditions.push({ name: 'MACD momentum bearish', met: true, weight: -20 });
-    }
-  }
+  const macdMomentumScore =
+    macdNow !== undefined && sigNow !== undefined
+      ? normalizeByRange(macdNow - sigNow, 0.6)
+      : 0;
 
-  // Price follow-through (±10)
-  if (latestClose > previousClose) {
-    score += 10;
-    conditions.push({ name: 'Bullish follow-through', met: true, weight: 10 });
-  } else if (latestClose < previousClose) {
-    score -= 10;
-    conditions.push({ name: 'Bearish follow-through', met: true, weight: -10 });
-  }
+  const followThroughScore = scorePercentMove(latestClose, previousClose, 2);
 
-  return buildEvaluation('breakout-momentum', conditions, score);
+  const granularConditions: GranularCondition[] = [
+    {
+      id: 'structureBreak',
+      name: 'BOS / CHoCH Direction',
+      score: structureScore,
+      description: 'Most recent valid structure break direction.',
+    },
+    {
+      id: 'squeezeRelease',
+      name: 'Squeeze Release',
+      score: squeezeScore,
+      value: sqzValue !== undefined ? `SQZ: ${sqzValue.toFixed(2)}` : undefined,
+      description: 'Directional momentum after squeeze release.',
+    },
+    {
+      id: 'macdMomentum',
+      name: 'MACD Momentum',
+      score: macdMomentumScore,
+      description: 'MACD distance from signal line.',
+    },
+    {
+      id: 'priceFollowThrough',
+      name: 'Price Follow-Through',
+      score: followThroughScore,
+      description: 'Latest candle follow-through strength.',
+    },
+  ];
+
+  const { conditions, overallScore, reasoning } = mapWeightedConditions('breakout-momentum', granularConditions);
+  return buildEvaluation('breakout-momentum', conditions, overallScore, reasoning);
 }
 
 // ── 4. Smart Money Tracker ────────────────────────────────────────────────────
@@ -389,9 +506,6 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     liquidityZones,
   } = input;
 
-  let score = 0;
-  const conditions: ScoredCondition[] = [];
-
   // SMC structure shift (±35) — only count breaks within last STRUCTURE_LOOKBACK_CANDLES candles
   const recentStructureBreak = structureBreaks
     ?.filter(sb => {
@@ -403,64 +517,6 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     .sort((a, b) => b.breakTime - a.breakTime)[0];
 
   const latestStructureDirection = recentStructureBreak?.direction;
-
-  if (latestStructureDirection === 'bullish') {
-    score += 35;
-    conditions.push({ name: 'SMC bullish structure shift', met: true, weight: 35 });
-  } else if (latestStructureDirection === 'bearish') {
-    score -= 35;
-    conditions.push({ name: 'SMC bearish structure shift', met: true, weight: -35 });
-  } else {
-    conditions.push({ name: 'SMC structure shift', met: false, weight: 35 });
-  }
-
-  // Trend alignment (±20)
-  if (latestStructureDirection === 'bullish' && stTrend === 'bullish') {
-    score += 20;
-    conditions.push({ name: 'Trend aligned bullish', met: true, weight: 20 });
-  } else if (latestStructureDirection === 'bearish' && stTrend === 'bearish') {
-    score -= 20;
-    conditions.push({ name: 'Trend aligned bearish', met: true, weight: -20 });
-  } else {
-    conditions.push({ name: 'Trend alignment', met: false, weight: 20 });
-  }
-
-  // Follow-through candle (±20)
-  if (latestStructureDirection === 'bullish' && latestClose > previousClose) {
-    score += 20;
-    conditions.push({ name: 'Follow-through bullish candle', met: true, weight: 20 });
-  } else if (latestStructureDirection === 'bearish' && latestClose < previousClose) {
-    score -= 20;
-    conditions.push({ name: 'Follow-through bearish candle', met: true, weight: -20 });
-  } else {
-    conditions.push({ name: 'Follow-through candle', met: false, weight: 20 });
-  }
-
-  // RSI momentum (±15)
-  if (lastRsi !== undefined) {
-    if (lastRsi > 52) {
-      score += 15;
-      conditions.push({ name: 'Bullish momentum (RSI)', met: true, weight: 15, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi < 48) {
-      score -= 15;
-      conditions.push({ name: 'Bearish momentum (RSI)', met: true, weight: -15, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else {
-      conditions.push({ name: 'RSI momentum', met: false, weight: 15, value: `RSI: ${lastRsi.toFixed(1)}` });
-    }
-  }
-
-  // SuperTrend (±10)
-  if (stTrend === 'bullish') {
-    score += 10;
-    conditions.push({ name: 'SuperTrend bullish', met: true, weight: 10 });
-  } else if (stTrend === 'bearish') {
-    score -= 10;
-    conditions.push({ name: 'SuperTrend bearish', met: true, weight: -10 });
-  } else {
-    conditions.push({ name: 'SuperTrend', met: false, weight: 10 });
-  }
-
-  // FVG proximity (±25): price within 0.5% of an unfilled FVG
   const currentPrice = latestClose;
   const nearbyFVG = fvgs?.find(fvg =>
     !fvg.filled &&
@@ -468,48 +524,105 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     currentPrice <= fvg.high * (1 + FVG_PROXIMITY_THRESHOLD)
   );
 
-  if (nearbyFVG) {
-    if (nearbyFVG.type === 'bullish') {
-      score += 25;
-      conditions.push({ name: 'Price in bullish FVG', met: true, weight: 25 });
-    } else {
-      score -= 25;
-      conditions.push({ name: 'Price in bearish FVG', met: true, weight: -25 });
-    }
-  }
-
-  // Order block touch (±20): price touching/within an active order block
   const touchingOB = orderBlocks?.find(ob =>
     currentPrice >= ob.low && currentPrice <= ob.high
   );
 
-  if (touchingOB) {
-    if (touchingOB.type === 'bullish') {
-      score += 20;
-      conditions.push({ name: 'Touching bullish order block', met: true, weight: 20 });
-    } else {
-      score -= 20;
-      conditions.push({ name: 'Touching bearish order block', met: true, weight: -20 });
-    }
-  }
-
-  // Liquidity sweep (±15): recent liquidity zone sweep detected
   const recentSwept = liquidityZones?.find(lz =>
     lz.swept &&
     Math.abs(currentPrice - lz.price) / currentPrice < LIQUIDITY_SWEEP_PROXIMITY
   );
 
-  if (recentSwept) {
-    if (recentSwept.type === 'high') {
-      score -= 15; // High liquidity grabbed, potential reversal down
-      conditions.push({ name: 'High liquidity swept', met: true, weight: -15 });
-    } else {
-      score += 15; // Low liquidity swept, potential reversal up
-      conditions.push({ name: 'Low liquidity swept', met: true, weight: 15 });
-    }
-  }
+  const structureShiftScore = scoreBoolean(
+    latestStructureDirection === 'bullish',
+    latestStructureDirection === 'bearish',
+    90,
+  );
 
-  return buildEvaluation('smart-money', conditions, score);
+  const trendAlignmentScore =
+    (latestStructureDirection === 'bullish' && stTrend === 'bullish')
+      ? 80
+      : (latestStructureDirection === 'bearish' && stTrend === 'bearish')
+        ? -80
+        : (stTrend === 'bullish' ? 20 : stTrend === 'bearish' ? -20 : 0);
+
+  const followThroughScore =
+    latestStructureDirection === 'bullish'
+      ? Math.max(0, scorePercentMove(latestClose, previousClose, 2))
+      : latestStructureDirection === 'bearish'
+        ? Math.min(0, scorePercentMove(latestClose, previousClose, 2))
+        : scorePercentMove(latestClose, previousClose, 2) * 0.5;
+
+  const rsiMomentumScore = lastRsi !== undefined ? normalizeByRange(lastRsi - 50, 20) : 0;
+
+  const superTrendScore = scoreBoolean(stTrend === 'bullish', stTrend === 'bearish', 70);
+
+  const fvgScore = nearbyFVG
+    ? (nearbyFVG.type === 'bullish' ? 85 : -85)
+    : 0;
+
+  const obScore = touchingOB
+    ? (touchingOB.type === 'bullish' ? 75 : -75)
+    : 0;
+
+  const liquidityScore = recentSwept
+    ? (recentSwept.type === 'low' ? 65 : -65)
+    : 0;
+
+  const granularConditions: GranularCondition[] = [
+    {
+      id: 'structureShift',
+      name: 'SMC Structure Shift',
+      score: structureShiftScore,
+      description: 'Direction of the latest valid structure shift.',
+    },
+    {
+      id: 'trendAlignment',
+      name: 'Trend Alignment',
+      score: trendAlignmentScore,
+      description: 'Alignment between structure and trend direction.',
+    },
+    {
+      id: 'followThrough',
+      name: 'Follow-Through Candle',
+      score: followThroughScore,
+      description: 'Price continuation in the shift direction.',
+    },
+    {
+      id: 'rsiMomentum',
+      name: 'RSI Momentum',
+      score: rsiMomentumScore,
+      value: lastRsi !== undefined ? `RSI: ${lastRsi.toFixed(1)}` : undefined,
+      description: 'Momentum bias from RSI midpoint displacement.',
+    },
+    {
+      id: 'supertrend',
+      name: 'SuperTrend State',
+      score: superTrendScore,
+      description: 'Current SuperTrend directional state.',
+    },
+    {
+      id: 'fvgProximity',
+      name: 'FVG Proximity',
+      score: fvgScore,
+      description: 'Price interaction with fresh fair value gaps.',
+    },
+    {
+      id: 'orderBlockTouch',
+      name: 'Order Block Touch',
+      score: obScore,
+      description: 'Price currently inside an order block.',
+    },
+    {
+      id: 'liquiditySweep',
+      name: 'Liquidity Sweep',
+      score: liquidityScore,
+      description: 'Recent liquidity grab near current price.',
+    },
+  ];
+
+  const { conditions, overallScore, reasoning } = mapWeightedConditions('smart-money', granularConditions);
+  return buildEvaluation('smart-money', conditions, overallScore, reasoning);
 }
 
 // ── 5. Momentum Scalper ───────────────────────────────────────────────────────
@@ -527,10 +640,6 @@ export function scoreMomentumScalper(input: ScoringInput): SystemEvaluation {
     previousClose,
   } = input;
 
-  let score = 0;
-  const conditions: ScoredCondition[] = [];
-
-  // MACD crossover (±30)
   const macdBullCross =
     macdPrev !== undefined && sigPrev !== undefined &&
     macdNow !== undefined && sigNow !== undefined &&
@@ -540,63 +649,57 @@ export function scoreMomentumScalper(input: ScoringInput): SystemEvaluation {
     macdNow !== undefined && sigNow !== undefined &&
     macdPrev >= sigPrev && macdNow < sigNow;
 
-  if (macdBullCross) {
-    score += 30;
-    conditions.push({ name: 'MACD bullish crossover', met: true, weight: 30 });
-  } else if (macdBearCross) {
-    score -= 30;
-    conditions.push({ name: 'MACD bearish crossover', met: true, weight: -30 });
-  } else {
-    conditions.push({ name: 'MACD crossover', met: false, weight: 30 });
-  }
+  const macdCrossoverScore = scoreBoolean(macdBullCross, macdBearCross, 90);
 
-  // MACD histogram expanding (±25)
-  if (macdHistogram !== undefined && prevMacdHistogram !== undefined) {
-    if (macdHistogram > 0 && macdHistogram > prevMacdHistogram) {
-      score += 25;
-      conditions.push({ name: 'MACD histogram expanding up', met: true, weight: 25 });
-    } else if (macdHistogram < 0 && macdHistogram < prevMacdHistogram) {
-      score -= 25;
-      conditions.push({ name: 'MACD histogram expanding down', met: true, weight: -25 });
-    } else {
-      conditions.push({ name: 'MACD histogram expansion', met: false, weight: 25 });
-    }
-  }
+  const histogramScore =
+    macdHistogram !== undefined && prevMacdHistogram !== undefined
+      ? normalizeByRange(macdHistogram - prevMacdHistogram, 0.4)
+      : 0;
 
-  // Trend alignment (±25)
-  if (stTrend === 'bullish') {
-    score += 25;
-    conditions.push({ name: 'Trend bullish', met: true, weight: 25 });
-  } else if (stTrend === 'bearish') {
-    score -= 25;
-    conditions.push({ name: 'Trend bearish', met: true, weight: -25 });
-  } else {
-    conditions.push({ name: 'Trend direction', met: false, weight: 25 });
-  }
+  const trendDirectionScore = scoreBoolean(stTrend === 'bullish', stTrend === 'bearish', 80);
 
-  // MACD zero-line (±10)
-  if (macdNow !== undefined) {
-    if (macdNow > 0) {
-      score += 10;
-      conditions.push({ name: 'MACD above zero', met: true, weight: 10 });
-    } else if (macdNow < 0) {
-      score -= 10;
-      conditions.push({ name: 'MACD below zero', met: true, weight: -10 });
-    } else {
-      conditions.push({ name: 'MACD zero line', met: false, weight: 10 });
-    }
-  }
+  const macdZeroLineScore =
+    macdNow !== undefined
+      ? normalizeByRange(macdNow, 0.6)
+      : 0;
 
-  // Price follow-through (±10)
-  if (latestClose > previousClose) {
-    score += 10;
-    conditions.push({ name: 'Bullish price action', met: true, weight: 10 });
-  } else if (latestClose < previousClose) {
-    score -= 10;
-    conditions.push({ name: 'Bearish price action', met: true, weight: -10 });
-  }
+  const priceActionScore = scorePercentMove(latestClose, previousClose, 1.5);
 
-  return buildEvaluation('momentum-scalper', conditions, score);
+  const granularConditions: GranularCondition[] = [
+    {
+      id: 'macdCrossover',
+      name: 'MACD Crossover',
+      score: macdCrossoverScore,
+      description: 'Recent MACD crossover direction and strength.',
+    },
+    {
+      id: 'histogramExpansion',
+      name: 'Histogram Expansion',
+      score: histogramScore,
+      description: 'Acceleration in MACD histogram momentum.',
+    },
+    {
+      id: 'trendDirection',
+      name: 'Trend Direction',
+      score: trendDirectionScore,
+      description: 'Direction from trend filter.',
+    },
+    {
+      id: 'macdZeroLine',
+      name: 'MACD Zero-Line Position',
+      score: macdZeroLineScore,
+      description: 'Bias from MACD distance to zero.',
+    },
+    {
+      id: 'priceAction',
+      name: 'Price Action',
+      score: priceActionScore,
+      description: 'Short-term candle impulse.',
+    },
+  ];
+
+  const { conditions, overallScore, reasoning } = mapWeightedConditions('momentum-scalper', granularConditions);
+  return buildEvaluation('momentum-scalper', conditions, overallScore, reasoning);
 }
 
 // ── 6. Divergence Master ─────────────────────────────────────────────────────
@@ -618,9 +721,6 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
     sigPrev,
   } = input;
 
-  let score = 0;
-  const conditions: ScoredCondition[] = [];
-
   // ── Actual divergence detection from divergencePoints ──────────────────────
   // Use the most recent DIVERGENCE_LOOKBACK_BARS points, optionally filtered by currentTime.
   const recentSlice = divergencePoints.slice(-DIVERGENCE_LOOKBACK_BARS);
@@ -631,130 +731,89 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
   const recentBullish = recentPoints.filter(d => d.type === 'bullish');
   const recentBearish = recentPoints.filter(d => d.type === 'bearish');
 
-  // Strong bullish divergence (count >= 3 oscillators confirming): +40
   const strongBullish = recentBullish
     .filter(d => d.count >= 3)
     .sort((a, b) => (b.time as number) - (a.time as number))[0];
-  if (strongBullish) {
-    score += 40;
-    conditions.push({
-      name: `Strong bullish divergence (${strongBullish.count} oscillators)`,
-      met: true,
-      weight: 40,
-      value: strongBullish.indicators.slice(0, 3).join(', '),
-    });
-  } else {
-    // Weak bullish divergence (count >= 1): +25
-    const weakBullish = recentBullish
-      .filter(d => d.count >= 1)
-      .sort((a, b) => (b.time as number) - (a.time as number))[0];
-    if (weakBullish) {
-      score += 25;
-      conditions.push({
-        name: `Bullish divergence (${weakBullish.count} oscillator${weakBullish.count > 1 ? 's' : ''})`,
-        met: true,
-        weight: 25,
-        value: weakBullish.indicators.slice(0, 3).join(', '),
-      });
-    } else {
-      conditions.push({ name: 'Bullish divergence detected', met: false, weight: 40 });
-    }
-  }
 
-  // Strong bearish divergence (count >= 3): -40
   const strongBearish = recentBearish
     .filter(d => d.count >= 3)
     .sort((a, b) => (b.time as number) - (a.time as number))[0];
-  if (strongBearish) {
-    score -= 40;
-    conditions.push({
-      name: `Strong bearish divergence (${strongBearish.count} oscillators)`,
-      met: true,
-      weight: -40,
-      value: strongBearish.indicators.slice(0, 3).join(', '),
-    });
-  } else {
-    const weakBearish = recentBearish
-      .filter(d => d.count >= 1)
-      .sort((a, b) => (b.time as number) - (a.time as number))[0];
-    if (weakBearish) {
-      score -= 25;
-      conditions.push({
-        name: `Bearish divergence (${weakBearish.count} oscillator${weakBearish.count > 1 ? 's' : ''})`,
-        met: true,
-        weight: -25,
-        value: weakBearish.indicators.slice(0, 3).join(', '),
-      });
-    } else {
-      conditions.push({ name: 'Bearish divergence detected', met: false, weight: -40 });
-    }
-  }
 
-  // RSI level confirmation (±20)
-  if (lastRsi !== undefined) {
-    if (lastRsi < 30) {
-      score += 20;
-      conditions.push({ name: 'RSI oversold', met: true, weight: 20, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi < 40) {
-      score += 10;
-      conditions.push({ name: 'RSI weak/discount', met: true, weight: 10, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi > 70) {
-      score -= 20;
-      conditions.push({ name: 'RSI overbought', met: true, weight: -20, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else if (lastRsi > 60) {
-      score -= 10;
-      conditions.push({ name: 'RSI premium zone', met: true, weight: -10, value: `RSI: ${lastRsi.toFixed(1)}` });
-    } else {
-      conditions.push({ name: 'RSI level', met: false, weight: 20, value: `RSI: ${lastRsi.toFixed(1)}` });
-    }
-  }
+  const weakBullish = recentBullish
+    .filter(d => d.count >= 1)
+    .sort((a, b) => (b.time as number) - (a.time as number))[0];
+  const weakBearish = recentBearish
+    .filter(d => d.count >= 1)
+    .sort((a, b) => (b.time as number) - (a.time as number))[0];
 
-  // RSI turning direction (±15)
-  if (prevRsi !== undefined && lastRsi !== undefined) {
-    if (prevRsi < 40 && lastRsi > prevRsi) {
-      score += 15;
-      conditions.push({ name: 'RSI turning up from low', met: true, weight: 15 });
-    } else if (prevRsi > 60 && lastRsi < prevRsi) {
-      score -= 15;
-      conditions.push({ name: 'RSI turning down from high', met: true, weight: -15 });
-    } else {
-      conditions.push({ name: 'RSI momentum turn', met: false, weight: 15 });
-    }
-  }
+  const bullishDivScore = strongBullish
+    ? Math.min(100, 65 + (strongBullish.count * 10))
+    : weakBullish
+      ? Math.min(80, 35 + (weakBullish.count * 10))
+      : 0;
 
-  // MACD histogram turning (±15)
-  if (macdHistogram !== undefined && prevMacdHistogram !== undefined) {
-    if (macdHistogram > 0 && macdHistogram > prevMacdHistogram) {
-      score += 15;
-      conditions.push({ name: 'MACD turning up', met: true, weight: 15 });
-    } else if (macdHistogram < 0 && macdHistogram < prevMacdHistogram) {
-      score -= 15;
-      conditions.push({ name: 'MACD turning down', met: true, weight: -15 });
-    } else {
-      conditions.push({ name: 'MACD histogram direction', met: false, weight: 15 });
-    }
-  } else {
-    // Fallback: use MACD crossover when histogram not available
-    const macdBullCross =
-      macdPrev !== undefined && sigPrev !== undefined &&
-      macdNow !== undefined && sigNow !== undefined &&
-      macdPrev <= sigPrev && macdNow > sigNow;
-    const macdBearCross =
-      macdPrev !== undefined && sigPrev !== undefined &&
-      macdNow !== undefined && sigNow !== undefined &&
-      macdPrev >= sigPrev && macdNow < sigNow;
-    if (macdBullCross) {
-      score += 15;
-      conditions.push({ name: 'MACD bullish crossover', met: true, weight: 15 });
-    } else if (macdBearCross) {
-      score -= 15;
-      conditions.push({ name: 'MACD bearish crossover', met: true, weight: -15 });
-    } else {
-      conditions.push({ name: 'MACD crossover', met: false, weight: 15 });
-    }
-  }
+  const bearishDivScore = strongBearish
+    ? -Math.min(100, 65 + (strongBearish.count * 10))
+    : weakBearish
+      ? -Math.min(80, 35 + (weakBearish.count * 10))
+      : 0;
 
-  return buildEvaluation('divergence-master', conditions, score);
+  const rsiLevelScore = lastRsi !== undefined ? scoreRSI(lastRsi) : 0;
+
+  const rsiTurnScore =
+    prevRsi !== undefined && lastRsi !== undefined
+      ? normalizeByRange(lastRsi - prevRsi, 8)
+      : 0;
+
+  const macdTurnScore =
+    macdHistogram !== undefined && prevMacdHistogram !== undefined
+      ? normalizeByRange(macdHistogram - prevMacdHistogram, 0.4)
+      : macdPrev !== undefined && sigPrev !== undefined && macdNow !== undefined && sigNow !== undefined
+        ? normalizeByRange((macdNow - sigNow) - (macdPrev - sigPrev), 0.4)
+        : 0;
+
+  const granularConditions: GranularCondition[] = [
+    {
+      id: 'bullishDivergence',
+      name: 'Bullish Divergence',
+      score: bullishDivScore,
+      value: (strongBullish ?? weakBullish)
+        ? (strongBullish ?? weakBullish)!.indicators.slice(0, 3).join(', ')
+        : undefined,
+      description: 'Strength of recent bullish divergence cluster.',
+    },
+    {
+      id: 'bearishDivergence',
+      name: 'Bearish Divergence',
+      score: bearishDivScore,
+      value: (strongBearish ?? weakBearish)
+        ? (strongBearish ?? weakBearish)!.indicators.slice(0, 3).join(', ')
+        : undefined,
+      description: 'Strength of recent bearish divergence cluster.',
+    },
+    {
+      id: 'rsiLevel',
+      name: 'RSI Level Context',
+      score: rsiLevelScore,
+      value: lastRsi !== undefined ? `RSI: ${lastRsi.toFixed(1)}` : undefined,
+      description: 'Oversold/overbought context from RSI.',
+    },
+    {
+      id: 'rsiTurn',
+      name: 'RSI Turn',
+      score: rsiTurnScore,
+      description: 'Momentum turn in RSI slope.',
+    },
+    {
+      id: 'macdTurn',
+      name: 'MACD Turn',
+      score: macdTurnScore,
+      description: 'Turning momentum in MACD structure.',
+    },
+  ];
+
+  const { conditions, overallScore, reasoning } = mapWeightedConditions('divergence-master', granularConditions);
+  return buildEvaluation('divergence-master', conditions, overallScore, reasoning);
 }
 
 // ── 7. Multi-Timeframe Confluence ─────────────────────────────────────────────
@@ -762,60 +821,53 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
 export function scoreMTFConfluence(input: ScoringInput): SystemEvaluation {
   const { htfBullish, htfBearish, stTrend, latestStructureDirection, macdNow, sigNow } = input;
 
-  let score = 0;
-  const conditions: ScoredCondition[] = [];
-
   const totalHTF = htfBullish + htfBearish;
 
-  // HTF bias (±40)
-  if (htfBullish >= 2) {
-    const strength = totalHTF > 0 ? htfBullish / totalHTF : 0;
-    const pts = Math.round(strength * 40);
-    score += pts;
-    conditions.push({ name: `HTF mostly bullish (${htfBullish} TF)`, met: true, weight: 40, value: `${htfBullish}/${totalHTF}` });
-  } else if (htfBearish >= 2) {
-    const strength = totalHTF > 0 ? htfBearish / totalHTF : 0;
-    const pts = Math.round(strength * 40);
-    score -= pts;
-    conditions.push({ name: `HTF mostly bearish (${htfBearish} TF)`, met: true, weight: -40, value: `${htfBearish}/${totalHTF}` });
-  } else {
-    conditions.push({ name: 'HTF bias alignment', met: false, weight: 40 });
-  }
+  const htfBiasScore = totalHTF > 0
+    ? normalizeByRange(htfBullish - htfBearish, totalHTF)
+    : 0;
 
-  // Local SuperTrend (±25)
-  if (stTrend === 'bullish') {
-    score += 25;
-    conditions.push({ name: 'Local trend bullish', met: true, weight: 25 });
-  } else if (stTrend === 'bearish') {
-    score -= 25;
-    conditions.push({ name: 'Local trend bearish', met: true, weight: -25 });
-  } else {
-    conditions.push({ name: 'Local trend', met: false, weight: 25 });
-  }
+  const localTrendScore = scoreBoolean(stTrend === 'bullish', stTrend === 'bearish', 80);
+  const structureDirectionScore = scoreBoolean(
+    latestStructureDirection === 'bullish',
+    latestStructureDirection === 'bearish',
+    75,
+  );
+  const macdMomentumScore =
+    macdNow !== undefined && sigNow !== undefined
+      ? normalizeByRange(macdNow - sigNow, 0.5)
+      : 0;
 
-  // Structure direction (±20)
-  if (latestStructureDirection === 'bullish') {
-    score += 20;
-    conditions.push({ name: 'Structure bullish', met: true, weight: 20 });
-  } else if (latestStructureDirection === 'bearish') {
-    score -= 20;
-    conditions.push({ name: 'Structure bearish', met: true, weight: -20 });
-  } else {
-    conditions.push({ name: 'Structure direction', met: false, weight: 20 });
-  }
+  const granularConditions: GranularCondition[] = [
+    {
+      id: 'htfBias',
+      name: 'HTF Bias Alignment',
+      score: htfBiasScore,
+      value: totalHTF > 0 ? `${htfBullish}/${totalHTF} bullish` : undefined,
+      description: 'Majority high-timeframe directional bias.',
+    },
+    {
+      id: 'localTrend',
+      name: 'Local Trend',
+      score: localTrendScore,
+      description: 'Current timeframe trend direction.',
+    },
+    {
+      id: 'structureDirection',
+      name: 'Structure Direction',
+      score: structureDirectionScore,
+      description: 'Market structure direction on active timeframe.',
+    },
+    {
+      id: 'macdMomentum',
+      name: 'MACD Momentum',
+      score: macdMomentumScore,
+      description: 'Momentum confirmation from MACD signal spread.',
+    },
+  ];
 
-  // MACD momentum (±15)
-  if (macdNow !== undefined && sigNow !== undefined) {
-    if (macdNow > sigNow) {
-      score += 15;
-      conditions.push({ name: 'MACD momentum bullish', met: true, weight: 15 });
-    } else {
-      score -= 15;
-      conditions.push({ name: 'MACD momentum bearish', met: true, weight: -15 });
-    }
-  }
-
-  return buildEvaluation('mtf-confluence', conditions, score);
+  const { conditions, overallScore, reasoning } = mapWeightedConditions('mtf-confluence', granularConditions);
+  return buildEvaluation('mtf-confluence', conditions, overallScore, reasoning);
 }
 
 // ── 8. Volume Profile Master ──────────────────────────────────────────────────
@@ -823,117 +875,112 @@ export function scoreMTFConfluence(input: ScoringInput): SystemEvaluation {
 export function scoreVolumeProfile(input: ScoringInput): SystemEvaluation {
   const { lastRsi, prevRsi, latestClose, previousClose, macdNow, sigNow, volumeProfileData } = input;
 
-  let score = 0;
-  const conditions: ScoredCondition[] = [];
   const currentPrice = latestClose;
 
-  // POC proximity (±30): price within 1% of Point of Control
-  if (volumeProfileData?.poc) {
-    const distanceToPOC = Math.abs(currentPrice - volumeProfileData.poc) / currentPrice;
-    if (distanceToPOC < POC_PROXIMITY_THRESHOLD) {
-      score += 30;
-      conditions.push({ name: 'Price near POC (high volume node)', met: true, weight: 30 });
-    } else {
-      conditions.push({ name: 'POC proximity', met: false, weight: 30 });
-    }
-  }
-
-  // Value area boundaries (±25): price at/near value area high or low
-  if (volumeProfileData?.valueAreaHigh && currentPrice >= volumeProfileData.valueAreaHigh * (1 - VALUE_AREA_THRESHOLD)) {
-    score -= 25;
-    conditions.push({ name: 'Price at value area high', met: true, weight: -25 });
-  } else if (volumeProfileData?.valueAreaLow && currentPrice <= volumeProfileData.valueAreaLow * (1 + VALUE_AREA_THRESHOLD)) {
-    score += 25;
-    conditions.push({ name: 'Price at value area low', met: true, weight: 25 });
-  } else {
-    conditions.push({ name: 'Value area boundary', met: false, weight: 25 });
-  }
-
-  // Volume at current price level (±20/−15): high or low volume node
   const currentRow = volumeProfileData?.rows?.find(r =>
     Math.abs(r.price - currentPrice) / currentPrice < VOLUME_ROW_PROXIMITY
   );
-  if (currentRow && volumeProfileData?.rows && volumeProfileData.rows.length > 0) {
-    const avgVolume = volumeProfileData.rows.reduce((sum, r) => sum + r.volume, 0) / volumeProfileData.rows.length;
-    if (currentRow.volume > avgVolume * HIGH_VOLUME_MULTIPLIER) {
-      score += 20;
-      conditions.push({ name: 'High volume at current price', met: true, weight: 20 });
-    } else if (currentRow.volume < avgVolume * LOW_VOLUME_MULTIPLIER) {
-      score -= 15;
-      conditions.push({ name: 'Low volume at current price', met: true, weight: -15 });
-    } else {
-      conditions.push({ name: 'Volume at price level', met: false, weight: 20 });
-    }
-  } else if (volumeProfileData) {
-    conditions.push({ name: 'Volume at price level', met: false, weight: 20 });
-  }
 
-  // Volume confirmation (±15): RSI midpoint as directional confirmation when no VP data
-  if (!volumeProfileData) {
-    if (prevRsi !== undefined && lastRsi !== undefined) {
-      if (prevRsi <= 50 && lastRsi > 50) {
-        score += 35;
-        conditions.push({ name: 'RSI crossed above midpoint', met: true, weight: 35 });
-      } else if (prevRsi >= 50 && lastRsi < 50) {
-        score -= 35;
-        conditions.push({ name: 'RSI crossed below midpoint', met: true, weight: -35 });
-      } else if (lastRsi > 50) {
-        score += 15;
-        conditions.push({ name: 'RSI above midpoint', met: true, weight: 15, value: `RSI: ${lastRsi.toFixed(1)}` });
-      } else if (lastRsi < 50) {
-        score -= 15;
-        conditions.push({ name: 'RSI below midpoint', met: true, weight: -15, value: `RSI: ${lastRsi.toFixed(1)}` });
-      } else {
-        conditions.push({ name: 'RSI midpoint', met: false, weight: 35 });
-      }
-    }
+  const distanceToPOC = volumeProfileData?.poc
+    ? Math.abs(currentPrice - volumeProfileData.poc) / currentPrice
+    : undefined;
+  const pocScore = distanceToPOC !== undefined
+    ? normalizeByRange(POC_PROXIMITY_THRESHOLD - distanceToPOC, POC_PROXIMITY_THRESHOLD)
+    : 0;
 
-    // Price action follow-through (±25)
-    if (latestClose > previousClose) {
-      score += 25;
-      conditions.push({ name: 'Bullish candle follow-through', met: true, weight: 25 });
-    } else if (latestClose < previousClose) {
-      score -= 25;
-      conditions.push({ name: 'Bearish candle follow-through', met: true, weight: -25 });
-    }
+  const valueAreaScore = volumeProfileData?.valueAreaHigh && currentPrice >= volumeProfileData.valueAreaHigh * (1 - VALUE_AREA_THRESHOLD)
+    ? -85
+    : volumeProfileData?.valueAreaLow && currentPrice <= volumeProfileData.valueAreaLow * (1 + VALUE_AREA_THRESHOLD)
+      ? 85
+      : 0;
 
-    // Discount/premium zone confirmation (±25)
-    if (lastRsi !== undefined && lastRsi <= 40 && latestClose > previousClose) {
-      score += 25;
-      conditions.push({ name: 'Discount zone rebound', met: true, weight: 25 });
-    } else if (lastRsi !== undefined && lastRsi >= 60 && latestClose < previousClose) {
-      score -= 25;
-      conditions.push({ name: 'Premium zone rejection', met: true, weight: -25 });
-    } else {
-      conditions.push({ name: 'Zone bounce confirmation', met: false, weight: 25 });
-    }
+  const volumeNodeScore = currentRow && volumeProfileData?.rows && volumeProfileData.rows.length > 0
+    ? (() => {
+      const avgVolume = volumeProfileData.rows.reduce((sum, r) => sum + r.volume, 0) / volumeProfileData.rows.length;
+      return normalizeByRange(currentRow.volume - avgVolume, Math.max(avgVolume * 0.8, 1));
+    })()
+    : 0;
 
-    // MACD confirmation (±15)
-    if (macdNow !== undefined && sigNow !== undefined) {
-      if (macdNow > sigNow) {
-        score += 15;
-        conditions.push({ name: 'MACD bullish', met: true, weight: 15 });
-      } else {
-        score -= 15;
-        conditions.push({ name: 'MACD bearish', met: true, weight: -15 });
-      }
-    }
-  } else {
-    // Volume confirmation (±15): high volume supporting price move
-    if (lastRsi !== undefined) {
-      if (lastRsi > 50 && latestClose > previousClose) {
-        score += 15;
-        conditions.push({ name: 'Volume confirmation bullish', met: true, weight: 15 });
-      } else if (lastRsi < 50 && latestClose < previousClose) {
-        score -= 15;
-        conditions.push({ name: 'Volume confirmation bearish', met: true, weight: -15 });
-      } else {
-        conditions.push({ name: 'Volume confirmation', met: false, weight: 15 });
-      }
-    }
-  }
+  const rsiMidpointScore =
+    prevRsi !== undefined && lastRsi !== undefined
+      ? normalizeByRange((lastRsi - 50) + (lastRsi - prevRsi), 20)
+      : 0;
 
-  return buildEvaluation('volume-profile', conditions, score);
+  const followThroughScore = scorePercentMove(latestClose, previousClose, 2);
+
+  const zoneBounceScore =
+    lastRsi !== undefined
+      ? (lastRsi <= 40
+        ? Math.max(0, followThroughScore)
+        : lastRsi >= 60
+          ? Math.min(0, followThroughScore)
+          : 0)
+      : 0;
+
+  const macdConfirmScore =
+    macdNow !== undefined && sigNow !== undefined
+      ? normalizeByRange(macdNow - sigNow, 0.5)
+      : 0;
+
+  const volumeConfirmScore =
+    lastRsi !== undefined
+      ? normalizeByRange((lastRsi - 50) + (followThroughScore / 4), 20)
+      : 0;
+
+  const granularConditions: GranularCondition[] = [
+    {
+      id: 'pocProximity',
+      name: 'POC Proximity',
+      score: pocScore,
+      description: 'How close price is to the volume profile POC.',
+    },
+    {
+      id: 'valueAreaBoundary',
+      name: 'Value Area Boundary',
+      score: valueAreaScore,
+      description: 'Reversal opportunity at value area extremes.',
+    },
+    {
+      id: 'volumeAtPrice',
+      name: 'Volume at Price Level',
+      score: volumeNodeScore,
+      description: 'Relative node volume at current price.',
+    },
+    {
+      id: 'rsiMidpoint',
+      name: 'RSI Midpoint Context',
+      score: rsiMidpointScore,
+      value: lastRsi !== undefined ? `RSI: ${lastRsi.toFixed(1)}` : undefined,
+      description: 'Momentum context around RSI midpoint.',
+    },
+    {
+      id: 'followThrough',
+      name: 'Candle Follow-Through',
+      score: followThroughScore,
+      description: 'Directional follow-through in current candle.',
+    },
+    {
+      id: 'zoneBounce',
+      name: 'Discount / Premium Bounce',
+      score: zoneBounceScore,
+      description: 'Price reaction quality in discount/premium zones.',
+    },
+    {
+      id: 'macdConfirmation',
+      name: 'MACD Confirmation',
+      score: macdConfirmScore,
+      description: 'Directional momentum confirmation from MACD.',
+    },
+    {
+      id: 'volumeConfirmation',
+      name: 'Volume Confirmation',
+      score: volumeConfirmScore,
+      description: 'Volume-backed directional conviction proxy.',
+    },
+  ];
+
+  const { conditions, overallScore, reasoning } = mapWeightedConditions('volume-profile', granularConditions);
+  return buildEvaluation('volume-profile', conditions, overallScore, reasoning);
 }
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────

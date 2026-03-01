@@ -44,12 +44,12 @@ export function DraggableSystemInfoBox({
 
   const [buyThreshold, setBuyThreshold] = useState(() => {
     const saved = localStorage.getItem(`tradingSystem_${activeSystemId}_buyThreshold`);
-    return saved ? parseInt(saved, 10) : 80;
+    return saved ? parseInt(saved, 10) : 70;
   });
 
   const [sellThreshold, setSellThreshold] = useState(() => {
     const saved = localStorage.getItem(`tradingSystem_${activeSystemId}_sellThreshold`);
-    return saved ? parseInt(saved, 10) : 80;
+    return saved ? parseInt(saved, 10) : 70;
   });
 
   const adjustThreshold = (type: 'buy' | 'sell', delta: number) => {
