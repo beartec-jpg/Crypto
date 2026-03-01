@@ -21,6 +21,17 @@ export interface GDSComponentScore {
   isAvailable: boolean;
 }
 
+export interface MarketPattern {
+  name: string;
+  confidence: 'High' | 'Medium' | 'Low';
+  description: string;
+  emoji: string;
+  bullishSignals: string[];
+  bearishSignals: string[];
+  neutralSignals: string[];
+  recommendation: string;
+}
+
 export interface GenuineDemandScoreResult {
   score: number;
   verdict: string;
@@ -31,6 +42,12 @@ export interface GenuineDemandScoreResult {
   flags: {
     fakeBreakoutWarning: boolean;
     confirmationStrength: boolean;
+  };
+  pattern: MarketPattern;
+  rawReadings: {
+    fundingRate: number | undefined;
+    coinbasePremium: number | undefined;
+    oiChange: number | undefined;
   };
 }
 
@@ -105,6 +122,157 @@ function getVerdict(score: number): { verdict: string; emoji: GenuineDemandScore
   };
 }
 
+function detectMarketPattern(
+  priceUp: boolean,
+  cvdScore: number,
+  oiScore: number,
+  fundingScore: number,
+  premiumScore: number,
+  fundingRate: number | undefined,
+  coinbasePremium: number | undefined,
+  oiChange: number | undefined
+): MarketPattern {
+  const cvdStrong = cvdScore > CVD_WEIGHT * 0.5;
+  const oiDown = typeof oiChange === 'number' && oiChange < -1;
+  const fundingNeg = typeof fundingRate === 'number' && fundingRate < -0.0005;
+  const fundingPos = typeof fundingRate === 'number' && fundingRate > 0.0005;
+  const fundingNeutral = typeof fundingRate === 'number' && Math.abs(fundingRate) <= 0.0005;
+  const premiumPos = typeof coinbasePremium === 'number' && coinbasePremium > 0.05;
+  const premiumNeg = typeof coinbasePremium === 'number' && coinbasePremium < -0.05;
+
+  // Pattern 1: Healthy Bottom (Original Target)
+  if (priceUp && cvdStrong && oiDown && fundingNeg && premiumPos) {
+    return {
+      name: 'Healthy Bottom',
+      confidence: 'High',
+      description: 'Post-capitulation rally with genuine demand',
+      emoji: '🚀',
+      bullishSignals: [
+        'Strong spot buying pressure',
+        'Leverage flushed out (OI down)',
+        'Negative funding (shorts paying)',
+        'US retail entering (premium positive)'
+      ],
+      bearishSignals: [],
+      neutralSignals: [],
+      recommendation: 'Strong buy signal - all conditions aligned for sustained rally'
+    };
+  }
+
+  // Pattern 2: Distribution / Top Forming
+  if (priceUp && !cvdStrong && !oiDown && fundingPos && premiumNeg) {
+    return {
+      name: 'Distribution',
+      confidence: 'High',
+      description: 'Smart money exiting, retail buying futures',
+      emoji: '🔴',
+      bullishSignals: [],
+      bearishSignals: [
+        'Weak or negative spot CVD',
+        'OI expanding (new leveraged longs)',
+        'Positive funding (longs overheated)',
+        'Negative premium (no US demand)'
+      ],
+      neutralSignals: [],
+      recommendation: 'High risk of reversal - avoid longs, consider scaling out'
+    };
+  }
+
+  // Pattern 3: Leveraged Pump (Low Quality Rally)
+  if (priceUp && !cvdStrong && !oiDown && (fundingPos || fundingNeutral) && !premiumPos) {
+    return {
+      name: 'Leveraged Pump',
+      confidence: 'Medium',
+      description: 'Futures-driven move without spot confirmation',
+      emoji: '⚠️',
+      bullishSignals: priceUp ? ['Price momentum'] : [],
+      bearishSignals: [
+        'Weak spot buying',
+        'Leverage-driven (OI not contracting)',
+        premiumNeg ? 'No US retail interest' : 'Premium neutral or negative'
+      ],
+      neutralSignals: [fundingNeutral ? 'Funding neutral' : 'Funding slightly positive'],
+      recommendation: 'Fakeout risk high - wait for spot confirmation before entering'
+    };
+  }
+
+  // Pattern 4: Mixed Signals with Strong CVD
+  if (priceUp && cvdStrong && !fundingNeg && !premiumPos) {
+    const bullish = ['Strong spot buying (CVD positive)', 'Price momentum'];
+    const bearish: string[] = [];
+    const neutral: string[] = [];
+
+    if (premiumNeg) bearish.push('Negative premium (US retail not participating)');
+    else neutral.push('Premium neutral');
+
+    if (fundingNeutral) neutral.push('Funding neutral (balanced positioning)');
+    else if (fundingPos) bearish.push('Positive funding (slight overheating)');
+
+    if (!oiDown && typeof oiChange === 'number' && oiChange > 1) {
+      bearish.push('OI expanding (leverage increasing)');
+    } else {
+      neutral.push(`OI change minimal (${oiChange?.toFixed(2)}%)`);
+    }
+
+    return {
+      name: 'Mixed Signals',
+      confidence: 'Medium',
+      description: 'Good spot buying but missing key confirmation signals',
+      emoji: '🟡',
+      bullishSignals: bullish,
+      bearishSignals: bearish,
+      neutralSignals: neutral,
+      recommendation: 'Spot strength encouraging but wait for funding to go negative OR premium to turn positive'
+    };
+  }
+
+  // Pattern 5: Quiet Accumulation
+  if (!priceUp && cvdStrong && fundingNeutral && !premiumPos) {
+    return {
+      name: 'Quiet Accumulation',
+      confidence: 'Medium',
+      description: 'Smart money accumulating without price movement',
+      emoji: '🤫',
+      bullishSignals: [
+        'Spot buying despite flat price',
+        'Low leverage (funding neutral)'
+      ],
+      bearishSignals: [],
+      neutralSignals: ['Price consolidating', 'No retail FOMO yet'],
+      recommendation: 'Potential base building - monitor for breakout with continued CVD strength'
+    };
+  }
+
+  // Pattern 6: Capitulation
+  if (!priceUp && fundingNeg && oiDown) {
+    return {
+      name: 'Capitulation',
+      confidence: 'High',
+      description: 'Extreme selling pressure and liquidations',
+      emoji: '💥',
+      bullishSignals: [
+        'Negative funding (shorts paying)',
+        'OI flushing out (liquidations)'
+      ],
+      bearishSignals: ['Price declining', ...(!cvdStrong ? ['Spot selling pressure'] : [])],
+      neutralSignals: [],
+      recommendation: 'Potential reversal zone - watch for CVD to turn positive'
+    };
+  }
+
+  // Default: Neutral/Choppy
+  return {
+    name: 'Neutral/Choppy',
+    confidence: 'Low',
+    description: 'No clear pattern - mixed or weak signals',
+    emoji: '😐',
+    bullishSignals: cvdStrong ? ['Some spot buying'] : [],
+    bearishSignals: [],
+    neutralSignals: ['Insufficient conviction in any direction'],
+    recommendation: 'Wait for clearer setup - avoid trading in choppy conditions'
+  };
+}
+
 export function calculateGenuineDemandScore({
   candles,
   cvdData,
@@ -171,6 +339,17 @@ export function calculateGenuineDemandScore({
       flags: {
         fakeBreakoutWarning: false,
         confirmationStrength: false,
+      },
+      pattern: detectMarketPattern(
+        false, 0, 0, 0, 0,
+        externalMetrics?.fundingRate,
+        externalMetrics?.coinbasePremiumPct,
+        externalMetrics?.openInterestChangePct
+      ),
+      rawReadings: {
+        fundingRate: externalMetrics?.fundingRate,
+        coinbasePremium: externalMetrics?.coinbasePremiumPct,
+        oiChange: externalMetrics?.openInterestChangePct,
       },
     };
   }
@@ -288,6 +467,17 @@ export function calculateGenuineDemandScore({
 
   const verdictData = getVerdict(normalizedScore);
 
+  const pattern = detectMarketPattern(
+    priceUp,
+    cvdScore,
+    oiScore,
+    fundingScore,
+    premiumScore,
+    fundingRate,
+    coinbasePremium,
+    oiChange
+  );
+
   return {
     score: normalizedScore,
     verdict: verdictData.verdict,
@@ -298,6 +488,12 @@ export function calculateGenuineDemandScore({
     flags: {
       fakeBreakoutWarning,
       confirmationStrength,
+    },
+    pattern,
+    rawReadings: {
+      fundingRate,
+      coinbasePremium,
+      oiChange,
     },
   };
 }

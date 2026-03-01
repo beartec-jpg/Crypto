@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, AlertTriangle, MinusCircle, ChevronDown, ChevronUp, Bug } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, MinusCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Candle, CVDDataItem } from '@/types/chart';
 import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore';
 import type { GDSExternalMetrics } from '@/lib/indicators/genuineDemandScore';
@@ -59,7 +59,6 @@ function MiniSparkline({ points }: { points: number[] }) {
 
 export function GenuineDemandScorePanel({ candles, cvdData, externalMetrics }: GenuineDemandScorePanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
 
   const { gds, latestScore, scoreHistory, dataCoverage } = useGenuineDemandScore({
     candles,
@@ -89,15 +88,6 @@ export function GenuineDemandScorePanel({ candles, cvdData, externalMetrics }: G
           >
             Breakdown
             {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowDebug((previous) => !previous)}
-            className="text-slate-400 hover:text-yellow-300 text-sm inline-flex items-center gap-1 transition-colors"
-            title="Toggle debug panel"
-          >
-            <Bug className="h-4 w-4" />
-            {showDebug ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
         </div>
       </div>
@@ -199,117 +189,96 @@ export function GenuineDemandScorePanel({ candles, cvdData, externalMetrics }: G
         </div>
       )}
 
-      {showDebug && (
-        <div className="mt-4 border-t border-yellow-700/40 pt-4 space-y-4">
-          <p className="text-xs font-semibold text-yellow-400 uppercase tracking-wide flex items-center gap-1.5">
-            <Bug className="h-3.5 w-3.5" /> Debug Panel
-          </p>
-
-          {/* Raw API values */}
-          <div>
-            <p className="text-xs text-slate-400 mb-2 uppercase tracking-wide">Raw API Data</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {([
-                {
-                  label: 'Funding Rate',
-                  value: externalMetrics?.fundingRate,
-                  format: (v: number) => `${v.toFixed(4)}%`,
-                },
-                {
-                  label: 'Coinbase Premium',
-                  value: externalMetrics?.coinbasePremiumPct,
-                  format: (v: number) => `${v.toFixed(4)}%`,
-                },
-                {
-                  label: 'OI Change',
-                  value: externalMetrics?.openInterestChangePct,
-                  format: (v: number) => `${v.toFixed(4)}%`,
-                },
-              ] as { label: string; value: number | undefined; format: (v: number) => string }[]).map(({ label, value, format }) => (
-                <div key={label} className="bg-slate-800/60 rounded p-2 flex items-center justify-between gap-2">
-                  <span className="text-xs text-slate-400 truncate">{label}</span>
-                  {typeof value === 'number' ? (
-                    <span className="text-xs font-mono text-green-400 shrink-0">{format(value)}</span>
-                  ) : (
-                    <span className="text-xs font-mono text-red-400 shrink-0">undefined</span>
-                  )}
-                </div>
-              ))}
+      {/* Raw Readings - Always Visible */}
+      <div className="mt-4 border-t border-slate-700 pt-4">
+        <h5 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+          📊 Current Market Readings
+        </h5>
+        <div className="grid grid-cols-3 gap-3 text-xs">
+          <div className="bg-slate-800/50 rounded p-2">
+            <div className="text-slate-400 mb-1">Funding Rate</div>
+            <div className={`text-lg font-bold ${
+              gds.rawReadings.fundingRate === undefined ? 'text-slate-500' :
+              gds.rawReadings.fundingRate < 0 ? 'text-green-400' :
+              gds.rawReadings.fundingRate > 0 ? 'text-red-400' : 'text-yellow-400'
+            }`}>
+              {gds.rawReadings.fundingRate === undefined ? 'N/A' :
+               `${(gds.rawReadings.fundingRate * 100).toFixed(4)}%`}
             </div>
           </div>
 
-          {/* Scoring breakdown per component */}
-          <div>
-            <p className="text-xs text-slate-400 mb-2 uppercase tracking-wide">Scoring Breakdown</p>
-            <div className="space-y-2">
-              {/* Funding Pressure */}
-              <div className="bg-slate-800/60 rounded p-2 space-y-0.5">
-                <p className="text-xs font-medium text-slate-200">Funding Pressure (max 20)</p>
-                {typeof externalMetrics?.fundingRate !== 'number' ? (
-                  <p className="text-xs text-red-400">⛔ No data — fundingRate is undefined</p>
-                ) : externalMetrics.fundingRate >= 0 ? (
-                  <p className="text-xs text-orange-400">
-                    ⚠️ fundingRate = {externalMetrics.fundingRate.toFixed(4)}% — needs &lt; 0 to score
-                    <span className="block text-slate-500">Suggestion: rate below −0.01% starts generating score; −0.03% = full 20 pts</span>
-                  </p>
-                ) : (
-                  <p className="text-xs text-green-400">
-                    ✅ fundingRate = {externalMetrics.fundingRate.toFixed(4)}% — scoring{' '}
-                    {(Math.min(Math.abs(externalMetrics.fundingRate) / 0.03, 1) * 20).toFixed(1)} / 20
-                  </p>
-                )}
-              </div>
-
-              {/* Coinbase Premium */}
-              <div className="bg-slate-800/60 rounded p-2 space-y-0.5">
-                <p className="text-xs font-medium text-slate-200">Coinbase Premium (max 10)</p>
-                {typeof externalMetrics?.coinbasePremiumPct !== 'number' ? (
-                  <p className="text-xs text-red-400">⛔ No data — coinbasePremiumPct is undefined</p>
-                ) : externalMetrics.coinbasePremiumPct <= 0 ? (
-                  <p className="text-xs text-orange-400">
-                    ⚠️ premium = {externalMetrics.coinbasePremiumPct.toFixed(4)}% — needs &gt; 0 to score
-                    <span className="block text-slate-500">Suggestion: any positive value starts scoring; 0.2% = full 10 pts</span>
-                  </p>
-                ) : (
-                  <p className="text-xs text-green-400">
-                    ✅ premium = {externalMetrics.coinbasePremiumPct.toFixed(4)}% — scoring{' '}
-                    {(Math.min(externalMetrics.coinbasePremiumPct / 0.2, 1) * 10).toFixed(1)} / 10
-                  </p>
-                )}
-              </div>
-
-              {/* OI Contraction */}
-              <div className="bg-slate-800/60 rounded p-2 space-y-0.5">
-                <p className="text-xs font-medium text-slate-200">OI Contraction (max 25)</p>
-                {typeof externalMetrics?.openInterestChangePct !== 'number' ? (
-                  <p className="text-xs text-red-400">⛔ No data — openInterestChangePct is undefined</p>
-                ) : externalMetrics.openInterestChangePct >= 0 ? (
-                  <p className="text-xs text-orange-400">
-                    ⚠️ OI change = {externalMetrics.openInterestChangePct.toFixed(4)}% — needs &lt; 0 (contraction) + price up
-                    <span className="block text-slate-500">Suggestion: negative OI change while price rises; −5% = full 25 pts</span>
-                  </p>
-                ) : (
-                  <p className="text-xs text-green-400">
-                    ✅ OI change = {externalMetrics.openInterestChangePct.toFixed(4)}% — scoring{' '}
-                    {(Math.min(Math.abs(externalMetrics.openInterestChangePct) / 5, 1) * 25).toFixed(1)} / 25 (when price up)
-                  </p>
-                )}
-              </div>
+          <div className="bg-slate-800/50 rounded p-2">
+            <div className="text-slate-400 mb-1">Premium</div>
+            <div className={`text-lg font-bold ${
+              gds.rawReadings.coinbasePremium === undefined ? 'text-slate-500' :
+              gds.rawReadings.coinbasePremium > 0 ? 'text-green-400' :
+              gds.rawReadings.coinbasePremium < 0 ? 'text-red-400' : 'text-yellow-400'
+            }`}>
+              {gds.rawReadings.coinbasePremium === undefined ? 'N/A' :
+               `${gds.rawReadings.coinbasePremium.toFixed(3)}%`}
             </div>
           </div>
 
-          {/* Score summary */}
-          <div className="bg-slate-800/60 rounded p-2">
-            <p className="text-xs text-slate-400 mb-1 uppercase tracking-wide">Score Summary</p>
-            <p className="text-xs text-slate-300">
-              Active weight: {gds.activeWeight} / {gds.totalWeight} &nbsp;·&nbsp; Normalized score:{' '}
-              <span className={getScoreColor(scoreValue)}>{scoreValue}</span>
-            </p>
-            {gds.activeWeight < gds.totalWeight && (
-              <p className="text-xs text-slate-500 mt-0.5">
-                {gds.totalWeight - gds.activeWeight} pts unavailable (missing external data)
-              </p>
-            )}
+          <div className="bg-slate-800/50 rounded p-2">
+            <div className="text-slate-400 mb-1">OI Change</div>
+            <div className={`text-lg font-bold ${
+              gds.rawReadings.oiChange === undefined ? 'text-slate-500' :
+              gds.rawReadings.oiChange < 0 ? 'text-green-400' :
+              gds.rawReadings.oiChange > 0 ? 'text-red-400' : 'text-yellow-400'
+            }`}>
+              {gds.rawReadings.oiChange === undefined ? 'N/A' :
+               `${gds.rawReadings.oiChange.toFixed(2)}%`}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pattern Analysis - Expandable */}
+      {isExpanded && (
+        <div className="mt-4 border-t border-slate-700 pt-4">
+          <h5 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+            {gds.pattern.emoji} Pattern: {gds.pattern.name}
+            <span className="text-xs text-slate-400">({gds.pattern.confidence} Confidence)</span>
+          </h5>
+
+          <p className="text-sm text-slate-300 mb-4">{gds.pattern.description}</p>
+
+          {gds.pattern.bullishSignals.length > 0 && (
+            <div className="mb-3">
+              <div className="text-xs font-semibold text-green-400 mb-1">✅ Bullish Signals:</div>
+              <ul className="text-xs text-slate-300 space-y-1 ml-4">
+                {gds.pattern.bullishSignals.map((signal, i) => (
+                  <li key={`bull-${i}-${signal}`}>• {signal}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {gds.pattern.bearishSignals.length > 0 && (
+            <div className="mb-3">
+              <div className="text-xs font-semibold text-red-400 mb-1">❌ Bearish Signals:</div>
+              <ul className="text-xs text-slate-300 space-y-1 ml-4">
+                {gds.pattern.bearishSignals.map((signal, i) => (
+                  <li key={`bear-${i}-${signal}`}>• {signal}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {gds.pattern.neutralSignals.length > 0 && (
+            <div className="mb-3">
+              <div className="text-xs font-semibold text-yellow-400 mb-1">⚠️ Neutral Signals:</div>
+              <ul className="text-xs text-slate-300 space-y-1 ml-4">
+                {gds.pattern.neutralSignals.map((signal, i) => (
+                  <li key={`neutral-${i}-${signal}`}>• {signal}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="mt-4 p-3 bg-blue-950/30 border border-blue-700/50 rounded">
+            <div className="text-xs font-semibold text-blue-300 mb-1">💡 Recommendation:</div>
+            <div className="text-xs text-slate-300">{gds.pattern.recommendation}</div>
           </div>
         </div>
       )}
