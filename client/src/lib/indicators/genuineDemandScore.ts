@@ -2,9 +2,10 @@ import type { Candle, CVDDataItem } from '@/types/chart';
 import { PatternHistoryManager } from '@/services/PatternHistoryManager';
 import {
   runPatternDetectors,
+  shouldUpdatePatternSnapshot,
   type PatternDetectionItem,
   type Snapshot,
-} from '@/services/patternDetectors';
+} from '@/services/patternDetectors.ts';
 
 const PRICE_WEIGHT = 15;
 const CVD_WEIGHT = 30;
@@ -295,12 +296,17 @@ export function calculateGenuineDemandScore({
   const snapshot = buildSnapshot(candleWindow, cvdWindow, externalMetrics);
   const symbol = externalMetrics?.symbol || 'default';
 
-  let history = PatternHistoryManager.getHistory(symbol);
+  let history = persistHistory ? PatternHistoryManager.getHistory(symbol) : [];
   if (snapshot && persistHistory) {
-    history = PatternHistoryManager.appendSnapshot(symbol, snapshot);
+    const previous = history.length > 0 ? history[history.length - 1] : null;
+    if (shouldUpdatePatternSnapshot(previous, snapshot.timestamp)) {
+      history = PatternHistoryManager.appendSnapshot(symbol, snapshot);
+    }
   }
 
-  const effectiveCurrent = snapshot ?? {
+  const latestStored = history.length > 0 ? history[history.length - 1] : null;
+
+  const effectiveCurrent = (persistHistory ? latestStored : null) ?? snapshot ?? {
     timestamp: Date.now(),
     price: latestCandle.close,
     cvdDelta: cvdWindow[cvdWindow.length - 1]?.delta ?? 0,

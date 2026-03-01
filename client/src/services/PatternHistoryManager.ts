@@ -1,5 +1,5 @@
-import type { Snapshot } from '@/services/patternDetectors';
-import { shouldUpdatePatternSnapshot } from '@/services/patternDetectors';
+import type { Snapshot } from '@/services/patternDetectors.ts';
+import { shouldUpdatePatternSnapshot } from '@/services/patternDetectors.ts';
 
 const SNAPSHOT_LIMIT = 288;
 const HISTORY_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -69,10 +69,10 @@ export class PatternHistoryManager {
 
     if (shouldUpdatePatternSnapshot(previous, now)) {
       nextHistory.push(normalized);
-    } else if (nextHistory.length > 0) {
-      nextHistory[nextHistory.length - 1] = normalized;
     } else {
-      nextHistory.push(normalized);
+      const cleaned = sortAndTrim(nextHistory, now);
+      window.localStorage.setItem(getKey(symbol), JSON.stringify(cleaned));
+      return cleaned;
     }
 
     const cleaned = sortAndTrim(nextHistory, now);

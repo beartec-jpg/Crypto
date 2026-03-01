@@ -24,6 +24,60 @@ function ema(values: number[], period: number): number[] {
   return result;
 }
 
+function findPivotIndices(values: number[], left: number = 2, right: number = 2): { highs: number[]; lows: number[] } {
+  const highs: number[] = [];
+  const lows: number[] = [];
+
+  for (let index = left; index < values.length - right; index += 1) {
+    let isPivotHigh = true;
+    let isPivotLow = true;
+
+    for (let offset = 1; offset <= left; offset += 1) {
+      if (values[index] <= values[index - offset]) isPivotHigh = false;
+      if (values[index] >= values[index - offset]) isPivotLow = false;
+    }
+
+    for (let offset = 1; offset <= right; offset += 1) {
+      if (values[index] <= values[index + offset]) isPivotHigh = false;
+      if (values[index] >= values[index + offset]) isPivotLow = false;
+    }
+
+    if (isPivotHigh) highs.push(index);
+    if (isPivotLow) lows.push(index);
+  }
+
+  return { highs, lows };
+}
+
+function mapRsiToPriceIndex(priceLength: number, rsi: number[]): number[] {
+  const offset = Math.max(0, priceLength - rsi.length);
+  return Array.from({ length: priceLength }, (_, index) => {
+    if (index < offset) return Number.NaN;
+    return rsi[index - offset] ?? Number.NaN;
+  });
+}
+
+export function calculateSlope(values: number[], lookback: number = 6): number {
+  if (values.length < 2) return 0;
+
+  const window = values.slice(-Math.min(lookback, values.length));
+  const n = window.length;
+  const meanX = (n - 1) / 2;
+  const meanY = average(window);
+
+  let numerator = 0;
+  let denominator = 0;
+  for (let index = 0; index < n; index += 1) {
+    const dx = index - meanX;
+    const dy = window[index] - meanY;
+    numerator += dx * dy;
+    denominator += dx * dx;
+  }
+
+  if (denominator === 0) return 0;
+  return numerator / denominator;
+}
+
 export function calculateRSI(prices: number[], period: number = 14): number[] {
   if (prices.length < period + 1) return [];
 
@@ -60,23 +114,31 @@ export function calculateRSI(prices: number[], period: number = 14): number[] {
 }
 
 export function detectRSIDivergence(prices: number[], rsi: number[]): 'bullish' | 'bearish' | null {
-  if (prices.length < 20 || rsi.length < 5) return null;
+  if (prices.length < 30 || rsi.length < 12) return null;
 
-  const sampleSize = Math.min(20, prices.length, rsi.length);
-  const recentPrices = prices.slice(-sampleSize);
-  const recentRsi = rsi.slice(-sampleSize);
+  const rsiAtPriceIndex = mapRsiToPriceIndex(prices.length, rsi);
+  const pivots = findPivotIndices(prices, 2, 2);
 
-  const firstPrice = recentPrices[0];
-  const lastPrice = recentPrices[recentPrices.length - 1];
-  const firstRsi = recentRsi[0];
-  const lastRsi = recentRsi[recentRsi.length - 1];
+  const recentLowPivots = pivots.lows.slice(-3).filter((index) => Number.isFinite(rsiAtPriceIndex[index]));
+  if (recentLowPivots.length >= 2) {
+    const prevIndex = recentLowPivots[recentLowPivots.length - 2];
+    const lastIndex = recentLowPivots[recentLowPivots.length - 1];
 
-  if (lastPrice < firstPrice && lastRsi > firstRsi + 3) {
-    return 'bullish';
+    const priceLowerLow = prices[lastIndex] < prices[prevIndex] * 0.998;
+    const rsiHigherLow = rsiAtPriceIndex[lastIndex] > rsiAtPriceIndex[prevIndex] + 1.5;
+
+    if (priceLowerLow && rsiHigherLow) return 'bullish';
   }
 
-  if (lastPrice > firstPrice && lastRsi < firstRsi - 3) {
-    return 'bearish';
+  const recentHighPivots = pivots.highs.slice(-3).filter((index) => Number.isFinite(rsiAtPriceIndex[index]));
+  if (recentHighPivots.length >= 2) {
+    const prevIndex = recentHighPivots[recentHighPivots.length - 2];
+    const lastIndex = recentHighPivots[recentHighPivots.length - 1];
+
+    const priceHigherHigh = prices[lastIndex] > prices[prevIndex] * 1.002;
+    const rsiLowerHigh = rsiAtPriceIndex[lastIndex] < rsiAtPriceIndex[prevIndex] - 1.5;
+
+    if (priceHigherHigh && rsiLowerHigh) return 'bearish';
   }
 
   return null;

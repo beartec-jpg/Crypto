@@ -2,6 +2,7 @@ import {
   calculateBollingerBands,
   calculateMACD,
   calculateRSI,
+  calculateSlope,
   calculateStochRSI,
   calculateVPOC,
   calculateVolumeAverage,
@@ -112,6 +113,8 @@ const PATTERN_DEFINITIONS: PatternDefinition[] = [
 ];
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -122,15 +125,59 @@ function toPercentChange(first: number, last: number): number {
   return ((last - first) / first) * 100;
 }
 
-function getWindow(history: Snapshot[], hours: number): Snapshot[] {
-  if (history.length === 0) return [];
-  const latest = history[history.length - 1];
-  const minTimestamp = latest.timestamp - hours * 60 * 60 * 1000;
-  return history.filter((item) => item.timestamp >= minTimestamp);
+function sortSnapshots(data: Snapshot[]): Snapshot[] {
+  return [...data].sort((a, b) => a.timestamp - b.timestamp);
 }
 
-function getRecentCount(history: Snapshot[], hours: number): number {
-  return getWindow(history, hours).length;
+function getSeries(history: Snapshot[], current: Snapshot): Snapshot[] {
+  return sortSnapshots([...history, current]);
+}
+
+function values(series: Snapshot[]): { prices: number[]; volumes: number[]; cvd: number[] } {
+  return {
+    prices: series.map((item) => item.price),
+    volumes: series.map((item) => item.volume),
+    cvd: series.map((item) => item.cvdDelta),
+  };
+}
+
+function median(valuesList: number[]): number {
+  if (valuesList.length === 0) return TEN_MINUTES_MS;
+  const sorted = [...valuesList].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
+  return sorted[mid];
+}
+
+function medianIntervalMs(series: Snapshot[]): number {
+  if (series.length < 2) return TEN_MINUTES_MS;
+  const gaps: number[] = [];
+  for (let index = 1; index < series.length; index += 1) {
+    const gap = series[index].timestamp - series[index - 1].timestamp;
+    if (gap > 0) gaps.push(gap);
+  }
+  return Math.max(60_000, median(gaps));
+}
+
+function barsForDuration(series: Snapshot[], durationMs: number): number {
+  const interval = medianIntervalMs(series);
+  return Math.max(1, Math.round(durationMs / interval));
+}
+
+function windowByDuration(series: Snapshot[], durationMs: number): Snapshot[] {
+  if (series.length === 0) return [];
+  const latest = series[series.length - 1].timestamp;
+  return series.filter((item) => item.timestamp >= latest - durationMs);
+}
+
+function rollingHigh(prices: number[], lookback: number): number {
+  const slice = prices.slice(-Math.min(lookback, prices.length));
+  return slice.length > 0 ? Math.max(...slice) : 0;
+}
+
+function rollingLow(prices: number[], lookback: number): number {
+  const slice = prices.slice(-Math.min(lookback, prices.length));
+  return slice.length > 0 ? Math.min(...slice) : 0;
 }
 
 function normalizeSignals(signals: PatternSignal[], maxScore: number): number {
@@ -140,11 +187,19 @@ function normalizeSignals(signals: PatternSignal[], maxScore: number): number {
   return clamp((rawScore / maxRaw) * maxScore, 0, maxScore);
 }
 
+function persistenceRatio(series: Snapshot[], bars: number, condition: (item: Snapshot) => boolean): number {
+  if (series.length === 0 || bars <= 0) return 0;
+  const window = series.slice(-Math.min(bars, series.length));
+  const met = window.reduce((count, item) => count + (condition(item) ? 1 : 0), 0);
+  return met / window.length;
+}
+
 function buildResult(
   orderflowSignals: PatternSignal[],
   technicalSignals: PatternSignal[],
   stageNames: string[],
-  prerequisitesMet: boolean
+  prerequisitesMet: boolean,
+  consistency: number
 ): PatternResult {
   const orderflowScore = normalizeSignals(orderflowSignals, 60);
   const technicalScore = normalizeSignals(technicalSignals, 40);
@@ -152,16 +207,18 @@ function buildResult(
   const effectiveScore = prerequisitesMet ? combinedScore : Math.min(combinedScore, 45);
 
   let stage: 0 | 1 | 2 | 3 | 4 = 0;
-  if (effectiveScore >= 80) stage = 4;
-  else if (effectiveScore >= 65) stage = 3;
-  else if (effectiveScore >= 50) stage = 2;
-  else if (effectiveScore >= 35) stage = 1;
-
-  if (!prerequisitesMet && effectiveScore < 35) {
-    stage = 0;
+  if (prerequisitesMet) {
+    if (effectiveScore >= 80 && consistency >= 0.66) stage = 4;
+    else if (effectiveScore >= 65 && consistency >= 0.5) stage = 3;
+    else if (effectiveScore >= 50 && consistency >= 0.35) stage = 2;
+    else if (effectiveScore >= 35) stage = 1;
   }
 
-  const confidence = clamp(Math.round((effectiveScore * 0.8) + (prerequisitesMet ? 20 : 0)), 0, 100);
+  const confidence = clamp(
+    Math.round((effectiveScore * 0.7) + (consistency * 25) + (prerequisitesMet ? 5 : 0)),
+    0,
+    100
+  );
 
   return {
     score: Math.round(clamp(effectiveScore, 0, 100)),
@@ -178,17 +235,20 @@ function buildResult(
   };
 }
 
-function getSeries(history: Snapshot[], current: Snapshot): { prices: number[]; volumes: number[]; cvd: number[] } {
-  const combined = [...history, current].sort((a, b) => a.timestamp - b.timestamp);
+function getLatestBollinger(prices: number[]) {
+  const bb = calculateBollingerBands(prices, 20, 2);
+  const lastIndex = bb.upper.length - 1;
+
   return {
-    prices: combined.map((item) => item.price),
-    volumes: combined.map((item) => item.volume),
-    cvd: combined.map((item) => item.cvdDelta),
+    upper: bb.upper[lastIndex] ?? 0,
+    middle: bb.middle[lastIndex] ?? 0,
+    lower: bb.lower[lastIndex] ?? 0,
+    hasData: lastIndex >= 0,
   };
 }
 
 function calculateOBV(prices: number[], volumes: number[]): number[] {
-  if (prices.length === 0) return [];
+  if (prices.length === 0 || volumes.length === 0) return [];
   const size = Math.min(prices.length, volumes.length);
   const obv: number[] = [0];
 
@@ -202,40 +262,26 @@ function calculateOBV(prices: number[], volumes: number[]): number[] {
   return obv;
 }
 
-function priceBreaksSupport(history: Snapshot[], current: Snapshot): boolean {
-  if (history.length < 10) return false;
-  const support = Math.min(...history.slice(-10).map((item) => item.price));
-  return current.price < support;
-}
-
-function isRecentPriceUp(history: Snapshot[], current: Snapshot, bars: number = 12): boolean {
-  if (history.length === 0) return false;
-  const start = history[Math.max(0, history.length - bars)].price;
-  return toPercentChange(start, current.price) > 0;
-}
-
-function isRecentPriceDown(history: Snapshot[], current: Snapshot, bars: number = 12): boolean {
-  if (history.length === 0) return false;
-  const start = history[Math.max(0, history.length - bars)].price;
-  return toPercentChange(start, current.price) < 0;
-}
-
 export function detectHealthyBottom(history: Snapshot[], current: Snapshot): PatternResult {
-  const window48h = getWindow(history, 48);
-  const firstPrice = window48h[0]?.price ?? current.price;
-  const priceDropPct = toPercentChange(firstPrice, current.price);
-  const oiMin = Math.min(...window48h.map((item) => item.oiChangePct), current.oiChangePct);
-  const prerequisitesMet = priceDropPct <= -8 && oiMin <= -4 && current.fundingRate < -0.008;
+  const series = getSeries(history, current);
+  const recent48h = windowByDuration(series, 48 * HOUR_MS);
+  const { prices, volumes } = values(series);
 
-  const { prices, volumes } = getSeries(history, current);
-  const rsi = calculateRSI(prices);
+  const peak48h = recent48h.length > 0 ? Math.max(...recent48h.map((item) => item.price)) : current.price;
+  const drawdownFromPeak = toPercentChange(peak48h, current.price);
+  const oiMin = recent48h.length > 0 ? Math.min(...recent48h.map((item) => item.oiChangePct)) : current.oiChangePct;
+  const hadFundingNeg = recent48h.some((item) => item.fundingRate < -0.008);
+  const prerequisitesMet = drawdownFromPeak <= -8 && oiMin <= -4 && hadFundingNeg;
+
+  const rsi = calculateRSI(prices, 14);
   const rsiDiv = detectRSIDivergence(prices, rsi);
   const macd = calculateMACD(prices);
-  const stochRsi = calculateStochRSI(prices);
+  const stochRsi = calculateStochRSI(prices, 14);
   const volumeAverage = calculateVolumeAverage(volumes, 20);
 
   const latestMacd = macd.macd[macd.macd.length - 1] ?? 0;
   const latestSignal = macd.signal[macd.signal.length - 1] ?? 0;
+  const latestHist = macd.histogram[macd.histogram.length - 1] ?? 0;
   const latestK = stochRsi.k[stochRsi.k.length - 1] ?? 0;
   const latestD = stochRsi.d[stochRsi.d.length - 1] ?? 0;
 
@@ -248,73 +294,82 @@ export function detectHealthyBottom(history: Snapshot[], current: Snapshot): Pat
 
   const technicalSignals: PatternSignal[] = [
     { name: 'RSI bullish divergence', met: rsiDiv === 'bullish', points: 15 },
-    { name: 'Volume support', met: current.volume >= volumeAverage * 0.9, points: 10 },
-    { name: 'MACD positive', met: latestMacd > latestSignal, points: 10 },
-    { name: 'StochRSI cross', met: latestK > latestD, points: 5 },
+    { name: 'Volume support', met: current.volume >= volumeAverage, points: 10 },
+    { name: 'MACD positive', met: latestMacd > latestSignal && latestHist > 0, points: 10 },
+    { name: 'StochRSI cross', met: latestK > latestD && latestK < 80, points: 5 },
   ];
 
-  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Post-cap', 'Forming', 'Confirming', 'Confirmed'], prerequisitesMet);
+  const consistency = persistenceRatio(series, 6, (item) => item.cvdDelta > 0 && item.oiChangePct <= 0);
+
+  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Post-cap', 'Forming', 'Confirming', 'Confirmed'], prerequisitesMet, consistency);
 }
 
 export function detectDistribution(history: Snapshot[], current: Snapshot): PatternResult {
-  const window14d = getWindow(history, 14 * 24);
-  const window7d = getWindow(history, 7 * 24);
-  const first7d = window7d[0]?.price ?? current.price;
-  const rally7dPct = toPercentChange(first7d, current.price);
-  const rallyDays = getRecentCount(history, 24 * 4) >= 72 ? 3 : Math.max(1, getRecentCount(history, 24) / 6);
+  const series = getSeries(history, current);
+  const window14d = windowByDuration(series, 14 * DAY_MS);
+  const { prices, volumes } = values(series);
+
+  const minPoint = window14d.reduce<Snapshot | null>((lowest, item) => {
+    if (!lowest || item.price < lowest.price) return item;
+    return lowest;
+  }, null);
+
+  const rallyPct = minPoint ? toPercentChange(minPoint.price, current.price) : 0;
+  const rallyDays = minPoint ? (current.timestamp - minPoint.timestamp) / DAY_MS : 0;
   const hadPositiveCvd = window14d.some((item) => item.cvdDelta > 0);
-  const prerequisitesMet = rally7dPct >= 15 && hadPositiveCvd && rallyDays >= 3;
+  const prerequisitesMet = rallyPct >= 15 && hadPositiveCvd && rallyDays >= 3;
 
-  const { prices, volumes } = getSeries(history, current);
-  const rsi = calculateRSI(prices);
+  const rsi = calculateRSI(prices, 14);
   const rsiDiv = detectRSIDivergence(prices, rsi);
-  const bb = calculateBollingerBands(prices);
-  const volumeAverage = calculateVolumeAverage(volumes, 20);
+  const bb = getLatestBollinger(prices);
+  const resistance = rollingHigh(prices, Math.max(20, barsForDuration(series, 5 * DAY_MS)));
+  const volumeSlope = calculateSlope(volumes, 10);
 
-  const latestMiddle = bb.middle[bb.middle.length - 1] ?? current.price;
-  const latestUpper = bb.upper[bb.upper.length - 1] ?? current.price;
-  const nearResistance = current.price >= latestMiddle * 1.01;
-  const bbRejection = current.price < latestUpper && current.price > latestMiddle;
+  const touchedUpperRecently = bb.hasData && prices.slice(-4).some((price) => price >= bb.upper * 0.997);
+  const bbRejection = bb.hasData && touchedUpperRecently && current.price < bb.upper * 0.995;
+  const atResistance = current.price >= resistance * 0.985;
+  const priceUp = toPercentChange(prices[Math.max(0, prices.length - 10)] ?? current.price, current.price) > 2;
 
   const orderflowSignals: PatternSignal[] = [
-    { name: 'Price up but CVD negative', met: isRecentPriceUp(history, current) && current.cvdDelta < 0, points: 30 },
-    { name: 'OI expanding', met: current.oiChangePct > 0.8, points: 25 },
+    { name: 'Price up but CVD negative', met: priceUp && current.cvdDelta < 0, points: 30 },
+    { name: 'OI expanding', met: current.oiChangePct > 1, points: 25 },
     { name: 'Funding high', met: current.fundingRate > 0.008, points: 15 },
     { name: 'Premium negative', met: current.premium < 0, points: 10 },
   ];
 
   const technicalSignals: PatternSignal[] = [
     { name: 'RSI bearish divergence', met: rsiDiv === 'bearish', points: 15 },
-    { name: 'Volume declining', met: current.volume < volumeAverage * 0.9, points: 12 },
-    { name: 'At resistance', met: nearResistance, points: 10 },
+    { name: 'Volume declining', met: volumeSlope < 0, points: 12 },
+    { name: 'At resistance', met: atResistance, points: 10 },
     { name: 'BB rejection', met: bbRejection, points: 8 },
   ];
 
-  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Early', 'Building', 'Active', 'Confirmed'], prerequisitesMet);
+  const consistency = persistenceRatio(series, 6, (item) => item.cvdDelta < 0 && item.oiChangePct > 0);
+
+  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Early', 'Building', 'Active', 'Confirmed'], prerequisitesMet, consistency);
 }
 
 export function detectCapitulation(history: Snapshot[], current: Snapshot): PatternResult {
-  const { prices, volumes } = getSeries(history, current);
-  const rsi = calculateRSI(prices);
-  const bb = calculateBollingerBands(prices);
-  const volumeAverage = calculateVolumeAverage(volumes, 20);
+  const series = getSeries(history, current);
+  const { prices, volumes, cvd } = values(series);
 
-  const lookbackFirst = history[Math.max(0, history.length - 30)]?.price ?? current.price;
-  const dropPct = toPercentChange(lookbackFirst, current.price);
-  const oIFlush = current.oiChangePct <= -4;
-  const prerequisitesMet = dropPct <= -6 || oIFlush;
+  const bars24h = Math.max(3, barsForDuration(series, DAY_MS));
+  const start24h = prices[Math.max(0, prices.length - bars24h)] ?? current.price;
+  const dropPct = toPercentChange(start24h, current.price);
+
+  const rsi = calculateRSI(prices, 14);
+  const bb = getLatestBollinger(prices);
+  const volumeAverage = calculateVolumeAverage(volumes, 20);
+  const cvdSlope = calculateSlope(cvd, 5);
 
   const latestRsi = rsi[rsi.length - 1] ?? 50;
-  const latestLower = bb.lower[bb.lower.length - 1] ?? current.price;
-  const lowerBounce = current.price >= latestLower;
-
-  const cvdRecent = history.slice(-3).map((item) => item.cvdDelta);
-  const cvdTurningPositive = cvdRecent.length >= 2 && cvdRecent[cvdRecent.length - 1] > cvdRecent[0];
+  const lowerBounce = bb.hasData && current.price >= bb.lower;
+  const prerequisitesMet = dropPct <= -4 || current.oiChangePct <= -3 || current.fundingRate <= -0.008;
 
   const orderflowSignals: PatternSignal[] = [
     { name: 'Price down >8%', met: dropPct <= -8, points: 20 },
     { name: 'CVD negative', met: current.cvdDelta < 0, points: 20 },
-    { name: 'OI flush', met: oIFlush, points: 25 },
+    { name: 'OI flush', met: current.oiChangePct <= -4, points: 25 },
     { name: 'Funding very negative', met: current.fundingRate < -0.01, points: 15 },
   ];
 
@@ -322,87 +377,108 @@ export function detectCapitulation(history: Snapshot[], current: Snapshot): Patt
     { name: 'Volume spike 2x', met: current.volume >= volumeAverage * 2, points: 15 },
     { name: 'RSI <25', met: latestRsi < 25, points: 10 },
     { name: 'BB lower bounce', met: lowerBounce, points: 10 },
-    { name: 'Stabilizing', met: cvdTurningPositive, points: 5 },
+    { name: 'Stabilizing', met: cvdSlope > 0, points: 5 },
   ];
 
-  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Accelerating', 'Panic', 'Extreme', 'Exhaustion'], prerequisitesMet);
+  const consistency = persistenceRatio(series, 4, (item) => item.cvdDelta < 0 || item.oiChangePct < 0);
+
+  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Accelerating', 'Panic', 'Extreme', 'Exhaustion'], prerequisitesMet, consistency);
 }
 
 export function detectFakeout(history: Snapshot[], current: Snapshot): PatternResult {
-  const { prices, volumes } = getSeries(history, current);
-  const rsi = calculateRSI(prices);
-  const rsiDiv = detectRSIDivergence(prices, rsi);
-  const volumeAverage = calculateVolumeAverage(volumes, 20);
+  const series = getSeries(history, current);
+  const { prices, volumes } = values(series);
 
-  const prerequisitesMet = isRecentPriceUp(history, current) && current.oiChangePct > 0;
-  const lowVolumeBreakout = current.volume < volumeAverage * 0.85;
-  const noAcceptance = history.length > 4 && current.price < Math.max(...history.slice(-4).map((item) => item.price));
+  const rsi = calculateRSI(prices, 14);
+  const volumeAverage = calculateVolumeAverage(volumes, 20);
+  const recentMovePct = toPercentChange(prices[Math.max(0, prices.length - 8)] ?? current.price, current.price);
+
+  const preBreakPrices = prices.slice(-18, -6);
+  const recentPrices = prices.slice(-6);
+  const preResistance = preBreakPrices.length > 0 ? Math.max(...preBreakPrices) : rollingHigh(prices, 20);
+  const breakoutSeen = recentPrices.some((price) => price > preResistance * 1.002);
+  const noAcceptance = breakoutSeen && current.price < preResistance;
+  const prerequisitesMet = recentMovePct > 2 && breakoutSeen;
+
+  const rsiSlope = calculateSlope(rsi, 6);
 
   const orderflowSignals: PatternSignal[] = [
-    { name: 'Price up but CVD flat/negative', met: isRecentPriceUp(history, current) && current.cvdDelta <= 0, points: 30 },
+    { name: 'Price up but CVD flat/negative', met: recentMovePct > 2 && current.cvdDelta <= 0, points: 30 },
     { name: 'OI up', met: current.oiChangePct > 0.8, points: 25 },
     { name: 'Funding positive', met: current.fundingRate > 0, points: 15 },
     { name: 'Premium negative', met: current.premium < 0, points: 10 },
   ];
 
   const technicalSignals: PatternSignal[] = [
-    { name: 'No RSI confirmation', met: rsiDiv !== 'bullish', points: 15 },
-    { name: 'Low volume breakout', met: lowVolumeBreakout, points: 12 },
+    { name: 'No RSI confirmation', met: rsiSlope <= 0, points: 15 },
+    { name: 'Low volume breakout', met: current.volume < volumeAverage * 0.85, points: 12 },
     { name: 'No acceptance', met: noAcceptance, points: 10 },
   ];
 
-  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Weak pump', 'Leverage building', 'Overheated', 'Confirmed fakeout'], prerequisitesMet);
+  const consistency = persistenceRatio(series, 5, (item) => item.oiChangePct > 0 && item.cvdDelta <= 0);
+
+  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Weak pump', 'Leverage building', 'Overheated', 'Confirmed fakeout'], prerequisitesMet, consistency);
 }
 
 export function detectAccumulation(history: Snapshot[], current: Snapshot): PatternResult {
-  const { prices, volumes } = getSeries(history, current);
-  const bb = calculateBollingerBands(prices);
+  const series = getSeries(history, current);
+  const window3d = windowByDuration(series, 3 * DAY_MS);
+  const { prices, volumes } = values(series);
+
+  const max3d = window3d.length > 0 ? Math.max(...window3d.map((item) => item.price)) : current.price;
+  const min3d = window3d.length > 0 ? Math.min(...window3d.map((item) => item.price)) : current.price;
+  const rangePct = toPercentChange(min3d, max3d);
+  const duration3d = window3d.length > 0 ? window3d[window3d.length - 1].timestamp - window3d[0].timestamp : 0;
+  const prerequisitesMet = rangePct <= 5 && duration3d >= (3 * DAY_MS * 0.9);
+
+  const bb = getLatestBollinger(prices);
   const vpoc = calculateVPOC(prices, volumes, 30);
   const obv = calculateOBV(prices, volumes);
 
-  const window72h = getWindow(history, 72);
-  const maxPrice = Math.max(...window72h.map((item) => item.price), current.price);
-  const minPrice = Math.min(...window72h.map((item) => item.price), current.price);
-  const rangePct = toPercentChange(minPrice, maxPrice);
-  const prerequisitesMet = rangePct <= 5 && window72h.length >= Math.floor((3 * 24 * 60) / 10);
+  const obvSlope = calculateSlope(obv, 8);
+  const volumeSlope = calculateSlope(volumes, 10);
+  const bandwidth = bb.hasData && bb.middle !== 0 ? (bb.upper - bb.lower) / bb.middle : 1;
+  const nearVpoc = Math.abs(current.price - vpoc) / Math.max(1, current.price) < 0.01;
 
-  const latestMiddle = bb.middle[bb.middle.length - 1] ?? current.price;
-  const latestUpper = bb.upper[bb.upper.length - 1] ?? current.price;
-  const latestLower = bb.lower[bb.lower.length - 1] ?? current.price;
-  const squeeze = (latestUpper - latestLower) / Math.max(1, latestMiddle) < 0.05;
-
-  const obvUp = obv.length > 4 && obv[obv.length - 1] > obv[obv.length - 4];
-  const volumeAverage = calculateVolumeAverage(volumes, 20);
-  const volumeRising = current.volume >= volumeAverage;
-  const nearVpoc = Math.abs(current.price - vpoc) / Math.max(1, current.price) < 0.015;
+  const recentMove = Math.abs(toPercentChange(prices[Math.max(0, prices.length - 18)] ?? current.price, current.price));
 
   const orderflowSignals: PatternSignal[] = [
-    { name: 'Price flat but CVD positive', met: Math.abs(toPercentChange(history[Math.max(0, history.length - 18)]?.price ?? current.price, current.price)) < 2 && current.cvdDelta > 0, points: 30 },
+    { name: 'Price flat but CVD positive', met: recentMove < 2 && current.cvdDelta > 0, points: 30 },
     { name: 'OI flat', met: Math.abs(current.oiChangePct) < 1.5, points: 25 },
     { name: 'Funding neutral', met: Math.abs(current.fundingRate) < 0.004, points: 15 },
-    { name: 'Volume rising', met: volumeRising, points: 10 },
+    { name: 'Volume rising', met: volumeSlope > 0, points: 10 },
   ];
 
   const technicalSignals: PatternSignal[] = [
-    { name: 'OBV rising', met: obvUp, points: 15 },
-    { name: 'BB squeeze', met: squeeze, points: 12 },
+    { name: 'OBV rising', met: obvSlope > 0, points: 15 },
+    { name: 'BB squeeze', met: bandwidth < 0.045, points: 12 },
     { name: 'Volume node building', met: nearVpoc, points: 10 },
   ];
 
-  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Early', 'Building', 'Active', 'Breakout imminent'], prerequisitesMet);
+  const consistency = persistenceRatio(series, 8, (item) => Math.abs(item.oiChangePct) < 2 && item.cvdDelta >= 0);
+
+  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Early', 'Building', 'Active', 'Breakout imminent'], prerequisitesMet, consistency);
 }
 
 export function detectBearBreakdown(history: Snapshot[], current: Snapshot): PatternResult {
-  const { prices, volumes } = getSeries(history, current);
-  const rsi = calculateRSI(prices);
+  const series = getSeries(history, current);
+  const { prices, volumes } = values(series);
+
+  const supportLookback = Math.max(15, barsForDuration(series, 36 * HOUR_MS));
+  const support = rollingLow(prices.slice(0, -1), supportLookback);
+  const brokeSupport = support > 0 && current.price < support * 0.998;
+
+  const rsi = calculateRSI(prices, 14);
   const volumeAverage = calculateVolumeAverage(volumes, 20);
-  const prerequisitesMet = priceBreaksSupport(history, current) || isRecentPriceDown(history, current);
+  const recentDownMove = toPercentChange(prices[Math.max(0, prices.length - 10)] ?? current.price, current.price);
+  const prerequisitesMet = brokeSupport || recentDownMove <= -4;
 
   const latestRsi = rsi[rsi.length - 1] ?? 50;
-  const weakRecovery = latestRsi < 45;
+  const rsiSlope = calculateSlope(rsi, 6);
+  const weakRecovery = latestRsi < 45 && rsiSlope <= 0;
 
   const orderflowSignals: PatternSignal[] = [
-    { name: 'Price breaking support', met: priceBreaksSupport(history, current), points: 20 },
+    { name: 'Price breaking support', met: brokeSupport, points: 20 },
     { name: 'CVD negative', met: current.cvdDelta < 0, points: 30 },
     { name: 'OI expanding', met: current.oiChangePct > 0.8, points: 25 },
     { name: 'Premium negative', met: current.premium < 0, points: 10 },
@@ -411,10 +487,12 @@ export function detectBearBreakdown(history: Snapshot[], current: Snapshot): Pat
   const technicalSignals: PatternSignal[] = [
     { name: 'Volume spike', met: current.volume > volumeAverage * 1.5, points: 15 },
     { name: 'RSI weak recovery', met: weakRecovery, points: 12 },
-    { name: 'Below support', met: priceBreaksSupport(history, current), points: 10 },
+    { name: 'Below support', met: brokeSupport, points: 10 },
   ];
 
-  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Weakening', 'Breaking', 'Accelerating', 'Confirmed'], prerequisitesMet);
+  const consistency = persistenceRatio(series, 6, (item) => item.cvdDelta < 0 && item.oiChangePct >= 0);
+
+  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Weakening', 'Breaking', 'Accelerating', 'Confirmed'], prerequisitesMet, consistency);
 }
 
 export function runPatternDetectors(history: Snapshot[], current: Snapshot): PatternDetectionItem[] {

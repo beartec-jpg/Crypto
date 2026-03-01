@@ -1,4 +1,4 @@
-import type { PatternDetectionItem } from '@/services/patternDetectors';
+import type { PatternDetectionItem } from '@/services/patternDetectors.ts';
 
 interface PatternCardProps {
   item: PatternDetectionItem;
@@ -21,7 +21,7 @@ function confidenceClass(confidence: number): string {
 }
 
 function renderStageBars(stage: number): string {
-  const filled = Math.max(0, Math.min(5, stage + 1));
+  const filled = Math.max(0, Math.min(5, stage));
   const empty = 5 - filled;
   return `${'▰'.repeat(filled)}${'▱'.repeat(Math.max(0, empty))}`;
 }
@@ -93,7 +93,7 @@ export function PatternGrid({ patterns }: PatternGridProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {patterns.map((item) => (
           <PatternCard key={item.definition.key} item={item} />
         ))}

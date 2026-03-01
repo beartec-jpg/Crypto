@@ -107,7 +107,7 @@ export function useGDSMarketMetrics({
       };
     },
     enabled,
-    refetchInterval: 60_000,
+    refetchInterval: 600_000,
   });
 
   return useMemo(() => {
