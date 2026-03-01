@@ -56,7 +56,16 @@ function buildEvaluation(
   rawScore: number,
 ): SystemEvaluation {
   const score = clamp(rawScore);
-  const { label, color } = getSignalLabel(score);
+
+  const buyThreshold = parseInt(
+    localStorage.getItem(`tradingSystem_${systemId}_buyThreshold`) || '80',
+    10,
+  );
+  const sellThreshold = parseInt(
+    localStorage.getItem(`tradingSystem_${systemId}_sellThreshold`) || '80',
+    10,
+  );
+  const { label, color } = getSignalLabelWithThresholds(score, buyThreshold, sellThreshold);
 
   // Confidence: proportion of max possible absolute score that was achieved
   const maxPossible = conditions.reduce((acc, c) => acc + Math.abs(c.weight), 0);
