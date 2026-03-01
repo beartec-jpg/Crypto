@@ -26,7 +26,7 @@ interface OpenInterestResponse {
 
 interface FundingResponse {
   history?: NormalizedSeriesPoint[];
-  current?: { value?: number; c?: number; fr?: number; fundingRate?: number };
+  current?: number | { value?: number; rate?: number; c?: number; fr?: number; fundingRate?: number };
 }
 
 interface PremiumResponse {
@@ -45,8 +45,9 @@ function toSortedSeries(series: NormalizedSeriesPoint[] | undefined): Normalized
 }
 
 function extractFundingValue(value: FundingResponse['current']): number | undefined {
-  if (!value) return undefined;
-  const candidates = [value.value, value.fr, value.fundingRate, value.c];
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  const candidates = [value.value, value.rate, value.fr, value.fundingRate, value.c];
   const selected = candidates.find((candidate) => typeof candidate === 'number' && Number.isFinite(candidate));
   return typeof selected === 'number' ? selected : undefined;
 }
@@ -124,6 +125,10 @@ export function useGDSMarketMetrics({
       fundingHistory.length > 0
         ? fundingHistory[fundingHistory.length - 1].value
         : extractFundingValue(data?.funding?.current);
+
+    if (!fundingRate) {
+      console.log('[GDS Debug] fundingRate is 0 or undefined. Raw funding data:', data?.funding);
+    }
 
     const coinbasePremiumPct =
       typeof data?.premium?.current?.value === 'number'
