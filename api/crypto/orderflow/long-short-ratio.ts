@@ -50,7 +50,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Fallback to CoinGlass
     if (historyData.length === 0 && coinglassApiKey) {
       try {
-        const cgUrl = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol}&interval=4h&limit=42`;
+        // CoinGlass expects base symbol without USDT (e.g., "BTC" not "BTCUSDT")
+        const coinglassSymbol = symbol.replace(/USDT$/, '').replace(/BUSD$/, '');
+        const cgUrl = `https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${coinglassSymbol}&interval=4h&limit=42`;
         
         console.log(`📊 Fetching CoinGlass L/S for ${symbol}...`);
         

@@ -50,7 +50,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Fallback to CoinGlass
     if (historyData.length === 0 && coinglassApiKey) {
       try {
-        const cgUrl = `https://open-api-v4.coinglass.com/api/futures/funding-rates-history?exchange=Binance&symbol=${symbol}&interval=8h&limit=21`;
+        // CoinGlass expects base symbol without USDT (e.g., "BTC" not "BTCUSDT")
+        const coinglassSymbol = symbol.replace(/USDT$/, '').replace(/BUSD$/, '');
+        const cgUrl = `https://open-api-v4.coinglass.com/api/futures/funding-rates-history?exchange=Binance&symbol=${coinglassSymbol}&interval=8h&limit=21`;
         
         console.log(`📊 Fetching CoinGlass Funding for ${symbol}...`);
         
@@ -63,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (cgData.code === '0' && cgData.data?.length > 0) {
             historyData = cgData.data.map((item: any) => ({
               t: (item.time || item.t) / 1000,
-              v: parseFloat(item.fundingRate) || 0
+              v: parseFloat(item.fundingRate || item.rate || item.fr) || 0
             }));
             dataSource = 'coinglass-funding';
             console.log(`✅ CoinGlass Funding fallback: ${historyData.length} points`);
