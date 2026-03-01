@@ -26,23 +26,47 @@ function drawFibSet(
   ctx: CanvasRenderingContext2D,
   chartWidth: number,
   series: ISeriesApi<SeriesType>,
+  chart: IChartApi,
   fibSet: FibSetResult
 ) {
+  // Left edge: X coordinate of the earlier anchor point, or 0 if off-screen
   const anchorTime = Math.min(fibSet.start.time, fibSet.end.time) as Time;
+  const anchorX = chart.timeScale().timeToCoordinate(anchorTime) ?? 0;
+  const startX = Math.max(0, anchorX);
 
   for (const level of fibSet.levels) {
     const y = series.priceToCoordinate(level.price);
     if (y === null) continue;
 
-    const color = level.isGolden ? hexToRgba(fibSet.color, 1) : hexToRgba(fibSet.color, 0.8);
+    // Right edge: freeze time (if frozen) or chart right edge
+    let endX = chartWidth;
+    if (level.isFrozen && level.frozenAtTime !== undefined) {
+      const frozenX = chart.timeScale().timeToCoordinate(level.frozenAtTime as Time);
+      if (frozenX !== null) {
+        endX = Math.min(frozenX, chartWidth);
+      }
+    }
+
+    // Skip lines that would draw nothing visible
+    if (endX <= startX) continue;
+
+    const baseAlpha = level.isFrozen ? 0.4 : 0.85;
+    const color = level.isGolden ? hexToRgba(fibSet.color, 1) : hexToRgba(fibSet.color, baseAlpha);
     const lineWidth = level.isGolden ? 2 : 1;
 
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
-    ctx.setLineDash(level.isExtension ? [4, 4] : []);
+    // Frozen lines use a short dash; extension lines use a longer dash
+    if (level.isFrozen) {
+      ctx.setLineDash([2, 4]);
+    } else if (level.isExtension) {
+      ctx.setLineDash([4, 4]);
+    } else {
+      ctx.setLineDash([]);
+    }
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(fibSet.extendRight ? chartWidth : chartWidth * 0.7, y);
+    ctx.moveTo(startX, y);
+    ctx.lineTo(endX, y);
     ctx.stroke();
     ctx.setLineDash([]);
 
@@ -52,11 +76,13 @@ function drawFibSet(
       const text = `${level.percentage} • ${level.price.toFixed(2)}`;
 
       if (fibSet.labelPosition === 'left') {
-        ctx.fillText(text, 4, y - 3);
+        ctx.fillText(text, startX + 4, y - 3);
       } else {
-        // right
-        const textWidth = ctx.measureText(text).width;
-        ctx.fillText(text, chartWidth - textWidth - 6, y - 3);
+        // right — only show label if the line reaches the right side
+        if (!level.isFrozen) {
+          const textWidth = ctx.measureText(text).width;
+          ctx.fillText(text, chartWidth - textWidth - 6, y - 3);
+        }
       }
     }
   }
@@ -108,11 +134,11 @@ class AutoFibRenderer implements IPrimitivePaneRenderer {
       const chartWidth: number = scope.mediaSize.width;
 
       if (this._result.secondary) {
-        drawFibSet(ctx, chartWidth, this._series!, this._result.secondary);
+        drawFibSet(ctx, chartWidth, this._series!, this._chart!, this._result.secondary);
       }
 
       if (this._result.primary) {
-        drawFibSet(ctx, chartWidth, this._series!, this._result.primary);
+        drawFibSet(ctx, chartWidth, this._series!, this._chart!, this._result.primary);
       }
 
       if (this._result.confluence.length > 0) {

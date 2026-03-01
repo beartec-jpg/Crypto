@@ -10,77 +10,6 @@ import type {
 } from '@/types/autoFib';
 import type { Candle } from '@/types/candle';
 
-/**
- * Find the most-recent swing high within the candle array.
- * Scans from newest to oldest (skipping edge buffers), optionally excluding one index.
- */
-function findSwingHigh(
-  candles: Candle[],
-  lookback: number,
-  excludeIndex?: number
-): SwingPoint | null {
-  if (candles.length < lookback * 2 + 1) return null;
-
-  const start = candles.length - lookback - 1;
-  const end = lookback;
-
-  for (let i = start; i >= end; i--) {
-    if (excludeIndex !== undefined && excludeIndex === i) continue;
-
-    let isHigh = true;
-    const centerHigh = candles[i].high;
-
-    for (let j = i - lookback; j <= i + lookback; j++) {
-      if (j === i) continue;
-      if (candles[j].high >= centerHigh) {
-        isHigh = false;
-        break;
-      }
-    }
-
-    if (isHigh) {
-      return { index: i, time: Number(candles[i].time), price: centerHigh };
-    }
-  }
-
-  return null;
-}
-
-/**
- * Find the most-recent swing low within the candle array.
- */
-function findSwingLow(
-  candles: Candle[],
-  lookback: number,
-  excludeIndex?: number
-): SwingPoint | null {
-  if (candles.length < lookback * 2 + 1) return null;
-
-  const start = candles.length - lookback - 1;
-  const end = lookback;
-
-  for (let i = start; i >= end; i--) {
-    if (excludeIndex !== undefined && excludeIndex === i) continue;
-
-    let isLow = true;
-    const centerLow = candles[i].low;
-
-    for (let j = i - lookback; j <= i + lookback; j++) {
-      if (j === i) continue;
-      if (candles[j].low <= centerLow) {
-        isLow = false;
-        break;
-      }
-    }
-
-    if (isLow) {
-      return { index: i, time: Number(candles[i].time), price: centerLow };
-    }
-  }
-
-  return null;
-}
-
 /** All fib level definitions with metadata. */
 const ALL_FIB_LEVELS: Array<{ key: string; ratio: number; isExtension: boolean; isGolden: boolean }> = [
   { key: '-61.8', ratio: -0.618, isExtension: true,  isGolden: false },
@@ -99,36 +28,78 @@ const ALL_FIB_LEVELS: Array<{ key: string; ratio: number; isExtension: boolean; 
 ];
 
 /**
- * Calculate Fibonacci levels between start (0%) and end (100%).
- * start = price at 0%, end = price at 100%.
+ * Find the absolute highest high and lowest low within a candle array.
+ * Returns null if the array is empty.
+ */
+function findHighLow(
+  candles: Candle[],
+  fullCandles: Candle[]
+): { high: SwingPoint; low: SwingPoint } | null {
+  if (candles.length === 0) return null;
+
+  let highPrice = -Infinity, highTime = 0;
+  let lowPrice = Infinity, lowTime = 0;
+
+  for (const c of candles) {
+    if (c.high > highPrice) { highPrice = c.high; highTime = Number(c.time); }
+    if (c.low < lowPrice)   { lowPrice  = c.low;  lowTime  = Number(c.time); }
+  }
+
+  const highIdx = fullCandles.findIndex(c => Number(c.time) === highTime && c.high === highPrice);
+  const lowIdx  = fullCandles.findIndex(c => Number(c.time) === lowTime  && c.low  === lowPrice);
+
+  if (highIdx === -1 || lowIdx === -1) return null;
+
+  return {
+    high: { index: highIdx, time: highTime, price: highPrice },
+    low:  { index: lowIdx,  time: lowTime,  price: lowPrice  },
+  };
+}
+
+/**
+ * Calculate Fibonacci levels between startPrice (0%) and endPrice (100%),
+ * with freeze detection using post-end candles.
+ *
+ * crossingDirection:
+ *   'up'   → a level at price P is frozen when a post-end candle's high >= P
+ *            (used when the swing ends at a low and price is bouncing upward)
+ *   'down' → a level at price P is frozen when a post-end candle's low  <= P
+ *            (used when the swing ends at a high and price is retracing downward)
  */
 function calculateFibLevels(
-  start: number,
-  end: number,
-  config: FibSetConfig
+  startPrice: number,
+  endPrice: number,
+  config: FibSetConfig,
+  postEndCandles: Candle[],
+  crossingDirection: 'up' | 'down'
 ): FibLevelData[] {
-  const range = end - start;
+  const range = endPrice - startPrice;
   const result: FibLevelData[] = [];
 
   for (const def of ALL_FIB_LEVELS) {
-    // Filter by extension/retracement toggle
     if (def.isExtension && !config.showExtensions) continue;
     if (!def.isExtension && !config.showRetracements) continue;
 
-    // Filter by per-level toggle
     const key = def.key as keyof typeof config.levels;
     if (!config.levels[key]) continue;
 
-    let price: number;
-    if (def.ratio < 0) {
-      // Extension below start: start - |ratio| * range
-      price = start + range * def.ratio;
-    } else if (def.ratio <= 1) {
-      // Retracement 0-100%
-      price = start + range * def.ratio;
-    } else {
-      // Extension above 100%: end + (ratio - 1) * range
-      price = start + range * def.ratio;
+    const price = startPrice + range * def.ratio;
+
+    // Freeze detection: find first post-end candle that crosses this level
+    let isFrozen = false;
+    let frozenAtTime: number | undefined;
+
+    for (const candle of postEndCandles) {
+      const crossed =
+        crossingDirection === 'up'
+          ? candle.high >= price   // price moved up through this level
+          : candle.low  <= price;  // price moved down through this level
+
+      if (crossed) {
+        isFrozen = true;
+        frozenAtTime = Number(candle.time);
+        break;
+      }
     }
 
     result.push({
@@ -137,39 +108,12 @@ function calculateFibLevels(
       price,
       isExtension: def.isExtension,
       isGolden: def.isGolden,
+      isFrozen,
+      frozenAtTime,
     });
   }
 
   return result;
-}
-
-/**
- * Build a FibSetResult from a swing high + low pair.
- */
-function buildFibSet(
-  swingHigh: SwingPoint,
-  swingLow: SwingPoint,
-  config: FibSetConfig
-): FibSetResult {
-  // Direction: whichever swing point came later in time is the "end"
-  const isDownSwing = swingHigh.time > swingLow.time;
-
-  const start = isDownSwing ? swingHigh : swingLow;
-  const end = isDownSwing ? swingLow : swingHigh;
-  const startPrice = isDownSwing ? swingHigh.price : swingLow.price;
-  const endPrice = isDownSwing ? swingLow.price : swingHigh.price;
-
-  const levels = calculateFibLevels(startPrice, endPrice, config);
-
-  return {
-    start,
-    end,
-    levels,
-    color: config.color,
-    showLabels: config.showLabels,
-    labelPosition: config.labelPosition,
-    extendRight: config.extendRight,
-  };
 }
 
 /**
@@ -211,46 +155,133 @@ function detectConfluence(
 
 /**
  * Main hook: detect dual Auto-Fibonacci sets from candle data.
+ *
+ * visibleRange (optional): time range currently visible on screen.
+ *   When provided, anchor points are picked as the highest/lowest price
+ *   within the visible range rather than a fixed lookback window.
+ *   Falls back to the last swingLookback*2 candles when null.
  */
 export function useAutoFibDetection(
   candles: Candle[],
+  visibleRange: { from: number; to: number } | null,
   settings: AutoFibSettings
 ): AutoFibResult {
   return useMemo(() => {
     const empty: AutoFibResult = { primary: null, secondary: null, confluence: [] };
 
-    if (!settings.enabled || candles.length < settings.swingLookback * 2 + 1) {
-      return empty;
-    }
+    if (!settings.enabled || candles.length === 0) return empty;
 
-    const lookback = settings.swingLookback;
-    let primaryFib: FibSetResult | null = null;
-    let secondaryFib: FibSetResult | null = null;
+    // Determine which candles are "visible" for anchor detection
+    const anchorCandles = visibleRange
+      ? candles.filter(c => Number(c.time) >= visibleRange.from && Number(c.time) <= visibleRange.to)
+      : candles.slice(-Math.max(settings.swingLookback * 2, 40));
+
+    if (anchorCandles.length < 2) return empty;
 
     // --- Primary Fibonacci ---
-    if (settings.primary.enabled) {
-      const primaryHigh = findSwingHigh(candles, lookback);
-      const primaryLow = findSwingLow(candles, lookback);
+    let primaryFib: FibSetResult | null = null;
 
-      if (primaryHigh && primaryLow) {
-        primaryFib = buildFibSet(primaryHigh, primaryLow, settings.primary);
+    if (settings.primary.enabled) {
+      const extremes = findHighLow(anchorCandles, candles);
+      if (extremes) {
+        const { high, low } = extremes;
+
+        // Direction: if high.time < low.time, high came first → downswing
+        const isDownSwing = high.time < low.time;
+
+        // Chronological anchor points
+        const start: SwingPoint = isDownSwing ? high : low;  // earlier in time
+        const end: SwingPoint   = isDownSwing ? low  : high; // later in time
+
+        // Candles that occurred after the swing ended (for freeze detection)
+        const postEndCandles = candles.slice(end.index + 1);
+
+        // Primary levels: 0% at LOW, 100% at HIGH
+        // After downswing (ends at low), price bounces UP → freeze when candle.high >= P
+        // After upswing  (ends at high), price retraces DOWN → freeze when candle.low <= P
+        const crossingDir: 'up' | 'down' = isDownSwing ? 'up' : 'down';
+        const levels = calculateFibLevels(
+          low.price, high.price,
+          settings.primary,
+          postEndCandles,
+          crossingDir
+        );
+
+        primaryFib = {
+          start,
+          end,
+          levels,
+          color: settings.primary.color,
+          showLabels: settings.primary.showLabels,
+          labelPosition: settings.primary.labelPosition,
+          extendRight: settings.primary.extendRight,
+        };
       }
     }
 
-    // --- Secondary Fibonacci (excluding primary swing indices) ---
-    if (settings.secondary.enabled) {
-      const excludeHighIdx = primaryFib
-        ? (primaryFib.start.price > primaryFib.end.price ? primaryFib.start.index : primaryFib.end.index)
-        : undefined;
-      const excludeLowIdx = primaryFib
-        ? (primaryFib.start.price < primaryFib.end.price ? primaryFib.start.index : primaryFib.end.index)
-        : undefined;
+    // --- Secondary Fibonacci ---
+    // Always opposite direction to primary.
+    // Starts where primary ends (in time); finds new anchor in the visible
+    // candles that occur AFTER the primary's end.
+    let secondaryFib: FibSetResult | null = null;
 
-      const secondaryHigh = findSwingHigh(candles, lookback, excludeHighIdx);
-      const secondaryLow = findSwingLow(candles, lookback, excludeLowIdx);
+    if (settings.secondary.enabled && primaryFib) {
+      const primaryEndTime = primaryFib.end.time;
+      const isPrimaryDown  = primaryFib.end.price < primaryFib.start.price;
 
-      if (secondaryHigh && secondaryLow) {
-        secondaryFib = buildFibSet(secondaryHigh, secondaryLow, settings.secondary);
+      // Visible candles strictly after the primary swing ended
+      const postPrimaryVisible = anchorCandles.filter(c => Number(c.time) > primaryEndTime);
+
+      if (postPrimaryVisible.length >= 1) {
+        const secExtremes = findHighLow(postPrimaryVisible, candles);
+
+        if (secExtremes) {
+          const { high: secHigh, low: secLow } = secExtremes;
+
+          if (isPrimaryDown) {
+            // Primary ended at LOW → secondary is an upswing
+            // Secondary: 0% at secHigh (top of the bounce), 100% at PRIMARY LOW (bottom)
+            // After the bounce peak, price drops → freeze when candle.low <= P
+            const postSecEnd = candles.slice(secHigh.index + 1);
+            const secLevels  = calculateFibLevels(
+              secHigh.price, primaryFib.end.price,
+              settings.secondary,
+              postSecEnd,
+              'down'
+            );
+
+            secondaryFib = {
+              start: primaryFib.end,    // PRIMARY LOW = chronological start of secondary
+              end:   secHigh,            // new HIGH = chronological end of secondary
+              levels: secLevels,
+              color: settings.secondary.color,
+              showLabels: settings.secondary.showLabels,
+              labelPosition: settings.secondary.labelPosition,
+              extendRight: settings.secondary.extendRight,
+            };
+          } else {
+            // Primary ended at HIGH → secondary is a downswing
+            // Secondary: 0% at PRIMARY HIGH (top), 100% at secLow (bottom of the retracement)
+            // After the retracement low, price bounces → freeze when candle.high >= P
+            const postSecEnd = candles.slice(secLow.index + 1);
+            const secLevels  = calculateFibLevels(
+              primaryFib.end.price, secLow.price,
+              settings.secondary,
+              postSecEnd,
+              'up'
+            );
+
+            secondaryFib = {
+              start: primaryFib.end,    // PRIMARY HIGH = chronological start of secondary
+              end:   secLow,             // new LOW = chronological end of secondary
+              levels: secLevels,
+              color: settings.secondary.color,
+              showLabels: settings.secondary.showLabels,
+              labelPosition: settings.secondary.labelPosition,
+              extendRight: settings.secondary.extendRight,
+            };
+          }
+        }
       }
     }
 
@@ -261,5 +292,5 @@ export function useAutoFibDetection(
         : [];
 
     return { primary: primaryFib, secondary: secondaryFib, confluence };
-  }, [candles, settings]);
+  }, [candles, visibleRange, settings]);
 }
