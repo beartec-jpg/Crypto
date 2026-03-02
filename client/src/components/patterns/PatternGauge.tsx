@@ -17,7 +17,7 @@ export function PatternGauge({ score }: PatternGaugeProps) {
   const s = Math.max(0, Math.min(100, score));
 
   // Background arc: full semi-circle from left (180°) to right (0°) through top
-  const bgPath = `M ${cx - r},${cy} A ${r},${r} 0 0,0 ${cx + r},${cy}`;
+  const bgPath = `M ${cx - r},${cy} A ${r},${r} 0 0,1 ${cx + r},${cy}`;
 
   // Foreground arc: fill from left up to score position
   // End angle in standard-math coords: 180° → 0° as score goes 0 → 100
@@ -26,11 +26,11 @@ export function PatternGauge({ score }: PatternGaugeProps) {
   const endX = cx + r * Math.cos(endAngleRad);
   const endY = cy - r * Math.sin(endAngleRad);
 
-  // sweep=0 (CCW in SVG = visually goes upward from left through top to right)
+  // sweep=1 (CW in SVG = visually arcs clockwise from left through top to right)
   // large-arc=0 since arc always spans ≤ 180°
   const fgPath =
     s > 0
-      ? `M ${cx - r},${cy} A ${r},${r} 0 0,0 ${endX.toFixed(2)},${endY.toFixed(2)}`
+      ? `M ${cx - r},${cy} A ${r},${r} 0 0,1 ${endX.toFixed(2)},${endY.toFixed(2)}`
       : null;
 
   const color = gaugeColor(s);

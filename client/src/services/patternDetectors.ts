@@ -112,7 +112,7 @@ const PATTERN_DEFINITIONS: PatternDefinition[] = [
   },
 ];
 
-const TEN_MINUTES_MS = 10 * 60 * 1000;
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -142,7 +142,7 @@ function values(series: Snapshot[]): { prices: number[]; volumes: number[]; cvd:
 }
 
 function median(valuesList: number[]): number {
-  if (valuesList.length === 0) return TEN_MINUTES_MS;
+  if (valuesList.length === 0) return FOUR_HOURS_MS;
   const sorted = [...valuesList].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
@@ -150,7 +150,7 @@ function median(valuesList: number[]): number {
 }
 
 function medianIntervalMs(series: Snapshot[]): number {
-  if (series.length < 2) return TEN_MINUTES_MS;
+  if (series.length < 2) return FOUR_HOURS_MS;
   const gaps: number[] = [];
   for (let index = 1; index < series.length; index += 1) {
     const gap = series[index].timestamp - series[index - 1].timestamp;
@@ -519,5 +519,5 @@ export function runPatternDetectors(history: Snapshot[], current: Snapshot): Pat
 
 export function shouldUpdatePatternSnapshot(previous: Snapshot | null, nextTimestamp: number): boolean {
   if (!previous) return true;
-  return nextTimestamp - previous.timestamp >= TEN_MINUTES_MS;
+  return nextTimestamp - previous.timestamp >= FOUR_HOURS_MS;
 }

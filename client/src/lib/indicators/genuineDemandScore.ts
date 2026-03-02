@@ -285,7 +285,7 @@ export function calculateGenuineDemandScore({
   if (persistHistory) {
     const previous = patternSnapshotHistory[patternSnapshotHistory.length - 1] ?? null;
     if (shouldUpdatePatternSnapshot(previous, currentSnapshot.timestamp)) {
-      patternSnapshotHistory = [...patternSnapshotHistory, currentSnapshot].slice(-144);
+      patternSnapshotHistory = [...patternSnapshotHistory, currentSnapshot].slice(-180);
     }
   }
 
