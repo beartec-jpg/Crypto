@@ -60,10 +60,10 @@ function findHighLow(
  * Calculate Fibonacci levels for a swing, with freeze detection using post-end candles.
  *
  * swingDirection:
- *   'up'   → upswing: 0% at LOW, 100% at HIGH.
+ *   'up'   → upswing: 0% at HIGH (retracement start), 100% at LOW (retracing back to origin).
  *            After the swing ends at HIGH, price retraces DOWN →
  *            a level at price P is frozen when a post-end candle's low <= P.
- *   'down' → downswing: 0% at HIGH, 100% at LOW.
+ *   'down' → downswing: 0% at LOW (retracement start), 100% at HIGH (retracing back to origin).
  *            After the swing ends at LOW, price bounces UP →
  *            a level at price P is frozen when a post-end candle's high >= P.
  */
@@ -74,9 +74,10 @@ function calculateFibLevels(
   postEndCandles: Candle[],
   swingDirection: 'up' | 'down'
 ): FibLevelData[] {
-  // For upswing: 0% at LOW, 100% at HIGH; for downswing: 0% at HIGH, 100% at LOW
-  const startPrice = swingDirection === 'up' ? lowPrice : highPrice;
-  const endPrice   = swingDirection === 'up' ? highPrice : lowPrice;
+  // CORRECT: For retracements, 0% is where price ended, 100% is where it's retracing back to
+  // Upswing: 0% at HIGH (retracement start), 100% at LOW; downswing: 0% at LOW (retracement start), 100% at HIGH
+  const startPrice = swingDirection === 'up' ? highPrice : lowPrice;  // where the move ended
+  const endPrice   = swingDirection === 'up' ? lowPrice : highPrice;  // where we're retracing back to
   const range = endPrice - startPrice;
   const result: FibLevelData[] = [];
 
@@ -200,7 +201,8 @@ export function useAutoFibDetection(
         // Candles that occurred after the swing ended (for freeze detection)
         const postEndCandles = candles.slice(end.index + 1);
 
-        // Primary levels: 0% at LOW, 100% at HIGH for upswing; 0% at HIGH, 100% at LOW for downswing.
+        // Primary levels: 0% at HIGH, 100% at LOW for upswing (retracing down to origin);
+        // 0% at LOW, 100% at HIGH for downswing (retracing up to origin).
         // After downswing (ends at low), price bounces UP → freeze when candle.high >= P
         // After upswing  (ends at high), price retraces DOWN → freeze when candle.low <= P
         const swingDir: 'up' | 'down' = isDownSwing ? 'down' : 'up';
@@ -243,8 +245,8 @@ export function useAutoFibDetection(
           const { high: secHigh, low: secLow } = secExtremes;
 
           if (isPrimaryDown) {
-            // Primary ended at LOW → secondary is an upswing
-            // Secondary: 0% at PRIMARY LOW (bottom), 100% at secHigh (top of the bounce)
+            // Primary ended at LOW → secondary is an upswing (bounce)
+            // Secondary: 0% at secHigh (peak of bounce), 100% at PRIMARY LOW (retracing back to origin)
             // After the bounce peak, price drops → freeze when candle.low <= P
             const postSecEnd = candles.slice(secHigh.index + 1);
             const secLevels  = calculateFibLevels(
@@ -264,8 +266,8 @@ export function useAutoFibDetection(
               extendRight: settings.secondary.extendRight,
             };
           } else {
-            // Primary ended at HIGH → secondary is a downswing
-            // Secondary: 0% at PRIMARY HIGH (top), 100% at secLow (bottom of the retracement)
+            // Primary ended at HIGH → secondary is a downswing (retracement)
+            // Secondary: 0% at secLow (bottom of retracement), 100% at PRIMARY HIGH (retracing back to origin)
             // After the retracement low, price bounces → freeze when candle.high >= P
             const postSecEnd = candles.slice(secLow.index + 1);
             const secLevels  = calculateFibLevels(
