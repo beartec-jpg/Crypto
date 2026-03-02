@@ -99,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     const newHistory = historyData.slice(-10).map((point: any) => ({
       timestamp: (point.t || point.time || point.timestamp) * 1000,
-      value: point.c || point.v || point.oi || point.value || 0
+      value: [point.c, point.v, point.oi, point.value].find((v) => v !== undefined) ?? 0
     }));
     
     const currentValue = newHistory.length > 0 ? newHistory[newHistory.length - 1].value : 0;

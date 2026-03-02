@@ -292,6 +292,28 @@ export function calculateGenuineDemandScore({
 
   const latestCandle = candleWindow[candleWindow.length - 1];
   const firstCandle = candleWindow[0];
+  const priceUp = latestCandle.close > firstCandle.close;
+
+  const priceChangePct = firstCandle.close > 0 ? ((latestCandle.close - firstCandle.close) / firstCandle.close) * 100 : 0;
+  const priceStrength = priceUp && priceChangePct > 0 ? clamp(priceChangePct / 5, 0, 1) : 0;
+  const priceScore = priceStrength * PRICE_WEIGHT;
+
+  const cvdDelta = cvdWindow.length > 1
+    ? cvdWindow[cvdWindow.length - 1].cumDelta - cvdWindow[0].cumDelta
+    : 0;
+  const avgAbsDelta = average(cvdWindow.map((item) => Math.abs(item.delta)));
+  // More sensitive normalization - was too aggressive before
+  const cvdNormalization = avgAbsDelta * Math.max(5, cvdWindow.length * 0.3);
+  const cvdStrength = cvdDelta > 0 && cvdNormalization > 0
+    ? clamp(cvdDelta / cvdNormalization, 0, 1)
+    : 0;
+  const cvdScore = cvdStrength * CVD_WEIGHT;
+
+  const oiChange = externalMetrics?.openInterestChangePct;
+  const fundingRate = externalMetrics?.fundingRate;
+  const coinbasePremium = externalMetrics?.coinbasePremiumPct;
+
+  console.log('[GDS Debug] Input values:', { fundingRate, coinbasePremium, oiChange });
 
   const snapshot = buildSnapshot(candleWindow, cvdWindow, externalMetrics);
   const symbol = externalMetrics?.symbol || 'default';
