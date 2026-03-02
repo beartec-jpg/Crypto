@@ -8,14 +8,15 @@ interface IndicatorsSectionProps {
   candles: Candle[];
   cvdData: CVDDataItem[];
   externalMetrics?: GDSExternalMetrics;
+  symbol?: string;
 }
 
-export function IndicatorsSection({ candles, cvdData, externalMetrics }: IndicatorsSectionProps) {
+export function IndicatorsSection({ candles, cvdData, externalMetrics, symbol }: IndicatorsSectionProps) {
   return (
     <>
       {/* Genuine Demand Score Section */}
       {candles.length > 0 && (
-        <GenuineDemandScorePanel candles={candles} cvdData={cvdData} externalMetrics={externalMetrics} />
+        <GenuineDemandScorePanel candles={candles} cvdData={cvdData} externalMetrics={externalMetrics} symbol={symbol} />
       )}
 
       {/* Oscillators Section */}

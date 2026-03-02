@@ -81,7 +81,7 @@ export default function CryptoIndicatorsClean() {
           <CleanWatchlist onExpandChart={handleExpandChart} />
 
           {/* Indicators Section (Oscillators + CVD) */}
-          <IndicatorsSection candles={candles} cvdData={cvdData} externalMetrics={externalMetrics} />
+          <IndicatorsSection candles={candles} cvdData={cvdData} externalMetrics={externalMetrics} symbol={DEFAULT_SYMBOL} />
           </div>
 
           {/* Bottom Navigation */}

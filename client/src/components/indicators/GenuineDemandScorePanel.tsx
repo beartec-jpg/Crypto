@@ -8,9 +8,10 @@ interface GenuineDemandScorePanelProps {
   candles: Candle[];
   cvdData: CVDDataItem[];
   externalMetrics?: GDSExternalMetrics;
+  symbol?: string;
 }
 
-export function GenuineDemandScorePanel({ candles, cvdData, externalMetrics }: GenuineDemandScorePanelProps) {
+export function GenuineDemandScorePanel({ candles, cvdData, externalMetrics, symbol }: GenuineDemandScorePanelProps) {
   const { gds } = useGenuineDemandScore({
     candles,
     cvdData,
@@ -25,7 +26,7 @@ export function GenuineDemandScorePanel({ candles, cvdData, externalMetrics }: G
       </div>
 
       <PatternGrid patterns={gds.patterns} />
-      <PatternBacktestPanel candles={candles} cvdData={cvdData} />
+      <PatternBacktestPanel candles={candles} cvdData={cvdData} symbol={symbol} />
     </div>
   );
 }

@@ -9,9 +9,10 @@ import type { PatternSensitivityProfile } from '@/services/patternDetectors';
 interface PatternBacktestPanelProps {
   candles: Candle[];
   cvdData: CVDDataItem[];
+  symbol?: string;
 }
 
-export function PatternBacktestPanel({ candles, cvdData }: PatternBacktestPanelProps) {
+export function PatternBacktestPanel({ candles, cvdData, symbol }: PatternBacktestPanelProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [report, setReport] = useState<PatternBacktestReport | null>(null);
@@ -44,6 +45,12 @@ export function PatternBacktestPanel({ candles, cvdData }: PatternBacktestPanelP
           endDate,
           sensitivityProfile,
           forwardLookPeriods: [4, 8, 12, 24, 48],
+          ...(symbol && {
+            backtestConfig: {
+              symbol,
+              fetchHistoricalData: true,
+            },
+          }),
         },
         (current, total) => {
           setProgress((current / total) * 100);

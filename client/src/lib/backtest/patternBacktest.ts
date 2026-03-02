@@ -10,6 +10,12 @@ export interface PatternBacktestConfig {
   activationThreshold?: number; // Score threshold to consider pattern "active" (profile default when omitted)
   sensitivityProfile?: PatternSensitivityProfile;
   forwardLookPeriods: number[]; // Hours to look forward (e.g., [4, 8, 12, 24, 48])
+
+  // Optional: fetch real historical OI/funding data to replace hardcoded zeros
+  backtestConfig?: {
+    symbol: string;           // e.g., "BTCUSDT"
+    fetchHistoricalData: boolean;  // Enable OI/funding fetching
+  };
 }
 
 export interface PatternActivation {
@@ -71,9 +77,12 @@ function createHistoricalSnapshots(
   candles: Candle[],
   cvdData: CVDDataItem[],
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  oiChangePctMap: Map<number, number> = new Map(),
+  fundingRateMap: Map<number, number> = new Map()
 ): Snapshot[] {
   const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+  const MATCH_TOLERANCE_MS = 2 * 60 * 60 * 1000; // 2-hour tolerance for timestamp matching
   const snapshots: Snapshot[] = [];
 
   const startTime = startDate.getTime();
@@ -84,6 +93,21 @@ function createHistoricalSnapshots(
   cvdData.forEach(item => {
     cvdMap.set(item.timestamp, item);
   });
+
+  // Helper: find the closest value in a map within tolerance
+  function findClosestValue(map: Map<number, number>, targetTs: number): number {
+    if (map.size === 0) return 0;
+    let closestValue = 0;
+    let minDiff = Infinity;
+    for (const [ts, value] of map) {
+      const diff = Math.abs(ts - targetTs);
+      if (diff < minDiff && diff <= MATCH_TOLERANCE_MS) {
+        minDiff = diff;
+        closestValue = value;
+      }
+    }
+    return closestValue;
+  }
 
   // Iterate through candles at 4-hour intervals
   for (let i = 0; i < candles.length; i++) {
@@ -101,8 +125,8 @@ function createHistoricalSnapshots(
         timestamp: candleTime,
         price: candle.close,
         cvdDelta: cvd?.delta ?? 0,
-        oiChangePct: 0,
-        fundingRate: 0,
+        oiChangePct: findClosestValue(oiChangePctMap, candleTime),
+        fundingRate: findClosestValue(fundingRateMap, candleTime),
         premium: 0,
         volume: candle.volume,
       });
@@ -210,22 +234,68 @@ export async function runPatternBacktest(
 
   console.log(`🧪 Starting pattern backtest from ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
-  // Step 1: Create historical snapshots
-  const snapshots = createHistoricalSnapshots(candles, cvdData, startDate, endDate);
+  // Step 1: Optionally fetch historical OI/funding data to populate snapshots
+  const oiChangePctMap = new Map<number, number>(); // timestamp (ms) → oiChangePct
+  const fundingRateMap = new Map<number, number>(); // timestamp (ms) → fundingRate
+
+  if (config.backtestConfig?.fetchHistoricalData && config.backtestConfig.symbol) {
+    const { symbol } = config.backtestConfig;
+
+    // Fetch historical open interest
+    try {
+      const oiRes = await fetch(`/api/crypto/orderflow/open-interest?symbol=${encodeURIComponent(symbol)}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (oiRes.ok) {
+        const oiData = await oiRes.json();
+        const oiHistory: Array<{ timestamp: number; value: number }> = oiData.history ?? [];
+        // Calculate oiChangePct for each point from the previous point
+        for (let i = 1; i < oiHistory.length; i++) {
+          const prev = oiHistory[i - 1].value;
+          const curr = oiHistory[i].value;
+          const changePct = prev > 0 ? ((curr - prev) / prev) * 100 : 0;
+          oiChangePctMap.set(oiHistory[i].timestamp, changePct);
+        }
+        console.log(`📊 Loaded ${oiChangePctMap.size} OI data points for backtest`);
+      }
+    } catch (err) {
+      console.warn('⚠️ Could not fetch OI history for backtest - oiChangePct will be 0', err);
+    }
+
+    // Fetch historical funding rate
+    try {
+      const fundingRes = await fetch(`/api/crypto/orderflow/funding-rate?symbol=${encodeURIComponent(symbol)}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (fundingRes.ok) {
+        const fundingData = await fundingRes.json();
+        const fundingHistory: Array<{ timestamp: number; value: number }> = fundingData.history ?? [];
+        for (const point of fundingHistory) {
+          fundingRateMap.set(point.timestamp, point.value);
+        }
+        console.log(`📊 Loaded ${fundingRateMap.size} funding rate data points for backtest`);
+      }
+    } catch (err) {
+      console.warn('⚠️ Could not fetch funding rate history for backtest - fundingRate will be 0', err);
+    }
+  }
+
+  // Step 2: Create historical snapshots
+  const snapshots = createHistoricalSnapshots(candles, cvdData, startDate, endDate, oiChangePctMap, fundingRateMap);
   console.log(`📊 Generated ${snapshots.length} snapshots at 4-hour intervals`);
 
   if (snapshots.length < 2) {
     throw new Error('Not enough data for backtest - need at least 2 snapshots');
   }
 
-  // Step 2: Track pattern activations by pattern key
+  // Step 3: Track pattern activations by pattern key
   const activationsByPattern = new Map<PatternKey, Array<PatternActivation & { forward: ForwardPerformance[] }>>();
 
   // Initialize maps for all patterns
   const patternKeys: PatternKey[] = ['healthyBottom', 'distribution', 'capitulation', 'fakeout', 'accumulation', 'bearBreakdown'];
   patternKeys.forEach(key => activationsByPattern.set(key, []));
 
-  // Step 3: Run pattern detection on each snapshot with rolling history
+  // Step 4: Run pattern detection on each snapshot with rolling history
   for (let i = 0; i < snapshots.length; i++) {
     const current = snapshots[i];
     const history = snapshots.slice(0, i); // All previous snapshots
@@ -263,7 +333,7 @@ export async function runPatternBacktest(
     }
   }
 
-  // Step 4: Calculate performance metrics for each pattern
+  // Step 5: Calculate performance metrics for each pattern
   const results: PatternBacktestResult[] = [];
 
   const patternDefinitions = [
