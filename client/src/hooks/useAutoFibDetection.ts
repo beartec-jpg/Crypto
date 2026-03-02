@@ -268,7 +268,7 @@ export function useAutoFibDetection(
               primaryFib.end.price, secLow.price,
               settings.secondary,
               postSecEnd,
-              'up'
+              'down'
             );
 
             secondaryFib = {
