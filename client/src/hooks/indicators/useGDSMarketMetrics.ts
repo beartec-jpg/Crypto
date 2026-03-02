@@ -107,7 +107,7 @@ export function useGDSMarketMetrics({
       };
     },
     enabled,
-    refetchInterval: 60_000,
+    refetchInterval: 600_000,
   });
 
   return useMemo(() => {
@@ -142,6 +142,7 @@ export function useGDSMarketMetrics({
         openInterestChangePct,
         fundingRate,
         coinbasePremiumPct,
+        symbol,
       },
       cvdData: mapCvdToTable(data?.cvd?.history),
       isLoading,
