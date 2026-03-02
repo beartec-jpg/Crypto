@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import type { Candle, CVDDataItem } from '@/types/chart';
 import type { PatternBacktestReport } from '@/lib/backtest/patternBacktest';
 import { runPatternBacktest, generateBacktestReport } from '@/lib/backtest/patternBacktest';
+import type { PatternSensitivityProfile } from '@/services/patternDetectors';
 
 interface PatternBacktestPanelProps {
   candles: Candle[];
@@ -15,6 +16,16 @@ export function PatternBacktestPanel({ candles, cvdData }: PatternBacktestPanelP
   const [progress, setProgress] = useState(0);
   const [report, setReport] = useState<PatternBacktestReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [periodDays, setPeriodDays] = useState<180 | 365 | 730>(365);
+  const [sensitivityProfile, setSensitivityProfile] = useState<PatternSensitivityProfile>('neutral');
+
+  const periodLabel = periodDays === 180 ? '6 months' : periodDays === 365 ? '1 year' : '2 years';
+  const profileHint =
+    sensitivityProfile === 'aggressive'
+      ? 'Lenient requirements, more activations'
+      : sensitivityProfile === 'tame'
+        ? 'Strict requirements, fewer but cleaner activations'
+        : 'Balanced requirements';
 
   async function handleRunBacktest() {
     setIsRunning(true);
@@ -23,7 +34,7 @@ export function PatternBacktestPanel({ candles, cvdData }: PatternBacktestPanelP
 
     try {
       const endDate = new Date();
-      const startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+      const startDate = new Date(endDate.getTime() - periodDays * 24 * 60 * 60 * 1000);
 
       const result = await runPatternBacktest(
         {
@@ -31,7 +42,7 @@ export function PatternBacktestPanel({ candles, cvdData }: PatternBacktestPanelP
           cvdData,
           startDate,
           endDate,
-          activationThreshold: 70,
+          sensitivityProfile,
           forwardLookPeriods: [4, 8, 12, 24, 48],
         },
         (current, total) => {
@@ -54,7 +65,7 @@ export function PatternBacktestPanel({ candles, cvdData }: PatternBacktestPanelP
         <div>
           <h4 className="text-lg font-semibold text-white">🧪 Pattern Backtest Engine</h4>
           <p className="text-xs text-slate-400 mt-1">
-            Validate pattern detection accuracy using 30 days of historical data
+            Validate pattern detection accuracy using {periodLabel} of historical data
           </p>
         </div>
         <Button
@@ -64,6 +75,53 @@ export function PatternBacktestPanel({ candles, cvdData }: PatternBacktestPanelP
         >
           {isRunning ? 'Running...' : 'Run Backtest'}
         </Button>
+      </div>
+
+      <div className="mb-4 flex items-center gap-2">
+        <span className="text-xs text-slate-400">Backtest Window:</span>
+        {[180, 365, 730].map((days) => {
+          const isActive = periodDays === days;
+          const label = days === 180 ? '180d' : days === 365 ? '365d' : '730d';
+
+          return (
+            <Button
+              key={days}
+              type="button"
+              size="sm"
+              variant={isActive ? 'default' : 'outline'}
+              className={isActive ? 'bg-blue-600 hover:bg-blue-700' : 'border-slate-600 text-slate-300 hover:bg-slate-800'}
+              onClick={() => setPeriodDays(days as 180 | 365 | 730)}
+              disabled={isRunning}
+            >
+              {label}
+            </Button>
+          );
+        })}
+      </div>
+
+      <div className="mb-4 flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">Sensitivity:</span>
+          {(['tame', 'neutral', 'aggressive'] as const).map((profile) => {
+            const isActive = sensitivityProfile === profile;
+            const label = profile.charAt(0).toUpperCase() + profile.slice(1);
+
+            return (
+              <Button
+                key={profile}
+                type="button"
+                size="sm"
+                variant={isActive ? 'default' : 'outline'}
+                className={isActive ? 'bg-blue-600 hover:bg-blue-700' : 'border-slate-600 text-slate-300 hover:bg-slate-800'}
+                onClick={() => setSensitivityProfile(profile)}
+                disabled={isRunning}
+              >
+                {label}
+              </Button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-slate-400">{profileHint}</p>
       </div>
 
       {isRunning && (
@@ -98,6 +156,10 @@ export function PatternBacktestPanel({ candles, cvdData }: PatternBacktestPanelP
               <p className="text-white font-semibold">{report.totalSnapshots}</p>
             </div>
           </div>
+
+          <p className="text-xs text-slate-400">
+            Win Rate = wins / total activations for each horizon. Bullish patterns win on positive forward return, bearish on negative, and capitulation/fakeout require absolute move &gt; 2%.
+          </p>
 
           <div className="space-y-3">
             {report.results.map((result) => (

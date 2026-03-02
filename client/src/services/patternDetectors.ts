@@ -1,13 +1,5 @@
-import {
-  calculateBollingerBands,
-  calculateMACD,
-  calculateRSI,
-  calculateSlope,
-  calculateStochRSI,
-  calculateVPOC,
-  calculateVolumeAverage,
-  detectRSIDivergence,
-} from '@/lib/technicalIndicators';
+import { calculateBollingerBands } from '@/lib/indicators/volatility';
+import { calculateMACD, calculateRSI } from '@/lib/indicators/momentum';
 
 export interface Snapshot {
   timestamp: number;
@@ -59,6 +51,192 @@ export interface PatternDefinition {
 export interface PatternDetectionItem {
   definition: PatternDefinition;
   result: PatternResult;
+}
+
+export type PatternSensitivityProfile = 'tame' | 'neutral' | 'aggressive';
+
+interface PatternDetectorThresholds {
+  activationThreshold: number;
+  healthyBottom: {
+    drawdownFromPeakMin: number;
+    oiMin: number;
+    fundingNegativeMax: number;
+  };
+  distribution: {
+    rallyMin: number;
+    minRallyDays: number;
+    oiExpandMin: number;
+    fundingHighMin: number;
+  };
+  capitulation: {
+    prereqDropMin: number;
+    prereqOiFlushMin: number;
+    prereqFundingMax: number;
+    signalDropMin: number;
+    signalOiFlushMin: number;
+    signalFundingMax: number;
+    volumeSpikeMinMultiplier: number;
+    rsiMax: number;
+  };
+  fakeout: {
+    recentMoveMin: number;
+    oiUpMin: number;
+    lowVolumeMaxMultiplier: number;
+  };
+  accumulation: {
+    rangeMax: number;
+    minDurationFactor: number;
+    oiFlatMaxAbs: number;
+    fundingNeutralMaxAbs: number;
+    bandwidthMax: number;
+    nearVpocMaxDistance: number;
+  };
+  bearBreakdown: {
+    recentDownMoveMin: number;
+    oiExpandMin: number;
+    weakRecoveryRsiMax: number;
+    volumeSpikeMinMultiplier: number;
+  };
+}
+
+const PROFILE_THRESHOLDS: Record<PatternSensitivityProfile, PatternDetectorThresholds> = {
+  tame: {
+    activationThreshold: 78,
+    healthyBottom: {
+      drawdownFromPeakMin: 10,
+      oiMin: 5,
+      fundingNegativeMax: -0.01,
+    },
+    distribution: {
+      rallyMin: 18,
+      minRallyDays: 4,
+      oiExpandMin: 1.25,
+      fundingHighMin: 0.01,
+    },
+    capitulation: {
+      prereqDropMin: 5,
+      prereqOiFlushMin: 4,
+      prereqFundingMax: -0.01,
+      signalDropMin: 10,
+      signalOiFlushMin: 5,
+      signalFundingMax: -0.012,
+      volumeSpikeMinMultiplier: 2.2,
+      rsiMax: 22,
+    },
+    fakeout: {
+      recentMoveMin: 2.6,
+      oiUpMin: 1,
+      lowVolumeMaxMultiplier: 0.75,
+    },
+    accumulation: {
+      rangeMax: 4,
+      minDurationFactor: 0.98,
+      oiFlatMaxAbs: 1.2,
+      fundingNeutralMaxAbs: 0.003,
+      bandwidthMax: 0.04,
+      nearVpocMaxDistance: 0.008,
+    },
+    bearBreakdown: {
+      recentDownMoveMin: 5,
+      oiExpandMin: 1,
+      weakRecoveryRsiMax: 42,
+      volumeSpikeMinMultiplier: 1.7,
+    },
+  },
+  neutral: {
+    activationThreshold: 70,
+    healthyBottom: {
+      drawdownFromPeakMin: 8,
+      oiMin: 4,
+      fundingNegativeMax: -0.008,
+    },
+    distribution: {
+      rallyMin: 15,
+      minRallyDays: 3,
+      oiExpandMin: 1,
+      fundingHighMin: 0.008,
+    },
+    capitulation: {
+      prereqDropMin: 4,
+      prereqOiFlushMin: 3,
+      prereqFundingMax: -0.008,
+      signalDropMin: 8,
+      signalOiFlushMin: 4,
+      signalFundingMax: -0.01,
+      volumeSpikeMinMultiplier: 2,
+      rsiMax: 25,
+    },
+    fakeout: {
+      recentMoveMin: 2,
+      oiUpMin: 0.8,
+      lowVolumeMaxMultiplier: 0.85,
+    },
+    accumulation: {
+      rangeMax: 5,
+      minDurationFactor: 0.9,
+      oiFlatMaxAbs: 1.5,
+      fundingNeutralMaxAbs: 0.004,
+      bandwidthMax: 0.045,
+      nearVpocMaxDistance: 0.01,
+    },
+    bearBreakdown: {
+      recentDownMoveMin: 4,
+      oiExpandMin: 0.8,
+      weakRecoveryRsiMax: 45,
+      volumeSpikeMinMultiplier: 1.5,
+    },
+  },
+  aggressive: {
+    activationThreshold: 62,
+    healthyBottom: {
+      drawdownFromPeakMin: 6,
+      oiMin: 3,
+      fundingNegativeMax: -0.006,
+    },
+    distribution: {
+      rallyMin: 12,
+      minRallyDays: 2,
+      oiExpandMin: 0.75,
+      fundingHighMin: 0.006,
+    },
+    capitulation: {
+      prereqDropMin: 3,
+      prereqOiFlushMin: 2,
+      prereqFundingMax: -0.006,
+      signalDropMin: 6,
+      signalOiFlushMin: 3,
+      signalFundingMax: -0.008,
+      volumeSpikeMinMultiplier: 1.6,
+      rsiMax: 30,
+    },
+    fakeout: {
+      recentMoveMin: 1.5,
+      oiUpMin: 0.5,
+      lowVolumeMaxMultiplier: 0.95,
+    },
+    accumulation: {
+      rangeMax: 6.5,
+      minDurationFactor: 0.75,
+      oiFlatMaxAbs: 2,
+      fundingNeutralMaxAbs: 0.005,
+      bandwidthMax: 0.055,
+      nearVpocMaxDistance: 0.013,
+    },
+    bearBreakdown: {
+      recentDownMoveMin: 3,
+      oiExpandMin: 0.5,
+      weakRecoveryRsiMax: 48,
+      volumeSpikeMinMultiplier: 1.3,
+    },
+  },
+};
+
+function getProfileThresholds(profile: PatternSensitivityProfile): PatternDetectorThresholds {
+  return PROFILE_THRESHOLDS[profile] ?? PROFILE_THRESHOLDS.neutral;
+}
+
+export function getDefaultActivationThreshold(profile: PatternSensitivityProfile = 'neutral'): number {
+  return getProfileThresholds(profile).activationThreshold;
 }
 
 const PATTERN_DEFINITIONS: PatternDefinition[] = [
@@ -115,6 +293,116 @@ const PATTERN_DEFINITIONS: PatternDefinition[] = [
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+
+function toCandles(prices: number[]) {
+  return prices.map((price, index) => ({
+    time: index,
+    open: price,
+    high: price,
+    low: price,
+    close: price,
+    volume: 0,
+  }));
+}
+
+function calculateSlope(valuesList: number[], period: number): number {
+  if (valuesList.length < 2) return 0;
+  const window = valuesList.slice(-Math.max(2, period));
+  const first = window[0];
+  const last = window[window.length - 1];
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return 0;
+  return (last - first) / Math.max(1, window.length - 1);
+}
+
+function calculateVolumeAverage(volumes: number[], period: number): number {
+  if (volumes.length === 0) return 0;
+  const window = volumes.slice(-Math.max(1, period));
+  return window.reduce((sum, value) => sum + value, 0) / window.length;
+}
+
+function calculateStochRSI(prices: number[], period: number) {
+  const candles = toCandles(prices);
+  const rsiValues = calculateRSI(candles, period).map((point) => point.value);
+  const stochValues: number[] = [];
+
+  for (let index = 0; index < rsiValues.length; index += 1) {
+    const start = Math.max(0, index - period + 1);
+    const window = rsiValues.slice(start, index + 1);
+    const minRsi = Math.min(...window);
+    const maxRsi = Math.max(...window);
+    const denominator = maxRsi - minRsi;
+    stochValues.push(denominator === 0 ? 50 : ((rsiValues[index] - minRsi) / denominator) * 100);
+  }
+
+  const k = stochValues.map((_, index) => {
+    const start = Math.max(0, index - 2);
+    const window = stochValues.slice(start, index + 1);
+    return window.reduce((sum, value) => sum + value, 0) / window.length;
+  });
+
+  const d = k.map((_, index) => {
+    const start = Math.max(0, index - 2);
+    const window = k.slice(start, index + 1);
+    return window.reduce((sum, value) => sum + value, 0) / window.length;
+  });
+
+  return { k, d };
+}
+
+function calculateVPOC(prices: number[], volumes: number[], bins: number): number {
+  if (prices.length === 0 || volumes.length === 0) return 0;
+
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  if (minPrice === maxPrice) return prices[prices.length - 1] ?? 0;
+
+  const bucketCount = Math.max(4, bins);
+  const bucketSize = (maxPrice - minPrice) / bucketCount;
+  const buckets = new Array(bucketCount).fill(0);
+
+  for (let index = 0; index < prices.length; index += 1) {
+    const normalized = (prices[index] - minPrice) / bucketSize;
+    const bucketIndex = Math.min(bucketCount - 1, Math.max(0, Math.floor(normalized)));
+    buckets[bucketIndex] += volumes[index] ?? 0;
+  }
+
+  let maxVolume = -Infinity;
+  let maxIndex = 0;
+  for (let index = 0; index < buckets.length; index += 1) {
+    if (buckets[index] > maxVolume) {
+      maxVolume = buckets[index];
+      maxIndex = index;
+    }
+  }
+
+  return minPrice + (maxIndex + 0.5) * bucketSize;
+}
+
+function detectRSIDivergence(prices: number[], rsiValues: number[]): 'bullish' | 'bearish' | 'none' {
+  if (prices.length < 8 || rsiValues.length < 8) return 'none';
+
+  const recent = prices.slice(-8);
+  const recentRsi = rsiValues.slice(-8);
+
+  const firstHalfPrices = recent.slice(0, 4);
+  const secondHalfPrices = recent.slice(4);
+  const firstHalfRsi = recentRsi.slice(0, 4);
+  const secondHalfRsi = recentRsi.slice(4);
+
+  const priceLow1 = Math.min(...firstHalfPrices);
+  const priceLow2 = Math.min(...secondHalfPrices);
+  const rsiLow1 = Math.min(...firstHalfRsi);
+  const rsiLow2 = Math.min(...secondHalfRsi);
+
+  const priceHigh1 = Math.max(...firstHalfPrices);
+  const priceHigh2 = Math.max(...secondHalfPrices);
+  const rsiHigh1 = Math.max(...firstHalfRsi);
+  const rsiHigh2 = Math.max(...secondHalfRsi);
+
+  if (priceLow2 < priceLow1 && rsiLow2 > rsiLow1) return 'bullish';
+  if (priceHigh2 > priceHigh1 && rsiHigh2 < rsiHigh1) return 'bearish';
+  return 'none';
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -236,7 +524,7 @@ function buildResult(
 }
 
 function getLatestBollinger(prices: number[]) {
-  const bb = calculateBollingerBands(prices, 20, 2);
+  const bb = calculateBollingerBands(toCandles(prices), 20, 2);
   const lastIndex = bb.upper.length - 1;
 
   return {
@@ -262,7 +550,12 @@ function calculateOBV(prices: number[], volumes: number[]): number[] {
   return obv;
 }
 
-export function detectHealthyBottom(history: Snapshot[], current: Snapshot): PatternResult {
+export function detectHealthyBottom(
+  history: Snapshot[],
+  current: Snapshot,
+  profile: PatternSensitivityProfile = 'neutral'
+): PatternResult {
+  const thresholds = getProfileThresholds(profile).healthyBottom;
   const series = getSeries(history, current);
   const recent48h = windowByDuration(series, 48 * HOUR_MS);
   const { prices, volumes } = values(series);
@@ -270,18 +563,21 @@ export function detectHealthyBottom(history: Snapshot[], current: Snapshot): Pat
   const peak48h = recent48h.length > 0 ? Math.max(...recent48h.map((item) => item.price)) : current.price;
   const drawdownFromPeak = toPercentChange(peak48h, current.price);
   const oiMin = recent48h.length > 0 ? Math.min(...recent48h.map((item) => item.oiChangePct)) : current.oiChangePct;
-  const hadFundingNeg = recent48h.some((item) => item.fundingRate < -0.008);
-  const prerequisitesMet = drawdownFromPeak <= -8 && oiMin <= -4 && hadFundingNeg;
+  const hadFundingNeg = recent48h.some((item) => item.fundingRate < thresholds.fundingNegativeMax);
+  const prerequisitesMet =
+    drawdownFromPeak <= -thresholds.drawdownFromPeakMin &&
+    oiMin <= -thresholds.oiMin &&
+    hadFundingNeg;
 
-  const rsi = calculateRSI(prices, 14);
+  const rsi = calculateRSI(toCandles(prices), 14).map((point) => point.value);
   const rsiDiv = detectRSIDivergence(prices, rsi);
-  const macd = calculateMACD(prices);
+  const macd = calculateMACD(toCandles(prices));
   const stochRsi = calculateStochRSI(prices, 14);
   const volumeAverage = calculateVolumeAverage(volumes, 20);
 
   const latestMacd = macd.macd[macd.macd.length - 1] ?? 0;
   const latestSignal = macd.signal[macd.signal.length - 1] ?? 0;
-  const latestHist = macd.histogram[macd.histogram.length - 1] ?? 0;
+  const latestHist = macd.hist[macd.hist.length - 1]?.value ?? 0;
   const latestK = stochRsi.k[stochRsi.k.length - 1] ?? 0;
   const latestD = stochRsi.d[stochRsi.d.length - 1] ?? 0;
 
@@ -304,7 +600,12 @@ export function detectHealthyBottom(history: Snapshot[], current: Snapshot): Pat
   return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Post-cap', 'Forming', 'Confirming', 'Confirmed'], prerequisitesMet, consistency);
 }
 
-export function detectDistribution(history: Snapshot[], current: Snapshot): PatternResult {
+export function detectDistribution(
+  history: Snapshot[],
+  current: Snapshot,
+  profile: PatternSensitivityProfile = 'neutral'
+): PatternResult {
+  const thresholds = getProfileThresholds(profile).distribution;
   const series = getSeries(history, current);
   const window14d = windowByDuration(series, 14 * DAY_MS);
   const { prices, volumes } = values(series);
@@ -317,9 +618,12 @@ export function detectDistribution(history: Snapshot[], current: Snapshot): Patt
   const rallyPct = minPoint ? toPercentChange(minPoint.price, current.price) : 0;
   const rallyDays = minPoint ? (current.timestamp - minPoint.timestamp) / DAY_MS : 0;
   const hadPositiveCvd = window14d.some((item) => item.cvdDelta > 0);
-  const prerequisitesMet = rallyPct >= 15 && hadPositiveCvd && rallyDays >= 3;
+  const prerequisitesMet =
+    rallyPct >= thresholds.rallyMin &&
+    hadPositiveCvd &&
+    rallyDays >= thresholds.minRallyDays;
 
-  const rsi = calculateRSI(prices, 14);
+  const rsi = calculateRSI(toCandles(prices), 14).map((point) => point.value);
   const rsiDiv = detectRSIDivergence(prices, rsi);
   const bb = getLatestBollinger(prices);
   const resistance = rollingHigh(prices, Math.max(20, barsForDuration(series, 5 * DAY_MS)));
@@ -332,8 +636,8 @@ export function detectDistribution(history: Snapshot[], current: Snapshot): Patt
 
   const orderflowSignals: PatternSignal[] = [
     { name: 'Price up but CVD negative', met: priceUp && current.cvdDelta < 0, points: 30 },
-    { name: 'OI expanding', met: current.oiChangePct > 1, points: 25 },
-    { name: 'Funding high', met: current.fundingRate > 0.008, points: 15 },
+    { name: 'OI expanding', met: current.oiChangePct > thresholds.oiExpandMin, points: 25 },
+    { name: 'Funding high', met: current.fundingRate > thresholds.fundingHighMin, points: 15 },
     { name: 'Premium negative', met: current.premium < 0, points: 10 },
   ];
 
@@ -349,7 +653,12 @@ export function detectDistribution(history: Snapshot[], current: Snapshot): Patt
   return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Early', 'Building', 'Active', 'Confirmed'], prerequisitesMet, consistency);
 }
 
-export function detectCapitulation(history: Snapshot[], current: Snapshot): PatternResult {
+export function detectCapitulation(
+  history: Snapshot[],
+  current: Snapshot,
+  profile: PatternSensitivityProfile = 'neutral'
+): PatternResult {
+  const thresholds = getProfileThresholds(profile).capitulation;
   const series = getSeries(history, current);
   const { prices, volumes, cvd } = values(series);
 
@@ -357,25 +666,28 @@ export function detectCapitulation(history: Snapshot[], current: Snapshot): Patt
   const start24h = prices[Math.max(0, prices.length - bars24h)] ?? current.price;
   const dropPct = toPercentChange(start24h, current.price);
 
-  const rsi = calculateRSI(prices, 14);
+  const rsi = calculateRSI(toCandles(prices), 14).map((point) => point.value);
   const bb = getLatestBollinger(prices);
   const volumeAverage = calculateVolumeAverage(volumes, 20);
   const cvdSlope = calculateSlope(cvd, 5);
 
   const latestRsi = rsi[rsi.length - 1] ?? 50;
   const lowerBounce = bb.hasData && current.price >= bb.lower;
-  const prerequisitesMet = dropPct <= -4 || current.oiChangePct <= -3 || current.fundingRate <= -0.008;
+  const prerequisitesMet =
+    dropPct <= -thresholds.prereqDropMin ||
+    current.oiChangePct <= -thresholds.prereqOiFlushMin ||
+    current.fundingRate <= thresholds.prereqFundingMax;
 
   const orderflowSignals: PatternSignal[] = [
-    { name: 'Price down >8%', met: dropPct <= -8, points: 20 },
+    { name: 'Price down >8%', met: dropPct <= -thresholds.signalDropMin, points: 20 },
     { name: 'CVD negative', met: current.cvdDelta < 0, points: 20 },
-    { name: 'OI flush', met: current.oiChangePct <= -4, points: 25 },
-    { name: 'Funding very negative', met: current.fundingRate < -0.01, points: 15 },
+    { name: 'OI flush', met: current.oiChangePct <= -thresholds.signalOiFlushMin, points: 25 },
+    { name: 'Funding very negative', met: current.fundingRate < thresholds.signalFundingMax, points: 15 },
   ];
 
   const technicalSignals: PatternSignal[] = [
-    { name: 'Volume spike 2x', met: current.volume >= volumeAverage * 2, points: 15 },
-    { name: 'RSI <25', met: latestRsi < 25, points: 10 },
+    { name: 'Volume spike 2x', met: current.volume >= volumeAverage * thresholds.volumeSpikeMinMultiplier, points: 15 },
+    { name: 'RSI <25', met: latestRsi < thresholds.rsiMax, points: 10 },
     { name: 'BB lower bounce', met: lowerBounce, points: 10 },
     { name: 'Stabilizing', met: cvdSlope > 0, points: 5 },
   ];
@@ -385,11 +697,16 @@ export function detectCapitulation(history: Snapshot[], current: Snapshot): Patt
   return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Accelerating', 'Panic', 'Extreme', 'Exhaustion'], prerequisitesMet, consistency);
 }
 
-export function detectFakeout(history: Snapshot[], current: Snapshot): PatternResult {
+export function detectFakeout(
+  history: Snapshot[],
+  current: Snapshot,
+  profile: PatternSensitivityProfile = 'neutral'
+): PatternResult {
+  const thresholds = getProfileThresholds(profile).fakeout;
   const series = getSeries(history, current);
   const { prices, volumes } = values(series);
 
-  const rsi = calculateRSI(prices, 14);
+  const rsi = calculateRSI(toCandles(prices), 14).map((point) => point.value);
   const volumeAverage = calculateVolumeAverage(volumes, 20);
   const recentMovePct = toPercentChange(prices[Math.max(0, prices.length - 8)] ?? current.price, current.price);
 
@@ -398,20 +715,20 @@ export function detectFakeout(history: Snapshot[], current: Snapshot): PatternRe
   const preResistance = preBreakPrices.length > 0 ? Math.max(...preBreakPrices) : rollingHigh(prices, 20);
   const breakoutSeen = recentPrices.some((price) => price > preResistance * 1.002);
   const noAcceptance = breakoutSeen && current.price < preResistance;
-  const prerequisitesMet = recentMovePct > 2 && breakoutSeen;
+  const prerequisitesMet = recentMovePct > thresholds.recentMoveMin && breakoutSeen;
 
   const rsiSlope = calculateSlope(rsi, 6);
 
   const orderflowSignals: PatternSignal[] = [
-    { name: 'Price up but CVD flat/negative', met: recentMovePct > 2 && current.cvdDelta <= 0, points: 30 },
-    { name: 'OI up', met: current.oiChangePct > 0.8, points: 25 },
+    { name: 'Price up but CVD flat/negative', met: recentMovePct > thresholds.recentMoveMin && current.cvdDelta <= 0, points: 30 },
+    { name: 'OI up', met: current.oiChangePct > thresholds.oiUpMin, points: 25 },
     { name: 'Funding positive', met: current.fundingRate > 0, points: 15 },
     { name: 'Premium negative', met: current.premium < 0, points: 10 },
   ];
 
   const technicalSignals: PatternSignal[] = [
     { name: 'No RSI confirmation', met: rsiSlope <= 0, points: 15 },
-    { name: 'Low volume breakout', met: current.volume < volumeAverage * 0.85, points: 12 },
+    { name: 'Low volume breakout', met: current.volume < volumeAverage * thresholds.lowVolumeMaxMultiplier, points: 12 },
     { name: 'No acceptance', met: noAcceptance, points: 10 },
   ];
 
@@ -420,7 +737,12 @@ export function detectFakeout(history: Snapshot[], current: Snapshot): PatternRe
   return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Weak pump', 'Leverage building', 'Overheated', 'Confirmed fakeout'], prerequisitesMet, consistency);
 }
 
-export function detectAccumulation(history: Snapshot[], current: Snapshot): PatternResult {
+export function detectAccumulation(
+  history: Snapshot[],
+  current: Snapshot,
+  profile: PatternSensitivityProfile = 'neutral'
+): PatternResult {
+  const thresholds = getProfileThresholds(profile).accumulation;
   const series = getSeries(history, current);
   const window3d = windowByDuration(series, 3 * DAY_MS);
   const { prices, volumes } = values(series);
@@ -429,7 +751,9 @@ export function detectAccumulation(history: Snapshot[], current: Snapshot): Patt
   const min3d = window3d.length > 0 ? Math.min(...window3d.map((item) => item.price)) : current.price;
   const rangePct = toPercentChange(min3d, max3d);
   const duration3d = window3d.length > 0 ? window3d[window3d.length - 1].timestamp - window3d[0].timestamp : 0;
-  const prerequisitesMet = rangePct <= 5 && duration3d >= (3 * DAY_MS * 0.9);
+  const prerequisitesMet =
+    rangePct <= thresholds.rangeMax &&
+    duration3d >= (3 * DAY_MS * thresholds.minDurationFactor);
 
   const bb = getLatestBollinger(prices);
   const vpoc = calculateVPOC(prices, volumes, 30);
@@ -438,20 +762,21 @@ export function detectAccumulation(history: Snapshot[], current: Snapshot): Patt
   const obvSlope = calculateSlope(obv, 8);
   const volumeSlope = calculateSlope(volumes, 10);
   const bandwidth = bb.hasData && bb.middle !== 0 ? (bb.upper - bb.lower) / bb.middle : 1;
-  const nearVpoc = Math.abs(current.price - vpoc) / Math.max(1, current.price) < 0.01;
+  const nearVpoc =
+    Math.abs(current.price - vpoc) / Math.max(1, current.price) < thresholds.nearVpocMaxDistance;
 
   const recentMove = Math.abs(toPercentChange(prices[Math.max(0, prices.length - 18)] ?? current.price, current.price));
 
   const orderflowSignals: PatternSignal[] = [
     { name: 'Price flat but CVD positive', met: recentMove < 2 && current.cvdDelta > 0, points: 30 },
-    { name: 'OI flat', met: Math.abs(current.oiChangePct) < 1.5, points: 25 },
-    { name: 'Funding neutral', met: Math.abs(current.fundingRate) < 0.004, points: 15 },
+    { name: 'OI flat', met: Math.abs(current.oiChangePct) < thresholds.oiFlatMaxAbs, points: 25 },
+    { name: 'Funding neutral', met: Math.abs(current.fundingRate) < thresholds.fundingNeutralMaxAbs, points: 15 },
     { name: 'Volume rising', met: volumeSlope > 0, points: 10 },
   ];
 
   const technicalSignals: PatternSignal[] = [
     { name: 'OBV rising', met: obvSlope > 0, points: 15 },
-    { name: 'BB squeeze', met: bandwidth < 0.045, points: 12 },
+    { name: 'BB squeeze', met: bandwidth < thresholds.bandwidthMax, points: 12 },
     { name: 'Volume node building', met: nearVpoc, points: 10 },
   ];
 
@@ -460,7 +785,12 @@ export function detectAccumulation(history: Snapshot[], current: Snapshot): Patt
   return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Early', 'Building', 'Active', 'Breakout imminent'], prerequisitesMet, consistency);
 }
 
-export function detectBearBreakdown(history: Snapshot[], current: Snapshot): PatternResult {
+export function detectBearBreakdown(
+  history: Snapshot[],
+  current: Snapshot,
+  profile: PatternSensitivityProfile = 'neutral'
+): PatternResult {
+  const thresholds = getProfileThresholds(profile).bearBreakdown;
   const series = getSeries(history, current);
   const { prices, volumes } = values(series);
 
@@ -468,24 +798,24 @@ export function detectBearBreakdown(history: Snapshot[], current: Snapshot): Pat
   const support = rollingLow(prices.slice(0, -1), supportLookback);
   const brokeSupport = support > 0 && current.price < support * 0.998;
 
-  const rsi = calculateRSI(prices, 14);
+  const rsi = calculateRSI(toCandles(prices), 14).map((point) => point.value);
   const volumeAverage = calculateVolumeAverage(volumes, 20);
   const recentDownMove = toPercentChange(prices[Math.max(0, prices.length - 10)] ?? current.price, current.price);
-  const prerequisitesMet = brokeSupport || recentDownMove <= -4;
+  const prerequisitesMet = brokeSupport || recentDownMove <= -thresholds.recentDownMoveMin;
 
   const latestRsi = rsi[rsi.length - 1] ?? 50;
   const rsiSlope = calculateSlope(rsi, 6);
-  const weakRecovery = latestRsi < 45 && rsiSlope <= 0;
+  const weakRecovery = latestRsi < thresholds.weakRecoveryRsiMax && rsiSlope <= 0;
 
   const orderflowSignals: PatternSignal[] = [
     { name: 'Price breaking support', met: brokeSupport, points: 20 },
     { name: 'CVD negative', met: current.cvdDelta < 0, points: 30 },
-    { name: 'OI expanding', met: current.oiChangePct > 0.8, points: 25 },
+    { name: 'OI expanding', met: current.oiChangePct > thresholds.oiExpandMin, points: 25 },
     { name: 'Premium negative', met: current.premium < 0, points: 10 },
   ];
 
   const technicalSignals: PatternSignal[] = [
-    { name: 'Volume spike', met: current.volume > volumeAverage * 1.5, points: 15 },
+    { name: 'Volume spike', met: current.volume > volumeAverage * thresholds.volumeSpikeMinMultiplier, points: 15 },
     { name: 'RSI weak recovery', met: weakRecovery, points: 12 },
     { name: 'Below support', met: brokeSupport, points: 10 },
   ];
@@ -495,22 +825,26 @@ export function detectBearBreakdown(history: Snapshot[], current: Snapshot): Pat
   return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Weakening', 'Breaking', 'Accelerating', 'Confirmed'], prerequisitesMet, consistency);
 }
 
-export function runPatternDetectors(history: Snapshot[], current: Snapshot): PatternDetectionItem[] {
+export function runPatternDetectors(
+  history: Snapshot[],
+  current: Snapshot,
+  profile: PatternSensitivityProfile = 'neutral'
+): PatternDetectionItem[] {
   return PATTERN_DEFINITIONS.map((definition) => {
     let result: PatternResult;
 
     if (definition.key === 'healthyBottom') {
-      result = detectHealthyBottom(history, current);
+      result = detectHealthyBottom(history, current, profile);
     } else if (definition.key === 'distribution') {
-      result = detectDistribution(history, current);
+      result = detectDistribution(history, current, profile);
     } else if (definition.key === 'capitulation') {
-      result = detectCapitulation(history, current);
+      result = detectCapitulation(history, current, profile);
     } else if (definition.key === 'fakeout') {
-      result = detectFakeout(history, current);
+      result = detectFakeout(history, current, profile);
     } else if (definition.key === 'accumulation') {
-      result = detectAccumulation(history, current);
+      result = detectAccumulation(history, current, profile);
     } else {
-      result = detectBearBreakdown(history, current);
+      result = detectBearBreakdown(history, current, profile);
     }
 
     return { definition, result };

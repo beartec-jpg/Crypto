@@ -53,10 +53,10 @@ export function ActiveSystemMonitor({
 
   const { position, isDragging, dragHandleProps } = useDraggable({
     initialPosition: {
-      x: 20,
-      y: typeof window !== 'undefined' ? window.innerHeight - 220 : 600,
+      x: typeof window !== 'undefined' ? Math.max(12, window.innerWidth - 360) : 980,
+      y: 130,
     },
-    storageKey: 'activeSystemMonitorPosition',
+    storageKey: 'activeSystemMonitorPosition_v2',
   });
 
   const system = TRADING_SYSTEMS[systemId];
@@ -93,7 +93,7 @@ export function ActiveSystemMonitor({
         top: position.y,
         opacity: isDragging ? 0.85 : 1,
         zIndex: 60,
-        width: expanded ? 320 : 280,
+        width: expanded ? 360 : 300,
       }}
       className="rounded-lg border border-slate-700 bg-slate-900/95 shadow-xl backdrop-blur-sm text-white select-none"
     >

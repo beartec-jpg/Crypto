@@ -1237,7 +1237,7 @@ export function ChartFullscreenPage({
         />
 
         {activeSystemSummary && (
-          <div className="pointer-events-none select-none absolute top-14 left-2 z-[60] rounded-md border border-blue-700/70 bg-slate-900/95 px-2 py-1 text-[11px] font-semibold text-blue-200 shadow-lg backdrop-blur-sm">
+          <div className="pointer-events-none select-none absolute top-14 right-2 z-[55] rounded-md border border-blue-700/70 bg-slate-900/95 px-2 py-1 text-[11px] font-semibold text-blue-200 shadow-lg backdrop-blur-sm">
             {activeSystemSummary.historicalSignalCount}/{activeSystemSummary.lookbackCandles}
             {activeSystemSummary.buySignals > 0 || activeSystemSummary.sellSignals > 0 ? (
               <span className="ml-1 font-normal text-slate-400">

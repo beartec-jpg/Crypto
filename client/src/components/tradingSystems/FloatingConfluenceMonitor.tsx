@@ -79,8 +79,11 @@ export function FloatingConfluenceMonitor({
   };
 
   const { position, isDragging, dragHandleProps } = useDraggable({
-    initialPosition: { x: 20, y: 100 },
-    storageKey: 'confluenceMonitorPosition',
+    initialPosition: {
+      x: typeof window !== 'undefined' ? Math.max(12, window.innerWidth - 220) : 1120,
+      y: 80,
+    },
+    storageKey: 'confluenceMonitorPosition_v2',
   });
 
   if (!isVisible) return null;

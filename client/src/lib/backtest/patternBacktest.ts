@@ -1,13 +1,14 @@
 import type { Candle, CVDDataItem } from '@/types/chart';
-import type { Snapshot, PatternDetectionItem, PatternKey } from '@/services/patternDetectors';
-import { runPatternDetectors } from '@/services/patternDetectors';
+import type { Snapshot, PatternDetectionItem, PatternKey, PatternSensitivityProfile } from '@/services/patternDetectors';
+import { getDefaultActivationThreshold, runPatternDetectors } from '@/services/patternDetectors';
 
 export interface PatternBacktestConfig {
   candles: Candle[];
   cvdData: CVDDataItem[];
   startDate: Date;
   endDate: Date;
-  activationThreshold: number; // Score threshold to consider pattern "active" (default 70)
+  activationThreshold?: number; // Score threshold to consider pattern "active" (profile default when omitted)
+  sensitivityProfile?: PatternSensitivityProfile;
   forwardLookPeriods: number[]; // Hours to look forward (e.g., [4, 8, 12, 24, 48])
 }
 
@@ -196,7 +197,16 @@ export async function runPatternBacktest(
   config: PatternBacktestConfig,
   onProgress?: (current: number, total: number) => void
 ): Promise<PatternBacktestReport> {
-  const { candles, cvdData, startDate, endDate, activationThreshold = 70, forwardLookPeriods = [4, 8, 12, 24, 48] } = config;
+  const {
+    candles,
+    cvdData,
+    startDate,
+    endDate,
+    activationThreshold,
+    sensitivityProfile = 'neutral',
+    forwardLookPeriods = [4, 8, 12, 24, 48],
+  } = config;
+  const appliedActivationThreshold = activationThreshold ?? getDefaultActivationThreshold(sensitivityProfile);
 
   console.log(`🧪 Starting pattern backtest from ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
@@ -226,11 +236,11 @@ export async function runPatternBacktest(
     if (candleIndex === -1) continue;
 
     // Run pattern detectors
-    const patterns: PatternDetectionItem[] = runPatternDetectors(history, current);
+    const patterns: PatternDetectionItem[] = runPatternDetectors(history, current, sensitivityProfile);
 
     // Check for activations (score >= threshold)
     for (const pattern of patterns) {
-      if (pattern.result.score >= activationThreshold) {
+      if (pattern.result.score >= appliedActivationThreshold) {
         const forward = calculateForwardPerformance(candles, candleIndex, current.price, forwardLookPeriods);
 
         const activation: PatternActivation & { forward: ForwardPerformance[] } = {
