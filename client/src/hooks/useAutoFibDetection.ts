@@ -57,22 +57,26 @@ function findHighLow(
 }
 
 /**
- * Calculate Fibonacci levels between startPrice (0%) and endPrice (100%),
- * with freeze detection using post-end candles.
+ * Calculate Fibonacci levels for a swing, with freeze detection using post-end candles.
  *
- * crossingDirection:
- *   'up'   → a level at price P is frozen when a post-end candle's high >= P
- *            (used when the swing ends at a low and price is bouncing upward)
- *   'down' → a level at price P is frozen when a post-end candle's low  <= P
- *            (used when the swing ends at a high and price is retracing downward)
+ * swingDirection:
+ *   'up'   → upswing: 0% at LOW, 100% at HIGH.
+ *            After the swing ends at HIGH, price retraces DOWN →
+ *            a level at price P is frozen when a post-end candle's low <= P.
+ *   'down' → downswing: 0% at HIGH, 100% at LOW.
+ *            After the swing ends at LOW, price bounces UP →
+ *            a level at price P is frozen when a post-end candle's high >= P.
  */
 function calculateFibLevels(
-  startPrice: number,
-  endPrice: number,
+  lowPrice: number,
+  highPrice: number,
   config: FibSetConfig,
   postEndCandles: Candle[],
-  crossingDirection: 'up' | 'down'
+  swingDirection: 'up' | 'down'
 ): FibLevelData[] {
+  // For upswing: 0% at LOW, 100% at HIGH; for downswing: 0% at HIGH, 100% at LOW
+  const startPrice = swingDirection === 'up' ? lowPrice : highPrice;
+  const endPrice   = swingDirection === 'up' ? highPrice : lowPrice;
   const range = endPrice - startPrice;
   const result: FibLevelData[] = [];
 
@@ -91,9 +95,9 @@ function calculateFibLevels(
 
     for (const candle of postEndCandles) {
       const crossed =
-        crossingDirection === 'up'
-          ? candle.high >= price   // price moved up through this level
-          : candle.low  <= price;  // price moved down through this level
+        swingDirection === 'up'
+          ? candle.low  <= price   // after upswing ends at HIGH, price retraces down
+          : candle.high >= price;  // after downswing ends at LOW, price bounces up
 
       if (crossed) {
         isFrozen = true;
@@ -196,15 +200,15 @@ export function useAutoFibDetection(
         // Candles that occurred after the swing ended (for freeze detection)
         const postEndCandles = candles.slice(end.index + 1);
 
-        // Primary levels: 0% at LOW, 100% at HIGH
+        // Primary levels: 0% at LOW, 100% at HIGH for upswing; 0% at HIGH, 100% at LOW for downswing.
         // After downswing (ends at low), price bounces UP → freeze when candle.high >= P
         // After upswing  (ends at high), price retraces DOWN → freeze when candle.low <= P
-        const crossingDir: 'up' | 'down' = isDownSwing ? 'up' : 'down';
+        const swingDir: 'up' | 'down' = isDownSwing ? 'down' : 'up';
         const levels = calculateFibLevels(
           low.price, high.price,
           settings.primary,
           postEndCandles,
-          crossingDir
+          swingDir
         );
 
         primaryFib = {
@@ -240,14 +244,14 @@ export function useAutoFibDetection(
 
           if (isPrimaryDown) {
             // Primary ended at LOW → secondary is an upswing
-            // Secondary: 0% at secHigh (top of the bounce), 100% at PRIMARY LOW (bottom)
+            // Secondary: 0% at PRIMARY LOW (bottom), 100% at secHigh (top of the bounce)
             // After the bounce peak, price drops → freeze when candle.low <= P
             const postSecEnd = candles.slice(secHigh.index + 1);
             const secLevels  = calculateFibLevels(
-              secHigh.price, primaryFib.end.price,
+              primaryFib.end.price, secHigh.price,
               settings.secondary,
               postSecEnd,
-              'down'
+              'up'
             );
 
             secondaryFib = {
@@ -265,10 +269,10 @@ export function useAutoFibDetection(
             // After the retracement low, price bounces → freeze when candle.high >= P
             const postSecEnd = candles.slice(secLow.index + 1);
             const secLevels  = calculateFibLevels(
-              primaryFib.end.price, secLow.price,
+              secLow.price, primaryFib.end.price,
               settings.secondary,
               postSecEnd,
-              'up'
+              'down'
             );
 
             secondaryFib = {
