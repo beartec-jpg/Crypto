@@ -1,8 +1,8 @@
 import type { Snapshot } from '@/services/patternDetectors.ts';
 import { shouldUpdatePatternSnapshot } from '@/services/patternDetectors.ts';
 
-const SNAPSHOT_LIMIT = 288;
-const HISTORY_WINDOW_MS = 48 * 60 * 60 * 1000;
+const SNAPSHOT_LIMIT = 180;
+const HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 function getKey(symbol: string): string {
   return `gds_history_${symbol}`;
