@@ -103,9 +103,9 @@ const PROFILE_THRESHOLDS: Record<PatternSensitivityProfile, PatternDetectorThres
   tame: {
     activationThreshold: 78,
     healthyBottom: {
-      drawdownFromPeakMin: 10,
-      oiMin: 5,
-      fundingNegativeMax: -0.01,
+      drawdownFromPeakMin: 12,
+      oiMin: 4,
+      fundingNegativeMax: -0.008,
     },
     distribution: {
       rallyMin: 18,
@@ -146,9 +146,9 @@ const PROFILE_THRESHOLDS: Record<PatternSensitivityProfile, PatternDetectorThres
   neutral: {
     activationThreshold: 70,
     healthyBottom: {
-      drawdownFromPeakMin: 8,
-      oiMin: 4,
-      fundingNegativeMax: -0.008,
+      drawdownFromPeakMin: 9,
+      oiMin: 3,
+      fundingNegativeMax: -0.006,
     },
     distribution: {
       rallyMin: 15,
@@ -190,8 +190,8 @@ const PROFILE_THRESHOLDS: Record<PatternSensitivityProfile, PatternDetectorThres
     activationThreshold: 62,
     healthyBottom: {
       drawdownFromPeakMin: 6,
-      oiMin: 3,
-      fundingNegativeMax: -0.006,
+      oiMin: 2,
+      fundingNegativeMax: -0.004,
     },
     distribution: {
       rallyMin: 12,
@@ -293,6 +293,12 @@ const PATTERN_DEFINITIONS: PatternDefinition[] = [
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+
+const HEALTHY_BOTTOM_LOOKBACK_MS: Record<PatternSensitivityProfile, number> = {
+  tame: 336 * HOUR_MS,
+  neutral: 168 * HOUR_MS,
+  aggressive: 72 * HOUR_MS,
+};
 
 function toCandles(prices: number[]) {
   return prices.map((price, index) => ({
@@ -550,6 +556,56 @@ function calculateOBV(prices: number[], volumes: number[]): number[] {
   return obv;
 }
 
+function detectHigherLow(prices: number[]): boolean {
+  if (prices.length < 10) return false;
+  const half = Math.floor(prices.length / 2);
+  const earlierLow = Math.min(...prices.slice(0, half));
+  const recentLow = Math.min(...prices.slice(half));
+  return recentLow > earlierLow;
+}
+
+function buildResultWithPrereqScore(
+  orderflowSignals: PatternSignal[],
+  technicalSignals: PatternSignal[],
+  stageNames: string[],
+  prerequisitesMet: boolean,
+  consistency: number,
+  prereqScore: number
+): PatternResult {
+  const orderflowScore = normalizeSignals(orderflowSignals, 60);
+  const technicalScore = normalizeSignals(technicalSignals, 40);
+  const combinedScore = orderflowScore + technicalScore;
+  const effectiveScore = prerequisitesMet ? combinedScore : combinedScore * (prereqScore / 100);
+
+  let stage: 0 | 1 | 2 | 3 | 4 = 0;
+  if (prerequisitesMet || prereqScore >= 40) {
+    if (effectiveScore >= 80 && consistency >= 0.66) stage = 4;
+    else if (effectiveScore >= 65 && consistency >= 0.5) stage = 3;
+    else if (effectiveScore >= 50 && consistency >= 0.35) stage = 2;
+    else if (effectiveScore >= 35) stage = 1;
+  }
+
+  const confidence = clamp(
+    Math.round((effectiveScore * 0.7) + (consistency * 25) + (prerequisitesMet ? 5 : 0) + (prereqScore * 0.05)),
+    0,
+    100
+  );
+
+  return {
+    score: Math.round(clamp(effectiveScore, 0, 100)),
+    stage,
+    stageName: stageNames[stage] || stageNames[0] || 'Inactive',
+    confidence,
+    prerequisitesMet,
+    orderflowScore: Math.round(orderflowScore),
+    technicalScore: Math.round(technicalScore),
+    signals: {
+      orderflow: orderflowSignals,
+      technical: technicalSignals,
+    },
+  };
+}
+
 export function detectHealthyBottom(
   history: Snapshot[],
   current: Snapshot,
@@ -557,29 +613,34 @@ export function detectHealthyBottom(
 ): PatternResult {
   const thresholds = getProfileThresholds(profile).healthyBottom;
   const series = getSeries(history, current);
-  const recent48h = windowByDuration(series, 48 * HOUR_MS);
+  const lookbackMs = HEALTHY_BOTTOM_LOOKBACK_MS[profile] ?? (168 * HOUR_MS);
+  const recentWindow = windowByDuration(series, lookbackMs);
   const { prices, volumes } = values(series);
 
-  const peak48h = recent48h.length > 0 ? Math.max(...recent48h.map((item) => item.price)) : current.price;
-  const drawdownFromPeak = toPercentChange(peak48h, current.price);
-  const oiMin = recent48h.length > 0 ? Math.min(...recent48h.map((item) => item.oiChangePct)) : current.oiChangePct;
-  const hadFundingNeg = recent48h.some((item) => item.fundingRate < thresholds.fundingNegativeMax);
-  const prerequisitesMet =
-    drawdownFromPeak <= -thresholds.drawdownFromPeakMin &&
-    oiMin <= -thresholds.oiMin &&
-    hadFundingNeg;
+  const peakInWindow = recentWindow.length > 0 ? Math.max(...recentWindow.map((item) => item.price)) : current.price;
+  const drawdownFromPeak = toPercentChange(peakInWindow, current.price);
+  const oiMin = recentWindow.length > 0 ? Math.min(...recentWindow.map((item) => item.oiChangePct)) : current.oiChangePct;
+  const hadFundingNeg = recentWindow.some((item) => item.fundingRate < thresholds.fundingNegativeMax);
+
+  const drawdownMet = drawdownFromPeak <= -thresholds.drawdownFromPeakMin;
+  const oiFlushMet = oiMin <= -thresholds.oiMin;
+  const prereqScore = (drawdownMet ? 40 : 0) + (oiFlushMet ? 30 : 0) + (hadFundingNeg ? 30 : 0);
+  const prerequisitesMet = prereqScore >= 60;
 
   const rsi = calculateRSI(toCandles(prices), 14).map((point) => point.value);
   const rsiDiv = detectRSIDivergence(prices, rsi);
   const macd = calculateMACD(toCandles(prices));
   const stochRsi = calculateStochRSI(prices, 14);
   const volumeAverage = calculateVolumeAverage(volumes, 20);
+  const vpoc = calculateVPOC(prices, volumes, 30);
 
   const latestMacd = macd.macd[macd.macd.length - 1] ?? 0;
   const latestSignal = macd.signal[macd.signal.length - 1] ?? 0;
   const latestHist = macd.hist[macd.hist.length - 1]?.value ?? 0;
   const latestK = stochRsi.k[stochRsi.k.length - 1] ?? 0;
   const latestD = stochRsi.d[stochRsi.d.length - 1] ?? 0;
+  const nearVpoc = vpoc > 0 && Math.abs(current.price - vpoc) / Math.max(1, current.price) < 0.01;
+  const higherLow = detectHigherLow(prices);
 
   const orderflowSignals: PatternSignal[] = [
     { name: 'CVD positive', met: current.cvdDelta > 0, points: 30 },
@@ -593,11 +654,13 @@ export function detectHealthyBottom(
     { name: 'Volume support', met: current.volume >= volumeAverage, points: 10 },
     { name: 'MACD positive', met: latestMacd > latestSignal && latestHist > 0, points: 10 },
     { name: 'StochRSI cross', met: latestK > latestD && latestK < 80, points: 5 },
+    { name: 'Higher low structure', met: higherLow, points: 12 },
+    { name: 'Near VPOC', met: nearVpoc, points: 8 },
   ];
 
   const consistency = persistenceRatio(series, 6, (item) => item.cvdDelta > 0 && item.oiChangePct <= 0);
 
-  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Post-cap', 'Forming', 'Confirming', 'Confirmed'], prerequisitesMet, consistency);
+  return buildResultWithPrereqScore(orderflowSignals, technicalSignals, ['Inactive', 'Post-cap', 'Forming', 'Confirming', 'Confirmed'], prerequisitesMet, consistency, prereqScore);
 }
 
 export function detectDistribution(
