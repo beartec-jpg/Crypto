@@ -986,7 +986,7 @@ export function detectHealthyBottom(
     { id: 'volumeSupport', name: 'Buy Volume > Sell', score: volumeSupportScore, weight: 8, max: 8 },
   ];
 
-  const structureScore = calculatePatternWeightedScorestructureConditions, 35);
+  const structureScore = calculatePatternWeightedScore(structureConditions, 35);
 
   // === PILLAR 2: ORDERFLOW (40 pts) ===
 
