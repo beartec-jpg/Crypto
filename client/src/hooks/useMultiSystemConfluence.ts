@@ -73,6 +73,7 @@ export function useMultiSystemConfluence(
   volumeProfileData?: { rows: Array<{ price: number; volume: number }>; valueAreaHigh?: number; valueAreaLow?: number; poc?: number },
   weightsVersion?: number,
   autoFibResult?: { primary: FibSetResult | null; secondary: FibSetResult | null },
+  swingPoints?: Array<{ type: 'high' | 'low'; price: number; time: number; index: number }>,
 ): ConfluenceResult | null {
   const previousScoreRef = useRef<number | undefined>(undefined);
 
@@ -150,6 +151,7 @@ export function useMultiSystemConfluence(
       currentTime,
       currentCandleIndex: candles.length - 1,
       structureBreaks,
+      swingPoints,
       fvgs,
       orderBlocks,
       liquidityZones,
@@ -208,7 +210,7 @@ export function useMultiSystemConfluence(
       systemDetails,
       patterns,
     };
-  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData, weightsVersion, autoFibResult]);
+  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData, weightsVersion, autoFibResult, swingPoints]);
 
   useEffect(() => {
     if (result !== null) {

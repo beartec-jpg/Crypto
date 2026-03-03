@@ -735,6 +735,7 @@ export function ChartFullscreenPage({
       : undefined,
     conditionWeightsVersion,
     autoFibResult,
+    swingPoints,
   );
 
   const totalConfluenceNowRef = useRef(totalConfluenceNow);

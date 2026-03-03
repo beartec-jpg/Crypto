@@ -174,7 +174,7 @@ export function useAutoFibDetection(
   return useMemo(() => {
     const empty: AutoFibResult = { primary: null, secondary: null, confluence: [] };
 
-    if (!settings.enabled || candles.length === 0) return empty;
+    if (candles.length === 0) return empty;
 
     // Determine which candles are "visible" for anchor detection
     const anchorCandles = visibleRange
