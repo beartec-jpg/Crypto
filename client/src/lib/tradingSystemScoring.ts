@@ -227,6 +227,12 @@ export interface ScoringInput {
     valueAreaLow?: number;
     poc?: number;
   };
+  /** Price history for divergence detection (last 20+ candles) */
+  priceHistory?: number[];
+  /** RSI value history for divergence detection (last 20+ candles) */
+  rsiHistory?: number[];
+  /** MACD histogram history for divergence detection (last 20+ candles) */
+  macdHistHistory?: number[];
 }
 
 // ── 1. Trend Following Pro ────────────────────────────────────────────────────
@@ -627,6 +633,68 @@ function scoreLiquiditySweepProximity(
   return Math.max(...scores);
 }
 
+/**
+ * Detect divergence confluence at current price level.
+ * Checks if RSI/MACD show divergence confirming the structure direction.
+ *
+ * @returns Bonus score: up to +50 for strong bullish divergence, -50 for bearish
+ */
+function scoreDivergenceConfluence(
+  prices: number[],
+  rsiValues: number[],
+  macdHistValues: number[],
+  structureDirection?: 'bullish' | 'bearish',
+): number {
+  if (!prices || prices.length < 20 || !structureDirection) return 0;
+  if (!rsiValues || rsiValues.length < 20) return 0;
+  if (!macdHistValues || macdHistValues.length < 20) return 0;
+
+  const recentPrices = prices.slice(-20);
+  const recentRSI = rsiValues.slice(-20);
+  const recentMACD = macdHistValues.slice(-20);
+
+  const firstHalf = recentPrices.slice(0, 10);
+  const secondHalf = recentPrices.slice(10);
+
+  let divergenceScore = 0;
+
+  if (structureDirection === 'bullish') {
+    const priceLow1 = Math.min(...firstHalf);
+    const priceLow2 = Math.min(...secondHalf);
+
+    if (priceLow2 < priceLow1) {
+      const idx1 = firstHalf.indexOf(priceLow1);
+      const idx2 = 10 + secondHalf.indexOf(priceLow2);
+
+      if (recentRSI[idx2] > recentRSI[idx1]) {
+        divergenceScore += 30;
+      }
+      if (recentMACD[idx2] > recentMACD[idx1]) {
+        divergenceScore += 20;
+      }
+    }
+  }
+
+  if (structureDirection === 'bearish') {
+    const priceHigh1 = Math.max(...firstHalf);
+    const priceHigh2 = Math.max(...secondHalf);
+
+    if (priceHigh2 > priceHigh1) {
+      const idx1 = firstHalf.indexOf(priceHigh1);
+      const idx2 = 10 + secondHalf.indexOf(priceHigh2);
+
+      if (recentRSI[idx2] < recentRSI[idx1]) {
+        divergenceScore -= 30;
+      }
+      if (recentMACD[idx2] < recentMACD[idx1]) {
+        divergenceScore -= 20;
+      }
+    }
+  }
+
+  return divergenceScore;
+}
+
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const {
     stTrend,
@@ -640,6 +708,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     orderBlocks,
     liquidityZones,
     timeframe,
+    priceHistory,
+    rsiHistory,
+    macdHistHistory,
   } = input;
 
   // Dynamic lookback based on timeframe
@@ -678,7 +749,36 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
         ? Math.min(0, scorePercentMove(latestClose, previousClose, 2))
         : scorePercentMove(latestClose, previousClose, 2) * 0.5;
 
-  const rsiMomentumScore = lastRsi !== undefined ? normalizeByRange(lastRsi - 50, 20) : 0;
+  const rsiMomentumScore = (() => {
+    if (lastRsi === undefined) return 0;
+
+    // If bullish structure, LOW RSI is GOOD (oversold bounce opportunity)
+    if (latestStructureDirection === 'bullish') {
+      if (lastRsi <= 25) return 90;
+      if (lastRsi <= 30) return 75;
+      if (lastRsi <= 35) return 60;
+      if (lastRsi <= 40) return 40;
+      if (lastRsi <= 50) return 15;
+      if (lastRsi <= 60) return -10;
+      if (lastRsi <= 70) return -30;
+      return -50;
+    }
+
+    // If bearish structure, HIGH RSI is GOOD (overbought rejection opportunity)
+    if (latestStructureDirection === 'bearish') {
+      if (lastRsi >= 75) return -90;
+      if (lastRsi >= 70) return -75;
+      if (lastRsi >= 65) return -60;
+      if (lastRsi >= 60) return -40;
+      if (lastRsi >= 50) return -15;
+      if (lastRsi >= 40) return 10;
+      if (lastRsi >= 30) return 30;
+      return 50;
+    }
+
+    // No structure context — traditional scoring (neutral bias at 50)
+    return normalizeByRange(lastRsi - 50, 20);
+  })();
 
   const superTrendScore = scoreBoolean(stTrend === 'bullish', stTrend === 'bearish', 70);
 
@@ -690,6 +790,14 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     liquidityZones,
     currentCandleIndex,
     lookbackCandles
+  );
+
+  // Divergence confluence bonus at key levels
+  const divergenceBonus = scoreDivergenceConfluence(
+    priceHistory ?? [],
+    rsiHistory ?? [],
+    macdHistHistory ?? [],
+    latestStructureDirection,
   );
 
   const granularConditions: GranularCondition[] = [
@@ -716,7 +824,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       name: 'RSI Momentum',
       score: rsiMomentumScore,
       value: lastRsi !== undefined ? `RSI: ${lastRsi.toFixed(1)}` : undefined,
-      description: 'Momentum bias from RSI midpoint displacement.',
+      description: latestStructureDirection
+        ? `RSI context for ${latestStructureDirection} structure (${lastRsi !== undefined && lastRsi < 40 && latestStructureDirection === 'bullish' ? 'oversold entry' : lastRsi !== undefined && lastRsi > 60 && latestStructureDirection === 'bearish' ? 'overbought short' : 'neutral'})`
+        : 'Momentum bias from RSI midpoint displacement.',
     },
     {
       id: 'supertrend',
@@ -744,6 +854,13 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       score: liquidityScore,
       value: liquidityScore > 0 ? `${liquidityScore}/100` : undefined,
       description: 'Distance from recent liquidity grab with time decay.',
+    },
+    {
+      id: 'divergenceConfluence',
+      name: 'Divergence Confluence',
+      score: divergenceBonus,
+      value: divergenceBonus !== 0 ? `${Math.abs(divergenceBonus)} pts` : undefined,
+      description: 'RSI/MACD divergence confirming structure reversal.',
     },
   ];
 
