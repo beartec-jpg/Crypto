@@ -1,5 +1,6 @@
 import { calculateBollingerBands } from '@/lib/indicators/volatility';
 import { calculateMACD, calculateRSI } from '@/lib/indicators/momentum';
+import type { Candle, CVDDataItem } from '@/types/chart';
 
 export interface Snapshot {
   timestamp: number;
@@ -25,6 +26,7 @@ export interface GranularCondition {
   max: number;
   value?: string;
   description?: string;
+  breakdown?: string[];
 }
 
 export interface PatternResult {
@@ -38,6 +40,11 @@ export interface PatternResult {
   signals: {
     orderflow: PatternSignal[];
     technical: PatternSignal[];
+  };
+  breakdown?: {
+    structure: number;
+    orderflow: number;
+    divergence: number;
   };
   granularConditions?: GranularCondition[];
 }
@@ -617,61 +624,464 @@ function buildResultWithPrereqScore(
   };
 }
 
+// ─── Scaled Scoring Helpers for Healthy Bottom ───────────────────────────────
+
+interface DivergenceDetail {
+  present: boolean;
+  strength: number;
+  priceSwingLow1: number;
+  priceSwingLow2: number;
+  indicatorValue1: number;
+  indicatorValue2: number;
+}
+
+interface TimeframeDivergence {
+  timeframe: '15m' | '1h' | '4h' | '1d';
+  indicators: {
+    rsi: DivergenceDetail | null;
+    macd: DivergenceDetail | null;
+    cvd: DivergenceDetail | null;
+    obv: DivergenceDetail | null;
+  };
+  confirmedCount: number;
+  avgStrength: number;
+  score: number;
+}
+
+function detectSwings(prices: number[]): { lows: number[]; lowIndices: number[]; highs: number[]; highIndices: number[] } {
+  const lows: number[] = [];
+  const lowIndices: number[] = [];
+  const highs: number[] = [];
+  const highIndices: number[] = [];
+  for (let i = 1; i < prices.length - 1; i++) {
+    if (prices[i] < prices[i - 1] && prices[i] <= prices[i + 1]) {
+      lows.push(prices[i]);
+      lowIndices.push(i);
+    }
+    if (prices[i] > prices[i - 1] && prices[i] >= prices[i + 1]) {
+      highs.push(prices[i]);
+      highIndices.push(i);
+    }
+  }
+  return { lows, lowIndices, highs, highIndices };
+}
+
+function calculateWeightedScore(conditions: GranularCondition[], maxPoints: number): number {
+  const total = conditions.reduce((sum, c) => sum + (c.score / 100) * c.weight, 0);
+  return Math.min(maxPoints, total);
+}
+
+function getCVDDataFromHistory(history: Snapshot[]): CVDDataItem[] {
+  let cumDelta = 0;
+  return history.map((s) => {
+    cumDelta += s.cvdDelta;
+    return {
+      time: new Date(s.timestamp).toISOString(),
+      timestamp: s.timestamp,
+      delta: s.cvdDelta,
+      cumDelta,
+      isBull: s.cvdDelta > 0,
+      volume: s.volume,
+    };
+  });
+}
+
+function scorePostDrawdown(drawdownPct: number, profile: PatternSensitivityProfile): number {
+  const thresholds = {
+    aggressive: { min: 3, max: 15 },
+    neutral: { min: 5, max: 18 },
+    tame: { min: 8, max: 25 },
+  }[profile];
+  const absDrawdown = Math.abs(drawdownPct);
+  if (absDrawdown < thresholds.min) return 0;
+  if (absDrawdown >= thresholds.max) return 100;
+  const normalized = (absDrawdown - thresholds.min) / (thresholds.max - thresholds.min);
+  return Math.round(normalized * 100);
+}
+
+function scoreDownsideDeceleration(recentPrices: number[]): number {
+  if (recentPrices.length < 6) return 0;
+  const half = Math.floor(recentPrices.length / 2);
+  const firstHalf = recentPrices.slice(0, half);
+  const secondHalf = recentPrices.slice(half);
+  const firstSlope = calculateSlope(firstHalf, firstHalf.length);
+  const secondSlope = calculateSlope(secondHalf, secondHalf.length);
+  if (firstSlope < 0 && secondSlope >= 0) return 100;
+  if (firstSlope < 0 && secondSlope < 0) {
+    const deceleration = Math.abs(firstSlope) - Math.abs(secondSlope);
+    return Math.min(100, Math.round((deceleration / 0.05) * 100));
+  }
+  return 0;
+}
+
+function scoreHigherLows(prices: number[]): number {
+  const swings = detectSwings(prices);
+  const lows = swings.lows;
+  if (lows.length < 2) return 0;
+  const recentLows = lows.slice(-4);
+  let higherLowCount = 0;
+  for (let i = 1; i < recentLows.length; i++) {
+    if (recentLows[i] > recentLows[i - 1]) higherLowCount++;
+  }
+  const ratio = higherLowCount / (recentLows.length - 1);
+  return Math.round(ratio * 100);
+}
+
+function scoreAdaptivePriceAction(prices: number[]): {
+  score: number;
+  type: 'deceleration' | 'higherLows';
+  description: string;
+} {
+  if (prices.length < 6) return { score: 0, type: 'deceleration', description: 'Insufficient data' };
+  const swings = detectSwings(prices);
+  const lows = swings.lows;
+  const isInDivergenceZone = lows.length >= 2 && lows[lows.length - 1] < lows[lows.length - 2];
+  if (isInDivergenceZone) {
+    const score = scoreDownsideDeceleration(prices);
+    return { score, type: 'deceleration', description: 'Rate of decline slowing - exhaustion forming' };
+  }
+  const score = scoreHigherLows(prices);
+  return { score, type: 'higherLows', description: 'Price making higher lows - reversal confirmed' };
+}
+
+function scoreNearVPOC(currentPrice: number, vpoc: number): number {
+  if (vpoc === 0) return 0;
+  const distance = Math.abs(currentPrice - vpoc) / Math.max(1, currentPrice);
+  if (distance <= 0.01) return 100;
+  if (distance <= 0.03) {
+    const normalized = 1 - (distance - 0.01) / (0.03 - 0.01);
+    return Math.round(normalized * 100);
+  }
+  return 0;
+}
+
+function scoreVolumeSupport(recentWindow: Snapshot[]): number {
+  if (recentWindow.length < 3) return 0;
+  let buyVolume = 0;
+  let sellVolume = 0;
+  recentWindow.forEach((snap) => {
+    if (snap.cvdDelta > 0) buyVolume += snap.volume;
+    else sellVolume += snap.volume;
+  });
+  const totalVolume = buyVolume + sellVolume;
+  if (totalVolume === 0) return 0;
+  const buyPercent = (buyVolume / totalVolume) * 100;
+  if (buyPercent <= 50) return 0;
+  return Math.round(((buyPercent - 50) / 50) * 100);
+}
+
+function scoreCVDAverage(recentWindow: Snapshot[]): number {
+  if (recentWindow.length === 0) return 0;
+  const avgDelta = recentWindow.reduce((sum, s) => sum + s.cvdDelta, 0) / recentWindow.length;
+  if (avgDelta <= 0) return 0;
+  return Math.min(100, Math.round((avgDelta / 2000) * 100));
+}
+
+function scoreCVDMomentum(recentWindow: Snapshot[]): number {
+  if (recentWindow.length < 3) return 0;
+  let cum = 0;
+  const cvdValues = recentWindow.map((s) => {
+    cum += s.cvdDelta;
+    return cum;
+  });
+  const slope = calculateSlope(cvdValues, cvdValues.length);
+  if (slope <= 0) return 0;
+  return Math.min(100, Math.round(slope * 5));
+}
+
+function scoreOIStability(recentWindow: Snapshot[]): number {
+  if (recentWindow.length === 0) return 0;
+  const avgChange = recentWindow.reduce((sum, s) => sum + Math.abs(s.oiChangePct), 0) / recentWindow.length;
+  if (avgChange >= 3) return 0;
+  if (avgChange <= 0.5) return 100;
+  return Math.round((1 - (avgChange - 0.5) / (3 - 0.5)) * 100);
+}
+
+function scoreFundingNormalized(fundingRate: number): number {
+  const absRate = Math.abs(fundingRate);
+  if (absRate <= 0.005) return 100;
+  if (absRate >= 0.02) return 0;
+  return Math.round((1 - (absRate - 0.005) / (0.02 - 0.005)) * 100);
+}
+
+function scorePremium(premium: number): number {
+  if (premium <= 0) return 0;
+  if (premium >= 0.005) return 100;
+  return Math.round((premium / 0.005) * 100);
+}
+
+function detectSingleIndicatorDivergence(
+  prices: number[],
+  indicatorValues: number[],
+  _indicatorName: string
+): DivergenceDetail | null {
+  const swings = detectSwings(prices);
+  const lows = swings.lows;
+  const lowIndices = swings.lowIndices;
+  if (lows.length < 2) return null;
+
+  const idx1 = lowIndices[lowIndices.length - 2];
+  const idx2 = lowIndices[lowIndices.length - 1];
+  if (idx1 === undefined || idx2 === undefined || idx1 >= idx2) return null;
+
+  const priceLowerLow = prices[idx2] < prices[idx1];
+  if (!priceLowerLow) return null;
+
+  const ind1 = indicatorValues[idx1];
+  const ind2 = indicatorValues[idx2];
+  if (ind1 === undefined || ind2 === undefined || !Number.isFinite(ind1) || !Number.isFinite(ind2)) return null;
+
+  const indicatorHigherLow = ind2 > ind1;
+  if (!indicatorHigherLow) return null;
+
+  const magnitude = ind2 - ind1;
+  const percentChange = ind1 !== 0 ? (magnitude / Math.abs(ind1)) * 100 : 0;
+  const strength = Math.min(100, (Math.abs(percentChange) / 20) * 100);
+  if (strength < 20) return null;
+
+  return {
+    present: true,
+    strength: Math.round(strength),
+    priceSwingLow1: prices[idx1],
+    priceSwingLow2: prices[idx2],
+    indicatorValue1: ind1,
+    indicatorValue2: ind2,
+  };
+}
+
+function detectDivergenceForTimeframe(
+  candles: Candle[],
+  cvdData: CVDDataItem[],
+  timeframe: '15m' | '1h' | '4h' | '1d'
+): TimeframeDivergence {
+  const lookbackBars = { '15m': 96, '1h': 168, '4h': 180, '1d': 90 }[timeframe];
+  const recentCandles = candles.slice(-lookbackBars);
+  const prices = recentCandles.map((c) => c.close);
+
+  const rsiArr = calculateRSI(toCandles(prices), 14).map((p) => p.value);
+  const macdResult = calculateMACD(toCandles(prices));
+  const macdHist = macdResult.hist.map((h) => h.value);
+  const volumes = recentCandles.map((c) => c.volume);
+  const obv = calculateOBV(prices, volumes);
+  const cvdSlice = cvdData.slice(-lookbackBars).map((d) => d.cumDelta);
+
+  const rsiDiv = detectSingleIndicatorDivergence(prices, rsiArr, 'RSI');
+  const macdDiv = detectSingleIndicatorDivergence(prices, macdHist, 'MACD');
+  const cvdDiv = cvdSlice.length >= prices.length
+    ? detectSingleIndicatorDivergence(prices, cvdSlice, 'CVD')
+    : null;
+  const obvDiv = detectSingleIndicatorDivergence(prices, obv, 'OBV');
+
+  const allDivs = [rsiDiv, macdDiv, cvdDiv, obvDiv];
+  const confirmedCount = allDivs.filter((d) => d?.present).length;
+  const strengths = allDivs.filter((d) => d?.present).map((d) => d!.strength);
+  const avgStrength = strengths.length > 0
+    ? strengths.reduce((sum, s) => sum + s, 0) / strengths.length
+    : 0;
+
+  const baseScore = (confirmedCount / 4) * 100;
+  const tfMultiplier = { '15m': 0.6, '1h': 0.8, '4h': 1.0, '1d': 1.2 }[timeframe];
+  const score = Math.min(100, Math.round(baseScore * (avgStrength / 100) * tfMultiplier));
+
+  return {
+    timeframe,
+    indicators: { rsi: rsiDiv, macd: macdDiv, cvd: cvdDiv, obv: obvDiv },
+    confirmedCount,
+    avgStrength,
+    score,
+  };
+}
+
+function calculateMultiTimeframeDivergenceScore(
+  candles15m: Candle[],
+  candles1h: Candle[],
+  candles4h: Candle[],
+  candles1d: Candle[],
+  cvdData: CVDDataItem[]
+): { totalScore: number; breakdown: string[] } {
+  const tf15m = detectDivergenceForTimeframe(candles15m, cvdData, '15m');
+  const tf1h = detectDivergenceForTimeframe(candles1h, cvdData, '1h');
+  const tf4h = detectDivergenceForTimeframe(candles4h, cvdData, '4h');
+  const tf1d = detectDivergenceForTimeframe(candles1d, cvdData, '1d');
+  const timeframes = [tf15m, tf1h, tf4h, tf1d];
+
+  const weights: Record<string, number> = { '15m': 1, '1h': 2, '4h': 4, '1d': 8 };
+  let weightedSum = 0;
+  let totalWeight = 0;
+  timeframes.forEach((tf) => {
+    if (tf.confirmedCount >= 1) {
+      const weight = weights[tf.timeframe];
+      weightedSum += tf.score * weight;
+      totalWeight += weight;
+    }
+  });
+
+  const avgScore = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
+  const tfWithDiv = timeframes.filter((tf) => tf.confirmedCount >= 2).length;
+  const confluenceBonus = tfWithDiv >= 4 ? 20 : tfWithDiv === 3 ? 15 : tfWithDiv === 2 ? 10 : 0;
+  const totalScore = Math.min(100, avgScore + confluenceBonus);
+
+  const breakdown = timeframes
+    .filter((tf) => tf.confirmedCount > 0)
+    .map((tf) => {
+      const indicators = Object.entries(tf.indicators)
+        .filter(([, div]) => div?.present)
+        .map(([name]) => name.toUpperCase())
+        .join(', ');
+      return `${tf.timeframe.toUpperCase()}: ${tf.confirmedCount}/4 (${indicators})`;
+    });
+
+  return { totalScore, breakdown };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function detectHealthyBottom(
   history: Snapshot[],
   current: Snapshot,
-  profile: PatternSensitivityProfile = 'neutral'
+  profile: PatternSensitivityProfile = 'neutral',
+  candles15m?: Candle[],
+  candles1h?: Candle[],
+  candles4h?: Candle[],
+  candles1d?: Candle[]
 ): PatternResult {
-  const thresholds = getProfileThresholds(profile).healthyBottom;
   const series = getSeries(history, current);
   const lookbackMs = HEALTHY_BOTTOM_LOOKBACK_MS[profile] ?? (168 * HOUR_MS);
   const recentWindow = windowByDuration(series, lookbackMs);
   const { prices, volumes } = values(series);
 
-  const peakInWindow = recentWindow.length > 0 ? Math.max(...recentWindow.map((item) => item.price)) : current.price;
+  // === PILLAR 1: MARKET STRUCTURE (35 pts) ===
+
+  const peakInWindow = recentWindow.length > 0
+    ? Math.max(...recentWindow.map((item) => item.price))
+    : current.price;
   const drawdownFromPeak = toPercentChange(peakInWindow, current.price);
-  const oiMin = recentWindow.length > 0 ? Math.min(...recentWindow.map((item) => item.oiChangePct)) : current.oiChangePct;
-  const hadFundingNeg = recentWindow.some((item) => item.fundingRate < thresholds.fundingNegativeMax);
+  const postDrawdownScore = scorePostDrawdown(drawdownFromPeak, profile);
 
-  const drawdownMet = drawdownFromPeak <= -thresholds.drawdownFromPeakMin;
-  const oiFlushMet = oiMin <= -thresholds.oiMin;
-  const prereqScore = (drawdownMet ? 40 : 0) + (oiFlushMet ? 30 : 0) + (hadFundingNeg ? 30 : 0);
-  const prerequisitesMet = prereqScore >= 60;
+  const priceAction = scoreAdaptivePriceAction(prices);
 
-  const rsi = calculateRSI(toCandles(prices), 14).map((point) => point.value);
-  const rsiDiv = detectRSIDivergence(prices, rsi);
-  const macd = calculateMACD(toCandles(prices));
-  const stochRsi = calculateStochRSI(prices, 14);
-  const volumeAverage = calculateVolumeAverage(volumes, 20);
   const vpoc = calculateVPOC(prices, volumes, 30);
+  const vpocScore = scoreNearVPOC(current.price, vpoc);
 
-  const latestMacd = macd.macd[macd.macd.length - 1] ?? 0;
-  const latestSignal = macd.signal[macd.signal.length - 1] ?? 0;
-  const latestHist = macd.hist[macd.hist.length - 1]?.value ?? 0;
-  const latestK = stochRsi.k[stochRsi.k.length - 1] ?? 0;
-  const latestD = stochRsi.d[stochRsi.d.length - 1] ?? 0;
-  const nearVpoc = vpoc > 0 && Math.abs(current.price - vpoc) / Math.max(1, current.price) < 0.01;
-  const higherLow = detectHigherLow(prices);
+  const volumeSupportScore = scoreVolumeSupport(recentWindow);
 
-  const orderflowSignals: PatternSignal[] = [
-    { name: 'CVD positive', met: current.cvdDelta > 0, points: 30 },
-    { name: 'OI down', met: current.oiChangePct < 0, points: 25 },
-    { name: 'Funding negative', met: current.fundingRate < 0, points: 15 },
-    { name: 'Premium positive', met: current.premium > 0, points: 10 },
+  const structureConditions: GranularCondition[] = [
+    {
+      id: 'postDrawdown',
+      name: 'Post-Drawdown Zone',
+      score: postDrawdownScore,
+      weight: 10,
+      max: 10,
+      value: `${Math.abs(drawdownFromPeak).toFixed(1)}% from peak`,
+    },
+    {
+      id: priceAction.type,
+      name: priceAction.type === 'deceleration' ? '⚠️ Downside Decelerating' : '✅ Higher Low Structure',
+      score: priceAction.score,
+      weight: 7,
+      max: 7,
+      description: priceAction.description,
+    },
+    { id: 'vpoc', name: 'Near VPOC', score: vpocScore, weight: 10, max: 10 },
+    { id: 'volumeSupport', name: 'Buy Volume > Sell', score: volumeSupportScore, weight: 8, max: 8 },
   ];
 
-  const technicalSignals: PatternSignal[] = [
-    { name: 'RSI bullish divergence', met: rsiDiv === 'bullish', points: 15 },
-    { name: 'Volume support', met: current.volume >= volumeAverage, points: 10 },
-    { name: 'MACD positive', met: latestMacd > latestSignal && latestHist > 0, points: 10 },
-    { name: 'StochRSI cross', met: latestK > latestD && latestK < 80, points: 5 },
-    { name: 'Higher low structure', met: higherLow, points: 12 },
-    { name: 'Near VPOC', met: nearVpoc, points: 8 },
+  const structureScore = calculateWeightedScore(structureConditions, 35);
+
+  // === PILLAR 2: ORDERFLOW (40 pts) ===
+
+  const cvdAvgScore = scoreCVDAverage(recentWindow);
+  const cvdMomentumScore = scoreCVDMomentum(recentWindow);
+  const oiStableScore = scoreOIStability(recentWindow);
+  const fundingNormScore = scoreFundingNormalized(current.fundingRate);
+  const premiumScore = scorePremium(current.premium);
+
+  const orderflowConditions: GranularCondition[] = [
+    { id: 'cvdAvg', name: 'CVD Avg Positive', score: cvdAvgScore, weight: 12, max: 12 },
+    { id: 'cvdMomentum', name: 'CVD Rising', score: cvdMomentumScore, weight: 10, max: 10 },
+    { id: 'oiStable', name: 'OI Stabilized', score: oiStableScore, weight: 10, max: 10 },
+    { id: 'fundingNorm', name: 'Funding Normalized', score: fundingNormScore, weight: 5, max: 5 },
+    { id: 'premium', name: 'Premium Positive', score: premiumScore, weight: 3, max: 3 },
   ];
 
-  const consistency = persistenceRatio(series, 6, (item) => item.cvdDelta > 0 && item.oiChangePct <= 0);
+  const orderflowScore = calculateWeightedScore(orderflowConditions, 40);
 
-  return buildResultWithPrereqScore(orderflowSignals, technicalSignals, ['Inactive', 'Post-cap', 'Forming', 'Confirming', 'Confirmed'], prerequisitesMet, consistency, prereqScore);
+  // === PILLAR 3: DIVERGENCE (25 pts) ===
+
+  let divergenceScore = 0;
+  let divergenceBreakdown: string[] = [];
+
+  if (candles15m && candles1h && candles4h && candles1d) {
+    const mtfDiv = calculateMultiTimeframeDivergenceScore(
+      candles15m,
+      candles1h,
+      candles4h,
+      candles1d,
+      getCVDDataFromHistory(history)
+    );
+    divergenceScore = mtfDiv.totalScore;
+    divergenceBreakdown = mtfDiv.breakdown;
+  }
+
+  const divergenceConditions: GranularCondition[] = [
+    {
+      id: 'mtfDivergence',
+      name: 'Multi-TF Divergence',
+      score: divergenceScore,
+      weight: 25,
+      max: 25,
+      breakdown: divergenceBreakdown,
+    },
+  ];
+
+  const finalDivergenceScore = calculateWeightedScore(divergenceConditions, 25);
+
+  // === COMBINE ===
+
+  const allConditions = [...structureConditions, ...orderflowConditions, ...divergenceConditions];
+  const totalScore = structureScore + orderflowScore + finalDivergenceScore;
+
+  const consistency = persistenceRatio(
+    recentWindow,
+    6,
+    (item) => item.cvdDelta > 0 && Math.abs(item.oiChangePct) < 3
+  );
+
+  let stage: 0 | 1 | 2 | 3 | 4 = 0;
+  if (totalScore >= 80 && consistency >= 0.66) stage = 4;
+  else if (totalScore >= 65 && consistency >= 0.5) stage = 3;
+  else if (totalScore >= 50 && consistency >= 0.35) stage = 2;
+  else if (totalScore >= 35) stage = 1;
+
+  const stageNames = ['Inactive', 'Post-cap', 'Forming', 'Confirming', 'Confirmed'];
+
+  return {
+    score: Math.round(totalScore),
+    stage,
+    stageName: stageNames[stage],
+    confidence: clamp(Math.round((totalScore * 0.7) + (consistency * 30)), 0, 100),
+    prerequisitesMet: true,
+    orderflowScore: Math.round(orderflowScore),
+    technicalScore: Math.round(structureScore + finalDivergenceScore),
+    signals: {
+      orderflow: orderflowConditions.map((c) => ({
+        name: c.name,
+        met: c.score >= 40,
+        points: Math.round((c.score / 100) * c.weight),
+      })),
+      technical: [...structureConditions, ...divergenceConditions].map((c) => ({
+        name: c.name,
+        met: c.score >= 40,
+        points: Math.round((c.score / 100) * c.weight),
+      })),
+    },
+    breakdown: {
+      structure: Math.round(structureScore),
+      orderflow: Math.round(orderflowScore),
+      divergence: Math.round(finalDivergenceScore),
+    },
+    granularConditions: allConditions,
+  };
 }
 
 export function detectDistribution(
