@@ -666,7 +666,7 @@ function detectSwings(prices: number[]): { lows: number[]; lowIndices: number[];
   return { lows, lowIndices, highs, highIndices };
 }
 
-function calculateWeightedScore(conditions: GranularCondition[], maxPoints: number): number {
+function calculatePatternWeightedScore(conditions: GranularCondition[], maxPoints: number): number {
   const total = conditions.reduce((sum, c) => sum + (c.score / 100) * c.weight, 0);
   return Math.min(maxPoints, total);
 }
@@ -986,7 +986,7 @@ export function detectHealthyBottom(
     { id: 'volumeSupport', name: 'Buy Volume > Sell', score: volumeSupportScore, weight: 8, max: 8 },
   ];
 
-  const structureScore = calculateWeightedScore(structureConditions, 35);
+  const structureScore = calculatePatternWeightedScorestructureConditions, 35);
 
   // === PILLAR 2: ORDERFLOW (40 pts) ===
 
@@ -1004,7 +1004,7 @@ export function detectHealthyBottom(
     { id: 'premium', name: 'Premium Positive', score: premiumScore, weight: 3, max: 3 },
   ];
 
-  const orderflowScore = calculateWeightedScore(orderflowConditions, 40);
+  const orderflowScore = calculatePatternWeightedScore(orderflowConditions, 40);
 
   // === PILLAR 3: DIVERGENCE (25 pts) ===
 
@@ -1034,8 +1034,8 @@ export function detectHealthyBottom(
     },
   ];
 
-  const finalDivergenceScore = calculateWeightedScore(divergenceConditions, 25);
-
+  const finalDivergenceScore = calculatePatternWeightedScore(divergenceConditions, 25);
+  
   // === COMBINE ===
 
   const allConditions = [...structureConditions, ...orderflowConditions, ...divergenceConditions];
@@ -1366,8 +1366,8 @@ export function detectCapitulation(
   const orderflowConditions = granularConditions.slice(0, 4);
   const technicalConditions = granularConditions.slice(4);
 
-  const orderflowScore = calculateWeightedScore(orderflowConditions, 80);
-  const technicalScore = calculateWeightedScore(technicalConditions, 20);
+  const orderflowScore = calculatePatternWeightedScore(orderflowConditions, 80);
+const technicalScore = calculatePatternWeightedScore(technicalConditions, 20);
   const totalScore = orderflowScore + technicalScore;
 
   const consistency = persistenceRatio(
