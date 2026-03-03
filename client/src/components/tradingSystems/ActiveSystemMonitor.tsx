@@ -3,6 +3,7 @@ import { X, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { type SystemEvaluation } from '@/types/systemScoring';
+import { type ScoringInput } from '@/lib/tradingSystemScoring';
 import { ConditionWeightAdjuster } from '@/components/ConditionWeightAdjuster';
 import { resetWeightsToDefault } from '@/lib/conditionWeights';
 import {
@@ -13,12 +14,14 @@ import {
   getTimeAgo,
 } from '@/lib/tradingSystemColors';
 import { cn } from '@/lib/utils';
+import { SMCDebugTable } from './SMCDebugTable';
 
 interface ActiveSystemMonitorProps {
   systemId: TradingSystemId;
   evaluation: SystemEvaluation;
   onClose: () => void;
   onWeightsChanged?: () => void;
+  scoringInput?: ScoringInput;
 }
 
 export function ActiveSystemMonitor({
@@ -26,6 +29,7 @@ export function ActiveSystemMonitor({
   evaluation,
   onClose,
   onWeightsChanged,
+  scoringInput,
 }: ActiveSystemMonitorProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -272,6 +276,10 @@ export function ActiveSystemMonitor({
                 ))}
               </div>
             </div>
+          )}
+
+          {systemId === 'smart-money' && scoringInput && (
+            <SMCDebugTable evaluation={evaluation} scoringInput={scoringInput} />
           )}
         </div>
       )}

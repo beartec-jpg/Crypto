@@ -231,11 +231,11 @@ export interface ScoringInput {
     valueAreaLow?: number;
     poc?: number;
   };
-  /** Price history for divergence detection (last 20+ candles) */
+  /** Price history for divergence detection (at least 50 candles) */
   priceHistory?: number[];
-  /** RSI value history for divergence detection (last 20+ candles) */
+  /** RSI value history for divergence detection (at least 50 candles) */
   rsiHistory?: number[];
-  /** MACD histogram history for divergence detection (last 20+ candles) */
+  /** MACD histogram history for divergence detection (at least 50 candles) */
   macdHistHistory?: number[];
   /** Auto-Fib detection result for confluence scoring */
   autoFibResult?: { primary: FibSetResult | null; secondary: FibSetResult | null };
@@ -725,16 +725,19 @@ function scoreAutoFibConfluence(
   }
 
   for (const fib of allFibLevels) {
-    if (fib.isFrozen) continue;
     if (fib.price <= 0) continue;
 
-    const distToFib = Math.abs(currentPrice - fib.price) / fib.price * 100;
-    if (distToFib > 2.0) continue;
+    const frozenPenalty = fib.isFrozen ? 0.5 : 1.0;
 
-    let score = ((2.0 - distToFib) / 2.0) * 50; // Max 50 points for proximity
+    const distToFib = Math.abs(currentPrice - fib.price) / fib.price * 100;
+    if (distToFib > 5.0) continue;
+
+    let score = distToFib < 0.1
+      ? 100 * frozenPenalty
+      : ((5.0 - distToFib) / 5.0) * 50 * frozenPenalty;
 
     if (fib.isGolden) {
-      score += 10;
+      score += 10 * frozenPenalty;
     }
 
     let hasFVGConfluence = false;
@@ -745,7 +748,7 @@ function scoreAutoFibConfluence(
         const alignment = Math.abs(fib.price - fvgMid) / fib.price * 100;
         if (alignment <= alignmentThreshold) {
           hasFVGConfluence = true;
-          score += 25;
+          score += 25 * frozenPenalty;
           break;
         }
       }
@@ -758,14 +761,14 @@ function scoreAutoFibConfluence(
         const alignment = Math.abs(fib.price - obMid) / fib.price * 100;
         if (alignment <= alignmentThreshold) {
           hasOBConfluence = true;
-          score += 25;
+          score += 25 * frozenPenalty;
           break;
         }
       }
     }
 
     if (hasFVGConfluence && hasOBConfluence) {
-      score += 15; // Triple confluence bonus
+      score += 15 * frozenPenalty; // Triple confluence bonus
     }
 
     if (score > bestScore) {
@@ -876,11 +879,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
   const latestStructureDirection = recentStructureBreak?.direction;
 
-  const structureShiftScore = scoreBoolean(
-    latestStructureDirection === 'bullish',
-    latestStructureDirection === 'bearish',
-    90,
-  );
+  const structureShiftScore =
+    latestStructureDirection === 'bullish' ? 90 :
+    latestStructureDirection === 'bearish' ? -90 : 0;
 
   // Distance-scaled proximity scores (0-100)
   const fvgScore = scoreFVGProximity(currentPrice, fvgs);
@@ -1042,7 +1043,7 @@ export function scoreMomentumScalper(input: ScoringInput): SystemEvaluation {
 // ── 6. Divergence Master ─────────────────────────────────────────────────────
 
 /** Lookback period in candles for divergence detection (last N divergence points are considered). */
-const DIVERGENCE_LOOKBACK_BARS = 20;
+const DIVERGENCE_LOOKBACK_BARS = 50;
 
 export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
   const {
