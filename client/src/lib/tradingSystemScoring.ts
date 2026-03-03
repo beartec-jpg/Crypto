@@ -24,6 +24,7 @@ import {
   calculateWeightedScore,
   type WeightLevel,
 } from '@/lib/conditionWeights';
+import { detectDivergence } from '@/lib/calculations/divergenceCalculations';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -209,7 +210,7 @@ export interface ScoringInput {
   /** Current candle's unix timestamp (seconds) for lookback filtering */
   currentTime?: number;
   /** Structure breaks array for time-based filtering */
-  structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish' }>;
+  structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>;
   /** Current candle index for index-based structure break lookback */
   currentCandleIndex?: number;
   /** SMC Fair Value Gaps for Smart Money scoring */
@@ -595,46 +596,61 @@ function scoreOrderBlockProximity(price: number, orderBlocks?: Array<{ high: num
 }
 
 /**
- * Score liquidity sweep proximity with time decay
- * Returns 0-100 based on distance and recency
+ * Score liquidity sweep proximity with time decay.
+ * Returns 0-100 based on distance and recency.
+ * Checks both explicit liquidityZones and structure breaks where swept === true.
  */
 function scoreLiquiditySweepProximity(
   price: number,
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number }>,
   currentCandleIndex?: number,
-  lookbackCandles: number = 50
+  lookbackCandles: number = 50,
+  structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>,
 ): number {
-  if (!liquidityZones || liquidityZones.length === 0 || currentCandleIndex === undefined) return 0;
+  const scores: number[] = [];
 
-  // Only recently swept zones
-  const recentSwepts = liquidityZones.filter(lz =>
-    lz.swept &&
-    lz.sweptIndex !== undefined &&
-    lz.sweptIndex >= currentCandleIndex - lookbackCandles
-  );
+  // Check explicit liquidity zones
+  if (liquidityZones && liquidityZones.length > 0 && currentCandleIndex !== undefined) {
+    const recentSwepts = liquidityZones.filter(lz =>
+      lz.swept &&
+      lz.sweptIndex !== undefined &&
+      lz.sweptIndex >= currentCandleIndex - lookbackCandles
+    );
 
-  if (recentSwepts.length === 0) return 0;
+    for (const lz of recentSwepts) {
+      const distancePct = Math.abs(price - lz.price) / price * 100;
+      if (distancePct >= 5.0) continue;
+      const proximityScore = 100 * (1 - (distancePct / 5.0));
+      const candlesSinceSweep = currentCandleIndex - (lz.sweptIndex || currentCandleIndex);
+      const timeDecay = Math.max(0.5, 1 - (candlesSinceSweep / lookbackCandles));
+      scores.push(Math.round(proximityScore * timeDecay));
+    }
+  }
 
-  const scores = recentSwepts.map(lz => {
-    // Measure distance from the swept level
-    const distancePct = Math.abs(price - lz.price) / price * 100;
+  // Check structure breaks where swept === true (liquidity grabs from BOS detection)
+  if (structureBreaks && structureBreaks.length > 0 && currentCandleIndex !== undefined) {
+    const recentSweeps = structureBreaks.filter(sb =>
+      sb.swept === true &&
+      sb.brokenLevel !== undefined &&
+      sb.breakIndex !== undefined &&
+      sb.breakIndex >= currentCandleIndex - lookbackCandles
+    );
 
-    // Scale: 0% distance = 100, 5% = 0
-    if (distancePct >= 5.0) return 0;
-    const proximityScore = 100 * (1 - (distancePct / 5.0));
+    for (const sweep of recentSweeps) {
+      const distancePct = Math.abs(price - (sweep.brokenLevel ?? 0)) / price * 100;
+      if (distancePct >= 5.0) continue;
+      const proximityScore = 100 * (1 - (distancePct / 5.0));
+      const candlesSinceSweep = currentCandleIndex - (sweep.breakIndex ?? currentCandleIndex);
+      const timeDecay = Math.max(0.5, 1 - (candlesSinceSweep / lookbackCandles));
+      scores.push(Math.round(proximityScore * timeDecay));
+    }
+  }
 
-    // Decay score by time (recent sweeps more important)
-    const candlesSinceSweep = currentCandleIndex - (lz.sweptIndex || currentCandleIndex);
-    const timeDecay = Math.max(0.5, 1 - (candlesSinceSweep / lookbackCandles));
-
-    return Math.round(proximityScore * timeDecay);
-  });
-
-  return Math.max(...scores);
+  return scores.length > 0 ? Math.max(...scores) : 0;
 }
 
 /**
- * Detect divergence confluence at current price level.
+ * Detect divergence confluence at current price level using peak/trough analysis.
  * Checks if RSI/MACD show divergence confirming the structure direction.
  *
  * @returns Bonus score: up to +50 for strong bullish divergence, -50 for bearish
@@ -645,62 +661,77 @@ function scoreDivergenceConfluence(
   macdHistValues: number[],
   structureDirection?: 'bullish' | 'bearish',
 ): number {
-  if (!prices || prices.length < 20 || !structureDirection) return 0;
-  if (!rsiValues || rsiValues.length < 20) return 0;
-  if (!macdHistValues || macdHistValues.length < 20) return 0;
+  if (!prices || prices.length < 30 || !structureDirection) return 0;
+  if (!rsiValues || rsiValues.length < 30) return 0;
 
-  const recentPrices = prices.slice(-20);
-  const recentRSI = rsiValues.slice(-20);
-  const recentMACD = macdHistValues.slice(-20);
+  const rsiDivergence = detectDivergence(prices, rsiValues, 5);
+  const macdDivergence = macdHistValues && macdHistValues.length >= 30
+    ? detectDivergence(prices, macdHistValues, 5)
+    : 0;
 
-  const firstHalf = recentPrices.slice(0, 10);
-  const secondHalf = recentPrices.slice(10);
-
-  let divergenceScore = 0;
+  let score = 0;
 
   if (structureDirection === 'bullish') {
-    const priceLow1 = Math.min(...firstHalf);
-    const priceLow2 = Math.min(...secondHalf);
+    if (rsiDivergence > 0) score += rsiDivergence * 15;   // Max +45
+    if (macdDivergence > 0) score += macdDivergence * 10; // Max +30
+  } else if (structureDirection === 'bearish') {
+    if (rsiDivergence < 0) score += Math.abs(rsiDivergence) * 15;   // Max +45
+    if (macdDivergence < 0) score += Math.abs(macdDivergence) * 10; // Max +30
+  }
 
-    if (priceLow2 < priceLow1) {
-      const idx1 = firstHalf.indexOf(priceLow1);
-      const idx2 = 10 + secondHalf.indexOf(priceLow2);
+  // Return signed score: positive for bullish confluence, negative for bearish
+  const magnitude = Math.round(Math.min(50, score));
+  return structureDirection === 'bearish' ? -magnitude : magnitude;
+}
 
-      if (recentRSI[idx2] > recentRSI[idx1]) {
-        divergenceScore += 30;
-      }
-      if (recentMACD[idx2] > recentMACD[idx1]) {
-        divergenceScore += 20;
-      }
+const FVG_ALIGNMENT_MULTIPLIER = 1.5;
+const OB_ALIGNMENT_MULTIPLIER = 1.5;
+
+/**
+ * Score Fibonacci level confluence.
+ * Returns 0-100 when price is at a key fib level (0.382, 0.5, 0.618, 0.786),
+ * with bonus points when that level coincides with an FVG or Order Block.
+ */
+function scoreFibLevelConfluence(
+  price: number,
+  swingHigh: number,
+  swingLow: number,
+  fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>,
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>,
+): number {
+  const range = Math.abs(swingHigh - swingLow);
+  if (range === 0) return 0;
+
+  const fibLevels = [0.382, 0.5, 0.618, 0.786];
+  let bestScore = 0;
+
+  for (const fib of fibLevels) {
+    const fibPrice = swingLow + (range * fib);
+    const distancePct = Math.abs(price - fibPrice) / price * 100;
+
+    if (distancePct <= 0.5) {
+      let score = 100 * (1 - (distancePct / 0.5));
+
+      const alignedFVG = fvgs?.some(fvg =>
+        !fvg.filled && fibPrice >= fvg.low && fibPrice <= fvg.high
+      );
+      const alignedOB = orderBlocks?.some(ob =>
+        fibPrice >= ob.low && fibPrice <= ob.high
+      );
+
+      if (alignedFVG) score *= FVG_ALIGNMENT_MULTIPLIER;
+      if (alignedOB) score *= OB_ALIGNMENT_MULTIPLIER;
+
+      bestScore = Math.max(bestScore, score);
     }
   }
 
-  if (structureDirection === 'bearish') {
-    const priceHigh1 = Math.max(...firstHalf);
-    const priceHigh2 = Math.max(...secondHalf);
-
-    if (priceHigh2 > priceHigh1) {
-      const idx1 = firstHalf.indexOf(priceHigh1);
-      const idx2 = 10 + secondHalf.indexOf(priceHigh2);
-
-      if (recentRSI[idx2] < recentRSI[idx1]) {
-        divergenceScore -= 30;
-      }
-      if (recentMACD[idx2] < recentMACD[idx1]) {
-        divergenceScore -= 20;
-      }
-    }
-  }
-
-  return divergenceScore;
+  return Math.round(Math.min(100, bestScore));
 }
 
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const {
-    stTrend,
-    lastRsi,
     latestClose,
-    previousClose,
     structureBreaks,
     currentTime,
     currentCandleIndex,
@@ -735,53 +766,6 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     90,
   );
 
-  const trendAlignmentScore =
-    (latestStructureDirection === 'bullish' && stTrend === 'bullish')
-      ? 80
-      : (latestStructureDirection === 'bearish' && stTrend === 'bearish')
-        ? -80
-        : (stTrend === 'bullish' ? 20 : stTrend === 'bearish' ? -20 : 0);
-
-  const followThroughScore =
-    latestStructureDirection === 'bullish'
-      ? Math.max(0, scorePercentMove(latestClose, previousClose, 2))
-      : latestStructureDirection === 'bearish'
-        ? Math.min(0, scorePercentMove(latestClose, previousClose, 2))
-        : scorePercentMove(latestClose, previousClose, 2) * 0.5;
-
-  const rsiMomentumScore = (() => {
-    if (lastRsi === undefined) return 0;
-
-    // If bullish structure, LOW RSI is GOOD (oversold bounce opportunity)
-    if (latestStructureDirection === 'bullish') {
-      if (lastRsi <= 25) return 90;
-      if (lastRsi <= 30) return 75;
-      if (lastRsi <= 35) return 60;
-      if (lastRsi <= 40) return 40;
-      if (lastRsi <= 50) return 15;
-      if (lastRsi <= 60) return -10;
-      if (lastRsi <= 70) return -30;
-      return -50;
-    }
-
-    // If bearish structure, HIGH RSI is GOOD (overbought rejection opportunity)
-    if (latestStructureDirection === 'bearish') {
-      if (lastRsi >= 75) return -90;
-      if (lastRsi >= 70) return -75;
-      if (lastRsi >= 65) return -60;
-      if (lastRsi >= 60) return -40;
-      if (lastRsi >= 50) return -15;
-      if (lastRsi >= 40) return 10;
-      if (lastRsi >= 30) return 30;
-      return 50;
-    }
-
-    // No structure context — traditional scoring (neutral bias at 50)
-    return normalizeByRange(lastRsi - 50, 20);
-  })();
-
-  const superTrendScore = scoreBoolean(stTrend === 'bullish', stTrend === 'bearish', 70);
-
   // Distance-scaled proximity scores (0-100)
   const fvgScore = scoreFVGProximity(currentPrice, fvgs);
   const obScore = scoreOrderBlockProximity(currentPrice, orderBlocks);
@@ -789,10 +773,11 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     currentPrice,
     liquidityZones,
     currentCandleIndex,
-    lookbackCandles
+    lookbackCandles,
+    structureBreaks,
   );
 
-  // Divergence confluence bonus at key levels
+  // Divergence confluence using peak/trough analysis
   const divergenceBonus = scoreDivergenceConfluence(
     priceHistory ?? [],
     rsiHistory ?? [],
@@ -800,39 +785,21 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     latestStructureDirection,
   );
 
+  // Fibonacci level confluence using recent price swing
+  let fibScore = 0;
+  if (priceHistory && priceHistory.length >= 20) {
+    const recentPrices = priceHistory.slice(-lookbackCandles);
+    const swingHigh = Math.max(...recentPrices);
+    const swingLow = Math.min(...recentPrices);
+    fibScore = scoreFibLevelConfluence(currentPrice, swingHigh, swingLow, fvgs, orderBlocks);
+  }
+
   const granularConditions: GranularCondition[] = [
     {
       id: 'structureShift',
       name: 'SMC Structure Shift',
       score: structureShiftScore,
-      description: 'Direction of the latest valid structure shift.',
-    },
-    {
-      id: 'trendAlignment',
-      name: 'Trend Alignment',
-      score: trendAlignmentScore,
-      description: 'Alignment between structure and trend direction.',
-    },
-    {
-      id: 'followThrough',
-      name: 'Follow-Through Candle',
-      score: followThroughScore,
-      description: 'Price continuation in the shift direction.',
-    },
-    {
-      id: 'rsiMomentum',
-      name: 'RSI Momentum',
-      score: rsiMomentumScore,
-      value: lastRsi !== undefined ? `RSI: ${lastRsi.toFixed(1)}` : undefined,
-      description: latestStructureDirection
-        ? `RSI context for ${latestStructureDirection} structure (${lastRsi !== undefined && lastRsi < 40 && latestStructureDirection === 'bullish' ? 'oversold entry' : lastRsi !== undefined && lastRsi > 60 && latestStructureDirection === 'bearish' ? 'overbought short' : 'neutral'})`
-        : 'Momentum bias from RSI midpoint displacement.',
-    },
-    {
-      id: 'supertrend',
-      name: 'SuperTrend State',
-      score: superTrendScore,
-      description: 'Current SuperTrend directional state.',
+      description: 'Direction of the latest valid structure shift (MSS/BOS/CHOCH).',
     },
     {
       id: 'fvgProximity',
@@ -853,14 +820,21 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       name: 'Liquidity Sweep',
       score: liquidityScore,
       value: liquidityScore > 0 ? `${liquidityScore}/100` : undefined,
-      description: 'Distance from recent liquidity grab with time decay.',
+      description: 'Recent liquidity grab (wick through level) with time decay.',
     },
     {
       id: 'divergenceConfluence',
       name: 'Divergence Confluence',
       score: divergenceBonus,
       value: divergenceBonus !== 0 ? `${Math.abs(divergenceBonus)} pts` : undefined,
-      description: 'RSI/MACD divergence confirming structure reversal.',
+      description: 'RSI/MACD peak-trough divergence confirming structure reversal.',
+    },
+    {
+      id: 'fibLevelConfluence',
+      name: 'Fibonacci Level',
+      score: fibScore,
+      value: fibScore > 0 ? `${fibScore}/100` : undefined,
+      description: 'Price proximity to key Fibonacci retracement (0.382/0.5/0.618/0.786) with OB/FVG alignment bonus.',
     },
   ];
 
