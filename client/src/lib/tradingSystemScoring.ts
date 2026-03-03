@@ -211,7 +211,9 @@ export interface ScoringInput {
   /** Current candle's unix timestamp (seconds) for lookback filtering */
   currentTime?: number;
   /** Structure breaks array for time-based filtering */
-  structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; type?: 'bos' | 'choch' | 'mss'; swept?: boolean; brokenLevel?: number }>;
+  structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; type?: 'bos' | 'choch' | 'mss'; swept?: boolean; brokenLevel?: number; confirmed?: boolean }>;
+  /** Swing points for MSS invalidation checks */
+  swingPoints?: Array<{ type: 'high' | 'low'; price: number; time: number; index: number }>;
   /** Current candle index for index-based structure break lookback */
   currentCandleIndex?: number;
   /** SMC Fair Value Gaps for Smart Money scoring */
@@ -630,20 +632,20 @@ function scoreLiquiditySweepProximity(
     }
   }
 
-  // Check structure breaks where swept === true (liquidity grabs from BOS detection)
-  if (structureBreaks && structureBreaks.length > 0 && currentCandleIndex !== undefined) {
-    const recentSweeps = structureBreaks.filter(sb =>
+  // Check structure breaks where swept === true (pre-filtered by invalidation logic in scoreSmartMoney)
+  if (structureBreaks && structureBreaks.length > 0) {
+    const activeSweeps = structureBreaks.filter(sb =>
       sb.swept === true &&
-      sb.brokenLevel !== undefined &&
-      sb.breakIndex !== undefined &&
-      sb.breakIndex >= currentCandleIndex - lookbackCandles
+      sb.brokenLevel !== undefined
     );
 
-    for (const sweep of recentSweeps) {
+    for (const sweep of activeSweeps) {
       const distancePct = Math.abs(price - (sweep.brokenLevel ?? 0)) / price * 100;
       if (distancePct >= 5.0) continue;
       const proximityScore = 100 * (1 - (distancePct / 5.0));
-      const candlesSinceSweep = currentCandleIndex - (sweep.breakIndex ?? currentCandleIndex);
+      const candlesSinceSweep = currentCandleIndex !== undefined
+        ? currentCandleIndex - (sweep.breakIndex ?? currentCandleIndex)
+        : 0;
       const timeDecay = Math.max(0.5, 1 - (candlesSinceSweep / lookbackCandles));
       scores.push(Math.round(proximityScore * timeDecay));
     }
@@ -685,51 +687,6 @@ function scoreDivergenceConfluence(
   // Return signed score: positive for bullish confluence, negative for bearish
   const magnitude = Math.round(Math.min(50, score));
   return structureDirection === 'bearish' ? -magnitude : magnitude;
-}
-
-const FVG_ALIGNMENT_MULTIPLIER = 1.5;
-const OB_ALIGNMENT_MULTIPLIER = 1.5;
-
-/**
- * Score Fibonacci level confluence.
- * Returns 0-100 when price is at a key fib level (0.382, 0.5, 0.618, 0.786),
- * with bonus points when that level coincides with an FVG or Order Block.
- */
-function scoreFibLevelConfluence(
-  price: number,
-  swingHigh: number,
-  swingLow: number,
-  fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>,
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>,
-): number {
-  const range = Math.abs(swingHigh - swingLow);
-  if (range === 0) return 0;
-
-  const fibLevels = [0.382, 0.5, 0.618, 0.786];
-  let bestScore = 0;
-
-  for (const fib of fibLevels) {
-    const fibPrice = swingLow + (range * fib);
-    const distancePct = Math.abs(price - fibPrice) / price * 100;
-
-    if (distancePct <= 0.5) {
-      let score = 100 * (1 - (distancePct / 0.5));
-
-      const alignedFVG = fvgs?.some(fvg =>
-        !fvg.filled && fibPrice >= fvg.low && fibPrice <= fvg.high
-      );
-      const alignedOB = orderBlocks?.some(ob =>
-        fibPrice >= ob.low && fibPrice <= ob.high
-      );
-
-      if (alignedFVG) score *= FVG_ALIGNMENT_MULTIPLIER;
-      if (alignedOB) score *= OB_ALIGNMENT_MULTIPLIER;
-
-      bestScore = Math.max(bestScore, score);
-    }
-  }
-
-  return Math.round(Math.min(100, bestScore));
 }
 
 /**
@@ -819,11 +776,71 @@ function scoreAutoFibConfluence(
   return Math.round(Math.min(bestScore, 100));
 }
 
+/**
+ * Determine if an MSS is invalidated.
+ * Bullish MSS is invalidated when price breaks below the most recent LOW pivot that
+ * existed before the MSS, or when a newer opposite MSS forms.
+ * Bearish MSS is invalidated when price breaks above the most recent HIGH pivot that
+ * existed before the MSS, or when a newer opposite MSS forms.
+ */
+function isMSSInvalidated(
+  mss: { type?: string; direction: 'bullish' | 'bearish'; breakTime: number },
+  currentPrice: number,
+  swingPoints: Array<{ type: 'high' | 'low'; price: number; time: number; index: number }>,
+  allStructureBreaks: Array<{ type?: string; direction: 'bullish' | 'bearish'; breakTime: number }>,
+): boolean {
+  if (mss.type !== 'mss') return false;
+
+  const priorSwings = swingPoints.filter(swing => swing.time < mss.breakTime);
+
+  if (mss.direction === 'bullish') {
+    const priorLow = priorSwings
+      .filter(s => s.type === 'low')
+      .sort((a, b) => b.time - a.time)[0];
+    if (priorLow && currentPrice < priorLow.price) return true;
+  } else {
+    const priorHigh = priorSwings
+      .filter(s => s.type === 'high')
+      .sort((a, b) => b.time - a.time)[0];
+    if (priorHigh && currentPrice > priorHigh.price) return true;
+  }
+
+  const newerOppositeMSS = allStructureBreaks.find(sb =>
+    sb.type === 'mss' &&
+    sb.breakTime > mss.breakTime &&
+    sb.direction !== mss.direction
+  );
+
+  return !!newerOppositeMSS;
+}
+
+/**
+ * Determine if a swept level is invalidated.
+ * A sweep is invalidated when price moves >10% away from the swept level,
+ * or when a later confirmed break occurs at the same level.
+ */
+function isSweptLevelInvalidated(
+  sweep: { breakTime: number; brokenLevel?: number; confirmed?: boolean },
+  currentPrice: number,
+  allStructureBreaks: Array<{ breakTime: number; brokenLevel?: number; confirmed?: boolean }>,
+): boolean {
+  const distancePct = Math.abs(currentPrice - (sweep.brokenLevel ?? 0)) / currentPrice * 100;
+  if (distancePct > 10.0) return true;
+
+  const laterConfirmedBreak = allStructureBreaks.find(sb =>
+    sb.breakTime > sweep.breakTime &&
+    sb.confirmed === true &&
+    Math.abs((sb.brokenLevel ?? 0) - (sweep.brokenLevel ?? 0)) / currentPrice * 100 < 1.0
+  );
+
+  return !!laterConfirmedBreak;
+}
+
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const {
     latestClose,
     structureBreaks,
-    currentTime,
+    swingPoints,
     currentCandleIndex,
     fvgs,
     orderBlocks,
@@ -835,27 +852,29 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     autoFibResult,
   } = input;
 
-  // Dynamic lookback based on timeframe
+  const currentPrice = latestClose;
+
+  // Dynamic lookback for BOS/CHoCH (not used for MSS)
   const lookbackCandles = getStructureLookbackCandles(timeframe);
 
-  // Filter structure breaks within the lookback window
+  // Filter structure breaks within the lookback window (for BOS/CHoCH fallback)
   const recentBreaks = structureBreaks?.filter(sb => {
     if (sb.breakIndex !== undefined && currentCandleIndex !== undefined) {
       return sb.breakIndex >= currentCandleIndex - lookbackCandles;
     }
-    return currentTime !== undefined ? sb.breakTime <= currentTime : true;
+    return true;
   });
 
-  // Prefer MSS (strongest structure shift) over BOS/CHoCH
-  const activeMSS = recentBreaks
+  // MSS with invalidation logic: stays active until price breaks prior pivot or opposite MSS forms
+  const activeMSS = structureBreaks
     ?.filter(sb => sb.type === 'mss')
+    .filter(sb => !isMSSInvalidated(sb, currentPrice, swingPoints ?? [], structureBreaks ?? []))
     .sort((a, b) => b.breakTime - a.breakTime)[0];
 
   const recentStructureBreak = activeMSS ?? recentBreaks
     ?.sort((a, b) => b.breakTime - a.breakTime)[0];
 
   const latestStructureDirection = recentStructureBreak?.direction;
-  const currentPrice = latestClose;
 
   const structureShiftScore = scoreBoolean(
     latestStructureDirection === 'bullish',
@@ -866,12 +885,19 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   // Distance-scaled proximity scores (0-100)
   const fvgScore = scoreFVGProximity(currentPrice, fvgs);
   const obScore = scoreOrderBlockProximity(currentPrice, orderBlocks);
+
+  // Liquidity sweep with invalidation logic: stays active until price moves >10% away or confirmed break
+  const activeSweeps = structureBreaks?.filter(sb =>
+    sb.swept === true &&
+    !isSweptLevelInvalidated(sb, currentPrice, structureBreaks ?? [])
+  );
+
   const liquidityScore = scoreLiquiditySweepProximity(
     currentPrice,
     liquidityZones,
     currentCandleIndex,
     lookbackCandles,
-    structureBreaks,
+    activeSweeps,
   );
 
   // Divergence confluence using peak/trough analysis
@@ -882,24 +908,18 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     latestStructureDirection,
   );
 
-  // Fibonacci level confluence using recent price swing
-  let fibScore = 0;
-  if (priceHistory && priceHistory.length >= 20) {
-    const recentPrices = priceHistory.slice(-lookbackCandles);
-    const swingHigh = Math.max(...recentPrices);
-    const swingLow = Math.min(...recentPrices);
-    fibScore = scoreFibLevelConfluence(currentPrice, swingHigh, swingLow, fvgs, orderBlocks);
-  }
-
-  // Auto-Fib confluence scoring
-  const autoFibScore = scoreAutoFibConfluence(autoFibResult, currentPrice, fvgs, orderBlocks);
+  // Auto-Fib confluence scoring (only when weight > 0)
+  const autoFibWeight = getConditionWeights('smart-money').autoFibConfluence ?? 0;
+  const autoFibScore = autoFibWeight > 0
+    ? scoreAutoFibConfluence(autoFibResult, currentPrice, fvgs, orderBlocks)
+    : 0;
 
   const granularConditions: GranularCondition[] = [
     {
       id: 'structureShift',
       name: 'SMC Structure Shift',
       score: structureShiftScore,
-      description: 'Direction of the latest valid structure shift (MSS/BOS/CHOCH).',
+      description: 'Direction of active MSS (invalidates when price breaks prior pivot or opposite MSS forms).',
     },
     {
       id: 'fvgProximity',
@@ -920,7 +940,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       name: 'Liquidity Sweep',
       score: liquidityScore,
       value: liquidityScore > 0 ? `${liquidityScore}/100` : undefined,
-      description: 'Recent liquidity grab (wick through level) with time decay.',
+      description: 'Active liquidity grab (invalidates when price moves >10% away or level is confirmed broken).',
     },
     {
       id: 'divergenceConfluence',
@@ -930,18 +950,11 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       description: 'RSI/MACD peak-trough divergence confirming structure reversal.',
     },
     {
-      id: 'fibLevelConfluence',
-      name: 'Fibonacci Level',
-      score: fibScore,
-      value: fibScore > 0 ? `${fibScore}/100` : undefined,
-      description: 'Price proximity to key Fibonacci retracement (0.382/0.5/0.618/0.786) with OB/FVG alignment bonus.',
-    },
-    {
       id: 'autoFibConfluence',
       name: 'Auto-Fib Confluence',
       score: autoFibScore,
       value: autoFibScore > 0 ? `${autoFibScore}/100` : undefined,
-      description: 'Active Auto-Fib level alignment with FVG or Order Block zones.',
+      description: 'Dynamic fib levels (primary + secondary) with FVG/OB alignment.',
     },
   ];
 

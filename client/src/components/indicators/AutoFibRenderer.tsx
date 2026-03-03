@@ -8,14 +8,17 @@ interface AutoFibRendererProps {
   candleSeries: ISeriesApi<'Candlestick'> | null;
   result: AutoFibResult;
   settings: AutoFibSettings;
+  weight?: number;
 }
 
-export function AutoFibRenderer({ chart, candleSeries, result, settings }: AutoFibRendererProps) {
+export function AutoFibRenderer({ chart, candleSeries, result, settings, weight = 0 }: AutoFibRendererProps) {
   const primitiveRef = useRef<AutoFibPrimitive | null>(null);
 
-  // Create/destroy primitive when chart or series changes, or when enabled toggles
+  const shouldShow = settings.enabled || weight > 0;
+
+  // Create/destroy primitive when chart or series changes, or when visibility toggles
   useEffect(() => {
-    if (!chart || !candleSeries || !settings.enabled) return;
+    if (!chart || !candleSeries || !shouldShow) return;
 
     const primitive = new AutoFibPrimitive(result);
     try {
@@ -34,7 +37,7 @@ export function AutoFibRenderer({ chart, candleSeries, result, settings }: AutoF
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, candleSeries, settings.enabled]);
+  }, [chart, candleSeries, shouldShow]);
 
   // Update result without recreating the primitive
   useEffect(() => {

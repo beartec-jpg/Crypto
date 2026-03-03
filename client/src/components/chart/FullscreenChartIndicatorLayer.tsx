@@ -15,6 +15,7 @@ import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
 import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
 import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
 import { SqueezeMomentumSettingsModal } from '@/components/modals/SqueezeMomentumSettingsModal';
+import { getConditionWeights } from '@/lib/conditionWeights';
 
 interface FullscreenChartIndicatorLayerProps {
   chart: any;
@@ -212,6 +213,7 @@ export function FullscreenChartIndicatorLayer({
         candleSeries={candleSeries}
         result={autoFibResult}
         settings={autoFibSettings}
+        weight={getConditionWeights('smart-money').autoFibConfluence ?? 0}
       />
 
       <VolumeProfileRenderer
