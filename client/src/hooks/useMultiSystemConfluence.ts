@@ -4,6 +4,7 @@ import { scoreSystem, type ScoringInput } from '@/lib/tradingSystemScoring';
 import { detectMarketPattern, type MarketPattern } from '@/lib/confluencePatterns';
 import type { Candle } from '@/types/candle';
 import type { DivergencePoint } from '@/types/chart.types';
+import type { FibSetResult } from '@/types/autoFib';
 
 interface OscillatorData {
   rsi: Array<{ value: number; time?: number | string }>;
@@ -22,6 +23,9 @@ interface StructureBreak {
   breakTime: number;
   breakIndex?: number;
   direction: 'bullish' | 'bearish';
+  type?: 'bos' | 'choch' | 'mss';
+  swept?: boolean;
+  brokenLevel?: number;
 }
 
 interface SqueezeMomentumPoint {
@@ -68,6 +72,7 @@ export function useMultiSystemConfluence(
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean }>,
   volumeProfileData?: { rows: Array<{ price: number; volume: number }>; valueAreaHigh?: number; valueAreaLow?: number; poc?: number },
   weightsVersion?: number,
+  autoFibResult?: { primary: FibSetResult | null; secondary: FibSetResult | null },
 ): ConfluenceResult | null {
   const previousScoreRef = useRef<number | undefined>(undefined);
 
@@ -149,6 +154,7 @@ export function useMultiSystemConfluence(
       orderBlocks,
       liquidityZones,
       volumeProfileData,
+      autoFibResult,
     };
 
     const systemIds = Object.keys(TRADING_SYSTEMS) as TradingSystemId[];
@@ -202,7 +208,7 @@ export function useMultiSystemConfluence(
       systemDetails,
       patterns,
     };
-  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData, weightsVersion]);
+  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData, weightsVersion, autoFibResult]);
 
   useEffect(() => {
     if (result !== null) {
