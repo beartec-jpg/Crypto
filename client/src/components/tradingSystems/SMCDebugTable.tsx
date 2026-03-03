@@ -231,8 +231,16 @@ function getLiquiditySweepDetails(input: Partial<ScoringInput>) {
 function getDivergenceDetails(input: Partial<ScoringInput>) {
   const bullishDivs = input.divergencePoints?.filter(d => d.type === 'bullish') ?? [];
   const bearishDivs = input.divergencePoints?.filter(d => d.type === 'bearish') ?? [];
-  const rsiMin = input.rsiHistory && input.rsiHistory.length > 0 ? Math.min(...input.rsiHistory) : 0;
-  const rsiMax = input.rsiHistory && input.rsiHistory.length > 0 ? Math.max(...input.rsiHistory) : 0;
+  let rsiMin = 0;
+  let rsiMax = 0;
+  if (input.rsiHistory && input.rsiHistory.length > 0) {
+    rsiMin = input.rsiHistory[0];
+    rsiMax = input.rsiHistory[0];
+    for (const v of input.rsiHistory) {
+      if (v < rsiMin) rsiMin = v;
+      if (v > rsiMax) rsiMax = v;
+    }
+  }
 
   return (
     <>

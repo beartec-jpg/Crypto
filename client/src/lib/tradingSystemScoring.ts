@@ -727,7 +727,7 @@ function scoreAutoFibConfluence(
   for (const fib of allFibLevels) {
     if (fib.price <= 0) continue;
 
-    // Apply 50% penalty instead of skipping frozen levels
+    // Frozen levels score at 50% (reduced score, not skipped)
     const frozenPenalty = fib.isFrozen ? 0.5 : 1.0;
 
     const distToFib = Math.abs(currentPrice - fib.price) / fib.price * 100;
