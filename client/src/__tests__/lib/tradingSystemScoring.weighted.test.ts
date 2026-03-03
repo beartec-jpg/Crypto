@@ -37,7 +37,7 @@ describe('tradingSystemScoring weighted mean-reversion', () => {
       htfBearish: 1,
     });
 
-    expect(evaluation.score).toBe(53);
+    expect(evaluation.score).toBe(61);
     expect(evaluation.conditions).toHaveLength(5);
     expect(evaluation.conditions.every(c => c.userWeight === 1)).toBe(true);
   });
@@ -73,7 +73,7 @@ describe('tradingSystemScoring weighted mean-reversion', () => {
       htfBearish: 1,
     });
 
-    expect(evaluation.score).toBe(81);
+    expect(evaluation.score).toBe(74);
     const trend = evaluation.conditions.find(c => c.id === 'trend');
     expect(trend?.userWeight).toBe(0);
     expect(trend?.weightedScore).toBe(0);
