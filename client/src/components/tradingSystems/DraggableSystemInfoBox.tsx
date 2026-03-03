@@ -3,6 +3,9 @@ import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import { TRADING_SYSTEMS } from '@/types/tradingSystems';
 import { cn } from '@/lib/utils';
+import type { SystemEvaluation } from '@/types/systemScoring';
+import type { ScoringInput } from '@/lib/tradingSystemScoring';
+import { SMCDebugTable } from './SMCDebugTable';
 
 interface ScoredCondition {
   name: string;
@@ -32,6 +35,8 @@ interface DraggableSystemInfoBoxProps {
   evaluation: SystemEvaluationSummary | null;
   historicalSummary: HistoricalSummary | null;
   onClose: () => void;
+  scoringInput?: ScoringInput;
+  fullEvaluation?: SystemEvaluation;
 }
 
 export function DraggableSystemInfoBox({
@@ -39,6 +44,8 @@ export function DraggableSystemInfoBox({
   evaluation,
   historicalSummary,
   onClose,
+  scoringInput,
+  fullEvaluation,
 }: DraggableSystemInfoBoxProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -250,6 +257,10 @@ export function DraggableSystemInfoBox({
                 <span className="font-semibold text-rose-300">{historicalSummary.sellSignals}</span>
               </div>
             </div>
+          )}
+
+          {activeSystemId === 'smart-money' && scoringInput && fullEvaluation && (
+            <SMCDebugTable evaluation={fullEvaluation} scoringInput={scoringInput} />
           )}
         </div>
       )}

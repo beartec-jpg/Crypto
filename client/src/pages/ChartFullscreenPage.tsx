@@ -636,7 +636,12 @@ export function ChartFullscreenPage({
     const htfBullish = htfBiasEntries.filter(e => e.bias === 'bullish').length;
     const htfBearish = htfBiasEntries.filter(e => e.bias === 'bearish').length;
 
-    const evaluatedSignal = evaluateTradingSystemSignal({
+    const divergenceHistoryLength = 51; // 50 lookback bars + 1 for current candle
+    const priceHistory = candles.slice(-divergenceHistoryLength).map(c => (c as { close: number }).close);
+    const rsiHistory = oscillatorData.rsi.slice(-divergenceHistoryLength).map(p => p.value);
+    const macdHistHistory = oscillatorData.macd.hist.slice(-divergenceHistoryLength).map(p => p.value);
+
+    const scoringInput = {
       systemId: tradingSystem.activeSystem,
       lastRsi,
       prevRsi,
@@ -664,13 +669,21 @@ export function ChartFullscreenPage({
       currentTime: Number(latestCandle.time),
       currentCandleIndex: candles.length - 1,
       structureBreaks,
+      swingPoints,
       fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
       orderBlocks: orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
       liquidityZones: liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
       volumeProfileData: volumeProfileData
         ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
         : undefined,
-    });
+      priceHistory,
+      rsiHistory,
+      macdHistHistory,
+      autoFibResult,
+      timeframe,
+    };
+
+    const evaluatedSignal = evaluateTradingSystemSignal(scoringInput);
 
     return {
       system,
@@ -683,6 +696,7 @@ export function ChartFullscreenPage({
       signalReasons: evaluatedSignal.signalReasons,
       evaluation: { ...evaluatedSignal.evaluation, timestamp: Date.now() },
       historicalSignalCount: historicalSystemSignalEvents.length,
+      scoringInput,
     };
   }, [
     tradingSystem.activeSystem,
@@ -690,6 +704,7 @@ export function ChartFullscreenPage({
     oscillatorData,
     superTrendData,
     structureBreaks,
+    swingPoints,
     sqzData,
     htfBiasEntries,
     conditionWeightsVersion,
@@ -699,6 +714,8 @@ export function ChartFullscreenPage({
     orderBlocks,
     liquidityZones,
     volumeProfileData,
+    autoFibResult,
+    timeframe,
   ]);
 
   const activeSystemSummary = useMemo(() => {
@@ -1259,6 +1276,7 @@ export function ChartFullscreenPage({
             evaluation={activeSystemDetails.evaluation}
             onClose={tradingSystem.deactivateSystem}
             onWeightsChanged={() => setConditionWeightsVersion(v => v + 1)}
+            scoringInput={activeSystemDetails.scoringInput}
           />
         )}
 
