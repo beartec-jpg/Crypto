@@ -161,7 +161,7 @@ export function ActiveSystemMonitor({
 
       {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-slate-700/50 px-3 pb-3 pt-2 space-y-3">
+        <div className="border-t border-slate-700/50 px-3 pb-3 pt-2 space-y-3 max-h-[500px] overflow-y-auto">
           {/* Stats grid */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
@@ -215,7 +215,7 @@ export function ActiveSystemMonitor({
               <div className="text-[10px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wide">
                 Conditions ({metCount}/{conditions.length} met)
               </div>
-              <div className="space-y-0.5 max-h-48 overflow-y-auto">
+              <div className="space-y-0.5 max-h-[320px] overflow-y-auto pr-1">
                 {conditions.map((cond, i) => (
                   <div key={i} className="flex items-start gap-1.5 py-0.5 text-xs">
                     {cond.met ? (
