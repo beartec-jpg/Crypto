@@ -101,11 +101,12 @@ export function SMCSettingsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[480px] bg-slate-900 border-slate-700 text-white max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[480px] bg-slate-900 border-slate-700 text-white">
         <DialogHeader>
           <DialogTitle className="text-white">SMC Settings</DialogTitle>
         </DialogHeader>
 
+        <div className="max-h-[70vh] overflow-y-auto pr-2">
         <Tabs defaultValue="fvg" className="mt-2">
           <TabsList className="w-full bg-slate-800 border border-slate-700 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="fvg" className="flex-1 data-[state=active]:bg-slate-700 text-xs">FVG</TabsTrigger>
@@ -857,6 +858,7 @@ export function SMCSettingsModal({
             </div>
           </TabsContent>
         </Tabs>
+        </div>
       </DialogContent>
     </Dialog>
   );

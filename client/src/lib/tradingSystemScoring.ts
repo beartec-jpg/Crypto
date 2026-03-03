@@ -217,7 +217,9 @@ export interface ScoringInput {
   /** SMC Order Blocks for Smart Money scoring */
   orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>;
   /** Liquidity zones for Smart Money scoring */
-  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean }>;
+  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number }>;
+  /** Current timeframe for dynamic lookback calculation */
+  timeframe?: string;
   /** Volume profile data for Volume Profile scoring */
   volumeProfileData?: {
     rows: Array<{ price: number; volume: number }>;
@@ -402,7 +404,10 @@ export function scoreMeanReversion(input: ScoringInput): SystemEvaluation {
 
 // ── 3. Breakout Momentum ──────────────────────────────────────────────────────
 
-/** Lookback window in candles for recent structure break detection. */
+/**
+ * @deprecated Use getStructureLookbackCandles(timeframe) instead for dynamic scaling
+ * Lookback window in candles for recent structure break detection.
+ */
 const STRUCTURE_LOOKBACK_CANDLES = 15;
 
 /** Proximity threshold (fraction) for FVG detection (0.5%). */
@@ -492,6 +497,136 @@ export function scoreBreakoutMomentum(input: ScoringInput): SystemEvaluation {
 
 // ── 4. Smart Money Tracker ────────────────────────────────────────────────────
 
+/**
+ * Score proximity to a zone (FVG, Order Block, Liquidity)
+ * Returns 100 when inside zone, scales to 0 at maxDistancePct
+ *
+ * @param price - Current price
+ * @param zoneTop - Top of the zone
+ * @param zoneBottom - Bottom of the zone
+ * @param maxDistancePct - Distance at which score reaches 0 (default 5%)
+ * @returns Score 0-100
+ */
+function scoreZoneProximity(
+  price: number,
+  zoneTop: number,
+  zoneBottom: number,
+  maxDistancePct: number = 5.0
+): number {
+  // Inside the zone = 100 points
+  if (price >= zoneBottom && price <= zoneTop) {
+    return 100;
+  }
+
+  // Calculate distance from nearest edge
+  const distanceFromTop = price > zoneTop ? price - zoneTop : 0;
+  const distanceFromBottom = price < zoneBottom ? zoneBottom - price : 0;
+  const nearestDistance = Math.max(distanceFromTop, distanceFromBottom);
+
+  // Convert to percentage
+  const distancePct = (nearestDistance / price) * 100;
+
+  // Outside max distance = 0 points
+  if (distancePct >= maxDistancePct) {
+    return 0;
+  }
+
+  // Linear scale: 0% distance = 100, maxDistancePct = 0
+  const score = 100 * (1 - (distancePct / maxDistancePct));
+
+  return Math.round(score);
+}
+
+/**
+ * Get structure lookback candles based on timeframe
+ * Scales lookback window to be appropriate for each timeframe
+ */
+function getStructureLookbackCandles(timeframe?: string): number {
+  const lookbacks: Record<string, number> = {
+    '1m': 30,   // 30 minutes
+    '5m': 24,   // 2 hours
+    '15m': 24,  // 6 hours
+    '30m': 24,  // 12 hours
+    '1h': 24,   // 24 hours (1 day)
+    '4h': 18,   // 72 hours (3 days)
+    '1d': 14,   // 14 days
+  };
+  return lookbacks[timeframe || '15m'] || 15;
+}
+
+/**
+ * Score FVG proximity with distance scaling
+ * Returns 0-100 based on distance to nearest unfilled FVG
+ */
+function scoreFVGProximity(price: number, fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>): number {
+  if (!fvgs || fvgs.length === 0) return 0;
+
+  // Find closest unfilled FVG
+  const activeFVGs = fvgs.filter(fvg => !fvg.filled);
+  if (activeFVGs.length === 0) return 0;
+
+  // Score each FVG by proximity
+  const scores = activeFVGs.map(fvg =>
+    scoreZoneProximity(price, fvg.high, fvg.low, 5.0)
+  );
+
+  // Return best score
+  return Math.max(...scores);
+}
+
+/**
+ * Score Order Block proximity with distance scaling
+ * Returns 0-100 based on distance to nearest order block
+ */
+function scoreOrderBlockProximity(price: number, orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>): number {
+  if (!orderBlocks || orderBlocks.length === 0) return 0;
+
+  const scores = orderBlocks.map(ob =>
+    scoreZoneProximity(price, ob.high, ob.low, 3.0) // Tighter tolerance for OBs
+  );
+
+  return Math.max(...scores);
+}
+
+/**
+ * Score liquidity sweep proximity with time decay
+ * Returns 0-100 based on distance and recency
+ */
+function scoreLiquiditySweepProximity(
+  price: number,
+  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number }>,
+  currentCandleIndex?: number,
+  lookbackCandles: number = 50
+): number {
+  if (!liquidityZones || liquidityZones.length === 0 || currentCandleIndex === undefined) return 0;
+
+  // Only recently swept zones
+  const recentSwepts = liquidityZones.filter(lz =>
+    lz.swept &&
+    lz.sweptIndex !== undefined &&
+    lz.sweptIndex >= currentCandleIndex - lookbackCandles
+  );
+
+  if (recentSwepts.length === 0) return 0;
+
+  const scores = recentSwepts.map(lz => {
+    // Measure distance from the swept level
+    const distancePct = Math.abs(price - lz.price) / price * 100;
+
+    // Scale: 0% distance = 100, 5% = 0
+    if (distancePct >= 5.0) return 0;
+    const proximityScore = 100 * (1 - (distancePct / 5.0));
+
+    // Decay score by time (recent sweeps more important)
+    const candlesSinceSweep = currentCandleIndex - (lz.sweptIndex || currentCandleIndex);
+    const timeDecay = Math.max(0.5, 1 - (candlesSinceSweep / lookbackCandles));
+
+    return Math.round(proximityScore * timeDecay);
+  });
+
+  return Math.max(...scores);
+}
+
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const {
     stTrend,
@@ -504,13 +639,17 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     fvgs,
     orderBlocks,
     liquidityZones,
+    timeframe,
   } = input;
 
-  // SMC structure shift (±35) — only count breaks within last STRUCTURE_LOOKBACK_CANDLES candles
+  // Dynamic lookback based on timeframe
+  const lookbackCandles = getStructureLookbackCandles(timeframe);
+
+  // SMC structure shift (±90) — with dynamic lookback
   const recentStructureBreak = structureBreaks
     ?.filter(sb => {
       if (sb.breakIndex !== undefined && currentCandleIndex !== undefined) {
-        return sb.breakIndex >= currentCandleIndex - STRUCTURE_LOOKBACK_CANDLES;
+        return sb.breakIndex >= currentCandleIndex - lookbackCandles;
       }
       return currentTime !== undefined ? sb.breakTime <= currentTime : true;
     })
@@ -518,20 +657,6 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
   const latestStructureDirection = recentStructureBreak?.direction;
   const currentPrice = latestClose;
-  const nearbyFVG = fvgs?.find(fvg =>
-    !fvg.filled &&
-    currentPrice >= fvg.low * (1 - FVG_PROXIMITY_THRESHOLD) &&
-    currentPrice <= fvg.high * (1 + FVG_PROXIMITY_THRESHOLD)
-  );
-
-  const touchingOB = orderBlocks?.find(ob =>
-    currentPrice >= ob.low && currentPrice <= ob.high
-  );
-
-  const recentSwept = liquidityZones?.find(lz =>
-    lz.swept &&
-    Math.abs(currentPrice - lz.price) / currentPrice < LIQUIDITY_SWEEP_PROXIMITY
-  );
 
   const structureShiftScore = scoreBoolean(
     latestStructureDirection === 'bullish',
@@ -557,17 +682,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
   const superTrendScore = scoreBoolean(stTrend === 'bullish', stTrend === 'bearish', 70);
 
-  const fvgScore = nearbyFVG
-    ? (nearbyFVG.type === 'bullish' ? 85 : -85)
-    : 0;
-
-  const obScore = touchingOB
-    ? (touchingOB.type === 'bullish' ? 75 : -75)
-    : 0;
-
-  const liquidityScore = recentSwept
-    ? (recentSwept.type === 'low' ? 65 : -65)
-    : 0;
+  // Distance-scaled proximity scores (0-100)
+  const fvgScore = scoreFVGProximity(currentPrice, fvgs);
+  const obScore = scoreOrderBlockProximity(currentPrice, orderBlocks);
+  const liquidityScore = scoreLiquiditySweepProximity(
+    currentPrice,
+    liquidityZones,
+    currentCandleIndex,
+    lookbackCandles
+  );
 
   const granularConditions: GranularCondition[] = [
     {
@@ -605,19 +728,22 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       id: 'fvgProximity',
       name: 'FVG Proximity',
       score: fvgScore,
-      description: 'Price interaction with fresh fair value gaps.',
+      value: fvgScore > 0 ? `${fvgScore}/100` : undefined,
+      description: 'Distance-scaled proximity to Fair Value Gap.',
     },
     {
       id: 'orderBlockTouch',
-      name: 'Order Block Touch',
+      name: 'Order Block Proximity',
       score: obScore,
-      description: 'Price currently inside an order block.',
+      value: obScore > 0 ? `${obScore}/100` : undefined,
+      description: 'Distance-scaled proximity to Order Block.',
     },
     {
       id: 'liquiditySweep',
       name: 'Liquidity Sweep',
       score: liquidityScore,
-      description: 'Recent liquidity grab near current price.',
+      value: liquidityScore > 0 ? `${liquidityScore}/100` : undefined,
+      description: 'Distance from recent liquidity grab with time decay.',
     },
   ];
 
