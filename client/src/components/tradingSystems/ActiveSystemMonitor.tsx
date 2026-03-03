@@ -13,12 +13,15 @@ import {
   getTimeAgo,
 } from '@/lib/tradingSystemColors';
 import { cn } from '@/lib/utils';
+import { SMCDebugTable } from './SMCDebugTable';
+import type { ScoringInput } from '@/lib/tradingSystemScoring';
 
 interface ActiveSystemMonitorProps {
   systemId: TradingSystemId;
   evaluation: SystemEvaluation;
   onClose: () => void;
   onWeightsChanged?: () => void;
+  scoringInput?: Partial<ScoringInput>;
 }
 
 export function ActiveSystemMonitor({
@@ -26,6 +29,7 @@ export function ActiveSystemMonitor({
   evaluation,
   onClose,
   onWeightsChanged,
+  scoringInput,
 }: ActiveSystemMonitorProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -272,6 +276,10 @@ export function ActiveSystemMonitor({
                 ))}
               </div>
             </div>
+          )}
+
+          {systemId === 'smart-money' && scoringInput && (
+            <SMCDebugTable evaluation={evaluation} scoringInput={scoringInput} />
           )}
         </div>
       )}

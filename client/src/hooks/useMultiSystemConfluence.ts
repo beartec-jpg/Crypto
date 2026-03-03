@@ -122,6 +122,12 @@ export function useMultiSystemConfluence(
       ? longTermSlice.reduce((sum, candle) => sum + candle.close, 0) / 21
       : undefined;
 
+    const priceHistorySlice = candles.slice(Math.max(0, candles.length - 50)).map(c => c.close);
+    const rsiHistorySlice = oscillatorData.rsi.slice(Math.max(0, oscillatorData.rsi.length - 50)).map(d => d.value);
+    const macdHistorySlice = oscillatorData.macd.histogram
+      ? oscillatorData.macd.histogram.slice(Math.max(0, oscillatorData.macd.histogram.length - 50)).map(d => d.value)
+      : [];
+
     const scoringInput: ScoringInput = {
       rsi: lastRsi,
       currentPrice,
@@ -157,6 +163,9 @@ export function useMultiSystemConfluence(
       liquidityZones,
       volumeProfileData,
       autoFibResult,
+      priceHistory: priceHistorySlice,
+      rsiHistory: rsiHistorySlice,
+      macdHistHistory: macdHistorySlice,
     };
 
     const systemIds = Object.keys(TRADING_SYSTEMS) as TradingSystemId[];

@@ -670,6 +670,13 @@ export function ChartFullscreenPage({
       volumeProfileData: volumeProfileData
         ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
         : undefined,
+      priceHistory: candles.slice(Math.max(0, candles.length - 50)).map(c => (c as { close: number }).close),
+      rsiHistory: oscillatorData.rsi.slice(Math.max(0, oscillatorData.rsi.length - 50)).map(d => d.value),
+      macdHistHistory: oscillatorData.macd.histogram
+        ? oscillatorData.macd.histogram.slice(Math.max(0, oscillatorData.macd.histogram.length - 50)).map(d => d.value)
+        : [],
+      autoFibResult: autoFibResult ?? undefined,
+      swingPoints,
     });
 
     return {
@@ -683,6 +690,18 @@ export function ChartFullscreenPage({
       signalReasons: evaluatedSignal.signalReasons,
       evaluation: { ...evaluatedSignal.evaluation, timestamp: Date.now() },
       historicalSignalCount: historicalSystemSignalEvents.length,
+      scoringInput: {
+        latestClose: latestCandle.close,
+        currentCandleIndex: candles.length - 1,
+        timeframe: timeframe,
+        structureBreaks,
+        swingPoints,
+        fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
+        orderBlocks: orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+        autoFibResult: autoFibResult ?? undefined,
+        rsiHistory: oscillatorData.rsi.slice(Math.max(0, oscillatorData.rsi.length - 50)).map(d => d.value),
+        divergencePoints,
+      },
     };
   }, [
     tradingSystem.activeSystem,
@@ -699,6 +718,9 @@ export function ChartFullscreenPage({
     orderBlocks,
     liquidityZones,
     volumeProfileData,
+    autoFibResult,
+    swingPoints,
+    timeframe,
   ]);
 
   const activeSystemSummary = useMemo(() => {
@@ -1259,6 +1281,7 @@ export function ChartFullscreenPage({
             evaluation={activeSystemDetails.evaluation}
             onClose={tradingSystem.deactivateSystem}
             onWeightsChanged={() => setConditionWeightsVersion(v => v + 1)}
+            scoringInput={activeSystemDetails.scoringInput}
           />
         )}
 
