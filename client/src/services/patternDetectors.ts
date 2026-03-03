@@ -1248,7 +1248,7 @@ function scoreCVDStabilizing(recentWindow: Snapshot[]): number {
   return Math.round(Math.min(100, slope * 20));
 }
 
-function calculateWeightedScore(conditions: GranularCondition[], maxPoints: number): number {
+ function calculatePatternWeightedScore(conditions: GranularCondition[], maxPoints: number): number {
   let totalWeightedScore = 0;
 
   for (const condition of conditions) {
