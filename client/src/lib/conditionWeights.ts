@@ -123,14 +123,12 @@ function getDefaultWeights(systemId: string): Record<string, WeightLevel> {
 
   if (systemId === 'smart-money') {
     return {
-      structureShift: 1,
-      trendAlignment: 1,
-      followThrough: 1,
-      rsiMomentum: 1,
-      supertrend: 1,
+      structureShift: 2,
       fvgProximity: 1,
       orderBlockTouch: 1,
       liquiditySweep: 1,
+      divergenceConfluence: 1,
+      fibLevelConfluence: 1,
     };
   }
 
