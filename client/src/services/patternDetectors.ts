@@ -17,6 +17,16 @@ export interface PatternSignal {
   points: number;
 }
 
+export interface GranularCondition {
+  id: string;
+  name: string;
+  score: number;
+  weight: number;
+  max: number;
+  value?: string;
+  description?: string;
+}
+
 export interface PatternResult {
   score: number;
   stage: 0 | 1 | 2 | 3 | 4;
@@ -29,6 +39,7 @@ export interface PatternResult {
     orderflow: PatternSignal[];
     technical: PatternSignal[];
   };
+  granularConditions?: GranularCondition[];
 }
 
 export type PatternKey =
@@ -716,48 +727,281 @@ export function detectDistribution(
   return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Early', 'Building', 'Active', 'Confirmed'], prerequisitesMet, consistency);
 }
 
+
+function scorePriceDrop(dropPct: number, profile: PatternSensitivityProfile): number {
+  const thresholds = {
+    aggressive: { min: 3, max: 25 },
+    neutral: { min: 5, max: 35 },
+    tame: { min: 8, max: 50 },
+  }[profile];
+
+  const absDropPct = Math.abs(dropPct);
+
+  if (absDropPct < thresholds.min) return 0;
+  if (absDropPct >= thresholds.max) return 100;
+
+  const normalized = (absDropPct - thresholds.min) / (thresholds.max - thresholds.min);
+  return Math.round(normalized * 100);
+}
+
+function scoreOIFlush(oiChangePct: number, profile: PatternSensitivityProfile): number {
+  const thresholds = {
+    aggressive: { min: 2, max: 12 },
+    neutral: { min: 3, max: 15 },
+    tame: { min: 5, max: 20 },
+  }[profile];
+
+  const absChange = Math.abs(oiChangePct);
+
+  if (absChange < thresholds.min) return 0;
+  if (absChange >= thresholds.max) return 100;
+
+  const normalized = (absChange - thresholds.min) / (thresholds.max - thresholds.min);
+  return Math.round(normalized * 100);
+}
+
+function scoreCVDVelocity(recentWindow: Snapshot[]): number {
+  if (recentWindow.length === 0) return 0;
+
+  const avgDelta = recentWindow.reduce((sum, s) => sum + s.cvdDelta, 0) / recentWindow.length;
+
+  const cvdValues = recentWindow.map((s) => s.cvdDelta);
+  const slope = calculateSlope(cvdValues, Math.min(10, cvdValues.length));
+
+  if (avgDelta >= 0 || slope >= 0) return 0;
+
+  const deltaScore = Math.min(100, Math.abs(avgDelta) / 50);
+  const slopeScore = Math.min(100, Math.abs(slope) * 10);
+
+  return Math.round((deltaScore + slopeScore) / 2);
+}
+
+function scoreFundingPanic(currentFunding: number, recentWindow: Snapshot[]): number {
+  const currentScore = (() => {
+    const absFunding = Math.abs(currentFunding);
+    if (currentFunding >= -0.005) return 0;
+    if (currentFunding <= -0.025) return 100;
+
+    const normalized = (absFunding - 0.005) / (0.025 - 0.005);
+    return Math.round(normalized * 100);
+  })();
+
+  const fundingValues = recentWindow.map((s) => s.fundingRate);
+  const slope = calculateSlope(fundingValues, Math.min(6, fundingValues.length));
+
+  const velocityScore = slope < 0 ? Math.min(50, Math.abs(slope) * 1000) : 0;
+
+  return Math.round((currentScore * 0.7) + (velocityScore * 0.3));
+}
+
+function scoreVolumeSpike(currentVol: number, avgVol: number): number {
+  if (avgVol === 0) return 0;
+
+  const ratio = currentVol / avgVol;
+
+  if (ratio < 1.5) return 0;
+  if (ratio >= 5.0) return 100;
+
+  const normalized = (ratio - 1.5) / (5.0 - 1.5);
+  return Math.round(normalized * 100);
+}
+
+function scoreRSIExtreme(rsi: number): number {
+  if (rsi >= 30) return 0;
+  if (rsi <= 15) return 100;
+
+  const normalized = (30 - rsi) / (30 - 15);
+  return Math.round(normalized * 100);
+}
+
+function scoreBBBounce(currentPrice: number, bb: { lower: number; middle: number; upper: number; hasData: boolean }): number {
+  if (!bb.hasData || bb.lower === 0) return 0;
+
+  const distancePct = ((currentPrice - bb.lower) / bb.lower) * 100;
+
+  if (distancePct >= 0) return 100;
+  if (distancePct <= -5) return 0;
+  if (distancePct >= -2) return 100;
+
+  const normalized = 1 - ((Math.abs(distancePct) - 2) / (5 - 2));
+  return Math.round(normalized * 100);
+}
+
+function scoreCVDStabilizing(recentWindow: Snapshot[]): number {
+  if (recentWindow.length < 5) return 0;
+
+  const recentCVD = recentWindow.slice(-5).map((s) => s.cvdDelta);
+  const slope = calculateSlope(recentCVD, recentCVD.length);
+
+  if (slope <= 0) return 0;
+
+  return Math.round(Math.min(100, slope * 20));
+}
+
+function calculateWeightedScore(conditions: GranularCondition[], maxPoints: number): number {
+  let totalWeightedScore = 0;
+
+  for (const condition of conditions) {
+    const pointsEarned = (condition.score / 100) * condition.weight;
+    totalWeightedScore += pointsEarned;
+  }
+
+  return Math.min(maxPoints, totalWeightedScore);
+}
+
+const CONDITION_MET_THRESHOLD = 40;
+
 export function detectCapitulation(
   history: Snapshot[],
   current: Snapshot,
   profile: PatternSensitivityProfile = 'neutral'
 ): PatternResult {
-  const thresholds = getProfileThresholds(profile).capitulation;
   const series = getSeries(history, current);
-  const { prices, volumes, cvd } = values(series);
+  const recentWindow = windowByDuration(series, 24 * HOUR_MS);
+  const { prices, volumes } = values(series);
 
   const bars24h = Math.max(3, barsForDuration(series, DAY_MS));
   const start24h = prices[Math.max(0, prices.length - bars24h)] ?? current.price;
   const dropPct = toPercentChange(start24h, current.price);
 
-  const rsi = calculateRSI(toCandles(prices), 14).map((point) => point.value);
-  const bb = getLatestBollinger(prices);
+  const priceDropScore = scorePriceDrop(dropPct, profile);
+  const oiFlushScore = scoreOIFlush(current.oiChangePct, profile);
+  const cvdVelocityScore = scoreCVDVelocity(recentWindow);
+  const fundingPanicScore = scoreFundingPanic(current.fundingRate, recentWindow);
+
+  const rsi = calculateRSI(toCandles(prices), 14);
+  const latestRsi = rsi[rsi.length - 1]?.value ?? 50;
+  const rsiScore = scoreRSIExtreme(latestRsi);
+
   const volumeAverage = calculateVolumeAverage(volumes, 20);
-  const cvdSlope = calculateSlope(cvd, 5);
+  const volumeSpikeScore = scoreVolumeSpike(current.volume, volumeAverage);
 
-  const latestRsi = rsi[rsi.length - 1] ?? 50;
-  const lowerBounce = bb.hasData && current.price >= bb.lower;
-  const prerequisitesMet =
-    dropPct <= -thresholds.prereqDropMin ||
-    current.oiChangePct <= -thresholds.prereqOiFlushMin ||
-    current.fundingRate <= thresholds.prereqFundingMax;
+  const bb = getLatestBollinger(prices);
+  const bbScore = scoreBBBounce(current.price, bb);
 
-  const orderflowSignals: PatternSignal[] = [
-    { name: 'Price down >8%', met: dropPct <= -thresholds.signalDropMin, points: 20 },
-    { name: 'CVD negative', met: current.cvdDelta < 0, points: 20 },
-    { name: 'OI flush', met: current.oiChangePct <= -thresholds.signalOiFlushMin, points: 25 },
-    { name: 'Funding very negative', met: current.fundingRate < thresholds.signalFundingMax, points: 15 },
+  const cvdStabilizingScore = scoreCVDStabilizing(recentWindow);
+
+  const granularConditions: GranularCondition[] = [
+    {
+      id: 'priceDrop',
+      name: 'Price Drop Severity',
+      score: priceDropScore,
+      weight: 20,
+      max: 20,
+      value: `${dropPct.toFixed(1)}%`,
+      description: 'Magnitude of price decline in 24h',
+    },
+    {
+      id: 'oiFlush',
+      name: 'OI Flush Magnitude',
+      score: oiFlushScore,
+      weight: 25,
+      max: 25,
+      value: `${current.oiChangePct.toFixed(1)}%`,
+      description: 'Degree of leverage deleveraging',
+    },
+    {
+      id: 'cvdVelocity',
+      name: 'CVD Selling Velocity',
+      score: cvdVelocityScore,
+      weight: 20,
+      max: 20,
+      description: 'Rate and magnitude of panic selling',
+    },
+    {
+      id: 'fundingPanic',
+      name: 'Funding Panic',
+      score: fundingPanicScore,
+      weight: 15,
+      max: 15,
+      value: `${(current.fundingRate * 100).toFixed(3)}%`,
+      description: 'Funding rate extremity and velocity',
+    },
+    {
+      id: 'volumeSpike',
+      name: 'Volume Spike',
+      score: volumeSpikeScore,
+      weight: 15,
+      max: 15,
+      value: `${(current.volume / (volumeAverage || 1)).toFixed(1)}x`,
+      description: 'Volume relative to average',
+    },
+    {
+      id: 'rsiExtreme',
+      name: 'RSI Oversold',
+      score: rsiScore,
+      weight: 10,
+      max: 10,
+      value: `RSI ${latestRsi.toFixed(0)}`,
+      description: 'Momentum exhaustion level',
+    },
+    {
+      id: 'bbBounce',
+      name: 'BB Lower Bounce',
+      score: bbScore,
+      weight: 10,
+      max: 10,
+      description: 'Position relative to lower Bollinger Band',
+    },
+    {
+      id: 'cvdStabilizing',
+      name: 'CVD Stabilizing',
+      score: cvdStabilizingScore,
+      weight: 5,
+      max: 5,
+      description: 'CVD turning positive (panic ending)',
+    },
   ];
 
-  const technicalSignals: PatternSignal[] = [
-    { name: 'Volume spike 2x', met: current.volume >= volumeAverage * thresholds.volumeSpikeMinMultiplier, points: 15 },
-    { name: 'RSI <25', met: latestRsi < thresholds.rsiMax, points: 10 },
-    { name: 'BB lower bounce', met: lowerBounce, points: 10 },
-    { name: 'Stabilizing', met: cvdSlope > 0, points: 5 },
-  ];
+  const orderflowConditions = granularConditions.slice(0, 4);
+  const technicalConditions = granularConditions.slice(4);
 
-  const consistency = persistenceRatio(series, 4, (item) => item.cvdDelta < 0 || item.oiChangePct < 0);
+  const orderflowScore = calculateWeightedScore(orderflowConditions, 80);
+  const technicalScore = calculateWeightedScore(technicalConditions, 20);
+  const totalScore = orderflowScore + technicalScore;
 
-  return buildResult(orderflowSignals, technicalSignals, ['Inactive', 'Accelerating', 'Panic', 'Extreme', 'Exhaustion'], prerequisitesMet, consistency);
+  const consistency = persistenceRatio(
+    recentWindow,
+    4,
+    (item) => item.cvdDelta < 0 || item.oiChangePct < 0
+  );
+
+  let stage: 0 | 1 | 2 | 3 | 4 = 0;
+  if (totalScore >= 80 && consistency >= 0.66) stage = 4;
+  else if (totalScore >= 65 && consistency >= 0.5) stage = 3;
+  else if (totalScore >= 50 && consistency >= 0.35) stage = 2;
+  else if (totalScore >= 35) stage = 1;
+
+  const stageNames = ['Inactive', 'Accelerating', 'Panic', 'Extreme', 'Exhaustion'];
+
+  const confidence = clamp(
+    Math.round((totalScore * 0.7) + (consistency * 30)),
+    0,
+    100
+  );
+
+  return {
+    score: Math.round(totalScore),
+    stage,
+    stageName: stageNames[stage],
+    confidence,
+    prerequisitesMet: totalScore >= 35,
+    orderflowScore: Math.round(orderflowScore),
+    technicalScore: Math.round(technicalScore),
+    signals: {
+      orderflow: orderflowConditions.map((c) => ({
+        name: c.name,
+        met: c.score >= CONDITION_MET_THRESHOLD,
+        points: Math.round((c.score / 100) * c.weight),
+      })),
+      technical: technicalConditions.map((c) => ({
+        name: c.name,
+        met: c.score >= CONDITION_MET_THRESHOLD,
+        points: Math.round((c.score / 100) * c.weight),
+      })),
+    },
+    granularConditions,
+  };
 }
 
 export function detectFakeout(
