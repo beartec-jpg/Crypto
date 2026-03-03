@@ -7,6 +7,7 @@
  */
 
 import type { DivergencePoint } from '@/types/chart.types';
+import type { FibSetResult } from '@/types/autoFib';
 import type {
   SystemEvaluation,
   ScoredCondition,
@@ -210,7 +211,7 @@ export interface ScoringInput {
   /** Current candle's unix timestamp (seconds) for lookback filtering */
   currentTime?: number;
   /** Structure breaks array for time-based filtering */
-  structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>;
+  structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; type?: 'bos' | 'choch' | 'mss'; swept?: boolean; brokenLevel?: number }>;
   /** Current candle index for index-based structure break lookback */
   currentCandleIndex?: number;
   /** SMC Fair Value Gaps for Smart Money scoring */
@@ -234,6 +235,8 @@ export interface ScoringInput {
   rsiHistory?: number[];
   /** MACD histogram history for divergence detection (last 20+ candles) */
   macdHistHistory?: number[];
+  /** Auto-Fib detection result for confluence scoring */
+  autoFibResult?: { primary: FibSetResult | null; secondary: FibSetResult | null };
 }
 
 // ── 1. Trend Following Pro ────────────────────────────────────────────────────
@@ -729,6 +732,93 @@ function scoreFibLevelConfluence(
   return Math.round(Math.min(100, bestScore));
 }
 
+/**
+ * Score Auto-Fib confluence with FVG/OB zones.
+ * Returns 0-100 when price is at a key fib level that aligns with an FVG or Order Block.
+ */
+function scoreAutoFibConfluence(
+  fibResult: { primary: FibSetResult | null; secondary: FibSetResult | null } | undefined,
+  currentPrice: number,
+  fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>,
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>,
+  alignmentThreshold: number = 0.5,
+): number {
+  if (!fibResult || (!fibResult.primary && !fibResult.secondary)) {
+    return 0;
+  }
+
+  let bestScore = 0;
+
+  const allFibLevels: Array<{ price: number; isFrozen: boolean; isGolden: boolean }> = [];
+
+  if (fibResult.primary) {
+    allFibLevels.push(...fibResult.primary.levels.map(l => ({
+      price: l.price,
+      isFrozen: l.isFrozen,
+      isGolden: l.isGolden,
+    })));
+  }
+
+  if (fibResult.secondary) {
+    allFibLevels.push(...fibResult.secondary.levels.map(l => ({
+      price: l.price,
+      isFrozen: l.isFrozen,
+      isGolden: l.isGolden,
+    })));
+  }
+
+  for (const fib of allFibLevels) {
+    if (fib.isFrozen) continue;
+    if (fib.price <= 0) continue;
+
+    const distToFib = Math.abs(currentPrice - fib.price) / fib.price * 100;
+    if (distToFib > 2.0) continue;
+
+    let score = ((2.0 - distToFib) / 2.0) * 50; // Max 50 points for proximity
+
+    if (fib.isGolden) {
+      score += 10;
+    }
+
+    let hasFVGConfluence = false;
+    if (fvgs) {
+      for (const fvg of fvgs) {
+        if (fvg.filled) continue;
+        const fvgMid = (fvg.high + fvg.low) / 2;
+        const alignment = Math.abs(fib.price - fvgMid) / fib.price * 100;
+        if (alignment <= alignmentThreshold) {
+          hasFVGConfluence = true;
+          score += 25;
+          break;
+        }
+      }
+    }
+
+    let hasOBConfluence = false;
+    if (orderBlocks) {
+      for (const ob of orderBlocks) {
+        const obMid = (ob.high + ob.low) / 2;
+        const alignment = Math.abs(fib.price - obMid) / fib.price * 100;
+        if (alignment <= alignmentThreshold) {
+          hasOBConfluence = true;
+          score += 25;
+          break;
+        }
+      }
+    }
+
+    if (hasFVGConfluence && hasOBConfluence) {
+      score += 15; // Triple confluence bonus
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+    }
+  }
+
+  return Math.round(Math.min(bestScore, 100));
+}
+
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const {
     latestClose,
@@ -742,20 +832,27 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     priceHistory,
     rsiHistory,
     macdHistHistory,
+    autoFibResult,
   } = input;
 
   // Dynamic lookback based on timeframe
   const lookbackCandles = getStructureLookbackCandles(timeframe);
 
-  // SMC structure shift (±90) — with dynamic lookback
-  const recentStructureBreak = structureBreaks
-    ?.filter(sb => {
-      if (sb.breakIndex !== undefined && currentCandleIndex !== undefined) {
-        return sb.breakIndex >= currentCandleIndex - lookbackCandles;
-      }
-      return currentTime !== undefined ? sb.breakTime <= currentTime : true;
-    })
+  // Filter structure breaks within the lookback window
+  const recentBreaks = structureBreaks?.filter(sb => {
+    if (sb.breakIndex !== undefined && currentCandleIndex !== undefined) {
+      return sb.breakIndex >= currentCandleIndex - lookbackCandles;
+    }
+    return currentTime !== undefined ? sb.breakTime <= currentTime : true;
+  });
+
+  // Prefer MSS (strongest structure shift) over BOS/CHoCH
+  const activeMSS = recentBreaks
+    ?.filter(sb => sb.type === 'mss')
     .sort((a, b) => b.breakTime - a.breakTime)[0];
+
+  const recentStructureBreak = activeMSS ?? recentBreaks
+    ?.sort((a, b) => b.breakTime - a.breakTime)[0];
 
   const latestStructureDirection = recentStructureBreak?.direction;
   const currentPrice = latestClose;
@@ -793,6 +890,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     const swingLow = Math.min(...recentPrices);
     fibScore = scoreFibLevelConfluence(currentPrice, swingHigh, swingLow, fvgs, orderBlocks);
   }
+
+  // Auto-Fib confluence scoring
+  const autoFibScore = scoreAutoFibConfluence(autoFibResult, currentPrice, fvgs, orderBlocks);
 
   const granularConditions: GranularCondition[] = [
     {
@@ -835,6 +935,13 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       score: fibScore,
       value: fibScore > 0 ? `${fibScore}/100` : undefined,
       description: 'Price proximity to key Fibonacci retracement (0.382/0.5/0.618/0.786) with OB/FVG alignment bonus.',
+    },
+    {
+      id: 'autoFibConfluence',
+      name: 'Auto-Fib Confluence',
+      score: autoFibScore,
+      value: autoFibScore > 0 ? `${autoFibScore}/100` : undefined,
+      description: 'Active Auto-Fib level alignment with FVG or Order Block zones.',
     },
   ];
 

@@ -734,6 +734,7 @@ export function ChartFullscreenPage({
       ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
       : undefined,
     conditionWeightsVersion,
+    autoFibResult,
   );
 
   const totalConfluenceNowRef = useRef(totalConfluenceNow);

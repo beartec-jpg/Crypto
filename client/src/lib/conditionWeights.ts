@@ -129,6 +129,7 @@ function getDefaultWeights(systemId: string): Record<string, WeightLevel> {
       liquiditySweep: 1,
       divergenceConfluence: 1,
       fibLevelConfluence: 1,
+      autoFibConfluence: 0, // Default OFF - user can enable via weight settings
     };
   }
 
