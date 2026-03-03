@@ -1248,17 +1248,6 @@ function scoreCVDStabilizing(recentWindow: Snapshot[]): number {
   return Math.round(Math.min(100, slope * 20));
 }
 
- function calculatePatternWeightedScore(conditions: GranularCondition[], maxPoints: number): number {
-  let totalWeightedScore = 0;
-
-  for (const condition of conditions) {
-    const pointsEarned = (condition.score / 100) * condition.weight;
-    totalWeightedScore += pointsEarned;
-  }
-
-  return Math.min(maxPoints, totalWeightedScore);
-}
-
 const CONDITION_MET_THRESHOLD = 40;
 
 export function detectCapitulation(
