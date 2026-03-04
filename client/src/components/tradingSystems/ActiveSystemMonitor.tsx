@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { X, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Check, Lock, Unlock } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { type SystemEvaluation } from '@/types/systemScoring';
@@ -22,6 +22,13 @@ interface ActiveSystemMonitorProps {
   onClose: () => void;
   onWeightsChanged?: () => void;
   scoringInput?: ScoringInput;
+  onLockToViewport?: (locked: boolean) => void;
+  canLockToViewport?: boolean;
+  viewportSignals?: {
+    buySignals: Array<{ time: number; score: number; index: number }>;
+    sellSignals: Array<{ time: number; score: number; index: number }>;
+    totalCandles: number;
+  } | null;
 }
 
 export function ActiveSystemMonitor({
@@ -30,8 +37,12 @@ export function ActiveSystemMonitor({
   onClose,
   onWeightsChanged,
   scoringInput,
+  onLockToViewport,
+  canLockToViewport,
+  viewportSignals,
 }: ActiveSystemMonitorProps) {
   const [expanded, setExpanded] = useState(false);
+  const [lockedToViewport, setLockedToViewport] = useState(false);
 
   const [buyThreshold, setBuyThreshold] = useState(() => {
     const saved = localStorage.getItem(`tradingSystem_${systemId}_buyThreshold`);
@@ -53,6 +64,13 @@ export function ActiveSystemMonitor({
       setSellThreshold(newVal);
       localStorage.setItem(`tradingSystem_${systemId}_sellThreshold`, newVal.toString());
     }
+  };
+
+  const handleToggleLock = () => {
+    if (!onLockToViewport) return;
+    const newLocked = !lockedToViewport;
+    setLockedToViewport(newLocked);
+    onLockToViewport(newLocked);
   };
 
   const { position, isDragging, dragHandleProps } = useDraggable({
@@ -110,8 +128,32 @@ export function ActiveSystemMonitor({
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-base leading-none flex-shrink-0">{system.icon}</span>
           <span className="text-[11px] font-semibold text-slate-200 truncate">{system.name}</span>
+          {lockedToViewport && (
+            <span className="text-[9px] px-1 py-0.5 bg-blue-600 text-white rounded uppercase font-bold flex-shrink-0">
+              LOCKED
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          {onLockToViewport && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleToggleLock(); }}
+              className={cn(
+                'p-0.5 rounded transition-colors',
+                lockedToViewport
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'hover:bg-slate-700/60',
+              )}
+              title={lockedToViewport ? 'Unlock (return to real-time)' : 'Lock to viewport (backtest visible range)'}
+              disabled={!lockedToViewport && canLockToViewport === false}
+            >
+              {lockedToViewport
+                ? <Lock className="h-3 w-3" />
+                : <Unlock className="h-3 w-3 text-slate-400" />
+              }
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
@@ -212,6 +254,27 @@ export function ActiveSystemMonitor({
               </div>
             </div>
           </div>
+
+          {/* Viewport Backtest Stats */}
+          {lockedToViewport && viewportSignals && (
+            <div className="border-t border-slate-700/60 pt-2 space-y-1">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide">Viewport Backtest</div>
+              <div className="text-xs text-slate-300">
+                <span className="font-semibold">{viewportSignals.buySignals.length + viewportSignals.sellSignals.length}</span>
+                {' signals in '}
+                <span className="font-semibold">{viewportSignals.totalCandles}</span>
+                {' candles'}
+              </div>
+              <div className="flex gap-3 text-xs">
+                <span className="text-emerald-400">
+                  {viewportSignals.buySignals.length}↑ Buy
+                </span>
+                <span className="text-rose-400">
+                  {viewportSignals.sellSignals.length}↓ Sell
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Conditions list */}
           {conditions.length > 0 && !showWeightAdjuster && (
