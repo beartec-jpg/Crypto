@@ -73,6 +73,7 @@ import { FloatingConfluenceMonitor } from '@/components/tradingSystems/FloatingC
 import { DraggableSystemInfoBox } from '@/components/tradingSystems/DraggableSystemInfoBox';
 import { ActiveSystemMonitor } from '@/components/tradingSystems/ActiveSystemMonitor';
 import { scoreSystem, type ScoringInput } from '@/lib/tradingSystemScoring';
+import { runTradingSystemBacktest, type BacktestResult } from '@/lib/tradingSystemBacktest';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
 import { useGDSMarketMetrics } from '@/hooks/indicators/useGDSMarketMetrics';
@@ -82,6 +83,7 @@ import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
 import type { DivergencePoint, MAConfig } from '@/types/chart.types';
+import type { Candle } from '@/types/chart';
 
 interface ChartFullscreenPageProps {
   onClose: () => void;
@@ -229,6 +231,8 @@ export function ChartFullscreenPage({
       return true;
     }
   });
+
+  const [activeSystemBacktestSignals, setActiveSystemBacktestSignals] = useState<BacktestResult | null>(null);
 
   const [showGdsMiniBadge, setShowGdsMiniBadge] = useState(() => {
     try {
@@ -578,6 +582,32 @@ export function ChartFullscreenPage({
     }));
   }, [historicalSystemSignalEvents]);
 
+  const displayedSystemMarkers = useMemo(() => {
+    if (activeSystemBacktestSignals) {
+      const markers = [
+        ...activeSystemBacktestSignals.buySignals.map(s => ({
+          time: s.time as Time,
+          position: 'belowBar' as const,
+          shape: 'arrowUp' as const,
+          color: '#22c55e',
+          text: `BUY ${s.score}`,
+          size: 2,
+        })),
+        ...activeSystemBacktestSignals.sellSignals.map(s => ({
+          time: s.time as Time,
+          position: 'aboveBar' as const,
+          shape: 'arrowDown' as const,
+          color: '#ef4444',
+          text: `SELL ${s.score}`,
+          size: 2,
+        })),
+      ];
+      markers.sort((a, b) => (a.time as number) - (b.time as number));
+      return markers;
+    }
+    return historicalSystemSignalMarkers;
+  }, [activeSystemBacktestSignals, historicalSystemSignalMarkers]);
+
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
 
@@ -591,8 +621,8 @@ export function ChartFullscreenPage({
       systemSignalMarkerHostSeriesRef.current = candleSeries;
     }
 
-    systemSignalMarkersRef.current.setMarkers(historicalSystemSignalMarkers);
-  }, [tradingSystem.activeSystem, historicalSystemSignalMarkers, candleSeriesRef, chartReady]);
+    systemSignalMarkersRef.current.setMarkers(displayedSystemMarkers);
+  }, [tradingSystem.activeSystem, displayedSystemMarkers, candleSeriesRef, chartReady]);
 
   useEffect(() => {
     return () => {
@@ -601,6 +631,11 @@ export function ChartFullscreenPage({
       systemSignalMarkerHostSeriesRef.current = null;
     };
   }, []);
+
+  // Clear backtest signals when active system changes
+  useEffect(() => {
+    setActiveSystemBacktestSignals(null);
+  }, [tradingSystem.activeSystem]);
 
   const activeSystemDetails = useMemo(() => {
     if (!tradingSystem.activeSystem || candles.length < 2) return null;
@@ -735,6 +770,55 @@ export function ChartFullscreenPage({
       lookbackCandles: Math.min(400, Math.max(0, candles.length - 1)),
     };
   }, [tradingSystem.activeSystem, historicalSystemSignalEvents, candles.length]);
+
+  const handleSystemLockToViewport = useCallback((locked: boolean) => {
+    if (!locked) {
+      setActiveSystemBacktestSignals(null);
+      return;
+    }
+    if (!tradingSystem.activeSystem || !chartRef.current || candles.length < 2) return;
+
+    const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
+    if (!visibleRange) return;
+
+    const startIdx = Math.max(1, Math.floor(visibleRange.from));
+    const endIdx = Math.min(candles.length - 1, Math.ceil(visibleRange.to));
+
+    const signals = runTradingSystemBacktest({
+      systemId: tradingSystem.activeSystem,
+      candles: candles as Candle[],
+      startIdx,
+      endIdx,
+      oscillatorData,
+      superTrendStandard: superTrendData.standard,
+      structureBreaks,
+      sqzData,
+      htfBiasEntries,
+      divergencePoints,
+      fvgs,
+      orderBlocks,
+      liquidityZones,
+      volumeProfileData,
+      swingPoints,
+    });
+
+    setActiveSystemBacktestSignals(signals);
+  }, [
+    tradingSystem.activeSystem,
+    chartRef,
+    candles,
+    oscillatorData,
+    superTrendData.standard,
+    structureBreaks,
+    sqzData,
+    htfBiasEntries,
+    divergencePoints,
+    fvgs,
+    orderBlocks,
+    liquidityZones,
+    volumeProfileData,
+    swingPoints,
+  ]);
 
   const totalConfluenceNow = useMultiSystemConfluence(
     candles,
@@ -1280,6 +1364,9 @@ export function ChartFullscreenPage({
             structureBreaks={structureBreaks}
             visibleRange={autoFibVisibleRange ?? undefined}
             historicalSignalEvents={historicalSystemSignalEvents}
+            onLockToViewport={handleSystemLockToViewport}
+            canLockToViewport={candles.length >= 2}
+            viewportSignals={activeSystemBacktestSignals}
           />
         )}
 
