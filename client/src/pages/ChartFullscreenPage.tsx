@@ -1277,6 +1277,9 @@ export function ChartFullscreenPage({
             onClose={tradingSystem.deactivateSystem}
             onWeightsChanged={() => setConditionWeightsVersion(v => v + 1)}
             scoringInput={activeSystemDetails.scoringInput}
+            structureBreaks={structureBreaks}
+            visibleRange={autoFibVisibleRange ?? undefined}
+            historicalSignalEvents={historicalSystemSignalEvents}
           />
         )}
 
