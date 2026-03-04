@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { X, ChevronDown, ChevronUp, Check, Lock, Unlock, Loader2 } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Check, Lock, Unlock, AlertTriangle, ArrowRightLeft } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import type { OpportunityZone } from '@/lib/confluenceAnalysis';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
@@ -16,6 +16,8 @@ import {
 } from '@/lib/tradingSystemColors';
 import { cn } from '@/lib/utils';
 import { SMCDebugTable } from './SMCDebugTable';
+import { analyzeTrendState, detectTrendReversal } from '@/lib/tradingSystemBacktest';
+import type { StructureBreak } from '@/types/structureBreak';
 
 interface ActiveSystemMonitorProps {
   systemId: TradingSystemId;
@@ -23,6 +25,12 @@ interface ActiveSystemMonitorProps {
   onClose: () => void;
   onWeightsChanged?: () => void;
   scoringInput?: ScoringInput;
+  /** All detected structure breaks – used for trend analysis */
+  structureBreaks?: StructureBreak[];
+  /** Visible chart time range (seconds) – when provided, enables viewport locking */
+  visibleRange?: { from: number; to: number };
+  /** Historical signal events for the viewport backtest stats */
+  historicalSignalEvents?: Array<{ time: number; action: 'OPEN LONG' | 'OPEN SHORT' }>;
   onLockToViewport?: (locked: boolean) => void;
   canLockToViewport?: boolean;
   viewportSignals?: {
@@ -43,6 +51,9 @@ export function ActiveSystemMonitor({
   onClose,
   onWeightsChanged,
   scoringInput,
+  structureBreaks,
+  visibleRange,
+  historicalSignalEvents,
   onLockToViewport,
   canLockToViewport,
   viewportSignals,
@@ -115,7 +126,37 @@ export function ActiveSystemMonitor({
     [conditions],
   );
 
+  // Trend analysis: computed from structure breaks, optionally filtered to visible viewport
+  const trendAnalysis = useMemo(() => {
+    if (!structureBreaks || structureBreaks.length === 0) return null;
+    const startTime = lockedToViewport && visibleRange ? visibleRange.from : undefined;
+    const endTime = lockedToViewport && visibleRange ? visibleRange.to : undefined;
+    const trendState = analyzeTrendState(structureBreaks, startTime, endTime);
+    const reversalInfo = detectTrendReversal(trendState);
+    return { trendState, reversalInfo };
+  }, [structureBreaks, lockedToViewport, visibleRange]);
+
+  // Viewport backtest signal stats
+  const viewportSignals = useMemo(() => {
+    if (!historicalSignalEvents) return null;
+    const events =
+      lockedToViewport && visibleRange
+        ? historicalSignalEvents.filter(
+            e => e.time >= visibleRange.from && e.time <= visibleRange.to,
+          )
+        : historicalSignalEvents;
+    const buySignals = events.filter(e => e.action === 'OPEN LONG').length;
+    const sellSignals = events.filter(e => e.action === 'OPEN SHORT').length;
+    return { buySignals, sellSignals, total: events.length };
+  }, [historicalSignalEvents, lockedToViewport, visibleRange]);
+
   const showWeightAdjuster = weightedConditions.length > 0;
+
+  const handleToggleViewportLock = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    setLockedToViewport(v => !v);
+    if (!expanded) setExpanded(true);
+  };
 
   return (
     <div
@@ -146,6 +187,21 @@ export function ActiveSystemMonitor({
           )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          {structureBreaks && structureBreaks.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleViewportLock}
+              className={cn(
+                'p-0.5 rounded transition-colors',
+                lockedToViewport
+                  ? 'bg-blue-600/30 hover:bg-blue-600/50 text-blue-400'
+                  : 'hover:bg-slate-700/60 text-slate-400',
+              )}
+              title={lockedToViewport ? 'Unlock from viewport' : 'Lock to viewport – show trend analysis'}
+            >
+              {lockedToViewport
+                ? <Lock className="h-3 w-3" />
+                : <Unlock className="h-3 w-3" />
           {onLockToViewport && (
             <button
               type="button"
@@ -266,6 +322,93 @@ export function ActiveSystemMonitor({
             </div>
           </div>
 
+          {/* Trend Analysis (shown when locked to viewport and structure breaks available) */}
+          {lockedToViewport && trendAnalysis && (
+            <div className="border-t border-slate-700/60 pt-2 space-y-1">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide">
+                Trend Analysis
+                {visibleRange ? (
+                  <span className="ml-1 text-blue-400">(viewport)</span>
+                ) : null}
+              </div>
+
+              {/* MSS / BOS counts */}
+              <div className="text-xs text-slate-300 space-y-0.5">
+                <div>
+                  MSS:{' '}
+                  <span className="text-emerald-400">{trendAnalysis.trendState.mssCount.bullish}↑</span>
+                  {' '}
+                  <span className="text-rose-400">{trendAnalysis.trendState.mssCount.bearish}↓</span>
+                </div>
+                <div>
+                  BOS:{' '}
+                  <span className="text-emerald-400">{trendAnalysis.trendState.bosCount.bullish}↑</span>
+                  {' '}
+                  <span className="text-rose-400">{trendAnalysis.trendState.bosCount.bearish}↓</span>
+                </div>
+              </div>
+
+              {/* Trend status badge (only when no reversal) */}
+              {trendAnalysis.trendState.current === 'bullish' && trendAnalysis.reversalInfo.status === 'neutral' && (
+                <div className="flex items-center gap-1 text-xs font-semibold text-emerald-400 mt-1">
+                  <Check className="w-3 h-3" />
+                  CONFIRMED BULLISH TREND
+                </div>
+              )}
+              {trendAnalysis.trendState.current === 'bearish' && trendAnalysis.reversalInfo.status === 'neutral' && (
+                <div className="flex items-center gap-1 text-xs font-semibold text-rose-400 mt-1">
+                  <Check className="w-3 h-3" />
+                  CONFIRMED BEARISH TREND
+                </div>
+              )}
+              {trendAnalysis.trendState.current === 'neutral' && (
+                <div className="text-xs text-slate-500 mt-1">No confirmed trend yet</div>
+              )}
+
+              {/* Reversal warning */}
+              {trendAnalysis.reversalInfo.status === 'warning' && (
+                <div className="mt-2 p-2 bg-orange-900/20 border border-orange-600/30 rounded">
+                  <div className="flex items-center gap-1 text-xs font-bold text-orange-400 mb-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    TREND REVERSAL WARNING
+                  </div>
+                  <div className="text-[10px] text-orange-300 whitespace-pre-line">
+                    {trendAnalysis.reversalInfo.message.replace(/^⚠️ TREND REVERSAL WARNING\n/, '')}
+                  </div>
+                </div>
+              )}
+
+              {/* Confirmed reversal */}
+              {trendAnalysis.reversalInfo.status === 'confirmed' && (
+                <div className="mt-2 p-2 bg-red-900/20 border border-red-600/30 rounded">
+                  <div className="flex items-center gap-1 text-xs font-bold text-red-400 mb-1">
+                    <ArrowRightLeft className="w-3 h-3" />
+                    TREND REVERSED
+                  </div>
+                  <div className="text-[10px] text-red-300 whitespace-pre-line">
+                    {trendAnalysis.reversalInfo.message.replace(/^🔄 TREND REVERSED\n/, '')}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Viewport Backtest signal stats */}
+          {lockedToViewport && viewportSignals && (
+            <div className="border-t border-slate-700/60 pt-2 space-y-1">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide">
+                Viewport Backtest
+                {trendAnalysis && trendAnalysis.reversalInfo.status !== 'neutral' && (
+                  <span className="ml-1 text-orange-400">(Reversal-Adjusted)</span>
+                )}
+              </div>
+              <div className="flex gap-3 text-xs">
+                <span className="text-emerald-400">{viewportSignals.buySignals}↑ Buy</span>
+                <span className="text-rose-400">{viewportSignals.sellSignals}↓ Sell</span>
+                <span className="text-slate-500">{viewportSignals.total} total</span>
+              </div>
+            </div>
+          )}
           {/* Viewport Backtest Stats */}
           {lockedToViewport && viewportSignals && (
             <div className="border-t border-slate-700/60 pt-2 space-y-1">
