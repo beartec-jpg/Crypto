@@ -79,6 +79,8 @@ import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
 import { useGDSMarketMetrics } from '@/hooks/indicators/useGDSMarketMetrics';
 import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore';
 import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
+import { findMaximumOpportunityZones, type OpportunityZone } from '@/lib/confluenceAnalysis';
+import type { IPriceLine } from 'lightweight-charts';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -233,6 +235,10 @@ export function ChartFullscreenPage({
   });
 
   const [activeSystemBacktestSignals, setActiveSystemBacktestSignals] = useState<BacktestResult | null>(null);
+
+  const [maxOpportunityZones, setMaxOpportunityZones] = useState<OpportunityZone[]>([]);
+  const [isAnalyzingOpportunities, setIsAnalyzingOpportunities] = useState(false);
+  const opportunityPriceLinesRef = useRef<IPriceLine[]>([]);
 
   const [showGdsMiniBadge, setShowGdsMiniBadge] = useState(() => {
     try {
@@ -774,6 +780,12 @@ export function ChartFullscreenPage({
   const handleSystemLockToViewport = useCallback((locked: boolean) => {
     if (!locked) {
       setActiveSystemBacktestSignals(null);
+      setMaxOpportunityZones([]);
+      // Clear opportunity price lines directly
+      opportunityPriceLinesRef.current.forEach(line => {
+        try { candleSeriesRef.current?.removePriceLine(line); } catch { /* removePriceLine may throw if chart is disposed */ }
+      });
+      opportunityPriceLinesRef.current = [];
       return;
     }
     if (!tradingSystem.activeSystem || !chartRef.current || candles.length < 2) return;
@@ -818,7 +830,97 @@ export function ChartFullscreenPage({
     liquidityZones,
     volumeProfileData,
     swingPoints,
+    candleSeriesRef,
   ]);
+
+  const clearOpportunityPriceLines = useCallback(() => {
+    if (!candleSeriesRef.current) return;
+    opportunityPriceLinesRef.current.forEach(line => {
+      try { candleSeriesRef.current?.removePriceLine(line); } catch { /* removePriceLine may throw if chart is disposed */ }
+    });
+    opportunityPriceLinesRef.current = [];
+  }, [candleSeriesRef]);
+
+  const handleFindMaxOpportunity = useCallback(() => {
+    if (!chartRef.current || candles.length < 2) return;
+    const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
+    if (!visibleRange) return;
+
+    const startIdx = Math.max(0, Math.floor(visibleRange.from));
+    const endIdx = Math.min(candles.length - 1, Math.ceil(visibleRange.to));
+
+    // Determine overall HTF bias from highest timeframe with a definitive signal
+    const dominantBias: 'bullish' | 'bearish' | 'neutral' =
+      htfBiasEntries.find(e => !e.isLoading && e.bias !== 'neutral')?.bias ?? 'neutral';
+
+    setIsAnalyzingOpportunities(true);
+    // Defer to next animation frame so the loading state renders before heavy computation
+    requestAnimationFrame(() => {
+      const zones = findMaximumOpportunityZones(
+        candles as Candle[],
+        startIdx,
+        endIdx,
+        autoFibResult,
+        fvgs,
+        orderBlocks,
+        structureBreaks,
+        liquidityZones,
+        volumeProfileData,
+        dominantBias,
+      );
+      setMaxOpportunityZones(zones);
+      setIsAnalyzingOpportunities(false);
+
+      // Render price lines on chart
+      clearOpportunityPriceLines();
+      if (candleSeriesRef.current) {
+        const lines: IPriceLine[] = [];
+        zones.slice(0, 3).forEach((zone, idx) => {
+          const color =
+            zone.strength === 'extreme' ? '#a855f7' :
+            zone.strength === 'high' ? '#3b82f6' :
+            zone.strength === 'moderate' ? '#06b6d4' :
+            '#64748b';
+          const line = candleSeriesRef.current!.createPriceLine({
+            price: zone.priceLevel,
+            color,
+            lineWidth: zone.strength === 'extreme' ? 3 : 2,
+            lineStyle: 0,
+            axisLabelVisible: true,
+            title: `Zone #${idx + 1} (${zone.confluenceScore} pts)`,
+          });
+          lines.push(line);
+        });
+        opportunityPriceLinesRef.current = lines;
+      }
+    });
+  }, [
+    chartRef,
+    candles,
+    autoFibResult,
+    fvgs,
+    orderBlocks,
+    structureBreaks,
+    liquidityZones,
+    volumeProfileData,
+    htfBiasEntries,
+    clearOpportunityPriceLines,
+    candleSeriesRef,
+  ]);
+
+  const handleClearOpportunityZones = useCallback(() => {
+    setMaxOpportunityZones([]);
+    clearOpportunityPriceLines();
+  }, [clearOpportunityPriceLines]);
+
+  const handleJumpToZone = useCallback((candleIndex: number) => {
+    if (!chartRef.current) return;
+    const halfWindow = 50;
+    chartRef.current.timeScale().setVisibleLogicalRange({
+      from: candleIndex - halfWindow,
+      to: candleIndex + halfWindow,
+    });
+  }, [chartRef]);
 
   const totalConfluenceNow = useMultiSystemConfluence(
     candles,
@@ -1367,6 +1469,11 @@ export function ChartFullscreenPage({
             onLockToViewport={handleSystemLockToViewport}
             canLockToViewport={candles.length >= 2}
             viewportSignals={activeSystemBacktestSignals}
+            onFindMaxOpportunity={handleFindMaxOpportunity}
+            isAnalyzingOpportunities={isAnalyzingOpportunities}
+            maxOpportunityZones={maxOpportunityZones}
+            onClearOpportunityZones={handleClearOpportunityZones}
+            onJumpToZone={handleJumpToZone}
           />
         )}
 

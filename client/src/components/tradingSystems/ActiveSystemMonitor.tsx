@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { X, ChevronDown, ChevronUp, Check, Lock, Unlock, AlertTriangle, ArrowRightLeft } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
+import type { OpportunityZone } from '@/lib/confluenceAnalysis';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { type SystemEvaluation } from '@/types/systemScoring';
 import { type ScoringInput } from '@/lib/tradingSystemScoring';
@@ -37,6 +38,11 @@ interface ActiveSystemMonitorProps {
     sellSignals: Array<{ time: number; score: number; index: number }>;
     totalCandles: number;
   } | null;
+  onFindMaxOpportunity?: () => void;
+  isAnalyzingOpportunities?: boolean;
+  maxOpportunityZones?: OpportunityZone[];
+  onClearOpportunityZones?: () => void;
+  onJumpToZone?: (candleIndex: number) => void;
 }
 
 export function ActiveSystemMonitor({
@@ -51,6 +57,11 @@ export function ActiveSystemMonitor({
   onLockToViewport,
   canLockToViewport,
   viewportSignals,
+  onFindMaxOpportunity,
+  isAnalyzingOpportunities,
+  maxOpportunityZones,
+  onClearOpportunityZones,
+  onJumpToZone,
 }: ActiveSystemMonitorProps) {
   const [expanded, setExpanded] = useState(false);
   const [lockedToViewport, setLockedToViewport] = useState(false);
@@ -416,6 +427,111 @@ export function ActiveSystemMonitor({
                   {viewportSignals.sellSignals.length}↓ Sell
                 </span>
               </div>
+            </div>
+          )}
+
+          {/* Find Max Opportunity button */}
+          {lockedToViewport && onFindMaxOpportunity && (
+            <div className="border-t border-slate-700/60 pt-2">
+              <button
+                type="button"
+                onClick={onFindMaxOpportunity}
+                disabled={isAnalyzingOpportunities}
+                className={cn(
+                  'w-full py-2 px-3 rounded text-xs font-semibold transition-all',
+                  isAnalyzingOpportunities
+                    ? 'bg-blue-600/50 text-blue-200 cursor-wait'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white',
+                )}
+              >
+                {isAnalyzingOpportunities ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Analyzing Confluence...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    🎯 Find Max Opportunity Zones
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Maximum Opportunity Zones list */}
+          {maxOpportunityZones && maxOpportunityZones.length > 0 && (
+            <div className="border-t border-slate-700/60 pt-2 mt-2 space-y-2">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide flex items-center justify-between">
+                <span>Maximum Opportunity Zones</span>
+                {onClearOpportunityZones && (
+                  <button
+                    type="button"
+                    onClick={onClearOpportunityZones}
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {maxOpportunityZones.slice(0, 3).map((zone, idx) => (
+                <div
+                  key={idx}
+                  className={cn(
+                    'p-2 rounded border',
+                    zone.strength === 'extreme' && 'bg-purple-900/20 border-purple-500/50',
+                    zone.strength === 'high' && 'bg-blue-900/20 border-blue-500/50',
+                    zone.strength === 'moderate' && 'bg-cyan-900/20 border-cyan-500/50',
+                    zone.strength === 'low' && 'bg-slate-800/40 border-slate-600/50',
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-bold text-white">#{idx + 1} Zone</span>
+                      <span className={cn(
+                        'text-[9px] px-1 py-0.5 rounded uppercase font-bold',
+                        zone.strength === 'extreme' && 'bg-purple-600 text-white',
+                        zone.strength === 'high' && 'bg-blue-600 text-white',
+                        zone.strength === 'moderate' && 'bg-cyan-600 text-white',
+                        zone.strength === 'low' && 'bg-slate-600 text-white',
+                      )}>
+                        {zone.strength}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono text-white">
+                      ${zone.priceLevel.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="text-[10px] text-slate-300 mb-1">{zone.description}</div>
+
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {zone.factors.slice(0, 4).map((factor, fidx) => (
+                      <span
+                        key={fidx}
+                        className="text-[9px] px-1 py-0.5 rounded bg-slate-700/50 text-slate-300"
+                      >
+                        {factor.label}
+                      </span>
+                    ))}
+                    {zone.factors.length > 4 && (
+                      <span className="text-[9px] text-slate-500">
+                        +{zone.factors.length - 4} more
+                      </span>
+                    )}
+                  </div>
+
+                  {onJumpToZone && (
+                    <button
+                      type="button"
+                      onClick={() => onJumpToZone(zone.candleIndex)}
+                      className="mt-2 w-full py-1 px-2 bg-slate-700 hover:bg-slate-600 rounded text-[10px] text-slate-200 transition-colors"
+                    >
+                      Jump to Zone →
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
