@@ -136,20 +136,6 @@ export function ActiveSystemMonitor({
     return { trendState, reversalInfo };
   }, [structureBreaks, lockedToViewport, visibleRange]);
 
-  // Viewport backtest signal stats
-  const viewportSignals = useMemo(() => {
-    if (!historicalSignalEvents) return null;
-    const events =
-      lockedToViewport && visibleRange
-        ? historicalSignalEvents.filter(
-            e => e.time >= visibleRange.from && e.time <= visibleRange.to,
-          )
-        : historicalSignalEvents;
-    const buySignals = events.filter(e => e.action === 'OPEN LONG').length;
-    const sellSignals = events.filter(e => e.action === 'OPEN SHORT').length;
-    return { buySignals, sellSignals, total: events.length };
-  }, [historicalSignalEvents, lockedToViewport, visibleRange]);
-
   const showWeightAdjuster = weightedConditions.length > 0;
 
   const handleToggleViewportLock = (e: { stopPropagation: () => void }) => {
@@ -187,21 +173,6 @@ export function ActiveSystemMonitor({
           )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          {structureBreaks && structureBreaks.length > 0 && (
-            <button
-              type="button"
-              onClick={handleToggleViewportLock}
-              className={cn(
-                'p-0.5 rounded transition-colors',
-                lockedToViewport
-                  ? 'bg-blue-600/30 hover:bg-blue-600/50 text-blue-400'
-                  : 'hover:bg-slate-700/60 text-slate-400',
-              )}
-              title={lockedToViewport ? 'Unlock from viewport' : 'Lock to viewport – show trend analysis'}
-            >
-              {lockedToViewport
-                ? <Lock className="h-3 w-3" />
-                : <Unlock className="h-3 w-3" />
           {onLockToViewport && (
             <button
               type="button"
@@ -393,22 +364,6 @@ export function ActiveSystemMonitor({
             </div>
           )}
 
-          {/* Viewport Backtest signal stats */}
-          {lockedToViewport && viewportSignals && (
-            <div className="border-t border-slate-700/60 pt-2 space-y-1">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wide">
-                Viewport Backtest
-                {trendAnalysis && trendAnalysis.reversalInfo.status !== 'neutral' && (
-                  <span className="ml-1 text-orange-400">(Reversal-Adjusted)</span>
-                )}
-              </div>
-              <div className="flex gap-3 text-xs">
-                <span className="text-emerald-400">{viewportSignals.buySignals}↑ Buy</span>
-                <span className="text-rose-400">{viewportSignals.sellSignals}↓ Sell</span>
-                <span className="text-slate-500">{viewportSignals.total} total</span>
-              </div>
-            </div>
-          )}
           {/* Viewport Backtest Stats */}
           {lockedToViewport && viewportSignals && (
             <div className="border-t border-slate-700/60 pt-2 space-y-1">
