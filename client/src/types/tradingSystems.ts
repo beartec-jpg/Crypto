@@ -170,6 +170,7 @@ export const TRADING_SYSTEMS: Record<TradingSystemId, TradingSystem> = {
         bos: { enabled: true },
         liquidity: { enabled: true },
         pdZones: { enabled: true },
+        autoFib: { enabled: true },
       },
     },
     alerts: {

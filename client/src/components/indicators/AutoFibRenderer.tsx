@@ -14,7 +14,7 @@ interface AutoFibRendererProps {
 export function AutoFibRenderer({ chart, candleSeries, result, settings, weight = 0 }: AutoFibRendererProps) {
   const primitiveRef = useRef<AutoFibPrimitive | null>(null);
 
-  const shouldShow = settings.enabled || weight > 0;
+  const shouldShow = settings.enabled;
 
   // Create/destroy primitive when chart or series changes, or when visibility toggles
   useEffect(() => {
