@@ -879,9 +879,29 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
   const latestStructureDirection = recentStructureBreak?.direction;
 
-  const structureShiftScore =
-    latestStructureDirection === 'bullish' ? 90 :
-    latestStructureDirection === 'bearish' ? -90 : 0;
+  // Prior trend from most recent BOS/CHoCH (non-MSS), used to evaluate MSS direction
+  const priorTrendBreak = structureBreaks
+    ?.filter(sb => sb.type !== 'mss')
+    .sort((a, b) => b.breakTime - a.breakTime)[0];
+  const priorTrend = priorTrendBreak?.direction;
+
+  // Score MSS direction relative to prior trend:
+  //   - MSS confirming prior trend:  ±90 (strong continuation)
+  //   - MSS counter to prior trend:  ∓60 (reversal warning)
+  //   - No active MSS: fall back to BOS/CHoCH direction score (±90)
+  let structureShiftScore: number;
+  if (activeMSS) {
+    const mssDir = activeMSS.direction;
+    if (!priorTrend || mssDir === priorTrend) {
+      structureShiftScore = mssDir === 'bullish' ? 90 : -90;
+    } else {
+      structureShiftScore = mssDir === 'bullish' ? 60 : -60;
+    }
+  } else {
+    structureShiftScore =
+      latestStructureDirection === 'bullish' ? 90 :
+      latestStructureDirection === 'bearish' ? -90 : 0;
+  }
 
   // Distance-scaled proximity scores (0-100)
   const fvgScore = scoreFVGProximity(currentPrice, fvgs);
