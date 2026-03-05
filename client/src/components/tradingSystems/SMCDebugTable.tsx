@@ -153,20 +153,31 @@ function getFVGDetails(input: ScoringInput) {
 
   const nearest = activeFVGs
     .map(fvg => {
-      const mid = (fvg.high + fvg.low) / 2;
-      const dist = Math.abs(currentPrice - mid);
-      const distPct = currentPrice > 0 ? (dist / currentPrice) * 100 : 0;
-      return { fvg, mid, dist, distPct };
+      let dist: number;
+      let distPct: number;
+      let isInside: boolean;
+
+      if (currentPrice >= fvg.low && currentPrice <= fvg.high) {
+        dist = 0;
+        distPct = 0;
+        isInside = true;
+      } else {
+        const distanceFromTop = currentPrice > fvg.high ? currentPrice - fvg.high : 0;
+        const distanceFromBottom = currentPrice < fvg.low ? fvg.low - currentPrice : 0;
+        dist = Math.max(distanceFromTop, distanceFromBottom);
+        distPct = currentPrice > 0 ? (dist / currentPrice) * 100 : 0;
+        isInside = false;
+      }
+
+      return { fvg, dist, distPct, isInside };
     })
     .sort((a, b) => a.dist - b.dist)[0];
-
-  const isInside = currentPrice >= nearest.fvg.low && currentPrice <= nearest.fvg.high;
 
   return (
     <>
       <div>├─ Nearest: {nearest.fvg.type === 'bullish' ? 'Bullish' : 'Bearish'} FVG</div>
       <div>├─ FVG Range: {nearest.fvg.low.toFixed(4)} - {nearest.fvg.high.toFixed(4)}</div>
-      <div>├─ Distance: {isInside ? '0.00% (INSIDE ZONE)' : `${nearest.distPct.toFixed(2)}% (${nearest.dist.toFixed(4)} USDT)`}</div>
+      <div>├─ Distance: {nearest.isInside ? '0.00% (INSIDE ZONE)' : `${nearest.distPct.toFixed(2)}% (${nearest.dist.toFixed(4)} USDT)`}</div>
       <div>├─ Status: ✅ UNFILLED</div>
       <div>└─ Total Active: {activeFVGs.length} FVGs</div>
     </>
@@ -183,20 +194,31 @@ function getOrderBlockDetails(input: ScoringInput) {
 
   const nearest = activeOBs
     .map(ob => {
-      const mid = (ob.high + ob.low) / 2;
-      const dist = Math.abs(currentPrice - mid);
-      const distPct = currentPrice > 0 ? (dist / currentPrice) * 100 : 0;
-      return { ob, mid, dist, distPct };
+      let dist: number;
+      let distPct: number;
+      let isInside: boolean;
+
+      if (currentPrice >= ob.low && currentPrice <= ob.high) {
+        dist = 0;
+        distPct = 0;
+        isInside = true;
+      } else {
+        const distanceFromTop = currentPrice > ob.high ? currentPrice - ob.high : 0;
+        const distanceFromBottom = currentPrice < ob.low ? ob.low - currentPrice : 0;
+        dist = Math.max(distanceFromTop, distanceFromBottom);
+        distPct = currentPrice > 0 ? (dist / currentPrice) * 100 : 0;
+        isInside = false;
+      }
+
+      return { ob, dist, distPct, isInside };
     })
     .sort((a, b) => a.dist - b.dist)[0];
-
-  const isInside = currentPrice >= nearest.ob.low && currentPrice <= nearest.ob.high;
 
   return (
     <>
       <div>├─ Nearest: {nearest.ob.type === 'bullish' ? 'Bullish' : 'Bearish'} OB</div>
       <div>├─ OB Range: {nearest.ob.low.toFixed(4)} - {nearest.ob.high.toFixed(4)}</div>
-      <div>├─ Distance: {isInside ? '0.00% (INSIDE ZONE)' : `${nearest.distPct.toFixed(2)}% (${nearest.dist.toFixed(4)} USDT)`}</div>
+      <div>├─ Distance: {nearest.isInside ? '0.00% (INSIDE ZONE)' : `${nearest.distPct.toFixed(2)}% (${nearest.dist.toFixed(4)} USDT)`}</div>
       <div>├─ Status: ✅ ACTIVE</div>
       <div>└─ Total: {activeOBs.length} OBs</div>
     </>
