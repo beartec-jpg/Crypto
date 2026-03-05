@@ -81,7 +81,6 @@ import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore'
 import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
 import { findMaximumOpportunityZones, type OpportunityZone } from '@/lib/confluenceAnalysis';
 import type { IPriceLine } from 'lightweight-charts';
-import { FVGOnlySection } from '@/components/tradingSystems/SMCDebugTable';
 import { RewindControls } from '@/components/chart/RewindControls';
 
 // Types and constants
@@ -253,9 +252,6 @@ export function ChartFullscreenPage({
       return true;
     }
   });
-
-  // FVG-Only mode: strip all indicators except FVG and show nearest FVG info panel
-  const [fvgOnlyMode, setFvgOnlyMode] = useState(false);
 
   // Rewind: null = live, number = candle index to rewind to
   // Rewind state - null means LIVE
@@ -1519,8 +1515,6 @@ export function ChartFullscreenPage({
           onDeactivateSystem={tradingSystem.deactivateSystem}
           confluenceSnapshot={confluenceSnapshot}
           onToggleFloatingMonitor={() => setShowFloatingConfluence((v: boolean) => !v)}
-          fvgOnlyMode={fvgOnlyMode}
-          onToggleFvgOnlyMode={() => setFvgOnlyMode(v => !v)}
         />
 
         <FloatingConfluenceMonitor
@@ -1632,58 +1626,7 @@ export function ChartFullscreenPage({
           squeezeSettings={sqzSettings.settings}
           onSqueezeSettingsChange={sqzSettings.updateSettings}
           onResetSqueezeSettings={sqzSettings.resetSettings}
-          fvgOnlyMode={fvgOnlyMode}
         />
-
-        {/* FVG-Only mode info panel */}
-        {fvgOnlyMode && effectiveCandles.length > 0 && (
-          <div className="absolute bottom-4 right-4 z-50 bg-slate-900/95 border border-slate-700 rounded-lg shadow-xl backdrop-blur-sm">
-            <FVGOnlySection
-              currentPrice={effectiveCandles[effectiveCandles.length - 1].close}
-              fvgs={fvgs.map(fvg => ({
-                lower: fvg.bottom,
-                upper: fvg.top,
-                type: fvg.type,
-                filled: fvg.mitigated,
-              }))}
-            />
-          </div>
-        )}
-
-        {/* Rewind controls – shown when FVG-Only mode is active */}
-        {fvgOnlyMode && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 bg-slate-900/95 border border-slate-700 rounded-lg px-2 py-1.5 shadow-xl backdrop-blur-sm">
-            <button
-              onClick={handleStepBack}
-              disabled={rewindPosition !== null && rewindPosition <= MIN_REWIND_POSITION}
-              className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
-              title="Step back one candle"
-              data-testid="btn-rewind-back"
-            >
-              ◀ -1
-            </button>
-            <button
-              onClick={handleStepForward}
-              disabled={rewindPosition === null}
-              className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
-              title="Step forward one candle"
-              data-testid="btn-rewind-forward"
-            >
-              +1 ▶
-            </button>
-            <button
-              onClick={handleGoLive}
-              disabled={rewindPosition === null}
-              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
-              title="Return to live"
-              data-testid="btn-rewind-live"
-            >
-              {rewindPosition !== null
-                ? `Candle ${rewindPosition} / ${candles.length} — Go Live`
-                : 'Live'}
-            </button>
-          </div>
-        )}
 
         {/* Drawing Renderer */}
         <DrawingRenderer
