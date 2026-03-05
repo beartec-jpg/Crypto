@@ -14,6 +14,7 @@ import type {
   SignalLabel,
 } from '@/types/systemScoring';
 import type { LiquidityZone } from '@/types/liquidity';
+import type { SMTDivergenceResult } from '@/lib/smc/smtDivergence';
 import {
   scoreRSI,
   scoreDistanceFromLevel,
@@ -247,6 +248,8 @@ export interface ScoringInput {
   macdHistHistory?: number[];
   /** Auto-Fib detection result for confluence scoring */
   autoFibResult?: { primary: FibSetResult | null; secondary: FibSetResult | null };
+  /** SMT divergence detection result for multi-asset analysis */
+  smtDivergence?: SMTDivergenceResult;
 }
 
 // ── 1. Trend Following Pro ────────────────────────────────────────────────────
@@ -855,6 +858,29 @@ function scoreAutoFibConfluence(
 }
 
 /**
+ * Score SMT divergence confluence with FVG/OB zones and structure.
+ * Returns -100 to 100: positive for bullish SMT, negative for bearish SMT.
+ * 
+ * @param smtDivergence - SMT divergence detection result
+ * @returns Score from -100 (strong bearish) to +100 (strong bullish)
+ */
+function scoreSmtDivergenceConfluence(smtDivergence: SMTDivergenceResult | undefined): number {
+  if (!smtDivergence || !smtDivergence.isValid || !smtDivergence.type) {
+    return 0;
+  }
+
+  // Base score from divergence strength
+  const baseScore = (smtDivergence.score / 100) * (smtDivergence.confidence / 100);
+
+  // Apply sign based on type
+  if (smtDivergence.type === 'bullish') {
+    return Math.round(baseScore * 100);
+  } else {
+    return Math.round(baseScore * -100);
+  }
+}
+
+/**
  * Determine if an MSS is invalidated.
  * Bullish MSS is invalidated when price breaks below the most recent LOW pivot that
  * existed before the MSS, or when a newer opposite MSS forms.
@@ -1120,6 +1146,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     ? scoreAutoFibConfluence(autoFibResult, currentPrice, fvgs, orderBlocks)
     : 0;
 
+  // SMT divergence scoring (multi-asset divergence detection)
+  const smtScore = scoreSmtDivergenceConfluence(smtDivergence);
+
   const granularConditions: GranularCondition[] = [
     {
       id: 'structureShift',
@@ -1167,6 +1196,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       score: autoFibScore,
       value: autoFibScore > 0 ? `${autoFibScore}/100` : undefined,
       description: 'Dynamic fib levels (primary + secondary) with FVG/OB alignment.',
+    },
+    {
+      id: 'smtDivergence',
+      name: 'SMT Divergence',
+      score: smtScore,
+      value: smtScore !== 0 ? `${Math.abs(smtScore)}/100` : undefined,
+      description: smtDivergence?.isValid 
+        ? `Multi-asset divergence (${smtDivergence.type}) vs ${smtDivergence.correlatedSymbol || 'correlated asset'}`
+        : 'Insufficient divergence signal',
     },
   ];
 

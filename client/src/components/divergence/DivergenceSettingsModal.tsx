@@ -2,6 +2,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { DivergenceSettings } from '@/hooks/useDivergenceSettings';
 
 interface DivergenceSettingsModalProps {
@@ -40,8 +42,16 @@ export function DivergenceSettingsModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[400px] bg-slate-900 border-slate-700 text-white">
-        <DialogHeader>
-          <DialogTitle className="text-white">Divergence Scanner Settings</DialogTitle>
+        <DialogHeader className="flex flex-row items-center justify-between">
+          <DialogTitle className="text-white">Divergence Settings</DialogTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="h-6 w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </DialogHeader>
 
         <div className="space-y-1 py-2">

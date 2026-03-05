@@ -1,6 +1,8 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface VWAPState {
   showSession: boolean;
@@ -29,8 +31,16 @@ export function VWAPSettingsModal({ isOpen, onClose, vwap }: VWAPSettingsModalPr
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[420px] bg-slate-900 border-slate-700 text-white">
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle className="text-white">VWAP Settings</DialogTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="h-6 w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </DialogHeader>
 
         <div className="space-y-3 py-2">

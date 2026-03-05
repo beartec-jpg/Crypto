@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Zap, Check, Activity, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Zap, Check, Activity, ChevronRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -113,6 +113,40 @@ export function TradingSystemsMenu({
 }: TradingSystemsMenuProps) {
   const [open, setOpen] = useState(false);
   const [expandedSystemId, setExpandedSystemId] = useState<TradingSystemId | null>(null);
+  const popoverContentRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when chart is clicked
+  useEffect(() => {
+    if (!open) return;
+
+    const handleChartClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      
+      // Check if click is inside the popover content
+      if (popoverContentRef.current && popoverContentRef.current.contains(target)) {
+        return;
+      }
+
+      // Check if click is on the trigger button
+      const triggerButton = document.querySelector('[data-testid="btn-trading-systems"]');
+      if (triggerButton && triggerButton.contains(target)) {
+        return;
+      }
+
+      // Close menu on any other click (including chart clicks)
+      setOpen(false);
+    };
+
+    // Add listener with slight delay to avoid immediate closure
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleChartClick);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleChartClick);
+    };
+  }, [open]);
 
   const systems = Object.values(TRADING_SYSTEMS);
   const trendSystems = systems.filter(s => s.category === 'trend');
@@ -127,6 +161,7 @@ export function TradingSystemsMenu({
   const handleActivateSystem = (systemId: TradingSystemId) => {
     onActivateSystem(systemId);
     setExpandedSystemId(null);
+    setOpen(false);
   };
 
   const activeSystemData = activeSystem ? TRADING_SYSTEMS[activeSystem] : null;
@@ -172,6 +207,7 @@ export function TradingSystemsMenu({
         <Button
           variant="ghost"
           size="sm"
+          data-testid="btn-trading-systems"
           className={cn(
             'relative h-8 gap-1.5 text-xs',
             activeSystem ? 'text-blue-400 hover:text-blue-300' : 'text-gray-400 hover:text-white',
@@ -192,6 +228,7 @@ export function TradingSystemsMenu({
       </PopoverTrigger>
       
       <PopoverContent 
+        ref={popoverContentRef}
         className="w-[calc(100vw-2rem)] sm:w-[400px] max-h-[80vh] overflow-y-auto overflow-x-hidden bg-slate-900 border-slate-700 text-white p-0"
         align="start"
       >
@@ -201,20 +238,30 @@ export function TradingSystemsMenu({
             <h3 className="text-sm font-semibold text-white">Trading Systems</h3>
             <p className="text-xs text-gray-400">Pre-configured indicator presets for specific strategies</p>
           </div>
-          {activeSystem && (
+          <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+            {activeSystem && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeactivateSystem();
+                  setOpen(false);
+                }}
+                className="text-xs h-7 border-red-500/30 text-red-400 hover:bg-red-500/10"
+              >
+                Deactivate
+              </Button>
+            )}
             <Button
+              variant="ghost"
               size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeactivateSystem();
-                setOpen(false);
-              }}
-              className="text-xs h-7 border-red-500/30 text-red-400 hover:bg-red-500/10 flex-shrink-0 ml-2"
+              onClick={() => setOpen(false)}
+              className="h-6 w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
             >
-              Deactivate
+              <X className="h-4 w-4" />
             </Button>
-          )}
+          </div>
         </div>
 
         <div className="p-2 space-y-1">

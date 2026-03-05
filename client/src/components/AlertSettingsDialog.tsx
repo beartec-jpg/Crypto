@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Bell, Loader2, MessageSquare, Phone, Send, Eye, Trash2, TrendingUp, TrendingDown, Zap } from 'lucide-react';
+import { Bell, Loader2, MessageSquare, Phone, Send, Eye, Trash2, TrendingUp, TrendingDown, Zap, X } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -719,11 +719,19 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle className="flex items-center gap-2 text-xl">
             <Bell className="h-6 w-6 text-blue-400" />
             Alert Notification Settings
           </DialogTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            className="h-6 w-6 p-0 text-slate-400 hover:text-white hover:bg-slate-700 shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </DialogHeader>
 
         {isLoading ? (

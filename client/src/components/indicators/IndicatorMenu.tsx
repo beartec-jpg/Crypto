@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Waves, Settings } from 'lucide-react';
+import { Waves, Settings, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
@@ -165,6 +165,17 @@ export function IndicatorMenu({
         align="start"
         className="w-64 p-0 bg-slate-900 border-slate-700 text-slate-100"
       >
+        <div className="flex items-center justify-between px-2 py-2 border-b border-slate-700 bg-slate-800">
+          <span className="text-xs font-semibold text-slate-300">Indicators & SMC</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setOpen(false)}
+            className="h-5 w-5 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         <Tabs defaultValue="osc">
           <TabsList className="w-full rounded-none border-b border-slate-700 bg-slate-900 h-9">
             <TabsTrigger

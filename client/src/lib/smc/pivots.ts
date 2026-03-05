@@ -57,3 +57,104 @@ export function calculateSwings(data: CandleData[], swingLength: number = 5): Sw
   
   return swings.sort((a, b) => a.index - b.index);
 }
+
+// ============ SMT DIVERGENCE SPECIFIC ============
+
+export interface Pivot {
+  index: number;
+  value: number;
+  isHigh: boolean;
+  time?: number;
+}
+
+/**
+ * Find pivots using ZigZag approach (checks extent over left/right bars)
+ * SMT-specific: Returns cleaner pivot array for multi-asset comparison
+ */
+export function findPivotsZigZag(
+  data: CandleData[],
+  leftBars: number = 5,
+  rightBars: number = 5,
+): Pivot[] {
+  const pivots: Pivot[] = [];
+
+  if (data.length < leftBars + rightBars + 1) {
+    return pivots;
+  }
+
+  for (let i = leftBars; i < data.length - rightBars; i++) {
+    const current = data[i];
+
+    // Check if pivot high
+    const isHigh = data
+      .slice(Math.max(0, i - leftBars), Math.min(data.length, i + rightBars + 1))
+      .every((candle, idx) => {
+        const candleIndex = Math.max(0, i - leftBars) + idx;
+        return candleIndex === i || candle.high <= current.high;
+      });
+
+    // Check if pivot low
+    const isLow = data
+      .slice(Math.max(0, i - leftBars), Math.min(data.length, i + rightBars + 1))
+      .every((candle, idx) => {
+        const candleIndex = Math.max(0, i - leftBars) + idx;
+        return candleIndex === i || candle.low >= current.low;
+      });
+
+    if (isHigh && !isLow) {
+      pivots.push({
+        index: i,
+        value: current.high,
+        isHigh: true,
+        time: typeof current.time === 'number' ? current.time : undefined,
+      });
+    } else if (isLow && !isHigh) {
+      pivots.push({
+        index: i,
+        value: current.low,
+        isHigh: false,
+        time: typeof current.time === 'number' ? current.time : undefined,
+      });
+    }
+  }
+
+  return pivots;
+}
+
+/**
+ * Get recent swing highs
+ */
+export function getRecentHighs(pivots: Pivot[], count: number = 2): Pivot[] {
+  return pivots.filter(p => p.isHigh).slice(-count);
+}
+
+/**
+ * Get recent swing lows
+ */
+export function getRecentLows(pivots: Pivot[], count: number = 2): Pivot[] {
+  return pivots.filter(p => !p.isHigh).slice(-count);
+}
+
+/**
+ * Check if price is forming higher lows (bullish structure)
+ */
+export function isFormingHigherLows(lows: Pivot[]): boolean {
+  if (lows.length < 2) return false;
+  return lows[lows.length - 1].value > lows[lows.length - 2].value;
+}
+
+/**
+ * Check if price is forming lower highs (bearish structure)
+ */
+export function isFormingLowerHighs(highs: Pivot[]): boolean {
+  if (highs.length < 2) return false;
+  return highs[highs.length - 1].value < highs[highs.length - 2].value;
+}
+
+/**
+ * Calculate percentage change between two pivots
+ */
+export function calculatePivotChange(fromPivot: Pivot, toPivot: Pivot): number {
+  if (fromPivot.value === 0) return 0;
+  return ((toPivot.value - fromPivot.value) / fromPivot.value) * 100;
+}

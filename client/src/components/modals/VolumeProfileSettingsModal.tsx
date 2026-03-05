@@ -2,6 +2,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
+import { X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { VolumeProfileSettings } from '@/types/volumeProfile';
 
 interface VolumeProfileSettingsModalProps {

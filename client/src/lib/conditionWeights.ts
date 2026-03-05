@@ -129,6 +129,7 @@ function getDefaultWeights(systemId: string): Record<string, WeightLevel> {
       liquiditySweep: 1,
       divergenceConfluence: 1,
       autoFibConfluence: 1,
+      smtDivergence: 2, // Higher weight for multi-asset analysis
     };
   }
 

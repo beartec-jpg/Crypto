@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Wrench, Settings } from 'lucide-react';
+import { Wrench, Settings, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
@@ -73,6 +73,17 @@ export function ToolsMenu({
         align="start"
         className="w-56 p-0 bg-slate-900 border-slate-700 text-slate-100"
       >
+        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700 bg-slate-800">
+          <span className="text-xs font-semibold text-slate-300">Tools</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setOpen(false)}
+            className="h-5 w-5 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         <div className="p-2">
           <div className="text-xs text-slate-400 font-medium uppercase tracking-wide px-1 mb-1">
             Tools
@@ -219,7 +230,7 @@ export function ToolsMenu({
             />
           </div>
         </div>
-      </PopoverContent>
+        </div>
     </Popover>
   );
 }
