@@ -765,6 +765,19 @@ export function ChartFullscreenPage({
     const system = TRADING_SYSTEMS[tradingSystem.activeSystem];
     if (!system) return null;
 
+    // When viewport is locked, use the viewport backtest signals for accurate visible range counts
+    if (activeSystemBacktestSignals) {
+      const buySignals = activeSystemBacktestSignals.buySignals.length;
+      const sellSignals = activeSystemBacktestSignals.sellSignals.length;
+      return {
+        name: system.name,
+        historicalSignalCount: buySignals + sellSignals,
+        buySignals,
+        sellSignals,
+        lookbackCandles: activeSystemBacktestSignals.totalCandles,
+      };
+    }
+
     const buySignals = historicalSystemSignalEvents.filter(e => e.action === 'OPEN LONG').length;
     const sellSignals = historicalSystemSignalEvents.filter(e => e.action === 'OPEN SHORT').length;
 
@@ -775,7 +788,7 @@ export function ChartFullscreenPage({
       sellSignals,
       lookbackCandles: Math.min(400, Math.max(0, candles.length - 1)),
     };
-  }, [tradingSystem.activeSystem, historicalSystemSignalEvents, candles.length]);
+  }, [tradingSystem.activeSystem, historicalSystemSignalEvents, candles.length, activeSystemBacktestSignals]);
 
   const handleSystemLockToViewport = useCallback((locked: boolean) => {
     if (!locked) {
@@ -793,8 +806,10 @@ export function ChartFullscreenPage({
     const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
     if (!visibleRange) return;
 
-    const startIdx = Math.max(1, Math.floor(visibleRange.from));
+    const startIdx = Math.max(0, Math.floor(visibleRange.from));
     const endIdx = Math.min(candles.length - 1, Math.ceil(visibleRange.to));
+
+    console.log(`Viewport locked: ${startIdx} to ${endIdx} (${endIdx - startIdx + 1} candles)`);
 
     const signals = runTradingSystemBacktest({
       systemId: tradingSystem.activeSystem,

@@ -392,6 +392,6 @@ export function runTradingSystemBacktest(params: ViewportBacktestParams): Backte
   return {
     buySignals,
     sellSignals,
-    totalCandles: Math.max(0, clampedEnd - clampedStart + 1),
+    totalCandles: Math.max(0, endIdx - startIdx + 1),
   };
 }
