@@ -77,6 +77,8 @@ interface FullscreenChartIndicatorLayerProps {
   squeezeSettings: any;
   onSqueezeSettingsChange: (value: any) => void;
   onResetSqueezeSettings: () => void;
+  /** When true, all indicators except FVG are hidden */
+  fvgOnlyMode?: boolean;
 }
 
 export function FullscreenChartIndicatorLayer({
@@ -133,13 +135,14 @@ export function FullscreenChartIndicatorLayer({
   squeezeSettings,
   onSqueezeSettingsChange,
   onResetSqueezeSettings,
+  fvgOnlyMode = false,
 }: FullscreenChartIndicatorLayerProps) {
   return (
     <>
       <MovingAverages
         chart={chart}
         maConfigs={emaConfigs}
-        show={showEma}
+        show={!fvgOnlyMode && showEma}
         candles={candles}
         calculateEMA={calculateEMA}
         emaHTFDataCache={emaHTFDataCache}
@@ -150,17 +153,17 @@ export function FullscreenChartIndicatorLayer({
       <ElderImpulseRenderer
         chart={chart}
         candles={candles}
-        show={elderImpulseEnabled}
+        show={!fvgOnlyMode && elderImpulseEnabled}
       />
 
       <VWAPRenderer
         chart={chart}
         candles={candles}
-        showSession={vwapShowSession}
-        showDaily={vwapShowDaily}
-        showWeekly={vwapShowWeekly}
-        showMonthly={vwapShowMonthly}
-        showRolling={vwapShowRolling}
+        showSession={!fvgOnlyMode && vwapShowSession}
+        showDaily={!fvgOnlyMode && vwapShowDaily}
+        showWeekly={!fvgOnlyMode && vwapShowWeekly}
+        showMonthly={!fvgOnlyMode && vwapShowMonthly}
+        showRolling={!fvgOnlyMode && vwapShowRolling}
         rollingPeriod={vwapRollingPeriod}
       />
 
@@ -171,57 +174,85 @@ export function FullscreenChartIndicatorLayer({
         settings={fvgSettings}
       />
 
-      <OrderBlockRenderer
-        chart={chart}
-        candleSeries={candleSeries}
-        orderBlocks={orderBlocks}
-        settings={obSettings}
-      />
+      {!fvgOnlyMode && (
+        <>
+          <OrderBlockRenderer
+            chart={chart}
+            candleSeries={candleSeries}
+            orderBlocks={orderBlocks}
+            settings={obSettings}
+          />
 
-      <BreakerBlockRenderer
-        chart={chart}
-        candleSeries={candleSeries}
-        breakerBlocks={breakerBlocks}
-        settings={bbSettings}
-      />
+          <BreakerBlockRenderer
+            chart={chart}
+            candleSeries={candleSeries}
+            breakerBlocks={breakerBlocks}
+            settings={bbSettings}
+          />
 
-      <BOSRenderer
-        chart={chart}
-        candleSeries={candleSeries}
-        structureBreaks={structureBreaks}
-        swingPoints={swingPoints}
-        sessionSeparators={sessionSeparators}
-        settings={bosSettings}
-      />
+          <BOSRenderer
+            chart={chart}
+            candleSeries={candleSeries}
+            structureBreaks={structureBreaks}
+            swingPoints={swingPoints}
+            sessionSeparators={sessionSeparators}
+            settings={bosSettings}
+          />
 
-      <LiquidityRenderer
-        chart={chart}
-        candleSeries={candleSeries}
-        zones={liquidityZones}
-        settings={liquiditySettings}
-      />
+          <LiquidityRenderer
+            chart={chart}
+            candleSeries={candleSeries}
+            zones={liquidityZones}
+            settings={liquiditySettings}
+          />
 
-      <PDZoneRenderer
-        chart={chart}
-        candleSeries={candleSeries}
-        zones={pdZones}
-        settings={pdZoneSettings}
-      />
+          <PDZoneRenderer
+            chart={chart}
+            candleSeries={candleSeries}
+            zones={pdZones}
+            settings={pdZoneSettings}
+          />
 
-      <AutoFibRenderer
-        chart={chart}
-        candleSeries={candleSeries}
-        result={autoFibResult}
-        settings={autoFibSettings}
-        weight={getConditionWeights('smart-money').autoFibConfluence ?? 0}
-      />
+          <AutoFibRenderer
+            chart={chart}
+            candleSeries={candleSeries}
+            result={autoFibResult}
+            settings={autoFibSettings}
+            weight={getConditionWeights('smart-money').autoFibConfluence ?? 0}
+          />
 
-      <VolumeProfileRenderer
-        chart={chart}
-        candleSeries={candleSeries}
-        data={volumeProfileData}
-        settings={vpSettings}
-      />
+          <VolumeProfileRenderer
+            chart={chart}
+            candleSeries={candleSeries}
+            data={volumeProfileData}
+            settings={vpSettings}
+          />
+
+          <SuperTrendRenderer
+            chart={chart}
+            candleSeries={candleSeries}
+            data={superTrendData}
+            settings={superTrendSettings}
+          />
+
+          {divergenceScannerEnabled && (
+            <DivergenceRenderer
+              chart={chart}
+              candleSeries={candleSeries}
+              divergencePoints={filteredDivergencePoints}
+              onBadgeClick={onSelectDivergencePoint}
+              settings={divergenceSettings}
+            />
+          )}
+
+          {selectedDivergencePoint && (
+            <DivergenceBadgePopup
+              point={selectedDivergencePoint}
+              onClose={onCloseDivergencePoint}
+            />
+          )}
+        </>
+      )}
 
       <VolumeProfileSettingsModal
         isOpen={showVPModal}
@@ -229,30 +260,6 @@ export function FullscreenChartIndicatorLayer({
         settings={vpSettings}
         onSettingsChange={onVPSettingsChange}
       />
-
-      <SuperTrendRenderer
-        chart={chart}
-        candleSeries={candleSeries}
-        data={superTrendData}
-        settings={superTrendSettings}
-      />
-
-      {divergenceScannerEnabled && (
-        <DivergenceRenderer
-          chart={chart}
-          candleSeries={candleSeries}
-          divergencePoints={filteredDivergencePoints}
-          onBadgeClick={onSelectDivergencePoint}
-          settings={divergenceSettings}
-        />
-      )}
-
-      {selectedDivergencePoint && (
-        <DivergenceBadgePopup
-          point={selectedDivergencePoint}
-          onClose={onCloseDivergencePoint}
-        />
-      )}
 
       <DivergenceSettingsModal
         isOpen={showDivergenceSettings}

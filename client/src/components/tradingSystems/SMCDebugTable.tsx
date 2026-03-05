@@ -330,3 +330,102 @@ function getAutoFibDetails(input: ScoringInput) {
     </>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FVG-Only Section
+// A self-contained display used when FVG-Only mode is toggled in the chart.
+// Reuses the same monospace debug-table style as the rest of this file.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface FVGData {
+  /** lower bound of the gap */
+  lower: number;
+  /** upper bound of the gap */
+  upper: number;
+  type: 'bullish' | 'bearish';
+  /** whether this FVG has been fully mitigated / filled */
+  filled?: boolean;
+}
+
+interface FVGOnlySectionProps {
+  /** Last close price (current price) */
+  currentPrice: number;
+  /** Active (unfilled) FVGs to analyse */
+  fvgs: FVGData[];
+}
+
+export function FVGOnlySection({ currentPrice, fvgs }: FVGOnlySectionProps) {
+  const activeFVGs = fvgs.filter(fvg => !fvg.filled);
+
+  let nearestRow: JSX.Element;
+
+  if (activeFVGs.length === 0) {
+    nearestRow = <div className="text-slate-400 ml-3">└─ Status: ⚠️ NO ACTIVE FVGs</div>;
+  } else {
+    // Find nearest FVG (by distance from current price to the closest edge)
+    const withDist = activeFVGs.map(fvg => {
+      let status: 'inside' | 'above' | 'below';
+      let dist: number;
+      let nearEdge: number;
+
+      if (currentPrice >= fvg.lower && currentPrice <= fvg.upper) {
+        status = 'inside';
+        dist = 0;
+        nearEdge = currentPrice;
+      } else if (currentPrice > fvg.upper) {
+        status = 'above';
+        dist = currentPrice - fvg.upper;
+        nearEdge = fvg.upper;
+      } else {
+        status = 'below';
+        dist = fvg.lower - currentPrice;
+        nearEdge = fvg.lower;
+      }
+
+      const distPct = currentPrice > 0 ? (dist / currentPrice) * 100 : 0;
+      return { fvg, status, dist, distPct, nearEdge };
+    });
+
+    withDist.sort((a, b) => a.dist - b.dist);
+    const n = withDist[0];
+
+    const statusIcon =
+      n.status === 'inside' ? '🟡 INSIDE FVG' :
+      n.status === 'above'  ? '🟢 ABOVE FVG' :
+                              '🔴 BELOW FVG';
+
+    const distLabel =
+      n.status === 'inside'
+        ? 'In zone'
+        : `$${n.dist.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} (${n.distPct.toFixed(2)}%)`;
+
+    nearestRow = (
+      <>
+        <div className="text-slate-400 ml-3">├─ Nearest: {n.fvg.type === 'bullish' ? 'Bullish' : 'Bearish'} FVG</div>
+        <div className="text-slate-400 ml-3">├─ Top: {n.fvg.upper.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}</div>
+        <div className="text-slate-400 ml-3">├─ Bottom: {n.fvg.lower.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}</div>
+        <div className="text-slate-400 ml-3">├─ Distance: {distLabel}</div>
+        <div className="text-slate-400 ml-3">├─ Status: {statusIcon}</div>
+        <div className="text-slate-400 ml-3">└─ Total Active: {activeFVGs.length} FVGs</div>
+      </>
+    );
+  }
+
+  return (
+    <div className="space-y-2 text-xs px-3 py-2">
+      {/* Current price row */}
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-slate-300">📍 CURRENT PRICE</span>
+        <span className="font-mono text-white">
+          {currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
+        </span>
+      </div>
+
+      {/* Nearest FVG rows */}
+      <div className="pt-1 border-t border-slate-700">
+        <div className="font-semibold text-slate-300 mb-1">📊 NEAREST FVG</div>
+        {nearestRow}
+      </div>
+    </div>
+  );
+}
