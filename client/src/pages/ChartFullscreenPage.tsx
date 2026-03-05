@@ -81,6 +81,7 @@ import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore'
 import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
 import { findMaximumOpportunityZones, type OpportunityZone } from '@/lib/confluenceAnalysis';
 import type { IPriceLine } from 'lightweight-charts';
+import { FVGOnlySection } from '@/components/tradingSystems/SMCDebugTable';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -101,6 +102,9 @@ const ALL_OSCILLATOR_IDS = [
   'rsi', 'macd', 'waddah', 'cmf', 'volume', 'stochRsi', 'tsi',
   'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger',
 ];
+
+// Minimum number of candles required for meaningful indicator calculations during rewind
+const MIN_REWIND_POSITION = 50;
 
 function calculateSimpleMovingAverage(
   candles: Array<{ close: number }>,
@@ -249,6 +253,12 @@ export function ChartFullscreenPage({
     }
   });
 
+  // FVG-Only mode: strip all indicators except FVG and show nearest FVG info panel
+  const [fvgOnlyMode, setFvgOnlyMode] = useState(false);
+
+  // Rewind: null = live, number = candle index to rewind to
+  const [rewindPosition, setRewindPosition] = useState<number | null>(null);
+
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const activeToolRef = useRef<ChartDrawingTool>(null);
@@ -315,9 +325,40 @@ export function ChartFullscreenPage({
   // Hooks - Indicators
   const indicators = useIndicatorState();
 
-  // Hooks - FVG detection
+  // Effective candles: slice by rewind position so FVG detection respects rewind
+  const effectiveCandles = useMemo(
+    () => (rewindPosition !== null ? candles.slice(0, rewindPosition) : candles),
+    [candles, rewindPosition],
+  );
+
+  // Rewind handlers
+  const handleStepBack = useCallback(() => {
+    const current = rewindPosition ?? candles.length;
+    setRewindPosition(Math.max(MIN_REWIND_POSITION, current - 1));
+  }, [rewindPosition, candles.length]);
+
+  const handleStepForward = useCallback(() => {
+    if (rewindPosition === null) return;
+    const next = rewindPosition + 1;
+    if (next >= candles.length) {
+      setRewindPosition(null); // back to live
+    } else {
+      setRewindPosition(next);
+    }
+  }, [rewindPosition, candles.length]);
+
+  const handleGoLive = useCallback(() => {
+    setRewindPosition(null);
+  }, []);
+
+  // Reset rewind when symbol/timeframe changes
+  useEffect(() => {
+    setRewindPosition(null);
+  }, [symbol, timeframe]);
+
+  // Hooks - FVG detection (uses effectiveCandles so it updates with rewind)
   const fvgSettings = useFVGSettings();
-  const fvgs = useFVGDetection({ candles, settings: fvgSettings.settings });
+  const fvgs = useFVGDetection({ candles: effectiveCandles, settings: fvgSettings.settings });
 
   // Hooks - Order Block detection
   const obSettings = useOrderBlockSettings();
@@ -1448,6 +1489,8 @@ export function ChartFullscreenPage({
           onDeactivateSystem={tradingSystem.deactivateSystem}
           confluenceSnapshot={confluenceSnapshot}
           onToggleFloatingMonitor={() => setShowFloatingConfluence((v: boolean) => !v)}
+          fvgOnlyMode={fvgOnlyMode}
+          onToggleFvgOnlyMode={() => setFvgOnlyMode(v => !v)}
         />
 
         <FloatingConfluenceMonitor
@@ -1559,7 +1602,58 @@ export function ChartFullscreenPage({
           squeezeSettings={sqzSettings.settings}
           onSqueezeSettingsChange={sqzSettings.updateSettings}
           onResetSqueezeSettings={sqzSettings.resetSettings}
+          fvgOnlyMode={fvgOnlyMode}
         />
+
+        {/* FVG-Only mode info panel */}
+        {fvgOnlyMode && effectiveCandles.length > 0 && (
+          <div className="absolute bottom-4 right-4 z-50 bg-slate-900/95 border border-slate-700 rounded-lg shadow-xl backdrop-blur-sm">
+            <FVGOnlySection
+              currentPrice={effectiveCandles[effectiveCandles.length - 1].close}
+              fvgs={fvgs.map(fvg => ({
+                lower: fvg.bottom,
+                upper: fvg.top,
+                type: fvg.type,
+                filled: fvg.mitigated,
+              }))}
+            />
+          </div>
+        )}
+
+        {/* Rewind controls – shown when FVG-Only mode is active */}
+        {fvgOnlyMode && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 bg-slate-900/95 border border-slate-700 rounded-lg px-2 py-1.5 shadow-xl backdrop-blur-sm">
+            <button
+              onClick={handleStepBack}
+              disabled={rewindPosition !== null && rewindPosition <= MIN_REWIND_POSITION}
+              className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
+              title="Step back one candle"
+              data-testid="btn-rewind-back"
+            >
+              ◀ -1
+            </button>
+            <button
+              onClick={handleStepForward}
+              disabled={rewindPosition === null}
+              className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
+              title="Step forward one candle"
+              data-testid="btn-rewind-forward"
+            >
+              +1 ▶
+            </button>
+            <button
+              onClick={handleGoLive}
+              disabled={rewindPosition === null}
+              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-xs font-semibold transition-colors"
+              title="Return to live"
+              data-testid="btn-rewind-live"
+            >
+              {rewindPosition !== null
+                ? `Candle ${rewindPosition} / ${candles.length} — Go Live`
+                : 'Live'}
+            </button>
+          </div>
+        )}
 
         {/* Drawing Renderer */}
         <DrawingRenderer
