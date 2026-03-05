@@ -490,10 +490,10 @@ export function ChartFullscreenPage({
   const tradingSystem = useTradingSystem(tradingSystemCallbacks);
 
   const historicalSystemSignalEvents = useMemo(() => {
-    if (!tradingSystem.activeSystem || candles.length < 3) return [];
+    if (!tradingSystem.activeSystem || effectiveCandles.length < 3) return [];
 
-    const lookbackCandles = Math.min(400, candles.length - 1);
-    const startIndex = Math.max(1, candles.length - lookbackCandles);
+    const lookbackCandles = Math.min(400, effectiveCandles.length - 1);
+    const startIndex = Math.max(1, effectiveCandles.length - lookbackCandles);
 
     const rsiByTime = new Map<number, number>(oscillatorData.rsi.map(point => [Number(point.time), point.value]));
     const macdByTime = new Map<number, number>(oscillatorData.macd.macd.map(point => [Number(point.time), point.value]));
@@ -523,17 +523,17 @@ export function ChartFullscreenPage({
           ? 16
           : 4;
 
-    for (let index = startIndex; index < candles.length; index++) {
-      const currentCandle = candles[index] as { time: number; close: number };
-      const prevCandle = candles[index - 1] as { time: number; close: number };
-      const currentCandleWithVolume = candles[index] as { volume?: number; low?: number; high?: number; close: number; time: number };
+    for (let index = startIndex; index < effectiveCandles.length; index++) {
+      const currentCandle = effectiveCandles[index] as { time: number; close: number };
+      const prevCandle = effectiveCandles[index - 1] as { time: number; close: number };
+      const currentCandleWithVolume = effectiveCandles[index] as { volume?: number; low?: number; high?: number; close: number; time: number };
       const currentTime = Number(currentCandle.time);
       const prevTime = Number(prevCandle.time);
-      const avgVolume = calculateAverageVolume(candles as Array<{ volume: number }>, index, 20);
-      const shortTermMA = calculateSimpleMovingAverage(candles as Array<{ close: number }>, index, 9);
-      const longTermMA = calculateSimpleMovingAverage(candles as Array<{ close: number }>, index, 21);
+      const avgVolume = calculateAverageVolume(effectiveCandles as Array<{ volume: number }>, index, 20);
+      const shortTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, index, 9);
+      const longTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, index, 21);
       const { supportLevel, resistanceLevel } = calculateSupportResistance(
-        candles as Array<{ low: number; high: number }>,
+        effectiveCandles as Array<{ low: number; high: number }>,
         index,
         20,
       );
@@ -609,7 +609,7 @@ export function ChartFullscreenPage({
     return events.slice(-120);
   }, [
     tradingSystem.activeSystem,
-    candles,
+    effectiveCandles,
     oscillatorData,
     superTrendData.standard,
     structureBreaks,
@@ -690,13 +690,13 @@ export function ChartFullscreenPage({
   }, [tradingSystem.activeSystem]);
 
   const activeSystemDetails = useMemo(() => {
-    if (!tradingSystem.activeSystem || candles.length < 2) return null;
+    if (!tradingSystem.activeSystem || effectiveCandles.length < 2) return null;
 
     const system = TRADING_SYSTEMS[tradingSystem.activeSystem];
     if (!system) return null;
 
-    const previousCandle = candles[candles.length - 2] as { open: number; close: number };
-    const latestCandle = candles[candles.length - 1] as { time: number; close: number };
+    const previousCandle = effectiveCandles[effectiveCandles.length - 2] as { open: number; close: number };
+    const latestCandle = effectiveCandles[effectiveCandles.length - 1] as { time: number; close: number };
     const previousDirection = previousCandle.close >= previousCandle.open ? 'Bullish' : 'Bearish';
     const previousDelta = previousCandle.close - previousCandle.open;
 
@@ -711,12 +711,12 @@ export function ChartFullscreenPage({
     const stTrend = stLatest?.trend;
     const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
     const latestSqz = sqzData[sqzData.length - 1];
-    const avgVolume = calculateAverageVolume(candles as Array<{ volume: number }>, candles.length - 1, 20);
-    const shortTermMA = calculateSimpleMovingAverage(candles as Array<{ close: number }>, candles.length - 1, 9);
-    const longTermMA = calculateSimpleMovingAverage(candles as Array<{ close: number }>, candles.length - 1, 21);
+    const avgVolume = calculateAverageVolume(effectiveCandles as Array<{ volume: number }>, effectiveCandles.length - 1, 20);
+    const shortTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 9);
+    const longTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 21);
     const { supportLevel, resistanceLevel } = calculateSupportResistance(
-      candles as Array<{ low: number; high: number }>,
-      candles.length - 1,
+      effectiveCandles as Array<{ low: number; high: number }>,
+      effectiveCandles.length - 1,
       20,
     );
 
@@ -724,7 +724,7 @@ export function ChartFullscreenPage({
     const htfBearish = htfBiasEntries.filter(e => e.bias === 'bearish').length;
 
     const divergenceHistoryLength = 51; // 50 lookback bars + 1 for current candle
-    const priceHistory = candles.slice(-divergenceHistoryLength).map(c => (c as { close: number }).close);
+    const priceHistory = effectiveCandles.slice(-divergenceHistoryLength).map(c => (c as { close: number }).close);
     const rsiHistory = oscillatorData.rsi.slice(-divergenceHistoryLength).map(p => p.value);
     const macdHistHistory = oscillatorData.macd.hist.slice(-divergenceHistoryLength).map(p => p.value);
 
@@ -754,7 +754,7 @@ export function ChartFullscreenPage({
       previousClose: previousCandle.close,
       divergencePoints,
       currentTime: Number(latestCandle.time),
-      currentCandleIndex: candles.length - 1,
+      currentCandleIndex: effectiveCandles.length - 1,
       structureBreaks,
       swingPoints,
       fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
@@ -787,7 +787,7 @@ export function ChartFullscreenPage({
     };
   }, [
     tradingSystem.activeSystem,
-    candles,
+    effectiveCandles,
     oscillatorData,
     superTrendData,
     structureBreaks,
