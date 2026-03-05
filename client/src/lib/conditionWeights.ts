@@ -127,9 +127,8 @@ function getDefaultWeights(systemId: string): Record<string, WeightLevel> {
       fvgProximity: 1,
       orderBlockTouch: 1,
       liquiditySweep: 1,
-      divergenceConfluence: 1,
+      divergenceConfluence: 1, // SMT primary + single-asset fallback + confluence bonus
       autoFibConfluence: 1,
-      smtDivergence: 2, // Higher weight for multi-asset analysis
     };
   }
 
@@ -147,6 +146,7 @@ function getDefaultWeights(systemId: string): Record<string, WeightLevel> {
     return {
       bullishDivergence: 1,
       bearishDivergence: 1,
+      smtDivergence: 1, // Multi-asset divergence with confluence bonus
       rsiLevel: 1,
       rsiTurn: 1,
       macdTurn: 1,

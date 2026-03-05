@@ -29,6 +29,7 @@ export interface MAConfig {
 /**
  * Represents a divergence signal detected between price and one or more oscillators.
  * count indicates how many of the 7 oscillators confirm the divergence (1-7).
+ * Optional SMT fields indicate multi-asset divergence detection.
  */
 export interface DivergencePoint {
   time: number;
@@ -36,4 +37,9 @@ export interface DivergencePoint {
   type: 'bullish' | 'bearish';
   count: number;       // number of confirming indicators (1-7)
   indicators: string[]; // names of confirming indicators
+  // SMT (multi-asset) divergence fields (optional)
+  smtScore?: number; // 0-100, SMT divergence strength
+  smtConfidence?: number; // 0-100, SMT confidence
+  correlationSymbol?: string; // e.g., 'BTCUSDT' when comparing to BTC
+  smtTimeSyncScore?: number; // 0-100, pivot time alignment
 }

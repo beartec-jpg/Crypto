@@ -881,6 +881,68 @@ function scoreSmtDivergenceConfluence(smtDivergence: SMTDivergenceResult | undef
 }
 
 /**
+ * Hybrid divergence scoring: SMT primary + single-asset as fallback/confluence
+ * 
+ * Priority hierarchy:
+ * 1. If SMT is valid → use SMT as primary signal
+ * 2. If SMT invalid/unavailable → fall back to single-asset divergence (RSI/MACD)
+ * 3. If BOTH are valid AND align → apply +30% confidence boost
+ * 
+ * @param smtDivergence - Multi-asset divergence result
+ * @param singleAssetDivergenceScore - RSI/MACD divergence bonus (-100 to 100)
+ * @returns Hybrid score with fallback chain applied
+ */
+function scoreHybridDivergence(
+  smtDivergence: SMTDivergenceResult | undefined,
+  singleAssetDivergenceScore: number,
+): { score: number; source: string; confidence: number } {
+  // Case 1: SMT available and valid → use as primary
+  if (smtDivergence?.isValid && smtDivergence.type) {
+    const smtScore = scoreSmtDivergenceConfluence(smtDivergence);
+    
+    // Case 1a: Both SMT and single-asset agree → add confluence bonus
+    const bothBullish = smtDivergence.type === 'bullish' && singleAssetDivergenceScore > 0;
+    const bothBearish = smtDivergence.type === 'bearish' && singleAssetDivergenceScore < 0;
+    
+    if ((bothBullish || bothBearish) && Math.abs(singleAssetDivergenceScore) > 0) {
+      // Both signals aligned: boost confidence by 30%
+      const boostFactor = 1.3;
+      const boostedScore = Math.round(smtScore * boostFactor);
+      const finalScore = Math.max(-100, Math.min(100, boostedScore));
+      
+      return {
+        score: finalScore,
+        source: `SMT (${smtDivergence.type}) + RSI/MACD confluence`,
+        confidence: Math.min(100, (Math.abs(smtScore) / 100) * (smtDivergence.confidence / 100) * 100 * 1.3),
+      };
+    }
+    
+    // SMT alone (no single-asset backing)
+    return {
+      score: smtScore,
+      source: `SMT primary (${smtDivergence.type})`,
+      confidence: (Math.abs(smtScore) / 100) * (smtDivergence.confidence / 100) * 100,
+    };
+  }
+  
+  // Case 2: SMT unavailable → fall back to single-asset divergence
+  if (singleAssetDivergenceScore !== 0) {
+    return {
+      score: singleAssetDivergenceScore,
+      source: 'RSI/MACD divergence (SMT unavailable)',
+      confidence: Math.abs(singleAssetDivergenceScore),
+    };
+  }
+  
+  // Case 3: No divergence signal available
+  return {
+    score: 0,
+    source: 'No divergence signal',
+    confidence: 0,
+  };
+}
+
+/**
  * Determine if an MSS is invalidated.
  * Bullish MSS is invalidated when price breaks below the most recent LOW pivot that
  * existed before the MSS, or when a newer opposite MSS forms.
@@ -1132,22 +1194,23 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     );
   }
 
-  // Divergence confluence using peak/trough analysis
-  const divergenceBonus = scoreDivergenceConfluence(
+  // Divergence confluence using peak/trough analysis (single-asset baseline)
+  const singleAssetDivergenceScore = scoreDivergenceConfluence(
     priceHistory ?? [],
     rsiHistory ?? [],
     macdHistHistory ?? [],
     latestStructureDirection,
   );
 
+  // Hybrid divergence: SMT primary + single-asset fallback + confluence bonus
+  const hybridDivergence = scoreHybridDivergence(smtDivergence, singleAssetDivergenceScore);
+  const divergenceFinalScore = hybridDivergence.score;
+
   // Auto-Fib confluence scoring (only when weight > 0)
   const autoFibWeight = getConditionWeights('smart-money').autoFibConfluence ?? 0;
   const autoFibScore = autoFibWeight > 0
     ? scoreAutoFibConfluence(autoFibResult, currentPrice, fvgs, orderBlocks)
     : 0;
-
-  // SMT divergence scoring (multi-asset divergence detection)
-  const smtScore = scoreSmtDivergenceConfluence(smtDivergence);
 
   const granularConditions: GranularCondition[] = [
     {
@@ -1186,9 +1249,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     {
       id: 'divergenceConfluence',
       name: 'Divergence Confluence',
-      score: divergenceBonus,
-      value: divergenceBonus !== 0 ? `${Math.abs(divergenceBonus)} pts` : undefined,
-      description: 'RSI/MACD peak-trough divergence confirming structure reversal.',
+      score: divergenceFinalScore,
+      value: divergenceFinalScore !== 0 ? `${Math.abs(divergenceFinalScore)} pts` : undefined,
+      description: hybridDivergence.source,
     },
     {
       id: 'autoFibConfluence',
@@ -1196,15 +1259,6 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       score: autoFibScore,
       value: autoFibScore > 0 ? `${autoFibScore}/100` : undefined,
       description: 'Dynamic fib levels (primary + secondary) with FVG/OB alignment.',
-    },
-    {
-      id: 'smtDivergence',
-      name: 'SMT Divergence',
-      score: smtScore,
-      value: smtScore !== 0 ? `${Math.abs(smtScore)}/100` : undefined,
-      description: smtDivergence?.isValid 
-        ? `Multi-asset divergence (${smtDivergence.type}) vs ${smtDivergence.correlatedSymbol || 'correlated asset'}`
-        : 'Insufficient divergence signal',
     },
   ];
 
@@ -1306,6 +1360,7 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
     prevMacdHistogram,
     sigNow,
     sigPrev,
+    smtDivergence,
   } = input;
 
   // ── Actual divergence detection from divergencePoints ──────────────────────
@@ -1359,6 +1414,31 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
         ? normalizeByRange((macdNow - sigNow) - (macdPrev - sigPrev), 0.4)
         : 0;
 
+  // SMT divergence as additional divergence type (primary but can be confluence with single-asset)
+  let smtDivScore = 0;
+  let smtDivDetails = '';
+  
+  if (smtDivergence?.isValid && smtDivergence.type) {
+    const baseSmtScore = (smtDivergence.score / 100) * (smtDivergence.confidence / 100) * 100;
+    
+    // Check confluence: does SMT align with any existing divergence?
+    const hasAlignedBullish = (smtDivergence.type === 'bullish' && bullishDivScore > 0);
+    const hasAlignedBearish = (smtDivergence.type === 'bearish' && bearishDivScore < 0);
+    
+    if (hasAlignedBullish || hasAlignedBearish) {
+      // Confluence bonus: SMT + single-asset divs both valid
+      smtDivScore = Math.round(baseSmtScore * 1.25); // 25% boost for confluence
+      smtDivDetails = `${smtDivergence.type} (vs ${smtDivergence.correlatedSymbol || 'correlated'}) + single-asset confluence`;
+    } else {
+      // SMT alone (valid but no single-asset confirmation)
+      smtDivScore = Math.round(baseSmtScore);
+      smtDivDetails = `${smtDivergence.type} multi-asset (vs ${smtDivergence.correlatedSymbol || 'correlated'})`;
+    }
+    
+    // Apply sign based on type
+    smtDivScore = smtDivergence.type === 'bearish' ? -smtDivScore : smtDivScore;
+  }
+
   const granularConditions: GranularCondition[] = [
     {
       id: 'bullishDivergence',
@@ -1377,6 +1457,13 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
         ? (strongBearish ?? weakBearish)!.indicators.slice(0, 3).join(', ')
         : undefined,
       description: 'Strength of recent bearish divergence cluster.',
+    },
+    {
+      id: 'smtDivergence',
+      name: 'SMT Divergence',
+      score: smtDivScore,
+      value: smtDivScore !== 0 ? `${Math.abs(smtDivScore)}/100` : undefined,
+      description: smtDivDetails || 'No SMT divergence signal',
     },
     {
       id: 'rsiLevel',

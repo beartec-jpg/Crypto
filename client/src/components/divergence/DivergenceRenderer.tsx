@@ -83,10 +83,29 @@ export function DivergenceRenderer({
           ? `${Math.round((pos.point.count / TOTAL_INDICATORS) * 100)}%`
           : pos.point.count.toString();
 
+        // SMT indicator shows when multi-asset divergence is present
+        const hasSMT = pos.point.smtScore !== undefined && pos.point.smtScore > 0;
+        const smtIndicator = hasSMT ? '⭐' : '';
+
+        // Build tooltip with full divergence info
+        const tooltipParts = [
+          `${pos.point.type === 'bullish' ? 'Bullish' : 'Bearish'} divergence`,
+          `${pos.point.count}/7 indicators`,
+        ];
+        if (hasSMT) {
+          tooltipParts.push(`SMT: ${pos.point.smtScore}/100 (${pos.point.correlationSymbol})`);
+          if (pos.point.smtConfidence !== undefined) {
+            tooltipParts.push(`Confidence: ${pos.point.smtConfidence}/100`);
+          }
+        }
+        const tooltip = tooltipParts.join(' • ');
+
         return (
           <button
             key={`${pos.point.time}-${pos.point.type}-${i}`}
-            className={`absolute z-20 ${bgColor} text-white px-1.5 py-0.5 rounded-full text-xs font-bold cursor-pointer hover:opacity-90 transition-opacity flex items-center gap-0.5`}
+            className={`absolute z-20 ${bgColor} text-white px-1.5 py-0.5 rounded-full text-xs font-bold cursor-pointer hover:opacity-90 transition-opacity flex items-center gap-0.5 ${
+              hasSMT ? 'ring-2 ring-yellow-300' : ''
+            }`}
             style={{
               left: pos.x,
               top: pos.y,
@@ -96,10 +115,11 @@ export function DivergenceRenderer({
               e.stopPropagation();
               onBadgeClick(pos.point);
             }}
-            title={`${pos.point.type === 'bullish' ? 'Bullish' : 'Bearish'} divergence – ${pos.point.count}/7 indicators`}
+            title={tooltip}
           >
             {emoji && <span>{emoji}</span>}
             <span>{displayValue}</span>
+            {smtIndicator && <span>{smtIndicator}</span>}
           </button>
         );
       })}

@@ -10,12 +10,14 @@
  */
 
 import { useMemo } from 'react';
-import { findPeaksAndTroughs } from '@/lib/smc/pivots';
+import { findPeaksAndTroughs, findPivotsZigZag } from '@/lib/smc/pivots';
 import {
   checkAllOscillatorDivergence,
   DEFAULT_OSCILLATOR_CONFIG,
   type OscillatorConfig,
 } from '@/lib/calculations/divergenceCalculations';
+import { detectSMTDivergence } from '@/lib/smc/smtDivergence';
+import { getCorrelatedSymbol } from '@/lib/smc/smtConfig';
 import type { CandleData } from '@/types/chart.types';
 import type { DivergencePoint } from '@/types/chart.types';
 
@@ -35,20 +37,29 @@ const SCAN_LOOKBACK = 100;
 const PIVOT_LOOKBACK = 5;
 
 /**
- * Scan candle data for divergence signals across all 7 oscillators.
+ * Scan candle data for divergence signals across all 7 oscillators + SMT.
  *
  * @param candles - Full candle array (only the last SCAN_LOOKBACK candles are used)
  * @param config  - Optional oscillator periods; falls back to DEFAULT_OSCILLATOR_CONFIG
+ * @param correlatedCandles - Optional correlated asset candles for SMT divergence detection
+ * @param mainSymbol - Main asset symbol (used to auto-detect correlation if needed)
  * @returns Array of DivergencePoint sorted by time ascending
  */
 export function useDivergenceScanner(
   candles: CandleData[],
   config: OscillatorConfig = DEFAULT_OSCILLATOR_CONFIG,
+  correlatedCandles?: CandleData[],
+  mainSymbol?: string,
 ): DivergencePoint[] {
   // Limit to recent candles for performance
   const recentCandles = useMemo(
     () => candles.slice(-SCAN_LOOKBACK),
     [candles],
+  );
+
+  const recentCorrCandles = useMemo(
+    () => (correlatedCandles ? correlatedCandles.slice(-SCAN_LOOKBACK) : undefined),
+    [correlatedCandles],
   );
 
   return useMemo(() => {
@@ -58,6 +69,44 @@ export function useDivergenceScanner(
     const { peaks, troughs } = findPeaksAndTroughs(priceData, PIVOT_LOOKBACK);
 
     const results: DivergencePoint[] = [];
+
+    // Detect SMT divergences if correlated candles available
+    let smtResults: Map<number, { score: number; confidence: number; timeSyncScore: number }> = new Map();
+    let correlationSymbol: string | undefined;
+
+    if (recentCorrCandles && recentCorrCandles.length >= 30) {
+      try {
+        // Auto-detect correlation symbol if not provided
+        if (!correlationSymbol && mainSymbol) {
+          correlationSymbol = getCorrelatedSymbol(mainSymbol);
+        }
+
+        // Find pivots for both assets
+        const mainPivots = findPivotsZigZag(recentCandles);
+        const corrPivots = findPivotsZigZag(recentCorrCandles);
+
+        if (mainPivots.length > 0 && corrPivots.length > 0) {
+          // Detect SMT divergence
+          const smtDiv = detectSMTDivergence(mainPivots, corrPivots);
+
+          if (smtDiv.isValid && smtDiv.type !== null) {
+            // Map SMT divergence to most recent peak/trough time
+            const recentTimeIndex = smtDiv.type === 'bearish'
+              ? peaks[peaks.length - 1] ?? recentCandles.length - 1
+              : troughs[troughs.length - 1] ?? recentCandles.length - 1;
+
+            smtResults.set(recentTimeIndex, {
+              score: smtDiv.score,
+              confidence: smtDiv.confidence,
+              timeSyncScore: smtDiv.timeSyncScore ?? 0,
+            });
+          }
+        }
+      } catch (err) {
+        // Gracefully degrade if SMT detection fails
+        console.debug('SMT divergence detection failed:', err);
+      }
+    }
 
     // Bearish divergence: price makes higher high, oscillator(s) make lower high
     for (let i = 1; i < peaks.length; i++) {
@@ -74,12 +123,17 @@ export function useDivergenceScanner(
           config,
         );
         if (count > 0) {
+          const smtData = smtResults.get(currIdx);
           results.push({
             time: recentCandles[currIdx].time,
             price: priceData[currIdx],
             type: 'bearish',
             count,
             indicators,
+            smtScore: smtData?.score,
+            smtConfidence: smtData?.confidence,
+            correlationSymbol: smtData ? correlationSymbol : undefined,
+            smtTimeSyncScore: smtData?.timeSyncScore,
           });
         }
       }
@@ -99,17 +153,21 @@ export function useDivergenceScanner(
           config,
         );
         if (count > 0) {
+          const smtData = smtResults.get(currIdx);
           results.push({
             time: recentCandles[currIdx].time,
             price: priceData[currIdx],
             type: 'bullish',
             count,
             indicators,
+            smtScore: smtData?.score,
+            smtConfidence: smtData?.confidence,
+            correlationSymbol: smtData ? correlationSymbol : undefined,
+            smtTimeSyncScore: smtData?.timeSyncScore,
           });
         }
       }
     }
 
     return results.sort((a, b) => a.time - b.time);
-  }, [recentCandles, config]);
-}
+  }, [recentCandles, recentCorrCandles, config, mainSymbol]);
