@@ -978,7 +978,7 @@ export function ChartFullscreenPage({
   }, [chartRef]);
 
   const totalConfluenceNow = useMultiSystemConfluence(
-    candles,
+    effectiveCandles,
     oscillatorData,
     superTrendData,
     structureBreaks,
