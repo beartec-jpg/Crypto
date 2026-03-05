@@ -569,9 +569,9 @@ function getStructureLookbackCandles(timeframe?: string): number {
 /**
  * Score FVG proximity with distance scaling and directional sign.
  * Returns -100 to +100: positive for bullish FVGs, negative for bearish FVGs.
- * Entry direction is validated when price is inside the zone:
- *   - Bullish FVG: only valid when entered from above (previousPrice > high)
- *   - Bearish FVG: only valid when entered from below (previousPrice < low)
+ * Entry/approach direction is validated:
+ *   - Bullish FVG: only valid when price is above the zone (approaching down) or inside from above
+ *   - Bearish FVG: only valid when price is below the zone (approaching up) or inside from below
  */
 function scoreFVGProximity(currentPrice: number, previousPrice: number, fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>): number {
   if (!fvgs || fvgs.length === 0) return 0;
@@ -583,9 +583,13 @@ function scoreFVGProximity(currentPrice: number, previousPrice: number, fvgs?: A
   const scores = activeFVGs.map(fvg => {
     const proximity = scoreZoneProximity(currentPrice, fvg.high, fvg.low, 0.3);
 
-    // Validate entry direction when price is inside the zone
     const isInsideZone = currentPrice >= fvg.low && currentPrice <= fvg.high;
+    const isAboveZone = currentPrice > fvg.high;
+    const isBelowZone = currentPrice < fvg.low;
+
+    // Validate entry/approach direction
     if (isInsideZone) {
+      // When inside: check where price came from
       const enteredFromAbove = previousPrice > fvg.high;
       const enteredFromBelow = previousPrice < fvg.low;
 
@@ -593,6 +597,15 @@ function scoreFVGProximity(currentPrice: number, previousPrice: number, fvgs?: A
       if (fvg.type === 'bullish' && !enteredFromAbove) return 0;
       // Bearish FVG: only valid if entered from below
       if (fvg.type === 'bearish' && !enteredFromBelow) return 0;
+    } else {
+      // When outside: check if approaching from correct direction
+      if (fvg.type === 'bullish') {
+        // Bullish FVG: only valid if price is above (approaching down)
+        if (!isAboveZone) return 0;
+      } else {
+        // Bearish FVG: only valid if price is below (approaching up)
+        if (!isBelowZone) return 0;
+      }
     }
 
     // Apply sign based on FVG type
@@ -606,9 +619,9 @@ function scoreFVGProximity(currentPrice: number, previousPrice: number, fvgs?: A
 /**
  * Score Order Block proximity with distance scaling and directional sign.
  * Returns -100 to +100: positive for bullish OBs, negative for bearish OBs.
- * Entry direction is validated when price is inside the zone:
- *   - Bullish OB: only valid when entered from above (previousPrice > high)
- *   - Bearish OB: only valid when entered from below (previousPrice < low)
+ * Entry/approach direction is validated:
+ *   - Bullish OB: only valid when price is above the zone (approaching down) or inside from above
+ *   - Bearish OB: only valid when price is below the zone (approaching up) or inside from below
  */
 function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>): number {
   if (!orderBlocks || orderBlocks.length === 0) return 0;
@@ -620,9 +633,13 @@ function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, o
   const scores = activeOBs.map(ob => {
     const proximity = scoreZoneProximity(currentPrice, ob.high, ob.low, 3.0);
 
-    // Validate entry direction when price is inside the zone
     const isInsideZone = currentPrice >= ob.low && currentPrice <= ob.high;
+    const isAboveZone = currentPrice > ob.high;
+    const isBelowZone = currentPrice < ob.low;
+
+    // Validate entry/approach direction
     if (isInsideZone) {
+      // When inside: check where price came from
       const enteredFromAbove = previousPrice > ob.high;
       const enteredFromBelow = previousPrice < ob.low;
 
@@ -630,6 +647,15 @@ function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, o
       if (ob.type === 'bullish' && !enteredFromAbove) return 0;
       // Bearish OB: only valid if entered from below
       if (ob.type === 'bearish' && !enteredFromBelow) return 0;
+    } else {
+      // When outside: check if approaching from correct direction
+      if (ob.type === 'bullish') {
+        // Bullish OB: only valid if price is above (approaching down)
+        if (!isAboveZone) return 0;
+      } else {
+        // Bearish OB: only valid if price is below (approaching up)
+        if (!isBelowZone) return 0;
+      }
     }
 
     // Apply sign based on OB type
