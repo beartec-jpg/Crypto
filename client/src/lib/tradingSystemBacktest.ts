@@ -196,9 +196,9 @@ export interface ViewportBacktestParams {
   sqzData: Array<{ time: number; sqzOff: boolean; value: number }>;
   htfBiasEntries: Array<{ bias: 'bullish' | 'bearish' }>;
   divergencePoints: DivergencePoint[];
-  fvgs: Array<{ top: number; bottom: number; mitigated: boolean; type: 'bullish' | 'bearish' }>;
-  orderBlocks: Array<{ top: number; bottom: number; type: 'bullish' | 'bearish' }>;
-  liquidityZones: Array<{ price: number; type: 'high' | 'low'; swept: boolean }>;
+  fvgs: Array<{ top: number; bottom: number; mitigated: boolean; type: 'bullish' | 'bearish'; endTime?: number }>;
+  orderBlocks: Array<{ top: number; bottom: number; type: 'bullish' | 'bearish'; time?: number }>;
+  liquidityZones: Array<{ price: number; type: 'high' | 'low'; swept: boolean; touchTimes?: number[] }>;
   volumeProfileData?: {
     rows: Array<{ price: number; volume: number }>;
     vahPrice?: number;
@@ -281,9 +281,6 @@ export function runTradingSystemBacktest(params: ViewportBacktestParams): Backte
   const htfBullish = htfBiasEntries.filter(e => e.bias === 'bullish').length;
   const htfBearish = htfBiasEntries.filter(e => e.bias === 'bearish').length;
 
-  const mappedFvgs = fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type }));
-  const mappedOrderBlocks = orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type }));
-  const mappedLiquidityZones = liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept }));
   const mappedVolumeProfile = volumeProfileData
     ? {
         rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })),
@@ -353,9 +350,15 @@ export function runTradingSystemBacktest(params: ViewportBacktestParams): Backte
       currentCandleIndex: index,
       structureBreaks,
       swingPoints,
-      fvgs: mappedFvgs,
-      orderBlocks: mappedOrderBlocks,
-      liquidityZones: mappedLiquidityZones,
+      fvgs: fvgs
+        .filter(fvg => !fvg.endTime || fvg.endTime <= currentTime)
+        .map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
+      orderBlocks: orderBlocks
+        .filter(ob => !ob.time || ob.time <= currentTime)
+        .map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+      liquidityZones: liquidityZones
+        .filter(lz => !lz.touchTimes || lz.touchTimes.length === 0 || lz.touchTimes[lz.touchTimes.length - 1] <= currentTime)
+        .map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
       volumeProfileData: mappedVolumeProfile,
     });
 

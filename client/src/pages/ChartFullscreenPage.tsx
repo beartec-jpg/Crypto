@@ -576,9 +576,15 @@ export function ChartFullscreenPage({
         currentTime,
         currentCandleIndex: index,
         structureBreaks,
-        fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
-        orderBlocks: orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
-        liquidityZones: liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
+        fvgs: fvgs
+          .filter(fvg => !fvg.endTime || fvg.endTime <= currentTime)
+          .map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
+        orderBlocks: orderBlocks
+          .filter(ob => !ob.time || ob.time <= currentTime)
+          .map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+        liquidityZones: liquidityZones
+          .filter(lz => lz.touchTimes.length === 0 || lz.touchTimes[lz.touchTimes.length - 1] <= currentTime)
+          .map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
         volumeProfileData: volumeProfileData
           ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
           : undefined,
