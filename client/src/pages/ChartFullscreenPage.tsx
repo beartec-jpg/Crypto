@@ -354,32 +354,6 @@ export function ChartFullscreenPage({
   // Hooks - Indicators
   const indicators = useIndicatorState();
 
-  // Effective candles: slice by rewind position so FVG detection respects rewind
-  const effectiveCandles = useMemo(
-    () => (rewindPosition !== null ? candles.slice(0, rewindPosition) : candles),
-    [candles, rewindPosition],
-  );
-
-  // Rewind handlers
-  const handleStepBack = useCallback(() => {
-    const current = rewindPosition ?? candles.length;
-    setRewindPosition(Math.max(MIN_REWIND_POSITION, current - 1));
-  }, [rewindPosition, candles.length]);
-
-  const handleStepForward = useCallback(() => {
-    if (rewindPosition === null) return;
-    const next = rewindPosition + 1;
-    if (next >= candles.length) {
-      setRewindPosition(null); // back to live
-    } else {
-      setRewindPosition(next);
-    }
-  }, [rewindPosition, candles.length]);
-
-  const handleGoLive = useCallback(() => {
-    setRewindPosition(null);
-  }, []);
-
   // Reset rewind when symbol/timeframe changes
   useEffect(() => {
     setRewindPosition(null);
