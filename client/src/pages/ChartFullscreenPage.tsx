@@ -510,18 +510,11 @@ export function ChartFullscreenPage({
 
     const events: Array<{
       time: number;
-      action: 'OPEN LONG' | 'OPEN SHORT';
-      primaryReason: string;
+      action: 'BUY OPEN' | 'BUY CLOSE' | 'SELL OPEN' | 'SELL CLOSE';
     }> = [];
 
-    let previousAction: 'OPEN LONG' | 'OPEN SHORT' | 'WAIT' = 'WAIT';
-    let lastActivationIndex = -1000;
-    const minBarsBetweenActivations =
-      tradingSystem.activeSystem === 'volume-profile'
-        ? 12
-        : tradingSystem.activeSystem === 'smart-money'
-          ? 16
-          : 4;
+    let inBuyZone = false;
+    let inSellZone = false;
 
     for (let index = startIndex; index < effectiveCandles.length; index++) {
       const currentCandle = effectiveCandles[index] as { time: number; close: number };
@@ -595,20 +588,34 @@ export function ChartFullscreenPage({
           : undefined,
       });
 
-      if (
-        evaluation.action !== 'WAIT' &&
-        evaluation.action !== previousAction &&
-        index - lastActivationIndex >= minBarsBetweenActivations
-      ) {
-        events.push({
-          time: currentTime,
-          action: evaluation.action,
-          primaryReason: evaluation.signalReasons[0] ?? 'Confluence confirmed',
-        });
-        lastActivationIndex = index;
+      const isBuySignal = evaluation.action === 'OPEN LONG';
+      const isSellSignal = evaluation.action === 'OPEN SHORT';
+
+      // Buy Zone Open
+      if (isBuySignal && !inBuyZone) {
+        events.push({ time: currentTime, action: 'BUY OPEN' });
+        inBuyZone = true;
+        inSellZone = false;
       }
 
-      previousAction = evaluation.action;
+      // Buy Zone Close
+      if (!isBuySignal && inBuyZone) {
+        events.push({ time: currentTime, action: 'BUY CLOSE' });
+        inBuyZone = false;
+      }
+
+      // Sell Zone Open
+      if (isSellSignal && !inSellZone) {
+        events.push({ time: currentTime, action: 'SELL OPEN' });
+        inSellZone = true;
+        inBuyZone = false;
+      }
+
+      // Sell Zone Close
+      if (!isSellSignal && inSellZone) {
+        events.push({ time: currentTime, action: 'SELL CLOSE' });
+        inSellZone = false;
+      }
     }
 
     return events.slice(-120);
@@ -629,14 +636,20 @@ export function ChartFullscreenPage({
   ]);
 
   const historicalSystemSignalMarkers = useMemo(() => {
-    return historicalSystemSignalEvents.map(event => ({
-      time: event.time as Time,
-      position: event.action === 'OPEN LONG' ? 'belowBar' as const : 'aboveBar' as const,
-      shape: event.action === 'OPEN LONG' ? 'arrowUp' as const : 'arrowDown' as const,
-      color: event.action === 'OPEN LONG' ? '#22c55e' : '#ef4444',
-      text: event.action === 'OPEN LONG' ? 'LONG' : 'SHORT',
-      size: 2,
-    }));
+    return historicalSystemSignalEvents.map(event => {
+      const isBuy = event.action === 'BUY OPEN' || event.action === 'BUY CLOSE';
+      const isOpen = event.action === 'BUY OPEN' || event.action === 'SELL OPEN';
+      return {
+        time: event.time as Time,
+        position: isBuy ? 'belowBar' as const : 'aboveBar' as const,
+        shape: isBuy ? 'arrowUp' as const : 'arrowDown' as const,
+        color: isBuy
+          ? (isOpen ? '#22c55e' : '#84cc16')
+          : (isOpen ? '#ef4444' : '#fb923c'),
+        text: isOpen ? 'OPEN' : 'CLOSE',
+        size: 2,
+      };
+    });
   }, [historicalSystemSignalEvents]);
 
   const displayedSystemMarkers = useMemo(() => {
@@ -646,16 +659,16 @@ export function ChartFullscreenPage({
           time: s.time as Time,
           position: 'belowBar' as const,
           shape: 'arrowUp' as const,
-          color: '#22c55e',
-          text: `BUY ${s.score}`,
+          color: s.type === 'zone-open' ? '#22c55e' : '#84cc16',
+          text: s.type === 'zone-open' ? 'OPEN' : 'CLOSE',
           size: 2,
         })),
         ...activeSystemBacktestSignals.sellSignals.map(s => ({
           time: s.time as Time,
           position: 'aboveBar' as const,
           shape: 'arrowDown' as const,
-          color: '#ef4444',
-          text: `SELL ${s.score}`,
+          color: s.type === 'zone-open' ? '#ef4444' : '#fb923c',
+          text: s.type === 'zone-open' ? 'OPEN' : 'CLOSE',
           size: 2,
         })),
       ];
@@ -818,8 +831,8 @@ export function ChartFullscreenPage({
 
     // When viewport is locked, use the viewport backtest signals for accurate visible range counts
     if (activeSystemBacktestSignals) {
-      const buySignals = activeSystemBacktestSignals.buySignals.length;
-      const sellSignals = activeSystemBacktestSignals.sellSignals.length;
+      const buySignals = activeSystemBacktestSignals.buySignals.filter(s => s.type === 'zone-open').length;
+      const sellSignals = activeSystemBacktestSignals.sellSignals.filter(s => s.type === 'zone-open').length;
       return {
         name: system.name,
         historicalSignalCount: buySignals + sellSignals,
@@ -829,12 +842,12 @@ export function ChartFullscreenPage({
       };
     }
 
-    const buySignals = historicalSystemSignalEvents.filter(e => e.action === 'OPEN LONG').length;
-    const sellSignals = historicalSystemSignalEvents.filter(e => e.action === 'OPEN SHORT').length;
+    const buySignals = historicalSystemSignalEvents.filter(e => e.action === 'BUY OPEN').length;
+    const sellSignals = historicalSystemSignalEvents.filter(e => e.action === 'SELL OPEN').length;
 
     return {
       name: system.name,
-      historicalSignalCount: historicalSystemSignalEvents.length,
+      historicalSignalCount: buySignals + sellSignals,
       buySignals,
       sellSignals,
       lookbackCandles: Math.min(400, Math.max(0, candles.length - 1)),

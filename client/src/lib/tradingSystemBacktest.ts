@@ -164,7 +164,7 @@ import type { DivergencePoint } from '@/types/chart.types';
 import type { Candle } from '@/types/chart';
 
 export interface SystemSignal {
-  type: 'buy' | 'sell';
+  type: 'zone-open' | 'zone-close';
   time: number;
   index: number;
   score: number;
@@ -290,14 +290,11 @@ export function runTradingSystemBacktest(params: ViewportBacktestParams): Backte
       }
     : undefined;
 
-  const minBarsBetweenActivations =
-    systemId === 'volume-profile' ? 12 : systemId === 'smart-money' ? 16 : 4;
-
   const buySignals: SystemSignal[] = [];
   const sellSignals: SystemSignal[] = [];
 
-  let previousAction: 'buy' | 'sell' | 'wait' = 'wait';
-  let lastActivationIndex = startIdx - 1000;
+  let inBuyZone = false;
+  let inSellZone = false;
 
   const clampedStart = Math.max(1, startIdx);
   const clampedEnd = Math.min(endIdx, candles.length - 1);
@@ -367,34 +364,34 @@ export function runTradingSystemBacktest(params: ViewportBacktestParams): Backte
       volumeProfileData: mappedVolumeProfile,
     });
 
-    const action: 'buy' | 'sell' | 'wait' =
-      evaluation.score >= buyThreshold
-        ? 'buy'
-        : evaluation.score <= -sellThreshold
-          ? 'sell'
-          : 'wait';
+    const isBuySignal = evaluation.score >= buyThreshold;
+    const isSellSignal = evaluation.score <= -sellThreshold;
 
-    if (
-      action !== 'wait' &&
-      action !== previousAction &&
-      index - lastActivationIndex >= minBarsBetweenActivations
-    ) {
-      const signal: SystemSignal = {
-        type: action,
-        time: currentTime,
-        index,
-        score: evaluation.score,
-        price: currentCandle.close,
-      };
-      if (action === 'buy') {
-        buySignals.push(signal);
-      } else {
-        sellSignals.push(signal);
-      }
-      lastActivationIndex = index;
+    // Buy Zone Open
+    if (isBuySignal && !inBuyZone) {
+      buySignals.push({ type: 'zone-open', time: currentTime, index, score: evaluation.score, price: currentCandle.close });
+      inBuyZone = true;
+      inSellZone = false;
     }
 
-    previousAction = action;
+    // Buy Zone Close
+    if (!isBuySignal && inBuyZone) {
+      buySignals.push({ type: 'zone-close', time: currentTime, index, score: evaluation.score, price: currentCandle.close });
+      inBuyZone = false;
+    }
+
+    // Sell Zone Open
+    if (isSellSignal && !inSellZone) {
+      sellSignals.push({ type: 'zone-open', time: currentTime, index, score: evaluation.score, price: currentCandle.close });
+      inSellZone = true;
+      inBuyZone = false;
+    }
+
+    // Sell Zone Close
+    if (!isSellSignal && inSellZone) {
+      sellSignals.push({ type: 'zone-close', time: currentTime, index, score: evaluation.score, price: currentCandle.close });
+      inSellZone = false;
+    }
   }
 
   return {
