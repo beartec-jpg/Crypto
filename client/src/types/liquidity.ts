@@ -40,6 +40,9 @@ export interface LiquiditySettings {
   showLows: boolean;       // Show equal lows (buy-side liquidity)
   showSwept: boolean;      // Keep history of swept/invalidated zones visible
 
+  // Sweep confirmation
+  confirmationCandles: number; // Candles after wick to confirm sweep, default 3
+
   // Colors
   lineColor: string;       // Default: '#fbbf24' (amber/yellow — pending)
   sweptColor: string;      // Default: '#22c55e' (green — swept)
@@ -74,6 +77,7 @@ export const DEFAULT_LIQUIDITY_SETTINGS: LiquiditySettings = {
   showHighs: true,
   showLows: true,
   showSwept: true,
+  confirmationCandles: 3,
   lineColor: '#fbbf24',
   sweptColor: '#22c55e',
   invalidatedColor: '#ef4444',

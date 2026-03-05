@@ -82,7 +82,8 @@ describe('useLiquidityDetection', () => {
   });
 
   it('detects sweep of a liquidity zone', () => {
-    // Equal highs at ~110, then a candle that wicks above but closes below
+    // Equal highs at ~110, then a candle that wicks above (sweep wick),
+    // confirmed by the next candle closing back below the level.
     const candles: Candle[] = [
       ...Array.from({ length: 5 }, (_, i) => ({
         time: 1000 + i * 60,
@@ -100,8 +101,9 @@ describe('useLiquidityDetection', () => {
         time: 1720 + i * 60,
         open: 100, high: 102, low: 99, close: 100, volume: 1000,
       })),
-      // Sweep candle: wick above 110, close below 110
+      // Wick candle: wicks above the level — sweep confirmation starts here
       { time: 2020, open: 109, high: 111, low: 108, close: 109, volume: 2000 },
+      // Confirmation candles — first close below level confirms the sweep
       ...Array.from({ length: 3 }, (_, i) => ({
         time: 2080 + i * 60,
         open: 100, high: 102, low: 99, close: 100, volume: 1000,
@@ -123,7 +125,9 @@ describe('useLiquidityDetection', () => {
     const highZones = result.current.filter(z => z.type === 'high');
     const sweptZone = highZones.find(z => z.swept);
     expect(sweptZone).toBeDefined();
-    expect(sweptZone?.sweepTime).toBe(2020);
+    // sweepTime is the first confirmation candle after the wick
+    expect(sweptZone?.sweepTime).toBe(2080);
+    // sweepPrice is the wick extreme of the wick candle
     expect(sweptZone?.sweepPrice).toBe(111);
   });
 
