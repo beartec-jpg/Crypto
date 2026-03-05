@@ -381,6 +381,8 @@ export function ChartFullscreenPage({
   const liquidityZones = useLiquidityDetection({
     candles: effectiveCandles,
     settings: liquiditySettings.settings,
+    symbol,
+    timeframe,
   });
 
   // Hooks - Premium/Discount Zone detection

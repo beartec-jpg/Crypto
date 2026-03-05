@@ -677,6 +677,16 @@ export function SMCSettingsModal({
                 displayValue={`${liquiditySettings.minTouches}`}
                 onChange={(v) => updateLiquidity('minTouches', v)}
               />
+
+              <SliderRow
+                label="Confirmation Candles"
+                value={liquiditySettings.confirmationCandles}
+                min={1}
+                max={5}
+                step={1}
+                displayValue={`${liquiditySettings.confirmationCandles}`}
+                onChange={(v) => updateLiquidity('confirmationCandles', v)}
+              />
             </div>
 
             <div className="border-t border-slate-700 pt-2">

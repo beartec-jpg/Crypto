@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import type { Candle } from '@/types/candle';
 import type { LiquidityZone, LiquiditySettings } from '@/types/liquidity';
 
@@ -12,12 +12,15 @@ interface LiquidityGroup {
   price: number;
   touchTimes: number[];
   touchPrices: number[];
+  touchIndices: number[];
   lastIndex: number;
 }
 
 interface UseLiquidityDetectionOptions {
   candles: Candle[];
   settings: LiquiditySettings;
+  symbol?: string;
+  timeframe?: string;
 }
 
 /** Detect swing highs and lows using a lookback window. */
@@ -102,6 +105,7 @@ function groupByPrice(
         if (isValid) {
           grp.touchTimes.push(pt.time);
           grp.touchPrices.push(pt.price);
+          grp.touchIndices.push(pt.index);
           // Keep representative price as running average
           grp.price = grp.touchPrices.reduce((a, b) => a + b, 0) / grp.touchPrices.length;
           grp.lastIndex = Math.max(grp.lastIndex, pt.index);
@@ -116,6 +120,7 @@ function groupByPrice(
         price: pt.price,
         touchTimes: [pt.time],
         touchPrices: [pt.price],
+        touchIndices: [pt.index],
         lastIndex: pt.index,
       });
     }
@@ -126,23 +131,51 @@ function groupByPrice(
 
 /**
  * Check whether a liquidity level has been swept after the last recorded touch.
- * For highs: wick above the level + close below = sweep.
- * For lows:  wick below the level + close above = sweep.
+ * For highs: candle wicks above the level, then at least one of the next
+ *            `confirmationWindow` candles closes back below = confirmed sweep.
+ * For lows:  candle wicks below the level, then at least one of the next
+ *            `confirmationWindow` candles closes back above = confirmed sweep.
  */
 function detectSweep(
   candles: Candle[],
   level: number,
   afterIndex: number,
   type: 'high' | 'low',
+  confirmationWindow: number = 3,
 ): { swept: boolean; sweepTime?: number; sweepPrice?: number } {
   for (let i = afterIndex + 1; i < candles.length; i++) {
     const c = candles[i];
-    if (type === 'high' && c.high > level && c.close < level) {
-      return { swept: true, sweepTime: c.time, sweepPrice: c.high };
+
+    // Step 1: check if this candle wicks through the level
+    const wickedThrough =
+      (type === 'high' && c.high > level) ||
+      (type === 'low' && c.low < level);
+
+    if (!wickedThrough) continue;
+
+    // Step 2: look for at least one confirmation close on the correct side
+    //         within the next `confirmationWindow` candles
+    for (let j = i + 1; j <= Math.min(i + confirmationWindow, candles.length - 1); j++) {
+      const confirmCandle = candles[j];
+
+      if (type === 'high' && confirmCandle.close < level) {
+        return {
+          swept: true,
+          sweepTime: confirmCandle.time,
+          sweepPrice: c.high,
+        };
+      }
+
+      if (type === 'low' && confirmCandle.close > level) {
+        return {
+          swept: true,
+          sweepTime: confirmCandle.time,
+          sweepPrice: c.low,
+        };
+      }
     }
-    if (type === 'low' && c.low < level && c.close > level) {
-      return { swept: true, sweepTime: c.time, sweepPrice: c.low };
-    }
+    // No confirmation within the window — this wick is not a confirmed sweep.
+    // Continue scanning from the next candle.
   }
   return { swept: false };
 }
@@ -179,21 +212,63 @@ function detectInvalidation(
 export function useLiquidityDetection({
   candles,
   settings,
+  symbol = '',
+  timeframe = '',
 }: UseLiquidityDetectionOptions): LiquidityZone[] {
+  // Per-symbol/timeframe registry of candle indices that have already been
+  // part of a swept zone.  Keyed by `${symbol}_${timeframe}`.
+  // useRef persists across re-renders without triggering extra renders.
+  // Capped at MAX_CACHE_ENTRIES to prevent unbounded growth when users visit
+  // many different symbol/timeframe combinations in a single session.
+  const MAX_CACHE_ENTRIES = 50;
+  const sweptHighCandlesRef = useRef(new Map<string, Set<number>>());
+  const sweptLowCandlesRef = useRef(new Map<string, Set<number>>());
+
   return useMemo(() => {
     if (!settings.enabled || candles.length < 10) return [];
+
+    const cacheKey = `${symbol}_${timeframe}`;
+    const confirmationWindow = settings.confirmationCandles ?? 3;
+
+    // Ensure Sets exist for this symbol/timeframe; evict oldest entry if cap reached
+    if (!sweptHighCandlesRef.current.has(cacheKey)) {
+      if (sweptHighCandlesRef.current.size >= MAX_CACHE_ENTRIES) {
+        const firstKey = sweptHighCandlesRef.current.keys().next().value!;
+        sweptHighCandlesRef.current.delete(firstKey);
+      }
+      sweptHighCandlesRef.current.set(cacheKey, new Set<number>());
+    }
+    if (!sweptLowCandlesRef.current.has(cacheKey)) {
+      if (sweptLowCandlesRef.current.size >= MAX_CACHE_ENTRIES) {
+        const firstKey = sweptLowCandlesRef.current.keys().next().value!;
+        sweptLowCandlesRef.current.delete(firstKey);
+      }
+      sweptLowCandlesRef.current.set(cacheKey, new Set<number>());
+    }
+    const sweptHighCandles = sweptHighCandlesRef.current.get(cacheKey)!;
+    const sweptLowCandles = sweptLowCandlesRef.current.get(cacheKey)!;
 
     const lookback = 3;
     const { highs, lows } = detectSwings(candles, lookback);
     const zones: LiquidityZone[] = [];
 
     if (settings.showHighs) {
-      const highGroups = groupByPrice(highs, settings.equalThreshold, candles, 'high');
+      // Exclude candles that were part of previously swept zones
+      const activeHighs = highs.filter(pt => !sweptHighCandles.has(pt.index));
+      const highGroups = groupByPrice(activeHighs, settings.equalThreshold, candles, 'high');
       for (const grp of highGroups) {
         if (grp.touchTimes.length < settings.minTouches) continue;
 
-        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'high');
+        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'high', confirmationWindow);
         const invalidation = detectInvalidation(candles, grp.price, grp.lastIndex, 'high', settings.invalidationBuffer);
+
+        // Permanently register swept candle indices so they cannot be reused
+        if (sweep.swept) {
+          for (const idx of grp.touchIndices) {
+            sweptHighCandles.add(idx);
+          }
+        }
+
         if ((sweep.swept || invalidation.invalidated) && !settings.showSwept) continue;
 
         zones.push({
@@ -209,12 +284,22 @@ export function useLiquidityDetection({
     }
 
     if (settings.showLows) {
-      const lowGroups = groupByPrice(lows, settings.equalThreshold, candles, 'low');
+      // Exclude candles that were part of previously swept zones
+      const activeLows = lows.filter(pt => !sweptLowCandles.has(pt.index));
+      const lowGroups = groupByPrice(activeLows, settings.equalThreshold, candles, 'low');
       for (const grp of lowGroups) {
         if (grp.touchTimes.length < settings.minTouches) continue;
 
-        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'low');
+        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'low', confirmationWindow);
         const invalidation = detectInvalidation(candles, grp.price, grp.lastIndex, 'low', settings.invalidationBuffer);
+
+        // Permanently register swept candle indices so they cannot be reused
+        if (sweep.swept) {
+          for (const idx of grp.touchIndices) {
+            sweptLowCandles.add(idx);
+          }
+        }
+
         if ((sweep.swept || invalidation.invalidated) && !settings.showSwept) continue;
 
         zones.push({
@@ -230,5 +315,5 @@ export function useLiquidityDetection({
     }
 
     return zones;
-  }, [candles, settings]);
+  }, [candles, settings, symbol, timeframe]);
 }
