@@ -16,6 +16,7 @@ interface UseFullscreenChartLifecycleParams {
     attachToChart: (chart: any, series: any, container: HTMLElement) => void;
     detachFromChart: () => void;
   };
+  rewindPosition: number | null;
 }
 
 export function useFullscreenChartLifecycle({
@@ -29,17 +30,23 @@ export function useFullscreenChartLifecycle({
   handleChartClick,
   handleTouchEnd,
   gestureController,
+  rewindPosition,
 }: UseFullscreenChartLifecycleParams) {
   const isInitialDataLoad = useRef(true);
 
   useEffect(() => {
     if (candleSeriesRef.current && candles.length > 0) {
-      const lastCandle = candles[candles.length - 1];
-      const futureBars = generateFutureWhitespace(lastCandle.time as number, timeframe, FUTURE_BAR_COUNT);
-      const chartData = [
-        ...candles.map(candle => ({ ...candle, time: candle.time as Time })),
-        ...(futureBars as any[]),
-      ];
+      // When rewinding, only show candles up to the rewind position (hide future candles)
+      const displayCandles = rewindPosition !== null ? candles.slice(0, rewindPosition) : candles;
+
+      const chartData: any[] = displayCandles.map(candle => ({ ...candle, time: candle.time as Time }));
+
+      // Only add future whitespace bars when in live mode (not rewinding)
+      if (rewindPosition === null) {
+        const lastCandle = candles[candles.length - 1];
+        const futureBars = generateFutureWhitespace(lastCandle.time as number, timeframe, FUTURE_BAR_COUNT);
+        chartData.push(...(futureBars as any[]));
+      }
 
       if (isInitialDataLoad.current) {
         candleSeriesRef.current.setData(chartData);
@@ -57,7 +64,7 @@ export function useFullscreenChartLifecycle({
         }
       }
     }
-  }, [candles, candleSeriesRef, fitContent, timeframe, chartRef]);
+  }, [candles, rewindPosition, candleSeriesRef, fitContent, timeframe, chartRef]);
 
   useEffect(() => {
     const chartElement = chartContainerRef.current;

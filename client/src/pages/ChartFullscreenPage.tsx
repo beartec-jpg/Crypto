@@ -1192,6 +1192,7 @@ export function ChartFullscreenPage({
     handleChartClick: drawingInteraction.handleChartClick as EventListener,
     handleTouchEnd: drawingInteraction.handleTouchEnd as EventListener,
     gestureController,
+    rewindPosition,
   });
 
   useHydratedDrawings({
