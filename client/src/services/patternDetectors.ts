@@ -552,9 +552,9 @@ function getLatestBollinger(prices: number[]) {
   const lastIndex = bb.upper.length - 1;
 
   return {
-    upper: bb.upper[lastIndex] ?? 0,
-    middle: bb.middle[lastIndex] ?? 0,
-    lower: bb.lower[lastIndex] ?? 0,
+    upper: bb.upper[lastIndex]?.value ?? 0,
+    middle: bb.middle[lastIndex]?.value ?? 0,
+    lower: bb.lower[lastIndex]?.value ?? 0,
     hasData: lastIndex >= 0,
   };
 }

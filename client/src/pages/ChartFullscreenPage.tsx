@@ -581,7 +581,12 @@ export function ChartFullscreenPage({
           .map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
         orderBlocks: orderBlocks
           .filter(ob => !ob.time || ob.time <= currentTime)
-          .map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+          .map(ob => ({
+            high: ob.top,
+            low: ob.bottom,
+            type: ob.type,
+            mitigated: ob.mitigated && (!ob.mitigationTime || ob.mitigationTime <= currentTime),
+          })),
         liquidityZones: liquidityZones
           .filter(lz => lz.touchTimes.length === 0 || lz.touchTimes[lz.touchTimes.length - 1] <= currentTime)
           .map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
@@ -758,7 +763,7 @@ export function ChartFullscreenPage({
       structureBreaks,
       swingPoints,
       fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
-      orderBlocks: orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+      orderBlocks: orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type, mitigated: ob.mitigated })),
       liquidityZones: liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
       volumeProfileData: volumeProfileData
         ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
@@ -992,7 +997,7 @@ export function ChartFullscreenPage({
     htfBiasEntries,
     divergencePoints,
     fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
-    orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+    orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type, mitigated: ob.mitigated })),
     liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
     volumeProfileData
       ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
