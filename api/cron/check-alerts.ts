@@ -420,7 +420,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const usersWithIndicatorAlerts = await sql`
       SELECT * FROM crypto_subscriptions 
       WHERE alerts_enabled = true 
-      AND array_length(alert_types, 1) > 0
+      AND CASE
+        WHEN jsonb_typeof(alert_types) = 'array' THEN jsonb_array_length(alert_types)
+        ELSE 0
+      END > 0
     `;
 
     console.log(`Checking indicator alerts for ${usersWithIndicatorAlerts.length} users...`);
