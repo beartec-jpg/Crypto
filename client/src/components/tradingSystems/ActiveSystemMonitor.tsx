@@ -172,13 +172,13 @@ export function ActiveSystemMonitor({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-0.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {onLockToViewport && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); handleToggleLock(); }}
               className={cn(
-                'p-0.5 rounded transition-colors',
+                'p-2 rounded transition-colors',
                 lockedToViewport
                   ? 'bg-blue-600 hover:bg-blue-700 text-white'
                   : 'hover:bg-slate-700/60',
@@ -187,29 +187,29 @@ export function ActiveSystemMonitor({
               disabled={!lockedToViewport && canLockToViewport === false}
             >
               {lockedToViewport
-                ? <Lock className="h-3 w-3" />
-                : <Unlock className="h-3 w-3 text-slate-400" />
+                ? <Lock className="h-4 w-4" />
+                : <Unlock className="h-4 w-4 text-slate-400" />
               }
             </button>
           )}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
-            className="p-0.5 rounded hover:bg-slate-700/60 transition-colors"
+            className="p-2 rounded hover:bg-slate-700/60 transition-colors"
             title={expanded ? 'Collapse' : 'Expand'}
           >
             {expanded
-              ? <ChevronUp className="h-3 w-3 text-slate-400" />
-              : <ChevronDown className="h-3 w-3 text-slate-400" />
+              ? <ChevronUp className="h-4 w-4 text-slate-400" />
+              : <ChevronDown className="h-4 w-4 text-slate-400" />
             }
           </button>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
-            className="p-0.5 rounded hover:bg-slate-700/60 transition-colors"
+            className="p-2 rounded hover:bg-slate-700/60 hover:text-red-400 transition-colors"
             title="Close"
           >
-            <X className="h-3 w-3 text-slate-400" />
+            <X className="h-4 w-4 text-slate-400" />
           </button>
         </div>
       </div>
