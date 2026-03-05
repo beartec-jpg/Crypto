@@ -516,14 +516,14 @@ export function scoreBreakoutMomentum(input: ScoringInput): SystemEvaluation {
  * @param price - Current price
  * @param zoneTop - Top of the zone
  * @param zoneBottom - Bottom of the zone
- * @param maxDistancePct - Distance at which score reaches 0 (default 5%)
+ * @param maxDistancePct - Distance at which score reaches 0 (default 0.3%)
  * @returns Score 0-100
  */
 function scoreZoneProximity(
   price: number,
   zoneTop: number,
   zoneBottom: number,
-  maxDistancePct: number = 5.0
+  maxDistancePct: number = 0.3
 ): number {
   // Inside the zone = 100 points
   if (price >= zoneBottom && price <= zoneTop) {
@@ -577,9 +577,9 @@ function scoreFVGProximity(price: number, fvgs?: Array<{ high: number; low: numb
   const activeFVGs = fvgs.filter(fvg => !fvg.filled);
   if (activeFVGs.length === 0) return 0;
 
-  // Score each FVG by proximity
+  // Score each FVG by proximity - tightened threshold
   const scores = activeFVGs.map(fvg =>
-    scoreZoneProximity(price, fvg.high, fvg.low, 5.0)
+    scoreZoneProximity(price, fvg.high, fvg.low, 0.3)
   );
 
   // Return best score
