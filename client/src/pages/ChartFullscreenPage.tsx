@@ -82,6 +82,7 @@ import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
 import { findMaximumOpportunityZones, type OpportunityZone } from '@/lib/confluenceAnalysis';
 import type { IPriceLine } from 'lightweight-charts';
 import { FVGOnlySection } from '@/components/tradingSystems/SMCDebugTable';
+import { RewindControls } from '@/components/chart/RewindControls';
 
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
@@ -257,6 +258,7 @@ export function ChartFullscreenPage({
   const [fvgOnlyMode, setFvgOnlyMode] = useState(false);
 
   // Rewind: null = live, number = candle index to rewind to
+  // Rewind state - null means LIVE
   const [rewindPosition, setRewindPosition] = useState<number | null>(null);
 
   // Refs
@@ -319,8 +321,35 @@ export function ChartFullscreenPage({
     externalMetrics: gdsExternalMetrics,
   });
 
+  // Determine effective candle slice for indicator calculations
+  const effectiveCandleCount = rewindPosition ?? candles.length;
+  const effectiveCandles = useMemo(
+    () => candles.slice(0, effectiveCandleCount),
+    [candles, effectiveCandleCount],
+  );
+
+  // Rewind handlers
+  const handleStepBack = useCallback(() => {
+    const current = rewindPosition ?? candles.length;
+    setRewindPosition(Math.max(50, current - 1));
+  }, [rewindPosition, candles.length]);
+
+  const handleStepForward = useCallback(() => {
+    if (rewindPosition === null) return;
+    const newPosition = rewindPosition + 1;
+    if (newPosition >= candles.length) {
+      setRewindPosition(null);
+    } else {
+      setRewindPosition(newPosition);
+    }
+  }, [rewindPosition, candles.length]);
+
+  const handleGoLive = useCallback(() => {
+    setRewindPosition(null);
+  }, []);
+
   // Hooks - Oscillator data
-  const oscillatorData = useOscillatorData(candles);
+  const oscillatorData = useOscillatorData(effectiveCandles);
 
   // Hooks - Indicators
   const indicators = useIndicatorState();
@@ -362,16 +391,16 @@ export function ChartFullscreenPage({
 
   // Hooks - Order Block detection
   const obSettings = useOrderBlockSettings();
-  const orderBlocks = useOrderBlockDetection({ candles, settings: obSettings.settings, fvgs });
+  const orderBlocks = useOrderBlockDetection({ candles: effectiveCandles, settings: obSettings.settings, fvgs });
 
   // Hooks - Breaker Block detection (derived from existing Order Blocks)
   const bbSettings = useBreakerBlockSettings();
-  const breakerBlocks = useBreakerBlockDetection({ candles, orderBlocks, settings: bbSettings.settings });
+  const breakerBlocks = useBreakerBlockDetection({ candles: effectiveCandles, orderBlocks, settings: bbSettings.settings });
 
   // Hooks - BOS/CHoCH detection
   const bosSettings = useBOSSettings();
   const { structureBreaks, swingPoints, sessionSeparators } = useBOSDetection({
-    candles,
+    candles: effectiveCandles,
     settings: bosSettings.settings,
     fvgs,
     orderBlocks,
@@ -380,28 +409,28 @@ export function ChartFullscreenPage({
   // Hooks - Liquidity Zone detection
   const liquiditySettings = useLiquiditySettings();
   const liquidityZones = useLiquidityDetection({
-    candles,
+    candles: effectiveCandles,
     settings: liquiditySettings.settings,
   });
 
   // Hooks - Premium/Discount Zone detection
   const pdZoneSettings = usePDZoneSettings();
   const pdZones = usePDZoneDetection({
-    candles,
+    candles: effectiveCandles,
     settings: pdZoneSettings.settings,
   });
 
   // Hooks - Auto-Fibonacci detection
   const autoFibSettings = useAutoFibSettings();
   const autoFibVisibleRange = useVisibleRange(chartRef.current);
-  const autoFibResult = useAutoFibDetection(candles, autoFibVisibleRange, autoFibSettings.settings);
+  const autoFibResult = useAutoFibDetection(effectiveCandles, autoFibVisibleRange, autoFibSettings.settings);
 
   // Hooks - SuperTrend
   const superTrendSettings = useSuperTrendSettings();
-  const superTrendData = useSuperTrendCalculation(candles, superTrendSettings.settings);
+  const superTrendData = useSuperTrendCalculation(effectiveCandles, superTrendSettings.settings);
 
   // Hooks - Divergence Scanner
-  const divergencePoints = useDivergenceScanner(candles, DEFAULT_OSCILLATOR_CONFIG);
+  const divergencePoints = useDivergenceScanner(effectiveCandles, DEFAULT_OSCILLATOR_CONFIG);
   const divSettings = useDivergenceSettings();
 
   const filteredDivergencePoints = useMemo(() => {
@@ -435,11 +464,11 @@ export function ChartFullscreenPage({
 
   // Hooks - Squeeze Momentum
   const sqzSettings = useSqueezeMomentumSettings();
-  const sqzData = useSqueezeMomentum(candles, sqzSettings.settings);
+  const sqzData = useSqueezeMomentum(effectiveCandles, sqzSettings.settings);
   // Hooks - Volume Profile
   const vpSettings = useVolumeProfileSettings();
   const visibleRange = useVisibleRange(vpSettings.settings.updateOnPan ? chartRef.current : null);
-  const volumeProfileData = useVolumeProfileCalculation(candles, visibleRange, vpSettings.settings);
+  const volumeProfileData = useVolumeProfileCalculation(effectiveCandles, visibleRange, vpSettings.settings);
 
   // Hooks - Trading Systems
   const tradingSystemCallbacks: TradingSystemCallbacks = {
@@ -1046,6 +1075,33 @@ export function ChartFullscreenPage({
       // ignore
     }
   }, [showGdsMiniBadge]);
+
+  // Visual rewind marker: add an orange price line at the rewound candle's close price
+  const rewindPriceLineRef = useRef<IPriceLine | null>(null);
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    // Remove any previous rewind line
+    if (rewindPriceLineRef.current) {
+      try { series.removePriceLine(rewindPriceLineRef.current); } catch { /* ignore */ }
+      rewindPriceLineRef.current = null;
+    }
+
+    if (rewindPosition === null) return;
+
+    const candle = candles[rewindPosition - 1];
+    if (!candle) return;
+
+    rewindPriceLineRef.current = series.createPriceLine({
+      price: (candle as Candle).close,
+      color: '#f59e0b',
+      lineWidth: 2,
+      lineStyle: 2, // Dashed
+      axisLabelVisible: true,
+      title: 'REWIND',
+    });
+  }, [rewindPosition, candles, candleSeriesRef]);
 
   // Hooks - Drawing persistence
   const drawingsPersistence = useDrawingsPersistence(symbol, timeframe);
@@ -1703,7 +1759,7 @@ export function ChartFullscreenPage({
         poppedOutOscillators={oscillatorPanel.poppedOutOscillators}
         miniOscillators={oscillatorPanel.miniOscillators}
         oscillatorData={oscillatorData}
-        candles={candles}
+        candles={effectiveCandles}
         totalOscillatorHeight={oscillatorPanel.totalHeight}
         onPopout={oscillatorPanel.popoutOscillator}
         onCycleMode={oscillatorPanel.cycleMode}
@@ -1784,6 +1840,15 @@ export function ChartFullscreenPage({
           onUpdate={drawingActions.handleUpdateDrawing}
         />
       )}
+
+      {/* Rewind Controls */}
+      <RewindControls
+        currentPosition={rewindPosition}
+        totalCandles={candles.length}
+        onStepBack={handleStepBack}
+        onStepForward={handleStepForward}
+        onGoLive={handleGoLive}
+      />
     </div>
   );
 }
