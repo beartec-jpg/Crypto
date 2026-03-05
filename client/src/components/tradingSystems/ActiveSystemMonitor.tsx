@@ -30,7 +30,7 @@ interface ActiveSystemMonitorProps {
   /** Visible chart time range (seconds) – when provided, enables viewport locking */
   visibleRange?: { from: number; to: number };
   /** Historical signal events for the viewport backtest stats */
-  historicalSignalEvents?: Array<{ time: number; action: 'OPEN LONG' | 'OPEN SHORT' }>;
+  historicalSignalEvents?: Array<{ time: number; action: 'BUY OPEN' | 'BUY CLOSE' | 'SELL OPEN' | 'SELL CLOSE' }>;
   onLockToViewport?: (locked: boolean) => void;
   canLockToViewport?: boolean;
   viewportSignals?: {
