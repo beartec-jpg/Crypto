@@ -11,8 +11,16 @@ export interface LiquidityZone {
   swept: boolean;          // Has price swept (wicked) through then rejected?
   sweepTime?: number;      // Timestamp of the sweep candle
   sweepPrice?: number;     // The wick extreme that swept through the level
+  sweepIndex?: number;     // Candle index of the sweep (for enhanced scoring)
   invalidated: boolean;    // Has price closed through the level (invalidated)?
   invalidationTime?: number; // Timestamp of the invalidation candle
+  
+  // Enhanced sweep metrics (populated by enhancedLiquidityScoring)
+  sweepValidationScore?: number; // 0-100: Institutional sweep quality
+  isValidSweep?: boolean;        // Passes institutional validation criteria
+  sweepConfluence?: number;      // 0-100: Alignment with FVG/OB/BOS
+  sweepMomentum?: number;        // 0-100: Reversal speed score
+  sweepVolumeConfirmation?: number; // 0-100: Volume on reversal candle
 }
 
 export type PDRangeSource = 'swing' | 'day' | 'week';

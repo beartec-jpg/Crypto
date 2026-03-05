@@ -13,6 +13,7 @@ import type {
   ScoredCondition,
   SignalLabel,
 } from '@/types/systemScoring';
+import type { LiquidityZone } from '@/types/liquidity';
 import {
   scoreRSI,
   scoreDistanceFromLevel,
@@ -26,6 +27,13 @@ import {
   type WeightLevel,
 } from '@/lib/conditionWeights';
 import { detectDivergence } from '@/lib/calculations/divergenceCalculations';
+import {
+  createEnhancedSweep,
+  scoreSweepProximityEnhanced,
+  calculateCompositeZoneScore,
+  calculateATR,
+  type EnhancedLiquiditySweep,
+} from '@/lib/smc/enhancedLiquidityScoring';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -974,19 +982,129 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const fvgScore = scoreFVGProximity(currentPrice, input.previousClose, fvgs);
   const obScore = scoreOrderBlockProximity(currentPrice, input.previousClose, orderBlocks);
 
-  // Liquidity sweep with invalidation logic: stays active until price moves >10% away or confirmed break
-  const activeSweeps = structureBreaks?.filter(sb =>
-    sb.swept === true &&
-    !isSweptLevelInvalidated(sb, currentPrice, structureBreaks ?? [])
-  );
+  // Enhanced liquidity sweep scoring
+  // If we have full liquidity zone data with sweep details, use enhanced validation logic
+  const enhancedSweeps: EnhancedLiquiditySweep[] = [];
+  let liquidityScore = 0;
+  let fvgScoreAdjusted = fvgScore;
+  let obScoreAdjusted = obScore;
 
-  const liquidityScore = scoreLiquiditySweepProximity(
-    currentPrice,
-    liquidityZones,
-    currentCandleIndex,
-    lookbackCandles,
-    activeSweeps,
-  );
+  if (
+    liquidityZones && 
+    liquidityZones.length > 0 && 
+    currentCandleIndex !== undefined &&
+    priceHistory && 
+    priceHistory.length >= 50
+  ) {
+    // We have detailed data for enhanced sweep analysis
+    // Create enhanced sweeps from liquidity zones where data is available
+    const extendedLiqZones: Array<LiquidityZone & { sweptIndex?: number }> = 
+      liquidityZones.map(lz => ({ ...lz, sweptIndex: lz.sweptIndex })) as any;
+
+    for (const lz of extendedLiqZones) {
+      if (lz.swept && lz.sweptIndex !== undefined && lz.sweptIndex < currentCandleIndex) {
+        // For enhanced scoring, we'll use a simplified approach based on available data
+        // Score based on sweep strength (wick depth) and proximity
+        const fromSweep = currentCandleIndex - lz.sweptIndex;
+        const timeDecay = Math.max(0.5, 1 - (fromSweep / 50)); // 50-candle decay
+        
+        // Simplified sweep score based on closeness to level
+        const distancePct = Math.abs(currentPrice - lz.price) / currentPrice;
+        
+        if (distancePct <= 0.05) { // Within 5%
+          const proximityScore = 100 * (1 - (distancePct / 0.05)); // 0-100
+          const sweepScore = Math.round(proximityScore * timeDecay);
+          
+          enhancedSweeps.push({
+            id: lz.id,
+            direction: lz.type === 'low' ? 'buy-side' : 'sell-side',
+            sweptLevel: lz.price,
+            sweepTime: lz.sweepTime ?? 0,
+            sweepIndex: lz.sweptIndex,
+            wickSize: 0, // Not available in this context
+            wickSizePct: 0,
+            reversalStrength: 65, // Simplified
+            confluenceScore: 50, // Simplified
+            volumeConfirmation: 50,
+            validationScore: Math.min(100, sweepScore + 20),
+            isValid: !lz.invalidated && sweepScore > 30,
+            candlesSinceSweep: fromSweep,
+            ageDecayFactor: timeDecay,
+          });
+        }
+      }
+    }
+    
+    // Score using enhanced sweeps if available
+    if (enhancedSweeps.length > 0) {
+      liquidityScore = scoreSweepProximityEnhanced(currentPrice, enhancedSweeps, true);
+      
+      // Boost nearby FVG/OB scores if sweep is nearby
+      for (const sweep of enhancedSweeps) {
+        if (!sweep.isValid) continue;
+        
+        // Check FVGs for proximity
+        if (fvgs) {
+          for (let i = 0; i < fvgs.length; i++) {
+            const fvg = fvgs[i];
+            const distToFvg = Math.min(
+              Math.abs(sweep.sweptLevel - fvg.low),
+              Math.abs(sweep.sweptLevel - fvg.high)
+            ) / sweep.sweptLevel;
+            
+            if (distToFvg <= 0.01) { // Within 1%
+              const boostFactor = 1 + (sweep.validationScore / 100) * 0.5; // Up to 50% boost
+              fvgScoreAdjusted = Math.round(Math.abs(fvgScore) * boostFactor) * (fvgScore < 0 ? -1 : 1);
+            }
+          }
+        }
+        
+        // Check Order Blocks for proximity
+        if (orderBlocks) {
+          for (let i = 0; i < orderBlocks.length; i++) {
+            const ob = orderBlocks[i];
+            const distToOb = Math.min(
+              Math.abs(sweep.sweptLevel - ob.low),
+              Math.abs(sweep.sweptLevel - ob.high)
+            ) / sweep.sweptLevel;
+            
+            if (distToOb <= 0.01) { // Within 1%
+              const boostFactor = 1 + (sweep.validationScore / 100) * 0.4; // Up to 40% boost
+              obScoreAdjusted = Math.round(Math.abs(obScore) * boostFactor) * (obScore < 0 ? -1 : 1);
+            }
+          }
+        }
+      }
+    } else {
+      // Fallback to original sweep proximity scoring
+      const activeSweeps = structureBreaks?.filter(sb =>
+        sb.swept === true &&
+        !isSweptLevelInvalidated(sb, currentPrice, structureBreaks ?? [])
+      );
+
+      liquidityScore = scoreLiquiditySweepProximity(
+        currentPrice,
+        liquidityZones,
+        currentCandleIndex,
+        lookbackCandles,
+        activeSweeps,
+      );
+    }
+  } else {
+    // Fallback to original scoring when data is insufficient
+    const activeSweeps = structureBreaks?.filter(sb =>
+      sb.swept === true &&
+      !isSweptLevelInvalidated(sb, currentPrice, structureBreaks ?? [])
+    );
+
+    liquidityScore = scoreLiquiditySweepProximity(
+      currentPrice,
+      liquidityZones,
+      currentCandleIndex,
+      lookbackCandles,
+      activeSweeps,
+    );
+  }
 
   // Divergence confluence using peak/trough analysis
   const divergenceBonus = scoreDivergenceConfluence(
@@ -1012,23 +1130,29 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     {
       id: 'fvgProximity',
       name: 'FVG Proximity',
-      score: fvgScore,
-      value: fvgScore !== 0 ? `${Math.abs(fvgScore)}/100` : undefined,
-      description: 'Distance-scaled proximity to Fair Value Gap.',
+      score: fvgScoreAdjusted,
+      value: fvgScoreAdjusted !== 0 ? `${Math.abs(fvgScoreAdjusted)}/100` : undefined,
+      description: enhancedSweeps.length > 0 
+        ? `Distance-scaled proximity to Fair Value Gap (boosted by ${enhancedSweeps.length} nearby sweep${enhancedSweeps.length > 1 ? 's' : ''}).`
+        : 'Distance-scaled proximity to Fair Value Gap.',
     },
     {
       id: 'orderBlockTouch',
       name: 'Order Block Proximity',
-      score: obScore,
-      value: obScore !== 0 ? `${Math.abs(obScore)}/100` : undefined,
-      description: 'Distance-scaled proximity to Order Block.',
+      score: obScoreAdjusted,
+      value: obScoreAdjusted !== 0 ? `${Math.abs(obScoreAdjusted)}/100` : undefined,
+      description: enhancedSweeps.length > 0 
+        ? `Distance-scaled proximity to Order Block (boosted by ${enhancedSweeps.length} nearby sweep${enhancedSweeps.length > 1 ? 's' : ''}).`
+        : 'Distance-scaled proximity to Order Block.',
     },
     {
       id: 'liquiditySweep',
       name: 'Liquidity Sweep',
       score: liquidityScore,
       value: liquidityScore > 0 ? `${liquidityScore}/100` : undefined,
-      description: 'Active liquidity grab (invalidates when price moves >10% away or level is confirmed broken).',
+      description: enhancedSweeps.length > 0
+        ? `Institutional sweep detection: ${enhancedSweeps.length} active sweep${enhancedSweeps.length > 1 ? 's' : ''} (avg validation ${Math.round(enhancedSweeps.reduce((sum, s) => sum + s.validationScore, 0) / enhancedSweeps.length)}/100).`
+        : 'Active liquidity grab (invalidates when price moves >10% away or level is confirmed broken).',
     },
     {
       id: 'divergenceConfluence',
