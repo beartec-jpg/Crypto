@@ -79,10 +79,6 @@ interface FullscreenChartActionToolbarProps {
   onDeactivateSystem: () => void;
   confluenceSnapshot: ConfluenceSnapshot | null;
   onToggleFloatingMonitor: () => void;
-  /** Whether FVG-Only mode is currently active */
-  fvgOnlyMode?: boolean;
-  /** Toggle FVG-Only mode on/off */
-  onToggleFvgOnlyMode?: () => void;
 }
 
 export function FullscreenChartActionToolbar({
@@ -140,8 +136,6 @@ export function FullscreenChartActionToolbar({
   onDeactivateSystem,
   confluenceSnapshot,
   onToggleFloatingMonitor,
-  fvgOnlyMode = false,
-  onToggleFvgOnlyMode,
 }: FullscreenChartActionToolbarProps) {
   return (
     <div className="absolute top-2 left-2 z-30 flex items-center gap-1 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-1 shadow-xl">
@@ -249,24 +243,6 @@ export function FullscreenChartActionToolbar({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
         </svg>
       </button>
-
-      {onToggleFvgOnlyMode && (
-        <>
-          <div className="w-px h-6 bg-slate-700" />
-          <button
-            onClick={onToggleFvgOnlyMode}
-            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-              fvgOnlyMode
-                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30'
-                : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-            }`}
-            title={fvgOnlyMode ? 'FVG-Only: ON — click to disable' : 'FVG-Only: OFF — click to enable'}
-            data-testid="btn-fvg-only-mode"
-          >
-            FVG Only
-          </button>
-        </>
-      )}
 
     </div>
   );
