@@ -188,16 +188,16 @@ export interface ViewportBacktestParams {
     breakTime: number;
     breakIndex?: number;
     direction: 'bullish' | 'bearish';
-    type?: string;
+    type?: 'bos' | 'choch' | 'mss';
     swept?: boolean;
     brokenLevel?: number;
     confirmed?: boolean;
   }>;
   sqzData: Array<{ time: number; sqzOff: boolean; value: number }>;
-  htfBiasEntries: Array<{ bias: 'bullish' | 'bearish' }>;
+  htfBiasEntries: Array<{ bias: 'bullish' | 'bearish' | 'neutral' }>;
   divergencePoints: DivergencePoint[];
   fvgs: Array<{ top: number; bottom: number; mitigated: boolean; type: 'bullish' | 'bearish'; endTime?: number }>;
-  orderBlocks: Array<{ top: number; bottom: number; type: 'bullish' | 'bearish'; time?: number }>;
+  orderBlocks: Array<{ top: number; bottom: number; type: 'bullish' | 'bearish'; time?: number; mitigated?: boolean; mitigationTime?: number }>;
   liquidityZones: Array<{ price: number; type: 'high' | 'low'; swept: boolean; touchTimes?: number[] }>;
   volumeProfileData?: {
     rows: Array<{ price: number; volume: number }>;
@@ -355,7 +355,12 @@ export function runTradingSystemBacktest(params: ViewportBacktestParams): Backte
         .map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
       orderBlocks: orderBlocks
         .filter(ob => !ob.time || ob.time <= currentTime)
-        .map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type })),
+        .map(ob => ({
+          high: ob.top,
+          low: ob.bottom,
+          type: ob.type,
+          mitigated: ob.mitigated && (!ob.mitigationTime || ob.mitigationTime <= currentTime),
+        })),
       liquidityZones: liquidityZones
         .filter(lz => !lz.touchTimes || lz.touchTimes.length === 0 || lz.touchTimes[lz.touchTimes.length - 1] <= currentTime)
         .map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),

@@ -219,7 +219,7 @@ export interface ScoringInput {
   /** SMC Fair Value Gaps for Smart Money scoring */
   fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>;
   /** SMC Order Blocks for Smart Money scoring */
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>;
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>;
   /** Liquidity zones for Smart Money scoring */
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number }>;
   /** Current timeframe for dynamic lookback calculation */
@@ -588,12 +588,16 @@ function scoreFVGProximity(price: number, fvgs?: Array<{ high: number; low: numb
 
 /**
  * Score Order Block proximity with distance scaling
- * Returns 0-100 based on distance to nearest order block
+ * Returns 0-100 based on distance to nearest unmitigated order block
  */
-function scoreOrderBlockProximity(price: number, orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>): number {
+function scoreOrderBlockProximity(price: number, orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>): number {
   if (!orderBlocks || orderBlocks.length === 0) return 0;
 
-  const scores = orderBlocks.map(ob =>
+  // Only score active (unmitigated) order blocks
+  const activeOBs = orderBlocks.filter(ob => !ob.mitigated);
+  if (activeOBs.length === 0) return 0;
+
+  const scores = activeOBs.map(ob =>
     scoreZoneProximity(price, ob.high, ob.low, 3.0) // Tighter tolerance for OBs
   );
 
@@ -697,7 +701,7 @@ function scoreAutoFibConfluence(
   fibResult: { primary: FibSetResult | null; secondary: FibSetResult | null } | undefined,
   currentPrice: number,
   fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>,
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>,
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>,
   alignmentThreshold: number = 0.5,
 ): number {
   if (!fibResult || (!fibResult.primary && !fibResult.secondary)) {
@@ -757,6 +761,7 @@ function scoreAutoFibConfluence(
     let hasOBConfluence = false;
     if (orderBlocks) {
       for (const ob of orderBlocks) {
+        if (ob.mitigated) continue;
         const obMid = (ob.high + ob.low) / 2;
         const alignment = Math.abs(fib.price - obMid) / fib.price * 100;
         if (alignment <= alignmentThreshold) {

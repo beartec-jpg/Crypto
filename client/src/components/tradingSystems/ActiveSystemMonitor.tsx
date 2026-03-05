@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { X, ChevronDown, ChevronUp, Check, Lock, Unlock, AlertTriangle, ArrowRightLeft } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Check, Lock, Unlock, AlertTriangle, ArrowRightLeft, Loader2 } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import type { OpportunityZone } from '@/lib/confluenceAnalysis';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';

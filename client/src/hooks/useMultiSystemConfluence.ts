@@ -68,7 +68,7 @@ export function useMultiSystemConfluence(
   htfBiasEntries: HTFBiasEntry[],
   divergencePoints?: DivergencePoint[],
   fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>,
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>,
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>,
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean }>,
   volumeProfileData?: { rows: Array<{ price: number; volume: number }>; valueAreaHigh?: number; valueAreaLow?: number; poc?: number },
   weightsVersion?: number,
