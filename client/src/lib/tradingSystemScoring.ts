@@ -567,41 +567,77 @@ function getStructureLookbackCandles(timeframe?: string): number {
 }
 
 /**
- * Score FVG proximity with distance scaling
- * Returns 0-100 based on distance to nearest unfilled FVG
+ * Score FVG proximity with distance scaling and directional sign.
+ * Returns -100 to +100: positive for bullish FVGs, negative for bearish FVGs.
+ * Entry direction is validated when price is inside the zone:
+ *   - Bullish FVG: only valid when entered from above (previousPrice > high)
+ *   - Bearish FVG: only valid when entered from below (previousPrice < low)
  */
-function scoreFVGProximity(price: number, fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>): number {
+function scoreFVGProximity(currentPrice: number, previousPrice: number, fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>): number {
   if (!fvgs || fvgs.length === 0) return 0;
 
   // Find closest unfilled FVG
   const activeFVGs = fvgs.filter(fvg => !fvg.filled);
   if (activeFVGs.length === 0) return 0;
 
-  // Score each FVG by proximity - tightened threshold
-  const scores = activeFVGs.map(fvg =>
-    scoreZoneProximity(price, fvg.high, fvg.low, 0.3)
-  );
+  const scores = activeFVGs.map(fvg => {
+    const proximity = scoreZoneProximity(currentPrice, fvg.high, fvg.low, 0.3);
 
-  // Return best score
-  return Math.max(...scores);
+    // Validate entry direction when price is inside the zone
+    const isInsideZone = currentPrice >= fvg.low && currentPrice <= fvg.high;
+    if (isInsideZone) {
+      const enteredFromAbove = previousPrice > fvg.high;
+      const enteredFromBelow = previousPrice < fvg.low;
+
+      // Bullish FVG: only valid if entered from above
+      if (fvg.type === 'bullish' && !enteredFromAbove) return 0;
+      // Bearish FVG: only valid if entered from below
+      if (fvg.type === 'bearish' && !enteredFromBelow) return 0;
+    }
+
+    // Apply sign based on FVG type
+    return fvg.type === 'bullish' ? proximity : -proximity;
+  });
+
+  // Return strongest signal by absolute magnitude
+  return scores.reduce((max, s) => Math.abs(s) > Math.abs(max) ? s : max, scores[0]);
 }
 
 /**
- * Score Order Block proximity with distance scaling
- * Returns 0-100 based on distance to nearest unmitigated order block
+ * Score Order Block proximity with distance scaling and directional sign.
+ * Returns -100 to +100: positive for bullish OBs, negative for bearish OBs.
+ * Entry direction is validated when price is inside the zone:
+ *   - Bullish OB: only valid when entered from above (previousPrice > high)
+ *   - Bearish OB: only valid when entered from below (previousPrice < low)
  */
-function scoreOrderBlockProximity(price: number, orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>): number {
+function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>): number {
   if (!orderBlocks || orderBlocks.length === 0) return 0;
 
   // Only score active (unmitigated) order blocks
   const activeOBs = orderBlocks.filter(ob => !ob.mitigated);
   if (activeOBs.length === 0) return 0;
 
-  const scores = activeOBs.map(ob =>
-    scoreZoneProximity(price, ob.high, ob.low, 3.0) // Tighter tolerance for OBs
-  );
+  const scores = activeOBs.map(ob => {
+    const proximity = scoreZoneProximity(currentPrice, ob.high, ob.low, 3.0);
 
-  return Math.max(...scores);
+    // Validate entry direction when price is inside the zone
+    const isInsideZone = currentPrice >= ob.low && currentPrice <= ob.high;
+    if (isInsideZone) {
+      const enteredFromAbove = previousPrice > ob.high;
+      const enteredFromBelow = previousPrice < ob.low;
+
+      // Bullish OB: only valid if entered from above
+      if (ob.type === 'bullish' && !enteredFromAbove) return 0;
+      // Bearish OB: only valid if entered from below
+      if (ob.type === 'bearish' && !enteredFromBelow) return 0;
+    }
+
+    // Apply sign based on OB type
+    return ob.type === 'bullish' ? proximity : -proximity;
+  });
+
+  // Return strongest signal by absolute magnitude
+  return scores.reduce((max, s) => Math.abs(s) > Math.abs(max) ? s : max, scores[0]);
 }
 
 /**
@@ -908,9 +944,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       latestStructureDirection === 'bearish' ? -90 : 0;
   }
 
-  // Distance-scaled proximity scores (0-100)
-  const fvgScore = scoreFVGProximity(currentPrice, fvgs);
-  const obScore = scoreOrderBlockProximity(currentPrice, orderBlocks);
+  // Distance-scaled proximity scores (-100 to +100, signed by zone type)
+  const fvgScore = scoreFVGProximity(currentPrice, input.previousClose, fvgs);
+  const obScore = scoreOrderBlockProximity(currentPrice, input.previousClose, orderBlocks);
 
   // Liquidity sweep with invalidation logic: stays active until price moves >10% away or confirmed break
   const activeSweeps = structureBreaks?.filter(sb =>
@@ -951,14 +987,14 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       id: 'fvgProximity',
       name: 'FVG Proximity',
       score: fvgScore,
-      value: fvgScore > 0 ? `${fvgScore}/100` : undefined,
+      value: fvgScore !== 0 ? `${Math.abs(fvgScore)}/100` : undefined,
       description: 'Distance-scaled proximity to Fair Value Gap.',
     },
     {
       id: 'orderBlockTouch',
       name: 'Order Block Proximity',
       score: obScore,
-      value: obScore > 0 ? `${obScore}/100` : undefined,
+      value: obScore !== 0 ? `${Math.abs(obScore)}/100` : undefined,
       description: 'Distance-scaled proximity to Order Block.',
     },
     {
