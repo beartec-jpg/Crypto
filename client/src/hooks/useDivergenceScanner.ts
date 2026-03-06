@@ -171,3 +171,4 @@ export function useDivergenceScanner(
 
     return results.sort((a, b) => a.time - b.time);
   }, [recentCandles, recentCorrCandles, config, mainSymbol]);
+}
