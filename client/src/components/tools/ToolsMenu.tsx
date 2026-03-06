@@ -228,8 +228,9 @@ export function ToolsMenu({
               onCheckedChange={onToggleGdsMiniBadge}
               className="shrink-0 data-[state=checked]:bg-blue-600"
             />
-                    </div>
+          </div>
+        </div>
       </PopoverContent>
     </Popover>
   );
-      }
+}
