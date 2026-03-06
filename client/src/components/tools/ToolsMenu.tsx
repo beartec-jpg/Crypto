@@ -230,7 +230,6 @@ export function ToolsMenu({
             />
           </div>
         </div>
-        </div>
-    </Popover>
+     </Popover>
   );
 }
