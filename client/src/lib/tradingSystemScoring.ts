@@ -1015,6 +1015,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     priceHistory,
     rsiHistory,
     macdHistHistory,
+    smtDivergence,
     autoFibResult,
   } = input;
 
