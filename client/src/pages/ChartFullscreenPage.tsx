@@ -82,9 +82,6 @@ import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
 import { findMaximumOpportunityZones, type OpportunityZone } from '@/lib/confluenceAnalysis';
 import type { IPriceLine } from 'lightweight-charts';
 import { RewindControls } from '@/components/chart/RewindControls';
-// Button is actively used in FullscreenChartActionToolbar, ensuring it is
-// included in the ChartPage chunk and not removed by tree-shaking.
-
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
 import type { DivergencePoint, MAConfig } from '@/types/chart.types';
