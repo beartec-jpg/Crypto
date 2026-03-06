@@ -81,6 +81,7 @@ export default defineConfig({
             '@radix-ui/react-separator',
             '@radix-ui/react-slider',
             '@radix-ui/react-slot',
+            'class-variance-authority',
           ],
           'd3-vendor': ['d3'],
           'charts-vendor': ['lightweight-charts', 'recharts'],
