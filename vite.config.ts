@@ -82,6 +82,8 @@ export default defineConfig({
             '@radix-ui/react-slider',
             '@radix-ui/react-slot',
             'class-variance-authority',
+            'clsx',
+            'tailwind-merge',
           ],
           'd3-vendor': ['d3'],
           'charts-vendor': ['lightweight-charts', 'recharts'],

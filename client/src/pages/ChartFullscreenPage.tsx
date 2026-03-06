@@ -82,6 +82,11 @@ import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
 import { findMaximumOpportunityZones, type OpportunityZone } from '@/lib/confluenceAnalysis';
 import type { IPriceLine } from 'lightweight-charts';
 import { RewindControls } from '@/components/chart/RewindControls';
+// Defensive import: ensures Button is included in the ChartPage chunk scope.
+// Child components (DrawingMenu, IndicatorMenu, ToolsMenu, TradingSystemsMenu)
+// all use Button, but Vite's production scope-hoisting can drop the binding
+// if no ancestor in the chunk explicitly imports it.
+import { Button } from '@/components/ui/button';
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
 import type { DivergencePoint, MAConfig } from '@/types/chart.types';
